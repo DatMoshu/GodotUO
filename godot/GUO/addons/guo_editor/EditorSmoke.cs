@@ -458,7 +458,7 @@ public partial class EditorSmoke : Node
                     _editReport["ok"] = !_editReport.ContainsKey("failed");
                     _stage = 66;
                 }
-                else if (_frames >= _steps[_step].Wait)
+                else if (_frames >= _steps[_step].Wait && Settled())
                 {
                     try
                     {
@@ -1419,6 +1419,42 @@ public partial class EditorSmoke : Node
     private readonly Dictionary<string, object> _editReport = new();
     private readonly List<(int Wait, Action Run)> _steps = new();
     private int _step;
+
+    // A step can also wait on the wall clock: the game fades roofs by elapsed
+    // time, not frames, so fast headless frames could read them mid-fade.
+    // SettleWithin holds the next step until its condition holds or the time runs out.
+    private Func<bool> _settle;
+    private string _settleName;
+    private ulong _settleFrom, _settleBy;
+
+    private void SettleWithin(string name, ulong ms, Func<bool> done)
+    {
+        (_settle, _settleName, _settleFrom) = (done, name, Time.GetTicksMsec());
+        _settleBy = _settleFrom + ms;
+    }
+
+    private bool Settled()
+    {
+        if (_settle == null)
+        {
+            return true;
+        }
+
+        bool done = _settle();
+        if (!done && Time.GetTicksMsec() < _settleBy)
+        {
+            return false;
+        }
+
+        if (!_editReport.TryGetValue("settle_ms", out object settled))
+        {
+            _editReport["settle_ms"] = settled = new Dictionary<string, object>();
+        }
+
+        ((Dictionary<string, object>)settled)[_settleName] = done ? (long)(Time.GetTicksMsec() - _settleFrom) : -1;
+        _settle = null;
+        return true;
+    }
     private Color _radarBefore, _minimapBefore;
 
     private void EditFail(string why)

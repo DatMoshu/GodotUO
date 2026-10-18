@@ -37,6 +37,9 @@ public partial class EditorSmoke
 
     // Roofs are not switched by AllowedToDraw: the game fades them out by
     // alpha (DrawRoofs off), as it does when the player walks indoors.
+    // The roof fade steps alpha every 20 ms by wall clock (about 230 ms in all); allow plenty.
+    private const ulong FadeMs = 3000;
+
     private (int Roofs, int Shown) RoofsNearCentre()
     {
         int roofs = 0, shown = 0;
@@ -191,14 +194,25 @@ public partial class EditorSmoke
         }));
 
         // Each tick off then on, through the menu as a click would.
-        void OffOn(string name, int frames, Func<bool> hidden, Func<bool> restored)
+        void OffOn(string name, int frames, Func<bool> hidden, Func<bool> restored, bool fades = false)
         {
             bool start = _world.GetToggle(name) ?? false;
-            _steps.Add((1, () => LayersExpect(_world.SetMenuItem(name, !start) && _world.GetToggle(name) == !start, $"{Slug(name)}_click")));
+            _steps.Add((1, () =>
+            {
+                LayersExpect(_world.SetMenuItem(name, !start) && _world.GetToggle(name) == !start, $"{Slug(name)}_click");
+                if (fades)
+                {
+                    SettleWithin($"{Slug(name)}_off", FadeMs, start ? hidden : restored);
+                }
+            }));
             _steps.Add((frames, () =>
             {
                 LayersExpect(start ? hidden() : restored(), $"{Slug(name)}_{(start ? "hides" : "shows")}");
                 _world.SetMenuItem(name, start);
+                if (fades)
+                {
+                    SettleWithin($"{Slug(name)}_on", FadeMs, start ? restored : hidden);
+                }
             }));
             _steps.Add((frames, () => LayersExpect(start ? restored() : hidden(), $"{Slug(name)}_{(start ? "restores" : "hides_again")}")));
         }
@@ -221,7 +235,8 @@ public partial class EditorSmoke
             {
                 _layersReport["roofs_shown_when_on"] = RoofsNearCentre().Shown;
                 return _world.Host.ShowRoofs && RoofsNearCentre().Shown == baseline["roofs_shown"];
-            });
+            },
+            fades: true);
         OffOn("Objects", wait, () => _world.Objects.DrawnCount == 0, () => _world.Objects.DrawnCount == baseline["objects"]);
         OffOn("Live", 2, () => !LiveDrawn() && !_world.LayerOn("Live"), () => LiveDrawn() && _world.LayerOn("Live"));
 
@@ -289,6 +304,8 @@ public partial class EditorSmoke
             {
                 _world.SetMenuItem(n, n != "Live");
             }
+
+            SettleWithin("roofs_defaults", FadeMs, () => RoofsNearCentre().Shown == baseline["roofs_shown"]);
         }));
         _steps.Add((fade, () =>
         {
