@@ -51,9 +51,10 @@ water shading reads. A shard can say which styles its players may use.
   out of the mesh and draws every wet tile twice, the second copy scaled by a
   sine on the CPU. It is the only "animated water" in the upstream we track
   (pin 007ef8c3; commits c3c495a6d, a0de16181, 4a540af63, January 2023). The
-  ClassicUO 2.0.0 beta water the owner mentioned is not in that repository's
-  branches as of today; the upstream lane's drift report (UP-01/UP-04) owns
-  finding it, and nothing is ported from it blindly.
+  ClassicUO 2.0.0 beta's water ships only as closed binaries (a Rust core on
+  wgpu/WGSL, per the upstream lane's UP-01 report); no public commit has its
+  water or terrain code. Nothing is ported from it; the beta is at most a
+  by-eye look reference, and it is not decompiled or copied.
 - No world shader reads `TIME` today. All world materials are created once in
   `UltimaBatcher2D` and share `uo_hue_core.gdshaderinc`; global uniforms go
   through `SetOnAllMaterials`. The shader mode travels in the packed vertex
