@@ -53,6 +53,14 @@ REM  Client version the data above corresponds to. Drives which file formats
 REM  and packet layouts the readers expect. See docs\data_formats.md.
 if not defined UO_CLIENT_VERSION    set "UO_CLIENT_VERSION=7.0.107.76"
 
+REM --- Generated output ---------------------------------------------------
+REM  Where launchers and tools write generated files: screenshots, smoke
+REM  runs, exports, staged data sets. The default is this checkout's build\
+REM  (gitignored). Point it outside the repo in config.local.bat, one folder
+REM  per checkout, so a worktree never fills up and removing one loses
+REM  nothing; config.local.bat.example shows how.
+if not defined UO_BUILD_DIR         set "UO_BUILD_DIR=%UO_ROOT%\build"
+
 REM --- Runtime cache ------------------------------------------------------
 REM  Where decoded textures/atlases are cached. Safe to delete at any time;
 REM  it is rebuilt on demand. Keep it OFF the repo tree.
@@ -89,7 +97,7 @@ REM --- World project (the editor) -----------------------------------------
 REM  Where the editor keeps map edits: whole replaced blocks laid over the
 REM  install, never written into it. See docs\data_formats.md section 9 and
 REM  docs\architecture\ADR-0011-world-project-overlay.md.
-if not defined UO_WORLD_PROJECT     set "UO_WORLD_PROJECT=%UO_ROOT%\build\world\default"
+if not defined UO_WORLD_PROJECT     set "UO_WORLD_PROJECT=%UO_BUILD_DIR%\world\default"
 
 REM --- Map generator (tools\mapgen, ADR-0030) -------------------------------
 REM  Per-user generator data: everything mined from your client data (stamp
@@ -120,7 +128,7 @@ if not defined UO_SHARD_SRC         set "UO_SHARD_SRC=%UO_ROOT%\tools\modernuo\s
 if not defined UO_SHARD_DIST        set "UO_SHARD_DIST=%UO_SHARD_SRC%\Distribution"
 
 REM  Optional PlayerBots shard: separate checkout, saves and loopback port.
-if not defined UO_PLAYERBOTS_DIR    set "UO_PLAYERBOTS_DIR=%UO_ROOT%\build\playerbots"
+if not defined UO_PLAYERBOTS_DIR    set "UO_PLAYERBOTS_DIR=%UO_BUILD_DIR%\playerbots"
 if not defined UO_PLAYERBOTS_PORT   set "UO_PLAYERBOTS_PORT=2640"
 
 REM  The address the local shard listens on. Loopback: only this PC can
@@ -269,8 +277,8 @@ REM  sidecar out, saved results in, hues.json for the Pixelorama extension.
 REM  UO_PINTA / UO_PIXELORAMA name an exe when it is not found by itself.
 REM  UO_COMFY_URL is the ComfyUI server; UO_COMFY_WORKFLOWS a folder of its
 REM  API-format workflow .json files. Keys for paid services are NOT here.
-if not defined UO_ART_EXCHANGE      set "UO_ART_EXCHANGE=%UO_ROOT%\build\art_exchange"
+if not defined UO_ART_EXCHANGE      set "UO_ART_EXCHANGE=%UO_BUILD_DIR%\art_exchange"
 if not defined UO_PIXELORAMA        set "UO_PIXELORAMA="
 if not defined UO_PINTA             set "UO_PINTA="
 if not defined UO_COMFY_URL         set "UO_COMFY_URL=http://127.0.0.1:8188"
-if not defined UO_COMFY_WORKFLOWS   set "UO_COMFY_WORKFLOWS=%UO_ROOT%\build\art_exchange\workflows"
+if not defined UO_COMFY_WORKFLOWS   set "UO_COMFY_WORKFLOWS=%UO_BUILD_DIR%\art_exchange\workflows"

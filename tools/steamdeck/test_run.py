@@ -53,7 +53,7 @@ def deck(monkeypatch, tmp_path):
 
     def main(*argv, **deck_values):
         values = {"deck_host": "", "deck_ssh_key": None, "deck_known_hosts": None, "deck_account": "",
-                  "root": tmp_path, "godot_home_setting": None, **deck_values}
+                  "root": tmp_path, "build_dir": None, "godot_home_setting": None, **deck_values}
         cfg = dataclasses.replace(base, **values)
         monkeypatch.setattr(run, "load_config", lambda: cfg)
         return run.main([*argv, "--dry-run"])

@@ -17,6 +17,9 @@
 
 UO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export UO_ROOT
+# The checkout's folder name, for a per-checkout UO_BUILD_DIR in config.local.sh.
+UO_CHECKOUT="$(basename "$UO_ROOT")"
+export UO_CHECKOUT
 
 if [ -z "${UO_PYTHON:-}" ]; then
     if command -v python3 >/dev/null 2>&1; then UO_PYTHON=python3; else UO_PYTHON=python; fi
