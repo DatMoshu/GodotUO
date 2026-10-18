@@ -2747,6 +2747,13 @@ Each scene object carries the probe's columns (`scene`, `what`, `at`,
 `batcher_items`, `texture_switches`, `world_prepare_ms`, `world_draw_ms`,
 `render_cpu_ms`, `render_gpu_ms` and the land, cover and allocation counts);
 readers must ignore keys they do not know, and older runs lack the newer ones.
+Since PERF-03 each scene also carries `render_frame_ms`, `ui_ms`,
+`update_world_ms`, `stage_<stage>_ms` for every `PerfStages.Stage`
+(`gather`, `mesh_build`, `gather_tail`, `land_mesh`, `land_loose`, `sort`,
+`statics`, `mobiles`, `items`, `cover_land`, `multis`, `other`,
+`transparent`; per frame) and `drawn_<stage>` (objects drawn per frame, the
+sorted-list stages only, absent when none). Scenes `cave-roof` and
+`open-sea` were added after `dungeon`.
 Since PERF-01, `system` is `{gpu, gpu_vendor, gpu_api, driver,
 driver_version, rendering_method, cpu, cpu_threads, ram_gib, os, os_version,
 screen "WxH", refresh_hz, engine}`, from Godot's `RenderingServer`, `OS`

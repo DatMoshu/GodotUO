@@ -43,6 +43,12 @@ internal static class PerfProbe
         new("britain-bank", "[go 1434 1699 0", "the Britain bank: dense statics, roofs, vendors and passers-by"),
         new("dense-forest", "[go 633 858", "the forest east of Yew (ab_compare yew-forest)"),
         new("dungeon", "[go 5401 629", "the mouth of Despise (ab_compare despise-mouth): dungeon light level, torches"),
+        // The community's cases (PERF-03): a crypt at z -60 under land at
+        // z 0, where everything above the roof must be culled, and open sea
+        // with no statics. Their dense city is britain-bank, their forest
+        // dense-forest.
+        new("cave-roof", "[go 1010 760 -60", "a crypt under the land near Yew: a floor at z -60 under land at z 0"),
+        new("open-sea", "[go 3600 1400", "open sea between Vesper and Moonglow: water and nothing on it"),
         // Standing still, nothing new reaches the atlas; running, new land and
         // statics are added to its pages almost every step, and with
         // --merged-land=array or --merged-cover each changed page is copied
@@ -566,13 +572,13 @@ internal static class PerfProbe
         // Where the world frame goes (PERF-03, src/Render/PerfStages.cs).
         string[] names = System.Enum.GetValues<PerfStages.Stage>().Where(s => s != PerfStages.Stage.Count).Select(StageName).ToArray();
         md.AppendLine();
-        md.AppendLine("| Scene | update ms | render frame ms | UI ms | " + string.Join(" | ", names.Select(s => s.Replace('_', ' ') + " ms")) + " | statics drawn | mobiles drawn | items drawn | other drawn |");
-        md.AppendLine("|---|" + string.Concat(Enumerable.Repeat("---:|", 3 + names.Length + 4)));
+        md.AppendLine("| Scene | update ms | render frame ms | UI ms | " + string.Join(" | ", names.Select(s => s.Replace('_', ' ') + " ms")) + " | statics drawn | mobiles drawn | items drawn | cover land drawn | multis drawn | other drawn |");
+        md.AppendLine("|---|" + string.Concat(Enumerable.Repeat("---:|", 3 + names.Length + 6)));
         foreach (var r in results)
         {
             md.AppendLine($"| {r["scene"]} | {r.GetValueOrDefault("update_world_ms", 0)} | {r.GetValueOrDefault("render_frame_ms", 0)} | {r.GetValueOrDefault("ui_ms", 0)} | "
                           + string.Join(" | ", names.Select(s => r.GetValueOrDefault($"stage_{s}_ms", 0)))
-                          + $" | {r.GetValueOrDefault("drawn_statics", 0)} | {r.GetValueOrDefault("drawn_mobiles", 0)} | {r.GetValueOrDefault("drawn_items", 0)} | {r.GetValueOrDefault("drawn_other", 0)} |");
+                          + $" | {r.GetValueOrDefault("drawn_statics", 0)} | {r.GetValueOrDefault("drawn_mobiles", 0)} | {r.GetValueOrDefault("drawn_items", 0)} | {r.GetValueOrDefault("drawn_cover_land", 0)} | {r.GetValueOrDefault("drawn_multis", 0)} | {r.GetValueOrDefault("drawn_other", 0)} |");
         }
 
         if (results.Any(r => r.ContainsKey("parity_violations")))

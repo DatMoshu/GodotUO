@@ -646,6 +646,8 @@ namespace GUO.Game.Scenes
         {
             Static => PerfStages.Stage.Statics,
             Mobile => PerfStages.Stage.Mobiles,
+            Land => PerfStages.Stage.CoverLand,
+            Multi => PerfStages.Stage.Multis,
             Item { IsMulti: false } => PerfStages.Stage.Items,
             _ => PerfStages.Stage.Other,
         };

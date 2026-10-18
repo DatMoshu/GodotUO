@@ -33,7 +33,11 @@ public static class PerfStages
         Mobiles,
         /// <summary>Items and corpses on the ground.</summary>
         Items,
-        /// <summary>Multis, effects, covering land and anything else in the sorted list.</summary>
+        /// <summary>Land queued again over what is sunk under it (RenderLists.CoverFromBelow).</summary>
+        CoverLand,
+        /// <summary>Multi components (houses, boats).</summary>
+        Multis,
+        /// <summary>Effects, splats, terrain layers and anything else in the sorted list.</summary>
         Other,
         /// <summary>Transparent objects and world gumps, after the sorted list.</summary>
         Transparent,
