@@ -1,0 +1,14 @@
+{
+ "name": "Death",
+ "description": "Grey fade for death.",
+ "passes": [
+  {
+   "shader": "damage",
+   "params": {
+    "mode": 3,
+    "intensity": 1.0
+   }
+  }
+ ],
+ "bindings": []
+}

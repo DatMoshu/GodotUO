@@ -17,3 +17,11 @@ Current task and its PR or branch, decisions already made, files in flight, and 
 output and exploration. The project handoff files live in the shared agent area, `_agentShared/handoffs/<project>_*.md`; re-read the
 latest one after a compaction instead of re-deriving the brief. Auto-compact is set to 300k tokens fleet-wide: do not
 close and reopen a long session to "reset" it, use `/compact focus:<task>` or `/clear` at a task boundary.
+
+## Evidence
+
+Agents save evidence (screenshots, recordings, logs of a run) in the shared agent area, under
+`_agentShared/runs/<project>/<run-id>/`, never in this repo or a worktree; run-id is
+`<YYYYMMDD>_<seat-or-story>_<topic>` (UTC, lower-case kebab). The fleet's evidence tool starts the folder and names
+the files; the naming and retention rules live beside it in `_agentShared/rules/`. Product source assets and test
+fixtures keep their own paths.

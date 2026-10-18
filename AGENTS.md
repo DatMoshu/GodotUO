@@ -183,6 +183,41 @@ or a device, it is misclassified, not a reason to expand Compat.
 
 ---
 
+## Feature layers and review policy
+
+Classify every proposal before implementation. The owner approved these layers;
+existing authoring in the client is migration work, not a precedent for new code.
+
+| Layer | Content | Requirements |
+|---|---|---|
+| L0 Core port | Ported ClassicUO files | Parity only. Deviations need a reason and `PORT DEVIATION (GUO)` marker, preferably one seam. Preserve login, input, packets and native-art rendering behaviour; zero unmarked port drift. |
+| L1 Client options | GUO-owned runtime features a player can enable | Off by default; profile field, Options entry, off-state parity proof, scenario and data_formats section. Rendering or input semantics require an ADR. No external processes, Python or network services. |
+| L2 Packs | Art, HD art, splats, PostFX presets, voices, zones, themes, graphs and generated content | Typed Store components only; no executable code and no execution during installation. |
+| L3 Editor packages | Authoring, generation, AI, MCP and tours | `#if TOOLS`; AI work also uses `AiFeatures`. Never carried by an exported client. |
+| L4 Labs | Experimental client features not ready for L1 | `src/Labs/<feature>/`, opt-in `GuoLabs=true` Debug build, shared command/options registration, never in an export. Each feature has a README and dependency doctor. |
+| Tools | `tools/<job>/` | Existing launcher-pair, configuration, documentation and privacy rules. |
+
+1. A new chat command, profile field, Options entry, shader or ported-file edit
+   starts with a Discussion or short ADR decided by Moshu. Ask whether ClassicUO
+   would ship it; if not, it belongs in L2–L4 rather than the core/client option.
+2. One feature per PR, with a soft ceiling of about 1,500 lines or 20 files unless
+   agreed beforehand. Split larger changes before review, preserving authorship.
+3. Generation belongs in the editor or Labs; the client consumes packs. A client
+   feature that shells out to Python or downloads models is in the wrong layer.
+4. External dependencies require a doctor launcher that says what to install,
+   and failure text naming that launcher. Raw exceptions on screen fail review.
+5. Every L1/L4 feature needs a scenario under `tools/scenarios/` and a smoke line.
+6. Packable content goes to the Store. Built-in presets remain a small curated set.
+7. Contributors and agents use the same review template: layer, toggle, parity
+   proof, scenario, doctor and docs section. Directors triage the layer first.
+
+Native pixel art still uses nearest-neighbour sampling. Any separate render-mode
+exception requires its own owner-approved ADR; this policy grants none.
+
+Roadmap: shard content negotiation will let a connecting client learn which
+packs a server requires. Protocol and consent are future work; no automatic pack
+download or activation is implied.
+
 ## Agents, skills and rules, in every coding agent
 
 This file is the one set of project instructions. Codex, GitHub Copilot and
@@ -245,3 +280,11 @@ agent can run it.
 - **Claude Code Game Studios** — MIT; provenance in `docs/upstream/`.
 - **UO client data** — proprietary, never redistributed. Users supply their
   own installation.
+
+## Evidence
+
+Agents save evidence (screenshots, recordings, logs of a run) in the shared agent area, under
+`_agentShared/runs/<project>/<run-id>/`, never in this repo or a worktree; run-id is
+`<YYYYMMDD>_<seat-or-story>_<topic>` (UTC, lower-case kebab). The fleet's evidence tool starts the folder and names
+the files; the naming and retention rules live beside it in `_agentShared/rules/`. Product source assets and test
+fixtures keep their own paths.

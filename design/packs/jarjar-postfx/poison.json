@@ -1,0 +1,14 @@
+{
+ "name": "Poison",
+ "description": "Green pulsing poison overlay.",
+ "passes": [
+  {
+   "shader": "damage",
+   "params": {
+    "mode": 1,
+    "intensity": 0.6
+   }
+  }
+ ],
+ "bindings": []
+}

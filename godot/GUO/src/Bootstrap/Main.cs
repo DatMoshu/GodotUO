@@ -86,6 +86,12 @@ public partial class Main : Node
     {
         Automation.McpHost.Attach(this);
 
+        // Synthetic selection seam proof before normal scene startup for the MCP runner.
+        if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--selection-seam-probe") >= 0)
+        {
+            SelectionSeamProbe.Run();
+        }
+
         // Synthetic opt-in audio proof before normal scene startup for the MCP runner.
         if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--audio-content-probe") >= 0)
         {

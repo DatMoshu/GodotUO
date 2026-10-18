@@ -1,0 +1,13 @@
+{
+  "id": "client.selection.seam",
+  "title": "Selection seam: replacement picks forward to the original object",
+  "surface": "client",
+  "requires": {"build": "debug"},
+  "timeouts": {"step_s": 60, "run_s": 120},
+  "steps": [
+    {"id": "launch", "do": {"kind": "launch", "args": ["--selection-seam-probe"], "settings": {"autologin": false, "username": "", "password": ""}},
+     "say": "Run the synthetic selection seam checks without a shard, install or external service.",
+     "expect": {"log.contains": "[selection seam] PASS", "within_s": 45}},
+    {"id": "summary", "do": {"kind": "note", "text": "Checks cover native and null identity, splat-to-victim forwarding, the drag snapshot, and the destroyed or unbound fallback."}}
+  ]
+}

@@ -94,6 +94,9 @@ internal sealed partial class ModernOptions : ModernGump
 
     private void Define()
     {
+#if GUO_LABS
+        GUO.Labs.LabsRegistration.Register(World, option: (label, open) => Action_("General", label, open));
+#endif
         Bool("General", "Highlight game objects", p => p.HighlightGameObjects, (p, v) => p.HighlightGameObjects = v);
         Bool("General", "Enable pathfinding", p => p.EnablePathfind, (p, v) => p.EnablePathfind = v);
         Bool("General", "Always run", p => p.AlwaysRun, (p, v) => p.AlwaysRun = v);
