@@ -35,6 +35,9 @@ echo [smoke] 6/7 editor add-on (headless; tools\editor_smoke)
 echo [smoke] 7/7 launchers (tools\launcher_lint)
 "%UO_PYTHON%" "%UO_TOOLS%\launcher_lint\run.py" || set "FAIL=1"
 
+echo [smoke] selection seam (synthetic; no shard or install)
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Bootstrap/SelectionSeamProbe.tscn || set "FAIL=1"
+
 echo.
 if "%FAIL%"=="1" ( echo [smoke] FAILED & exit /b 1 )
 echo [smoke] OK
