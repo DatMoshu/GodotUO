@@ -140,6 +140,11 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   ADR-0008.
 
 ### Playing
+- When a server refuses GUO's client version, the disconnect message says
+  so in plain words, with the server's own words and the version GUO
+  reported, instead of a bare "connection lost"; a server that drops the
+  connection during the login gets the same hint. The Servers tab shows the
+  client version a shard needs, or the one you last played it as.
 - Canvas background behind the game: grey, wood, your own image or video,
   or one of ten built-in CC0 loops. ADR-0016.
 - Containers can open as a grid of finger-sized slots (mobile default), and

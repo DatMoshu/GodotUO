@@ -389,6 +389,8 @@ namespace GUO.Game.Scenes
             NetClient.Socket.Disconnected -= OnNetClientDisconnected;
             NetClient.Socket.Connected += OnNetClientConnected;
             NetClient.Socket.Disconnected += OnNetClientDisconnected;
+            // PORT DEVIATION (GUO): record the server and the client version reported to it (ServerIdentity, data_formats section 41).
+            ServerIdentity.Connecting(Settings.GlobalSettings.IP, Settings.GlobalSettings.Port);
             NetClient.Socket.Connect(Settings.GlobalSettings.IP, Settings.GlobalSettings.Port);
         }
 
@@ -449,6 +451,8 @@ namespace GUO.Game.Scenes
                 CurrentLoginStep = LoginSteps.LoginInToServer;
 
                 _world.ServerName = Servers[ServerIndex].Name;
+                // PORT DEVIATION (GUO): the chosen game server's name (ServerIdentity).
+                ServerIdentity.ServerChosen(_world.ServerName);
 
                 NetClient.Socket.Send_SelectServer(index);
             }
@@ -613,6 +617,8 @@ namespace GUO.Game.Scenes
                 else
                 {
                     PopupMessage = string.Format(ResGeneral.ConnectionLost0, StringHelper.AddSpaceBeforeCapital(e.ToString()));
+                    // PORT DEVIATION (GUO): say so in plain words when the drop looks like a client version refusal.
+                    PopupMessage = ServerIdentity.OnDisconnect(PopupMessage);
                 }
 
                 CurrentLoginStep = LoginSteps.PopUpMessage;
@@ -623,6 +629,8 @@ namespace GUO.Game.Scenes
         {
             byte flags = p.ReadUInt8();
             ushort count = p.ReadUInt16BE();
+            // PORT DEVIATION (GUO): the login got as far as the server list (ServerIdentity).
+            ServerIdentity.ServerListReceived();
             DisposeAllServerEntries();
             Servers = new ServerListEntry[count];
 
@@ -683,6 +691,8 @@ namespace GUO.Game.Scenes
             ParseCities(ref p);
 
             _world.ClientFeatures.SetFlags((CharacterListFlags) p.ReadUInt32BE());
+            // PORT DEVIATION (GUO): the server's character list flags (ServerIdentity).
+            ServerIdentity.CharacterListReceived((uint) _world.ClientFeatures.Flags);
             CurrentLoginStep = LoginSteps.CharacterSelection;
 
             uint charToSelect = 0;
