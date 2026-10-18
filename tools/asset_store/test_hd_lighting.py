@@ -1,4 +1,5 @@
 """R3 packaging and native-path regression checks; no UO installation required."""
+import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -41,14 +42,17 @@ def method(source, signature):
 
 
 def test_classic_light_collection_body_is_preserved():
-    # Frozen base, independent of a future branch HEAD: the Classic method
-    # must retain every rule after the one guarded delegation to the L1 seam.
+    # Frozen Classic AddLight body (including braces/whitespace), 4332 UTF-8
+    # bytes at f7f05bd6825b0929ca45cc784efca63558a0ce96 in the path below.
+    # Normalize CRLF to LF only; no Git/history/network dependency in CI.
+    # Every native rule must remain after exactly one guarded L1 delegation.
     path = "godot/GUO/src/Game/Scenes/GameScene.cs"
-    before = subprocess.check_output(["git", "show", f"f7f05bd6:{path}"]).decode()
     after = (ROOT / path).read_text(encoding="utf-8")
     native = method(after, "public void AddLight(")
     hook = "\n            // PORT DEVIATION (GUO): ADR-0027 optional, verified-pack HD path.\n            if (UseHDLight) { AddHdLight(obj, lightObject, x, y); return; }\n"
-    assert native.replace(hook, "", 1) == method(before, "public void AddLight(")
+    assert native.count(hook) == 1
+    body = native.replace(hook, "", 1).replace("\r\n", "\n").encode("utf-8")
+    assert hashlib.sha256(body).hexdigest() == "d8e22c9d61c54d1015bad1a13038ced754d27be387245e97e763bd5a5c87c1ac"
 
 
 def test_hd_shaders_are_pack_content_only():
