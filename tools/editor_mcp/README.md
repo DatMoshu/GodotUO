@@ -132,6 +132,9 @@ setting. The AI-enabled preference remains the outer gate.
 Changing tools also need the normal approval dialog, or the launching scenario's
 explicit allowlist. `--allow-editor-tool` narrows dispatch; it cannot enable a
 disabled setting. A setting changed while an approval waits is checked again.
+In scripted sessions the exact-name allowlist also restricts read-only calls;
+`readOnlyHint` never bypasses it. The scenario runner lists its state/discovery
+reads explicitly alongside its navigation tools.
 Other editor tools keep their existing per-call approval rules.
 
 `python tools/scenario_run/run.py editor.mcp.access --headless --allow-editor-tool admin_save --no-register`

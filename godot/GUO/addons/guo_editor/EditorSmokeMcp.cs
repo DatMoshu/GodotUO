@@ -141,12 +141,28 @@ public partial class EditorSmoke
             Environment.SetEnvironmentVariable("GUO_EDITOR_MCP_PREAPPROVED", "admin_save");
             host.Approve = _ => Task.FromResult(true);
             AiCheck("mcp_access_cli_narrows", (await host.RunAsync("admin_command", new JsonObject(), CancellationToken.None, false, true)).Contains("outside --allow-editor-tool"));
+            int beforeRead = dispatched;
+            AiCheck("mcp_access_cli_read_denied", (await host.RunAsync("editor_state", new JsonObject(), CancellationToken.None, true, true)).Contains("outside --allow-editor-tool") && dispatched == beforeRead);
+            Environment.SetEnvironmentVariable("GUO_EDITOR_MCP_PREAPPROVED", "editor_state");
+            AiCheck("mcp_access_cli_read_allowed", await host.RunAsync("editor_state", new JsonObject(), CancellationToken.None, false, true) == "ran");
+            EditorMcpAccess.Set("read_state", false);
+            AiCheck("mcp_access_cli_read_cannot_widen", (await host.RunAsync("editor_state", new JsonObject(), CancellationToken.None, true, true)).Contains("guo/mcp_access/read_state"));
+            EditorMcpAccess.Set("read_state", true);
             Environment.SetEnvironmentVariable("GUO_EDITOR_SCRIPTED", null);
             host.Approve = _ => { EditorMcpAccess.Set("commands", false); return Task.FromResult(true); };
             AiCheck("mcp_access_rechecked_after_approval", (await host.RunAsync("admin_command", new JsonObject(), CancellationToken.None, false)).Contains("guo/mcp_access/commands"));
             settings.SetSetting(EditorMcpAccess.Prefix + "commands", true);
             EditorMcpAccess.SettingsChanged(settings);
-            AiCheck("mcp_access_ui_toggle_persisted", EditorMcpAccess.Enabled("commands") && EditorMcpAccess.AuditRows.Count == 3);
+            AiCheck("mcp_access_ui_toggle_persisted", EditorMcpAccess.Enabled("commands") && EditorMcpAccess.AuditRows.Count == 5);
+            int callbacks = 0, readDispatches = 0;
+            var queuedRead = new AiToolHost(callback => Ai.Hub.Post(() =>
+            {
+                if (++callbacks == 2) EditorMcpAccess.Set("read_state", false);
+                callback();
+            }));
+            queuedRead.Register(new AiToolHost.Tool { Name = "editor_state", ReadOnly = true, Run = _ => { readDispatches++; return "ran"; } });
+            AiCheck("mcp_access_read_revoked_in_queue", (await queuedRead.RunAsync("editor_state", new JsonObject(), CancellationToken.None, false, true)).Contains("guo/mcp_access/read_state") && callbacks == 2 && readDispatches == 0);
+            EditorMcpAccess.Set("read_state", true);
             AiCheck("mcp_access_godview_reads", EditorMcpAccess.Refusal("admin_godview", new JsonObject { ["action"] = "find" }, false, false) == null);
             AiCheck("mcp_access_godview_mutation", EditorMcpAccess.Refusal("admin_godview", new JsonObject { ["action"] = "press", ["text"] = "Bring here" }, false, false)?.Contains("godview_actions") == true);
             AiFeatures.Apply(false);

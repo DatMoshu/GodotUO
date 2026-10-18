@@ -24,7 +24,7 @@ from guo.process import build_child_env, no_activate  # noqa: E402
 
 # The tools a scenario may run in the editor without a dialog: the runner launched this editor for that.
 # editor_invoke is not in it: an F3 action can do more than a scenario needs, so it keeps its approval dialog.
-PREAPPROVED = "tour_segment,editor_screenshot,human_overlay,editor_navigate,editor_window_resize,admin_view"
+PREAPPROVED = "editor_state,editor_interface,admin_state,editor_catalog,editor_search,tour_segment,editor_screenshot,human_overlay,editor_navigate,editor_window_resize,admin_view"
 
 
 def free_port() -> int:

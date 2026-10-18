@@ -68,8 +68,8 @@ internal static class EditorMcpAccess
         {
             string group = GroupFor(tool, args);
             if (group != null && !Enabled(group)) return $"refused: enable Editor Settings > GUO > MCP Access > {group.Replace('_', ' ')} ({Prefix}{group})";
-            // A scripted mutation is restricted to the launcher's exact names even when a dialog approver exists.
-            if (mcp && !readOnly && Environment.GetEnvironmentVariable("GUO_EDITOR_SCRIPTED") == "1"
+            // Every scripted call intersects the launcher's exact names, including read-only tools.
+            if (mcp && Environment.GetEnvironmentVariable("GUO_EDITOR_SCRIPTED") == "1"
                 && !(Environment.GetEnvironmentVariable("GUO_EDITOR_MCP_PREAPPROVED") ?? "").Split(',', StringSplitOptions.TrimEntries).Contains(tool))
                 return $"refused: {tool} is outside --allow-editor-tool (GUO_EDITOR_MCP_PREAPPROVED)";
             return null;

@@ -2235,7 +2235,7 @@ server records, including filtering and CSV export, even when disconnected.
 | `godview_actions` | admin_godview act_as/Go there/Bring here/Respawn/Clear | off |
 
 Every typed call checks this policy before approval and again at dispatch; a refusal
-names the disabled setting. Scripted mutation dispatch additionally intersects with
+names the disabled setting. Every scripted call, including read-only dispatch, intersects with
 `GUO_EDITOR_MCP_PREAPPROVED` (`--allow-editor-tool`); CLI flags cannot enable settings.
 Changing tools retain per-call approval and dangerous commands retain typed
 confirmation. There is no MCP permission-setting tool. All of this remains `#if TOOLS`
