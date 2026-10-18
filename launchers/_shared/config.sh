@@ -125,6 +125,9 @@ unset _guo_shared_dir
 # --- Python ------------------------------------------------------------------
 : "${UO_PYTHON:=python3}"
 
+# --- Headless build guard: integer seconds, 1-86400; timeout exit 124 ---------
+: "${UO_BUILD_TIMEOUT:=180}"
+
 # --- Logging -----------------------------------------------------------------
 # DEBUG | INFO | WARN | ERROR
 : "${UO_LOG_LEVEL:=INFO}"
