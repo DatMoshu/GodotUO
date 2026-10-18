@@ -2757,6 +2757,12 @@ includes or engine resource paths; preset shader names cannot be paths. JSON and
 shader reads each recheck the snapshot hash and have a 64 KiB limit. Legacy v1
 PostFx behavior is unchanged. Mount disposal restores the ordinary look and
 releases its transient shaders; failed staging releases staged resources.
+V2 preset fields are restricted to `name` (string, at most 200 UTF-16 units),
+`description` (string, 2000), `passes` and empty-array `bindings`. Pass fields are
+restricted to `shader`, boolean `enabled` and empty-object `params`; nonempty
+parameters are forbidden regardless of value type. Fixed shader defaults and
+runtime-owned uniforms supply the lighting values. Thus pack params never enter
+the ordinary PostFx texture resolver. Both install and runtime enforce this.
 Normal Store licence, attribution and dependency
 rules apply. The sample uses four passes to fit the mobile budget.
 See the [pack source and fixture](../design/packs/jarjar-hd-lighting/README.md).

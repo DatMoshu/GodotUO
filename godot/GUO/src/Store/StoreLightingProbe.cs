@@ -50,6 +50,17 @@ public partial class StoreLightingProbe : Node
             incompatible.Files["hd_light.json"] = Convert.ToHexString(SHA256.HashData(doubled)).ToLowerInvariant();
             File.WriteAllBytes(Path.Combine(installed, "hd_light.json"), doubled);
             Refuses(() => StoreLighting.Decode(new StoreVerifiedPack(installed, incompatible), manifest.Components[0]), "Double lighting composites were accepted");
+            foreach (string badPreset in new[] {
+                "{\"passes\":[{\"shader\":\"hd_tonemap\",\"params\":{\"texture\":\"res://outside.png\"}}]}",
+                "{\"passes\":[{\"shader\":\"hd_tonemap\",\"params\":{\"texture\":\"mutable.png\"}}]}",
+                "{\"passes\":[{\"shader\":\"hd_tonemap\",\"params\":{\"nested\":[1,{\"path\":\"user://outside.png\"}]}}]}"
+            })
+            {
+                byte[] bytes = Encoding.UTF8.GetBytes(badPreset);
+                incompatible.Files["hd_light.json"] = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+                File.WriteAllBytes(Path.Combine(installed, "hd_light.json"), bytes);
+                Refuses(() => StoreLighting.Decode(new StoreVerifiedPack(installed, incompatible), manifest.Components[0]), "Lighting params reached an external resolver");
+            }
             File.WriteAllBytes(Path.Combine(installed, "hd_light.json"), payload["hd_light.json"]);
             foreach (byte[] bad in new[] { Encoding.UTF8.GetBytes("# include \"res://outside.gdshaderinc\""), new byte[] { 255 }, new byte[65537] })
             {

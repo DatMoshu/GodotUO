@@ -32,6 +32,11 @@ installers and the runtime reject shader includes, engine resource paths,
 invalid UTF-8 and payloads over 64 KiB. Preset passes use fixed shader names,
 never paths. Legacy v1 PostFx packs retain their existing contract. Mount removal
 clears its transient look and shader resources; a failed staged mount is disposed.
+The v2 preset allows only `name` (at most 200 UTF-16 units), `description` (2000),
+`passes` and empty `bindings`. Each pass allows only `shader`, boolean `enabled`
+and empty-object `params`. Nonempty params of any type are refused: shader defaults
+and runtime sun/weather bindings supply R3 uniforms. No pack parameter can reach
+the ordinary PostFx texture resolver, including nested values or relative paths.
 The shipped four-pass preset fits the mobile cap: sun, GI, bloom, tonemap. Heat and night
 vision remain pack assets for alternate authored presets. At most eight
 unique HD passes are accepted; exactly one tonemap or night-vision composite must be enabled. Installing

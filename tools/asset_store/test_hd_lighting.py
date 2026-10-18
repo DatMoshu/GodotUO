@@ -78,6 +78,22 @@ def test_v2_lighting_payload_contract_both_languages(tmp_path):
         "duplicate-json-key": ({"hd_light.json": b'{"passes":[],"passes":[{"shader":"hd_tonemap"}]}'}, False),
         "disabled-composite": ({"hd_light.json": b'{"passes":[{"shader":"hd_tonemap","enabled":false}]}'}, False),
     }
+    for name, parameters in {
+        "param-resource": {"texture": "res://outside.png"},
+        "param-relative": {"texture": "mutable.png"},
+        "param-nested": {"color": [1, {"texture": "user://outside.png"}]},
+        "param-number": {"strength": 1},
+        "param-nonfinite": {"strength": float("inf")},
+        "param-overflow": {"strength": 1e300},
+        "param-null": None,
+        "param-array": [],
+        "empty-params": {},
+    }.items():
+        raw = json.dumps({"passes": [{"shader": "hd_tonemap", "params": parameters}]}).encode()
+        cases[name] = ({"hd_light.json": raw}, name == "empty-params")
+    cases["unknown-root"] = ({"hd_light.json": b'{"passes":[{"shader":"hd_tonemap"}],"texture":"res://outside.png"}'}, False)
+    cases["unknown-pass"] = ({"hd_light.json": b'{"passes":[{"shader":"hd_tonemap","texture":"outside.png"}]}'}, False)
+    cases["bad-name"] = ({"hd_light.json": b'{"name":{},"passes":[{"shader":"hd_tonemap"}]}'}, False)
     for name, (changes, accepted) in cases.items():
         payload = dict(original); payload.update(changes)
         m = json.loads(payload["manifest.json"])
@@ -96,7 +112,9 @@ def test_v2_lighting_payload_contract_both_languages(tmp_path):
     m.update(schema="guo/store-pack@1", kind="postfx")
     for field in ("target", "components", "dependencies"): m.pop(field, None)
     payload["hd_sun.gdshader"] = b'#include "res://legacy.gdshaderinc"'
+    payload["hd_light.json"] = b'{"passes":[{"shader":"hd_tonemap","params":{"texture":"res://legacy.png"}}]}'
     m["files"]["hd_sun.gdshader"] = hashlib.sha256(payload["hd_sun.gdshader"]).hexdigest()
+    m["files"]["hd_light.json"] = hashlib.sha256(payload["hd_light.json"]).hexdigest()
     payload["manifest.json"] = json.dumps(m).encode()
     with zipfile.ZipFile(corpus / "legacy-include.zip", "w") as archive:
         for entry, raw in payload.items(): archive.writestr(entry, raw)

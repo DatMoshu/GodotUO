@@ -270,6 +270,10 @@ internal static class StorePack
                 UniqueJson(doc.RootElement);
                 var root = doc.RootElement;
                 Require(root.ValueKind == JsonValueKind.Object && root.TryGetProperty("passes", out _), "Invalid lighting preset");
+                Require(root.EnumerateObject().All(p => p.Name is "name" or "description" or "passes" or "bindings"), "Unknown lighting preset field");
+                foreach (var (field, maximum) in new[] { ("name", 200), ("description", 2000) })
+                    if (root.TryGetProperty(field, out var text))
+                        Require(text.ValueKind == JsonValueKind.String && text.GetString().Length <= maximum, "Invalid lighting preset text");
                 var passes = root.GetProperty("passes");
                 Require(passes.ValueKind == JsonValueKind.Array && passes.GetArrayLength() is > 0 and <= 8, "Invalid lighting pass count");
                 if (root.TryGetProperty("bindings", out var bindings))
@@ -278,6 +282,11 @@ internal static class StorePack
                 int composites = 0;
                 foreach (var pass in passes.EnumerateArray())
                 {
+                    Require(pass.ValueKind == JsonValueKind.Object && pass.EnumerateObject().All(p => p.Name is "shader" or "enabled" or "params"), "Unknown lighting pass field");
+                    // Fixed R3 shaders use defaults and runtime-owned uniforms; pack
+                    // params never reach ordinary PostFx.ToVariant/LoadTexture.
+                    if (pass.TryGetProperty("params", out var parameters))
+                        Require(parameters.ValueKind == JsonValueKind.Object && !parameters.EnumerateObject().Any(), "Lighting params must be empty");
                     string name = pass.GetProperty("shader").GetString();
                     Require(LightingShaderNames.Contains(name) && seen.Add(name), "Unknown or duplicate lighting pass");
                     bool enabled = !pass.TryGetProperty("enabled", out var flag) || flag.GetBoolean();

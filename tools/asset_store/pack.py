@@ -197,12 +197,20 @@ def validate_lighting(m, read):
         require(len(raw) <= MAX_LIGHTING, "lighting preset exceeds byte limit")
         preset = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_object, parse_constant=no_constant)
         require(isinstance(preset, dict), "invalid lighting preset")
+        require(preset.keys() <= {"name", "description", "passes", "bindings"}, "unknown lighting preset field")
+        for field, maximum in (("name", 200), ("description", 2000)):
+            require(field not in preset or isinstance(preset[field], str) and units(preset[field]) <= maximum,
+                    "invalid lighting preset text")
         passes = preset.get("passes")
         require(isinstance(passes, list) and 0 < len(passes) <= 8, "invalid lighting pass count")
         require("bindings" not in preset or preset["bindings"] == [], "lighting bindings must be empty")
         seen = set(); composites = 0
         for p in passes:
             require(isinstance(p, dict) and p.get("shader") in LIGHTING_SHADERS and p["shader"] not in seen, "unknown or duplicate lighting pass")
+            require(p.keys() <= {"shader", "enabled", "params"}, "unknown lighting pass field")
+            # R3's fixed shaders use defaults and program-owned sun/weather bindings.
+            # Never send arbitrary pack values to ordinary PostFx.ToVariant/LoadTexture.
+            require("params" not in p or type(p["params"]) is dict and not p["params"], "lighting params must be empty")
             seen.add(p["shader"])
             require(type(p.get("enabled", True)) is bool, "invalid lighting enabled flag")
             composites += p.get("enabled", True) and p["shader"] in ("hd_tonemap", "hd_night_vision")
