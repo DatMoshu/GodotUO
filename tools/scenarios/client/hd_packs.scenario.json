@@ -1,0 +1,13 @@
+{
+  "id": "client.hd.packs",
+  "title": "Verified HD packs: default off, native footprints and filter choices",
+  "surface": "client",
+  "requires": {"build": "debug"},
+  "timeouts": {"step_s": 60, "run_s": 180},
+  "steps": [
+    {"id": "launch", "do": {"kind": "launch", "args": ["--hd-content-probe"], "settings": {"autologin": false, "username": "", "password": ""}},
+     "say": "Check a synthetic installed HD pack without authoring services.",
+     "expect": {"log.contains": "[HD packs] PASS", "within_s": 45}},
+    {"id": "summary", "do": {"kind": "note", "text": "Default-off persistence, PNG metadata/native-footprint checks and Auto/Point/PointMipmaps/Smooth filtering. Dense-bank timing and off pixel parity are separate evidence runs."}}
+  ]
+}

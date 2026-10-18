@@ -124,14 +124,38 @@ namespace GUO.Game.GameObjects
                 }
 
                 {
-                    var pos = new Vector2(posX, posY);
+                    // PORT DEVIATION (GUO): Enhanced HD flat land. Native
+                    // dest footprint at 1/k, chosen filter for HD only.
+                    // Native art keeps Nearest; Auto uses nearest mipmaps
+                    // unless HD scale equals the current zoom.
+                    if (ThemedVariant == null && Client.Game.UO.Arts.TryGetHd(true, Graphic, out Godot.Texture2D hdTex, out Rectangle hdUv, out _, out _))
+                    {
+                        var pos = new Vector2(posX, posY);
+                        var hdScale = new Vector2((float)uv.Width / hdUv.Width, (float)uv.Height / hdUv.Height);
+                        if (ProfileManager.CurrentProfile.AnimatedWaterEffect && TileData.IsWet)
+                        {
+                            batcher.Draw(hdTex, pos, hdUv, hueVec, 0f, Vector2.Zero, hdScale, SpriteEffects.None, depth + 0.5f);
+                            var sin = (float)Math.Sin(Time.Ticks / 1000f);
+                            var cos = (float)Math.Cos(Time.Ticks / 1000f);
+                            var wet = new Vector2(hdScale.X * (1.1f + sin * 0.1f), hdScale.Y * (1.1f + cos * 0.5f * 0.1f));
+                            batcher.Draw(hdTex, pos, hdUv, hueVec, 0f, Vector2.Zero, wet, SpriteEffects.None, depth + 0.5f);
+                        }
+                        else
+                        {
+                            batcher.Draw(hdTex, pos, hdUv, hueVec, 0f, Vector2.Zero, hdScale, SpriteEffects.None, depth + 0.5f);
+                        }
+
+                        return true;
+                    }
+
+                    var pos2 = new Vector2(posX, posY);
                     var scale = Vector2.One;
 
                     if (ProfileManager.CurrentProfile.AnimatedWaterEffect && TileData.IsWet)
                     {
                         batcher.Draw(
                             texture,
-                            pos,
+                            pos2,
                             uv,
                             hueVec,
                             0f,
@@ -148,7 +172,7 @@ namespace GUO.Game.GameObjects
 
                     batcher.Draw(
                         texture,
-                        pos,
+                        pos2,
                         uv,
                         hueVec,
                         0f,

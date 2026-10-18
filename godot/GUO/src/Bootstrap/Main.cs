@@ -85,6 +85,7 @@ public partial class Main : Node
     public override void _Ready()
     {
         Automation.McpHost.Attach(this);
+        if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--hd-content-probe") >= 0) Store.StoreHdProbe.Run();
 
         // Synthetic selection seam proof before normal scene startup for the MCP runner.
         if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--selection-seam-probe") >= 0)

@@ -282,6 +282,15 @@ namespace GUO.Game.Map
                     texture = artInfo.Texture;
                 }
             }
+            else if (land.ThemedVariant?.Texture == null
+                && Client.Game.UO.Arts.TryGetHd(true, land.Graphic, out Texture2D hdTex, out _, out _, out _)
+                && hdTex != null)
+            {
+                // PORT DEVIATION (GUO): Enhanced HD flat land bakes the HD
+                // texture (native dest footprint in TryAddLand); themed
+                // land keeps its variant PNG.
+                texture = hdTex;
+            }
             else
             {
                 ref readonly var artInfo = ref Client.Game.UO.Arts.GetLand(land.Graphic);
@@ -417,8 +426,20 @@ namespace GUO.Game.Map
                     {
                         int idx = land.MeshSpriteIndex;
                         land.MeshSpriteIndex = idx;
-                        Land.WriteQuadAt(idx, artInfo.Texture, artInfo.UV,
-                            baseX, baseY + (land.Z << 2), hueVec, depth);
+                        // PORT DEVIATION (GUO): Enhanced HD stretched
+                        // fallback (no texmap): HD source, native dest.
+                        if (Client.Game.UO.Arts.TryGetHd(true, land.Graphic, out Texture2D hdTex, out Rectangle hdUv, out _, out _)
+                            && hdTex != null)
+                        {
+                            Land.WriteQuadAtHd(idx, hdTex, hdUv,
+                                baseX, baseY + (land.Z << 2), artInfo.UV.Width, artInfo.UV.Height, hueVec, depth);
+                        }
+                        else
+                        {
+                            Land.WriteQuadAt(idx, artInfo.Texture, artInfo.UV,
+                                baseX, baseY + (land.Z << 2), hueVec, depth);
+                        }
+
                         land.InChunkMesh = true;
                     }
                 }
@@ -437,7 +458,21 @@ namespace GUO.Game.Map
                 {
                     int idx = land.MeshSpriteIndex;
                     land.MeshSpriteIndex = idx;
-                    Land.WriteQuadAt(idx, artInfo.Texture, artInfo.UV, baseX, baseY, hueVec, depth);
+                    // PORT DEVIATION (GUO): Enhanced HD flat land bake.
+                    // HD uses the user's chosen filter; the
+                    // mesh item filter is switched per HD run in
+                    // UltimaBatcher2D.DrawMeshLayer so native keeps Nearest.
+                    if (Client.Game.UO.Arts.TryGetHd(true, land.Graphic, out Texture2D hdTex, out Rectangle hdUv, out _, out _)
+                        && hdTex != null)
+                    {
+                        Land.WriteQuadAtHd(idx, hdTex, hdUv,
+                            baseX, baseY, artInfo.UV.Width, artInfo.UV.Height, hueVec, depth);
+                    }
+                    else
+                    {
+                        Land.WriteQuadAt(idx, artInfo.Texture, artInfo.UV, baseX, baseY, hueVec, depth);
+                    }
+
                     land.InChunkMesh = true;
                 }
             }
