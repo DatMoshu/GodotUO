@@ -1,0 +1,14 @@
+{
+ "name": "Rain",
+ "description": "Falling rain streaks. Shader defaults to 0 (weather-driven); preset set to 0.5 so it shows when manually enabled.",
+ "passes": [
+  {
+   "shader": "rain",
+   "params": {
+    "intensity": 0.5,
+    "speed": 2.0
+   }
+  }
+ ],
+ "bindings": []
+}

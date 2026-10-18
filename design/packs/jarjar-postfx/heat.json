@@ -1,0 +1,14 @@
+{
+ "name": "Heat Haze",
+ "description": "Heat shimmer from ClassicUO-JAR (amount 0.01, speed 2.0).",
+ "passes": [
+  {
+   "shader": "heat",
+   "params": {
+    "amount": 0.01,
+    "speed": 2.0
+   }
+  }
+ ],
+ "bindings": []
+}

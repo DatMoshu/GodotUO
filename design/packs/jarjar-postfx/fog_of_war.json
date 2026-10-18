@@ -1,0 +1,32 @@
+{
+ "name": "Fog of War",
+ "description": "Radial torch darkness with a soft cone (no shadow raymarch; light leaks through walls).",
+ "passes": [
+  {
+   "shader": "fog_of_war",
+   "params": {
+    "intensity": 0.85,
+    "light_range": 0.6,
+    "cone_angle": 360.0,
+    "cone_direction": 0.0,
+    "softness": 0.5,
+    "min_visibility": 0.05,
+    "center_x": 0.5,
+    "center_y": 0.5,
+    "ambient": 0.15,
+    "ambient_radius": 0.3,
+    "fog_color": [0.0, 0.0, 0.0, 1.0],
+    "light_color": [1.0, 0.95, 0.85, 1.0]
+   }
+  }
+ ],
+  "bindings": [
+   {
+    "pass": 0,
+    "param": "cone_direction",
+    "from": "facing",
+    "scale": 1.0,
+    "offset": 0.0
+   }
+  ]
+}

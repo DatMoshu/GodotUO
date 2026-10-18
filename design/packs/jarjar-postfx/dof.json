@@ -1,0 +1,17 @@
+{
+ "name": "Depth of Field",
+ "description": "Y-band focus blur from ClassicUO-JAR defaults (focus 0.5, range 0.12, blur 5.0).",
+ "passes": [
+  {
+   "shader": "dof",
+   "params": {
+    "focus_y": 0.5,
+    "focus_range": 0.12,
+    "max_blur": 5.0,
+    "near_scale": 0.7,
+    "far_scale": 1.0
+   }
+  }
+ ],
+ "bindings": []
+}

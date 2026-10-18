@@ -1,0 +1,13 @@
+{
+ "name": "Hue Shift",
+ "description": "Rotate hues around the colour wheel.",
+ "passes": [
+  {
+   "shader": "hue_shift",
+   "params": {
+    "shift": 0.0
+   }
+  }
+ ],
+ "bindings": []
+}

@@ -1,0 +1,18 @@
+{
+ "name": "Tilt-Shift",
+ "description": "Miniature tilt-shift from ClassicUO-JAR (focus 0.5, width 0.2, blur 3.0, gradient 0.15).",
+ "passes": [
+  {
+   "shader": "tilt_shift",
+   "params": {
+    "focus_position": 0.5,
+    "focus_width": 0.2,
+    "blur_amount": 3.0,
+    "gradient_size": 0.15,
+    "saturation_boost": 1.1,
+    "contrast_boost": 1.1
+   }
+  }
+ ],
+ "bindings": []
+}
