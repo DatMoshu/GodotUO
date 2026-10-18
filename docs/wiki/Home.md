@@ -30,6 +30,7 @@ with the project, and the client only ever reads your install.
 - Building content: [Building Multis](Building-Multis.md), [Author UO Data](Author-UO-Data.md).
 - Contributing: [Contributing](Contributing.md), [Working with AI Agents](Working-With-AI-Agents.md), [Roadmap](Roadmap.md), [Glossary](Glossary.md).
 - A different look for the world: [Screen Effects](Screen-Effects.md).
+- Moving water instead of still tiles: [Water](Water.md).
 - Planning player helpers: [Player command index and controller research](../player-command-and-controller-research.md).
 - Planning the second screen: [OpenMW-DS comparison, tabs, gump transfer, and pinch scaling](../second-screen-ui-research.md).
 - Resizing or moving windows: [Gump size and screen controls](Gump-Size-and-Screen.md).

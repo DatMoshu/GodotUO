@@ -36,6 +36,9 @@ echo "[smoke] optional audio pack contracts (synthetic; no shard or AI service)"
 echo "[smoke] optional HD pack contracts (synthetic)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Store/StoreHdProbe.tscn || FAIL=1
 
+echo "[smoke] water render modes contract (synthetic; ADR-0037)"
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/Water/WaterProbe.tscn || FAIL=1
+
 echo "[smoke] PostFX engine regressions (synthetic)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Bootstrap/PostFxEngineProbe.tscn || FAIL=1
 

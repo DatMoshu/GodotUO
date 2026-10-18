@@ -24,6 +24,7 @@
 - [Mobile UI](Mobile-UI.md)
 - [Canvas Background](Canvas-Background.md)
 - [Screen Effects](Screen-Effects.md)
+- [Water](Water.md)
 - [Asset Store](Asset-Store.md)
 - [Dev Shard](Dev-Shard.md)
 - [Server Compatibility](Server-Compatibility.md)

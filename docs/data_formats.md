@@ -2736,3 +2736,40 @@ attenuated by the speaker's tile distance. Synthesis shells `voice.py`
 thread with distance attenuation (full to 2 tiles, silent past 20).
 `VoiceManager.Status` reports the pipeline state for probes;
 `--voice`/`--say`/`--voice-fake`/`--hear-secs` drive it in walk-to runs.
+
+## 41. Water render modes (`Profile.WaterStyle`, `Render/Water`, ADR-0037)
+
+`Profile.WaterStyle` is a string, default `"classic"`, saved in the profile
+JSON like every other option. `"classic"` (or empty, or an id the client does
+not know, logged once) draws water as upstream does. Any other value names a
+water style; the built-in one is `"uo"`. `--water-style ID` sets the style for
+one session ahead of the profile and is never saved (probes, scenarios, the
+perf lab). Options > Video > **Water** and the editor World view's Layers >
+**Realtime water** write the same field.
+
+**Mode byte.** Under a style, a Wet tile (tiledata flag 0x80: land in the
+chunk mesh, or a static sprite) carries bit 6 (0x40) of the shader mode byte
+in the packed vertex colour (ADR-0002's B channel: mode in bits 0-5, water in
+bit 6, circle-of-transparency in bit 7). Classic never sets it.
+
+**Uniforms** (`uo_water.gdshaderinc`, on every world material through
+`UltimaBatcher2D.SetWaterUniform`):
+
+| Uniform | Type | Meaning |
+|---|---|---|
+| `water_model` | int | 0 Classic (branch never taken), 1 the built-in `uo` model |
+| `water_time` | float | seconds from the client clock |
+| `water_target_to_world` | vec4 | world px = target px * xy + zw; a tile's centre is ((X - Y) * 22, (X + Y) * 22 - 4 Z) |
+| `water_mask` | sampler2D | 128 x 128 RGBA8 ring of world cells (texel x & 127, y & 127): R 255 water / 0 dry, G water z + 128 |
+| `water_mask_origin` | vec2 | the ring's first cell; cells outside it read as water at z -5 |
+| `water_tint` | vec4 | the colour swells lean towards |
+| `water_params` | vec4 | speed, scale (1 / world px), wave strength, foam strength |
+| `water_params2` | vec4 | glint, foam width (cells), brightness levels (0 smooth), unused |
+
+The mask is rebuilt on the CPU when the player moves 8 cells or the loaded
+chunks change. A style is `IWaterStyle` (`Id`, `DisplayName`, `Bind`); a Store
+`water` component (WATER-04) will implement the same interface and is
+specified here before anything emits one.
+
+`GUO_WATER_DEBUG=1` in the client's environment paints every fragment that takes
+the water branch magenta, to see which tiles a style reaches.

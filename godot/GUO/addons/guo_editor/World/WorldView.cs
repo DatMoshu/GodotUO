@@ -332,6 +332,8 @@ public partial class WorldView : VBoxContainer
         MenuToggle(_layers, "Statics", true, v => _host.ShowStatics = v);
         MenuToggle(_layers, "Multis", true, v => _host.ShowMultis = v);
         MenuToggle(_layers, "Roofs", true, v => _host.ShowRoofs = v);
+        // ADR-0037: the realtime water style, as the client's Options offer it.
+        MenuToggle(_layers, "Realtime water", false, v => _host.WaterStyle = v ? "uo" : GUO.Renderer.Water.WaterRender.Classic);
         MenuToggle(_layers, "Objects", true, v => _objects.Visible = v);
         MenuToggle(_layers, "Live", false, v => SetLayer("Live", v));
         MenuToggle(_layers, "Live players", true, v => SetLiveKinds(v, _mapLayers.Live.Mobiles));
@@ -473,6 +475,7 @@ public partial class WorldView : VBoxContainer
         // Roofs is the profile's DrawRoofs, and Boot loads the profile with
         // roofs on: put the tick back.
         _host.ShowRoofs = GetToggle("Roofs") ?? true;
+        _host.WaterStyle = GetToggle("Realtime water") == true ? "uo" : GUO.Renderer.Water.WaterRender.Classic;
 
         // The world project (ADR-0011): whole replaced blocks over the
         // install, from UO_WORLD_PROJECT.

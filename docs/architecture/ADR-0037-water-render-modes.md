@@ -204,3 +204,28 @@ requirement is the owner's ask of 2026-10-18 (five styles, shard control).
 This ADR is validated when WATER-02 merges with the Classic parity dumps and
 the perf table above. Numbers measured for this ADR: the cell counts in the
 table, from the client data with `tools/guo` (`uomap`, `uoread.TileData`).
+
+## Implementation notes (WATER-02)
+
+- `SHADER_WATER` is a bit, not a mode value: bit 6 (0x40) of the mode byte,
+  beside the mode (bits 0-5) and circle-of-transparency (bit 7), so a hued or
+  lit Wet tile keeps its own mode. `docs/data_formats.md` section 41.
+- The fragment finds its world pixel from one mapping the batcher sets per
+  frame (`water_target_to_world`), and its cell from the mask's water height,
+  so no vertex data was added.
+- `Profile.WaterStyle` has no `PlatformDefaults` entry: Classic is the default
+  on every platform, which the field's initialiser already gives.
+- `--water-style ID` sets the style for one session without saving it, for
+  probes, scenarios and the perf lab.
+- Styles are `IWaterStyle` (`Id`, `DisplayName`, `Bind`); a pack style can
+  implement it later whichever way decision 6 lands.
+- The chunk mesh's per-frame hue sync (`GameSceneDrawingSorting.ApplyMeshHue`)
+  rewrites each meshed sprite's mode, so it keeps the water bit too; without
+  it deep-water land lost the style a frame after it was built.
+
+Measured 2026-10-18 on the baseline machine (RTX 4090, 1280 x 720, a quiet
+machine, one run each, so indicative): `britain-docks` mean frame 1.245 ->
+1.355 ms (+0.11), `trinsic-bay` 1.095 -> 1.168 ms (+0.07), inside the 1 ms
+budget. Draw calls rose at the bay (157 -> 199); WATER-03 looks at why. With
+Classic, the docks and the bay are pixel-identical to `main` (0 of 921,600
+pixels) with identical draw lists.

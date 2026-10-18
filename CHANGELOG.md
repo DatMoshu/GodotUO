@@ -140,6 +140,11 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   ADR-0008.
 
 ### Playing
+- Water can move: **Options > Video > Water > Realtime (UO colours)** draws
+  the sea, rivers and lakes with a slow swell, light on the crests and surf
+  at the shore, in the tiles' own colours. Off by default; Classic tiles
+  draws water as before. The editor's UO World tab has it under
+  **Layers > Realtime water**.
 - Canvas background behind the game: grey, wood, your own image or video,
   or one of ten built-in CC0 loops. ADR-0016.
 - Containers can open as a grid of finger-sized slots (mobile default), and

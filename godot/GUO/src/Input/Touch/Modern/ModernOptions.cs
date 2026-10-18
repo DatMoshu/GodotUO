@@ -151,6 +151,11 @@ internal sealed partial class ModernOptions : ModernGump
         Choice("Video", "HD filtering", new[] { "Auto", "Point", "Point mipmaps", "Smooth" },
             p => (int)p.HdFilter, (p, v) => p.HdFilter = (HdFilterMode)Math.Clamp(v, 0, 3));
 
+        // ADR-0037: the water style; the renderer rebuilds the meshes when it sees the change.
+        Choice("Video", "Water", GUO.Renderer.Water.WaterRender.ChoiceLists().Names,
+            p => GUO.Renderer.Water.WaterRender.ChoiceIndex(p.WaterStyle),
+            (p, v) => p.WaterStyle = GUO.Renderer.Water.WaterRender.ChoiceId(v));
+
         // Tooltip, Fonts and Speech: the classic pages' boxes, sliders and
         // colours (ModernHuePicker), with their ranges. Font pickers stay in
         // Classic view.
