@@ -101,8 +101,9 @@ public sealed class AiToolHost : IChatTools
     public Task<string> RunAsync(string name, JsonNode args, CancellationToken ct) => RunAsync(name, args, ct, false);
 
     /// <param name="preApproved">The caller already holds the user's agreement for this tool (the editor MCP, for the names the launching runner listed); chat never sets it.</param>
-    public async Task<string> RunAsync(string name, JsonNode args, CancellationToken ct, bool preApproved)
+    public async Task<string> RunAsync(string name, JsonNode args, CancellationToken ct, bool preApproved, bool mcp = false)
     {
+        if (!AiFeatures.Enabled && mcp) return "refused: " + AiFeatures.DisabledMessage;
         using var aiLife = AiFeatures.Link(ct);
         ct = aiLife.Token;
         if (ct.IsCancellationRequested)
@@ -112,7 +113,7 @@ public sealed class AiToolHost : IChatTools
 
         lock (_calls)
         {
-            _calls.Add($"{name} {args?.ToJsonString() ?? "{}"}");
+            _calls.Add($"{name} {EditorAutomationCapabilities.ArgumentsForLog(name, args)}");
         }
 
         Tool t = _tools.Find(x => x.Name == name);
@@ -121,10 +122,23 @@ public sealed class AiToolHost : IChatTools
             return $"error: no tool named {name}. Tools: {string.Join(", ", _tools.Select(x => x.Name))}";
         }
 
+        Task<string> Access()
+        {
+            var check = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _post(() =>
+            {
+                if (ct.IsCancellationRequested) check.TrySetCanceled(ct);
+                else check.TrySetResult(EditorMcpAccess.Refusal(name, args, mcp, t.ReadOnly));
+            });
+            return check.Task.WaitAsync(ct);
+        }
+        try { if (await Access().ConfigureAwait(false) is { } refused) return refused; }
+        catch (OperationCanceledException) { return "error: editor operation canceled before dispatch"; }
+
         if (!t.ReadOnly)
         {
             Func<string, Task<bool>> ask = Approve;
-            bool yes = preApproved || ask != null && await ask($"{t.Name} {args?.ToJsonString()}\n\n{t.Description}").WaitAsync(ct).ConfigureAwait(false);
+            bool yes = preApproved || ask != null && await ask($"{t.Name} {EditorAutomationCapabilities.ArgumentsForLog(name, args)}\n\n{t.Description}").WaitAsync(ct).ConfigureAwait(false);
             if (!yes)
             {
                 return "refused: the user did not approve this action";
@@ -146,6 +160,11 @@ public sealed class AiToolHost : IChatTools
             }
             try
             {
+                if (EditorMcpAccess.Refusal(name, args, mcp, t.ReadOnly) is { } denied)
+                {
+                    done.TrySetResult(denied);
+                    return;
+                }
                 string result = t.RunAsync != null ? await t.RunAsync(args, operation) : t.Run(args);
                 done.TrySetResult(operation.IsCancellationRequested ? "error: editor operation canceled; a started stage commit may have completed safely" : result);
             }

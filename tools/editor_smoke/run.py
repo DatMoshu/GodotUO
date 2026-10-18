@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -255,7 +256,8 @@ def main() -> int:
     # working at this machine (docs/editor_plan.md; the owner asked for this).
     args.headless = not args.windowed
     mode = ("headless" if args.headless else "windowed") + ("_reload" if args.reload else "") + ("_world_project" if look else "")
-    out = (args.out or cfg.build / "editor_smoke" / mode).resolve()
+    evidence_out = os.environ.get("GUO_EDITOR_SMOKE_OUT")
+    out = (args.out or (Path(evidence_out) / mode if evidence_out else cfg.build / "editor_smoke" / mode)).resolve()
 
     # Old markers from an earlier run would make the addon think it is past a
     # reload already.

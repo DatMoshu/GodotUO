@@ -19,6 +19,9 @@ public partial class EditorSmoke
         var plugin = GetParent() as GuoEditorPlugin;
         var settings = EditorInterface.Singleton.GetEditorSettings();
         bool original = AiFeatures.ReadPreference();
+        var savedAccess = EditorMcpAccess.Groups.ToDictionary(g => g.Id, g => EditorMcpAccess.Enabled(g.Id));
+        string policyFile = EditorMcpAccess.FilePath;
+        string savedPolicy = File.Exists(policyFile) ? File.ReadAllText(policyFile) : null;
         var staleTools = Ai.Hub.Tools;
         using var client = new AcpClient();
         bool started = client.Start(QueueClient.FindPython(),
@@ -145,6 +148,8 @@ public partial class EditorSmoke
             AiCheck("ai_toggle_blocks_queued_mutation", mutations == 0 && cancelledEdit.StartsWith("error:"));
             AiCheck("ai_toggle_saved_preference", !AiFeatures.ReadPreference());
             AiCheck("ai_toggle_hides_dock", !plugin.AiRunning && Ai == null);
+            AiCheck("ai_toggle_hides_mcp_settings", EditorMcpAccess.Groups.All(g => !settings.HasSetting(EditorMcpAccess.Prefix + g.Id))
+                && settings.HasSetting(AiFeatures.SettingPath));
             AiCheck("ai_toggle_hides_generation", !Art.AiControlsVisible);
             AiCheck("ai_toggle_cancels_lifetime", lifetime.IsCancellationRequested);
             AiCheck("ai_toggle_kills_agent", !started || !Alive(pid));
@@ -233,6 +238,9 @@ public partial class EditorSmoke
         }
         AiCheck("ai_toggle_reenable", AiFeatures.Enabled && plugin.AiRunning && Art.AiControlsVisible
             && Search.Index.Provider<AiProvider>() != null);
+        AiCheck("ai_toggle_restores_mcp_settings", EditorMcpAccess.Groups.All(g => settings.HasSetting(EditorMcpAccess.Prefix + g.Id)
+            && settings.GetSetting(EditorMcpAccess.Prefix + g.Id).AsBool() == savedAccess[g.Id]));
+        AiCheck("ai_toggle_preserves_mcp_policy_and_audit", (File.Exists(policyFile) ? File.ReadAllText(policyFile) : null) == savedPolicy);
     }
 }
 #endif

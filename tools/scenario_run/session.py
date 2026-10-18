@@ -24,7 +24,7 @@ from guo.process import build_child_env, no_activate  # noqa: E402
 
 # The tools a scenario may run in the editor without a dialog: the runner launched this editor for that.
 # editor_invoke is not in it: an F3 action can do more than a scenario needs, so it keeps its approval dialog.
-PREAPPROVED = "tour_segment,editor_screenshot,human_overlay"
+PREAPPROVED = "editor_state,editor_interface,admin_state,editor_catalog,editor_search,tour_segment,editor_screenshot,human_overlay,editor_navigate,editor_window_resize,admin_view"
 
 
 def free_port() -> int:
@@ -84,27 +84,31 @@ def remove_tree(path: Path, tries: int = 10, wait_s: float = 0.5) -> bool:
 class EditorSession:
     """One editor started for one run."""
 
-    def __init__(self, cfg, run_dir: Path, scratch: Path, size: str = "3840x2160", scale: float = 1.5):
+    def __init__(self, cfg, run_dir: Path, scratch: Path, size: str = "3840x2160", scale: float = 1.5,
+                 *, headless: bool = False, allow_tools: tuple[str, ...] = ()):
         self.cfg = cfg
         self.run_dir = run_dir
         self.scratch = scratch
         self.size = size
         self.scale = scale
+        self.headless = headless
         self.port = free_port()
         self.token = secrets.token_hex(32)
         self.proc: subprocess.Popen | None = None
         self.log_path = run_dir / "editor.log"
-        self.preapproved = set(PREAPPROVED.split(","))
-        self.preapproved = set(PREAPPROVED.split(","))
+        self.preapproved = set(PREAPPROVED.split(",")) | set(allow_tools)
         self._project_godot = cfg.godot_project / "project.godot"
         self._project_before = b""
 
     def start(self) -> None:
         env = scratch_settings(self.scratch, self.scale)
         env.update({"GUO_EDITOR_MCP_PORT": str(self.port), "GUO_EDITOR_MCP_TOKEN": self.token,
-                    "GUO_EDITOR_MCP_PREAPPROVED": PREAPPROVED, "GUO_EDITOR_SCRIPTED": "1",
+                    "GUO_EDITOR_MCP_PREAPPROVED": ",".join(sorted(self.preapproved)), "GUO_EDITOR_SCRIPTED": "1",
+                    "UO_WORKSPACE_DIR": str(self.scratch / "workspace"),
                     "GUO_EDITOR_WINDOW_SIZE": self.size})
         cmd = [str(self.cfg.godot_console_exe), "--editor", "--path", str(self.cfg.godot_project)]
+        if self.headless:
+            cmd.insert(1, "--headless")
         self._project_before = self._project_godot.read_bytes()
         log = self.log_path.open("w", encoding="utf-8", errors="replace")
         try:

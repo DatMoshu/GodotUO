@@ -346,6 +346,8 @@ class Runner:
         if not self.session.wait_listening(max(1.0, deadline - self._clock())):
             raise StepFailed("the editor did not open its MCP port (is AI on in Editor Settings, and the build fresh?)")
         self.client = self._connect(self.session)
+        if do.get("wait_assets", True) is False:
+            return {"launched": True, "assetsReady": False, "waitingForAssets": False}
         ready = {"assetsReady": True}
         while True:
             state = self._tool_json("editor_state", {})
@@ -433,6 +435,33 @@ class Runner:
                              "so it would wait for a person at the PC to press Approve; use a tour_segment step, or run it by hand")
         args = {"key": do.get("key", ""), "query": do.get("query", "")}
         return self._tool_json("editor_invoke", args)
+
+    def _do_editor_tool(self, sid: str, do: dict, deadline: float) -> dict:
+        if self.scenario.surface != "editor":
+            raise StepFailed("editor_tool requires an editor scenario")
+        name = do.get("tool", "")
+        catalog = self._need_client().request("tools/list").get("tools", [])
+        tool = next((t for t in catalog if t.get("name") == name), None)
+        if tool is None:
+            raise StepFailed(f"unknown editor tool: {name}")
+        if tool.get("annotations", {}).get("readOnlyHint") is not True and name not in self.session.preapproved:
+            raise StepFailed(f"{name} is not pre-approved; explicitly use --allow-editor-tool {name} for an authorized run")
+        until = do.get("until")
+        if until is not None and tool.get("annotations", {}).get("readOnlyHint") is not True:
+            raise StepFailed("until polling requires a read-only tool; mutations must dispatch once")
+        if "refused_contains" in do:
+            is_error, text = self._tool(name, do.get("arguments", {}))
+            if not is_error or not text.startswith("refused:") or do["refused_contains"] not in text:
+                raise StepFailed(f"{name} did not return the expected refusal", {"response": text[:300]})
+            return {"refused": True, "reason": text}
+        while True:
+            result = self._tool_json(name, do.get("arguments", {}))
+            if until is None or subset(until, result):
+                return result
+            if self._clock() >= deadline:
+                raise StepFailed(f"{name} did not reach the requested state", {"state": result})
+            self._check_program()
+            self._sleep(0.25)
 
     def _do_tour_segment(self, sid: str, do: dict, deadline: float) -> dict:
         seg = do.get("id")

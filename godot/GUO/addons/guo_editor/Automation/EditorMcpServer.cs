@@ -147,7 +147,7 @@ internal sealed class EditorMcpServer : IDisposable
                         {
                             deadline.CancelAfter(TimeSpan.FromSeconds(120));
                             string text;
-                            try { text = await _tools.RunAsync(name, p["arguments"] ?? new JsonObject(), deadline.Token, PreApproved(name)).ConfigureAwait(false); }
+                            try { text = await _tools.RunAsync(name, p["arguments"] ?? new JsonObject(), deadline.Token, PreApproved(name), mcp: true).ConfigureAwait(false); }
                             catch (OperationCanceledException) { text = "error: request cancelled or editor shut down"; }
                             result = new JsonObject { ["content"] = new JsonArray(new JsonObject { ["type"] = "text", ["text"] = text }),
                                 ["isError"] = text.StartsWith("error:", StringComparison.Ordinal) || text.StartsWith("refused:", StringComparison.Ordinal) };

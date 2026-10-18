@@ -16,6 +16,7 @@ public partial class EditorSmoke
 {
     private async Task CheckEditorMcpAsync()
     {
+        await CheckMcpAccessAsync();
         int editorThread = Environment.CurrentManagedThreadId;
         int mutations = 0;
         var host = new AiToolHost(Ai.Hub.Post);
@@ -86,10 +87,186 @@ public partial class EditorSmoke
         AiCheck("editor_mcp_live_state", JsonNode.Parse(state)?["assetsReady"]?.GetValue<bool>() == true);
         string search = await Ai.Hub.Tools.RunAsync("editor_search", new JsonObject { ["query"] = "backpack" }, CancellationToken.None);
         AiCheck("editor_mcp_f3_shared", JsonNode.Parse(search)?["entries"] is JsonArray { Count: > 0 });
+        var sensitiveReply = new JsonObject { ["account"] = "test", ["password"] = "never-export", ["nested"] = new JsonObject { ["token"] = "never-export" } };
+        string safeReply = EditorAutomationCapabilities.Safe(sensitiveReply).ToJsonString();
+        AiCheck("editor_mcp_admin_reply_redacted", !safeReply.Contains("never-export") && (string)sensitiveReply["password"] == "never-export");
+        string safeArgs = EditorAutomationCapabilities.ArgumentsForLog("admin_settings_edit", new JsonObject { ["id"] = "mail.password", ["value"] = "never-log" });
+        AiCheck("editor_mcp_admin_settings_args_redacted", !safeArgs.Contains("never-log"));
+        foreach (string section in new[] { "health", "godview", "settings", "accounts", "backups", "commands" })
+        {
+            string adminState = await Ai.Hub.Tools.RunAsync("admin_state", new JsonObject { ["section"] = section, ["limit"] = 1 }, CancellationToken.None);
+            AiCheck("editor_mcp_admin_" + section, (string)JsonNode.Parse(adminState)?["section"] == section);
+        }
         bool traversalRefused = false;
         try { EditorCapabilities.MultiPath("../outside.json"); }
         catch (ArgumentException) { traversalRefused = true; }
         AiCheck("editor_mcp_path_guard", traversalRefused);
+    }
+
+    private async Task CheckMcpAccessAsync()
+    {
+        CheckEditorBuildDirectory();
+        string originalRoot = GUO.Workspace.Workspace.RootOverride;
+        string scripted = Environment.GetEnvironmentVariable("GUO_EDITOR_SCRIPTED");
+        string allowed = Environment.GetEnvironmentVariable("GUO_EDITOR_MCP_PREAPPROVED");
+        var settings = Godot.EditorInterface.Singleton.GetEditorSettings();
+        try
+        {
+            GUO.Workspace.Workspace.RootOverride = Path.Combine(Path.GetTempPath(), "guo-mcp-access-" + Guid.NewGuid().ToString("N"));
+            string scratchRoot = GUO.Workspace.Workspace.RootOverride;
+            EditorMcpAccess.Forget();
+            EditorMcpAccess.InitializeSettings(settings);
+            int dispatched = 0;
+            var host = new AiToolHost(Ai.Hub.Post);
+            string[] tools = { "editor_state", "admin_view", "admin_connect", "admin_save", "admin_restart", "admin_settings_edit", "admin_account", "admin_command", "admin_godview" };
+            for (int i = 0; i < tools.Length; i++)
+            {
+                string name = tools[i];
+                host.Register(new AiToolHost.Tool { Name = name, ReadOnly = i == 0, Run = _ => { dispatched++; return "ran"; } });
+                EditorMcpAccess.Group g = EditorMcpAccess.Groups[i];
+                AiCheck("mcp_access_default_" + g.Id, EditorMcpAccess.Enabled(g.Id) == (i < 3));
+                string result = await host.RunAsync(name, new JsonObject(), CancellationToken.None, true);
+                AiCheck("mcp_access_dispatch_" + g.Id, i < 3 ? result == "ran" : result.StartsWith("refused:") && result.Contains(EditorMcpAccess.Prefix + g.Id));
+            }
+            AiCheck("mcp_access_defaults_no_mutation", dispatched == 3);
+            EditorMcpAccess.Set("commands", true);
+            EditorMcpAccess.Forget(); // Re-read the file, as a new editor/reload would.
+            AiCheck("mcp_access_persisted", EditorMcpAccess.Enabled("commands"));
+            var audit = EditorMcpAccess.AuditRows;
+            AiCheck("mcp_access_audit", audit.Count == 1 && audit[0].Op == "editor_mcp_access" && audit[0].Args.Contains("guo/mcp_access/commands") && audit[0].Args.Contains("true"));
+            var auditPanel = new AuditPanel();
+            AddChild(auditPanel);
+            AiCheck("mcp_access_audit_offline_copy", auditPanel.Rows.Count == 1
+                && auditPanel.StatusText.Contains("0 server, 1 local MCP permission changes")
+                && auditPanel.HintText.Contains("available offline") && !auditPanel.HintText.Contains("connect to the server first"));
+            auditPanel.OnAdminOpen();
+            auditPanel.Handle(new JsonObject { ["entries"] = new JsonArray { new JsonObject
+            { ["at"] = DateTime.UtcNow.ToString("O"), ["editor"] = "server user", ["op"] = "admin_save", ["ok"] = true } } });
+            AiCheck("mcp_access_audit_merged_copy", auditPanel.Rows.Count == 2
+                && auditPanel.StatusText.Contains("1 server, 1 local MCP permission changes") && !auditPanel.StatusText.Contains("server's latest"));
+            auditPanel.SetFilter("editor_mcp_access", null, null);
+            AiCheck("mcp_access_audit_filtered_count", auditPanel.Shown.Count == 1 && auditPanel.StatusText.Contains("1 of 2 entries"));
+            auditPanel.Free();
+            AiCheck("mcp_access_explicit_allow", await host.RunAsync("admin_command", new JsonObject(), CancellationToken.None, true) == "ran");
+            Environment.SetEnvironmentVariable("GUO_EDITOR_SCRIPTED", "1");
+            Environment.SetEnvironmentVariable("GUO_EDITOR_MCP_PREAPPROVED", "admin_command,admin_save");
+            AiCheck("mcp_access_cli_cannot_widen", (await host.RunAsync("admin_save", new JsonObject(), CancellationToken.None, true, true)).Contains("guo/mcp_access/save_backup_create"));
+            AiCheck("mcp_access_cli_intersection", await host.RunAsync("admin_command", new JsonObject(), CancellationToken.None, true, true) == "ran");
+            Environment.SetEnvironmentVariable("GUO_EDITOR_MCP_PREAPPROVED", "admin_save");
+            host.Approve = _ => Task.FromResult(true);
+            AiCheck("mcp_access_cli_narrows", (await host.RunAsync("admin_command", new JsonObject(), CancellationToken.None, false, true)).Contains("outside --allow-editor-tool"));
+            int beforeRead = dispatched;
+            AiCheck("mcp_access_cli_read_denied", (await host.RunAsync("editor_state", new JsonObject(), CancellationToken.None, true, true)).Contains("outside --allow-editor-tool") && dispatched == beforeRead);
+            Environment.SetEnvironmentVariable("GUO_EDITOR_MCP_PREAPPROVED", "editor_state");
+            AiCheck("mcp_access_cli_read_allowed", await host.RunAsync("editor_state", new JsonObject(), CancellationToken.None, false, true) == "ran");
+            EditorMcpAccess.Set("read_state", false);
+            AiCheck("mcp_access_cli_read_cannot_widen", (await host.RunAsync("editor_state", new JsonObject(), CancellationToken.None, true, true)).Contains("guo/mcp_access/read_state"));
+            EditorMcpAccess.Set("read_state", true);
+            Environment.SetEnvironmentVariable("GUO_EDITOR_SCRIPTED", null);
+            host.Approve = _ => { EditorMcpAccess.Set("commands", false); return Task.FromResult(true); };
+            AiCheck("mcp_access_rechecked_after_approval", (await host.RunAsync("admin_command", new JsonObject(), CancellationToken.None, false)).Contains("guo/mcp_access/commands"));
+            settings.SetSetting(EditorMcpAccess.Prefix + "commands", true);
+            EditorMcpAccess.SettingsChanged(settings);
+            AiCheck("mcp_access_ui_toggle_persisted", EditorMcpAccess.Enabled("commands") && EditorMcpAccess.AuditRows.Count == 5);
+            int callbacks = 0, readDispatches = 0;
+            var queuedRead = new AiToolHost(callback => Ai.Hub.Post(() =>
+            {
+                if (++callbacks == 2) EditorMcpAccess.Set("read_state", false);
+                callback();
+            }));
+            queuedRead.Register(new AiToolHost.Tool { Name = "editor_state", ReadOnly = true, Run = _ => { readDispatches++; return "ran"; } });
+            AiCheck("mcp_access_read_revoked_in_queue", (await queuedRead.RunAsync("editor_state", new JsonObject(), CancellationToken.None, false, true)).Contains("guo/mcp_access/read_state") && callbacks == 2 && readDispatches == 0);
+            EditorMcpAccess.Set("read_state", true);
+            AiCheck("mcp_access_godview_reads", EditorMcpAccess.Refusal("admin_godview", new JsonObject { ["action"] = "find" }, false, false) == null);
+            AiCheck("mcp_access_godview_mutation", EditorMcpAccess.Refusal("admin_godview", new JsonObject { ["action"] = "press", ["text"] = "Bring here" }, false, false)?.Contains("godview_actions") == true);
+            AiFeatures.Apply(false);
+            AiCheck("mcp_access_ai_off", (await host.RunAsync("admin_command", new JsonObject(), CancellationToken.None, true, true)).Contains(AiFeatures.DisabledMessage));
+            AiFeatures.Apply(true);
+            string policy = EditorMcpAccess.FilePath;
+            host.Register(new AiToolHost.Tool { Name = "policy_read_probe", ReadOnly = true, Run = _ => { dispatched++; return "ran"; } });
+            string[] damaged = { "{\"groups\":{\"commands\":true}}", "{", "{\"groups\":{\"commands\":\"true\"},\"audit\":[]}", "{\"groups\":{\"commands\":true},\"audit\":null}", "[]", "{\"groups\":{\"commands\":true,\"commands\":false},\"audit\":[]}", "{\"groups\":{\"commands\":true},\"audit\":[{\"at\":\"x\",\"at\":\"y\"}]}" };
+            for (int i = 0; i < damaged.Length; i++)
+            {
+                File.WriteAllText(policy, damaged[i]);
+                EditorMcpAccess.Forget();
+                EditorMcpAccess.InitializeSettings(settings); // The same entry point used during addon startup.
+                EditorMcpAccess.SettingsChanged(settings);
+                GuoEditorPlugin.AdminMain.Audit.RefreshLocal();
+                AiCheck("mcp_access_bad_policy_initialization_" + i, EditorMcpAccess.Problem.Length > 0
+                    && EditorMcpAccess.Groups.All(g => !settings.GetSetting(EditorMcpAccess.Prefix + g.Id).AsBool())
+                    && GuoEditorPlugin.AdminMain.IsInsideTree() && GuoEditorPlugin.AdminMain.Audit.StatusText.Contains("policy needs repair"));
+                int beforeBad = dispatched;
+                string first = await host.RunAsync("admin_command", new JsonObject(), CancellationToken.None, true, true);
+                string second = await host.RunAsync("admin_command", new JsonObject(), CancellationToken.None, true, true);
+                string readDenied = await host.RunAsync("policy_read_probe", new JsonObject(), CancellationToken.None, true, true);
+                AiCheck("mcp_access_bad_policy_repeated_denial_" + i, first.StartsWith("refused:") && second.StartsWith("refused:")
+                    && readDenied.StartsWith("refused:") && dispatched == beforeBad && EditorMcpAccess.AuditRows.Count == 0);
+                AiCheck("mcp_access_bad_policy_preserved_" + i, File.ReadAllText(policy) == damaged[i]);
+            }
+            using (var lockedPolicy = new FileStream(policy, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                EditorMcpAccess.Forget();
+                EditorMcpAccess.InitializeSettings(settings);
+                GuoEditorPlugin.AdminMain.Audit.RefreshLocal();
+                AiCheck("mcp_access_unreadable_initialization", EditorMcpAccess.Problem.Length > 0 && EditorMcpAccess.AuditRows.Count == 0
+                    && (await host.RunAsync("admin_command", new JsonObject(), CancellationToken.None, true, true)).StartsWith("refused:"));
+            }
+            File.Copy(policy, policy + ".corrupt"); // The fixture simulates explicit manual repair, retaining the original.
+            File.WriteAllText(policy, "{\"groups\":{},\"audit\":[]}");
+            EditorMcpAccess.Forget();
+            EditorMcpAccess.InitializeSettings(settings);
+            GuoEditorPlugin.AdminMain.Audit.RefreshLocal();
+            AiCheck("mcp_access_policy_repair_no_mutation_defaults", EditorMcpAccess.Problem.Length == 0
+                && EditorMcpAccess.Groups.All(g => EditorMcpAccess.Enabled(g.Id) == g.Default)
+                && File.ReadAllText(policy + ".corrupt") == damaged[^1]);
+            settings.SetSetting(EditorMcpAccess.Prefix + "commands", true);
+            EditorMcpAccess.SettingsChanged(settings);
+            AiCheck("mcp_access_policy_repair_explicit_grant", await host.RunAsync("admin_command", new JsonObject(), CancellationToken.None, true, true) == "ran"
+                && EditorMcpAccess.AuditRows.Count == 1);
+            // Only the uniquely created test folder is removed.
+            Directory.Delete(scratchRoot, true);
+        }
+        finally
+        {
+            AiFeatures.Apply(true);
+            GUO.Workspace.Workspace.RootOverride = originalRoot;
+            Environment.SetEnvironmentVariable("GUO_EDITOR_SCRIPTED", scripted);
+            Environment.SetEnvironmentVariable("GUO_EDITOR_MCP_PREAPPROVED", allowed);
+            EditorMcpAccess.Forget();
+            EditorMcpAccess.InitializeSettings(settings);
+        }
+    }
+    private void CheckEditorBuildDirectory()
+    {
+        string fixture = Path.Combine(Path.GetTempPath(), "guo-config-" + Guid.NewGuid().ToString("N"));
+        string[] variables = { "UO_ROOT", "UO_CHECKOUT", "UO_BUILD_DIR" };
+        var previous = variables.ToDictionary(key => key, Environment.GetEnvironmentVariable);
+        try
+        {
+            foreach (string key in variables) Environment.SetEnvironmentVariable(key, null);
+            string shared = Path.Combine(fixture, "launchers", "_shared");
+            Directory.CreateDirectory(shared);
+            string fallback = Path.Combine(fixture, "build");
+            AiCheck("editor_config_build_missing_fallback", EditorData.Setting("UO_BUILD_DIR", fallback, EditorData.ParseConfigBat(fixture)) == fallback);
+            File.WriteAllText(Path.Combine(shared, "config.bat"), "if not defined UO_BUILD_DIR set \"UO_BUILD_DIR=%UO_ROOT%/build\"\n");
+            File.WriteAllText(Path.Combine(shared, "config.local.bat"), "set \"UO_BUILD_DIR=%UO_ROOT%/external/%UO_CHECKOUT%\"\n");
+            var config = EditorData.ParseConfigBat(fixture);
+            string local = fixture + "/external/" + Path.GetFileName(fixture);
+            AiCheck("editor_config_build_direct_local_checkout", EditorData.Setting("UO_BUILD_DIR", fallback, config) == local);
+            string process = Path.Combine(fixture, "process-output");
+            Environment.SetEnvironmentVariable("UO_BUILD_DIR", process);
+            AiCheck("editor_config_build_process_precedence", EditorData.Setting("UO_BUILD_DIR", fallback, config) == process
+                && EditorData.BuildDirectory == process);
+            Environment.SetEnvironmentVariable("UO_BUILD_DIR", null);
+            File.WriteAllText(Path.Combine(shared, "config.local.bat"), "");
+            AiCheck("editor_config_build_default_root", Path.GetFullPath(EditorData.Setting("UO_BUILD_DIR", fallback, EditorData.ParseConfigBat(fixture))) == fallback);
+            AiCheck("editor_config_build_read_only", !Directory.Exists(Path.Combine(fixture, "build")) && !Directory.Exists(Path.Combine(fixture, "external")));
+        }
+        finally
+        {
+            foreach (var pair in previous) Environment.SetEnvironmentVariable(pair.Key, pair.Value);
+            Directory.Delete(fixture, true); // Only this uniquely created config fixture.
+        }
     }
 }
 #endif

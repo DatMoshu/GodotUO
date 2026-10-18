@@ -1,5 +1,12 @@
 # tools/editor_smoke
 
+For central evidence, pass `--out FOLDER`, or set `GUO_EDITOR_SMOKE_OUT` to a
+parent folder (the mode is appended). The latter also redirects the editor stage
+when running `launchers/dev/smoke.bat`. MCP checks include every access-group
+default, persisted UI toggles, AD8 audit entries, CLI intersection, dispatch-time
+revocation, and AI-off refusal. The Admin-tab check retains both MCP save/restart
+and AD8 list/filter/export coverage.
+
 Proves the GUO editor addon (`godot/GUO/addons/guo_editor`) works in the real
 editor, against the real client install. `docs/editor_plan.md` §5 makes this
 the verification for every editor phase; phase 0 is what it checks today.

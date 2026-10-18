@@ -71,3 +71,93 @@ The UI/session design and remaining domain coverage are in
 [the workspace plan](../../docs/editor_ai_workspace_plan.md). This initial
 endpoint provides useful operations and broad F3 discovery; it does not yet
 implement every Godot or GUO edit as a typed tool.
+
+## Background interface and Admin automation
+
+`editor_interface` reports window geometry, tabs, header layout and server/client
+choices. `editor_navigate`, `editor_window_resize` and `editor_server_select` use
+GUO methods without keyboard or mouse input. Resizing sets NoFocus and removes
+AlwaysOnTop; a headless editor needs no desktop window.
+
+`admin_view(section)` opens godview, settings, accounts, backups or commands.
+`admin_state(section, offset, limit)` returns paged data, reply counters and
+operation phases. `admin_connect` uses the selected server and workspace token;
+`admin_refresh` requests fresh lists or health. Dispatch acceptance is not
+completion: poll `admin_state` until the relevant counter or phase changes.
+
+Approved mutations are `admin_save`, `admin_restart`, `admin_godview`,
+`admin_account`, `admin_settings_edit`, `admin_settings_save`,
+`admin_backup_create`, `admin_backup_restore` and `admin_command`. They call the
+existing panels, retaining bridge authorization, account restrictions, settings
+validation and managed restart/restore rules. Restore also requires `confirm`
+to exactly match `name`; dangerous commands retain their confirmation word.
+Passwords and secret settings require `secret_env`, naming an editor-process
+variable beginning `GUO_ADMIN_AUTOMATION_`. Never supply a password in tool
+arguments. Replies and approval logs redact credentials.
+
+For a repeatable offline check, run:
+
+```text
+python tools/scenario_run/run.py editor.admin.offline --headless
+```
+
+This opens and reads every Admin section without a shard or loaded UO artwork.
+Live mutations need a deliberately provisioned private workspace and bridge;
+these tools do not grant an Admin role or create a server automatically.
+
+## MCP access
+
+Editor Settings > GUO > MCP Access has one toggle per group. These are per-user
+workspace preferences, saved in `editor/mcp_access.json` under `UO_WORKSPACE_DIR`.
+The editor checks the saved policy before approval and again at dispatch.
+
+| Setting suffix (`guo/mcp_access/`) | Tools | Default |
+|---|---|---|
+| `read_state` | editor_state, editor_interface, admin_state | on |
+| `navigate_resize` | admin_view, editor_window_resize, editor_navigate, editor_server_select; godview watch/find/select/filter/paperdoll/follow | on |
+| `connect_refresh` | admin_connect, admin_refresh | on |
+| `save_backup_create` | admin_save, admin_backup_create | off |
+| `restart` | admin_restart | off |
+| `restore_settings_save` | admin_backup_restore, admin_settings_edit, admin_settings_save | off |
+| `accounts` | admin_account | off |
+| `commands` | admin_command | off |
+| `godview_actions` | admin_godview act_as, Go there, Bring here, Respawn, Clear | off |
+
+Every change commits a UTC `editor_mcp_access` audit record alongside the new
+permission. The Admin Audit list combines these local records with the server's
+AD8 log; its filters and CSV include both. No connection is needed to record a
+change. The MCP cannot edit its own permissions. Refusals name the required
+setting. The AI-enabled preference remains the outer gate. MCP group settings
+hide while AI is off; re-enabling AI restores their saved values without changing
+the policy or audit. The AI-enabled preference stays reachable.
+
+A malformed or unreadable policy denies every MCP call. Startup keeps the addon,
+manual authoring and Audit UI available; the Audit panel and editor warning show
+the policy problem. Settings display all groups disabled until the file is fixed.
+The editor never overwrites the damaged file. Preserve a copy, restore or repair
+`editor/mcp_access.json` in the per-user workspace, then reload the editor. A valid
+empty policy (`{"groups":{},"audit":[]}`) restores the listed defaults, with mutation
+groups off. Enable any required mutation explicitly afterward.
+
+Changing tools also need the normal approval dialog, or the launching scenario's
+explicit allowlist. `--allow-editor-tool` narrows dispatch; it cannot enable a
+disabled setting. A setting changed while an approval waits is checked again.
+In scripted sessions the exact-name allowlist also restricts read-only calls;
+`readOnlyHint` never bypasses it. The scenario runner lists its state/discovery
+reads explicitly alongside its navigation tools.
+Other editor tools keep their existing per-call approval rules.
+
+`python tools/scenario_run/run.py editor.mcp.access --headless --allow-editor-tool admin_save --no-register`
+proves that even an allowlisted save is refused by default and listed navigation
+runs. The editor smoke checks all defaults, persistence, explicit grants,
+revocation during approval, audit records, CLI intersection and AI-off refusal.
+`editor.header.review` carries the icon-toolbar tour repair from PR #37; the
+Admin automation derives from PR #36 (`3d10cb1d`), selectively rebuilt on main.
+
+Commands output needs the existing ModernUO `0005-system-message-hook.patch` in
+the running server binary. `admin_state` section `commands` reports
+`OutputAvailable`; false means an unpatched/stale server, even if its catalog and
+help are valid. Rebuild the dependency through `launchers/shard/fetch.bat` and
+`launchers/shard/build.bat` (or `.sh`), then provision the private shard from that
+build and reinstall its bridge. The Admin acceptance check deliberately requires
+real `[where` output and retains dangerous-command confirmation checks.

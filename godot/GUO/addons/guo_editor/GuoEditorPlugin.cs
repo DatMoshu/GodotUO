@@ -222,6 +222,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
 
         AiFeatures.Apply(AiFeatures.ReadPreference());
         _settings = EditorInterface.Singleton.GetEditorSettings();
+        EditorMcpAccess.InitializeSettings(_settings);
         _settings.SettingsChanged += OnEditorSettingsChanged;
         _data = new EditorData();
         _gumps = new GumpStudio(_data);
@@ -435,11 +436,13 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     {
         bool enabled = AiFeatures.ReadPreference();
         if (enabled != AiFeatures.Enabled) ApplyAiPreference(enabled);
+        else EditorMcpAccess.SettingsChanged(_settings);
     }
 
     internal void ApplyAiPreference(bool enabled)
     {
         AiFeatures.Apply(enabled); // Cancel work before detaching its UI and tool targets.
+        EditorMcpAccess.InitializeSettings(_settings);
         StopAi();
         if (enabled)
         {

@@ -138,7 +138,8 @@
             "scene_set",
             "renderdump",
             "render_diff",
-            "lane"
+            "lane",
+            "editor_tool"
           ]
         }
       },
@@ -174,6 +175,9 @@
                     "string"
                   ]
                 }
+              },
+              "wait_assets": {
+                "type": "boolean"
               }
             },
             "required": [
@@ -540,6 +544,42 @@
               "kind",
               "lane"
             ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "editor_tool"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "editor_tool"
+              },
+              "tool": {
+                "type": "string",
+                "minLength": 1
+              },
+              "refused_contains": {
+                "type": "string",
+                "minLength": 1
+              },
+              "arguments": {
+                "type": "object"
+              },
+              "until": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "kind",
+              "tool"
+            ],
+            "not": { "required": ["refused_contains", "until"] },
             "additionalProperties": false
           }
         }

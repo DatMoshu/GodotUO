@@ -65,6 +65,7 @@ Prints one line per check; exit 0 when all pass.
 from __future__ import annotations
 
 import json
+import os
 import re
 import secrets as secret_source
 import shutil
@@ -91,11 +92,12 @@ def run(cfg, shard_home: Path, token: str, secrets: list[str], windowed: bool, s
         results.append((bool(ok), what))
         print(f"[admin-tab] {'PASS' if ok else 'FAIL'}  {what}")
 
-    out = (cfg.build / "admin_tab").resolve()
+    out = Path(os.environ.get("GUO_ADMIN_TAB_OUT", str(cfg.build / "admin_tab"))).resolve()
     if out.exists():
         shutil.rmtree(out)
-    workspace = out / "workspace"
-    workspace.mkdir(parents=True)
+    # Operational secrets stay outside purgeable evidence.
+    workspace = cfg.build / "admin_tab_workspace" / stamp
+    workspace.mkdir(parents=True, exist_ok=True)
 
     project = cfg.godot_project
     cmd = [str(cfg.godot_console_exe), "--editor", "--path", str(project),

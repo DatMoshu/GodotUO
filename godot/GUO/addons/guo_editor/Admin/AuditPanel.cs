@@ -32,14 +32,26 @@ public partial class AuditPanel : VBoxContainer
     private Tree _tree;
     private List<AdminAuditRow> _rows = new(), _shown = new();
     private int _req;
+    private int _localCount;
     private bool _open;
+    private List<AdminAuditRow> _serverRows = new();
+
+    internal void RefreshLocal()
+    {
+        var localRows = EditorMcpAccess.AuditRows;
+        _localCount = localRows.Count;
+        _rows = _serverRows.Concat(localRows).OrderBy(r => r.At).ToList();
+        if (_tree == null) return;
+        FillPickers();
+        ApplyFilter();
+    }
 
     /// <summary>Sends a message on the admin channel; false when there is none.</summary>
     public Func<JsonObject, bool> Send { get; set; }
 
     public event Action<string> Logged;
 
-    /// <summary>Every entry of the last reply, oldest first.</summary>
+    /// <summary>Local permission changes and the last server reply, oldest first.</summary>
     internal IReadOnlyList<AdminAuditRow> Rows => _rows;
 
     /// <summary>The rows the filter keeps, as shown and as Export writes them.</summary>
@@ -52,6 +64,7 @@ public partial class AuditPanel : VBoxContainer
     public string LastExport { get; private set; }
 
     public string StatusText => _status?.Text ?? "";
+    internal string HintText => _hint?.Text ?? "";
 
     public AuditPanel()
     {
@@ -117,7 +130,7 @@ public partial class AuditPanel : VBoxContainer
         AddChild(_tree);
         _hint = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
         AddChild(_hint);
-        FillPickers();
+        RefreshLocal();
         UpdateView();
     }
 
@@ -148,10 +161,9 @@ public partial class AuditPanel : VBoxContainer
             return;
         }
 
-        _rows = AdminAuditView.FromEntries(msg["entries"] as JsonArray);
+        _serverRows = AdminAuditView.FromEntries(msg["entries"] as JsonArray);
         Replies++;
-        FillPickers();
-        ApplyFilter();
+        RefreshLocal();
     }
 
     /// <summary>Sets the filter as if picked and typed (the scripted check): null or empty is any.</summary>
@@ -203,7 +215,7 @@ public partial class AuditPanel : VBoxContainer
         b.Select(b.ItemCount - 1);
     }
 
-    // The pickers list the ops and editors of the last reply, keeping what was picked.
+    // The pickers list the combined history's ops and editors, keeping what was picked.
     private void FillPickers()
     {
         if (_op == null)
@@ -272,17 +284,21 @@ public partial class AuditPanel : VBoxContainer
 
         _refresh.Disabled = !_open;
         _export.Disabled = _shown.Count == 0;
-        _status.Text = Replies == 0
-            ? _open ? "asking the server for its audit log..." : "not connected"
-            : _shown.Count == _rows.Count
-                ? $"{_rows.Count} entr{(_rows.Count == 1 ? "y" : "ies")}, the server's latest"
-                : $"{_shown.Count} of {_rows.Count} entries match the filter";
-        _hint.Text = !_open && Replies == 0
-            ? "The audit log needs the admin channel at Administrator: connect to the server first."
-            : $"Every admin action on this server, and every refused attempt, newest first: when (UTC), who, what and whether it ran. "
-                + $"Hover a row for its level and the request's fields; passwords and tokens show as ***. "
-                + "Export CSV writes the rows shown to build/admin_audit."
-                + (LastExport != null ? $" Last export: {Path.GetFileName(LastExport)}." : "");
+        string sources = $"{_serverRows.Count} server, {_localCount} local MCP permission changes";
+        _status.Text = _shown.Count == _rows.Count
+            ? $"{_rows.Count} entr{(_rows.Count == 1 ? "y" : "ies")} ({sources})"
+            : $"{_shown.Count} of {_rows.Count} entries match the filter ({sources})";
+        if (Replies == 0) _status.Text += _open ? "; waiting for server history" : "; server offline";
+        _hint.Text = "Local MCP permission changes are available offline. Server actions and refused attempts use the Administrator admin channel. "
+            + "History is combined, newest first: when (UTC), who, what and whether it ran. "
+            + "Hover a row for its level and the request's fields; passwords and tokens show as ***. "
+            + "Export CSV writes the rows shown to build/admin_audit."
+            + (LastExport != null ? $" Last export: {Path.GetFileName(LastExport)}." : "");
+        if (EditorMcpAccess.Problem.Length > 0)
+        {
+            _status.Text = "MCP access disabled: policy needs repair";
+            _hint.Text = EditorMcpAccess.Problem + "\n" + _hint.Text;
+        }
     }
 
     private void Log(string line) => Logged?.Invoke(line);
