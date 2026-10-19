@@ -2713,6 +2713,40 @@ from client art), place staged splats by tile, and apply/clear zones against
 the open world. Splat generation itself stays in `tools/comfy`; the dock
 lists staged splats and writes placements into the staged manifest.
 
+StaticStudio is an L3 editor package (`#if TOOLS`). Its generation controls,
+workflow discovery and request building use `AiFeatures`; disabling AI cancels
+the current job, clears its unsaved gallery/preview and hides generation UI.
+Late results from a disabled, replaced or closed dock cannot publish a gallery.
+Theme names, applying/clearing saved themes and placing already-staged content
+remain manual operations. No service is contacted until **Generate image** is
+requested. Connection/workflow failures point to the ComfyUI doctor; node-type
+validation and dependency installation remain explicit tool operations.
+Client generation migration/removal is separate from this editor package.
+See [Repaint statics in StaticStudio](editor_staticstudio.md) for the authoring
+workflow and [its headless scenario](../tools/scenarios/editor/staticstudio_repaint.md).
+
+### ComfyUI studio dependency manifest (`tools/comfy/models.json`)
+
+Tools-only `format: 1` inventory for `setup_studio.py`. `custom_nodes` entries
+carry `dir`, HTTPS `repo`, and a full 40-character git `commit`; existing packs
+must have that HEAD and a clean working tree. Installation never updates or
+replaces an existing pack. `models` entries carry `file`, relative `dest`,
+HTTPS `url`, byte `size` and lowercase `sha256`. Hugging Face file URLs use
+immutable commit revisions. Optional `aliases` accept identical bytes under
+another filename. Existing files and completed `.part` downloads are hashed;
+only verified downloads are promoted to their final names. A mismatch fails
+without replacing an existing file. Paths must remain below the chosen root.
+
+Optional `references` entries describe `source: node-managed` folders and
+external tool weights, separately from the hashed `models` inventory. These are
+informational only: their revision metadata does not pin a node's first-use
+download, and the doctor never calls them verified. They need separate package
+verification before use. `--check` is offline and read-only; `--validate` alone
+contacts `/object_info` to compare workflow node types without queuing work.
+`UO_COMFY_DIR` follows environment, local config, shared config, then optional
+manifest guesses; `--comfy-dir` overrides it. No default central installation
+is selected. Node requirements are installed manually with ComfyUI's Python.
+
 ## 40. Voice profiles and text-to-speech (`build/voice_profiles`, `IO/Audio/VoiceManager.cs`)
 
 `tools/comfy/voice.py` enrolls a voice from the player's own sample with the
@@ -2779,3 +2813,42 @@ Log line every 5 s at trace level: `[realtime-lights] grid=WxH lights=N
 computed=N cached=N quads=N sprites=N`. Scenario `client.realtime.lights`
 (`--realtime-lights-probe`, `RealtimeLightsProbe.tscn`) checks the contract
 headless and prints `[Realtime lights] PASS`.
+## 41. Perf probe and perf lab reports (`build/perf`, `tools/perf_probe`, `tools/perf_lab`)
+
+**Probe JSON**, `perf_<label>.json`, written by the client's `--perf-probe`
+(`src/Bootstrap/PerfProbe.cs`): `{label, window "WxH", zoom, optimized,
+postfx, system, scenes[]}`. `zoom` is the camera's at the end of the run.
+Each scene object carries the probe's columns (`scene`, `what`, `at`,
+`frames`, `fps`, `mean_ms`, `p95_ms`, `p99_ms`, `draw_calls`,
+`batcher_items`, `texture_switches`, `world_prepare_ms`, `world_draw_ms`,
+`render_cpu_ms`, `render_gpu_ms` and the land, cover and allocation counts);
+readers must ignore keys they do not know, and older runs lack the newer ones.
+Since PERF-03 each scene also carries `render_frame_ms`, `ui_ms`,
+`update_world_ms`, `stage_<stage>_ms` for every `PerfStages.Stage`
+(`gather`, `mesh_build`, `gather_tail`, `land_mesh`, `land_loose`, `sort`,
+`statics`, `mobiles`, `items`, `cover_land`, `multis`, `other`,
+`transparent`; per frame) and `drawn_<stage>` (objects drawn per frame, the
+sorted-list stages only, absent when none). Scenes `cave-roof` and
+`open-sea` were added after `dungeon`.
+Since PERF-01, `system` is `{gpu, gpu_vendor, gpu_api, driver,
+driver_version, rendering_method, cpu, cpu_threads, ram_gib, os, os_version,
+screen "WxH", refresh_hz, engine}`, from Godot's `RenderingServer`, `OS`
+and `DisplayServer`: hardware and versions only, no paths or names.
+
+**Perf lab report**, `perf_lab_<YYYYMMDDTHHMMZ>.json` (UTC), the file a
+player shares; one line of compact JSON, under 2,000 characters for two
+presets:
+
+| Key | Value |
+|---|---|
+| `format` | `"guo-perf-lab/1"` |
+| `when` | UTC minute, `YYYY-MM-DDTHH:MMZ` |
+| `guo` | `git describe --always --dirty` of the checkout, or `unknown` |
+| `system` | the probe's `system`, the keys above |
+| `runs[]` | per preset: `preset`, `window_asked`, `window`, `zoom`, `optimized`, `postfx`, `columns`, `rows` |
+| `runs[].columns` | `scene, fps, mean_ms, p95_ms, p99_ms, draw_calls, batcher_items, texture_switches, world_prepare_ms, world_draw_ms, render_gpu_ms` |
+| `runs[].rows` | one array per scene in `columns` order; `null` where the probe has no value (the login scene's percentiles in old runs) |
+
+`tools/perf_lab` refuses to write a report in which any string looks like a
+path or carries the login name, computer name, home folder or a shard account
+name. A change to `columns` bumps `format`.

@@ -38,9 +38,14 @@ echo "[smoke] optional HD pack contracts (synthetic)"
 
 echo "[smoke] Realtime lights contract (synthetic; ADR-0039)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/Lights/RealtimeLightsProbe.tscn || FAIL=1
+echo "[smoke] perf lab report: fields kept, privacy refusal, size (synthetic; tools/perf_lab)"
+"$UO_PYTHON" -m pytest "$UO_TOOLS/perf_lab" -q -p no:cacheprovider || FAIL=1
 
 echo "[smoke] PostFX engine regressions (synthetic)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Bootstrap/PostFxEngineProbe.tscn || FAIL=1
+
+echo "[smoke] controller regressions and Set controls (synthetic pad; no shard)"
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" -- --pad-regression-probe --pregame-classic --silent || FAIL=1
 
 echo
 if [ "$FAIL" = "1" ]; then echo "[smoke] FAILED"; exit 1; fi
