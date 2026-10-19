@@ -174,6 +174,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   says what it needs. ADR-0008.
 
 ### Playing
+- Modern Options includes canvas backgrounds, the command-bar arrow inset,
+  and fine second-screen scale. Classic drop-downs have taller touch targets;
+  mouse-only lists keep their classic spacing.
 - After Alt-Tab, Alt, Ctrl and Shift no longer stay held: the next click is
   a plain click again, as in ClassicUO.
 - AltGr characters type on keyboards that need them (the `@`, `{` or `\` of
