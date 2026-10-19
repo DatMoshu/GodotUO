@@ -30,9 +30,10 @@ const int WATER_UO = 1;
 const int WATER_PIXEL = 2;
 const int WATER_CEL = 3;
 const int WATER_REALISTIC = 4;
+const int WATER_CLASSICPLUS = 5;
 
-// 0 is Classic: the branch is never taken. 1 to 4 are the built-in models a
-// style picks (WaterRender.Model): uo, pixel, cel, realistic. Store packs set
+// 0 is Classic: the branch is never taken. 1 to 5 are the built-in models a
+// style picks (WaterRender.Model): uo, pixel, cel, realistic, classicplus. Store packs set
 // the numbers below for one of them and carry no shader code (ADR-0037
 // decision 6).
 uniform int water_model = 0;
@@ -121,49 +122,57 @@ float water_ripple(vec2 xy) {
 	return texture(water_ripples, rel / 128.0).r * 2.0 - 1.0;
 }
 
-// How close this point is to a dry neighbour along a shared edge: 1 on the
-// edge, falling to 0 a foam width into the water.
-float water_edge(vec2 cell, vec2 f) {
-	float width = max(water_params2.y, 0.01);
-	float foam = 0.0;
-	// The four cells sharing an edge with this one, in cell space.
-	foam = max(foam, (1.0 - step(0.5, water_mask_at(cell + vec2(1.0, 0.0)).r))
-			* (1.0 - smoothstep(0.0, width, 0.5 - f.x)));
-	foam = max(foam, (1.0 - step(0.5, water_mask_at(cell - vec2(1.0, 0.0)).r))
-			* (1.0 - smoothstep(0.0, width, 0.5 + f.x)));
-	foam = max(foam, (1.0 - step(0.5, water_mask_at(cell + vec2(0.0, 1.0)).r))
-			* (1.0 - smoothstep(0.0, width, 0.5 - f.y)));
-	foam = max(foam, (1.0 - step(0.5, water_mask_at(cell - vec2(0.0, 1.0)).r))
-			* (1.0 - smoothstep(0.0, width, 0.5 + f.y)));
-	return foam;
-}
-
 // One neighbour's share of the shore for water_shore: dry, and its ground no
 // more than 8 above this water, so a beach makes surf and a cliff does not.
-float water_low_dry(vec2 n, float wz) {
-	vec4 m = water_mask_at(n);
+float water_low_dry(vec4 m, float wz) {
 	return (1.0 - step(0.5, m.r)) * step(floor(m.g * 255.0 + 0.5) - 128.0 - wz, 8.0);
 }
 
-// water_edge for the pack models: only beaches count as shore. (The uo
-// model keeps water_edge, so its pixels do not change.)
+// Reconstruct the low-shore mask between cell centres. The old max of four
+// edge ramps restarted on each diamond, drawing ladder bars on diagonal
+// coasts. The reconstructed mask is continuous across cell edges; its
+// gradient converts the mask value into an approximate distance in cells.
+// Height checks still exclude cliffs; the sampler itself stays nearest.
 float water_shore(vec2 cell, vec2 f) {
 	float width = max(water_params2.y, 0.01);
-	float wz = floor(water_mask_at(cell).g * 255.0 + 0.5) - 128.0;
-	float foam = 0.0;
-	foam = max(foam, water_low_dry(cell + vec2(1.0, 0.0), wz) * (1.0 - smoothstep(0.0, width, 0.5 - f.x)));
-	foam = max(foam, water_low_dry(cell - vec2(1.0, 0.0), wz) * (1.0 - smoothstep(0.0, width, 0.5 + f.x)));
-	foam = max(foam, water_low_dry(cell + vec2(0.0, 1.0), wz) * (1.0 - smoothstep(0.0, width, 0.5 - f.y)));
-	foam = max(foam, water_low_dry(cell - vec2(0.0, 1.0), wz) * (1.0 - smoothstep(0.0, width, 0.5 + f.y)));
-	return foam;
+	vec2 xy = cell + f;
+	vec2 lo = floor(xy);
+	vec2 blend = fract(xy);
+	vec4 ma = water_mask_at(lo);
+	vec4 mb = water_mask_at(lo + vec2(1.0, 0.0));
+	vec4 mc = water_mask_at(lo + vec2(0.0, 1.0));
+	vec4 md = water_mask_at(lo + vec2(1.0, 1.0));
+	// Shore art may overlap a dry cell; take the surface height from water,
+	// never that dry cell's ground height (which would make cliffs low).
+	float count = ma.r + mb.r + mc.r + md.r;
+	float wz = floor((ma.g * ma.r + mb.g * mb.r + mc.g * mc.r + md.g * md.r)
+			/ max(count, 1.0) * 255.0 + 0.5) - 128.0;
+	float a = water_low_dry(ma, wz);
+	float b = water_low_dry(mb, wz);
+	float c = water_low_dry(mc, wz);
+	float d = water_low_dry(md, wz);
+	float dry = mix(mix(a, b, blend.x), mix(c, d, blend.x), blend.y);
+	vec2 gradient = vec2(mix(b - a, d - c, blend.y), mix(c - a, d - b, blend.x));
+	// Native shore sprites can extend into a mask cell classed as dry. Fade
+	// on both sides of the contour, rather than filling that entire overlap.
+	float slope = length(gradient);
+	float distance_to_shore = abs(0.5 - dry) / max(slope, 0.001);
+	return (1.0 - smoothstep(0.0, width, distance_to_shore)) * step(0.001, slope);
 }
 
 float water_foam(vec2 cell, vec2 f, vec2 world, float t) {
-	float foam = water_edge(cell, f);
+	float foam = water_shore(cell, f);
 	// Broken up and breathing, so it reads as surf rather than an outline.
 	float lace = water_noise(world * 0.18 + vec2(t * 0.6, t * 0.35));
-	float pulse = 0.65 + 0.35 * sin(t * 1.6 + (cell.x + cell.y) * 0.9);
-	return foam * step(0.38, lace * pulse + foam * 0.35);
+	float pulse = 0.65 + 0.35 * sin(t * 1.6 + (cell.x + f.x + cell.y + f.y) * 0.9);
+	return foam * smoothstep(0.35, 0.65, lace * pulse);
+}
+
+// Surf arrives in connected wavelets, not a solid line offset from the
+// native shore sprite. The noise follows world cells across tile boundaries.
+float water_surf(vec2 cell, vec2 f, float t) {
+	float wavelet = water_noise((cell + f) * 2.2 + vec2(t * 0.16, -t * 0.1));
+	return water_shore(cell, f) * smoothstep(0.42, 0.68, wavelet);
 }
 
 // The 4 x 4 ordered-dither threshold at a water pixel, 0 .. 15/16.
@@ -188,8 +197,8 @@ vec3 water_pixel(vec3 base, vec2 cell, vec2 f, vec2 world, float t, float light,
 	// single bright pixels, not patches (about 1% of the sea at glint 0.6).
 	float glint = step(0.995 - water_params2.x * 0.005, light) * step(0.5, d);
 	c = mix(c, vec3(0.92, 0.96, 1.0), glint);
-	float foam = step(d + 0.01, water_shore(cell, f) * water_params.w
-			* (0.55 + 0.45 * sin(t * 1.6 + (cell.x + cell.y) * 0.9)));
+	float foam = step(d + 0.01, water_surf(cell, f, t) * water_params.w
+			* (0.55 + 0.45 * sin(t * 1.6 + (cell.x + f.x + cell.y + f.y) * 0.9)));
 	c = mix(c, vec3(0.9, 0.95, 1.0), foam);
 	return clamp(c, 0.0, 1.0);
 }
@@ -211,7 +220,7 @@ vec3 water_cel(vec3 base, vec2 cell, vec2 f, float t, float light, float ripple,
 	c = mix(c, flat_c * 1.5 + 0.06, step(abs(r - 0.1), 0.02));
 	c = mix(c, flat_c * 0.6, step(abs(r + 0.1), 0.02));
 	c += vec3(step(0.985, light) * water_params2.x);
-	float edge = water_shore(cell, f) * (0.85 + 0.15 * sin(t * 1.6 + (cell.x + cell.y) * 0.9));
+	float edge = water_surf(cell, f, t) * (0.85 + 0.15 * sin(t * 1.6 + (cell.x + f.x + cell.y + f.y) * 0.9));
 	float on = step(0.01, water_params.w);
 	float foam = step(0.5, edge) * on;
 	float ink = step(0.3, edge) * (1.0 - foam) * on;
@@ -240,7 +249,7 @@ vec3 water_realistic(vec3 base, vec2 cell, vec2 f, vec2 world, float t, float li
 #endif
 	c += vec3(spec) * (0.4 + 1.6 * luma);
 	float lace = water_noise(world * 0.12 + vec2(t * 0.5, t * 0.3));
-	float foam = edge * smoothstep(0.3, 0.7, lace + edge * 0.4) * water_params.w;
+	float foam = water_surf(cell, f, t) * smoothstep(0.3, 0.7, lace + edge * 0.4) * water_params.w;
 	c = mix(c, vec3(0.88, 0.93, 0.96), foam);
 	return clamp(c, 0.0, 1.0);
 }
@@ -261,6 +270,19 @@ vec3 water_shade(vec3 base, vec2 target_px) {
 
 	vec2 f;
 	vec2 cell = water_cell(world, f);
+
+	if (water_model == WATER_CLASSICPLUS) {
+		// Keep the actual, already hued/lit native texel. No replacement ramp,
+		// white foam or glints: a one-step shimmer dithered on the world grid
+		// leaves UO's own animated pattern and palette doing the work.
+		float phase = sin(dot(world, vec2(0.017, 0.011)) - t);
+		float ripple = water_ripple(cell + f) * water_params2.w;
+		float lap = water_shore(cell, f) * sin(t * 0.7 + dot(world, vec2(0.013, 0.009)));
+		float shift = phase * water_params.z + ripple * 0.12 + lap * water_params.w;
+		float threshold = water_bayer(floor(world / grain));
+		float step_count = floor(abs(shift) * 8.0 + threshold);
+		return clamp(base + sign(shift) * step_count * base / 16.0, 0.0, 1.0);
+	}
 
 	vec2 p = world * water_params.y;
 	float e = 0.35;

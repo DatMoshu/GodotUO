@@ -137,6 +137,7 @@ internal static class WaterRender
         "pixel" => 2,
         "cel" => 3,
         "realistic" => 4,
+        "classicplus" => 5,
         _ => 0
     };
 

@@ -6,7 +6,7 @@ applies the same rules; the corpus (corpus/water.py) holds both to them.
 import json
 
 SCHEMA = "guo/water@1"
-MODELS = ("uo", "pixel", "cel", "realistic")
+MODELS = ("uo", "pixel", "cel", "realistic", "classicplus")
 MAX_BYTES = 16384
 # Every number a style sets: (low, high, integer).
 NUMBERS = {

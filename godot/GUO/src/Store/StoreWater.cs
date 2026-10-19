@@ -20,7 +20,7 @@ internal sealed record StoreWater(
 {
     public const string Schema = "guo/water@1";
     public const int MaxBytes = 16384;
-    public static readonly string[] Models = { "uo", "pixel", "cel", "realistic" };
+    public static readonly string[] Models = { "uo", "pixel", "cel", "realistic", "classicplus" };
 
     private static readonly HashSet<string> Fields = new(
         "schema name model tint ripples speed scale wave foam foam_width glint levels grain".Split(' '), StringComparer.Ordinal);

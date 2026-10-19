@@ -1,4 +1,4 @@
-"""Build the pixel, cel and realistic water styles as Store packs (ADR-0037 decision 6, WATER-04).
+"""Build the pixel, cel, realistic and UO+ water styles as Store packs (ADR-0037 decision 6).
 
     python tools/asset_store/water_packs.py [--out DIR] [--store-dir DIR] [--deploy DIR]
 

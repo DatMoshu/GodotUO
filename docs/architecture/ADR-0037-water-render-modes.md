@@ -2,6 +2,13 @@
 
 ## Status
 
+WATER-06 amendment (owner request, 2026-10-19): retain the three WATER-04
+packs and add the data-only `guo-water-classicplus` pack, displayed as UO+.
+Its built-in model 5 preserves native water texels with a subtle dithered
+shimmer and shore lap. All styles use a continuous low-shore contour instead
+of independent tile-edge ramps; Classic's branch and sampling are unchanged.
+The `guo/water@1` model enumeration is extended in section 44 and both validators.
+
 Proposed — 2026-10-18 (WATER-01). Needs the owner's decision before WATER-02.
 
 ## Date

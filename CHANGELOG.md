@@ -5,6 +5,11 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 
 ## Unreleased
 
+### Water
+- The UO+ water pack keeps the native water art with a gentle shimmer and
+  shore lap. All water styles follow a continuous coast contour to avoid
+  repeated tile-edge surf bars; high cliffs no longer produce surf.
+
 ### Editor
 - The Admin tab's god view works with nobody logged in: **Go there**,
   **Bring here**, **Open paperdoll** and **Follow** use the server's hidden

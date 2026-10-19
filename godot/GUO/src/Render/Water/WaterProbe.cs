@@ -109,7 +109,7 @@ public partial class WaterProbe : Node
     {
         string source = System.IO.Path.GetFullPath(System.IO.Path.Combine(ProjectSettings.GlobalizePath("res://"), "..", "..", "design", "packs", "water"));
         string temporary = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "guo-water-probe-" + Guid.NewGuid().ToString("N"));
-        var expected = new System.Collections.Generic.Dictionary<string, int> { ["guo-water-pixel"] = 2, ["guo-water-cel"] = 3, ["guo-water-realistic"] = 4 };
+        var expected = new System.Collections.Generic.Dictionary<string, int> { ["guo-water-pixel"] = 2, ["guo-water-cel"] = 3, ["guo-water-realistic"] = 4, ["guo-water-classicplus"] = 5 };
         try
         {
             var styles = new System.Collections.Generic.List<IWaterStyle>();
