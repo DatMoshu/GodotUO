@@ -1,7 +1,9 @@
 # Android Build
 
-GUO exports as an **ARM64 debug APK** for any Android 12 or newer device,
-without Gradle or the NDK. Source of truth: ADR-0017 (Accepted) and
+GUO exports as an **ARM64 debug APK** for an Android device (the build's
+floor is Android 7.0, ADR-0017; only Android 13 has been run), without the
+NDK. The export uses Godot's Gradle build: `run.py` installs the pinned
+source template, and the first export needs access to Maven. Source of truth: ADR-0017 (Accepted) and
 `tools\android\README.md`, whose run table records what actually ran on a
 device. The first device run is commit "Android: first run on a device";
 everything below has been exercised on one handheld with two screens, so a
@@ -14,9 +16,15 @@ launchers\android\install.bat    REM adb install onto the attached device
 launchers\android\run.bat        REM start it and stream its logcat
 launchers\android\smoke.bat      REM export, install, run, wait for the login gump, pull a screenshot and a log
 launchers\android\dual_probe.bat REM the second-screen probe, see Dual Screen
+launchers\android\portrait_probe.bat REM the portrait spike: turns the screen, photographs each state
+launchers\android\device_manager.bat REM the Device Test Manager: device profiles, emulator, screenshots
 ```
 
-Underneath: `python tools\android\run.py <doctor|templates|keystore|settings|preset|export|install|run|logcat|push|smoke|dual_probe|displays>`.
+Underneath: `python tools\android\run.py <doctor|templates|keystore|settings|preset|export|install|run|logcat|push|push-stage|smoke|avd|dual_probe|portrait_probe|displays>`.
+
+With no data on the device, the first-run screen's Choose folder opens the
+system folder picker and copies the folder into the app's own files; see
+`tools\android\README.md`.
 
 ## What the export needs
 
@@ -95,7 +103,10 @@ the measurements and the probe that took them are in the repository's
 `launchers\android\smoke.bat` exports, installs, launches, waits for the
 login probe's line on logcat (`[GUO]` prefix, the same line the web smoke
 waits for), pulls a screenshot and the log into `build\android\`. It exits 0
-only when the login gump was drawn. `run.py displays` lists the device's
+only when the login gump was drawn. `smoke.bat --avd guo_phone` does the
+same on GUO's own x86_64 emulator: it boots it headless (only with 10 GB of
+memory free), installs, waits for the login screen, takes a screenshot and
+cleans up, touching only the emulator it started. `run.py displays` lists the device's
 displays for [Dual Screen](Dual-Screen.md) work.
 
 ## What has been run, and what has not

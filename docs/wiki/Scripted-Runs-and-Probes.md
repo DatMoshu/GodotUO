@@ -62,6 +62,9 @@ that introduced it names what it verified.
 | `--pad-wheels-probe` | The pad's controller feel by injected joypad events, in a scratch home: the Set controls offer and B skipping it; LT's wheel opening the backpack and the paperdoll as full-screen controller panels, the tap reopening, the middle opening nothing, and every wheel window opening a full-screen panel; the Set controls card showing each action, its glyph and its binding with no description; RT's radar choosing a mobile (a horse is `[add`ed beside the character when none is near) with the right stick, X look, A use, RB/LB, Y menu, use on release, picking for a target cursor; R3 war mode, L3 always run, Start and the Options entry; the wizard cancelled by three inputs, then run with one job swapped and a slice changed, and the saved map taking effect; the Steam Deck trackpad leaving the mode on Gamepad. A picture per step into `--screenshot-dir`. | its commit |
 | `--highlight-probe` | The mesh highlight check, which goes away and back with `[go`. | `multi_client.bat` lane `highlight` |
 | `--door-probe` | Sends the open-door command and captures the door packets as they arrive, checking the door art changes. | its commit |
+| `--selection-seam-probe` | A replaced object (such as a splat standing in for a statue) is targeted, used and picked up as the original. | scenario `client.selection.seam` |
+| `--hd-content-probe` | Installed HD art packs are found and checked, for Enhanced HD. | scenario `client.hd.packs` |
+| `--audio-content-probe` | Installed regional audio and voice packs are found and checked. | scenario `client.audio.packs` |
 | `--batcher-probe` | 130 checks over the canvas batcher. Does not cover the frame split (ADR-0006 says so). | `launchers\dev\batcher_probe.bat` |
 | `--zoom-probe` | 240-frame averages of prepare, draw and wall clock at each zoom; the numbers in ADR-0007. | its commit |
 | `--art-sample` | Decodes a sample of art and shows it, with no client startup; the loader check from the first pixels. | its commit |
@@ -79,6 +82,25 @@ that introduced it names what it verified.
 | `launchers\dev\multi_client.bat` | Four lanes at once (`session`, `effects`, `highlight`, `sweep`), each on its own account and quarter of the screen; a log, a frame, a 2x2 contact sheet and `summary.md` under `build\multi_client\<stamp>\`. `--only a,b`, `--list`, `--sound`. |
 | `launchers\dev\plugin_probe.bat` | A native and a managed test plugin loaded into a session; each must have been installed, told of the connection, seen packets and been given the player's position. |
 | `launchers\dev\screenshot.bat` | Any of the above with a picture at the end, into `build\screenshots`. |
+
+## Scenarios
+
+A scenario is a named, deterministic run described in JSON under
+`tools/scenarios/` (areas: `client`, `editor`, `shard`, `world`). The runner
+plays it with a driver and writes a run folder with a pass or fail result.
+Every client option or Labs feature needs one ([Feature Layers](Feature-Layers.md)).
+
+```bat
+launchers\dev\scenario_run.bat list
+launchers\dev\scenario_run.bat validate editor.tabs.sweep
+launchers\dev\scenario_run.bat editor.tabs.sweep
+```
+
+`--shard NAME` or `--server NAME` points a client scenario at another shard
+or a saved server profile; the password comes from the environment only.
+`launchers\dev\server_lab.bat` runs the server compatibility cases this way.
+OBS capture of a human run is not built yet. Details:
+`tools/scenario_run/README.md`.
 
 Every one of these needs `launchers\shard\run.bat` in another terminal
 except `--offline`, `--warm-cache`, `--batcher-probe` and the renderer
