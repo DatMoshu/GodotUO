@@ -94,7 +94,8 @@ SCENES = [
 ]
 
 VARIANTS = {
-    "guo": [],
+    # Pinned off: Windows draws with the array and merged cover by default.
+    "guo": ["--merged-land=off", "--merged-cover=off"],
     "guo-array": ["--merged-land=array"],
     "guo-cover": ["--merged-land=array", "--merged-cover"],
 }
