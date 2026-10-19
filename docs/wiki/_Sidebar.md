@@ -41,6 +41,7 @@
 - [Admin Tab](Admin-Tab.md)
 - [Author UO Data](Author-UO-Data.md)
 - [Building Multis](Building-Multis.md)
+- [Modding](Modding.md)
 - [Architecture](Architecture.md)
 - [Feature Layers](Feature-Layers.md)
 - [Working with AI Agents](Working-With-AI-Agents.md)

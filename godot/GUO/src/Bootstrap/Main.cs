@@ -96,6 +96,12 @@ public partial class Main : Node
             SelectionSeamProbe.Run();
         }
 
+        // Synthetic packet mod proof (ADR-0038) before normal scene startup for the MCP runner.
+        if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--mods-probe") >= 0)
+        {
+            GUO.Network.Mods.ModsProbe.Run();
+        }
+
         // Synthetic opt-in audio proof before normal scene startup for the MCP runner.
         if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--audio-content-probe") >= 0)
         {
@@ -342,6 +348,10 @@ public partial class Main : Node
                 {
                     CallDeferred(nameof(PadRegressionThenQuit));
                 }
+                else if (_options.TouchGestureProbe)
+                {
+                    TouchGesturesThenQuit();
+                }
                 else if (_options.KeyboardProbe)
                 {
                     CallDeferred(nameof(KeyboardProbeThenQuit));
@@ -467,6 +477,8 @@ public partial class Main : Node
         // The player's own looks and shaders (ADR-0023).
         GUO.Renderer.PostFx.PostFxLibrary.UserFolder = System.IO.Path.Combine(dataDir, "postfx");
         GUO.Renderer.PostFx.PostFxStack.RunOverride = string.IsNullOrWhiteSpace(_options.PostFx) ? null : _options.PostFx;
+        GUO.Network.Mods.ClientMods.RunOverride = _options.LoadMods;
+        GUO.Network.Mods.ClientMods.FolderOverride = string.IsNullOrWhiteSpace(_options.ModsDir) ? null : _options.ModsDir;
 
         GD.Print($"[GUO] client home   : {dataDir}");
 
@@ -701,6 +713,7 @@ public partial class Main : Node
         || _options.GamepadProbe
         || _options.PadWheelsProbe
         || _options.PadRegressionProbe
+        || _options.TouchGestureProbe
         || _options.KeyboardProbe
         || _options.OneScreenProbe
         || _options.GlyphShots
@@ -824,6 +837,8 @@ public partial class Main : Node
     /// <summary>Shard-free injected controller dispatch and classic-gump regression checks.</summary>
     private void PadRegressionThenQuit() => Quit(PadRegressionProbe.Run() ? 0 : 1);
 
+    /// <summary>Shard-free touch scrolling at the login screen; see TouchGestureProbe.</summary>
+    private async void TouchGesturesThenQuit() => Quit(await TouchGestureProbe.Run(this) ? 0 : 1);
     /// <summary>Shard-free keyboard checks: key-ups on focus loss, AltGr text; see KeyboardProbe.</summary>
     private void KeyboardProbeThenQuit() => Quit(KeyboardProbe.Run() ? 0 : 1);
 
@@ -1518,6 +1533,7 @@ public partial class Main : Node
                 || GamepadProbe
                 || PadWheelsProbe
                 || PadRegressionProbe
+                || TouchGestureProbe
                 || KeyboardProbe
                 || OneScreenProbe
                 || GlyphShots
@@ -1625,6 +1641,13 @@ public partial class Main : Node
         /// <summary>--postfx NAME|off: the look for this run only, state.json untouched (PostFxStack.RunOverride).</summary>
         public string PostFx { get; private set; }
 
+        /// <summary>--load-mods: load packet mods for this run only, settings.json untouched (ADR-0038);
+        /// how the perf lab measures a mod on and off.</summary>
+        public bool LoadMods { get; private set; }
+
+        /// <summary>--mods-dir PATH: the folder mods load from for this run, instead of Data/Mods.</summary>
+        public string ModsDir { get; private set; }
+
         /// <summary>--perf-parity: per scene, compare --batched-world with the plain path pixel for pixel.</summary>
         public bool PerfParity { get; private set; }
 
@@ -1676,6 +1699,8 @@ public partial class Main : Node
 
         public bool PadRegressionProbe { get; private set; }
 
+        /// <summary>--touch-gesture-probe: touch scrolling without a shard; see TouchGestureProbe.</summary>
+        public bool TouchGestureProbe { get; private set; }
         /// <summary>--keyboard-probe: the keyboard layer without a shard; see KeyboardProbe.</summary>
         public bool KeyboardProbe { get; private set; }
 
@@ -1962,6 +1987,11 @@ public partial class Main : Node
                         o.PadRegressionProbe = true;
                         o.ScratchProfile = true;
                         break;
+                    case "--touch-gesture-probe":
+                        o.TouchGestureProbe = true;
+                        o.Touch = true;
+                        o.ScratchProfile = true;
+                        break;
                     case "--keyboard-probe":
                         o.KeyboardProbe = true;
                         o.ScratchProfile = true;
@@ -2028,6 +2058,12 @@ public partial class Main : Node
                         break;
                     case "--postfx":
                         o.PostFx = Next();
+                        break;
+                    case "--load-mods":
+                        o.LoadMods = true;
+                        break;
+                    case "--mods-dir":
+                        o.ModsDir = Next();
                         break;
                     case "--door-probe":
                         o.DoorProbe = true;

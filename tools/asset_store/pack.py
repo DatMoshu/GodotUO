@@ -14,7 +14,7 @@ KINDS = {"background", "theme", "sound", "profile-preset", "screensaver", "postf
 # A screensaver is played by the client from profile version 11 on.
 SCREENSAVER_MIN_PROFILE = 11
 LICENCES = {"CC0-1.0", "CC-BY-4.0", "CC-BY-SA-4.0", "MIT", "BSD-2-Clause", "BSD-3-Clause", "Apache-2.0"}
-EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".ogv", ".ogg", ".wav", ".json", ".txt", ".gdshader", ".razor", ".ply"}
+EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".ogv", ".ogg", ".wav", ".json", ".txt", ".gdshader", ".razor", ".ply", ".dll"}
 MAX_SCRIPT_BYTES = 262144
 MAX_SCRIPT_CHARS = 65536
 IMAGES = {".png", ".jpg", ".jpeg", ".webp"}
@@ -139,6 +139,7 @@ def parse_manifest(raw):
                 "Every Razor payload must be a declared script component entry")
     else:
         require(not any(Path(n).suffix.lower() == ".ply" for n in files), "PLY payload requires v2 splat component")
+        require(not any(Path(n).suffix.lower() == ".dll" for n in files), "a .dll is allowed only as a v2 mod component's assembly")
         require(bool(scripts) if m["kind"] == "razor-script" else not scripts,
                 "Razor scripts require their own kind and at least one .razor file")
     # Screen-effect packs (ADR-0023): presets and shaders; shader code only in this kind.

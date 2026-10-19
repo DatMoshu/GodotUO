@@ -64,6 +64,7 @@ namespace GUO.Game.UI.Gumps
         private Combobox _screenSaverChoice;
         private List<string> _screenSaverChoices;
         private Checkbox _splashIntro; // PORT DEVIATION (GUO): the boot splash (SplashIntro), device-wide
+        private Checkbox _loadMods; // PORT DEVIATION (GUO): packet mods (ADR-0038), device-wide
 
         // PORT DEVIATION (GUO): the gamepad's face-button layout (Input.Gamepad).
         private Combobox _gamepadLayout;
@@ -2404,6 +2405,15 @@ namespace GUO.Game.UI.Gumps
                 sectionPad.AddRight(AddLabel(null, words, startX, startY), 6);
             }
 
+            // PORT DEVIATION (GUO): packet mods from Data/Mods (ADR-0038). Kept
+            // in settings.json like the plugins list, since packets arrive before
+            // a profile exists; read on the next start. Hidden where mods cannot load.
+            SettingsSection sectionMods = GUO.Network.Mods.ClientMods.Supported ? AddSettingsSection(box, "Mods") : new SettingsSection("Mods", box.Width);
+            sectionMods.Y = sectionPad.Bounds.Bottom + 40;
+            sectionMods.Add(_loadMods = AddCheckBox(null, "Load mods on the next start", Settings.GlobalSettings.LoadMods, startX, startY));
+            sectionMods.Add(AddLabel(null, GUO.Network.Mods.ClientMods.Status, startX, startY));
+            // END PORT DEVIATION (GUO)
+
             Add(rightArea, PAGE);
         }
 
@@ -4160,6 +4170,7 @@ namespace GUO.Game.UI.Gumps
                     _screenSaverSleepMinutes.Value = 0; // PORT DEVIATION (GUO)
                     _screenSaverChoice.SelectedIndex = 0; // PORT DEVIATION (GUO)
                     _splashIntro.IsChecked = true; // PORT DEVIATION (GUO)
+                    _loadMods.IsChecked = false; // PORT DEVIATION (GUO)
                     _gamepadLayout.SelectedIndex = 0; // PORT DEVIATION (GUO)
                     _gamepad.IsChecked = true; // PORT DEVIATION (GUO)
                     _sliderScreenZoom.Value = 0;
@@ -4709,6 +4720,12 @@ namespace GUO.Game.UI.Gumps
             if (_splashIntro.IsChecked != GUO.Host.SplashIntro.Enabled)
             {
                 GUO.Host.SplashIntro.Enabled = _splashIntro.IsChecked; // PORT DEVIATION (GUO)
+            }
+
+            if (_loadMods.IsChecked != Settings.GlobalSettings.LoadMods) // PORT DEVIATION (GUO): ADR-0038
+            {
+                Settings.GlobalSettings.LoadMods = _loadMods.IsChecked;
+                Settings.GlobalSettings.Save();
             }
 
             // PORT DEVIATION (GUO): a new layout choice applies to connected pads at once.

@@ -1,0 +1,13 @@
+{
+  "id": "client.input.touch",
+  "title": "Touch: a swipe or a two-finger pan scrolls the list under the finger",
+  "surface": "client",
+  "requires": {"build": "debug"},
+  "timeouts": {"step_s": 90, "run_s": 150},
+  "steps": [
+    {"id": "launch", "do": {"kind": "launch", "args": ["--touch-gesture-probe", "--pregame-classic", "--silent"], "settings": {"autologin": false, "username": "", "password": ""}},
+     "say": "Drive the touch layer with synthetic fingers on a scratch gump at the login screen, without a shard.",
+     "expect": {"log.contains": "[GUO] touch gesture probe: PASS", "within_s": 75}},
+    {"id": "summary", "do": {"kind": "note", "text": "A one-finger swipe scrolls a ScrollArea and a text with its own scroll bar without moving the gump, and a two-finger pan over a list scrolls it as the mouse wheel does. A long press on someone in the world opens their context menu; that needs a shard and is not driven here."}}
+  ]
+}

@@ -188,6 +188,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   realistic. Install one, select its deployment, restart, and pick it under
   **Options > Video > Water**. A pack style is numbers for a look built into
   GUO, never code. ADR-0037.
+- Touch: a long press on someone in the world opens their context menu, a
+  swipe scrolls any list or text with a scroll bar (books, quest pages), and
+  a two-finger pan over a window scrolls it like the mouse wheel.
 - Modern Options includes canvas backgrounds, the command-bar arrow inset,
   and fine second-screen scale. Classic drop-downs have taller touch targets;
   mouse-only lists keep their classic spacing.
@@ -262,6 +265,29 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- CI keeps NuGet packages between runs, and the Android release build also
+  keeps its Gradle downloads. The CI health report for 2026-10-18 (times per
+  workflow, every failure of the last three weeks, no flaky steps) is in
+  `docs/release/ci_2026-10-18.md`.
+
+- Dev shard: exempt loopback from automatic behavioral ban contributions so a
+  silent readiness connection cannot reject all local clients for 15 minutes;
+  preserve explicit bans and LAN/public protection (NET-00c, MUO patch).
+- A Modding page on the wiki: how to write, test and ship a mod, and how to
+  measure one that slows the game down (`--load-mods` for a single run).
+- A shard can publish its client mod in the Store. A mod pack is signed by
+  its publisher and lists the packets it touches; installing it runs
+  nothing. The Store shows who signed it and what it changes, and it loads
+  only after you approve it and turn on **Load mods** (desktop only). An
+  updated or re-signed mod asks again.
+- Shards with their own packets can ship a mod instead of asking players for
+  a forked client: a mod declares the packets it adds, and GUO loads it from
+  `Data/Mods` when you tick **Load mods on the next start** in Options (off
+  by default; desktop only). A sample mod shows a shard announcement packet
+  (`docs/modding/samples/announce`).
+- A modding survey (`docs/modding/surface_2026-10-18.md`) lists what you can
+  change without forking the client (assistant plugins, scripts, packs, server
+  gumps) and what still needs a fork, such as a shard's custom packets.
 - The server lab has a ServUO row beside ModernUO (`server_lab.bat row
   servuo`). Each result records which client version it ran as and which
   evidence run it is filed under, and the compatibility page shows each

@@ -161,6 +161,17 @@ it to return a command's output to the Admin tab's Commands palette; without
 the patch commands still run there, without their output. UPSTREAM.md has
 the verdict (ours).
 
+### `patches/0006-loopback-ban-exemption.patch`
+
+Prevents a silent local readiness connection from automatically banning all
+loopback clients for 15 minutes (NET-00c). Only behavioral ban contributions
+from loopback are exempt; explicit bans and LAN/public protection still apply.
+The automatic denylist is separate from the IP rate limiter, which already
+exempts private addresses. Run
+`python -m pytest tools/modernuo/test_loopback_bans.py -q -s` to reproduce the
+old hold and check the patch without opening a socket or touching accounts.
+See [UPSTREAM.md](UPSTREAM.md) for scope and deployment steps.
+
 ### Retired
 
 `0004-multi-tile-enumerator` fixed tile lookups that stopped at a multi with no
