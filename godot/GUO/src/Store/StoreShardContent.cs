@@ -123,11 +123,11 @@ internal sealed class StoreShardContent
     /// <summary>
     /// The client components of a deployment that its lock gives no numeric slot. The client's mount
     /// (StoreRuntimeContent) needs one for each, so a lock with any of these cannot be played with.
-    /// Server components, scripts, translations and wearables take none.
+    /// Server components, scripts, translations, wearables and water styles take none.
     /// </summary>
     public static List<string> Unbound(StoreContentLock contentLock, StoreVerifiedContent snapshot) =>
         snapshot.Packs.Values.SelectMany(p => (p.Manifest.Components ?? new())
-            .Where(c => c.Target != "server" && c.Type is not ("script" or "translation" or "wearable"))
+            .Where(c => c.Target != "server" && c.Type is not ("script" or "translation" or "wearable" or "water"))
             .Select(c => p.Id + ":" + c.Id))
             .Where(identity => !contentLock.Bindings.ContainsKey(identity)).OrderBy(i => i, StringComparer.Ordinal).ToList();
 

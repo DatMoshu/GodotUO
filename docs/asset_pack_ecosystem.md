@@ -27,7 +27,7 @@ contain their own target and shared components only.
 Content types: static, land, texmap, tiledata, gump, animation, wearable,
 hue, sound, music, effect, light, translation, font, map, region, multi,
 decoration, item, crafting, loot, vendor, creature, spawner, encounter,
-quest, dialogue, presentation, authoring, script, hd-art, splat, voice.
+quest, dialogue, presentation, authoring, script, hd-art, splat, voice, water.
 
 ### Media component contracts (installation only)
 
@@ -113,6 +113,41 @@ All existing archive traversal, link, size, hash, licence, and proprietary
 data exclusions remain. V2 carries authored source assets, never merged UO
 archives. Typed JSON entry files describe complex content and reference
 payloads. Existing UO data is read locally when producing runtime exports.
+
+### Water styles
+
+A `water` component is a look for the sea under the client's **Water** option
+([ADR-0037](architecture/ADR-0037-water-render-modes.md), decision 6). It
+targets `client` only, takes no media metadata, and its `entry` is a declared
+JSON file with schema `guo/water@1`: a display `name`, one of the shading
+`model`s built into the client (`uo`, `pixel`, `cel`, `realistic`), a `tint`
+and the numbers that model reads. The full field table is in
+`docs/data_formats.md` section 44. A style is data only: it carries no shader
+code, texture or script, and a `.gdshader` stays refused outside postfx packs.
+A pack-supplied water shader would run inside the world material, so it needs
+a later amendment to the ADR.
+
+Unlike other media, the style file is checked whole at verification and
+installation, by `pack.py verify` and `StorePack.Extract` alike. The corpus
+cases in `tools/asset_store/corpus/water.py` cover an accepted pack per model
+and each refusal: wrong target or entry type, unknown or missing fields, values
+out of range, a non-integer level, a bad name, duplicate keys, NaN, a byte
+order mark, invalid UTF-8 and an oversized file. `test_corpus.py` requires
+Python and C# to agree on every one.
+
+Water components take no numeric lock binding. Activate a deployment that
+contains one, restart, then choose its name under Options > **Water** (or pass
+`--water-style pack-id:component-id` for one session). Each deployment has one
+root pack, so a player picks one water pack, or a pack that depends on it.
+
+`python tools/asset_store/water_packs.py` builds the three GUO styles from
+`design/packs/water/`: `guo-water-pixel`, `guo-water-cel` and
+`guo-water-realistic`, CC0, byte-reproducible, each file hashed in its
+manifest. `--store-dir` publishes them into a catalogue, which is signed when
+`UO_STORE_SIGNING_KEY` is set. `--deploy DIR` installs them through the C#
+installer and writes one content lock per style for the
+`client.render.water_pack` scenario. `test_water_packs.py` publishes them into
+a store signed with a throwaway key and checks the signed index.
 
 ## Activation foundations
 

@@ -25,12 +25,28 @@ the same as with Classic tiles.
 ClassicUO's own **Animated water effect** option still works with Classic
 tiles. A water style replaces it while the style is on.
 
+## More styles from the Store
+
+Three more styles come as Store packs:
+
+- **Pixel water** (`guo-water-pixel`): chunky dithered water with whole-pixel
+  surf and glints, like a game from the early nineties.
+- **Cel water** (`guo-water-cel`): flat cartoon colour, bold bands of light,
+  white surf with a dark outline, ripples drawn as rings.
+- **Realistic water** (`guo-water-realistic`): smooth light, deeper colour out
+  at sea, a sharp sun highlight with sparkles and soft surf. In the web build
+  it is a little plainer (no fine chop or sparkles), to keep it fast.
+
+Install one from the Store, select a deployment that contains it in the
+Store's **Configure deployment** window, restart, then pick it under
+**Options > Video > Water**. A pack style is only numbers for one of the
+looks built into GUO: it carries no code. If its pack is removed, the water
+goes back to Classic tiles.
+
 ## Coming next
 
-More styles (pixel art, cel shaded,
-realistic) as Store packs, and a setting a shard owner can use to choose which
-styles their players may use. The decision behind all of it is ADR-0037 in
-`docs/architecture/`.
+A setting a shard owner can use to choose which styles their players may use.
+The decision behind all of it is ADR-0037 in `docs/architecture/`.
 
 ## For testers
 
@@ -38,4 +54,6 @@ styles their players may use. The decision behind all of it is ADR-0037 in
 scenario `client.render.water` visits the Britain docks and the Trinsic bay,
 checks the draw list against ClassicUO's, and takes stills. The perf probe has
 `britain-docks` and `trinsic-bay` scenes for frame time with the style off and
-on.
+on. For the pack styles, `python tools/asset_store/water_packs.py --deploy DIR`
+installs all three and prints what to set for the scenario
+`client.render.water_pack`, which is run once per style.

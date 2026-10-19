@@ -223,4 +223,12 @@ def verify(path):
                 except ValueError:
                     raise ValueError(f"unreadable provenance file: {name}") from None
                 require(not derived_from_client_art(record), f"{name} marks an image as derived from client art; the content policy refuses it")
+        if manifest["schema"] == "guo/store-pack@2":
+            try:
+                from .water_style import validate_water
+            except ImportError:
+                from water_style import validate_water
+            for c in manifest["components"]:
+                if c["type"] == "water":
+                    validate_water(archive.read(c["entry"]))
     return manifest

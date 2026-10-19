@@ -146,6 +146,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   wades, swims, sails or splashes into it. Off by default; Classic tiles
   draws water as before. The editor's UO World tab has it under
   **Layers > Realtime water**.
+- Three more water styles as Store packs: pixel art, cel shaded and
+  realistic. Install one, select its deployment, restart, and pick it under
+  **Options > Video > Water**. A pack style is numbers for a look built into
+  GUO, never code. ADR-0037.
 - Canvas background behind the game: grey, wood, your own image or video,
   or one of ten built-in CC0 loops. ADR-0016.
 - Containers can open as a grid of finger-sized slots (mobile default), and

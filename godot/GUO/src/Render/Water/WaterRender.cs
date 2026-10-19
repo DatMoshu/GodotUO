@@ -11,10 +11,10 @@ using Godot;
 namespace GUO.Renderer.Water;
 
 /// <summary>
-/// One look for water. The client's built-in styles are code; a later pack
-/// style (ADR-0037 decision 6, WATER-04) implements the same interface from
-/// a Store component, so nothing outside this file knows where a style's
-/// numbers -- or, if the owner allows it, its shader -- come from.
+/// One look for water. The client's built-in style is code; a pack style
+/// (ADR-0037 decision 6) implements the same interface from a Store
+/// component, so nothing outside this file knows where a style's numbers come
+/// from.
 /// </summary>
 internal interface IWaterStyle
 {
@@ -50,18 +50,54 @@ internal sealed class UoRealtimeWaterStyle : IWaterStyle
 
     public void Bind(Action<string, Variant> set)
     {
-        set("water_model", 1);
+        set("water_model", WaterRender.Model("uo"));
         set("water_tint", new Color(0.12f, 0.24f, 0.42f, 1f));
         // speed, scale (1 / world px), wave strength, foam strength
         set("water_params", new Vector4(1.0f, 0.045f, 0.22f, 0.85f));
         // glint, foam width (cells), brightness levels, ripple strength
         set("water_params2", new Vector4(0.35f, 0.22f, 6f, 1.0f));
+        // grain (world px per water pixel)
+        set("water_params3", new Vector4(1f, 0f, 0f, 0f));
     }
 
     public void BindRipples(WaterRipples ripples)
     {
         ripples.Strength = 1f;
         ripples.Damping = 0.985f;
+    }
+}
+
+/// <summary>
+/// A style from a Store pack in the active deployment: a guo/water@1 file
+/// (StoreWater) that picks one of the shader's built-in models and sets its
+/// numbers. Its id is the component's identity, pack-id:component-id.
+/// </summary>
+internal sealed class PackWaterStyle : IWaterStyle
+{
+    private readonly GUO.Store.StoreWater _style;
+
+    public PackWaterStyle(string identity, GUO.Store.StoreWater style)
+    {
+        Id = identity;
+        _style = style;
+    }
+
+    public string Id { get; }
+    public string DisplayName => _style.Name;
+
+    public void Bind(Action<string, Variant> set)
+    {
+        set("water_model", WaterRender.Model(_style.Model));
+        set("water_tint", new Color(_style.Tint[0], _style.Tint[1], _style.Tint[2], 1f));
+        set("water_params", new Vector4(_style.Speed, _style.Scale, _style.Wave, _style.Foam));
+        set("water_params2", new Vector4(_style.Glint, _style.FoamWidth, _style.Levels, _style.RippleStrength > 0f ? 1f : 0f));
+        set("water_params3", new Vector4(_style.Grain, 0f, 0f, 0f));
+    }
+
+    public void BindRipples(WaterRipples ripples)
+    {
+        ripples.Strength = _style.RippleStrength;
+        ripples.Damping = _style.RippleDamping;
     }
 }
 
@@ -94,11 +130,68 @@ internal static class WaterRender
     private static long _lastTicks;
     private static int _lastMap = -1;
 
+    /// <summary>The shader's water_model for a model name (uo_water.gdshaderinc); 0 is Classic.</summary>
+    public static int Model(string model) => model switch
+    {
+        "uo" => 1,
+        "pixel" => 2,
+        "cel" => 3,
+        "realistic" => 4,
+        _ => 0
+    };
+
+    private static GUO.Store.StoreRuntimeContent _packSource;
+    private static IWaterStyle[] _packStyles = Array.Empty<IWaterStyle>();
+
+    /// <summary>
+    /// The styles of the active deployment's water components, read once per
+    /// mounted content (it changes only on a restart). Tests set it directly.
+    /// </summary>
+    internal static IWaterStyle[] PackStyles
+    {
+        get
+        {
+            if (ProbePackStyles != null)
+            {
+                return ProbePackStyles;
+            }
+            var content = Client.Game?.UO?.FileManager?.Content;
+            if (content != _packSource)
+            {
+                _packSource = content;
+                var styles = new List<IWaterStyle>();
+                foreach ((string identity, GUO.Store.StoreWater style) in content?.WaterStyles
+                    ?? (IReadOnlyList<(string, GUO.Store.StoreWater)>)Array.Empty<(string, GUO.Store.StoreWater)>())
+                {
+                    styles.Add(new PackWaterStyle(identity, style));
+                }
+                _packStyles = styles.ToArray();
+            }
+            return _packStyles;
+        }
+    }
+
+    /// <summary>WaterProbe's stand-in for a mounted deployment's styles; null in the client.</summary>
+    internal static IWaterStyle[] ProbePackStyles;
+
+    /// <summary>Built-in styles, then the deployment's pack styles.</summary>
+    private static IEnumerable<IWaterStyle> Styles()
+    {
+        foreach (IWaterStyle s in BuiltIn)
+        {
+            yield return s;
+        }
+        foreach (IWaterStyle s in PackStyles)
+        {
+            yield return s;
+        }
+    }
+
     /// <summary>Every style Options can offer, Classic first, as (id, name).</summary>
     public static IEnumerable<(string Id, string Name)> Choices()
     {
         yield return (Classic, "Classic tiles");
-        foreach (IWaterStyle s in BuiltIn)
+        foreach (IWaterStyle s in Styles())
         {
             yield return (s.Id, s.DisplayName);
         }
@@ -150,7 +243,15 @@ internal static class WaterRender
             return null;
         }
 
+        // Every frame: two array walks, no iterator to allocate.
         foreach (IWaterStyle s in BuiltIn)
+        {
+            if (string.Equals(s.Id, id, StringComparison.OrdinalIgnoreCase))
+            {
+                return s;
+            }
+        }
+        foreach (IWaterStyle s in PackStyles)
         {
             if (string.Equals(s.Id, id, StringComparison.OrdinalIgnoreCase))
             {
@@ -391,6 +492,7 @@ internal sealed class WaterMask
 
                     bool wet = false;
                     int z = int.MinValue;
+                    int dryZ = int.MinValue;
                     for (GameObject o = chunk.GetHeadObject(cx, cy); o != null; o = o.TNext)
                     {
                         bool w = o switch
@@ -404,11 +506,18 @@ internal sealed class WaterMask
                             wet = true;
                             z = Math.Max(z, o.Z);
                         }
+                        else if (o is Land || o is Static)
+                        {
+                            dryZ = Math.Max(dryZ, o.Z);
+                        }
                     }
 
+                    // G is the water's height, or for a dry cell its ground's,
+                    // so a style can tell a beach from a cliff.
                     int at = (((wy & (Size - 1)) * Size) + (wx & (Size - 1))) * 4;
                     _pixels[at] = wet ? (byte)255 : (byte)0;
-                    _pixels[at + 1] = wet ? (byte)Math.Clamp(z + 128, 0, 255) : (byte)0;
+                    _pixels[at + 1] = wet ? (byte)Math.Clamp(z + 128, 0, 255)
+                        : dryZ == int.MinValue ? (byte)0 : (byte)Math.Clamp(dryZ + 128, 0, 255);
                 }
             }
         }

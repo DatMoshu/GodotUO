@@ -194,6 +194,18 @@ Use `--collision-world` instead of `--shared-world` for the barrier example.
 It also exports shared tiledata, and the isolated server probe verifies
 static height and `CanFit` rejection using the installed impassable flag.
 
+## Water style packs (ADR-0037)
+
+```
+python tools/asset_store/water_packs.py                    build guo-water-pixel, -cel, -realistic
+python tools/asset_store/water_packs.py --store-dir DIR    and publish them (signed with UO_STORE_SIGNING_KEY)
+python tools/asset_store/water_packs.py --deploy DIR       and install each with a content lock, for the scenario
+```
+
+Sources are `design/packs/water/<id>/` (pack.json + a `guo/water@1` style
+file). `water_style.py` is the style file's validator, mirrored by
+`Store/StoreWater.cs`; `corpus/water.py` holds the two to the same verdicts.
+
 ## Screenshots
 
 `content_probe.py --deployment-ui` exercises the real ID/import/select/rollback
