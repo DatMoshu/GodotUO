@@ -163,6 +163,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- Starting the dev shard now loads generated passwords after configuration
+  migrates them, so a newly shortened login password reaches the server on
+  the same launch. Environment and local configuration overrides still win.
 - World editor: the Layers menu (Land, Statics, Multis, Roofs, Objects and the
   live layers) now looks like a button beside the others, keeps its ticks for
   the whole editor session, and switching Roofs off takes effect at once.

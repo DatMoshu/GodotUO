@@ -51,7 +51,9 @@ REM  environment and config.local.bat still win. Same default workspace as
 REM  tools\guo\config.py.
 set "UO__SECRETS=%UO_WORKSPACE_DIR%"
 if not defined UO__SECRETS set "UO__SECRETS=%LOCALAPPDATA%\GUO"
-if exist "%UO__SECRETS%\shard\secrets.bat" call "%UO__SECRETS%\shard\secrets.bat"
+REM  The shard launcher defers generated values until configure.py has rotated
+REM  any obsolete passwords; explicit environment and config values still load.
+if /i not "%~1"=="--defer-shard-secrets" if exist "%UO__SECRETS%\shard\secrets.bat" call "%UO__SECRETS%\shard\secrets.bat"
 set "UO__SECRETS="
 
 REM --- Engine and upstream folders --------------------------------------------
