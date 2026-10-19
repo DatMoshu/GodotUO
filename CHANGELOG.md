@@ -5,6 +5,16 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 
 ## Unreleased
 
+### Performance
+- **Perf lab**: `launchers\dev\perf_lab.bat` measures GUO's frame rate on
+  your machine at 1920x1080 and at 2560x1440 zoomed out, prints the table and
+  writes a short report you can paste in Discord (GPU, driver, CPU, OS and the
+  numbers; no paths or names). It needs the dev shard running; the wiki page
+  Performance says how to run it and read it.
+- The perf probe times the world frame stage by stage (gather, sort, land,
+  statics, covering land, mobiles, items) and gains two places: a crypt under
+  the land and open sea. `docs/perf/2026-10-18_britain_breakdown.md` reads it.
+
 ### Editor
 - The editor's automation (MCP) tools have per-user permissions in Editor
   Settings: reading state, moving around and connecting start on; anything
@@ -13,6 +23,12 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   audit log, a damaged permissions file denies access without touching your
   manual tools, and switching AI off hides the settings and stops the work.
   None of this is in an exported client.
+- StaticStudio now respects the editor AI switch: generation and workflow
+  discovery stop when disabled, pending or rebound jobs cannot publish stale
+  images, and saved-theme/staged-content authoring remains available.
+- ComfyUI setup now pins custom nodes to commits and verifies model SHA256
+  hashes. The new ComfyUI doctor checks an existing installation offline;
+  mismatched files stay untouched and first-use models are marked unverified.
 - The Admin tab's god view works with nobody logged in: **Go there**,
   **Bring here**, **Open paperdoll** and **Follow** use the server's hidden
   presence when no staff character of yours is online (or pick it in
@@ -151,6 +167,11 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - **Downloads**: every push to main builds Windows, Steam Deck and an
   Android debug APK in GitHub Actions (the `release` workflow); a `v*` tag
   makes a draft release with all three.
+- **Android release APK**: `launchers\android\export.bat --release` builds
+  an APK signed with your own key, kept outside the repository and named in
+  your local config. `doctor.bat --release` says what is missing. On a tag,
+  the `release` workflow also builds one when the repository holds the key as
+  secrets.
 - **Web**: still blocked upstream; `launchers\web\doctor.bat` reports why.
   ADR-0008.
 
@@ -174,6 +195,24 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Clicking a replaced object (such as a 3D splat standing in for a statue)
   now targets, uses or picks up the original, as it would without the
   replacement.
+- Controller: a **Say** screen speaks the common commands with A (bank,
+  vendor buy and sell, guards, hail, all follow me and the other pet
+  commands). Find it at the top of the Macros screen or put it on the wheel.
+- Controller: with a target cursor up, the radar lists yourself, and the
+  pointer starts on the tile in front of you for spells aimed at the ground.
+- Controller: Set controls from the pad's own Options screen opens the list
+  of jobs too, as it does from Options.
+- Controller: **Set controls...** in Options is now a list of jobs. Pick one
+  with the D-pad and set only that one; a quick tap of B keeps it as it was,
+  **Reset to defaults** puts the shipped layout back, **Save** keeps your
+  changes and B leaves without changing anything. One wrong press no longer
+  means setting every button again.
+- Controller: mounting works from the radar. Choosing a horse that is a few
+  tiles away walks you up to it and mounts; while riding, choose yourself in
+  the radar to get off.
+- Controller: in war mode, A on a monster in the radar attacks it, as a
+  double click does with the mouse, and keeps it as your target, so X goes
+  on attacking it after the radar closes.
 - Canvas background behind the game: grey, wood, your own image or video,
   or one of ten built-in CC0 loops. ADR-0016.
 - Containers can open as a grid of finger-sized slots (mobile default), and
@@ -215,6 +254,11 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   random.
 - `docs/data_formats.md` describes the Admin tab's backup folders and their
   manifest.
+- Upstream drift report for 2026-10-18 (`docs/upstream/drift_2026-10-18.md`):
+  the eight ClassicUO commits since the reviewed pin, each marked take, skip
+  or later, and what the ClassicUO 2.0 beta means for GUO (its source is not
+  public, so it is a reference for the water, terrain and modding work, not
+  code to port).
 - World editor: the Layers menu (Land, Statics, Multis, Roofs, Objects and the
   live layers) now looks like a button beside the others, keeps its ticks for
   the whole editor session, and switching Roofs off takes effect at once.
