@@ -151,6 +151,7 @@ public partial class EditorSmoke
             AiCheck("ai_toggle_hides_mcp_settings", EditorMcpAccess.Groups.All(g => !settings.HasSetting(EditorMcpAccess.Prefix + g.Id))
                 && settings.HasSetting(AiFeatures.SettingPath));
             AiCheck("ai_toggle_hides_generation", !Art.AiControlsVisible);
+            AiCheck("ai_toggle_hides_staticstudio_generation", !Studio.AiControlsVisible && Studio.WorkflowCount == 0);
             AiCheck("ai_toggle_cancels_lifetime", lifetime.IsCancellationRequested);
             AiCheck("ai_toggle_kills_agent", !started || !Alive(pid));
             AiCheck("ai_toggle_no_mcp", !plugin.AiMcpRunning && EditorMcpConnection.Servers().Count == 0);

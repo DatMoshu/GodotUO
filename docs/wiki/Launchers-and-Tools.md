@@ -73,6 +73,9 @@ shared logic), and their Linux twins `config.sh`, `config.local.sh` and
 | `smoke.bat` | The seven-step health check: engine, imports, C# build, client data, offline load, the editor add-on, the launchers. Run before every commit. |
 | `screenshot.bat` | Boots the client with `--screenshot` into `build\screenshots`; extra flags pass through (`--play --shot-after N`). |
 | `playtest.bat` | A scripted session against the shard: log in, walk, gumps, drag, speak; exit 0 only if every check passed. |
+| `perf_lab.bat` | Your frame rate at 1920x1080 and at 2560x1440 zoom 2.5, as a table and a report to share. Needs the dev shard running. See [Performance](Performance.md). |
+| `perf_lab_doctor.bat` | Checks what the perf lab needs and says how to fix what is missing; measures nothing. |
+| `perf_probe.bat` | The developer's frame-time probe under the perf lab: one window size, every column. |
 | `endurance.bat [seconds]` | The playtest, then keeps walking (five minutes by default) and compares the last stretch with the first in frame time, object count and memory. |
 | `multi_client.bat` | Four scripted clients at once, tiled 2x2, one lane each: session, effects, highlight, sweep. `--only`, `--list`, `--sound`. |
 | `plugin_probe.bat` | Builds a native and a managed test plugin, plays a session with both, reads their logs back. Needs MSVC. |
