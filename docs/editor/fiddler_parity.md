@@ -1,6 +1,7 @@
 # UOFiddler parity: a workbench for UO modders
 
-Phase 1 proposal, 2026-10-19. Awaiting guo-director and exec-fable review.
+Phase 1 proposal, 2026-10-19. guo-director first-pass review received;
+catalogue and survey await guo-director and exec-fable sign-off.
 No implementation, dispatch, sprint edits, publication or licence approval is implied.
 
 ## Variant survey: which tools deserve parity coverage first?
@@ -252,9 +253,12 @@ verdata overlay, a newly allocated ID, replacement of a used record, and full
 container conversion are four distinct operations.
 
 [ADR-0022](../architecture/ADR-0022-authoring-uo-data-files.md) is marked
-**Proposed in this checkout**. Its existence and code do not settle owner
-approval. The director must confirm current decisions before authorizing new
-write semantics. Existing installations remain read-only throughout.
+**Proposed on main**, confirmed by guo-director's first-pass review on
+2026-10-19. F02a occupied-record replacement waits for Moshu's approval.
+F01a adds independent read-back and needs no write-policy decision; it can
+be the first implementation story after plan approval. All work stays in
+the editor/tools layers and all writes target staged copies. Existing
+installations remain read-only throughout.
 
 ## Proposed delivery order
 
@@ -272,7 +276,7 @@ The first five proposed PRs are:
    without GUI interaction or bundling proprietary data. Produce a dependency
    doctor and a machine-readable mismatch report. This unlocks credible parity.
 2. **F02a: explicit existing-record stage replacement.** Fileformat lane,
-   after F01a and director/owner agreement on the staged-save contract. One
+   after F01a and Moshu's approval of occupied-record replacement. One
    domain first: static art. Replace one occupied MUL or UOP ID, preserving the
    rest and refusing install destinations. No general converter in this PR.
 3. **F06a: item metadata document.** Editor lane with fileformat review,
@@ -419,9 +423,11 @@ smoke does not establish all 1,198 features; domain proofs remain mandatory.
 The director and exec-fable should review the catalogue coverage and first
 five stories together. Resolve these before dispatch:
 
-1. Confirm which existing ADR-0022 decisions are approved, then route occupied
-   record replacement, deletion, container conversion and maintenance semantics
-   to Moshu as needed. All destinations remain staged copies.
+1. Director decision recorded: ADR-0022 remains Proposed on main. Hold F02a
+   occupied-record replacement for Moshu; F01a independent read-back requires
+   no write-policy decision and may go first after plan approval. Route deletion,
+   container conversion and maintenance semantics for their own decisions.
+   All work remains editor/tools only, with writes to staged copies.
 2. Confirm that this baseline excludes other lanes' pending work and reconcile
    duplicates before assignment. Keep this effort in the editor/tools layers.
 3. Choose the independent reader build/version per file type and how its
@@ -470,4 +476,5 @@ profile/cache under the sandbox; the authorized rerun completed. Neither run
 certifies the new third-party formats or their visual behavior.
 
 Phase 1 delivery is these two documents and a director review note. Phase 2
-starts with the reviewers' response. Phase 3 remains held until approval.
+review is in progress; the first-pass director decisions are recorded above.
+Phase 3 remains held until plan approval.
