@@ -6,6 +6,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Editor
+- StaticStudio now respects the editor AI switch: generation and workflow
+  discovery stop when disabled, pending or rebound jobs cannot publish stale
+  images, and saved-theme/staged-content authoring remains available.
 - ComfyUI setup now pins custom nodes to commits and verifies model SHA256
   hashes. The new ComfyUI doctor checks an existing installation offline;
   mismatched files stay untouched and first-use models are marked unverified.
