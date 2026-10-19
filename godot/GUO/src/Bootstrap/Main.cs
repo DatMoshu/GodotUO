@@ -473,6 +473,8 @@ public partial class Main : Node
         // The player's own looks and shaders (ADR-0023).
         GUO.Renderer.PostFx.PostFxLibrary.UserFolder = System.IO.Path.Combine(dataDir, "postfx");
         GUO.Renderer.PostFx.PostFxStack.RunOverride = string.IsNullOrWhiteSpace(_options.PostFx) ? null : _options.PostFx;
+        GUO.Network.Mods.ClientMods.RunOverride = _options.LoadMods;
+        GUO.Network.Mods.ClientMods.FolderOverride = string.IsNullOrWhiteSpace(_options.ModsDir) ? null : _options.ModsDir;
 
         GD.Print($"[GUO] client home   : {dataDir}");
 
@@ -1631,6 +1633,13 @@ public partial class Main : Node
         /// <summary>--postfx NAME|off: the look for this run only, state.json untouched (PostFxStack.RunOverride).</summary>
         public string PostFx { get; private set; }
 
+        /// <summary>--load-mods: load packet mods for this run only, settings.json untouched (ADR-0038);
+        /// how the perf lab measures a mod on and off.</summary>
+        public bool LoadMods { get; private set; }
+
+        /// <summary>--mods-dir PATH: the folder mods load from for this run, instead of Data/Mods.</summary>
+        public string ModsDir { get; private set; }
+
         /// <summary>--perf-parity: per scene, compare --batched-world with the plain path pixel for pixel.</summary>
         public bool PerfParity { get; private set; }
 
@@ -2030,6 +2039,12 @@ public partial class Main : Node
                         break;
                     case "--postfx":
                         o.PostFx = Next();
+                        break;
+                    case "--load-mods":
+                        o.LoadMods = true;
+                        break;
+                    case "--mods-dir":
+                        o.ModsDir = Next();
                         break;
                     case "--door-probe":
                         o.DoorProbe = true;
