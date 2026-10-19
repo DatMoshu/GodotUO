@@ -2774,6 +2774,47 @@ thread with distance attenuation (full to 2 tiles, silent past 20).
 `VoiceManager.Status` reports the pipeline state for probes;
 `--voice`/`--say`/`--voice-fake`/`--hear-secs` drive it in walk-to runs.
 
+## 42. Packet mods (`Data/Mods/<mod>/mod.json`, `load_mods`, ADR-0038)
+
+A packet mod is a folder the user installed beside `Data/Plugins`: a
+`mod.json` and the mod's assembly, built against `GUO.ModApi`
+(`godot/GUO.ModApi`). The client loads mods once at start, only when
+`settings.json` has `"load_mods": true` (default false, absent in older
+files). Android and web builds never load them. Nothing is downloaded.
+
+`mod.json`, schema `guo/mod@1`. Every field below is the whole set; any other
+field refuses the mod.
+
+| Field | Type | Rule |
+|---|---|---|
+| `schema` | string | `guo/mod@1` |
+| `id` | string | 1-64 of `a-z`, `0-9`, `-`; unique among installed mods |
+| `version` | string | three numbers, `1.0.0` |
+| `title`, `author` | string | required, at most 100 characters |
+| `licence` | string | optional, at most 64 characters |
+| `abi` | integer | the `ModAbi.Version` it was built for; must equal the client's (1) |
+| `assembly` | string | a `.dll` file name in the mod's folder, no path |
+| `entry` | string | full name of the public `IGuoMod` type |
+| `shards` | string array | 1-32 shards the mod applies to: login hosts or shard names, compared case-insensitively with the login server address and the chosen server name; or `"*"` |
+| `packets` | object array | 1-64 declarations, each `{id, subcommand?, length?, override?}` |
+
+A packet declaration: `id` 0..255 as a number or `"0xF9"`; `subcommand`
+(0xBF only) 0..65535 as a number or hex string; `length` -1 (dynamic, bytes
+1-2 carry it; the default) or 1..32767; `override` true only when the client
+already handles that id or subcommand. Declaring the same id and subcommand
+twice is refused. 0xBF subcommands GUO reserves for itself are refused
+whatever the declaration: 0x4755 (the shard offer, `guo/shard-offer@1`).
+
+At start each mod's `IGuoMod.Register` calls `AddPacket` for packets it
+declared. A registration whose client-version range excludes this client is
+skipped. Anything else that disagrees with `mod.json`, replaces a client
+handler without `override`, or collides with another mod refuses the whole
+mod; its reason goes to the client log (`[mods] refused ...`) and Options
+shows a count. On a shard not in `shards` the mod's packets are inactive.
+
+A handler gets the whole framed packet (id and length bytes included) on the
+game thread. An exception drops that packet and is logged
+(`[mods] <id>: dropped packet ...`).
 ## 41. Perf probe and perf lab reports (`build/perf`, `tools/perf_probe`, `tools/perf_lab`)
 
 **Probe JSON**, `perf_<label>.json`, written by the client's `--perf-probe`
