@@ -22,9 +22,19 @@ display is unaffected, and the probe reports "one display" and passes.
   in the ported gump code knows there are two screens.
 - A tap on the lower screen reaches the client as a mouse event at the
   shifted position.
-- The profile key `DualScreenEnabled` turns it on for a character; an
-  Options checkbox exists for it, **written, not exercised on a screen**
-  (ADR-0009 says so).
+- The lower screen opens with the client. Before login it shows a welcome
+  panel (the sigil, the client version, the shard and the second screen's
+  own settings); in the world it holds the paperdoll, backpack, status bar
+  and journal in fixed slots. The same settings are under Options > General >
+  "Gumps & Context" where a second display exists, applied live: the profile
+  keys `DualScreenEnabled`, `DualScreenShelvePaperdoll`, `...Backpack`,
+  `...Status`, `...Journal`, `...Others` and `DualScreenScale` (0 = the main
+  screen's scale, else 1x to 3x). The Options checkboxes are **written, not
+  verified** on a screen here; `tools\android\README.md` describes them.
+- A prototype of **companion tabs** (journal and character panels in place
+  of the shelf) exists, off by default: Options, "Companion tabs on the
+  second screen (prototype)" or `--companion-tabs`. See [Feature
+  Layers](Feature-Layers.md) for what a prototype may and may not promise.
 
 ## Flags and settings
 
@@ -49,14 +59,10 @@ status bar and journal on the lower screen, the world alone on the upper one,
 a tap on the lower screen reaching the client, and no measurable cost to the
 main screen's frame rate.
 
-A separate background agent is extending this to open the second screen from
-launch with a welcome page and settings; that work is not on this branch and
-is not described here.
-
 ## Generalising beyond one device
 
 Everything the client asks the OS for goes through `DisplayManager` and
-`Presentation`, which any Android 12+ device with a second display exposes
+`Presentation`, which an Android device with a second display exposes
 (a foldable's outer display, an external monitor over USB-C, a two-screen
 handheld). Only the one handheld has been tried; the vendor-tolerance path (a missing
 Java method disabling the feature) is **written, not verified**.

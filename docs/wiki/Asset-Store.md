@@ -13,7 +13,23 @@ install, update and uninstall.
   arbitrary settings into your profile, and never replaces game art.
 - **Art overrides are disabled.** UO art is proprietary, and the Store doesn't
   carry it.
-- The supported kinds are `background`, `theme`, `sound` and `profile-preset`.
+- The supported kinds are `background`, `theme`, `sound`, `profile-preset`,
+  `screensaver`, `postfx` (screen effect looks), `razor-script` (Razor
+  scripts: stored and previewed, never run on install) and `content`
+  (version 2 packs, below).
+
+## Content packs (version 2)
+
+A `content` pack lists typed components. Three are new: `hd-art`, `splat`
+and `voice`. Installing one runs nothing and decodes nothing.
+
+- **HD art** is used by the Enhanced HD option (Options, off by default).
+  Anything a pack does not cover stays native art.
+- **Voice** packs are used by the regional audio option (Options > Sound, off
+  by default).
+- **Splats** have no client consumer yet; activating one is refused.
+
+See [Content Packs](Content-Packs.md) and `docs/asset_pack_ecosystem.md`.
 
 ## How installs stay safe
 
@@ -39,13 +55,16 @@ and serves packs from a folder:
 
 ```
 python tools\asset_store\run.py --help
-python tools\asset_store\seed.py      ten CC0 sample packs from the built-in background loops
+python tools\asset_store\seed.py      the ten built-in CC0 background loops as store packs
+python tools\asset_store\samples.py   optional sample themes, sounds and profile presets
 python tools\asset_store\smoke.py     publish, install, update and uninstall, end to end
 ```
 
 Point the client at a store with `UO_STORE_URL`, or set a per-character store
 address in Options. The store's root also serves a searchable static page of
-pack cards. Hosting the public catalogue on GitHub Pages is planned.
+pack cards. `launchers\store` has keygen, open, publish and serve. A template
+for the official catalogue's repository is in `tools/asset_store/catalogue_repo`;
+public hosting is not live yet.
 
 ## Making a pack
 
