@@ -86,8 +86,23 @@ Upstream has no touch input. Rows come from `docs/ui/mobile_playability.md`,
 
 ## Live runs
 
-Filled in by the runs below. Evidence lives in the shared runs area under
-`20261018_guo-worker-input_input-audit`, not in this repo.
+An agent cannot sit and play for fifteen minutes, so each mode was run
+through its scripted session instead, against the dev shard where one is
+needed. Each line says what ran and what it showed. Evidence lives in the
+shared runs area under `20261018_guo-worker-input_input-audit` and
+`20261018_guo-worker-input_input-00`, not in this repo.
+
+| Mode | Run | Result |
+|---|---|---|
+| Gamepad | `--pad-regression-probe` (synthetic pad, no shard) | 52/52 after INPUT-00 |
+| Gamepad | `--pad-wheels-probe` on the dev shard, twice (2026-10-18 22:44Z, 22:55Z) | Wheel, radar, Set controls, screens, mount by walk-up and dismount pass. The shard lacked the pad dummies (patch 0004), so the attack and use dummies were not reached; once the shard sent no target cursor for a party invite |
+| Keyboard and mouse | `launchers\dev\playtest.bat` | pending a shard window |
+| Touch (desktop layer) | `launchers\dev	ouch_probe.bat` | pending a shard window |
+| Touch (emulator) | `launchersndroid\smoke.bat --avd` | pending the emulator |
+
+K1 and K2 cannot be shown by a scripted run: focus loss and an AltGr layout
+come from the operating system, not from an injected event. Both rest on the
+engine source cited in their rows.
 
 ## What goes where
 
