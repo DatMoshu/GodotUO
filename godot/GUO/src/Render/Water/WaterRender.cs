@@ -492,6 +492,7 @@ internal sealed class WaterMask
 
                     bool wet = false;
                     int z = int.MinValue;
+                    int dryZ = int.MinValue;
                     for (GameObject o = chunk.GetHeadObject(cx, cy); o != null; o = o.TNext)
                     {
                         bool w = o switch
@@ -505,11 +506,18 @@ internal sealed class WaterMask
                             wet = true;
                             z = Math.Max(z, o.Z);
                         }
+                        else if (o is Land || o is Static)
+                        {
+                            dryZ = Math.Max(dryZ, o.Z);
+                        }
                     }
 
+                    // G is the water's height, or for a dry cell its ground's,
+                    // so a style can tell a beach from a cliff.
                     int at = (((wy & (Size - 1)) * Size) + (wx & (Size - 1))) * 4;
                     _pixels[at] = wet ? (byte)255 : (byte)0;
-                    _pixels[at + 1] = wet ? (byte)Math.Clamp(z + 128, 0, 255) : (byte)0;
+                    _pixels[at + 1] = wet ? (byte)Math.Clamp(z + 128, 0, 255)
+                        : dryZ == int.MinValue ? (byte)0 : (byte)Math.Clamp(dryZ + 128, 0, 255);
                 }
             }
         }

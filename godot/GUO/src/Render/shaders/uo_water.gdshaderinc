@@ -138,6 +138,26 @@ float water_edge(vec2 cell, vec2 f) {
 	return foam;
 }
 
+// One neighbour's share of the shore for water_shore: dry, and its ground no
+// more than 8 above this water, so a beach makes surf and a cliff does not.
+float water_low_dry(vec2 n, float wz) {
+	vec4 m = water_mask_at(n);
+	return (1.0 - step(0.5, m.r)) * step(floor(m.g * 255.0 + 0.5) - 128.0 - wz, 8.0);
+}
+
+// water_edge for the pack models: only beaches count as shore. (The uo
+// model keeps water_edge, so its pixels do not change.)
+float water_shore(vec2 cell, vec2 f) {
+	float width = max(water_params2.y, 0.01);
+	float wz = floor(water_mask_at(cell).g * 255.0 + 0.5) - 128.0;
+	float foam = 0.0;
+	foam = max(foam, water_low_dry(cell + vec2(1.0, 0.0), wz) * (1.0 - smoothstep(0.0, width, 0.5 - f.x)));
+	foam = max(foam, water_low_dry(cell - vec2(1.0, 0.0), wz) * (1.0 - smoothstep(0.0, width, 0.5 + f.x)));
+	foam = max(foam, water_low_dry(cell + vec2(0.0, 1.0), wz) * (1.0 - smoothstep(0.0, width, 0.5 - f.y)));
+	foam = max(foam, water_low_dry(cell - vec2(0.0, 1.0), wz) * (1.0 - smoothstep(0.0, width, 0.5 + f.y)));
+	return foam;
+}
+
 float water_foam(vec2 cell, vec2 f, vec2 world, float t) {
 	float foam = water_edge(cell, f);
 	// Broken up and breathing, so it reads as surf rather than an outline.
@@ -160,7 +180,7 @@ vec3 water_pixel(vec3 base, vec2 cell, vec2 f, vec2 world, float t, float light,
 	vec2 px = floor(world / max(water_params3.x, 1.0));
 	float d = water_bayer(px);
 	float levels = max(water_params2.z, 1.0);
-	float shade = (light - 0.75) * water_params.z * 2.0 + ripple * rs * 0.6;
+	float shade = (light - 0.75) * water_params.z * 2.0 + ripple * rs * 1.5;
 	shade = floor(shade * levels + d) / levels;
 	vec3 c = base + shade * mix(base, water_tint.rgb, 0.5);
 	c = floor(c * 12.0 + d) / 12.0;
@@ -168,7 +188,7 @@ vec3 water_pixel(vec3 base, vec2 cell, vec2 f, vec2 world, float t, float light,
 	// single bright pixels, not patches (about 1% of the sea at glint 0.6).
 	float glint = step(0.995 - water_params2.x * 0.005, light) * step(0.5, d);
 	c = mix(c, vec3(0.92, 0.96, 1.0), glint);
-	float foam = step(d + 0.01, water_edge(cell, f) * water_params.w
+	float foam = step(d + 0.01, water_shore(cell, f) * water_params.w
 			* (0.55 + 0.45 * sin(t * 1.6 + (cell.x + cell.y) * 0.9)));
 	c = mix(c, vec3(0.9, 0.95, 1.0), foam);
 	return clamp(c, 0.0, 1.0);
@@ -185,10 +205,13 @@ vec3 water_cel(vec3 base, vec2 cell, vec2 f, float t, float light, float ripple,
 	// The light band sits one step above the base, not two: next to UO's
 	// art a brighter one read cartoon-loud.
 	vec3 c = flat_c * (0.8 + 0.3 * band);
-	float r = abs(ripple * rs);
-	c = mix(c, flat_c * 1.6 + 0.08, step(0.08, r) * (1.0 - step(0.2, r)));
+	// A ripple is drawn as its contour lines, light on the crest and dark in
+	// the trough: thin rings, where a band of heights filled a disc.
+	float r = ripple * rs;
+	c = mix(c, flat_c * 1.5 + 0.06, step(abs(r - 0.1), 0.02));
+	c = mix(c, flat_c * 0.6, step(abs(r + 0.1), 0.02));
 	c += vec3(step(0.985, light) * water_params2.x);
-	float edge = water_edge(cell, f) * (0.85 + 0.15 * sin(t * 1.6 + (cell.x + cell.y) * 0.9));
+	float edge = water_shore(cell, f) * (0.85 + 0.15 * sin(t * 1.6 + (cell.x + cell.y) * 0.9));
 	float on = step(0.01, water_params.w);
 	float foam = step(0.5, edge) * on;
 	float ink = step(0.3, edge) * (1.0 - foam) * on;
@@ -202,14 +225,14 @@ vec3 water_cel(vec3 base, vec2 cell, vec2 f, float t, float light, float ripple,
 // sparkles, and surf is soft. On Compatibility the glitter is left out, with
 // the chop above.
 vec3 water_realistic(vec3 base, vec2 cell, vec2 f, vec2 world, float t, float light, float ripple, float rs) {
-	float edge = water_edge(cell, f);
+	float edge = water_shore(cell, f);
 	float open_w = water_mask_at(cell + vec2(2.0, 0.0)).r * water_mask_at(cell - vec2(2.0, 0.0)).r
 			* water_mask_at(cell + vec2(0.0, 2.0)).r * water_mask_at(cell - vec2(0.0, 2.0)).r;
 	float luma = dot(base, vec3(0.299, 0.587, 0.114));
 	vec3 deep = water_tint.rgb * (0.5 + 1.2 * luma);
 	vec3 c = mix(base, deep, 0.35 + 0.35 * open_w * (1.0 - edge));
 	c *= 1.0 + (light - 0.75) * water_params.z * 2.4;
-	c += ripple * rs * vec3(0.20, 0.24, 0.27);
+	c += ripple * rs * vec3(0.50, 0.58, 0.64);
 	float spec = pow(clamp(light, 0.0, 1.0), 48.0) * water_params2.x * 2.0;
 #if CURRENT_RENDERER != RENDERER_COMPATIBILITY
 	float sparkle = step(0.94, water_noise(world * 0.5 + vec2(t * 2.3, -t * 1.7))) * step(0.9, light);

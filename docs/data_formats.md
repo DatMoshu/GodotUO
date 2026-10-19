@@ -2761,7 +2761,7 @@ bit 6, circle-of-transparency in bit 7). Classic never sets it.
 | `water_model` | int | 0 Classic (branch never taken), 1 `uo`, 2 `pixel`, 3 `cel`, 4 `realistic` |
 | `water_time` | float | seconds from the client clock |
 | `water_target_to_world` | vec4 | world px = target px * xy + zw; a tile's centre is ((X - Y) * 22, (X + Y) * 22 - 4 Z) |
-| `water_mask` | sampler2D | 128 x 128 RGBA8 ring of world cells (texel x & 127, y & 127): R 255 water / 0 dry, G water z + 128 |
+| `water_mask` | sampler2D | 128 x 128 RGBA8 ring of world cells (texel x & 127, y & 127): R 255 water / 0 dry; G + 128 is the water's z, or for a dry cell its highest land or static z (0 when it has none) |
 | `water_mask_origin` | vec2 | the ring's first cell; cells outside it read as water at z -5 |
 | `water_tint` | vec4 | the colour swells lean towards |
 | `water_params` | vec4 | speed, scale (1 / world px), wave strength, foam strength |
@@ -2795,7 +2795,9 @@ pixels. `cel`: flat colour in the tint, lit by the tile's light level, bold
 bands, white surf with a dark ink line, ripples as crisp rings. `realistic`:
 smooth light with a finer chop, open water deepening to the tint away from the
 shore, a sharp highlight with sparkles and soft surf; on the Compatibility
-renderer (the web build) the chop and the sparkles are left out.
+renderer (the web build) the chop and the sparkles are left out. The three
+pack models put surf only where the dry neighbour is a beach (its ground at
+most 8 above the water), never under a cliff; `uo` keeps surf on every shore.
 
 **Store water styles** (WATER-04). A v2 content pack's `water` component
 (`docs/asset_pack_ecosystem.md`) targets `client` and names a JSON entry, a
