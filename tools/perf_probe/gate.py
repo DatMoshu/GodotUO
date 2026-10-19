@@ -61,8 +61,8 @@ def compare(baseline: dict, measured: dict) -> tuple[bool, str]:
             raise ValueError(f"{key} differs from baseline")
     lines = ["## Performance count gate", "",
              "Binding: draw calls may increase by at most 5%; batcher items may not increase.",
-             "Frame times are advisory until the CI runner proves stable.", "",
-             "| Scene | Draw calls (baseline → measured) | Batcher items (baseline → measured) | Result |",
+             "Frame times are advisory; they do not affect this count gate.", "",
+             "| Scene | Draw calls (baseline -> measured) | Batcher items (baseline -> measured) | Result |",
              "|---|---:|---:|---|"]
     passed = True
     for scene in SCENES:
@@ -79,13 +79,13 @@ def compare(baseline: dict, measured: dict) -> tuple[bool, str]:
         if not items_ok:
             failures.append("batcher items increased")
         result = "PASS" if ok else "FAIL: " + "; ".join(failures)
-        lines.append(f"| {scene} | {a['draw_calls']} → {b['draw_calls']} | "
-                     f"{a['batcher_items']} → {b['batcher_items']} | {result} |")
+        lines.append(f"| {scene} | {a['draw_calls']} -> {b['draw_calls']} | "
+                     f"{a['batcher_items']} -> {b['batcher_items']} | {result} |")
     lines.extend(["", "### Frame times (advisory)", "",
-                  "| Scene | Mean ms (baseline → measured) | p95 ms | p99 ms |",
+                  "| Scene | Mean ms (baseline -> measured) | p95 ms | p99 ms |",
                   "|---|---:|---:|---:|"])
     for scene in SCENES:
-        cells = [f"{before[scene][key]} → {after[scene][key]}" for key in TIMES]
+        cells = [f"{before[scene][key]} -> {after[scene][key]}" for key in TIMES]
         lines.append(f"| {scene} | " + " | ".join(cells) + " |")
     lines.extend(["", "**Count gate: " + ("PASS" if passed else "FAIL") + "**", ""])
     return passed, "\n".join(lines)

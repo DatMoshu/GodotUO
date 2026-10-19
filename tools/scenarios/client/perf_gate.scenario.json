@@ -1,0 +1,15 @@
+{
+  "id": "client.perf.gate",
+  "title": "Performance gate input: probe all six scenes on the GM dev shard",
+  "surface": "client",
+  "requires": {"shard": "dev", "build": "release"},
+  "timeouts": {"step_s": 600, "run_s": 900},
+  "steps": [
+    {"id": "probe", "do": {"kind": "launch", "args": ["--perf-probe", "--perf-out", "$perf_out", "--perf-label", "scenario-gate", "--perf-zoom", "1.0", "--window-size", "1280,720", "--postfx", "off"], "settings": {"autologin": false}},
+     "say": "Measure login, field, bank, forest, dungeon and walk using the configured GM probe account. The output directory must be outside the checkout.",
+     "expect": {"log.contains": "[GUO] perf probe: walk:", "within_s": 600}},
+    {"id": "written", "do": {"kind": "wait", "seconds": 1},
+     "expect": {"log.contains": "[GUO] perf probe: wrote", "within_s": 30}},
+    {"id": "review", "do": {"kind": "note", "text": "This scenario checks the real probe input path only. Use perf_gate to record and compare per-machine baselines; the scenario itself makes no regression or FPS claim."}}
+  ]
+}
