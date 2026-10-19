@@ -441,7 +441,7 @@ namespace GUO.Game.Scenes
         {
             if (
                 _lightCount >= LightsLoader.MAX_LIGHTS_DATA_INDEX_COUNT
-                || !UseLights && !UseAltLights
+                || !UseLights && !UseAltLights && !UseRealtimeLights // PORT DEVIATION (GUO): ADR-0039 lights by day too
                 || obj == null
             )
             {
@@ -579,6 +579,7 @@ namespace GUO.Game.Scenes
 
                 light.DrawX = x;
                 light.DrawY = y;
+                RecordRealtimeLight(obj, ref light); // PORT DEVIATION (GUO): ADR-0039 keeps the tile
                 _lightCount++;
             }
         }
@@ -991,6 +992,10 @@ namespace GUO.Game.Scenes
 
             DrawWorld(batcher, ref matrix, renderTargets);
 
+            // PORT DEVIATION (GUO): Realtime lights (ADR-0039) consume this
+            // frame's offers after the world draw; nothing when the option is off.
+            DrawRealtimeLights(renderTargets, ref matrix);
+
             return base.Draw(batcher, renderTargets);
         }
 
@@ -1151,6 +1156,13 @@ namespace GUO.Game.Scenes
         {
             InitializeRenderTargets(renderTargets);
 
+            // PORT DEVIATION (GUO): Realtime lights (ADR-0039) draw their own
+            // target after the world; the classic target is cleared here.
+            if (PrepareRealtimeLightTarget(batcher, renderTargets))
+            {
+                return false;
+            }
+
             if (
                 !UseLights && !UseAltLights
                 || _world.Player.IsDead && ProfileManager.CurrentProfile.EnableBlackWhiteEffect
@@ -1230,11 +1242,12 @@ namespace GUO.Game.Scenes
         private void InitializeRenderTargets(RenderTargets renderTargets)
         {
             renderTargets.SetLightsConfiguration(
-                UseAltLights ? _altLightsBlend : (UseLights ? _darknessBlend : () => null),
+                // PORT DEVIATION (GUO): Realtime lights (ADR-0039) always use the darkness blend.
+                UseRealtimeLights ? _darknessBlend : (UseAltLights ? _altLightsBlend : (UseLights ? _darknessBlend : () => null)),
                 () =>
                 {
                     Vector3 v = Vector3.Zero;
-                    v.Z = UseAltLights ? 0.5f : 1f;
+                    v.Z = UseAltLights && !UseRealtimeLights ? 0.5f : 1f;
                     return v;
                 }
             );

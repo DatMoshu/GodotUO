@@ -401,6 +401,12 @@ namespace GUO.Configuration
         public bool EnhancedHD { get; set; } = false;
         public HdFilterMode HdFilter { get; set; } = HdFilterMode.Auto;
 
+        // PORT DEVIATION (GUO): Realtime lights (ADR-0039). When true the
+        // world is lit by a tile-grid light field that walls block and the
+        // shard's light level colours; off is the classic light target,
+        // byte-identical. Default off.
+        public bool RealtimeLights { get; set; } = false;
+
         public bool HideChatGradient { get; set; } = false;
 
         public bool StandardSkillsGump { get; set; } = true;

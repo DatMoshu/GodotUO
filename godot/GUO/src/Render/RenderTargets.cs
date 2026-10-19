@@ -36,6 +36,10 @@ namespace GUO.Renderer
         public RenderTarget2D LightRenderTarget { get => _lightRenderTarget; }
         public RenderTarget2D WorldRenderTarget { get => _worldRenderTarget; }
 
+        // PORT DEVIATION (GUO): Realtime lights (ADR-0039) draw their own
+        // light texture; set, it is blended in place of the classic target.
+        public Texture2D LightOverride { get; set; }
+
         /// <summary>The world target's size in its own pixels; see GameScene.DrawWorld.</summary>
         public Rectangle GameWorldSceneAfterDPI => _gameWorldSceneAfterDPI;
 
@@ -185,7 +189,7 @@ namespace GUO.Renderer
             batcher.SetBlendState(_lightsBlendState?.Invoke());
 
             batcher.Draw(
-                LightRenderTarget,
+                LightOverride ?? (Texture2D)LightRenderTarget, // PORT DEVIATION (GUO): ADR-0039
                 _gameWorldSceneOnScreen,
                 _lightsHue?.Invoke() ?? Vector3.Up,
                 0f

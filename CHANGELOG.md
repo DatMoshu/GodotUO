@@ -140,6 +140,11 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   ADR-0008.
 
 ### Playing
+- **Realtime lights** (Options > Video, off by default): torches and lamps
+  light the tiles around them and walls block them, so a lit room stays lit
+  and the one next door stays dark; day and night follow the shard's light
+  level (the Light level setting still overrides it), with interiors dimmer
+  by day. Off, the world lights exactly as before. ADR-0039.
 - Canvas background behind the game: grey, wood, your own image or video,
   or one of ten built-in CC0 loops. ADR-0016.
 - Containers can open as a grid of finger-sized slots (mobile default), and

@@ -1,0 +1,13 @@
+{
+  "id": "client.realtime.lights",
+  "title": "Realtime lights: default off, ambient ramp, walls block, reach cache, roof dim",
+  "surface": "client",
+  "requires": {"build": "debug"},
+  "timeouts": {"step_s": 60, "run_s": 180},
+  "steps": [
+    {"id": "launch", "do": {"kind": "launch", "args": ["--realtime-lights-probe"], "settings": {"autologin": false, "username": "", "password": ""}},
+     "say": "Check the tile-grid light field without game data (ADR-0039).",
+     "expect": {"log.contains": "[Realtime lights] PASS", "within_s": 45}},
+    {"id": "summary", "do": {"kind": "note", "text": "Default-off persistence, day/dusk/night ambient, the tiledata blocking rule, a wall blocking and a gap passing light, falloff to zero at the radius, cache hit and invalidation, roof dim by day only. A lit room by night and the classic frame with the option off are rendered evidence runs."}}
+  ]
+}

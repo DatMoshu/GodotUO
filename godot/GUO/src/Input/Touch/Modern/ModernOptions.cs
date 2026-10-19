@@ -138,6 +138,7 @@ internal sealed partial class ModernOptions : ModernGump
         Bool("Video", "Circle of transparency", p => p.UseCircleOfTransparency, (p, v) => p.UseCircleOfTransparency = v);
         Bool("Video", "Shadows", p => p.ShadowsEnabled, (p, v) => p.ShadowsEnabled = v);
         Bool("Video", "Death screen", p => p.EnableDeathScreen, (p, v) => p.EnableDeathScreen = v);
+        Bool("Video", "Realtime lights", p => p.RealtimeLights, (p, v) => p.RealtimeLights = v);
         Bool("Video", "Enhanced HD", p => p.EnhancedHD, (p, v) =>
         {
             if (p.EnhancedHD != v)

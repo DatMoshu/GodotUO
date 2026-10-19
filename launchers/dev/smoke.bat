@@ -44,6 +44,9 @@ echo [smoke] optional audio pack contracts (synthetic; no shard or AI service)
 echo [smoke] optional HD pack contracts (synthetic)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Store/StoreHdProbe.tscn || set "FAIL=1"
 
+echo [smoke] Realtime lights contract (synthetic; ADR-0039)
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/Lights/RealtimeLightsProbe.tscn || set "FAIL=1"
+
 echo [smoke] PostFX engine regressions (synthetic)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Bootstrap/PostFxEngineProbe.tscn || set "FAIL=1"
 

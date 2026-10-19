@@ -2736,3 +2736,40 @@ attenuated by the speaker's tile distance. Synthesis shells `voice.py`
 thread with distance attenuation (full to 2 tiles, silent past 20).
 `VoiceManager.Status` reports the pipeline state for probes;
 `--voice`/`--say`/`--voice-fake`/`--hear-secs` drive it in walk-to runs.
+
+## 45. Realtime lights (`Profile.RealtimeLights`, ADR-0039)
+
+An L1 client option, default off, in Options > Video on both interfaces.
+Profile field `RealtimeLights` (bool). No other file, pack or setting; the
+existing **Light level** override (`UseCustomLightLevel`, `LightLevel`,
+`LightLevelType`) is the override slider for the shard's light level.
+
+On, each frame the scene builds a tile grid over the visible chunks plus an
+8-tile margin (side capped at 192): per cell the ground Z (`Land.AverageZ`),
+the top Z of the tallest light blocker (tiledata `Wall`, or `Impassable` with
+`Height >= 8`; never `Door` or `Window`) and whether a `Roof` static covers it.
+Ambient is `RealtimeLightField.AmbientFor(IsometricLight.IsometricLevel)`:
+white at level 0, warm through the middle, a blue-grey floor (0.16, 0.18,
+0.30) at the darkest. Roofed cells take 55 % of daylight ambient, scaling to
+100 % at night. Each accepted light offer (`AddLight`) adds a source at its
+tile with radius `round(light.mul width / 44)` tiles (1..8) and the classic
+light tint (the light-shader palette, or the hue's table entry 16). A
+source's reach is a `(2r+1)^2` map: hard line-of-light through the blocker
+grid (blockers above source Z + 3 block; neither end blocks), a 3x3 box blur,
+times `Falloff(d, r + 0.5)` (smoothstep), times 0.35 where the ground is more
+than 20 Z from the source. Reaches are cached by (x, y, z, r) while the
+blocker grid's FNV-1a hash is unchanged.
+
+The field is drawn into a GUO-owned target the size of the classic light
+target: every visible land tile as its iso quad (stretched corners from
+`YOffsets`) with the field's corner colours, then every visible standing
+static (`Height >= 4`, wall, roof or foliage; not above `_maxZ`, not a hidden
+roof) as its own art sprite in its cell's colour, masked by the sprite's
+alpha. `RenderTargets.LightOverride` carries the texture; `RenderTargets.Draw`
+blends it with the classic darkness blend in place of the light target. The
+option off never builds the target.
+
+Log line every 5 s at trace level: `[realtime-lights] grid=WxH lights=N
+computed=N cached=N quads=N sprites=N`. Scenario `client.realtime.lights`
+(`--realtime-lights-probe`, `RealtimeLightsProbe.tscn`) checks the contract
+headless and prints `[Realtime lights] PASS`.
