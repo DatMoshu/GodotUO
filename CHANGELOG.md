@@ -140,6 +140,13 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   ADR-0008.
 
 ### Playing
+- Controller: a **Say** screen speaks the common commands with A (bank,
+  vendor buy and sell, guards, hail, all follow me and the other pet
+  commands). Find it at the top of the Macros screen or put it on the wheel.
+- Controller: with a target cursor up, the radar lists yourself, and the
+  pointer starts on the tile in front of you for spells aimed at the ground.
+- Controller: Set controls from the pad's own Options screen opens the list
+  of jobs too, as it does from Options.
 - Controller: **Set controls...** in Options is now a list of jobs. Pick one
   with the D-pad and set only that one; a quick tap of B keeps it as it was,
   **Reset to defaults** puts the shipped layout back, **Save** keeps your

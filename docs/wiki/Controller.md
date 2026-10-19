@@ -78,7 +78,7 @@ screen, so Status is a screen of the character's numbers instead.
 - B while the wheel is up closes it without opening anything. B on a screen
   closes the screen.
 - Which window sits in which slice is chosen at the end of Set controls.
-  Status and Party are offered too.
+  Status, Party and Say are offered too.
 
 ## The interact radar (RT)
 
@@ -115,7 +115,24 @@ the same double click on yourself that the mouse uses.
 
 **Target cursors.** When a spell, skill or item puts up a target cursor, the
 radar is how a pad picks the target: hold RT, choose, and A sends the target
-to the choice; B cancels the cursor (and leaves the radar up).
+to the choice; B cancels the cursor (and leaves the radar up). The radar lists
+**you** while a target cursor is up, so a heal or a bandage on yourself is RT,
+choose yourself, A.
+
+**Ground targets.** A field, a teleport or anything else aimed at the ground:
+when a target cursor comes up while you are using the pad, the pointer jumps to
+the tile in front of your character. Press A to target that tile, or move the
+pointer with the right stick first. The pointer moves smoothly, not tile by
+tile.
+
+## Say (speech without a keyboard)
+
+The **Say** screen is a list of what players say most: Bank, Balance, Vendor
+buy, Vendor sell, Guards, Hail, and the pet commands All follow me, All come,
+All guard me, All stay, All stop and All kill. Pick one with the D-pad and
+press A to say it. Open it from the Macros screen (**Say...**, the first line),
+or put it on a wheel slice in Set controls. Anything else still needs a
+keyboard.
 
 The reach is `radarRange` in `padbindings.json` (1 to 24 tiles, 10 by default).
 
@@ -304,7 +321,7 @@ against one shard character.
 | World map (nearby) | Bound | Wheel World map screen |
 | Mount / dismount | Bound | Radar A on the horse (walks up when out of reach); radar A on yourself while riding |
 | Loot corpse / open container | Bound | Radar use / double-click; loot dummy probe |
-| Talk / speech | Partial | Chat input strip hidden in gamepad mode; no dedicated pad keyboard in-world yet; OSK is pregame |
+| Talk / speech | Partial | The **Say** screen (Macros screen, "Say...", or a wheel slice) says a common phrase with A: bank, balance, vendor buy and sell, guards, hail and the pet commands. Free text still needs a keyboard; the chat strip is hidden in gamepad mode |
 | Context menus | Bound | Radar Y; backpack/paperdoll Back |
 | Vendors (buy/sell) | Partial | Radar can use a vendor; no dedicated vendor pad screen |
 | Banking | Partial | Radar can use a banker/bank box; no dedicated bank pad screen |
@@ -340,7 +357,7 @@ not a promise of later chords.
 |---|---|---|---|
 | LT | Reopen the last wheel window (under 0.2 s, stick centred) | The eight-slice wheel. Release opens the lit slice. Stick in the middle: nothing. B closes without opening | Points at a slice, same as the left stick. D-pad does **not** steer the wheel (**not bound**) |
 
-Slices (default): up Backpack, up-right Paperdoll, right Journal, down-right Skills, down Spellbook, down-left World map, left Macros, up-left Options. Status and Party are offered in Set controls.
+Slices (default): up Backpack, up-right Paperdoll, right Journal, down-right Skills, down Spellbook, down-left World map, left Macros, up-left Options. Status, Party and Say are offered in Set controls.
 
 ### A wheel window (backpack, paperdoll, journal, …)
 

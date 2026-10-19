@@ -111,6 +111,7 @@ internal static class PadWheelsProbe
         await Screens(host);
         await BindingDummies(host, world);
         await MountAndLock(host, world);
+        await TargetAndSpeech(host, world);
 
         PadBindings.ResetToDefaults();
         GamepadInput.Forced = null;
@@ -692,8 +693,89 @@ internal static class PadWheelsProbe
         PadScreen.Close();
         Check("closing a screen restores the camera", !PadScreen.HalfCut && !PadScreen.IsOpen);
         Check("the wheel no longer offers a window that only asks the shard",
-            Array.IndexOf(PadWizard.Choices, WheelWindow.Journal) >= 0 && PadWizard.Choices.Length == 10,
+            Array.IndexOf(PadWizard.Choices, WheelWindow.Journal) >= 0 && PadWizard.Choices.Length == 11,
             $"choices {PadWizard.Choices.Length}");
+    }
+
+    // --- targets and speech (INPUT-03) -----------------------------------------------------------
+
+    private static async System.Threading.Tasks.Task TargetAndSpeech(Node host, World world)
+    {
+        PadScreen.Close();
+        PadRadar.Close();
+        world.TargetManager.CancelTarget();
+
+        if (world.Player.InWarMode)
+        {
+            GameActions.ToggleWarMode(world.Player);
+            await Until(host, () => !world.Player.InWarMode, 60);
+        }
+
+        // Yourself, from the radar, with a target cursor up (a heal, a bandage).
+        GameObject taken = null;
+        world.TargetManager.SetTargeting(o => taken = o, 0, TargetType.Beneficial);
+        Axis(JoyAxis.TriggerRight, 1f);
+        await InputProbe.Wait(host, 10);
+        Check("with a target cursor up, the radar offers yourself", PadRadar.Near.Contains(world.Player),
+            $"{PadRadar.Near.Count} near");
+        PadRadarChoose(world.Player);
+        await Button(host, JoyButton.A);
+        Check("A on yourself answers the target cursor with you", ReferenceEquals(taken, world.Player),
+            $"taken {(taken as Entity)?.Serial ?? 0:X8}");
+        Axis(JoyAxis.TriggerRight, 0f);
+        await InputProbe.Wait(host, 6);
+        world.TargetManager.CancelTarget();
+
+        // The ground: a target cursor opened while the pad is in use puts the
+        // pointer on the tile in front of the character, and A answers it there.
+        await Button(host, JoyButton.DpadUp, 20);
+        await InputProbe.Wait(host, 10);
+        Godot.Input.ParseInputEvent(new InputEventJoypadMotion { Axis = JoyAxis.LeftX, AxisValue = 0f });
+        taken = null;
+        world.TargetManager.SetTargeting(o => taken = o, 0, TargetType.Neutral);
+        await InputProbe.Wait(host, 6);
+        await Shot(host, "ground_aim");
+        int fx = world.Player.X, fy = world.Player.Y;
+        switch ((int) world.Player.Direction & 7)
+        {
+            case 0: fy--; break;
+            case 1: fx++; fy--; break;
+            case 2: fx++; break;
+            case 3: fx++; fy++; break;
+            case 4: fy++; break;
+            case 5: fx--; fy++; break;
+            case 6: fx--; break;
+            default: fx--; fy--; break;
+        }
+        GameObject under = SelectedObject.Object as GameObject;
+        Check("a target cursor puts the pointer on the tile in front of the character",
+            under != null && under.X == fx && under.Y == fy,
+            $"pointer over {under?.GetType().Name} at {under?.X},{under?.Y}, front {fx},{fy}");
+        await Button(host, JoyButton.A);
+        await Until(host, () => taken != null, 30);
+        var ground = taken as GameObject;
+        Check("A there answers the target cursor with that tile",
+            ground != null && ground.X == fx && ground.Y == fy && ground is not Mobile,
+            $"taken {taken?.GetType().Name} at {ground?.X},{ground?.Y}");
+        world.TargetManager.CancelTarget();
+
+        // Speech from the pad: the Say screen, a phrase said with A.
+        PadScreen.Open(WheelWindow.Speech);
+        await InputProbe.Wait(host, 6);
+        Check("the Say screen lists the phrases", PadScreen.IsOpen && PadScreen.Current == WheelWindow.Speech);
+        await Shot(host, "say_screen");
+        int hail = Array.IndexOf(PadScreen.Phrases, "Hail");
+
+        for (int i = 0; i < hail; i++)
+        {
+            await Button(host, JoyButton.DpadDown, 4);
+        }
+
+        int before = JournalManager.Entries.Count;
+        await Button(host, JoyButton.A);
+        bool heard = await Until(host, () => JournalManager.Entries.Skip(before)
+            .Any(e => e.Text != null && e.Text.IndexOf("hail", StringComparison.OrdinalIgnoreCase) >= 0), 180);
+        Check("A on a phrase says it (the shard sends it back)", heard && !PadScreen.IsOpen);
     }
 
     // --- mounting and the attack lock (INPUT-00) -------------------------------------------------

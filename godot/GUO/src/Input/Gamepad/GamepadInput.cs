@@ -201,6 +201,7 @@ namespace GUO.Input.Gamepad
 
             Walk();
             PadRadar.Approach();
+            AimForTarget();
 
             // The radar takes the right stick; the left one still walks.
             if (PadRadar.IsOpen)
@@ -793,6 +794,41 @@ namespace GUO.Input.Gamepad
             {
                 _held[i] = _dpad[i] || _stick[i];
             }
+        }
+
+        private static bool _wasTargeting;
+
+        /// <summary>
+        /// When a target cursor comes up while the pad is in use, put the pointer
+        /// on the tile in front of the character: A there answers a ground
+        /// target (a field, a teleport) at once, and the right stick takes it on
+        /// from there. Entities are the radar's (RT); this is for the ground.
+        /// </summary>
+        private static void AimForTarget()
+        {
+            var world = Client.Game?.UO?.World;
+            bool targeting = world?.TargetManager.IsTargeting ?? false;
+            bool rising = targeting && !_wasTargeting;
+            _wasTargeting = targeting;
+
+            if (!rising || InputMode.Current != InputKind.Gamepad || PadRadar.IsOpen || world.Player == null
+                || !(Client.Game.Scene is Game.Scenes.GameScene))
+            {
+                return;
+            }
+
+            (int dx, int dy) = ((int) world.Player.Direction & 7) switch
+            {
+                0 => (0, -1), 1 => (1, -1), 2 => (1, 0), 3 => (1, 1),
+                4 => (0, 1), 5 => (-1, 1), 6 => (-1, 0), _ => (-1, -1),
+            };
+
+            Compat.Point p = world.Player.RealScreenPosition;
+            p.X += (int) world.Player.Offset.X + 22 + (dx - dy) * 22;
+            p.Y += (int) (world.Player.Offset.Y - world.Player.Offset.Z) + 22 + (dx + dy) * 22;
+            Vector2 at = RadarView.ToWindow(p);
+            InputMode.PointerUsed();
+            GodotInput.Handle(new InputEventMouseMotion { Position = at });
         }
 
         /// <summary>

@@ -178,8 +178,10 @@ namespace GUO.Input.Gamepad
             }
 
             // Mounted, the player is a choice too: a double click on yourself
-            // is how a rider gets off, with the mouse as with the pad.
-            if (world.Player.IsMounted)
+            // is how a rider gets off, with the mouse as with the pad. With a
+            // target cursor up, so is yourself: a heal or a bandage on you is a
+            // click on your own character with the mouse.
+            if (world.Player.IsMounted || world.TargetManager.IsTargeting)
             {
                 _near.Add(world.Player);
             }
