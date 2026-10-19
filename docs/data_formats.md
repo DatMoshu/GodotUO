@@ -1176,6 +1176,7 @@ the address in use stays in `settings.json` (`ip`, `port`), which Play sets.
 | `last_played` | UTC time or absent | Set on each entry into the world; Recent is the newest five that are neither own nor favourite |
 | `data_folder` | path or absent | Where the player keeps a shard's own client files, picked once through the first-run screen; Play on a shard that needs them restarts GUO with them (section 19). An entry with one is never trimmed from Recent |
 | `accounts` | list or absent | The player's accounts on it: `name`, `secret` and `last_used`. `secret.store` is `dpapi` (Windows: `blob`, base64 DPAPI output), `android-keystore` (`iv` and `blob`: AES-GCM under a non-exportable AndroidKeyStore key), `libsecret` (nothing; the Secret Service keyring has it, schema `org.guo.Account`, attribute `binding`) or `none`; `secret` is absent when no password is kept. `dev` (true) marks a dev build's one-click dev login, on the dev shard's entry only. Never a plaintext password. The secret is bound to the entry's host:port:name. See docs/ui/second_screen_pregame.md, Accounts |
+| `last_seen` | object or absent | Written on each entry into the world (section 43): `client_version` (the version GUO reported there), `client_version_source`, `locked_features` and `character_list_flags` (uint or null) and `when` (UTC time). Never the address or an account |
 | `era`, `emulator`, `client_version`, `encryption`, `needs_custom_data`, `third_party_clients`, `site`, `description` | optional | The community catalogue's manifest fields (step 3); `third_party_clients: false` or another client version or encryption keeps Play from playing |
 
 A debug build adds its dev shard (from `UO_SHARD_HOST` / `UO_SHARD_PORT`) as a favourite at run time. It is
@@ -2852,3 +2853,32 @@ presets:
 `tools/perf_lab` refuses to write a report in which any string looks like a
 path or carries the login name, computer name, home folder or a shard account
 name. A change to `columns` bumps `format`.
+
+## 43. Server identity and client version (`src/Network/ServerIdentity.cs`)
+
+What the client learns about the server it is logged in to, and which client version it reported there. It is a
+GUO-owned record filled by marked lines (`PORT DEVIATION (GUO)`) in the ported login and packet code; it changes no
+ported behaviour. Other GUO code reads it, among them the packet extension points (ADR-0038), which key on
+`ClientVersion` and on `Host` or `ShardName`.
+
+`GUO.Network.ServerIdentity.Current` is null until a login connects, is replaced at each new login connection, and
+stays after a disconnect so the failure text can use it.
+
+| Field | Type | Set when | Meaning |
+|---|---|---|---|
+| `Host`, `Port` | string, int | the login connection starts | The login server's address, as typed or listed. Never written to logs, evidence or packet logs unredacted |
+| `ShardName` | string or null | a game server is chosen from the server list (0xA8) | The entry's name, as `World.ServerName` |
+| `ClientVersion` | string | the login connection starts | The version GUO reports to the server in the login seed (0xEF) and in the version reply (0xBD), four dotted numbers (`7.0.107.76`) |
+| `ClientVersionSource` | string | the login connection starts | Where that version came from: `default` (GUO's built-in 7.0.107.76), `env` (`UO_CLIENT_VERSION`), `cli` (`--client-version`), `shard_session` (the shard's own files, section 19, from its `servers.json` entry's `client_version`) or `client_exe` (the configured text was not a version, so the client read `client.exe`) |
+| `LockedFeatures` | uint or null | the server's 0xB9 | The expansion features the server enables (upstream `LockedFeatureFlags`) |
+| `CharacterListFlags` | uint or null | the character list (0xA9) | The server's character list flags (upstream `CharacterListFlags`) |
+| `Backend` | string or null | the login connection starts | The server software, from the `servers.json` entry or the community catalogue (`emulator`, section 17), when known |
+
+**Version refused.** When the connection drops and the server's last words in the journal say the client version is
+refused (ModernUO "doesn't support clients older than" or "newer than", RunUO and ServUO "requires your client
+version"), or the server closes the connection during the login before any server list, the disconnect message adds
+a plain sentence: the version GUO reported and, for a refusal, the server's own words. Nothing is retried and no
+version is changed for the player.
+
+**Persisted.** On each entry into the world the record goes into the server's `servers.json` entry as `last_seen`
+(section 17).

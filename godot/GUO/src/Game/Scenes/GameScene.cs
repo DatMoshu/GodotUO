@@ -383,9 +383,12 @@ namespace GUO.Game.Scenes
                         _world,
                         200,
                         200,
-                        string.Format(
-                            ResGeneral.ConnectionLost0,
-                            StringHelper.AddSpaceBeforeCapital(e.ToString())
+                        // PORT DEVIATION (GUO): say so in plain words when the server refused the client version.
+                        GUO.Network.ServerIdentity.OnDisconnect(
+                            string.Format(
+                                ResGeneral.ConnectionLost0,
+                                StringHelper.AddSpaceBeforeCapital(e.ToString())
+                            )
                         ),
                         s =>
                         {

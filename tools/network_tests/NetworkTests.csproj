@@ -8,5 +8,6 @@
   <ItemGroup>
     <Compile Include="../../godot/GUO/src/Network/CircularBuffer.cs" Link="CircularBuffer.cs" />
     <Compile Include="../../godot/GUO/src/Network/PacketLengthGuard.cs" Link="PacketLengthGuard.cs" />
+    <Compile Include="../../godot/GUO/src/Network/ServerIdentity.cs" Link="ServerIdentity.cs" />
   </ItemGroup>
 </Project>
