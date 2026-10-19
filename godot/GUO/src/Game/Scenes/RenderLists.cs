@@ -479,6 +479,8 @@ namespace GUO.Game.Scenes
         public int DrawRenderLists(UltimaBatcher2D batcher, sbyte maxGroundZ, List<Chunk> visibleChunks, int offsetX, int offsetY)
         {
             int result = 0;
+            // PORT DEVIATION (GUO): stage timers for the perf probe (PERF-03).
+            long stageAt = PerfStages.Now();
 
             // Build visible indices for all chunks (skip rebuild if visibility unchanged)
             foreach (var chunk in visibleChunks)
@@ -503,15 +505,18 @@ namespace GUO.Game.Scenes
             foreach (var chunk in visibleChunks)
                 result += DrawMeshLayer(batcher, chunk.Mesh.Land);
             batcher.ResetWorldOffset();
+            stageAt = PerfStages.Add(PerfStages.Stage.LandMesh, stageAt);
 
             // Draw excluded land tiles (animated water, etc.)
             result += DrawRenderList(batcher, _tiles, maxGroundZ);
             result += DrawRenderList(batcher, _stretchedTiles, maxGroundZ);
+            stageAt = PerfStages.Add(PerfStages.Stage.LandLoose, stageAt);
 
             // Cached statics and ordinary sprites share one depth-sorted pass.
             _meshOffsetX = offsetX;
             _meshOffsetY = offsetY;
             result += DrawWorld(batcher, maxGroundZ);
+            stageAt = PerfStages.Now();
 
             if (_transparentObjects.Count > 0 || _gumps.Count > 0)
             {
@@ -520,6 +525,8 @@ namespace GUO.Game.Scenes
                 result += DrawGumps(batcher, _gumps);
                 //batcher.SetStencil(null);
             }
+
+            PerfStages.Add(PerfStages.Stage.Transparent, stageAt);
 
             return result;
         }
@@ -553,7 +560,11 @@ namespace GUO.Game.Scenes
         /// </remarks>
         private int DrawWorld(UltimaBatcher2D batcher, sbyte maxGroundZ)
         {
+            long stageAt = PerfStages.Now();
             _world.Sort(ByDepth);
+            stageAt = PerfStages.Add(PerfStages.Stage.Sort, stageAt);
+            bool timing = PerfStages.Enabled;
+            PerfStages.Stage kind = PerfStages.Stage.Other;
 
             int done = 0;
 
@@ -562,6 +573,18 @@ namespace GUO.Game.Scenes
             for (int i = 0; i < span.Length; i++)
             {
                 ref readonly Drawable next = ref span[i];
+                if (timing)
+                {
+                    PerfStages.Stage now = StageOf(next.Object);
+                    if (now != kind)
+                    {
+                        stageAt = PerfStages.Add(kind, stageAt);
+                        kind = now;
+                    }
+
+                    PerfStages.Count(now);
+                }
+
                 // PORT DEVIATION (GUO): whose pixels these are, for the
                 // post-processing id buffer (ADR-0023); land here covers, so it
                 // paints background. Read only while an id pass is on.
@@ -615,8 +638,19 @@ namespace GUO.Game.Scenes
             }
 
             batcher.CurrentObjectId = 0; // PORT DEVIATION (GUO): ADR-0023
+            PerfStages.Add(kind, stageAt);
             return done;
         }
+
+        private static PerfStages.Stage StageOf(GameObject obj) => obj switch
+        {
+            Static => PerfStages.Stage.Statics,
+            Mobile => PerfStages.Stage.Mobiles,
+            Land => PerfStages.Stage.CoverLand,
+            Multi => PerfStages.Stage.Multis,
+            Item { IsMulti: false } => PerfStages.Stage.Items,
+            _ => PerfStages.Stage.Other,
+        };
 
         /// <summary>
         /// Land queued by <see cref="CoverFromBelow"/>, drawn again over what

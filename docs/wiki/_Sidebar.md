@@ -8,6 +8,7 @@
 - [FAQ](FAQ.md)
 - [Known Issues](Known-Issues.md)
 - [Troubleshooting](Troubleshooting.md)
+- [Performance](Performance.md)
 - [Glossary](Glossary.md)
 
 **Builds**
@@ -22,9 +23,11 @@
 - [Servers and Accounts](Servers-and-Accounts.md)
 - [Controller](Controller.md)
 - [Mobile UI](Mobile-UI.md)
+- [Gump Size and Screen](Gump-Size-and-Screen.md)
 - [Canvas Background](Canvas-Background.md)
 - [Screen Effects](Screen-Effects.md)
 - [Asset Store](Asset-Store.md)
+- [Content Packs](Content-Packs.md)
 - [Dev Shard](Dev-Shard.md)
 - [Server Compatibility](Server-Compatibility.md)
 
@@ -34,9 +37,11 @@
 - [Editor](Editor.md)
 - [World Editing](World-Editing.md)
 - [Manage Your Shard From the Editor](Manage-Your-Shard-From-The-Editor.md)
+- [Admin Tab](Admin-Tab.md)
 - [Author UO Data](Author-UO-Data.md)
 - [Building Multis](Building-Multis.md)
 - [Architecture](Architecture.md)
+- [Feature Layers](Feature-Layers.md)
 - [Working with AI Agents](Working-With-AI-Agents.md)
 - [Contributing](Contributing.md)
 

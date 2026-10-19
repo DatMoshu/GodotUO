@@ -6,9 +6,21 @@ missing and how to fix it:
 ```bat
 launchers\dev\smoke.bat          desktop: engine, project import, C# build, client data, editor add-on
 launchers\android\doctor.bat     Android: SDK, JDK, templates, keystore, device
+launchers\windows\doctor.bat     Windows export: templates and the icon check
 launchers\steamdeck\doctor.bat   Steam Deck: this machine and the Deck, over ssh
 launchers\web\doctor.bat         web: the engine fork and its .NET SDK
 ```
+
+## Quick answers
+
+- **A headless build stops after three minutes.** `launchers\dev\build.bat`
+  stops a build that runs longer than `UO_BUILD_TIMEOUT` (180 seconds by
+  default) and exits 124. Raise it in `config.local.bat`.
+- **The emulator smoke will not start.** It needs about 10 GB of free memory.
+- **An NPC says nothing.** NPC speech is silent until a voice pack covers
+  that NPC, and the Sound option is on ([Content Packs](Content-Packs.md)).
+- **Enhanced HD or a screen effect does nothing.** The pack is not
+  installed, or the option is off; both are off by default.
 
 ## Setting up
 
