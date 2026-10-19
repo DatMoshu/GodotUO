@@ -240,6 +240,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- `docs/input_audit_2026-10-18.md`: every input in keyboard and mouse, gamepad
+  and touch compared with ClassicUO, with a severity each, the upstream line
+  it differs from, and the scripted runs behind it. It sets the order of the
+  input fixes that follow.
 - Readying a fresh git worktree (`launchers\dev\worktree_setup.bat`) also
   copies your Claude Code approvals (`.claude/settings.local.json`), so a new
   worktree no longer asks again to approve the project's MCP servers.
