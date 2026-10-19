@@ -40,7 +40,8 @@ namespace GUO.Input.Gamepad
         Macros,
         Options,
         Status,
-        Party
+        Party,
+        Speech
     }
 
     /// <summary>
@@ -176,6 +177,7 @@ namespace GUO.Input.Gamepad
         public static string Name(WheelWindow w) => w switch
         {
             WheelWindow.WorldMap => "World map",
+            WheelWindow.Speech => "Say",
             _ => w.ToString(),
         };
 
