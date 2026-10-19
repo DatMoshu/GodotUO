@@ -26,11 +26,15 @@ namespace GUO.Game.Scenes
         private RealtimeLightTarget _rtTarget;
         private RealtimeLightField.Source[] _rtSources;
         private int _rtSourceCount;
-        private readonly List<(int key, GameObject obj)> _rtSprites = new();
-        private long _rtLogAt;
+        private readonly List<(float key, GameObject obj)> _rtSprites = new();
+        private long _rtLogAt, _rtDebugAt;
+        private int _rtRoofs, _rtAbove;
 
         /// <summary>Margin of tiles around the visible chunks, so a light just off screen still reaches in.</summary>
         private const int RtMargin = 8;
+
+        /// <summary>Tiles of reach per 44 px of light sprite width.</summary>
+        private const float RadiusScale = 1.6f;
 
         /// <summary>Grid side cap, cells (a zoomed-out 4K view fits well inside).</summary>
         private const int RtMaxSide = 192;
@@ -53,7 +57,10 @@ namespace GUO.Game.Scenes
             if (_rtSourceCount >= _rtSources.Length) return;
 
             ref readonly var info = ref Client.Game.UO.Lights.GetLight(light.ID);
-            int radius = info.Texture == null ? 3 : Math.Max(1, (int)MathF.Round(info.UV.Width / 44f));
+            // The sprite's reach in tiles, widened: a light.mul blob is drawn
+            // additively over grey, the field is a smooth pool, so the same
+            // width reads smaller here.
+            int radius = info.Texture == null ? 4 : Math.Max(2, (int)MathF.Round(info.UV.Width * RadiusScale / 44f));
             _rtSources[_rtSourceCount++] = new RealtimeLightField.Source(
                 obj.X, obj.Y, obj.Z, radius, RealtimeLightColor(light.Color, light.IsHue));
         }
@@ -86,6 +93,13 @@ namespace GUO.Game.Scenes
         /// <summary>After the world draw: consume this frame's offers and draw the field.</summary>
         private void DrawRealtimeLights(RenderTargets renderTargets, ref Transform2D matrix)
         {
+            // DEBUG (temporary): the roof rule's inputs in both modes, editor console.
+            if (Engine.IsEditorHint() && Time.Ticks - _rtDebugAt > 5000)
+            {
+                _rtDebugAt = Time.Ticks;
+                GD.Print($"[rt-debug] on={UseRealtimeLights} maxZ={_maxZ} maxGroundZ={_maxGroundZ} noRoofs={_noDrawRoofs} player={_world.Player?.X},{_world.Player?.Y},{_world.Player?.Z} lights={_lightCount} chunks={_visibleChunks.Count}");
+            }
+
             if (!UseRealtimeLights)
             {
                 return;
@@ -113,7 +127,7 @@ namespace GUO.Game.Scenes
                 }
 
                 BuildRealtimeGrid();
-                _rtField.Compute(_world.Light.IsometricLevel,
+                _rtField.Compute(RealtimeAmbientLevel(),
                     new ReadOnlySpan<RealtimeLightField.Source>(_rtSources ?? Array.Empty<RealtimeLightField.Source>(), 0, _rtSourceCount));
                 DrawRealtimeGeometry(ref matrix);
 
@@ -123,9 +137,12 @@ namespace GUO.Game.Scenes
                 if (Time.Ticks - _rtLogAt > 5000)
                 {
                     _rtLogAt = Time.Ticks;
-                    Log.Trace($"[realtime-lights] grid={_rtField.Width}x{_rtField.Height} lights={_rtSourceCount} " +
+                    string line = $"[realtime-lights] grid={_rtField.Width}x{_rtField.Height} lights={_rtSourceCount} " +
                               $"computed={_rtField.LastComputed} cached={_rtField.CacheCount} " +
-                              $"quads={_rtTarget.LastQuads} sprites={_rtTarget.LastSprites}");
+                              $"quads={_rtTarget.LastQuads} sprites={_rtTarget.LastSprites} roofs={_rtRoofs} above={_rtAbove}";
+                    Log.Trace(line);
+                    // The editor's World tab has no client log file: its console gets the line.
+                    if (Engine.IsEditorHint()) GD.Print(line);
                 }
             }
             catch (Exception e)
@@ -139,6 +156,25 @@ namespace GUO.Game.Scenes
                 _rtSourceCount = 0;
                 _lightCount = 0;
             }
+        }
+
+        /// <summary>
+        /// The classic grey for this frame: the shard's levels with the profile's
+        /// Light level override applied as the packet handler applies it, so the
+        /// override also holds where no light packet has arrived (the editor's world).
+        /// </summary>
+        private float RealtimeAmbientLevel()
+        {
+            var profile = ProfileManager.CurrentProfile;
+            int overall = _world.Light.Overall;
+            int personal = _world.Light.Personal;
+            if (profile != null && profile.UseCustomLightLevel)
+            {
+                overall = profile.LightLevelType == 1 ? Math.Min(overall, profile.LightLevel) : profile.LightLevel;
+            }
+
+            // IsometricLight.Recalculate: 0 is full light, 30 the darkest, with a remainder.
+            return Math.Max(personal, 32 - overall) * 0.03125f;
         }
 
         /// <summary>Ground, blockers and roofs from the visible chunks (plus a margin).</summary>
@@ -217,7 +253,10 @@ namespace GUO.Game.Scenes
         private void DrawRealtimeGeometry(ref Transform2D matrix)
         {
             _rtTarget.Begin(matrix, _rtField.Ambient);
+            float zoom = matrix.X.X > 0.01f ? matrix.X.X : 1f;
             _rtSprites.Clear();
+            _rtRoofs = 0;
+            _rtAbove = 0;
             ref var statics = ref Client.Game.UO.FileManager.TileData.StaticData;
 
             foreach (Chunk chunk in _visibleChunks)
@@ -231,7 +270,12 @@ namespace GUO.Game.Scenes
                         {
                             if (obj is Land land)
                             {
-                                AddRealtimeLand(land);
+                                int ly = ((land.X + land.Y) * 22 - (land.Z << 2)) - _offset.Y - 22;
+                                int lx = ((land.X - land.Y) * 22) - _offset.X - 22;
+                                if (ly >= -100 && ly <= _rtTarget.Height / zoom + 100 && lx >= -60 && lx <= _rtTarget.Width / zoom + 60)
+                                {
+                                    AddRealtimeLand(land);
+                                }
                                 continue;
                             }
 
@@ -245,16 +289,26 @@ namespace GUO.Game.Scenes
                             ref StaticTiles data = ref statics[graphic];
                             if (_noDrawRoofs && data.IsRoof) continue;
                             // Flat floor pieces take the ground's smooth light;
-                            // anything that stands up takes its tile's.
-                            if (data.Height < 4 && !data.IsWall && !data.IsRoof && !data.IsFoliage) continue;
+                            // anything that stands up takes its tile's. A flat
+                            // piece above the lights (a floor used as a roof, an
+                            // upper storey) is drawn, in the roof ambient.
+                            bool flat = data.Height < 4 && !data.IsWall && !data.IsRoof && !data.IsFoliage;
+                            if (flat && !_rtField.IsAboveLight(obj.X, obj.Y, obj.Z)) continue;
 
-                            _rtSprites.Add(((obj.X + obj.Y) * 256 + obj.Z + 128, obj));
+                            // Only what the target can show.
+                            int sy = ((obj.X + obj.Y) * 22 - (obj.Z << 2)) - _offset.Y - 22;
+                            int sx = ((obj.X - obj.Y) * 22) - _offset.X - 22;
+                            if (sy < -220 || sy > _rtTarget.Height / zoom + 220 || sx < -220 || sx > _rtTarget.Width / zoom + 220) continue;
+
+                            // The world's own depth (ADR-0001: one computation), so
+                            // a roof covers the furniture under it here as it does there.
+                            _rtSprites.Add((obj.CalculateDepthZ(), obj));
                         }
                     }
                 }
             }
 
-            // Back to front, as the world is drawn.
+            // Back to front, in the world's draw order.
             _rtSprites.Sort(static (a, b) => a.key.CompareTo(b.key));
             foreach (var (_, obj) in _rtSprites)
             {
@@ -265,11 +319,16 @@ namespace GUO.Game.Scenes
                 // DrawStatic's placement: centred on the tile, bottom at its base.
                 int px = sx + 22 - (art.UV.Width >> 1);
                 int py = sy + 44 - art.UV.Height;
+                // A roof stands above every light on its tile: ambient only
+                // (with the roof dim, like the cells it covers).
+                bool roof = obj.Graphic < statics.Length && statics[obj.Graphic].IsRoof;
+                if (roof) _rtRoofs++;
+                else if (_rtField.IsAboveLight(obj.X, obj.Y, obj.Z)) _rtAbove++;
                 _rtTarget.AddSprite(
                     new Rect2(px, py, art.UV.Width, art.UV.Height),
                     art.Texture,
                     art.UV.ToGodotF(),
-                    _rtField.Cell(obj.X, obj.Y));
+                    roof ? _rtField.RoofAmbient : _rtField.CellAt(obj.X, obj.Y, obj.Z));
             }
 
             _rtTarget.End();
@@ -305,7 +364,7 @@ namespace GUO.Game.Scenes
         /// <summary>A light's tint: the classic light palette, or the hue when the offer is hued.</summary>
         private static Godot.Color RealtimeLightColor(ushort color, bool isHue)
         {
-            if (color == 0) return Colors.White;
+            if (color == 0) return RealtimeLightField.WarmLight;
 
             if (isHue)
             {

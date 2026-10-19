@@ -36,6 +36,15 @@ namespace GUO.Renderer.Lights
         /// <summary>Daylight ambient under a roof, as a share of outdoor daylight.</summary>
         public const float RoofDaylight = 0.55f;
 
+        /// <summary>A light's peak above ambient: pools saturate near the source and read from afar.</summary>
+        public const float Energy = 2.2f;
+
+        /// <summary>A static standing this many Z above every light reaching its tile is above the light (a roof): ambient only.</summary>
+        public const int AboveLightZ = 10;
+
+        /// <summary>The tint of an uncoloured light: warm, as a flame is.</summary>
+        public static readonly Color WarmLight = new Color(1.0f, 0.82f, 0.58f);
+
         private const int CacheLimit = 512;
 
         public readonly struct Source
@@ -80,6 +89,7 @@ namespace GUO.Renderer.Lights
         private short[] _blockTop = Array.Empty<short>();
         private bool[] _roof = Array.Empty<bool>();
         private float[] _field = Array.Empty<float>();
+        private short[] _lightTop = Array.Empty<short>();
         private float[] _scratchVis = Array.Empty<float>();
         private float[] _scratchBlur = Array.Empty<float>();
         private readonly Dictionary<CacheKey, Reach> _cache = new();
@@ -100,6 +110,9 @@ namespace GUO.Renderer.Lights
         /// <summary>Ambient colour of the last <see cref="Compute"/>.</summary>
         public Color Ambient { get; private set; } = Colors.White;
 
+        /// <summary>The ambient a roofed cell gets (roof sprites draw in this, no light reaches their top).</summary>
+        public Color RoofAmbient { get; private set; } = Colors.White;
+
         /// <summary>Start a frame: the grid covers tiles [originX, originX+width) x [originY, originY+height).</summary>
         public void Begin(int originX, int originY, int width, int height)
         {
@@ -113,6 +126,7 @@ namespace GUO.Renderer.Lights
                 _blockTop = new short[cells];
                 _roof = new bool[cells];
                 _field = new float[cells * 3];
+                _lightTop = new short[cells];
             }
 
             if (originX != _originX || originY != _originY || width != _width || height != _height)
@@ -126,6 +140,7 @@ namespace GUO.Renderer.Lights
             _width = width;
             _height = height;
             Array.Fill(_blockTop, NoBlock);
+            Array.Fill(_lightTop, NoBlock);
             Array.Fill(_roof, false);
             Array.Clear(_groundZ);
         }
@@ -176,7 +191,7 @@ namespace GUO.Renderer.Lights
         {
             float t = Math.Clamp(isometricLevel, 0f, 1f);
             // Night floor at the darkest level, white at full day.
-            var night = new Color(0.16f, 0.18f, 0.30f);
+            var night = new Color(0.24f, 0.26f, 0.38f);
             var day = Colors.White;
             // Perceptual: the classic grey is linear in level; ease it so dusk
             // keeps some light and the last levels fall off to the floor.
@@ -200,6 +215,7 @@ namespace GUO.Renderer.Lights
             Ambient = AmbientFor(isometricLevel);
             float day = Math.Clamp(isometricLevel, 0f, 1f);
             float roofShare = RoofDaylight + (1f - RoofDaylight) * (1f - day);
+            RoofAmbient = new Color(Ambient.R * roofShare, Ambient.G * roofShare, Ambient.B * roofShare);
             int cells = _width * _height;
 
             for (int i = 0; i < cells; i++)
@@ -250,6 +266,21 @@ namespace GUO.Renderer.Lights
             int cy = Math.Clamp(y - _originY, 0, _height - 1);
             int i = (cy * _width + cx) * 3;
             return new Color(_field[i], _field[i + 1], _field[i + 2]);
+        }
+
+        /// <summary>
+        /// The field for a static at height <paramref name="z"/> on a cell: the
+        /// cell's light, or the roof ambient when it stands above every light
+        /// that reaches the cell (a roof over a lamp, a floor above).
+        /// </summary>
+        public Color CellAt(int x, int y, int z) => IsAboveLight(x, y, z) ? RoofAmbient : Cell(x, y);
+
+        /// <summary>Whether a static at <paramref name="z"/> stands above every light reaching its cell.</summary>
+        public bool IsAboveLight(int x, int y, int z)
+        {
+            if (!Contains(x, y)) return false;
+            short top = _lightTop[Index(x, y)];
+            return top != NoBlock && z > top + AboveLightZ;
         }
 
         /// <summary>
@@ -380,7 +411,10 @@ namespace GUO.Renderer.Lights
                     if (tx < _originX || tx >= _originX + _width) continue;
                     float v = map[(dy + r) * side + (dx + r)];
                     if (v <= 0f) continue;
-                    int i = Index(tx, ty) * 3;
+                    int cell = Index(tx, ty);
+                    if (s.Z > _lightTop[cell]) _lightTop[cell] = (short)s.Z;
+                    int i = cell * 3;
+                    v *= Energy;
                     _field[i] += s.Color.R * v;
                     _field[i + 1] += s.Color.G * v;
                     _field[i + 2] += s.Color.B * v;

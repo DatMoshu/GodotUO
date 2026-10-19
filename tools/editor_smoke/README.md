@@ -30,6 +30,15 @@ chunk holding X,Y has exactly the statics of DIR's block there (that block
 must be one DIR edits). It runs headless like the rest; `--windowed` also
 saves `world_shot.png`. No other editor check runs.
 
+The editor itself takes the same frame without a world project:
+`godot-console --editor --path godot\GUO -- --guo-editor-smoke OUT
+--guo-editor-world-shot FACET,X,Y,W,H` saves `OUT\world_shot.png` of the World
+tab at that cell, drawn by the game's own scene (so a client render option
+in the editor's profile, `build\editor_world\profiles\default.json`, shows
+in it). Adding `--guo-editor-world-pan FRAMES,PX` saves one frame per editor
+frame into `OUT\world_panrame_NNNN.png` while the view slides east PX
+pixels a frame: a clip of the world as the game draws it, with no shard.
+
 For a focused toolbar regression check, run
 `python tools/editor_smoke/run.py --windowed --header-only`. It checks that the
 server/client bar stays inside the window and occupies one row at 1920, 1366
