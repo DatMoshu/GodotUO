@@ -238,6 +238,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- Readying a fresh git worktree (`launchers\dev\worktree_setup.bat`) also
+  copies your Claude Code approvals (`.claude/settings.local.json`), so a new
+  worktree no longer asks again to approve the project's MCP servers.
 - Generated output (screenshots, smoke runs, exports) can live outside the
   checkout: set `UO_BUILD_DIR` in config.local.bat, one folder per checkout
   with `%UO_CHECKOUT%`. Left unset, it stays `build\` as before.
