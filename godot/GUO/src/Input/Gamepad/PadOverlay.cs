@@ -206,6 +206,7 @@ namespace GUO.Input.Gamepad
             WheelWindow.Options => 0x1EB8,   // a tool kit
             WheelWindow.Status => 0x0E21,    // a bandage
             WheelWindow.Party => 0x0E79,     // a pouch
+            WheelWindow.Speech => 0x0FBF,    // a scribe's pen
             _ => 0x0E75,
         };
 

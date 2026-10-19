@@ -8,6 +8,7 @@
 - [FAQ](FAQ.md)
 - [Known Issues](Known-Issues.md)
 - [Troubleshooting](Troubleshooting.md)
+- [Performance](Performance.md)
 - [Glossary](Glossary.md)
 
 **Builds**
