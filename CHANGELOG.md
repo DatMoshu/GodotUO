@@ -177,6 +177,11 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   says what it needs. ADR-0008.
 
 ### Playing
+- When a server refuses GUO's client version, the disconnect message says
+  so in plain words, with the server's own words and the version GUO
+  reported, instead of a bare "connection lost"; a server that drops the
+  connection during the login gets the same hint. The Servers tab shows the
+  client version a shard needs, or the one you last played it as.
 - **Enhanced HD** (Options, off by default): world sprites can be drawn from
   an installed, hash-checked HD art pack, with a choice of filter (Auto,
   Point, Point with mipmaps, Smooth). Anything a pack does not cover stays
