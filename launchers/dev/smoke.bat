@@ -47,6 +47,9 @@ echo [smoke] optional HD pack contracts (synthetic)
 echo [smoke] PostFX engine regressions (synthetic)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Bootstrap/PostFxEngineProbe.tscn || set "FAIL=1"
 
+echo [smoke] keyboard: key-ups on focus loss, AltGr text (synthetic; no shard)
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" -- --keyboard-probe --pregame-classic --silent || set "FAIL=1"
+
 echo.
 if "%FAIL%"=="1" ( echo [smoke] FAILED & exit /b 1 )
 echo [smoke] OK
