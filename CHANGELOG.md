@@ -248,6 +248,13 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- The server lab has a ServUO row beside ModernUO (`server_lab.bat row
+  servuo`). Each result records which client version it ran as and which
+  evidence run it is filed under, and the compatibility page shows each
+  server's last run date. What a POL row needs is in `docs/server_lab.md`.
+  Readiness checks use the local listening table without opening a TCP
+  connection, and lab output follows `UO_BUILD_DIR`. The seed driver now
+  recognizes character creation on an account with no characters.
 - `docs/input_audit_2026-10-18.md`: every input in keyboard and mouse, gamepad
   and touch compared with ClassicUO, with a severity each, the upstream line
   it differs from, and the scripted runs behind it. It sets the order of the

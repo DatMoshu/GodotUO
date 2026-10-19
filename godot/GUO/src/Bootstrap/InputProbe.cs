@@ -249,6 +249,7 @@ internal static class InputProbe
         // deciding on one frame; --autologin may already have walked past it.
         bool creating = true;
         bool sawList = false;
+        bool sawCreation = false;
         for (int i = 0; i < 150; i++)
         {
             // PORT DEVIATION (GUO): null-guarded boot chain. ShardCommands
@@ -268,12 +269,18 @@ internal static class InputProbe
                 break;
             }
 
+            if (FindControl<Game.UI.Gumps.CharCreation.CreateCharAppearanceGump>() != null)
+            {
+                sawCreation = true;
+                break;
+            }
+
             await Frames(host, 2);
         }
 
-        if (creating && !sawList && Client.Game?.UO?.World?.InGame != true)
+        if (creating && !sawList && !sawCreation && Client.Game?.UO?.World?.InGame != true)
         {
-            // Neither the world nor the character list appeared (dead shard,
+            // Neither the world, character list nor creation appeared (dead shard,
             // rejected login): typing a name now would land nowhere, exactly
             // the silent failure this guard replaces.
             Check("the character list appeared", false, OpenLoginGumps());

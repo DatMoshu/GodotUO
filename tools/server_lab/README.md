@@ -9,14 +9,20 @@ python tools\server_lab\run.py doctor [BACKEND]          toolchains, disk, UO da
 python tools\server_lab\run.py setup BACKEND             fetch at the pin, patch, build, configure, admin, profile
 python tools\server_lab\run.py start | stop | status BACKEND
 python tools\server_lab\run.py seed BACKEND              give the lab account its character (once per world)
-python tools\server_lab\run.py cases BACKEND [--case 0,1,9] [--no-record]
-python tools\server_lab\run.py row BACKEND [--no-record] [--reseed]   all of it, then stop, wiki, card
+python tools\server_lab\run.py cases BACKEND [--case 0,1,9] [--no-record] [--client-version V] [--evidence ID]
+python tools\server_lab\run.py row BACKEND [--no-record] [--reseed] [--client-version V] [--evidence ID]
+                                                         all of it, then stop, wiki, card
 python tools\server_lab\run.py wiki                      rewrite the wiki page from the grid
 python tools\server_lab\run.py card BACKEND              build/server_lab/card_<backend>.json (sends nothing)
 ```
 
-`launchers\dev\server_lab.bat` runs the same. Backends today: `modernuo` (SV1). ServUO, UOX3 and Sphere X arrive
-with SV4, SV5 and SV6; their rows read "not run" until then.
+`launchers\dev\server_lab.bat` runs the same. Backends today: `modernuo` (SV1) and `servuo` (NET-01). UOX3 and
+Sphere X arrive with SV5 and SV6; their rows read "not run" until then. POL is assessed in
+[docs/server_lab.md](../../docs/server_lab.md) and has no row yet.
+
+`--client-version` makes GUO report another client version for the run (the scenario runner and the seed login get it
+as `UO_CLIENT_VERSION`); each result keeps the version it ran as. `--evidence` records on the row the shared evidence
+run id its results are filed under; the wiki shows it beside the row's last run date.
 
 ## What each step does
 
@@ -28,10 +34,18 @@ with SV4, SV5 and SV6; their rows read "not run" until then.
 | cases | Each case of `cases.json` that has a scenario, through `tools/scenario_run/run.py <scenario> --server <profile>`; the login goes to the runner in `GUO_SCENARIO_ACCOUNT` / `GUO_SCENARIO_PASSWORD`, never on a command line |
 | row | setup when missing, start, seed when not yet seeded, cases, stop (only a server it started), wiki, card |
 
+The ServUO row differs in four places: setup makes a shallow fetch of `tools/servuo`'s pin (no patches), builds with
+`dotnet build ServUO.sln -c Release`, and writes `tools/servuo/config` over its `Config` with the lab's port (2611)
+and shard name. ServUO asks on its console for an owner when it boots with no accounts, and the server manager gives
+it no console, so setup and start write the lab admin as Owner into `Saves/Accounts/accounts.xml` while the world has
+no accounts; ServUO hashes the password at its first save. An existing accounts file is never replaced.
+
 ## Safety
 
 - **Loopback only.** Every lab server listens on 127.0.0.1. ModernUO's UDP ping listener also moves off its shared
   default (12000) to the game port plus 10000 (12610), so the lab row and the dev shard can run side by side.
+- **Readiness without connections.** The lab reads the Windows or Linux IPv4 listening table. It never opens an
+  empty TCP connection to test readiness: ModernUO can treat these as abusive traffic and ban even loopback.
 - **Its own admin.** The lab account (`guolab` on ModernUO, `table.json`) and its password are generated into the
   per-user workspace, `server_lab/<backend>/secrets.json`; nothing ships a password and the dev shard's owner and
   game master accounts are never used or created. Passwords are 16 letters and digits: the classic login gump's
@@ -48,7 +62,7 @@ with SV4, SV5 and SV6; their rows read "not run" until then.
 | `cases.json` | The 25 cases of the lab plan plus case 0 (the client reaches its login screen, no server); `scenario` is null until the case is written (SV2a/SV2b) |
 | `table.json` | Per backend: lab profile name, shard name, account and character, and `vars`, the words that differ between servers (staff commands, places), for scenarios that take them as `--var` |
 | `triage.json` | Optional (SV7): `{"<backend>": {"<case>": {"verdict": "guo" | "server-gap" | "n/a", "why": "..."}}}`. A verdict turns "FAIL (untriaged)" into its owner's failure; `n/a` marks a case the server does not have |
-| `build/server_lab/grid.json` | The grid, data_formats section 36 (gitignored) |
+| `<UO_BUILD_DIR>/server_lab/grid.json` | The grid, data_formats section 36 (gitignored). Logs and case manifests use the same configured output root, so a run can save directly to central evidence |
 
 ## Tests
 
