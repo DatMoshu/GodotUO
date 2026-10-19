@@ -23,9 +23,13 @@ namespace GUO.Input.Gamepad
     /// an input from any other job.
     /// </summary>
     /// <remarks>
-    /// Reached from Options (Controller buttons, "Set controls...") and offered
-    /// once, after the first login on a pad (<see cref="MaybeOffer"/>), where B
-    /// skips it. Axes count as inputs, each half on its own, on at
+    /// Offered once, after the first login on a pad (<see cref="MaybeOffer"/>),
+    /// where B skips it and A walks every job in order. Options (Controller
+    /// buttons, "Set controls...") opens the list instead (<see cref="OpenList"/>):
+    /// the D-pad picks one job and A rebinds only that one, a quick tap of B
+    /// while binding keeps what it had, "Reset to defaults" puts the shipped
+    /// set back, "Save" keeps the changes, and B on the list leaves with
+    /// nothing changed. A wrong press costs one row, not the whole set. Axes count as inputs, each half on its own, on at
     /// <see cref="PadBindings.AxisOn"/> and off again under <see cref="PadBindings.AxisOff"/>.
     /// While it is up it takes every pad event (GamepadInput hands them here).
     /// </remarks>
@@ -34,11 +38,16 @@ namespace GUO.Input.Gamepad
         public const double Hold = 0.7;
         public const int CancelCount = 3;
 
-        private enum Phase { Closed, Offer, Bind, Slots, Done }
+        private enum Phase { Closed, Offer, List, Bind, Slots, Done }
 
         private static Phase _phase = Phase.Closed;
         private static int _step;
-        private static readonly Dictionary<PadCommand, PadInput> _chosen = new();
+        /// <summary>The whole set as it will be saved: the current one, then every choice made since opening.</summary>
+        private static readonly Dictionary<PadCommand, PadInput> _pending = new();
+        /// <summary>Opened as the list (Options): a bind or the slices go back to it, and only Save applies.</summary>
+        private static bool _listMode;
+        private static int _row;
+        private static bool _edited;
         private static WheelWindow[] _slots;
         private static int _slot, _pick;
         private static readonly Dictionary<string, (PadInput input, bool stale)> _held = new();
@@ -69,6 +78,17 @@ namespace GUO.Input.Gamepad
 
         public static double Progress => _progress;
 
+        /// <summary>For probes: the highlighted row of the list, or -1 when the list is not up.</summary>
+        public static int ListRow => _phase == Phase.List ? _row : -1;
+
+        /// <summary>For probes: what <paramref name="c"/> will be saved as, or null for nothing.</summary>
+        public static PadInput? Pending(PadCommand c) => _pending.TryGetValue(c, out PadInput i) ? i : null;
+
+        /// <summary>The list's rows after the jobs: the wheel's slices, back to defaults, save.</summary>
+        public static readonly string[] ListActions = { "Menu wheel slices", "Reset to defaults", "Save" };
+
+        public static int ListRows => PadBindings.Order.Length + ListActions.Length;
+
         /// <summary>Raised when it closes, with the inputs still held then (GamepadInput lets their releases pass by).</summary>
         public static event Action<IEnumerable<string>> Closed;
 
@@ -97,15 +117,40 @@ namespace GUO.Input.Gamepad
             GD.Print("[GUO] pad wizard: offered (first login on a pad)");
         }
 
-        /// <summary>Start "Set controls" (from Options, or A on the offer).</summary>
+        /// <summary>Walk every job in order (A on the offer).</summary>
         public static void Open()
+        {
+            Begin(false);
+            _phase = Phase.Bind;
+            _step = 0;
+            View.Show();
+            GD.Print("[GUO] pad wizard: open");
+        }
+
+        /// <summary>The list of jobs, to change one at a time (Options, "Set controls...").</summary>
+        public static void OpenList()
+        {
+            Begin(true);
+            _phase = Phase.List;
+            _row = 0;
+            View.Show();
+            GD.Print("[GUO] pad wizard: list");
+        }
+
+        private static void Begin(bool list)
         {
             PadWheel.Close();
             PadRadar.Close();
             PadScreen.Close();
-            _phase = Phase.Bind;
-            _step = 0;
-            _chosen.Clear();
+            _listMode = list;
+            _edited = false;
+            _pending.Clear();
+
+            foreach (KeyValuePair<PadCommand, PadInput> kv in PadBindings.Map)
+            {
+                _pending[kv.Key] = kv.Value;
+            }
+
             _slots = new WheelWindow[8];
 
             for (int i = 0; i < 8; i++)
@@ -116,8 +161,6 @@ namespace GUO.Input.Gamepad
             _progress = 0;
             StaleAll();
             LastResult = "";
-            View.Show();
-            GD.Print("[GUO] pad wizard: open");
         }
 
         /// <summary>Three at once, or closing the client's way: every binding stays as it was.</summary>
@@ -128,7 +171,7 @@ namespace GUO.Input.Gamepad
                 return;
             }
 
-            _chosen.Clear();
+            _pending.Clear();
             LastResult = "cancelled";
             GD.Print("[GUO] pad wizard: cancelled, nothing changed");
             Finish("Cancelled", "");
@@ -172,7 +215,15 @@ namespace GUO.Input.Gamepad
                     }
                     else
                     {
+                        bool tapped = _held.TryGetValue(input.Id, out var was) && !was.stale;
                         _held.Remove(input.Id);
+
+                        // A quick tap of B on one job from the list: keep what it had.
+                        if (tapped && _listMode && _phase == Phase.Bind && input == PadInput.Button(JoyButton.B) && _progress < Hold)
+                        {
+                            GD.Print($"[GUO] pad wizard: {PadBindings.Name(PadBindings.Order[_step])} kept");
+                            BackToList();
+                        }
                     }
 
                     break;
@@ -238,6 +289,23 @@ namespace GUO.Input.Gamepad
 
                     break;
 
+                case Phase.List:
+                    // A menu, like the slices: the D-pad moves, the printed A picks, the printed B leaves.
+                    if (input.IsAxis)
+                    {
+                        break;
+                    }
+
+                    switch ((JoyButton) input.Index)
+                    {
+                        case JoyButton.DpadUp: _row = (_row - 1 + ListRows) % ListRows; View.List(); break;
+                        case JoyButton.DpadDown: _row = (_row + 1) % ListRows; View.List(); break;
+                        case JoyButton.A: PickRow(); break;
+                        case JoyButton.B: Leave(); break;
+                    }
+
+                    break;
+
                 case Phase.Slots:
                     // The list is a menu: the D-pad moves, the printed A picks.
                     if (input.IsAxis)
@@ -258,6 +326,76 @@ namespace GUO.Input.Gamepad
 
                     break;
             }
+        }
+
+        private static void PickRow()
+        {
+            int jobs = PadBindings.Order.Length;
+
+            if (_row < jobs)
+            {
+                _step = _row;
+                _progress = 0;
+                // The A that picked the row is still down; it must come up before it counts.
+                StaleAll();
+                _phase = Phase.Bind;
+                View.Step();
+                return;
+            }
+
+            switch (_row - jobs)
+            {
+                case 0:
+                    StaleAll();
+                    _phase = Phase.Slots;
+                    _slot = 0;
+                    _pick = Array.IndexOf(Choices, _slots[0]);
+                    View.Slots();
+                    break;
+
+                case 1:
+                    _pending.Clear();
+
+                    foreach (KeyValuePair<PadCommand, PadInput> kv in PadBindings.Defaults())
+                    {
+                        _pending[kv.Key] = kv.Value;
+                    }
+
+                    _slots = PadBindings.DefaultWheel();
+                    _edited = true;
+                    GD.Print("[GUO] pad wizard: defaults (not saved yet)");
+                    View.List();
+                    break;
+
+                default:
+                    Save();
+                    break;
+            }
+        }
+
+        private static void BackToList()
+        {
+            _phase = Phase.List;
+            _progress = 0;
+            StaleAll();
+            View.List();
+        }
+
+        /// <summary>B on the list: leave, nothing saved.</summary>
+        private static void Leave()
+        {
+            _pending.Clear();
+            LastResult = _edited ? "cancelled" : "closed";
+            GD.Print(_edited ? "[GUO] pad wizard: left, changes dropped" : "[GUO] pad wizard: closed");
+            Finish(_edited ? "Not saved" : "Closed", "");
+        }
+
+        private static void Save()
+        {
+            PadBindings.Replace(_pending, _slots);
+            LastResult = "applied";
+            GD.Print("[GUO] pad wizard: applied");
+            Finish("Saved", "");
         }
 
         private static void StaleAll()
@@ -336,12 +474,30 @@ namespace GUO.Input.Gamepad
         private static void Take(PadInput input)
         {
             PadCommand c = PadBindings.Order[_step];
-            _chosen[c] = input;
+
+            // One input belongs to one job: whichever job had it loses it.
+            foreach (PadCommand other in PadBindings.Order)
+            {
+                if (other != c && _pending.TryGetValue(other, out PadInput held) && held == input)
+                {
+                    _pending.Remove(other);
+                }
+            }
+
+            _pending[c] = input;
+            _edited = true;
             GD.Print($"[GUO] pad wizard: {PadBindings.Name(c)} = {input.Label}");
-            _step++;
             _progress = 0;
             // Whatever is still down must come up before it counts again.
             StaleAll();
+
+            if (_listMode)
+            {
+                BackToList();
+                return;
+            }
+
+            _step++;
 
             if (_step >= PadBindings.Order.Length)
             {
@@ -371,10 +527,14 @@ namespace GUO.Input.Gamepad
 
             if (_slot >= 8)
             {
-                PadBindings.Apply(_chosen, _slots);
-                LastResult = "applied";
-                GD.Print("[GUO] pad wizard: applied");
-                Finish("Saved", "");
+                if (_listMode)
+                {
+                    _edited = true;
+                    BackToList();
+                    return;
+                }
+
+                Save();
                 return;
             }
 
@@ -424,6 +584,7 @@ namespace GUO.Input.Gamepad
                 switch (_phase)
                 {
                     case Phase.Offer: Offer(); break;
+                    case Phase.List: List(); break;
                     case Phase.Bind: Step(); break;
                 }
             }
@@ -526,7 +687,7 @@ namespace GUO.Input.Gamepad
                 {
                     PadCommand c = PadBindings.Order[i];
                     bool lit = i == _step;
-                    PadInput? shown = _chosen.TryGetValue(c, out PadInput picked) ? picked : PadBindings.For(c);
+                    PadInput? shown = _pending.TryGetValue(c, out PadInput picked) ? picked : null;
                     string set = shown is PadInput s ? s.Label : "nothing";
                     words.Append(PadBindings.Name(c)).Append('\t').Append(set).Append('\n');
 
@@ -566,6 +727,13 @@ namespace GUO.Input.Gamepad
                 _meter.AddThemeStyleboxOverride("background", Line(PadArt.LineTrack));
                 _meter.AddThemeStyleboxOverride("fill", Line(PadArt.LineFill));
                 _col.AddChild(_meter);
+
+                if (_listMode)
+                {
+                    // Binding one job from the list: B tapped (not held) keeps it.
+                    Prompt(new[] { (PadAction.Cancel, "Keep") });
+                }
+
                 VisibleText = words.ToString().TrimEnd();
                 GlyphCount = CountGlyphs(_col);
                 Layout();
@@ -599,6 +767,57 @@ namespace GUO.Input.Gamepad
                     _holding.Text = "";
                     _ = holding;
                 }
+            }
+
+            /// <summary>The list: every job with what it will be saved as, then the three actions.</summary>
+            public static void List()
+            {
+                if (_root == null || !GodotObject.IsInstanceValid(_root))
+                {
+                    Show();
+                    return;
+                }
+
+                Clear();
+                var words = new System.Text.StringBuilder();
+
+                for (int i = 0; i < ListRows; i++)
+                {
+                    bool lit = i == _row;
+                    var row = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Ignore, CustomMinimumSize = new Vector2(300, 0) };
+                    row.AddThemeStyleboxOverride("panel", lit
+                        ? Overlay.Frame(Overlay.Parchment, 3, 1)
+                        : new StyleBoxEmpty { ContentMarginLeft = 3, ContentMarginRight = 3, ContentMarginTop = 1, ContentMarginBottom = 1 });
+                    HBoxContainer line = Overlay.Row(6);
+
+                    if (i < PadBindings.Order.Length)
+                    {
+                        PadCommand c = PadBindings.Order[i];
+                        PadInput? shown = _pending.TryGetValue(c, out PadInput picked) ? picked : null;
+                        words.Append(PadBindings.Name(c)).Append('\t').Append(shown is PadInput s ? s.Label : "nothing").Append('\n');
+                        Label name = Overlay.Text(PadBindings.Name(c), lit ? UoTheme.Danger : UoTheme.Ink);
+                        name.CustomMinimumSize = new Vector2(120, 0);
+                        name.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+                        line.AddChild(name);
+                        line.AddChild(PadArt.Cap(shown));
+                    }
+                    else
+                    {
+                        string action = ListActions[i - PadBindings.Order.Length];
+                        words.Append(action).Append('\n');
+                        Label name = Overlay.Text(action, lit ? UoTheme.Danger : UoTheme.Heading);
+                        name.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+                        line.AddChild(name);
+                    }
+
+                    row.AddChild(line);
+                    _col.AddChild(row);
+                }
+
+                Prompt(new[] { (PadAction.Confirm, "Change"), (PadAction.Cancel, _edited ? "Leave, not saved" : "Close") });
+                VisibleText = words.ToString().TrimEnd();
+                GlyphCount = CountGlyphs(_col);
+                Layout();
             }
 
             public static void Slots()

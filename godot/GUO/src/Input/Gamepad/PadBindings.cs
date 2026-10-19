@@ -40,7 +40,8 @@ namespace GUO.Input.Gamepad
         Macros,
         Options,
         Status,
-        Party
+        Party,
+        Speech
     }
 
     /// <summary>
@@ -176,6 +177,7 @@ namespace GUO.Input.Gamepad
         public static string Name(WheelWindow w) => w switch
         {
             WheelWindow.WorldMap => "World map",
+            WheelWindow.Speech => "Say",
             _ => w.ToString(),
         };
 
@@ -318,6 +320,30 @@ namespace GUO.Input.Gamepad
 
                 _map[c] = input;
             }
+
+            if (wheel != null && wheel.Count == 8)
+            {
+                _wheel = new WheelWindow[8];
+
+                for (int i = 0; i < 8; i++)
+                {
+                    _wheel[i] = wheel[i];
+                }
+            }
+
+            Save();
+            Changed?.Invoke();
+        }
+
+        /// <summary>
+        /// Make <paramref name="map"/> the whole binding set, exactly (the
+        /// "Save" of the Set controls list): a job missing from it is
+        /// unbound. Saved once.
+        /// </summary>
+        public static void Replace(IReadOnlyDictionary<PadCommand, PadInput> map, IReadOnlyList<WheelWindow> wheel)
+        {
+            EnsureLoaded();
+            _map = new Dictionary<PadCommand, PadInput>(map);
 
             if (wheel != null && wheel.Count == 8)
             {

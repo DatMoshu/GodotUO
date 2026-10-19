@@ -674,6 +674,10 @@ namespace GUO.Game.Scenes
             (var minChunkX, var minChunkY) = (minX >> 3, minY >> 3);
             (var maxChunkX, var maxChunkY) = (maxX >> 3, maxY >> 3);
 
+            // PORT DEVIATION (GUO): stage timers for the perf probe (PERF-03);
+            // one branch each while it is not measuring.
+            long stageAt = PerfStages.Now();
+
             for (var chunkX = minChunkX; chunkX <= maxChunkX; chunkX++)
             {
                 for (var chunkY = minChunkY; chunkY <= maxChunkY; chunkY++)
@@ -685,7 +689,9 @@ namespace GUO.Game.Scenes
                     // Build chunk mesh if dirty
                     if (chunk.Mesh.IsDirty)
                     {
+                        stageAt = PerfStages.Add(PerfStages.Stage.Gather, stageAt);
                         chunk.Mesh.Build(chunk, _world);
+                        stageAt = PerfStages.Add(PerfStages.Stage.MeshBuild, stageAt);
                     }
 
                     // Reset visibility and alpha for this frame
@@ -715,6 +721,8 @@ namespace GUO.Game.Scenes
                 }
             }
 
+            stageAt = PerfStages.Add(PerfStages.Stage.Gather, stageAt);
+
             if (_alphaChanged)
             {
                 for (int i = 0; i < _foliageCount; i++)
@@ -734,6 +742,7 @@ namespace GUO.Game.Scenes
 
             UpdateTextServerEntities(_world.Mobiles.Values, true);
             UpdateTextServerEntities(_world.Items.Values, false);
+            PerfStages.Add(PerfStages.Stage.GatherTail, stageAt);
 
             UpdateDrawPosition = false;
         }

@@ -80,6 +80,9 @@ not settings.
 | `UO_ANDROID_KEYSTORE` | `%APPDATA%\Godot\keystores\debug.keystore` | The debug keystore; `run.py keystore` makes it. |
 | `UO_ANDROID_KEYSTORE_USER` | `androiddebugkey` | The standard Android debug alias. |
 | `UO_ANDROID_KEYSTORE_PASSWORD` | `android` | The standard Android debug password. Not a secret; a release keystore is your own. |
+| `UO_ANDROID_RELEASE_KEYSTORE` | empty | Your release keystore, for `export.bat --release`. Outside the checkout; `run.py release-keystore` makes it. |
+| `UO_ANDROID_RELEASE_KEYSTORE_USER` | empty | Its key alias. |
+| `UO_ANDROID_RELEASE_KEYSTORE_PASSWORD` | empty | Its password. Set it in the environment or `config.local.bat`, never in `config.bat`. |
 | `UO_ANDROID_PACKAGE` | `org.guo.client` | The application id. |
 | `UO_ANDROID_DEVICE` | empty | An adb serial. Empty means the single device in state `device`; set it with two attached. |
 | `UO_ANDROID_CLIENT_DATA` | `/sdcard/Android/data/%UO_ANDROID_PACKAGE%/files/uo` | Where `run.py push` puts the UO data on the device, baked into the APK as `--client-data`. |
