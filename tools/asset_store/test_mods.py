@@ -73,7 +73,11 @@ class ModComponents(unittest.TestCase):
             cases[name] = (m, False)
 
         cases["unsigned"] = (manifest(sign=False), False)
-        bad("tampered-signature", lambda m: m["components"][0].update(signature=manifest()["components"][0]["signature"][:-4] + "AAA="))
+        def tamper(m):
+            sig = m["components"][0]["signature"]
+            i = len("ed25519:") + 10
+            m["components"][0]["signature"] = sig[:i] + ("A" if sig[i] != "A" else "B") + sig[i + 1:]
+        bad("tampered-signature", tamper)
         bad("signed-other-hash", lambda m: m["files"].update({"mods/announce/Announce.dll": hashlib.sha256(b"other").hexdigest()}))
         bad("server-target", lambda m: m["components"][0].update(target="shared"))
         bad("gumps", lambda m: m["components"][0].update(gumps=[0x1234]))
