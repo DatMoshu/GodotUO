@@ -43,6 +43,7 @@ public partial class EditorSmoke
     private const int DemoFps = 30;
     private readonly List<System.Threading.Tasks.Task> _demoWrites = new();
     private System.IO.StreamWriter _demoTimes;
+    private StreamWriter _demoMotion;
 
     private void StartLightsDemo(int facet, int x, int y)
     {
@@ -183,7 +184,7 @@ public partial class EditorSmoke
         m.Name = name;
         m.FixHue(hue);
         m.Hits = m.HitsMax = 100;
-        m.Direction = Direction.East;
+        m.Direction = DirectionHelper.CalculateDirection(sx, sy, path[1].x, path[1].y);
         m.AddToTile();
 
         var item = new Item(world) { Serial = serial + 0x100, Graphic = hand, Layer = Layer.TwoHanded, Container = serial };
@@ -218,29 +219,12 @@ public partial class EditorSmoke
         foreach (DemoActor a in _demoActors)
         {
             Mobile m = a.Mobile;
-            // Keep two steps queued; the mobile's own update walks and animates
-            // them at its pace (the editor host draws the scene but does not
-            // tick the world, so the demo ticks its walkers itself).
-            while (m.Steps.Count < 2)
-            {
-                if (a.Next >= a.Path.Length || a.Next < 0)
-                {
-                    a.Dir = -a.Dir;
-                    a.Next = Math.Clamp(a.Next + a.Dir, 0, a.Path.Length - 1);
-                }
-
-                (int nx, int ny) = a.Path[a.Next];
-                m.GetEndPosition(out int ex, out int ey, out _, out _);
-                Direction dir = DirectionHelper.CalculateDirection(ex, ey, nx, ny);
-                if (!m.EnqueueStep(nx, ny, world.Map.GetTileZ(nx, ny), dir, false))
-                {
-                    break;
-                }
-
-                a.Next += a.Dir;
-            }
-
+            // A remote mobile with a backlog uses ClassicUO's mounted-speed
+            // catch-up path. Feed one ordinary walk at a time instead, replacing
+            // a completed step in this same tick, without an idle frame between.
+            if (m.Steps.Count == 0) QueueDemoStep(a, world);
             m.Update();
+            if (m.Steps.Count == 0) QueueDemoStep(a, world);
         }
 
         // The camera rides the first walker: same tile, same step offset.
@@ -271,6 +255,18 @@ public partial class EditorSmoke
             string dir = Path.Combine(_out, "world_pan");
             Directory.CreateDirectory(dir);
             _demoTimes = new StreamWriter(Path.Combine(dir, "times.txt"));
+            _demoMotion = new StreamWriter(Path.Combine(dir, "motion.csv"));
+            _demoMotion.WriteLine("prepared_frame,clock_ms,actor,tile_x,tile_y,offset_x,offset_y,projected_x,projected_y,steps,animation");
+        }
+
+        foreach (DemoActor a in _demoActors)
+        {
+            Mobile m = a.Mobile;
+            // Camera-independent projected foot anchor; the viewport captured
+            // below can still contain the preceding render's prepared state.
+            int px = (m.X - m.Y) * 22 + (int)m.Offset.X;
+            int py = (m.X + m.Y) * 22 - m.Z * 4 + (int)m.Offset.Y - (int)m.Offset.Z;
+            _demoMotion.WriteLine(FormattableString.Invariant($"{_demoTaken},{GUO.Time.Ticks},{m.Serial},{m.X},{m.Y},{m.Offset.X},{m.Offset.Y},{px},{py},{m.Steps.Count},{m.AnimIndex}"));
         }
 
         Image frame = _world.Capture();
@@ -322,10 +318,29 @@ public partial class EditorSmoke
             _demoWrites.Clear();
             _demoTimes.Dispose();
             _demoTimes = null;
+            _demoMotion.Dispose();
+            _demoMotion = null;
             SaveWorldShot();
             _world.Host.CaptureTicks = null;
             Finish();
         }
+    }
+
+    private void QueueDemoStep(DemoActor a, World world)
+    {
+        if (a.Next >= a.Path.Length || a.Next < 0)
+        {
+            a.Dir = -a.Dir;
+            // The endpoint was already reached: reverse toward its neighbour.
+            a.Next = a.Dir > 0 ? 1 : a.Path.Length - 2;
+        }
+
+        (int nx, int ny) = a.Path[a.Next];
+        Mobile m = a.Mobile;
+        Direction dir = DirectionHelper.CalculateDirection(m.X, m.Y, nx, ny);
+        if (!m.EnqueueStep(nx, ny, world.Map.GetTileZ(nx, ny), dir, false))
+            throw new InvalidOperationException("lights demo could not queue its next walk");
+        a.Next += a.Dir;
     }
 }
 #endif

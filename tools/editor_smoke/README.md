@@ -48,6 +48,12 @@ clip plays at walking speed however slowly the editor drew it.
 milliseconds. Encode the numbered PNGs at `-framerate 30`; wall time measures
 render cost, not playback duration. The World viewer shares the capture clock
 so drawing cannot reset animation timing to wall time.
+Each unmounted walker receives one step at a time (400 ms per tile); a second
+queued remote step would activate ClassicUO's faster catch-up interpolation.
+The replacement is queued on the completion tick, including at path reversals.
+`world_pan/motion.csv` records each prepared simulation frame's actor, clock,
+tile, offset, projected foot anchor, queue length and animation index. The
+captured viewport may show the preceding prepared state; check the PNGs too.
 Pass Godot `--fixed-fps 30` before `--` as well. With a custom light level,
 the demo initializes the classic world's light override and logs its effective
 overall, personal and ambient values for a fair ON/OFF comparison at night.
