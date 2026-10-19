@@ -163,6 +163,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- `docs/input_audit_2026-10-18.md`: every input in keyboard and mouse, gamepad
+  and touch compared with ClassicUO, with a severity each, the upstream line
+  it differs from, and the scripted runs behind it. It sets the order of the
+  input fixes that follow.
 - World editor: the Layers menu (Land, Statics, Multis, Roofs, Objects and the
   live layers) now looks like a button beside the others, keeps its ticks for
   the whole editor session, and switching Roofs off takes effect at once.
