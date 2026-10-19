@@ -44,10 +44,11 @@ sheet and a seam report land in `build\bg_videos\`.
 
 ## Choosing one
 
-In the game, Options, the Display page, the Background section: pick a mode,
-browse for a file, set the frame rate for `frames`, tick low power. (ADR-0016
-places the section under Display; the commit that built it says Video. Look
-on both pages.) The choice is saved in the character's profile:
+In the game, Options, Video, the Background section: pick a mode, browse for
+a file, set the frame rate for `frames`, tick low power. Background packs
+installed from the Asset Store show up in the same list
+([Asset Store](Asset-Store.md)). The choice is saved in the character's
+profile:
 
 ```
 CanvasBackgroundMode   "builtin-grey"

@@ -26,6 +26,15 @@ launchers\shard\populate.bat   REM generate the world                       (onc
 
 Then, in another terminal, `launchers\game\play.bat`.
 
+`launchers\shard\playerbots.bat` sets up a separate shard with UO Offline's
+PlayerBots, with its own saves and its own loopback port.
+
+To host a shard on a Linux machine, `tools\muo_shard\run.py` prints bash
+scripts (`plan bootstrap`, `deploy`, `status`, `backup` and more) from a
+profile; it never changes a host itself, you read a script and run it. Its
+README describes a dry run of the scripts inside a Linux container; a run on
+a real host is not described here.
+
 Auto account creation is on: the first login with any name and password
 creates that account. `accountHandler.maxAccountsPerIP` is **4** in the
 template rather than ModernUO's 1, because the scripted runs put several
@@ -78,7 +87,7 @@ The checkout is gitignored. What is committed reproduces it:
 
 | | |
 |---|---|
-| `patches\` | Three small dev-only changes: the owner and GM accounts made on a headless boot, a settable update range, and spring on Felucca. See `tools/modernuo/README.md`. |
+| `patches\` | Six small dev-only patches: the owner and GM accounts made on a headless boot, a settable update range, spring on Felucca, test dummies for the controller probes (two patches), and a system-message hook that lets the editor's [Admin tab](Admin-Tab.md) show a command's output. See `tools/modernuo/README.md` and `UPSTREAM.md`. |
 | `config\modernuo.template.json` | The full server configuration with `@UO_CLIENT_DATA@`, `@UO_SHARD_NAME@`, `@UO_SHARD_LISTENER@` as placeholders; `expansion.json` pins Endless Journey, which a 7.0.x client expects. |
 | `configure.py` | Fills the templates into `src\Distribution\Configuration\` on first run, through `tools\guo\config.py`. Writes only files that do not exist, except the listener, which it sets to `UO_SHARD_BIND` at every run. Generates the passwords. |
 
