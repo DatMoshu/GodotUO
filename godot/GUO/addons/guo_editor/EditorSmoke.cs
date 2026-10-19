@@ -527,7 +527,11 @@ public partial class EditorSmoke : Node
                 break;
 
             case 31:
-                if (_panFrames > 0)
+                if (_demoFrames > 0)
+                {
+                    StepLightsDemo();
+                }
+                else if (_panFrames > 0)
                 {
                     StepWorldPan();
                 }
@@ -1070,6 +1074,11 @@ public partial class EditorSmoke : Node
             _panFacet = facet; _panX = x; _panY = y;
             _panTaken = 0;
             _panOffset = 0f;
+        }
+
+        if (ArgValue(LightsDemoFlag) != null)
+        {
+            StartLightsDemo(facet, x, y);
         }
     }
 

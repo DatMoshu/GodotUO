@@ -38,6 +38,9 @@ in the editor's profile, `build\editor_world\profiles\default.json`, shows
 in it). Adding `--guo-editor-world-pan FRAMES,PX` saves one frame per editor
 frame into `OUT\world_panrame_NNNN.png` while the view slides east PX
 pixels a frame: a clip of the world as the game draws it, with no shard.
+`--guo-editor-lights-demo FRAMES` instead walks three light-bearers along the
+street there, the camera on the first, and saves FRAMES frames at 30 fps into
+the same folder: the Realtime lights demo clip (ADR-0039), with no shard.
 
 For a focused toolbar regression check, run
 `python tools/editor_smoke/run.py --windowed --header-only`. It checks that the
