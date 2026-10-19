@@ -482,6 +482,15 @@ internal sealed partial class PregameServers : HBoxContainer
             _info.AddChild(Note("Last played " + Ago(played)));
         }
 
+        if (!string.IsNullOrWhiteSpace(e.ClientVersion))
+        {
+            _info.AddChild(Note($"Needs client {e.ClientVersion.Trim()}"));
+        }
+        else if (e.LastSeen?.ClientVersion is { Length: > 0 } seen)
+        {
+            _info.AddChild(Note($"Last played as client {seen}"));
+        }
+
         Configuration.Settings s = Configuration.Settings.GlobalSettings;
 
         if (e.Same(s.IP, s.Port))

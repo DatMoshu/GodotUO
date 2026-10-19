@@ -177,6 +177,11 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   says what it needs. ADR-0008.
 
 ### Playing
+- When a server refuses GUO's client version, the disconnect message says
+  so in plain words, with the server's own words and the version GUO
+  reported, instead of a bare "connection lost"; a server that drops the
+  connection during the login gets the same hint. The Servers tab shows the
+  client version a shard needs, or the one you last played it as.
 - **Enhanced HD** (Options, off by default): world sprites can be drawn from
   an installed, hash-checked HD art pack, with a choice of filter (Auto,
   Point, Point with mipmaps, Smooth). Anything a pack does not cover stays
@@ -245,6 +250,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   Readiness checks use the local listening table without opening a TCP
   connection, and lab output follows `UO_BUILD_DIR`. The seed driver now
   recognizes character creation on an account with no characters.
+- Readying a fresh git worktree (`launchers\dev\worktree_setup.bat`) also
+  copies your Claude Code approvals (`.claude/settings.local.json`), so a new
+  worktree no longer asks again to approve the project's MCP servers.
 - Generated output (screenshots, smoke runs, exports) can live outside the
   checkout: set `UO_BUILD_DIR` in config.local.bat, one folder per checkout
   with `%UO_CHECKOUT%`. Left unset, it stays `build\` as before.

@@ -18,6 +18,22 @@ namespace GUO.Input.Touch.Pregame;
 /// the catalogue manifest's (docs/ui/second_screen_pregame.md); a server the
 /// player adds has only a name, a host and a port.
 /// </summary>
+internal sealed class ServerSeen
+{
+    [JsonPropertyName("client_version")] public string ClientVersion { get; set; }
+    [JsonPropertyName("client_version_source")] public string ClientVersionSource { get; set; }
+    [JsonPropertyName("locked_features")] public uint? LockedFeatures { get; set; }
+    [JsonPropertyName("character_list_flags")] public uint? CharacterListFlags { get; set; }
+    [JsonPropertyName("when")] public DateTime When { get; set; }
+
+    /// <summary>The record of a login, without its address.</summary>
+    public static ServerSeen From(GUO.Network.ServerIdentity id, DateTime when) => id == null ? null : new ServerSeen
+    {
+        ClientVersion = id.ClientVersion, ClientVersionSource = id.ClientVersionSource,
+        LockedFeatures = id.LockedFeatures, CharacterListFlags = id.CharacterListFlags, When = when,
+    };
+}
+
 internal sealed class ServerEntry
 {
     [JsonPropertyName("name")] public string Name { get; set; } = "";
@@ -85,6 +101,9 @@ internal sealed class ServerEntry
 
     /// <summary>When it was last played on (UTC), or null.</summary>
     [JsonPropertyName("last_played")] public DateTime? LastPlayed { get; set; }
+
+    /// <summary>What GUO reported and the server sent at the last entry into the world (data_formats section 43), or null.</summary>
+    [JsonPropertyName("last_seen")] public ServerSeen LastSeen { get; set; }
 
     /// <summary>The dev build's own shard (never saved, never in a release build).</summary>
     [JsonIgnore] public bool Dev { get; set; }
@@ -403,6 +422,14 @@ internal static class ServerBook
         }
 
         e.LastPlayed = DateTime.UtcNow;
+
+        // The login that got here: its client version and the server's flags (never the address).
+        GUO.Network.ServerIdentity id = GUO.Network.ServerIdentity.Current;
+
+        if (id != null && e.Same(id.Host, id.Port))
+        {
+            e.LastSeen = ServerSeen.From(id, e.LastPlayed.Value);
+        }
 
         // Recent keeps five: older plain entries (not own, not favourite, no files or accounts kept) go.
         foreach (ServerEntry old in Servers.Where(x => x.LastPlayed != null && !x.Own && !x.Favourite && string.IsNullOrEmpty(x.ClientId) && x.LegacyDataFolder == null && x.Accounts == null).OrderByDescending(x => x.LastPlayed).Skip(RecentKept).ToList())
