@@ -67,11 +67,10 @@ internal static class StoreOptions
         return true;
     }
 
-    // Called from one marked block in Options. The existing Apply path remains
-    // authoritative: a store choice fills the existing mode and path controls.
-    public static Combobox Attach(Control section, Combobox original, List<CanvasBackgroundSettings> choices,
-        List<string> titles, Action<string> setPath, Profile profile)
+    /// <summary>The installed Store backgrounds as background choices, for the classic and the Modern Options.</summary>
+    public static List<(CanvasBackgroundSettings Choice, string Title)> InstalledBackgrounds(Profile profile)
     {
+        var list = new List<(CanvasBackgroundSettings, string)>();
         // Installed content remains available when the saved endpoint is invalid/offline.
         using var client = CreateClient(StoreAddress.Default);
         foreach (var m in client.Installed().Where(m => m.Kind == "background").OrderBy(m => m.Title).ThenBy(m => StorePack.Version(m.Version)))
@@ -80,8 +79,21 @@ internal static class StoreOptions
             bool video = media != null && !profile.CanvasBackgroundLowPower;
             media = video ? media : m.Preview;
             string file = $"user://store/{m.Id}/{m.Version}/{media}";
-            choices.Add(new CanvasBackgroundSettings(video ? CanvasBackgroundMode.Video : CanvasBackgroundMode.Image, file, 12, profile.CanvasBackgroundLowPower));
-            titles.Add($"Store: {m.Title} ({m.Version})");
+            list.Add((new CanvasBackgroundSettings(video ? CanvasBackgroundMode.Video : CanvasBackgroundMode.Image, file, 12, profile.CanvasBackgroundLowPower),
+                $"Store: {m.Title} ({m.Version})"));
+        }
+        return list;
+    }
+
+    // Called from one marked block in Options. The existing Apply path remains
+    // authoritative: a store choice fills the existing mode and path controls.
+    public static Combobox Attach(Control section, Combobox original, List<CanvasBackgroundSettings> choices,
+        List<string> titles, Action<string> setPath, Profile profile)
+    {
+        foreach ((CanvasBackgroundSettings choice, string title) in InstalledBackgrounds(profile))
+        {
+            choices.Add(choice);
+            titles.Add(title);
         }
         int selected = original.SelectedIndex;
         for (int i = 0; i < choices.Count; i++)

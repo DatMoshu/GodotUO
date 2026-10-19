@@ -78,11 +78,12 @@ def cmd_build() -> int:
     return 0 if ok else 1
 
 
-def cmd_configure(cfg) -> int:
-    """Our key=value lines over ServUO's own config files, line by line."""
-    values = {"CLIENT_DATA": str(cfg.client_data), "PORT": str(PORT)}
+def write_config(src: Path, values: dict[str, str]) -> list[str]:
+    """Our key=value lines (config/*.cfg, formatted with values) over ServUO's own config files in src/Config, line by
+    line. Returns one "file: keys" line per file written. The server lab's ServUO row uses this too."""
+    done = []
     for template in sorted((HERE / "config").glob("*.cfg")):
-        target = SRC / "Config" / template.name
+        target = src / "Config" / template.name
         ours = {}
         for line in template.read_text(encoding="utf-8").splitlines():
             if line.strip() and not line.startswith("#"):
@@ -99,8 +100,15 @@ def cmd_configure(cfg) -> int:
             else:
                 out.append(line)
         out += [f"{k}={v}" for k, v in ours.items() if k not in seen]
+        target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("\n".join(out) + "\n", encoding="utf-8")
-        print(f"[servuo] {template.name}: {', '.join(sorted(ours))}")
+        done.append(f"{template.name}: {', '.join(sorted(ours))}")
+    return done
+
+
+def cmd_configure(cfg) -> int:
+    for line in write_config(SRC, {"CLIENT_DATA": str(cfg.client_data), "PORT": str(PORT), "NAME": "GUO ServUO"}):
+        print(f"[servuo] {line}")
     return 0
 
 
