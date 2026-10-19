@@ -167,6 +167,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   servuo`). Each result records which client version it ran as and which
   evidence run it is filed under, and the compatibility page shows each
   server's last run date. What a POL row needs is in `docs/server_lab.md`.
+  Readiness checks use the local listening table without opening a TCP
+  connection, and lab output follows `UO_BUILD_DIR`. The seed driver now
+  recognizes character creation on an account with no characters.
 - World editor: the Layers menu (Land, Statics, Multis, Roofs, Objects and the
   live layers) now looks like a button beside the others, keeps its ticks for
   the whole editor session, and switching Roofs off takes effect at once.

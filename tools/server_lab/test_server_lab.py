@@ -20,12 +20,29 @@ import grid  # noqa: E402
 import modernuo  # noqa: E402
 import process  # noqa: E402
 import servuo  # noqa: E402
+import listeners  # noqa: E402
 
 BACKENDS = json.loads((ROOT / "tools" / "server_manager" / "backends.json").read_text(encoding="utf-8"))
 CASES = json.loads((HERE / "cases.json").read_text(encoding="utf-8"))["cases"]
 TABLE = json.loads((HERE / "table.json").read_text(encoding="utf-8"))["backends"]
 MODERNUO = next(b for b in BACKENDS if b["id"] == "modernuo")
 SERVUO = next(b for b in BACKENDS if b["id"] == "servuo")
+
+
+@unittest.skipUnless(sys.platform == "win32" or sys.platform.startswith("linux"), "listener table platform")
+class ListenerTests(unittest.TestCase):
+    def test_readiness_finds_listener_without_connecting(self):
+        import socket
+        with socket.socket() as server:
+            server.bind(("127.0.0.1", 0))
+            port = server.getsockname()[1]
+            self.assertFalse(listeners.listening(port))
+            server.listen()
+            self.assertTrue(listeners.listening(port))
+            server.settimeout(0.1)
+            with self.assertRaises(socket.timeout):
+                server.accept()
+        self.assertFalse(listeners.listening(port))
 
 
 class TableTests(unittest.TestCase):

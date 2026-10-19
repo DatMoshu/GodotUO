@@ -44,6 +44,8 @@ no accounts; ServUO hashes the password at its first save. An existing accounts 
 
 - **Loopback only.** Every lab server listens on 127.0.0.1. ModernUO's UDP ping listener also moves off its shared
   default (12000) to the game port plus 10000 (12610), so the lab row and the dev shard can run side by side.
+- **Readiness without connections.** The lab reads the Windows or Linux IPv4 listening table. It never opens an
+  empty TCP connection to test readiness: ModernUO can treat these as abusive traffic and ban even loopback.
 - **Its own admin.** The lab account (`guolab` on ModernUO, `table.json`) and its password are generated into the
   per-user workspace, `server_lab/<backend>/secrets.json`; nothing ships a password and the dev shard's owner and
   game master accounts are never used or created. Passwords are 16 letters and digits: the classic login gump's
@@ -60,7 +62,7 @@ no accounts; ServUO hashes the password at its first save. An existing accounts 
 | `cases.json` | The 25 cases of the lab plan plus case 0 (the client reaches its login screen, no server); `scenario` is null until the case is written (SV2a/SV2b) |
 | `table.json` | Per backend: lab profile name, shard name, account and character, and `vars`, the words that differ between servers (staff commands, places), for scenarios that take them as `--var` |
 | `triage.json` | Optional (SV7): `{"<backend>": {"<case>": {"verdict": "guo" | "server-gap" | "n/a", "why": "..."}}}`. A verdict turns "FAIL (untriaged)" into its owner's failure; `n/a` marks a case the server does not have |
-| `build/server_lab/grid.json` | The grid, data_formats section 36 (gitignored) |
+| `<UO_BUILD_DIR>/server_lab/grid.json` | The grid, data_formats section 36 (gitignored). Logs and case manifests use the same configured output root, so a run can save directly to central evidence |
 
 ## Tests
 

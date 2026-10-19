@@ -29,7 +29,6 @@ import os
 import re
 import secrets
 import shutil
-import socket
 import string
 import subprocess
 import sys
@@ -44,6 +43,7 @@ sys.path.insert(0, str(HERE))
 import grid as grid_mod  # noqa: E402
 import modernuo  # noqa: E402
 import servuo  # noqa: E402
+import listeners  # noqa: E402
 from guo import load_config  # noqa: E402
 
 
@@ -82,7 +82,7 @@ def table() -> dict:
 
 
 def build_dir() -> Path:
-    return ROOT / "build" / "server_lab"
+    return load_config().build / "server_lab"
 
 
 class Lab:
@@ -189,9 +189,7 @@ class Lab:
             print(f"[lab] {self.id}: wrote the lab admin into the new world's accounts")
 
     def listening(self) -> bool:
-        with socket.socket() as s:
-            s.settimeout(0.5)
-            return s.connect_ex(("127.0.0.1", self.port)) == 0
+        return listeners.listening(self.port)
 
     def start(self) -> None:
         profile = self.need_profile()
@@ -263,9 +261,9 @@ class Lab:
                 code = proc.wait(timeout=SEED_S)
             except subprocess.TimeoutExpired:
                 subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True)
-                raise SystemExit(f"[lab] seeding did not finish in {SEED_S} s; see {log.relative_to(ROOT)}")
+                raise SystemExit(f"[lab] seeding did not finish in {SEED_S} s; see {log}")
         if code != 0:
-            raise SystemExit(f"[lab] seeding exited {code}; see {log.relative_to(ROOT)}")
+            raise SystemExit(f"[lab] seeding exited {code}; see {log}")
         self.save_state(seeded=grid_mod.now())
         print("[lab] seeded")
 
@@ -290,8 +288,8 @@ class Lab:
                 run_id = match.group(2)
                 break
         failed = []
-        if run_id and (ROOT / "build" / "runs" / run_id / "run.json").is_file():
-            manifest = load_json(ROOT / "build" / "runs" / run_id / "run.json")
+        if run_id and (self.cfg.build / "runs" / run_id / "run.json").is_file():
+            manifest = load_json(self.cfg.build / "runs" / run_id / "run.json")
             failed = [s["id"] for s in manifest.get("steps", []) if s.get("ok") is False]
         note = "" if run_id else (lines[-1].strip() if lines else f"exit {code}")
         return grid_mod.cell_from_run(case, code, run_id, failed, note, self.client_version or self.cfg.client_version)

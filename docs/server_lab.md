@@ -45,12 +45,25 @@ configured as above.
 
 ## Client versions
 
+### Native matrix, 2026-10-19
+
+ModernUO on 2610 passed cases 0, 1 and 9. ServUO on 2611 passed cases 0 and 9; case 1 reached the world but failed
+`go_bank`: the character was at the expected 1434,1697 on map 1 (Trammel), while the shared dev-shard scenario
+requires map 0 (Felucca). This is a scenario/backend setup mismatch; it does not show a failed login handshake.
+The recorded failing result is retained rather than reported as a pass. Twenty-three cases have no scenario yet.
+See the [generated matrix](wiki/Server-Compatibility.md) and evidence run
+`20261019_guo-codex-worker-netcompat_native-matrix` for the dated results.
+
+Both servers ran natively; no container or POL run is claimed. ModernUO readiness was checked from the operating
+system's listening table without sending a TCP connection. ServUO's new lab account was created and saved with the
+client's probe before running its cases; the probe now recognizes an empty account's creation screen.
+
 The lab runs each row as `UO_CLIENT_VERSION`; `--client-version` reports another one for a run, and each result keeps
-the version it ran as (the wiki's "GUO reported as" column). On 2026-10-18 the newest classic client is 7.0.107.76:
-it is what EA's patcher installs, and the newest version ClassicUO's `ClientVersion` table knows. EA's renderer upgrade
-beta (announced 2026-10-13) ships through a new launcher and publishes no version number yet; the lab adds a run for it
-when a version is known and the data set is installed beside the main one, never over it. So "7.0.107 and the latest"
-is one run per row today.
+the version it ran as (the wiki's "GUO reported as" column). The installed data set used for the 2026-10-19 native
+matrix is 7.0.107.76. This covers the requested 7.0.107 family; it does not establish which numeric version EA's
+patcher currently distributes. The latest-version row remains pending until that version is verified and matching
+data is installed beside the existing data, never over it. A version known to ClassicUO's table alone is not proof
+that it is the latest official client.
 
 ## POL (assessed for NET-01, not a row yet)
 
@@ -66,12 +79,12 @@ this is what a row needs, checked against the upstream repositories on 2026-10-1
 | **Container** | `polserver/distro-docker-runner` is POL's own image: Ubuntu 20.04, downloads the Nightly Linux core and ModernDistro, runs `uoconvert`, listens on port 5003 only. Its last change is from 2020 and it pins a 2019 MySQL client package |
 
 **Why it is not a container row tonight.** Docker Desktop is installed on the lab machine but its engine is not
-running, and starting a machine-wide service is an owner decision, not a lab step. The runner image is also stale
+running. ModernUO and ServUO are tested as native Windows lab servers on ports 2610 and 2611. The POL runner image is also stale
 (2020, fixed port 5003, no loopback setting of its own). A native Windows row needs no new service: the Nightly
 Windows zip and a distro, `uoconvert` and `ecompile` run once at setup, `pol.cfg` and `servers.cfg` on
 127.0.0.1:2613, and the lab admin written into `accounts.txt` before the first boot, as the ServUO row writes
 `accounts.xml`. That is the proposed POL row (`tools/server_lab/pol.py`), a story of its own; the container variant
-waits for the owner's decision on running Docker.
+remains untested. No Docker service is required for the native ModernUO and ServUO rows.
 
 ## Consequences for the later stories
 
