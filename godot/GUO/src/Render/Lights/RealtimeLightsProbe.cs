@@ -30,8 +30,14 @@ public partial class RealtimeLightsProbe : Node
             // Ambient ramp: white by day, the blue-grey floor at the darkest level, warmer in between.
             Color day = RealtimeLightField.AmbientFor(1f), night = RealtimeLightField.AmbientFor(0.0625f), dusk = RealtimeLightField.AmbientFor(0.5f);
             Require(day.R > 0.99f && day.G > 0.99f && day.B > 0.99f, "Full day must be white");
-            Require(night.B > night.R && night.R < 0.25f && night.B > 0.1f, "Night must be a dim blue floor");
+            Require(night.B > night.R && night.R < 0.0625f, "Night must be a dim blue floor");
             Require(dusk.R > dusk.B && dusk.R < day.R, "Dusk must sit between, warm");
+            foreach (float level in new[] { 0.0625f, 0.1875f, 0.5f, 1f })
+            {
+                Color ambient = RealtimeLightField.AmbientFor(level);
+                float luminance = ambient.R * 0.2126f + ambient.G * 0.7152f + ambient.B * 0.0722f;
+                Require(Math.Abs(luminance - level) < 0.0001f, "Ambient must preserve classic night brightness");
+            }
 
             // Tiledata rule.
             Require(RealtimeLightField.Blocks(true, false, false, false, 0), "A wall blocks");
@@ -120,6 +126,20 @@ public partial class RealtimeLightsProbe : Node
             field.Compute(0.0625f, new[] { new RealtimeLightField.Source(4, 4, 0, 4, new Color(1f, 0.5f, 0f)) });
             Color hot = field.Cell(4, 4);
             Require(hot.R > 0.99f && hot.G < 0.75f && hot.G > hot.B, "A clipped cell is scaled by its brightest channel, hue kept");
+
+            // A walking source moves its pool between tile completions while
+            // reusing visibility; crossing the tile seam does not snap it.
+            field.Begin(0, 0, 16, 16);
+            var dim = new Color(0.3f, 0.2f, 0.1f);
+            field.Compute(0.0625f, new[] { new RealtimeLightField.Source(8, 8, 0, 3, dim) });
+            float before = field.Cell(10, 8).R;
+            field.Compute(0.0625f, new[] { new RealtimeLightField.Source(8, 8, 0, 3, dim, 0.5f, 0f) });
+            Require(field.LastComputed == 0 && field.Cell(10, 8).R > before + 0.02f, "Sub-tile motion moves the pool without rebuilding visibility");
+            field.Compute(0.0625f, new[] { new RealtimeLightField.Source(8, 8, 0, 3, dim, 0.999f, 0f) });
+            float seam = field.Cell(10, 8).R;
+            field.Compute(0.0625f, new[] { new RealtimeLightField.Source(9, 8, 0, 3, dim) });
+            Require(Math.Abs(field.Cell(10, 8).R - seam) < 0.001f, "Pool is continuous through a tile completion");
+            Require(Math.Abs(field.Cell(13, 8).R - night.R) < 0.001f, "Local pool reaches ambient beyond its radius");
 
             // Falloff end points.
             Require(Math.Abs(RealtimeLightField.Falloff(0f, 5f) - 1f) < 0.001f && RealtimeLightField.Falloff(5f, 5f) < 0.001f, "Falloff is 1 at the source and 0 at the radius");

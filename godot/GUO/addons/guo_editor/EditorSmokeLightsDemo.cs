@@ -81,6 +81,12 @@ public partial class EditorSmoke
         LightColors.GetHue(torch, out ushort torchColor, out bool torchIsHue);
         LightColors.GetHue(lantern, out ushort lanternColor, out bool lanternIsHue);
         GD.Print($"[lights-demo] torch=0x{torch:X4} (light colour {torchColor}, hue {torchIsHue}) lantern=0x{lantern:X4} (light colour {lanternColor}, hue {lanternIsHue})");
+        foreach (ushort graphic in new[] { torch, lantern })
+        {
+            int lightId = _data.Files.TileData.StaticData[graphic].LightIndex;
+            ref readonly var info = ref Client.Game.UO.Lights.GetLight((byte)lightId);
+            GD.Print($"[lights-demo] graphic=0x{graphic:X4} lightId={lightId} lightWidth={info.UV.Width}");
+        }
 
         // The street: of the two screen axes through the camera cell, the
         // one with the longest open run (no wall or impassable static at

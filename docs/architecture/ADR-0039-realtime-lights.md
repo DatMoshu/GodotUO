@@ -72,8 +72,20 @@ ADR-0023's rules (stateless, nearest, the world draw unchanged).
 - `AddLight` gains one guarded line (the realtime hook) and
   `PrepareLightsRendering` / `InitializeRenderTargets` one each (the mode
   gate); `RenderTargets.Draw` reads an override texture. All marked.
-- A light held by a mobile moves every frame; its map is recomputed each
-  frame it moves (289 cells, trivial).
+- A light held by a mobile moves every frame. Visibility is cached on the
+  tile grid; falloff uses the sprite's interpolated sub-tile position each
+  frame, so a carried pool does not wait for the next completed tile.
+- A moving spell offers its own position and light graphic, including after
+  its source becomes coordinates; the classic source-entity offer remains
+  unchanged when the option is off.
+
+Owner review follow-up (2026-10-19, director relay): pools must remain distinct
+around their carriers rather than washing the whole plaza orange. Radius uses
+the light sprite's width (`width / 44` tiles), with energy 2.2, accounting for
+the effective footprint after corner averaging and falloff.
+The ambient colour ramp is normalized to the classic grey's luminance, keeping
+the same night level equally dark in the ON/OFF comparison. Untinted lamps use
+a warm flame tint. These adjustments affect only the enabled option.
 
 ## Validation
 

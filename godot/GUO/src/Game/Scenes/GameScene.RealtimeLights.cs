@@ -33,8 +33,8 @@ namespace GUO.Game.Scenes
         /// <summary>Margin of tiles around the visible chunks, so a light just off screen still reaches in.</summary>
         private const int RtMargin = 8;
 
-        /// <summary>Tiles of reach per 44 px of light sprite width.</summary>
-        private const float RadiusScale = 1.6f;
+        /// <summary>Effective screen diameter per tile after corner averaging and falloff.</summary>
+        private const float RadiusDiameter = 44f;
 
         /// <summary>Grid side cap, cells (a zoomed-out 4K view fits well inside).</summary>
         private const int RtMaxSide = 192;
@@ -57,12 +57,16 @@ namespace GUO.Game.Scenes
             if (_rtSourceCount >= _rtSources.Length) return;
 
             ref readonly var info = ref Client.Game.UO.Lights.GetLight(light.ID);
-            // The sprite's reach in tiles, widened: a light.mul blob is drawn
-            // additively over grey, the field is a smooth pool, so the same
-            // width reads smaller here.
-            int radius = info.Texture == null ? 4 : Math.Max(2, (int)MathF.Round(info.UV.Width * RadiusScale / 44f));
+            // Width is a diameter, not a radius. Widening it washed together
+            // nearby carriers and lamps into one nearly saturated plaza.
+            int radius = info.Texture == null ? 3 : Math.Max(2, (int)MathF.Round(info.UV.Width / RadiusDiameter));
+            // Invert the world's isometric projection of the walking offset.
+            // The visibility grid stays tile based; radial falloff follows the
+            // same continuous position as the mobile or moving effect sprite.
+            float ox = (obj.Offset.X + obj.Offset.Y) / 44f;
+            float oy = (obj.Offset.Y - obj.Offset.X) / 44f;
             _rtSources[_rtSourceCount++] = new RealtimeLightField.Source(
-                obj.X, obj.Y, obj.Z, radius, RealtimeLightColor(light.Color, light.IsHue));
+                obj.X, obj.Y, obj.Z, radius, RealtimeLightColor(light.Color, light.IsHue), ox, oy);
         }
 
         /// <summary>Classic clears its target; the mode's texture is the override.</summary>

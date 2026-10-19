@@ -43,7 +43,7 @@ namespace GUO.Renderer.Lights
         public const int AboveLightZ = 10;
 
         /// <summary>The tint of an uncoloured light: warm, as a flame is.</summary>
-        public static readonly Color WarmLight = new Color(1.0f, 0.82f, 0.58f);
+        public static readonly Color WarmLight = new Color(1.0f, 0.72f, 0.38f);
 
         private const int CacheLimit = 512;
 
@@ -52,14 +52,17 @@ namespace GUO.Renderer.Lights
             public readonly int X, Y, Z;
             public readonly int Radius;
             public readonly Color Color;
+            public readonly float OffsetX, OffsetY;
 
-            public Source(int x, int y, int z, int radius, Color color)
+            public Source(int x, int y, int z, int radius, Color color, float offsetX = 0f, float offsetY = 0f)
             {
                 X = x;
                 Y = y;
                 Z = z;
                 Radius = Math.Clamp(radius, 1, MaxRadius);
                 Color = color;
+                OffsetX = offsetX;
+                OffsetY = offsetY;
             }
         }
 
@@ -219,7 +222,8 @@ namespace GUO.Renderer.Lights
         /// The ambient for a shard light level, as the classic grey
         /// (<c>IsometricLight.IsometricLevel</c>: 1.0 full day, 0.0625 darkest).
         /// Day is white, dusk warms, night goes blue-grey; the three channels
-        /// never drop below the night floor so a torch has albedo to lift.
+        /// retain the classic grey's luminance so equal night levels compare
+        /// equal ambient brightness; only the colour changes.
         /// </summary>
         public static Color AmbientFor(float isometricLevel)
         {
@@ -236,7 +240,9 @@ namespace GUO.Renderer.Lights
             c.R = Math.Min(1f, c.R + 0.10f * bump);
             c.G = Math.Min(1f, c.G + 0.02f * bump);
             c.B = Math.Max(0f, c.B - 0.08f * bump);
-            return c;
+            float luminance = c.R * 0.2126f + c.G * 0.7152f + c.B * 0.0722f;
+            float scale = t / luminance;
+            return new Color(c.R * scale, c.G * scale, c.B * scale);
         }
 
         /// <summary>
@@ -352,7 +358,9 @@ namespace GUO.Renderer.Lights
 
         private float[] ComputeReach(in Source s, float[] map)
         {
-            int r = s.Radius;
+            // One extra cell keeps the support complete while the source
+            // interpolates toward a neighbouring tile in either direction.
+            int r = s.Radius + 1;
             int side = r * 2 + 1;
             int n = side * side;
             if (map == null || map.Length != n) map = new float[n];
@@ -372,7 +380,7 @@ namespace GUO.Renderer.Lights
                 for (int dx = -r; dx <= r; dx++)
                 {
                     int tx = s.X + dx, ty = s.Y + dy;
-                    float vis = Contains(tx, ty) && dx * dx + dy * dy <= r * r
+                    float vis = Contains(tx, ty)
                         ? Visible(s.X, s.Y, s.Z, tx, ty)
                         : 0f;
                     _scratchVis[(dy + r) * side + (dx + r)] = vis;
@@ -407,8 +415,9 @@ namespace GUO.Renderer.Lights
                 for (int dx = -r; dx <= r; dx++)
                 {
                     int i = (dy + r) * side + (dx + r);
-                    float d = MathF.Sqrt(dx * dx + dy * dy);
-                    float v = _scratchBlur[i] * Falloff(d, r + 0.5f);
+                    // Cache visibility, not distance: falloff follows the
+                    // sub-tile source position each frame in Accumulate.
+                    float v = _scratchBlur[i];
                     // Ground far below or above the light takes less.
                     int tx = s.X + dx, ty = s.Y + dy;
                     if (Contains(tx, ty))
@@ -445,7 +454,7 @@ namespace GUO.Renderer.Lights
 
         private void Accumulate(in Source s, float[] map)
         {
-            int r = s.Radius;
+            int r = s.Radius + 1;
             int side = r * 2 + 1;
             for (int dy = -r; dy <= r; dy++)
             {
@@ -456,6 +465,8 @@ namespace GUO.Renderer.Lights
                     int tx = s.X + dx;
                     if (tx < _originX || tx >= _originX + _width) continue;
                     float v = map[(dy + r) * side + (dx + r)];
+                    float fx = dx - s.OffsetX, fy = dy - s.OffsetY;
+                    v *= Falloff(MathF.Sqrt(fx * fx + fy * fy), s.Radius);
                     if (v <= 0f) continue;
                     int cell = Index(tx, ty);
                     if (s.Z > _lightTop[cell]) _lightTop[cell] = (short)s.Z;
