@@ -137,3 +137,13 @@ through client MCP; the same probe is in the full smoke. It checks default
 and persistence, verified binding, canvas limits, raw RGBA/mipmaps and all
 four filter selections. Private-shard pixel parity and Britain-bank timings
 are recorded with the PR evidence, not inferred from the build passing.
+
+## Amendment: water render modes (2026-10-18, proposed)
+
+Water gets an L1 client option the same way Enhanced HD did: a
+`Profile.WaterStyle`, default Classic (today's tiles, pixel for pixel), an
+Options entry in both Options interfaces, styles from verified Store `water`
+components, and a choice in the editor World view's Layers menu. It shades Wet
+land and Wet statics through one shader mode in the shared world material and
+keeps ADR-0001's ordering, depth and picking. ADR-0037 holds the decision,
+the ripple model, shard control and the perf budget.

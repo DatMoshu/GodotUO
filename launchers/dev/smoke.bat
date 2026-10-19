@@ -46,9 +46,14 @@ echo [smoke] optional HD pack contracts (synthetic)
 
 echo [smoke] server lab tables and server rows (synthetic; nothing fetched or started)
 "%UO_PYTHON%" "%UO_TOOLS%\server_lab\test_server_lab.py" || set "FAIL=1"
+echo [smoke] perf lab report: fields kept, privacy refusal, size (synthetic; tools\perf_lab)
+"%UO_PYTHON%" -m pytest "%UO_TOOLS%\perf_lab" -q -p no:cacheprovider || set "FAIL=1"
 
 echo [smoke] PostFX engine regressions (synthetic)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Bootstrap/PostFxEngineProbe.tscn || set "FAIL=1"
+
+echo [smoke] controller regressions and Set controls (synthetic pad; no shard)
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" -- --pad-regression-probe --pregame-classic --silent || set "FAIL=1"
 
 echo.
 if "%FAIL%"=="1" ( echo [smoke] FAILED & exit /b 1 )

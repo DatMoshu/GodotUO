@@ -110,6 +110,8 @@ internal static class PadWheelsProbe
         await Trackpad(host, world);
         await Screens(host);
         await BindingDummies(host, world);
+        await MountAndLock(host, world);
+        await TargetAndSpeech(host, world);
 
         PadBindings.ResetToDefaults();
         GamepadInput.Forced = null;
@@ -396,8 +398,16 @@ internal static class PadWheelsProbe
         await Button(host, JoyButton.LeftShoulder);
         Check("LB steps back", PadRadar.Chosen == chosen, PadRadar.NameOf(PadRadar.Chosen));
 
-        await Button(host, JoyButton.A);
-        Check("A uses the choice (a double click)", PadRadar.LastAction == $"use 0x{chosen?.Serial ?? 0:X8}", PadRadar.LastAction);
+        // A mobile out of reach is walked to first (MountAndLock follows the
+        // walk to the end). Stopped here at once, or the horse would be ridden
+        // and gone from the world for the checks below.
+        Down(JoyButton.A);
+        await InputProbe.Wait(host, 2);
+        PadRadar.CancelApproach();
+        Up(JoyButton.A);
+        await InputProbe.Wait(host, 2);
+        Check("A uses the choice (a double click, or a walk up to it first)",
+            PadRadar.LastAction == $"use 0x{chosen?.Serial ?? 0:X8}" || PadRadar.LastAction == $"approach 0x{chosen?.Serial ?? 0:X8}", PadRadar.LastAction);
         await InputProbe.Wait(host, 20);
 
         await Button(host, JoyButton.Y);
@@ -419,8 +429,12 @@ internal static class PadWheelsProbe
         await Button(host, JoyButton.RightShoulder);
         Entity first = PadRadar.Chosen;
         Axis(JoyAxis.TriggerRight, 0f);
-        await InputProbe.Wait(host, 6);
-        Check("letting RT go with a choice and no button uses it", PadRadar.LastAction == $"use 0x{first?.Serial ?? 0:X8}", PadRadar.LastAction);
+        await InputProbe.Wait(host, 2);
+        string released = PadRadar.LastAction;
+        PadRadar.CancelApproach();
+        await InputProbe.Wait(host, 4);
+        Check("letting RT go with a choice and no button uses it",
+            released == $"use 0x{first?.Serial ?? 0:X8}" || released == $"approach 0x{first?.Serial ?? 0:X8}", released);
 
         // Nothing chosen: letting go does nothing.
         Axis(JoyAxis.TriggerRight, 1f);
@@ -494,9 +508,15 @@ internal static class PadWheelsProbe
         {
             entry.InvokeMouseUp(new Compat.Point(entry.ScreenCoordinateX + 4, entry.ScreenCoordinateY + 4), GUO.Input.MouseButtonType.Left);
             await InputProbe.Wait(host, 6);
-            Check("it opens \"Set controls\" at the first job", PadWizard.IsOpen && PadWizard.Asking == PadCommand.Use,
-                $"open {PadWizard.IsOpen}, asking {PadWizard.Asking}");
-            await Shot(host, "wizard_from_options");
+            Check("it opens the \"Set controls\" list at the first job", PadWizard.IsOpen && PadWizard.ListRow == 0,
+                $"open {PadWizard.IsOpen}, row {PadWizard.ListRow}");
+            await Shot(host, "wizard_list_from_options");
+            await Button(host, JoyButton.DpadDown, 6);
+            await Button(host, JoyButton.A, 6);
+            await Shot(host, "wizard_list_one_job");
+            await Button(host, JoyButton.B, 6);
+            await Button(host, JoyButton.B, 6);
+            await Until(host, () => !PadWizard.IsOpen, 120);
         }
 
         options?.Dispose();
@@ -673,8 +693,189 @@ internal static class PadWheelsProbe
         PadScreen.Close();
         Check("closing a screen restores the camera", !PadScreen.HalfCut && !PadScreen.IsOpen);
         Check("the wheel no longer offers a window that only asks the shard",
-            Array.IndexOf(PadWizard.Choices, WheelWindow.Journal) >= 0 && PadWizard.Choices.Length == 10,
+            Array.IndexOf(PadWizard.Choices, WheelWindow.Journal) >= 0 && PadWizard.Choices.Length == 11,
             $"choices {PadWizard.Choices.Length}");
+    }
+
+    // --- targets and speech (INPUT-03) -----------------------------------------------------------
+
+    private static async System.Threading.Tasks.Task TargetAndSpeech(Node host, World world)
+    {
+        PadScreen.Close();
+        PadRadar.Close();
+        world.TargetManager.CancelTarget();
+
+        if (world.Player.InWarMode)
+        {
+            GameActions.ToggleWarMode(world.Player);
+            await Until(host, () => !world.Player.InWarMode, 60);
+        }
+
+        // Yourself, from the radar, with a target cursor up (a heal, a bandage).
+        GameObject taken = null;
+        world.TargetManager.SetTargeting(o => taken = o, 0, TargetType.Beneficial);
+        Axis(JoyAxis.TriggerRight, 1f);
+        await InputProbe.Wait(host, 10);
+        Check("with a target cursor up, the radar offers yourself", PadRadar.Near.Contains(world.Player),
+            $"{PadRadar.Near.Count} near");
+        PadRadarChoose(world.Player);
+        await Button(host, JoyButton.A);
+        Check("A on yourself answers the target cursor with you", ReferenceEquals(taken, world.Player),
+            $"taken {(taken as Entity)?.Serial ?? 0:X8}");
+        Axis(JoyAxis.TriggerRight, 0f);
+        await InputProbe.Wait(host, 6);
+        world.TargetManager.CancelTarget();
+
+        // The ground: a target cursor opened while the pad is in use puts the
+        // pointer on the tile in front of the character, and A answers it there.
+        await Button(host, JoyButton.DpadUp, 20);
+        await InputProbe.Wait(host, 10);
+        Godot.Input.ParseInputEvent(new InputEventJoypadMotion { Axis = JoyAxis.LeftX, AxisValue = 0f });
+        taken = null;
+        world.TargetManager.SetTargeting(o => taken = o, 0, TargetType.Neutral);
+        await InputProbe.Wait(host, 6);
+        await Shot(host, "ground_aim");
+        int fx = world.Player.X, fy = world.Player.Y;
+        switch ((int) world.Player.Direction & 7)
+        {
+            case 0: fy--; break;
+            case 1: fx++; fy--; break;
+            case 2: fx++; break;
+            case 3: fx++; fy++; break;
+            case 4: fy++; break;
+            case 5: fx--; fy++; break;
+            case 6: fx--; break;
+            default: fx--; fy--; break;
+        }
+        GameObject under = SelectedObject.Object as GameObject;
+        Check("a target cursor puts the pointer on the tile in front of the character",
+            under != null && under.X == fx && under.Y == fy,
+            $"pointer over {under?.GetType().Name} at {under?.X},{under?.Y}, front {fx},{fy}");
+        await Button(host, JoyButton.A);
+        await Until(host, () => taken != null, 30);
+        var ground = taken as GameObject;
+        Check("A there answers the target cursor with that tile",
+            ground != null && ground.X == fx && ground.Y == fy && ground is not Mobile,
+            $"taken {taken?.GetType().Name} at {ground?.X},{ground?.Y}");
+        world.TargetManager.CancelTarget();
+
+        // Speech from the pad: the Say screen, a phrase said with A.
+        PadScreen.Open(WheelWindow.Speech);
+        await InputProbe.Wait(host, 6);
+        Check("the Say screen lists the phrases", PadScreen.IsOpen && PadScreen.Current == WheelWindow.Speech);
+        await Shot(host, "say_screen");
+        int hail = Array.IndexOf(PadScreen.Phrases, "Hail");
+
+        for (int i = 0; i < hail; i++)
+        {
+            await Button(host, JoyButton.DpadDown, 4);
+        }
+
+        int before = JournalManager.Entries.Count;
+        await Button(host, JoyButton.A);
+        bool heard = await Until(host, () => JournalManager.Entries.Skip(before)
+            .Any(e => e.Text != null && e.Text.IndexOf("hail", StringComparison.OrdinalIgnoreCase) >= 0), 180);
+        Check("A on a phrase says it (the shard sends it back)", heard && !PadScreen.IsOpen);
+    }
+
+    // --- mounting and the attack lock (INPUT-00) -------------------------------------------------
+
+    private static async System.Threading.Tasks.Task MountAndLock(Node host, World world)
+    {
+        PadScreen.Close();
+
+        if (world.Player.InWarMode)
+        {
+            GameActions.ToggleWarMode(world.Player);
+            await Until(host, () => !world.Player.InWarMode, 60);
+        }
+
+        // A horse three tiles off: out of a rider's reach (one tile), inside the radar's.
+        var before = new System.Collections.Generic.HashSet<uint>(world.Mobiles.Values.Select(m => m.Serial));
+        Mobile horse = null;
+        world.TargetManager.CancelTarget();
+
+        // Asked twice: a busy shard has let one "[add" go without a target cursor.
+        for (int attempt = 0; attempt < 2 && horse == null; attempt++)
+        {
+            await InputProbe.Say(host, "[add Horse");
+
+            if (await Until(host, () => world.TargetManager.IsTargeting, 180))
+            {
+                world.TargetManager.Target(0, (ushort) (world.Player.X + 3), world.Player.Y, world.Player.Z);
+            }
+
+            await Until(host, () => (horse = world.Mobiles.Values.FirstOrDefault(m => !before.Contains(m.Serial) && !m.IsDestroyed && m != world.Player)) != null, 240);
+        }
+
+        if (horse == null)
+        {
+            Check("a horse for the mount check", false);
+            return;
+        }
+
+        Axis(JoyAxis.TriggerRight, 1f);
+        await InputProbe.Wait(host, 10);
+        PadRadarChoose(horse);
+        int away = horse.Distance;
+        await Button(host, JoyButton.A);
+        Check("A on a horse out of reach walks up to it first", away <= PadRadar.UseReach || PadRadar.LastAction == $"approach 0x{horse.Serial:X8}",
+            $"{away} tiles, {PadRadar.LastAction}");
+        Axis(JoyAxis.TriggerRight, 0f);
+        bool mounted = await Until(host, () => world.Player.IsMounted, 600);
+        await Shot(host, "mounted");
+        Check("the pad mounts the horse", mounted, $"{PadRadar.LastAction}, horse {horse.Distance} tiles");
+
+        if (mounted)
+        {
+            Axis(JoyAxis.TriggerRight, 1f);
+            await InputProbe.Wait(host, 10);
+            Check("mounted, the radar offers yourself", PadRadar.Near.Contains(world.Player));
+            PadRadarChoose(world.Player);
+            await Button(host, JoyButton.A);
+            Axis(JoyAxis.TriggerRight, 0f);
+            bool off = await Until(host, () => !world.Player.IsMounted, 240);
+            Check("A on yourself gets off the horse", off, PadRadar.LastAction);
+        }
+
+        // The attack lock: in war mode, A on a monster in the radar attacks it and
+        // makes it the last target, so X (attack last) stays on it afterwards.
+        Mobile dummy = world.Mobiles.Values.FirstOrDefault(m => !m.IsDestroyed && m.Name != null
+            && m.Name.IndexOf("Attack Dummy", StringComparison.OrdinalIgnoreCase) >= 0 && m.Distance <= PadBindings.RadarRange);
+
+        // Without the GUO pad dummies on this shard, the horse stands in: the
+        // lock is the client's (last attack, last target), whoever is attacked.
+        dummy ??= horse.IsDestroyed ? null : horse;
+
+        if (dummy == null)
+        {
+            Check("a mobile for the lock check", false);
+            return;
+        }
+
+        ProfileManager.CurrentProfile.EnabledCriminalActionQuery = false;
+
+        GameActions.ToggleWarMode(world.Player);
+        await Until(host, () => world.Player.InWarMode, 60);
+        world.TargetManager.LastTargetInfo.Clear();
+        Axis(JoyAxis.TriggerRight, 1f);
+        await InputProbe.Wait(host, 10);
+        PadRadarChoose(dummy);
+        await Button(host, JoyButton.A);
+        Check("in war mode, A on a monster attacks it (upstream's double click in war mode)",
+            PadRadar.LastAction == $"attack 0x{dummy.Serial:X8}" && world.TargetManager.LastAttack == dummy.Serial, PadRadar.LastAction);
+        Check("and makes it the last target",
+            world.TargetManager.LastTargetInfo.IsEntity && world.TargetManager.LastTargetInfo.Serial == dummy.Serial,
+            $"last {world.TargetManager.LastTargetInfo.Serial:X8}");
+        Axis(JoyAxis.TriggerRight, 0f);
+        await InputProbe.Wait(host, 10);
+        world.TargetManager.LastAttack = 0;
+        await Button(host, JoyButton.X);
+        await Until(host, () => world.TargetManager.LastAttack == dummy.Serial, 60);
+        Check("X after the radar closes attacks the same monster", world.TargetManager.LastAttack == dummy.Serial,
+            $"last attack {world.TargetManager.LastAttack:X8}");
+        GameActions.ToggleWarMode(world.Player);
+        await Until(host, () => !world.Player.InWarMode, 60);
     }
 
     // --- controller bindings against GUO pad dummies ----------------------------------------------

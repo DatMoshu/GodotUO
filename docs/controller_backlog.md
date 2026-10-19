@@ -21,8 +21,16 @@ Status: `todo` | `doing` | `done` | `blocked`
 
 | ID | Item | Acceptance | Status |
 |---|---|---|---|
-| T1 | Target-cursor flow: radar for entities; self / last / cancel; ground reticle stub | With a target cursor up, RT+A answers an entity; B cancels; self chord works; ground spell documents remaining gap | todo |
+| T1 | Target-cursor flow: radar for entities; self / last / cancel; ground reticle stub | With a target cursor up, RT+A answers an entity; B cancels; self chord works; ground spell documents remaining gap | done — the radar lists yourself while a target cursor is up; a target cursor opened on the pad puts the pointer on the tile in front, A answers it, the right stick moves it. Remaining gap: no tile-by-tile reticle, the pointer moves in pixels (`--pad-wheels-probe`) |
 | G1 | Generic gump focus-graph navigation | D-pad moves focus across buttons/checkboxes/text/scroll on an arbitrary server gump; A activates; B closes; one code path, not per-gump screens | doing — PadGumpNav wired; needs live server-gump probe + focus ring polish |
+
+## Player reports (INPUT-00, 2026-10-18)
+
+| ID | Item | Acceptance | Status |
+|---|---|---|---|
+| C1 | Rebind one job without redoing the set; cancel; reset to defaults | Options opens a list; A on one row rebinds it alone; B tap keeps; B leaves unsaved; Reset to defaults + Save restores all (`--pad-regression-probe`) | done |
+| C2 | Mounting with the pad | Radar A on a horse out of reach walks up and mounts; radar lists yourself while mounted, A dismounts (`--pad-wheels-probe`) | done |
+| C3 | Target lock on monsters | War mode: radar A attacks the choice and makes it last target; X afterwards attacks the same one (`--pad-wheels-probe`) | doing — code in; shard proof pending (the dev shard lacks patch 0004, the pad dummies) |
 
 ## P1 — solo essentials
 
@@ -31,8 +39,8 @@ Status: `todo` | `doing` | `done` | `blocked`
 | S1 | Bandage self direct or macro-row default | One pad path bandages self without opening the pack | todo |
 | S2 | Last object / last spell on macro row | Favorites or Y-row entries fire LastObject / LastSpell | todo |
 | S3 | Corpse loot screen actions | From radar-opened corpse, take / dig without mouse | todo |
-| S4 | Talk / speech pad path | Compose speech without a physical keyboard (OSK or fallback) | todo |
-| S5 | Pet command favorites | all follow me / stop / stay reachable | todo |
+| S4 | Talk / speech pad path | Compose speech without a physical keyboard (OSK or fallback) | doing — the Say screen covers the shard's spoken commands; free text still needs a keyboard |
+| S5 | Pet command favorites | all follow me / stop / stay reachable | done — on the Say screen |
 
 ## P2 — later (not solo-blocking)
 
