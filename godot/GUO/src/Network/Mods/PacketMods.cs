@@ -341,6 +341,10 @@ namespace GUO.Network.Mods
     /// assembly). Files only: nothing is fetched, and a mod that fails is skipped whole.</summary>
     internal static class ModLoader
     {
+        /// <summary>A mod is a managed assembly loaded from a file; Android and web builds do not
+        /// load assemblies from the user's files.</summary>
+        public static bool PlatformSupported => !OperatingSystem.IsAndroid() && !OperatingSystem.IsBrowser() && !OperatingSystem.IsIOS();
+
         public static List<ModLoadResult> LoadAll(string modsFolder, PacketModRegistry registry, Func<ModManifest, IModContext> contextFor)
         {
             if (string.IsNullOrEmpty(modsFolder) || !Directory.Exists(modsFolder))

@@ -17,7 +17,7 @@ namespace GUO.Network.Mods
     {
         /// <summary>A mod is a managed assembly loaded from a file; Android and web builds do not
         /// load assemblies from the user's files, so the option is not offered there.</summary>
-        public static bool Supported => !OperatingSystem.IsAndroid() && !OperatingSystem.IsBrowser() && !OperatingSystem.IsIOS();
+        public static bool Supported => ModLoader.PlatformSupported;
 
         /// <summary>Where installed mods live: <c>Data/Mods/&lt;mod&gt;/mod.json</c>, beside
         /// <c>Data/Plugins</c>.</summary>
@@ -47,9 +47,11 @@ namespace GUO.Network.Mods
 
         /// <summary>Called once at start, after the plugins load. With the option off this sets
         /// nothing, and every seam sees a null registry.</summary>
-        public static void Load(ClientVersion version) => Load(version, Folder, Settings.GlobalSettings.LoadMods);
+        public static void Load(ClientVersion version) => Load(version, Folder, Settings.GlobalSettings.LoadMods, Store.StoreOptions.Root);
 
-        internal static void Load(ClientVersion version, string folder, bool enabled)
+        /// <summary>Folder mods (<paramref name="folder"/>, the user's own files) first, then the
+        /// Store's approved mod components under <paramref name="storeRoot"/> (null for none).</summary>
+        internal static void Load(ClientVersion version, string folder, bool enabled, string storeRoot = null)
         {
             PacketModRegistry.Current = null;
             Results = Array.Empty<ModLoadResult>();
@@ -62,7 +64,22 @@ namespace GUO.Network.Mods
                 ShardHost = Shard.Host,
                 ShardName = Shard.Name
             };
-            Results = ModLoader.LoadAll(folder, registry, m => new Context(m.Id, (uint)version));
+            var results = ModLoader.LoadAll(folder, registry, m => new Context(m.Id, (uint)version));
+            if (storeRoot != null && Directory.Exists(storeRoot))
+            {
+                var refused = new List<string>();
+                try
+                {
+                    using var store = new Store.StoreClient("http://127.0.0.1:18865", storeRoot, PlatformDefaults.CurrentVersion);
+                    results.AddRange(ModLoader.LoadFolders(Store.StoreMods.ApprovedFolders(store, refused), registry, m => new Context(m.Id, (uint)version)));
+                }
+                catch (Exception e) when (e is IOException or InvalidDataException or System.Text.Json.JsonException or UnauthorizedAccessException)
+                {
+                    refused.Add("Store mods: " + e.Message);
+                }
+                results.AddRange(refused.Select(m => new ModLoadResult(null, null, false, 0, m)));
+            }
+            Results = results;
 
             foreach (ModLoadResult r in Results)
             {

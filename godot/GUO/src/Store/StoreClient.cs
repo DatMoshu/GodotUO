@@ -204,7 +204,7 @@ internal sealed class StoreClient : IDisposable
     public async Task<string> Install(StoreEntry entry, CancellationToken ct = default)
     {
         StorePack.Validate(entry.Manifest); StorePack.Digest(entry.Sha256);
-        StorePack.Require(GUO.Network.Mods.ClientMods.Supported || entry.Manifest.Components?.All(c => c.Type != "mod") != false, StoreMods.Unavailable);
+        StorePack.Require(GUO.Network.Mods.ModLoader.PlatformSupported || entry.Manifest.Components?.All(c => c.Type != "mod") != false, StoreMods.Unavailable);
         StorePack.Require(entry.Manifest.MinProfileVersion <= _profileVersion, "This pack requires a newer GUO profile version");
         StorePack.Require(entry.Size > 0 && entry.Size <= StorePack.MaxZip, "Invalid ZIP size");
         string destination = Destination(entry.Manifest.Id, entry.Manifest.Version);

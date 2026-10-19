@@ -80,7 +80,7 @@ internal static class StoreMods
             return;
         foreach (StoreComponent c in m.Components.Where(c => c.Type == "mod"))
         {
-            StorePack.Require(ClientMods.Supported, Unavailable);
+            StorePack.Require(ModLoader.PlatformSupported, Unavailable);
             byte[] bytes = read(c.Entry);
             StorePack.Require(bytes.Length <= MaxModJson, "A mod's mod.json is too large");
             ModManifest mod;
@@ -132,7 +132,7 @@ internal static class StoreMods
     /// <summary>Records the user's approval of one installed mod component, as it is now.</summary>
     public static void Approve(StoreClient store, string packId, string version, string componentId)
     {
-        StorePack.Require(ClientMods.Supported, Unavailable);
+        StorePack.Require(ModLoader.PlatformSupported, Unavailable);
         var closure = store.VerifyContent(packId, version);
         StoreManifest m = closure.Packs[packId].Manifest;
         StoreComponent c = m.Components?.SingleOrDefault(x => x.Id == componentId && x.Type == "mod");

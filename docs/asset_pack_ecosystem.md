@@ -206,7 +206,7 @@ session owns review, approval, enablement, execution, revocation and logout.
 This is the one pack component that carries code, an exception to the L2
 no-code rule that needs the owner's decision: see [ADR-0038's amendment](architecture/ADR-0038-packet-mod-abi.md#amendment-mod-packs-an-exception-to-the-l2-no-code-rule).
 
-A `mod` component carries one packet mod (`docs/data_formats.md` section 41)
+A `mod` component carries one packet mod (`docs/data_formats.md` section 42)
 in a v2 pack, so a shard can publish its client mod through a catalogue. The
 Store installs it; installing loads nothing. The client never downloads a mod
 by itself: not on login, not from a shard's content descriptor, not as a
