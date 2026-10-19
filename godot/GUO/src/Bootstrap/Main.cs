@@ -347,6 +347,10 @@ public partial class Main : Node
                 {
                     CallDeferred(nameof(PadRegressionThenQuit));
                 }
+                else if (_options.KeyboardProbe)
+                {
+                    CallDeferred(nameof(KeyboardProbeThenQuit));
+                }
                 else if (_options.PadWheelsProbe)
                 {
                     PadWheelsProbeThenQuit();
@@ -470,6 +474,8 @@ public partial class Main : Node
         GUO.Renderer.PostFx.PostFxStack.RunOverride = string.IsNullOrWhiteSpace(_options.PostFx) ? null : _options.PostFx;
 
         GD.Print($"[GUO] client home   : {dataDir}");
+
+        GUO.Network.ServerIdentity.VersionSource = _options.ClientVersionSource;
 
         var args = new List<string>
         {
@@ -700,6 +706,7 @@ public partial class Main : Node
         || _options.GamepadProbe
         || _options.PadWheelsProbe
         || _options.PadRegressionProbe
+        || _options.KeyboardProbe
         || _options.OneScreenProbe
         || _options.GlyphShots
         || _options.AssetProbe.Length > 0
@@ -821,6 +828,9 @@ public partial class Main : Node
 
     /// <summary>Shard-free injected controller dispatch and classic-gump regression checks.</summary>
     private void PadRegressionThenQuit() => Quit(PadRegressionProbe.Run() ? 0 : 1);
+
+    /// <summary>Shard-free keyboard checks: key-ups on focus loss, AltGr text; see KeyboardProbe.</summary>
+    private void KeyboardProbeThenQuit() => Quit(KeyboardProbe.Run() ? 0 : 1);
 
     /// <summary>The menu wheel, the interact radar, the new buttons and "Set controls"; see PadWheelsProbe.</summary>
     private async void PadWheelsProbeThenQuit()
@@ -1400,6 +1410,7 @@ public partial class Main : Node
             if (!string.IsNullOrWhiteSpace(clientVersion))
             {
                 ClientVersion = clientVersion;
+                ClientVersionSource = "shard_session";
             }
 
             if (customData != null)
@@ -1509,6 +1520,7 @@ public partial class Main : Node
                 || GamepadProbe
                 || PadWheelsProbe
                 || PadRegressionProbe
+                || KeyboardProbe
                 || OneScreenProbe
                 || GlyphShots
                 || EffectsProbe > 0
@@ -1666,6 +1678,9 @@ public partial class Main : Node
 
         public bool PadRegressionProbe { get; private set; }
 
+        /// <summary>--keyboard-probe: the keyboard layer without a shard; see KeyboardProbe.</summary>
+        public bool KeyboardProbe { get; private set; }
+
         /// <summary>--one-screen-probe: the one-screen drawer in the world; see OneScreenProbe.</summary>
         public bool OneScreenProbe { get; private set; }
 
@@ -1801,6 +1816,9 @@ public partial class Main : Node
         /// <summary>Dotted client version, e.g. "7.0.107.76".</summary>
         public string ClientVersion { get; private set; } = "7.0.107.76";
 
+        /// <summary>Where ClientVersion came from: default, env, cli or shard_session (data_formats section 43).</summary>
+        public string ClientVersionSource { get; private set; } = "default";
+
         /// <summary>Cliloc language suffix; "enu" for English.</summary>
         public string Language { get; private set; } = "enu";
 
@@ -1833,6 +1851,11 @@ public partial class Main : Node
                 Language = Env("UO_LANGUAGE", "enu"),
             };
 
+            if (!string.IsNullOrWhiteSpace(OS.GetEnvironment("UO_CLIENT_VERSION")))
+            {
+                o.ClientVersionSource = "env";
+            }
+
             if (int.TryParse(Env("UO_SHARD_PORT", "2593"), out int envPort))
             {
                 o.ShardPort = envPort;
@@ -1845,6 +1868,17 @@ public partial class Main : Node
             if (OperatingSystem.IsAndroid())
             {
                 MergedLandMode(true, true, true);
+            }
+
+            // PERF-REG, Windows: the land array and merged cover (B4 fix 2c) by
+            // default, pending the owner's decision (docs/perf/2026-10-19_cover_regression.md).
+            // The riverbank cover fix doubled the covering land; merged cover draws
+            // it as runs at 0 strict pixels of parity. --merged-land=off and
+            // --merged-cover=off restore upstream's draw.
+            if (OperatingSystem.IsWindows())
+            {
+                MergedLandMode(true, true, true);
+                GUO.Renderer.UltimaBatcher2D.MergedCover = true;
             }
 
             var list = new List<string>(args);
@@ -1929,6 +1963,10 @@ public partial class Main : Node
                         o.PadRegressionProbe = true;
                         o.ScratchProfile = true;
                         break;
+                    case "--keyboard-probe":
+                        o.KeyboardProbe = true;
+                        o.ScratchProfile = true;
+                        break;
                     case "--pad-wheels-probe":
                         o.PadWheelsProbe = true;
                         o.ScratchProfile = true;
@@ -1954,6 +1992,9 @@ public partial class Main : Node
                         GUO.Renderer.UltimaBatcher2D.MergedCover = true;
                         GUO.Host.PerfProbe.ParityToggle = on => GUO.Renderer.UltimaBatcher2D.MergedCover = on;
                         GUO.Host.PerfProbe.ParityState = () => GUO.Renderer.UltimaBatcher2D.MergedCover;
+                        break;
+                    case "--merged-cover=off":
+                        GUO.Renderer.UltimaBatcher2D.MergedCover = false;
                         break;
                     case "--batched-world":
                         GUO.Renderer.UltimaBatcher2D.BatchedWorld = true;
@@ -2189,6 +2230,7 @@ public partial class Main : Node
                         break;
                     case "--client-version":
                         o.ClientVersion = Next();
+                        o.ClientVersionSource = "cli";
                         break;
                     case "--language":
                         o.Language = Next();

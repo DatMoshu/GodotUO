@@ -45,6 +45,8 @@ echo "[smoke] PostFX engine regressions (synthetic)"
 echo "[smoke] hosted catalogue (a local Pages branch and loopback HTTP; no network)"
 "$UO_PYTHON" "$UO_TOOLS/asset_store/hosted_proof.py" || FAIL=1
 
+echo "[smoke] keyboard: key-ups on focus loss, AltGr text (synthetic; no shard)"
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" -- --keyboard-probe --pregame-classic --silent || FAIL=1
 echo "[smoke] controller regressions and Set controls (synthetic pad; no shard)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" -- --pad-regression-probe --pregame-classic --silent || FAIL=1
 
