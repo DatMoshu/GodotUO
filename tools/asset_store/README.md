@@ -234,6 +234,20 @@ explicitly labelled evidence board, and captures the editor viewport. This
 is a proof scene, not a Store editor dock. Existing editor sources are not
 modified. Generated screenshots and logs stay under `build/screenshots`.
 
+## Expanded water authoring contract (W-01)
+
+`schema/water_v2.schema.json` defines `guo/water@2`, including bounds and default
+annotations for surface colour/opacity, depth tint, shore foam, procedural
+normals, flow, per-source wakes, reflection/glint, clock and pixel controls.
+`schema/water_v2.defaults.json` is a complete starting set; see data_formats
+section 44 for units and semantics. Run
+`python -m pytest tools/asset_store/test_water_schema.py` for its contract checks
+(uses the `jsonschema` test dependency already installed by CI).
+
+This is an authoring contract for W-02. Both shipping Store validators continue
+to refuse v2 documents, including the complete defaults in the shared corpus,
+so unsupported controls cannot silently install. Existing v1 packs remain valid.
+
 ## The validation corpus
 
 ```

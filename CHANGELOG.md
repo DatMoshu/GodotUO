@@ -6,6 +6,8 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Water
+- Document the expanded water parameter schema and complete data defaults,
+  with authoring contract tests; v2 pack installation waits for renderer support.
 - Pixel-water ripples keep their own brightness steps so they remain visible
   against the dark animated tiles.
 - Pixel water respects a pack's zero glint setting, keeping white sparkles

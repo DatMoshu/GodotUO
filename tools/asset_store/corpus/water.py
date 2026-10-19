@@ -2,6 +2,7 @@
 import base64
 import json
 from copy import deepcopy
+from pathlib import Path
 
 STYLE = {
     "schema": "guo/water@1", "name": "Corpus water", "model": "pixel", "tint": [0.1, 0.2, 0.4],
@@ -36,6 +37,8 @@ def water_cases():
     for model in ("uo", "pixel", "cel", "realistic", "classicplus"):
         add("model-" + model, True, f"a {model} style installs", style=changed(model=model))
     add("manifest", True, "the manifest alone is valid", zipped=False)
+    v2 = json.loads((Path(__file__).resolve().parents[1] / "schema" / "water_v2.defaults.json").read_text(encoding="utf-8"))
+    add("v2-authoring-only", False, "v2 controls must not install until the renderer consumes them", style=v2)
     add("integer-numbers", True, "whole numbers are numbers", style=changed(speed=2, wave=1, tint=[0, 1, 0]))
     add("edges", True, "every range is inclusive",
         style=changed(speed=4, scale=0.005, foam_width=0.5, levels=16, grain=8, ripples={"strength": 2, "damping": 0.999}))

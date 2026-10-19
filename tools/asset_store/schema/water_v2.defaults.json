@@ -1,0 +1,14 @@
+{
+  "schema": "guo/water@2",
+  "name": "Custom water",
+  "model": "uo",
+  "surface": {"base_color": [1, 1, 1], "opacity": 1},
+  "depth": {"tint": [0.12, 0.24, 0.42], "strength": 0, "falloff": 8},
+  "shoreline": {"width": 0.22, "strength": 0.85},
+  "normal": {"amplitude": 0.22, "speed": 1, "scale": 0.045},
+  "flow": {"direction": [1, 0], "strength": 0},
+  "wake": {"boat": 1, "player": 1, "object": 1, "damping": 0.985},
+  "lighting": {"reflection": 0, "sun_glint": 0.35},
+  "clock": {"source": "elapsed", "rate": 1, "offset": 0, "fixed_time": 0},
+  "pixel": {"levels": 6, "grain": 1}
+}
