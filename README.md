@@ -27,16 +27,31 @@ parts that genuinely bind to FNA are reimplemented on Godot.
   "Ported" means present and compiling, not proven working.
 - Against a ModernUO dev shard it logs in, walks the world and opens gumps,
   and it hosts assistant plugins through upstream's plugin interface.
-- The last side-by-side sweep against ClassicUO (`docs/parity_2026-09-23.md`)
-  matched in five of eight places. The other three show known rendering
-  differences, listed there with their causes.
+- Side by side with ClassicUO: the daytime sweep (`docs/parity_2026-09-23.md`)
+  matched in five of eight places, and the night sweep of 2026-09-26
+  (`docs/parity_2026-09-26_night.md`) matched across towns, dungeons and
+  every facet once its four fixes went in. Frame rate zoomed far out is
+  still well behind ClassicUO.
 - Builds for Windows, Android (ARM64, tested on an AYN Thor dual-screen
   handheld and a single-screen Odin 2 Mini) and the Steam Deck, all from one
   repository; every push to main produces downloadable builds.
 - Touch play on phones and handhelds: a touch bar, a combat macro row, pinch
   and flick to size or move windows between screens, and an OLED screen saver.
-- The GodotUO Asset Store and the GodotUO editor (world, art and live world
-  objects) are built in; see the wiki.
+- A gamepad works on every platform, the Windows desktop included, and GUO
+  follows whichever of pad, mouse or touch you used last.
+- The GodotUO Asset Store installs hash-checked content packs: backgrounds,
+  screen effects, and the packs behind three options that are off by
+  default: Enhanced HD art, regional audio and recorded NPC voices.
+- The GodotUO editor (world, art and live world objects) has an **Admin**
+  tab for your own server: health, accounts, settings, backups, the server's
+  commands, a god view of a facet, and an audit log of every change.
+- Every feature sits in a layer, from the faithful port (L0) through player
+  options, content packs and editor packages to Labs (L4), the experiments
+  that never ship in an export. AGENTS.md has the table and its rules.
+- Scripted runs replay the same scenario on the client or the editor
+  (`tools/scenario_run`), and a hosted shard's install and deploy scripts
+  can be dry-run in a throwaway Docker container before they touch a Linux
+  host (`tools/muo_shard`).
 - A web client: it plays on a local shard in Chrome. Godot 4.7 cannot export
   C# to the web, so it is exported with a community build of the engine
   (`docs/wiki/Web-Client.md`).
@@ -79,6 +94,11 @@ It connects to `127.0.0.1:2593` by default. To run a local
 [ModernUO](https://github.com/modernuo/ModernUO) shard to play against, see
 `tools/modernuo/README.md`; to play elsewhere, set `UO_SHARD_HOST` and
 `UO_SHARD_PORT` in your `config.local.bat`.
+
+Generated output (screenshots, smoke runs, exports) goes to `build\` in the
+checkout unless you set `UO_BUILD_DIR` in `config.local.bat` to a folder
+outside it; `launchers/_shared/config.local.bat.example` shows how to give
+each checkout its own.
 
 Optionally add the engine folder to `PATH` so `godot` resolves everywhere:
 
@@ -152,8 +172,8 @@ The wiki lives in the repository, under [`docs/wiki/`](docs/wiki/Home.md), so
 it is versioned and reviewed with the code: getting started, every
 configuration key, the launchers and tools, the Windows and Android builds,
 the dev shard, the editor, the scripted runs and probes, parity and drift,
-the ADR index and a FAQ. `docs/wiki/README.md` says how it is published to
-the GitHub Wiki. The plan (`docs/port_plan.md`), the data contract
+the ADR index and a FAQ. The `wiki` workflow publishes it to the
+GitHub Wiki with `tools/wiki_publish` on every push to main that changes it. The plan (`docs/port_plan.md`), the data contract
 (`docs/data_formats.md`) and the ADRs (`docs/architecture/`) remain the
 sources it is written from.
 
@@ -162,17 +182,26 @@ sources it is written from.
 ## Layout
 
 ```
-launchers/        .bat entry points grouped by job — start here
+launchers/        .bat/.sh pairs grouped by job — start here
   _shared/        config.local.bat (yours) + config.bat (defaults) + common.bat
   game/play.bat   THE launcher
+  editor/         open the Godot project or the upstream reference
   pipeline/       numbered data steps, run in order
-  shard/          the local ModernUO dev shard
+  shard/          the local ModernUO dev shard: fetch, build, run
   dev/            build, smoke, screenshot, parity, upstream sync
+  windows/ android/ steamdeck/ web/   export and test for each platform
+  store/          the local Asset Store catalogue
+  world/          world authoring tools
 godot/GUO/        the Godot project (C#)
   src/Compat/     XNA compatibility shim
+  src/Labs/       opt-in experiments, Debug builds only
+  addons/guo_editor/  the GodotUO editor
 sources/ClassicUO/  upstream reference — read only, not committed
 tools/            one folder per job, plus the pinned engine
-docs/             the plan, the data contract, generated status, ADRs
+  scenarios/      the scripted scenarios every feature is proved with
+design/           the brand sigil and the source of the Store's packs
+docs/             the plan, the data contract, generated status, ADRs, the wiki
+build/            generated output, gitignored (or wherever UO_BUILD_DIR points)
 ```
 
 ---

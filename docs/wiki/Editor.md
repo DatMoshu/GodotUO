@@ -8,8 +8,21 @@ READMEs of `tools\editor_smoke`, `tools\editor_live`, `tools\editor_shard`,
 
 The add-on lives in `godot\GUO\addons\guo_editor\`. It is enabled in
 `project.godot`, so `launchers\editor\open_project.bat` opens with the UO
-docks laid out: Assets on the left, World in the centre, Inspector on the
-right, Shard in the bottom panel.
+tabs across the top (World, Assets, Store, Gumps, MapGen, Multis and Admin),
+the UO Inspector on the right and the UO Shard dock in the bottom panel.
+
+**Admin** is a tab for a server you run on this computer: health, Save and
+Restart, accounts, settings, backups, commands, a god view of who is where,
+and an audit log. See [Admin Tab](Admin-Tab.md). The add-on is an editor
+package (layer L3, see [Feature Layers](Feature-Layers.md)): it is compiled
+only for the editor and is never in an exported client.
+
+The editor can also be driven by an automation (MCP) client. Editor Settings
+> GUO > MCP Access has one switch per group of tools: reading state, moving
+around and connecting start on; anything that changes your server starts off.
+Everything AI is behind Editor Settings > GUO > AI > Enabled. With it off, the
+AI and MCP surfaces are hidden and their work stops. Manual authoring is
+unaffected. See `tools\editor_mcp\README.md`.
 
 New to the World tab? [World Editing](World-Editing.md) walks through
 selecting, placing and moving things on the map, step by step.
@@ -80,8 +93,8 @@ Recent picks are kept per kind in the project's editor metadata.
 | 2 | The **World** tab: the client's own renderer embedded in the editor (ADR-0015), drawing any cell of the install at the client's size, with a season. `tools\world_parity` proves it draws what a logged-in client draws. | Done |
 | 3 | The **world project** overlay (ADR-0011): edits are whole replaced 8x8 blocks stored as JSON under `UO_WORLD_PROJECT`, drawn over the install in the World tab. Tools, undo, and export to patched map files (`tools\world`). | Done |
 | 4 | The **live tier** (ADR-0012): a UO Shard dock that talks to a private ModernUO instance through a bridge assembly, so a block edit is pushed to the shard and to connected clients (UltimaLive) while they play. | Done |
-| 5 | **Asset edits** (ADR-0020, reserved as 0013): land art, static art, gumps and hues replaced from PNG in the world project's `assets\`, shown at once in the Assets dock and the World tab, exported as a `verdata.mul` and a patched `hues.mul` that any ClassicUO-lineage client loads through `files_override`. | Done |
-| 6 | Shard world objects and backends (ADR-0014, reserved). | Not started |
+| 5 | **Asset edits** (ADR-0020; the number 0013 was retired): land art, static art, gumps and hues replaced from PNG in the world project's `assets\`, shown at once in the Assets dock and the World tab, exported as a `verdata.mul` and a patched `hues.mul` that any ClassicUO-lineage client loads through `files_override`. | Done |
+| 6 | **Shard world objects** (ADR-0014): spawners and items kept in the project's `shard\objects.json`, placed in the World tab and written into the export for the shard. | Done (smoke-tested on the private instance) |
 | H | **Bulk import/export** (ADR-0022): the Assets dock's Bulk tab unpacks art, land, gumps, animations or tiledata to PNG plus JSON sidecars and packs an edited folder into a staged data set, by running `tools/uopack` and showing its lines; Verify re-checks the stage and the untouched install. See [Author UO Data](Author-UO-Data.md). | Done (unpack smoke-tested) |
 
 "Done" here means the phase's check has been run and its README or ADR
@@ -116,8 +129,9 @@ directories (ModernUO: `dataDirectories`), ahead of the install.
 
 ## The live tier (ADR-0012)
 
-A small bridge assembly is loaded into the private ModernUO instance and
-listens on `UO_EDITOR_LIVE_HOST:UO_EDITOR_LIVE_PORT` (`127.0.0.1:2595`) for
+A small bridge assembly is loaded into a ModernUO instance (the private one
+below, or the shared dev shard, whose `launchers\shard\run.bat` loads it too)
+and listens on `UO_EDITOR_LIVE_HOST:UO_EDITOR_LIVE_PORT` (`127.0.0.1:2595`) for
 JSON lines from editors. A block edit goes editor, bridge, shard, and the
 shard sends the changed block to its clients with UltimaLive packets, which
 the ported client already handles. `GUO_BRIDGE_MAPS` says which maps the
@@ -141,14 +155,16 @@ puts an export ahead of the install in its data directories.
 
 | Tool | Proves |
 |---|---|
-| `launchers\dev\editor_smoke.bat` (`tools\editor_smoke`) | The real editor opens headless, the add-on loads, the docks answer, an art id is found. `--windowed` for screenshots (takes the desktop's focus); `--reload` also rebuilds and hot-reloads the assembly. |
+| `launchers\dev\editor_smoke.bat` (`tools\editor_smoke`) | The real editor opens headless, the add-on loads, the docks answer, an art id is found. `--windowed` for screenshots (takes the desktop's focus); `--reload` also rebuilds and hot-reloads the assembly; `--require-native` fails if a check that needs a real external program was skipped; `--header-only` checks the toolbar at three widths; `--out FOLDER` sends the evidence to a central folder. |
+| `python tools\scenario_run\run.py editor.admin.offline --headless` | Plays a scripted editor scenario (`tools\scenarios\editor\`: tabs sweep, MCP access, Admin offline, header layout). `launchers\dev\scenario_run.bat` is the launcher. |
 | `tools\editor_live\run.py` | Two editors and a client, end to end: an edit in editor A appears in editor B and in the client's UltimaLive log. Headless by default; `--windowed` for a client picture. |
 | `tools\world_parity\run.py --at X,Y --windowed` | The World tab's frame of a cell against a logged-in client's frame of the same cell, pixel by pixel, masking the player, the paperdoll and the chat line. Measured 2026-09-27: 99.98% identical in the wilderness, 99.29% in Britain with the residual being shard decoration, 99.84% for a project drawn over the install against the client on its export. Plays on the private instance by default; the shared dev shard's port is refused without `--allow-shared`. |
-
 | `tools\editor_asset_roundtrip\run.py` | A project's asset edits are exported, verified, and read back unchanged by a headless GUO client pointed at the export; a control run without the export must not match. `editor_smoke` runs it on its own fixtures. |
 
-Output of all of them goes under `build\` and contains renders of client art,
-so it is never committed.
+Output of all of them goes under `UO_BUILD_DIR` (`build\` unless you set it)
+and contains renders of client art, so it is never committed.
 
 For a task-by-task walk-through (setup, world view, export, live tier) see
 [Manage Your Shard From the Editor](Manage-Your-Shard-From-The-Editor.md).
+For the Admin tab see [Admin Tab](Admin-Tab.md). The Store tab installs
+packs: see [Content Packs](Content-Packs.md).
