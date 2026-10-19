@@ -93,6 +93,12 @@ public partial class Main : Node
             SelectionSeamProbe.Run();
         }
 
+        // Synthetic packet mod proof (ADR-0038) before normal scene startup for the MCP runner.
+        if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--mods-probe") >= 0)
+        {
+            GUO.Network.Mods.ModsProbe.Run();
+        }
+
         // Synthetic opt-in audio proof before normal scene startup for the MCP runner.
         if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--audio-content-probe") >= 0)
         {

@@ -107,3 +107,6 @@ foreach (byte bad in new byte[] { 0, 1, 2 })
 }
 
 Console.WriteLine($"PASS: {checks} packet length guard checks (short, malformed, split and wrapped headers).");
+
+int modChecks = ModTests.Run();
+Console.WriteLine($"PASS: {modChecks} packet mod checks (registry, mod.json, the sample mod, both seams).");

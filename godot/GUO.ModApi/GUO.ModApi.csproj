@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The mod ABI (ADR-0038): the only types a GUO mod compiles against. The
+    client references this project and loads every mod with this assembly
+    shared, so a mod sees the client through these interfaces and nothing
+    else. Engine-free on purpose: tools/network_tests and the samples build
+    against it without Godot.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>GUO.ModApi</AssemblyName>
+    <RootNamespace>GUO.ModApi</RootNamespace>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+</Project>
