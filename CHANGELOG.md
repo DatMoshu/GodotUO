@@ -251,6 +251,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- CI keeps NuGet packages between runs, and the Android release build also
+  keeps its Gradle downloads. The CI health report for 2026-10-18 (times per
+  workflow, every failure of the last three weeks, no flaky steps) is in
+  `docs/release/ci_2026-10-18.md`.
 
 - Dev shard: exempt loopback from automatic behavioral ban contributions so a
   silent readiness connection cannot reject all local clients for 15 minutes;
