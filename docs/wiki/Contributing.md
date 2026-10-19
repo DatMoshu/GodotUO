@@ -5,12 +5,14 @@ adds how the branches are run.
 
 ## Branches
 
-- **`main`** is the owner's. Nobody else commits to it or pushes to it.
 - Work happens on **`work/<topic>`** branches (`work/ui`, `work/editor`,
-  `work/docs`). One topic per branch; a branch is merged into `main` by the
-  owner, usually as a merge commit named after the sprint it closed.
-- Agents and contributors never push. They leave a branch with clean commits
-  and a report; the owner reviews, merges and pushes.
+  `work/docs`). One topic per branch, and it arrives on `main` as a pull
+  request.
+- Nobody pushes straight to `main`. Open a pull request; it is reviewed
+  and merged once the checks pass.
+- One feature per pull request. Aim below about 1,500 lines or 20 files
+  unless it was agreed beforehand; split larger work and keep the author's
+  credit.
 - Several branches may be in flight at once; ADR numbers are claimed in
   `docs\architecture\README.md` before an ADR is written so they do not
   collide.
@@ -18,20 +20,43 @@ adds how the branches are run.
   branches do not tread on each other's build output. A worktree uses the
   main checkout's engine and upstream reference through `UO_GODOT_HOME` and
   `UO_UPSTREAM_DIR` (no directory links); run
-  `launchers\dev\worktree_setup.bat` once in a fresh one.
+  `launchers\dev\worktree_setup.bat` once in a fresh one. Set `UO_BUILD_DIR`
+  in `config.local.bat` (with `%UO_CHECKOUT%`) to keep generated output
+  outside the checkout.
 
 ## Before you commit
 
 ```bat
 dotnet build godot\GUO\GUO.csproj     REM 0 errors
-launchers\dev\smoke.bat               REM 5/5
+launchers\dev\smoke.bat               REM must end with OK
 launchers\pipeline\03_port_audit.bat  REM if you touched porting progress; commit docs\port_status.md
+python tools\privacy_scan\run.py --staged   REM no private paths, names, tokens or addresses
 ```
+
+In the pull request, record the commands you actually ran and what they
+printed. Say which checks you could not run, and why.
 
 CI (`.github\workflows\ci.yml` and `build.yml`) repeats the build, compiles
 the Python tools, checks that `docs\port_status.md` is current, and rejects
 game data, machine paths outside `docs\`, and a committed
 `config.local.bat`.
+
+## Choose the feature layer first
+
+Before you write code, pick the layer your change belongs to: L0 core port,
+L1 client option, L2 pack, L3 editor package, L4 Labs, or a tool. The layer
+decides what you must prove. See [Feature Layers](Feature-Layers.md).
+
+- A new chat command, profile field, Options entry, shader or edit to a ported
+  file starts with a Discussion or a short ADR.
+- Generation belongs in the editor or Labs; the client consumes packs.
+- An external dependency needs a doctor launcher that says what to install.
+- L1 and L4 features need a scenario under `tools/scenarios/` and a smoke line.
+- Fill in the review template: layer, toggle, parity proof, scenario, doctor
+  and docs section.
+
+Packable content (art, voices, splats and the like) goes in the Store as a
+pack: see [Content Packs](Content-Packs.md).
 
 ## The rules a change is checked against
 
@@ -51,6 +76,8 @@ game data, machine paths outside `docs\`, and a committed
    `.def` or `.enu` files, no captures rendered from them, no passwords, no
    machine paths, no LAN addresses or device serials. Those belong in
    `config.local.bat` or on the command line.
+8. **AI is optional in the editor.** Every AI feature uses the shared
+   `AiFeatures` switch; with it off the AI surfaces are hidden.
 
 ## Commit hygiene
 
