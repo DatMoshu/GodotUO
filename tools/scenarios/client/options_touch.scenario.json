@@ -1,0 +1,23 @@
+{
+  "id": "client.ui.options_touch",
+  "title": "Options: classic mouse spacing, touch rows, scrolling and Modern settings",
+  "surface": "client",
+  "requires": { "shard": "dev", "account": "$account", "build": "debug" },
+  "timeouts": { "step_s": 240, "run_s": 300 },
+  "steps": [
+    {
+      "id": "options_contract",
+      "do": {
+        "kind": "launch",
+        "args": ["--options-touch-probe", "--pregame-classic", "--window-size", "1920,1080", "--account", "$account", "--character", "$character", "--screenshot-dir", "$shots"],
+        "settings": { "autologin": false, "saveaccount": false }
+      },
+      "say": "Check Options with synthetic fingers on a scratch profile; no movement or combat.",
+      "expect": { "log.contains": "[GUO] options touch probe: PASS", "within_s": 240 }
+    },
+    {
+      "id": "coverage",
+      "do": { "kind": "note", "text": "Desktop synthetic-touch proof only. Phone and physical dual-display checks are separate." }
+    }
+  ]
+}

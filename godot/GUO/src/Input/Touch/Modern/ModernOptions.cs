@@ -8,6 +8,7 @@ using GUO.Game.Data;
 using GUO.Game.Managers;
 using GUO.Game.Scenes;
 using GUO.Game.UI.Gumps;
+using GUO.Renderer;
 
 namespace GUO.Input.Touch.Modern;
 
@@ -63,6 +64,7 @@ internal sealed partial class ModernOptions : ModernGump
     private ModernMacros _macros;
     private ModernHuePicker _huePicker;
     private bool _macrosChanged;
+    private Action _refreshBackgroundChoices;
 
     public ModernOptions(World world) : base(world)
     {
@@ -159,6 +161,11 @@ internal sealed partial class ModernOptions : ModernGump
         Choice("Video", "HD filtering", new[] { "Auto", "Point", "Point mipmaps", "Smooth" },
             p => (int)p.HdFilter, (p, v) => p.HdFilter = (HdFilterMode)Math.Clamp(v, 0, 3));
 
+        // Moved here from Classic view (UX-02), the same Profile fields the
+        // classic Apply writes: the canvas background, the second screen's
+        // fine scale and the command bar arrow's inset.
+        BackgroundChoice();
+
         // Tooltip, Fonts and Speech: the classic pages' boxes, sliders and
         // colours (ModernHuePicker), with their ranges. Font pickers stay in
         // Classic view.
@@ -225,7 +232,95 @@ internal sealed partial class ModernOptions : ModernGump
         Choice("Touch", "Hold and flick down", flick, p => p.FlickDown, (p, v) => p.FlickDown = v);
         Choice("Touch", "Hold and flick left", flick, p => p.FlickLeft, (p, v) => p.FlickLeft = v);
         Choice("Touch", "Hold and flick right", flick, p => p.FlickRight, (p, v) => p.FlickRight = v);
+        Int("Touch", "Command bar arrow inset from the corner", 0, 200, p => p.TouchChevronInset, (p, v) => p.TouchChevronInset = v);
+
+        // As the classic Options: only where there is a second display.
+        if (GUO.Platform.Android.DualScreen.HasSecondaryDisplay)
+        {
+            Choice("Touch", "Fine second screen scale", new[] { "Off", "1.0x", "1.25x", "1.5x" },
+                p => Math.Max(0, Array.IndexOf(DualScaleFinePercents, p.DualScreenScalePercent)),
+                (p, v) => p.DualScreenScalePercent = DualScaleFinePercents[Math.Clamp(v, 0, DualScaleFinePercents.Length - 1)]);
+        }
+
         Action_("Touch", "Edit the command bar", () => { Close(); BarEditor.Open(0); });
+    }
+
+    // The classic Options' fine scale steps (OptionsGump.DualScaleFinePercents).
+    private static readonly int[] DualScaleFinePercents = { 0, 100, 125, 150 };
+
+    /// <summary>
+    /// The background picker: the classic list's tiles, shipped backgrounds and
+    /// installed Store backgrounds. The player's own image, video or frames
+    /// need a path, so they stay in Classic view; one already chosen shows as
+    /// its first entry and is kept unless another is picked.
+    /// </summary>
+    private void BackgroundChoice()
+    {
+        var choices = new List<CanvasBackgroundSettings>();
+        var titles = new List<string>();
+
+        void Add(CanvasBackgroundSettings c, string title)
+        {
+            choices.Add(c);
+            titles.Add(title);
+        }
+
+        void RefreshChoices()
+        {
+            choices.Clear();
+            titles.Clear();
+            Profile profile = ProfileManager.CurrentProfile ?? new Profile();
+            CanvasBackgroundSettings current = CanvasBackgroundSettings.FromProfile(profile);
+            Add(new CanvasBackgroundSettings(CanvasBackgroundMode.BuiltinGrey, "", 12, false), "Grey tile (original)");
+            Add(new CanvasBackgroundSettings(CanvasBackgroundMode.BuiltinWood, "", 12, false), "Dark wood");
+
+            foreach (BuiltinBackground b in BuiltinBackground.All)
+            {
+                Add(new CanvasBackgroundSettings(CanvasBackgroundMode.BuiltinMedia, b.Name, 12, false), b.Title);
+            }
+
+            foreach ((CanvasBackgroundSettings c, string title) in GUO.Store.StoreOptions.InstalledBackgrounds(profile))
+            {
+                Add(c, title);
+            }
+
+            bool own = current.Mode is CanvasBackgroundMode.Image or CanvasBackgroundMode.Video or CanvasBackgroundMode.Frames
+                && choices.FindIndex(c => c.Mode == current.Mode && c.Path == current.Path) < 0;
+
+            if (own)
+            {
+                choices.Insert(0, current);
+                titles.Insert(0, "Your own (Classic view)");
+            }
+        }
+
+        RefreshChoices();
+
+        int Index(Profile p)
+        {
+            CanvasBackgroundSettings s = CanvasBackgroundSettings.FromProfile(p);
+            int i = choices.FindIndex(c => c.Mode == s.Mode
+                && (c.Mode is CanvasBackgroundMode.BuiltinGrey or CanvasBackgroundMode.BuiltinWood || c.Path == s.Path));
+            return i < 0 ? 0 : i;
+        }
+
+        Choice("Video", "Background behind the world", titles.ToArray(), Index, (p, v) =>
+        {
+            CanvasBackgroundSettings c = choices[Math.Clamp(v, 0, choices.Count - 1)];
+            p.CanvasBackgroundMode = c.ModeString;
+
+            // As the classic Apply: a Store or own file is the path; a tile or
+            // shipped background leaves the typed path alone.
+            if (c.Mode is CanvasBackgroundMode.Image or CanvasBackgroundMode.Video or CanvasBackgroundMode.Frames)
+            {
+                p.CanvasBackgroundPath = c.Path;
+            }
+        });
+
+        // Modern views are cached. Reopening must see a path chosen in Classic
+        // view and packs installed since the first open, without losing either.
+        Setting setting = _settings[^1];
+        _refreshBackgroundChoices = () => { RefreshChoices(); setting.Choices = titles.ToArray(); };
     }
 
     // --- building ---------------------------------------------------------------------
@@ -526,6 +621,7 @@ internal sealed partial class ModernOptions : ModernGump
     {
         Profile p = ProfileManager.CurrentProfile;
         _values.Clear();
+        _refreshBackgroundChoices?.Invoke();
 
         if (!_jewels)
         {

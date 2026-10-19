@@ -12,6 +12,13 @@ word, as the bar's Paperdoll/Inventory/Journal/Map/Chat captions do (3000133,
 
 Measured on `work/ui-command-bar` after a43a4af.
 
+## Modern Options additions — `src/Input/Touch/Modern/ModernOptions.cs`
+
+`Background behind the world`, `Grey tile (original)`, `Dark wood`,
+`Your own (Classic view)`, `Command bar arrow inset from the corner`,
+`Fine second screen scale`, `Off`, `1.0x`, `1.25x`, `1.5x`, and the
+installed-background `Store:` prefix are English pending localization.
+
 ## Embedded scripts preview (desktop and touch)
 
 `src/Input/Touch/Modern/ModernScripts.cs` adds Scripts — CE preview, Close,
