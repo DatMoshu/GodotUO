@@ -52,6 +52,9 @@ unchanged; every hook into ported code is marked `PORT DEVIATION (GUO)`.
 | Hold on the world | Held right button: walk, then run |
 | Hold on an item | Held left button: pick up, then drag |
 | Long press | Right click |
+| Long press on someone in the world | Their context menu (vendor, banker, pet); a finger that moves first walks |
+| Swipe over a list | Scrolls it: Options pages, books, any text with its own scroll bar |
+| Two-finger pan over a gump | Mouse wheel steps over it, one per 40 pixels |
 | Pinch | Ctrl + wheel steps (zoom); accumulated from magnify gestures |
 | Tap on the gump bar | The top-bar action |
 
@@ -59,7 +62,8 @@ Verified on the device: login by touch alone, hold-to-walk, pinch in and
 out, drag, split and drop into the bank, double-tap use (commits "Android:
 fullscreen, soft keyboard..." and "GridContainerGump..."). On the desktop,
 `launchers\dev\touch_probe.bat` drives synthetic fingers through the layer
-and checks 18 gestures against the shard; `--touch` enables the layer on the
+and checks 18 gestures against the shard; `--touch-gesture-probe` checks
+swipe and two-finger scrolling without one (scenario `client.input.touch`); `--touch` enables the layer on the
 desktop and `--touch-trace` logs each gesture decision.
 
 ### The touch bar

@@ -140,6 +140,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   ADR-0008.
 
 ### Playing
+- Touch: a long press on someone in the world opens their context menu, a
+  swipe scrolls any list or text with a scroll bar (books, quest pages), and
+  a two-finger pan over a window scrolls it like the mouse wheel.
 - Canvas background behind the game: grey, wood, your own image or video,
   or one of ten built-in CC0 loops. ADR-0016.
 - Containers can open as a grid of finger-sized slots (mobile default), and
