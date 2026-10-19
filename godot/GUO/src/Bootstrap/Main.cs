@@ -466,6 +466,8 @@ public partial class Main : Node
 
         GD.Print($"[GUO] client home   : {dataDir}");
 
+        GUO.Network.ServerIdentity.VersionSource = _options.ClientVersionSource;
+
         var args = new List<string>
         {
             "-uopath", _options.ClientData,
@@ -1398,6 +1400,7 @@ public partial class Main : Node
             if (!string.IsNullOrWhiteSpace(clientVersion))
             {
                 ClientVersion = clientVersion;
+                ClientVersionSource = "shard_session";
             }
 
             if (customData != null)
@@ -1800,6 +1803,9 @@ public partial class Main : Node
         /// <summary>Dotted client version, e.g. "7.0.107.76".</summary>
         public string ClientVersion { get; private set; } = "7.0.107.76";
 
+        /// <summary>Where ClientVersion came from: default, env, cli or shard_session (data_formats section 43).</summary>
+        public string ClientVersionSource { get; private set; } = "default";
+
         /// <summary>Cliloc language suffix; "enu" for English.</summary>
         public string Language { get; private set; } = "enu";
 
@@ -1831,6 +1837,11 @@ public partial class Main : Node
                 ClientVersion = Env("UO_CLIENT_VERSION", "7.0.107.76"),
                 Language = Env("UO_LANGUAGE", "enu"),
             };
+
+            if (!string.IsNullOrWhiteSpace(OS.GetEnvironment("UO_CLIENT_VERSION")))
+            {
+                o.ClientVersionSource = "env";
+            }
 
             if (int.TryParse(Env("UO_SHARD_PORT", "2593"), out int envPort))
             {
@@ -2191,6 +2202,7 @@ public partial class Main : Node
                         break;
                     case "--client-version":
                         o.ClientVersion = Next();
+                        o.ClientVersionSource = "cli";
                         break;
                     case "--language":
                         o.Language = Next();
