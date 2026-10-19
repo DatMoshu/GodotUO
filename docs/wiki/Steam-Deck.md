@@ -17,7 +17,8 @@ launchers\steamdeck\smoke.bat       REM export + push + run + wait for the login
 ```
 
 Underneath: `python tools\steamdeck\run.py <command>`, plus `templates`,
-`preset`, `stop`, `log` and `shortcut`, which have no launcher.
+`preset`, `stop`, `log`, `shortcut`, `awake` (keep the Deck from sleeping for
+a while) and `release` (end that hold), which have no launcher.
 
 Prefer not to export it yourself? The release workflow builds the same thing
 on GitHub: see [Download a build](Getting-Started.md#download-a-build).
