@@ -163,6 +163,8 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- A Modding page on the wiki: how to write, test and ship a mod, and how to
+  measure one that slows the game down (`--load-mods` for a single run).
 - A shard can publish its client mod in the Store. A mod pack is signed by
   its publisher and lists the packets it touches; installing it runs
   nothing. The Store shows who signed it and what it changes, and it loads

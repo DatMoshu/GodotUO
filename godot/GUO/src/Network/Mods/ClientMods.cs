@@ -21,7 +21,13 @@ namespace GUO.Network.Mods
 
         /// <summary>Where installed mods live: <c>Data/Mods/&lt;mod&gt;/mod.json</c>, beside
         /// <c>Data/Plugins</c>.</summary>
-        public static string Folder => Path.Combine(CUOEnviroment.ExecutablePath, "Data", "Mods");
+        public static string Folder => FolderOverride ?? Path.Combine(CUOEnviroment.ExecutablePath, "Data", "Mods");
+
+        /// <summary>--load-mods: on for this run, whatever settings.json says.</summary>
+        internal static bool RunOverride;
+
+        /// <summary>--mods-dir PATH: this run's mods folder.</summary>
+        internal static string FolderOverride;
 
         public static IReadOnlyList<ModLoadResult> Results { get; private set; } = Array.Empty<ModLoadResult>();
 
@@ -35,7 +41,7 @@ namespace GUO.Network.Mods
             {
                 if (!Supported)
                     return "Mods are not available on this device.";
-                if (!Settings.GlobalSettings.LoadMods && PacketModRegistry.Current == null)
+                if (!Settings.GlobalSettings.LoadMods && !RunOverride && PacketModRegistry.Current == null)
                     return "Off. Turn on and restart to load mods from Data/Mods.";
                 if (Results.Count == 0)
                     return "No mods installed in Data/Mods.";
@@ -47,7 +53,7 @@ namespace GUO.Network.Mods
 
         /// <summary>Called once at start, after the plugins load. With the option off this sets
         /// nothing, and every seam sees a null registry.</summary>
-        public static void Load(ClientVersion version) => Load(version, Folder, Settings.GlobalSettings.LoadMods, Store.StoreOptions.Root);
+        public static void Load(ClientVersion version) => Load(version, Folder, Settings.GlobalSettings.LoadMods || RunOverride, Store.StoreOptions.Root);
 
         /// <summary>Folder mods (<paramref name="folder"/>, the user's own files) first, then the
         /// Store's approved mod components under <paramref name="storeRoot"/> (null for none).</summary>

@@ -36,6 +36,7 @@
 - [Manage Your Shard From the Editor](Manage-Your-Shard-From-The-Editor.md)
 - [Author UO Data](Author-UO-Data.md)
 - [Building Multis](Building-Multis.md)
+- [Modding](Modding.md)
 - [Architecture](Architecture.md)
 - [Working with AI Agents](Working-With-AI-Agents.md)
 - [Contributing](Contributing.md)
