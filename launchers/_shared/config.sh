@@ -94,6 +94,11 @@ unset _guo_shared_dir
 : "${UO_ANDROID_KEYSTORE:=$HOME/.local/share/godot/keystores/debug.keystore}"
 : "${UO_ANDROID_KEYSTORE_USER:=androiddebugkey}"
 : "${UO_ANDROID_KEYSTORE_PASSWORD:=android}"
+# YOUR release key, for `export.sh --release`; see config.bat. Set it in
+# config.local.sh or the environment, never here; keep it outside the checkout.
+: "${UO_ANDROID_RELEASE_KEYSTORE:=}"
+: "${UO_ANDROID_RELEASE_KEYSTORE_USER:=}"
+: "${UO_ANDROID_RELEASE_KEYSTORE_PASSWORD:=}"
 : "${UO_ANDROID_PACKAGE:=org.guo.client}"
 : "${UO_ANDROID_DEVICE:=}"
 : "${UO_ANDROID_CLIENT_DATA:=/sdcard/Android/data/$UO_ANDROID_PACKAGE/files/uo}"

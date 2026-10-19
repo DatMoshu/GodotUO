@@ -254,6 +254,9 @@ class Config:
     android_keystore: Path
     android_keystore_user: str
     android_keystore_password: str
+    android_release_keystore: Path | None
+    android_release_keystore_user: str
+    android_release_keystore_password: str
     android_package: str
     android_device: str
     android_client_data: str
@@ -557,6 +560,9 @@ def load_config(root: Path | None = None) -> Config:
         or Path(os.path.expandvars("%APPDATA%")) / "Godot" / "keystores" / "debug.keystore",
         android_keystore_user=get("UO_ANDROID_KEYSTORE_USER", "androiddebugkey"),
         android_keystore_password=get("UO_ANDROID_KEYSTORE_PASSWORD", "android"),
+        android_release_keystore=path_or_none("UO_ANDROID_RELEASE_KEYSTORE"),
+        android_release_keystore_user=get("UO_ANDROID_RELEASE_KEYSTORE_USER", ""),
+        android_release_keystore_password=get("UO_ANDROID_RELEASE_KEYSTORE_PASSWORD", ""),
         android_package=package,
         android_device=get("UO_ANDROID_DEVICE", ""),
         android_client_data=get("UO_ANDROID_CLIENT_DATA", f"/sdcard/Android/data/{package}/files/uo"),

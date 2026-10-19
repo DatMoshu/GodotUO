@@ -177,6 +177,15 @@ REM  `python tools\android\run.py keystore` with the standard credentials.
 if not defined UO_ANDROID_KEYSTORE  set "UO_ANDROID_KEYSTORE=%APPDATA%\Godot\keystores\debug.keystore"
 if not defined UO_ANDROID_KEYSTORE_USER set "UO_ANDROID_KEYSTORE_USER=androiddebugkey"
 if not defined UO_ANDROID_KEYSTORE_PASSWORD set "UO_ANDROID_KEYSTORE_PASSWORD=android"
+REM  YOUR release key, for `export.bat --release` (a signed release APK).
+REM  Unset here on purpose: set the path and alias in config.local.bat, and
+REM  the password there or, better, in the environment. Keep the keystore
+REM  OUTSIDE the checkout and back it up: an app signed with a lost key can
+REM  never be updated. `python tools\android\run.py release-keystore` makes
+REM  one; `doctor.bat --release` checks it.
+if not defined UO_ANDROID_RELEASE_KEYSTORE set "UO_ANDROID_RELEASE_KEYSTORE="
+if not defined UO_ANDROID_RELEASE_KEYSTORE_USER set "UO_ANDROID_RELEASE_KEYSTORE_USER="
+if not defined UO_ANDROID_RELEASE_KEYSTORE_PASSWORD set "UO_ANDROID_RELEASE_KEYSTORE_PASSWORD="
 REM  The application id, and the adb serial of the device to use when more
 REM  than one is attached (leave empty for the only one).
 if not defined UO_ANDROID_PACKAGE   set "UO_ANDROID_PACKAGE=org.guo.client"

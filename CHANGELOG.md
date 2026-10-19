@@ -143,6 +143,11 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - **Downloads**: every push to main builds Windows, Steam Deck and an
   Android debug APK in GitHub Actions (the `release` workflow); a `v*` tag
   makes a draft release with all three.
+- **Android release APK**: `launchers\android\export.bat --release` builds
+  an APK signed with your own key, kept outside the repository and named in
+  your local config. `doctor.bat --release` says what is missing. On a tag,
+  the `release` workflow also builds one when the repository holds the key as
+  secrets.
 - **Web**: still blocked upstream; `launchers\web\doctor.bat` reports why.
   ADR-0008.
 
