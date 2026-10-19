@@ -11,6 +11,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   writes a short report you can paste in Discord (GPU, driver, CPU, OS and the
   numbers; no paths or names). It needs the dev shard running; the wiki page
   Performance says how to run it and read it.
+- The perf probe times the world frame stage by stage (gather, sort, land,
+  statics, covering land, mobiles, items) and gains two places: a crypt under
+  the land and open sea. `docs/perf/2026-10-18_britain_breakdown.md` reads it.
 
 ### Editor
 - The Admin tab's god view works with nobody logged in: **Go there**,
