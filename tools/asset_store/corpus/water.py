@@ -33,7 +33,7 @@ def water_cases():
                 style[key] = value
         return style
 
-    for model in ("uo", "pixel", "cel", "realistic"):
+    for model in ("uo", "pixel", "cel", "realistic", "classicplus"):
         add("model-" + model, True, f"a {model} style installs", style=changed(model=model))
     add("manifest", True, "the manifest alone is valid", zipped=False)
     add("integer-numbers", True, "whole numbers are numbers", style=changed(speed=2, wave=1, tint=[0, 1, 0]))

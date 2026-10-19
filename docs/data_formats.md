@@ -2758,7 +2758,7 @@ bit 6, circle-of-transparency in bit 7). Classic never sets it.
 
 | Uniform | Type | Meaning |
 |---|---|---|
-| `water_model` | int | 0 Classic (branch never taken), 1 `uo`, 2 `pixel`, 3 `cel`, 4 `realistic` |
+| `water_model` | int | 0 Classic (branch never taken), 1 `uo`, 2 `pixel`, 3 `cel`, 4 `realistic`, 5 `classicplus` |
 | `water_time` | float | seconds from the client clock |
 | `water_target_to_world` | vec4 | world px = target px * xy + zw; a tile's centre is ((X - Y) * 22, (X + Y) * 22 - 4 Z) |
 | `water_mask` | sampler2D | 128 x 128 RGBA8 ring of world cells (texel x & 127, y & 127): R 255 water / 0 dry; G + 128 is the water's z, or for a dry cell its highest land or static z (0 when it has none) |
@@ -2787,7 +2787,7 @@ style's `BindRipples` sets the strength and damping (the `uo` style: 1.0 and
 same at any frame rate. A style is `IWaterStyle` (`Id`, `DisplayName`, `Bind`,
 `BindRipples`).
 
-**Models.** Every style picks one of four models built into the shader; no
+**Models.** Every style picks one of five models built into the shader; no
 style carries shader code. `uo`: the tile's own colours under crossing swells
 in a few brightness steps. `pixel`: the steps dithered (4 x 4 ordered) on the
 water's own grid, the colour cut to a short ramp, surf and glints as whole
@@ -2795,9 +2795,17 @@ pixels. `cel`: flat colour in the tint, lit by the tile's light level, bold
 bands, white surf with a dark ink line, ripples as crisp rings. `realistic`:
 smooth light with a finer chop, open water deepening to the tint away from the
 shore, a sharp highlight with sparkles and soft surf; on the Compatibility
-renderer (the web build) the chop and the sparkles are left out. The three
-pack models put surf only where the dry neighbour is a beach (its ground at
-most 8 above the water), never under a cliff; `uo` keeps surf on every shore.
+renderer (the web build) the chop and the sparkles are left out. `classicplus`
+keeps the hued and lit native texel, adding only a world-snapped, ordered-dither
+brightness shimmer and quiet ripple/shore modulation. It does not replace the
+native texture, quantise its palette or add white foam. In this model `wave`
+controls shimmer, `foam` controls shore modulation; `tint`, `scale`, `glint`
+and `levels` are reserved and do not change its output.
+All models reconstruct a continuous low-shore contour between the mask's cell
+centres; surf no longer restarts at each tile edge. World-anchored noise
+breaks bright surf into wavelets rather than a continuous offshore outline.
+Only dry ground at most
+8 above the water produces surf, so cliffs remain free of foam.
 
 **Store water styles** (WATER-04). A v2 content pack's `water` component
 (`docs/asset_pack_ecosystem.md`) targets `client` and names a JSON entry, a
@@ -2807,7 +2815,7 @@ most 8 above the water), never under a cliff; `uo` keeps surf on every shore.
 |---|---|---|
 | `schema` | `"guo/water@1"` | |
 | `name` | 1..48 UTF-16 units, not blank, no control characters; the Options entry | |
-| `model` | `uo`, `pixel`, `cel` or `realistic` | `water_model` |
+| `model` | `uo`, `pixel`, `cel`, `realistic` or `classicplus` | `water_model` |
 | `tint` | three numbers 0..1, RGB | `water_tint` |
 | `speed` | 0..4 | `water_params.x` |
 | `scale` | 0.005..0.25 (1 / world px) | `water_params.y` |
@@ -2826,8 +2834,8 @@ the shared corpus (`corpus/water.py`) holds them to the same verdicts. A
 deployment's water components need no numeric binding: the client offers each
 under Options > **Water** by its `name` and saves its identity in
 `Profile.WaterStyle`. A style whose pack is no longer deployed draws Classic.
-The three GUO packs, `guo-water-pixel`, `guo-water-cel` and
-`guo-water-realistic` (component `sea`), are built from `design/packs/water`
+The four GUO packs, `guo-water-pixel`, `guo-water-cel`,
+`guo-water-realistic` and `guo-water-classicplus` (component `sea`), are built from `design/packs/water`
 by `tools/asset_store/water_packs.py`.
 
 `GUO_WATER_DEBUG=1` in the client's environment paints every fragment that takes

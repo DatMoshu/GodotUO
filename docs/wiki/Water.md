@@ -27,7 +27,7 @@ tiles. A water style replaces it while the style is on.
 
 ## More styles from the Store
 
-Three more styles come as Store packs:
+Four more styles come as Store packs:
 
 - **Pixel water** (`guo-water-pixel`): chunky dithered water with whole-pixel
   surf and glints, like a game from the early nineties.
@@ -36,6 +36,12 @@ Three more styles come as Store packs:
 - **Realistic water** (`guo-water-realistic`): smooth light, deeper colour out
   at sea, a sharp sun highlight with sparkles and soft surf. In the web build
   it is a little plainer (no fine chop or sparkles), to keep it fast.
+- **UO+** (`guo-water-classicplus`): the native water art and its fine dither,
+  with a quiet shimmer and small shore lap. It keeps the original colours
+  instead of adding white foam or broad highlights.
+
+Surf follows a continuous shore contour in all styles, with no surf below
+high cliffs.
 
 Install one from the Store, select a deployment that contains it in the
 Store's **Configure deployment** window, restart, then pick it under
@@ -55,5 +61,13 @@ scenario `client.render.water` visits the Britain docks and the Trinsic bay,
 checks the draw list against ClassicUO's, and takes stills. The perf probe has
 `britain-docks` and `trinsic-bay` scenes for frame time with the style off and
 on. For the pack styles, `python tools/asset_store/water_packs.py --deploy DIR`
-installs all three and prints what to set for the scenario
+installs all four and prints what to set for the scenario
 `client.render.water_pack`, which is run once per style.
+
+The pack scenario also checks a low sandy beach and holds the east docks
+shore and bay cameras for motion review. Run it with `--var style=classic` for the native
+comparison. The synthetic `res://src/Render/Water/WaterShoreProbe.tscn`
+checks the diagonal coast contour, falloff, dry-art overlaps and cliffs with
+rendered pixels; run it using `godot-console --path godot/GUO
+--rendering-method forward_plus res://src/Render/Water/WaterShoreProbe.tscn`
+and again with `gl_compatibility`. It needs a real renderer, without `--headless`.
