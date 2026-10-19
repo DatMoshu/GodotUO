@@ -12,6 +12,7 @@ tools/msbuild/UpstreamDir.props all resolve them the same way). This tool:
      checkout, when the worktree lacks them -- never overwriting one:
          launchers/_shared/config.local.bat   (your paths)
          tools/privacy_scan/deny.local.txt    (your private deny list)
+         .claude/settings.local.json          (your Claude Code approvals, e.g. the guoasset MCP)
   2. checks that the engine and the upstream reference resolve,
   3. runs the console engine once with --headless --import, so the project's
      .godot/ import cache exists before the first editor or smoke run,
@@ -39,6 +40,7 @@ from guo.config import find_repo_root, load_config, main_checkout  # noqa: E402
 LOCAL_FILES = (
     Path("launchers/_shared/config.local.bat"),
     Path("tools/privacy_scan/deny.local.txt"),
+    Path(".claude/settings.local.json"),
 )
 
 IMPORT_TIMEOUT = 1800
@@ -52,6 +54,23 @@ def where(path: Path, root: Path, main: Path | None) -> str:
     if main is not None and resolved.is_relative_to(main.resolve()):
         return "main checkout"
     return "configured"
+
+
+def copy_local_files(root: Path, main: Path | None) -> list[tuple[str, str, str]]:
+    """Copy each of LOCAL_FILES the worktree lacks from the main checkout; one summary row each."""
+    rows: list[tuple[str, str, str]] = []
+    for rel in LOCAL_FILES:
+        target = root / rel
+        if target.is_file():
+            rows.append(("ok", str(rel), "present"))
+        elif main is not None and (main / rel).is_file():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(main / rel, target)
+            rows.append(("ok", str(rel), "copied from the main checkout"))
+        else:
+            # Optional: a missing file only means the defaults apply.
+            rows.append(("--", str(rel), "absent (defaults apply)"))
+    return rows
 
 
 def main() -> int:
@@ -68,18 +87,8 @@ def main() -> int:
     print(f"[worktree_setup] main     : {main_root or '(this is the main checkout)'}")
 
     # 1. Per-user files. Copied, never linked, never overwritten, never committed
-    #    (both are gitignored).
-    for rel in LOCAL_FILES:
-        target = root / rel
-        if target.is_file():
-            rows.append(("ok", str(rel), "present"))
-        elif main_root is not None and (main_root / rel).is_file():
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(main_root / rel, target)
-            rows.append(("ok", str(rel), "copied from the main checkout"))
-        else:
-            # Optional: a missing file only means the defaults apply.
-            rows.append(("--", str(rel), "absent (defaults apply)"))
+    #    (all are gitignored).
+    rows.extend(copy_local_files(root, main_root))
 
     # 2. Resolve, after the copy so config.local.bat is honoured.
     cfg = load_config(root)

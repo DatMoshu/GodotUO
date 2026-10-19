@@ -14,7 +14,8 @@ What you can do today:
 | Replace land art, static art, gumps and hues from PNG | UO Inspector | Done (ADR-0020) |
 | Export all of it as files a client and a shard load | `tools\world` | Done |
 | Push edits to a running shard and its players while they play | UO Shard dock | Done, private instance only (ADR-0012) |
-| Spawners, decoration, vendors | none yet | Phase 6, not started |
+| Spawners and decoration | World tab: PlaceSpawner and PlaceItem | Done (ADR-0014); see [World Editing](World-Editing.md) |
+| Check on the server, save, restart, back up, manage accounts and settings, run commands, see who is where | Admin tab | Done, for a server on this computer; see [Admin Tab](Admin-Tab.md) |
 
 ## 1. Setup
 
@@ -183,8 +184,15 @@ into another folder, then exported and verified from there.
 
 Live editing sends each edit to a running shard, which applies it in memory
 and pushes it to every connected player through UltimaLive. Other editors see
-it too, within a second. It runs only against a **private** copy of the dev
-shard, never the shared one.
+it too, within a second. The examples use a **private** copy of the dev
+shard.
+
+The bridge can be loaded by two servers. The shared dev shard
+(`launchers\shard\run.bat`) loads it and hands it the admin token. The
+private copy below is the safe place to try risky edits (`tools\editor_shard`
+says the shared dev shard has carried the bridge since 2026-10-07 and the
+private instance was stopped). Check which server the run bar points at
+before you go live. The steps below set up the private copy.
 
 1. **Make the private instance** (once; it copies the built dev shard,
    without its archives, and listens on `127.0.0.1:2594` only):
@@ -207,7 +215,9 @@ shard, never the shared one.
    with one of the dev shard's GM accounts (`guoeffects`, `guohighlight`,
    `guosweep`). An edit appears in the client without a restart.
 4. **GM commands:** the dock's command line runs a command such as `[where`
-   as a named online character.
+   as a named online character. It needs the server's admin token (the editor
+   sends it for you) and shows what the server answered. The Admin tab's
+   Commands panel lists every command.
 5. **Make it permanent:** the shard keeps live edits in memory only, and your
    world project is the source of truth. Export (section 4) and restart the
    shard with the export first to keep them.
@@ -239,6 +249,12 @@ export` checks the copies on that machine and warns if they lack your
 changes. Run the export again with `--clear-ultimalive` to remove the stale
 copy; the next login makes a fresh one.
 
+## 6. Running the server
+
+Once the server is up, the **Admin** tab is where you check on it and manage
+it: health, Save and Restart, accounts, settings, backups, commands, a god
+view and an audit log. See [Admin Tab](Admin-Tab.md).
+
 ## Checks, in one place
 
 | Command | Proves |
@@ -249,5 +265,6 @@ copy; the next login makes a fresh one.
 | `python tools\editor_live\run.py` | Two editors and a client on the private instance, end to end |
 | `python tools\world_parity\run.py --windowed` | The World tab against a logged-in client's frame. Takes the desktop's focus, so run it only when that is fine |
 
-Output of all of them goes under `build\`, and holds renders of client art,
+Output of all of them goes under `UO_BUILD_DIR` (`build\` unless you set it),
+and holds renders of client art,
 so it is never committed.

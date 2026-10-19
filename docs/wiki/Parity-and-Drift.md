@@ -37,11 +37,18 @@ feature (the touch layer, the second display, the canvas background) still
 gets the marker. Bugs found in upstream code are noted, not fixed mid-port;
 fixes are proposed separately (rule 3, parity before improvement).
 
-A drift-measuring tool that counts unmarked deviations against upstream
-(`tools\port_drift --strict`, cited in ADR-0016's validation) exists in the
-owner's working checkout; it is **not on this branch**, so this page cannot
-describe its options. Until it lands, the review is
-`git diff` against `sources\ClassicUO` plus the marker grep.
+```bat
+launchers\dev\port_drift.bat [--strict] [--verbose]
+```
+
+`tools\port_drift` finds each ported file's upstream original, ignores line
+endings, namespaces and shim imports, and reports files that are identical,
+changed with a `PORT DEVIATION` or `PORT GAP` marker, changed with no marker,
+and new. `--strict` exits 1 if any change is unmarked. Matching is by
+filename and longest path suffix, so check a surprising diff by hand.
+
+The layer rules in [Feature Layers](Feature-Layers.md) say what a change to
+ported code needs: a reason, the marker, and preferably one seam.
 
 ## The keyboard: where Godot is not SDL
 
