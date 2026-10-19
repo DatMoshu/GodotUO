@@ -37,7 +37,9 @@ ADR-0023's rules (stateless, nearest, the world draw unchanged).
    doors, windows and the light's own tile do not. A blurred 3x3 softens the
    edges. The per-light map is cached and recomputed only when the light or
    the blockers around it change. The sum of ambient plus every light is the
-   light field.
+   light field. The sum has no ceiling; a cell brighter than white is
+   scaled by its brightest channel when read, so a torch's orange stays
+   orange at the flame instead of clipping channel by channel to yellow.
 2. **The shard owns the clock.** Ambient comes from the light level the shard
    sends (0x4F / 0x4E, through `IsometricLight`), mapped through a colour
    ramp: full daylight at level 0, warm at dusk, blue-grey at 30. The

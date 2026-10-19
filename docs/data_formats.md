@@ -2749,16 +2749,18 @@ On, each frame the scene builds a tile grid over the visible chunks plus an
 the top Z of the tallest light blocker (tiledata `Wall`, or `Impassable` with
 `Height >= 8`; never `Door` or `Window`) and whether a `Roof` static covers it.
 Ambient is `RealtimeLightField.AmbientFor(IsometricLight.IsometricLevel)`:
-white at level 0, warm through the middle, a blue-grey floor (0.16, 0.18,
-0.30) at the darkest. Roofed cells take 55 % of daylight ambient, scaling to
+white at level 0, warm through the middle, a blue-grey floor (0.24, 0.26,
+0.38) at the darkest. Roofed cells take 55 % of daylight ambient, scaling to
 100 % at night. Each accepted light offer (`AddLight`) adds a source at its
-tile with radius `round(light.mul width / 44)` tiles (1..8) and the classic
-light tint (the light-shader palette, or the hue's table entry 16). A
-source's reach is a `(2r+1)^2` map: hard line-of-light through the blocker
-grid (blockers above source Z + 3 block; neither end blocks), a 3x3 box blur,
-times `Falloff(d, r + 0.5)` (smoothstep), times 0.35 where the ground is more
-than 20 Z from the source. Reaches are cached by (x, y, z, r) while the
-blocker grid's FNV-1a hash is unchanged.
+tile with radius `round(light.mul width x 1.6 / 44)` tiles (2..8) and the
+classic light tint (the light-shader palette, or the hue's table entry 16;
+an untinted light is a warm white), at an energy of 2.2. A source's reach
+is a `(2r+1)^2` map: hard line-of-light through the blocker grid (blockers
+above source Z + 3 block; neither end blocks), a 3x3 box blur, times
+`Falloff(d, r + 0.5)` (smoothstep), times 0.35 where the ground is more than
+20 Z from the source. Reaches are cached by (x, y, z, r) while the blocker
+grid's FNV-1a hash is unchanged. The sum has no ceiling: a cell brighter
+than white is scaled by its brightest channel when read, keeping its hue.
 
 The field is drawn into a GUO-owned target the size of the classic light
 target: every visible land tile as its iso quad (stretched corners from

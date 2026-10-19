@@ -48,7 +48,7 @@ public partial class RealtimeLightsProbe : Node
             field.Compute(0.0625f, new[] { torch });
             Require(field.LastComputed == 1 && field.CacheCount == 1, "One reach computed and cached");
             Color at = field.Cell(16, 16), near = field.Cell(18, 16), far = field.Cell(16, 23), behind = field.Cell(22, 16), beside = field.Cell(19, 16);
-            Require(at.R > near.R && near.R > night.R + 0.05f, "Light falls off with distance");
+            Require(at.R >= near.R && near.R > night.R + 0.05f, "Light falls off with distance");
             Require(Math.Abs(far.R - night.R) < 0.02f, "Nothing past the radius");
             Require(behind.R < beside.R - 0.1f && Math.Abs(behind.R - night.R) < 0.03f, "A wall blocks the light behind it");
             Require(field.Cell(20, 16).R > night.R + 0.05f, "The wall's own tile takes light on the lit face");
@@ -109,6 +109,17 @@ public partial class RealtimeLightsProbe : Node
             field.Begin(0, 0, 4, 4);
             field.Compute(1f, ReadOnlySpan<RealtimeLightField.Source>.Empty);
             Require(Math.Abs(field.Corner(2, 2).R - 1f) < 0.001f, "Corner of a flat field is the field");
+
+            // A dim light saturates nothing, so the falloff itself is measurable.
+            field.Begin(0, 0, 16, 16);
+            field.Compute(0.0625f, new[] { new RealtimeLightField.Source(8, 8, 0, 6, new Color(0.3f, 0.3f, 0.3f)) });
+            Require(field.Cell(8, 8).R > field.Cell(10, 8).R && field.Cell(10, 8).R > field.Cell(12, 8).R, "A dim light falls off cell by cell");
+
+            // Brighter than white keeps its hue: an orange light at the source is orange, not yellow.
+            field.Begin(0, 0, 8, 8);
+            field.Compute(0.0625f, new[] { new RealtimeLightField.Source(4, 4, 0, 4, new Color(1f, 0.5f, 0f)) });
+            Color hot = field.Cell(4, 4);
+            Require(hot.R > 0.99f && hot.G < 0.75f && hot.G > hot.B, "A clipped cell is scaled by its brightest channel, hue kept");
 
             // Falloff end points.
             Require(Math.Abs(RealtimeLightField.Falloff(0f, 5f) - 1f) < 0.001f && RealtimeLightField.Falloff(5f, 5f) < 0.001f, "Falloff is 1 at the source and 0 at the radius");

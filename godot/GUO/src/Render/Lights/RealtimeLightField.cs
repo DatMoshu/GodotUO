@@ -293,13 +293,25 @@ namespace GUO.Renderer.Lights
             }
         }
 
-        /// <summary>The field at a cell (clamped to the grid).</summary>
+        /// <summary>
+        /// The field at a cell (clamped to the grid). Light is summed without
+        /// a ceiling; a cell brighter than white is scaled by its brightest
+        /// channel, so a torch's orange stays orange near the flame instead
+        /// of clipping channel by channel to yellow.
+        /// </summary>
         public Color Cell(int x, int y)
         {
             int cx = Math.Clamp(x - _originX, 0, _width - 1);
             int cy = Math.Clamp(y - _originY, 0, _height - 1);
             int i = (cy * _width + cx) * 3;
-            return new Color(_field[i], _field[i + 1], _field[i + 2]);
+            float r = _field[i], g = _field[i + 1], b = _field[i + 2];
+            float m = Math.Max(r, Math.Max(g, b));
+            if (m > 1f)
+            {
+                r /= m; g /= m; b /= m;
+            }
+
+            return new Color(r, g, b);
         }
 
         /// <summary>
