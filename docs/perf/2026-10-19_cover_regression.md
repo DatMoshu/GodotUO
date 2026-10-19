@@ -69,8 +69,17 @@ are not in the land.
 
 The riverbank fix exists for three visual_ab scenes: river-healers,
 river-north and river-west. They are drawn with ClassicUO, GUO plain
-(`--merged-land=off --merged-cover=off`) and GUO with the new defaults.
-RIVER_RESULT
+(`--merged-land=off --merged-cover=off`) and GUO with the new defaults, at
+1600x900:
+
+| Scene | new defaults vs plain GUO | what differs |
+|---|---:|---|
+| river-west | 0 px | |
+| river-north | 20 px | five mobile dots on the radar gump |
+| river-healers | 554 px | an animal that walked off between the shots (518), radar dots (36) |
+
+The world, water edges included, is the same pixel for pixel. The riverbank
+fix still covers what it covers; it is only drawn in runs.
 
 ## The switches
 
