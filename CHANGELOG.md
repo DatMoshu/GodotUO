@@ -6,6 +6,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Water
+- Pixel-water ripples keep their own brightness steps so they remain visible
+  against the dark animated tiles.
+- Pixel water respects a pack's zero glint setting, keeping white sparkles
+  out of styles that disable them.
 - The UO+ water pack keeps the native water art with a gentle shimmer and
   shore lap. All water styles follow a continuous coast contour to avoid
   repeated tile-edge surf bars; high cliffs no longer produce surf.

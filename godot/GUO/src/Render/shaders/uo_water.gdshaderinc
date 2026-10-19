@@ -189,13 +189,24 @@ vec3 water_pixel(vec3 base, vec2 cell, vec2 f, vec2 world, float t, float light,
 	vec2 px = floor(world / max(water_params3.x, 1.0));
 	float d = water_bayer(px);
 	float levels = max(water_params2.z, 1.0);
-	float shade = (light - 0.75) * water_params.z * 2.0 + ripple * rs * 1.5;
+	float shade = (light - 0.75) * water_params.z * 2.0;
 	shade = floor(shade * levels + d) / levels;
 	vec3 c = base + shade * mix(base, water_tint.rgb, 0.5);
+	// A share of the dark native texel is lost under the animated pattern.
+	// Give the local wave its own absolute lift (as the UO model does), then
+	// quantise it with the same palette and dither: rings, never white foam.
+	float ring = clamp(ripple * rs * 3.5, -0.5, 0.5);
+	c += max(ring, 0.0) * vec3(0.32, 0.40, 0.48);
+	// Darken the trough only by a share of its native colour; subtracting
+	// the absolute crest lift here would punch a black hole round a wader.
+	c *= 1.0 + min(ring, 0.0) * 0.5;
 	c = floor(c * 12.0 + d) / 12.0;
 	// Only the steepest-lit few percent, and half of those by the dither:
 	// single bright pixels, not patches (about 1% of the sea at glint 0.6).
-	float glint = step(0.995 - water_params2.x * 0.005, light) * step(0.5, d);
+	// The threshold alone still admits highlights at zero: explicitly honour
+	// a pack disabling glints, without changing any positive setting.
+	float glint = step(0.995 - water_params2.x * 0.005, light) * step(0.5, d)
+			* sign(water_params2.x);
 	c = mix(c, vec3(0.92, 0.96, 1.0), glint);
 	float foam = step(d + 0.01, water_surf(cell, f, t) * water_params.w
 			* (0.55 + 0.45 * sin(t * 1.6 + (cell.x + f.x + cell.y + f.y) * 0.9)));

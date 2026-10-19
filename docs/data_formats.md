@@ -2821,7 +2821,7 @@ Only dry ground at most
 | `scale` | 0.005..0.25 (1 / world px) | `water_params.y` |
 | `wave` | 0..1 | `water_params.z` |
 | `foam` | 0..1 | `water_params.w` |
-| `glint` | 0..1 | `water_params2.x` |
+| `glint` | 0..1 (0 disables highlights) | `water_params2.x` |
 | `foam_width` | 0..0.5 (cells) | `water_params2.y` |
 | `levels` | integer 0..16 (0 smooth) | `water_params2.z` |
 | `grain` | integer 1..8 | `water_params3.x` |
@@ -2837,6 +2837,10 @@ under Options > **Water** by its `name` and saves its identity in
 The four GUO packs, `guo-water-pixel`, `guo-water-cel`,
 `guo-water-realistic` and `guo-water-classicplus` (component `sea`), are built from `design/packs/water`
 by `tools/asset_store/water_packs.py`.
+
+`WaterRippleProbe.tscn` renders a spreading wave on dark pixel water with
+glints disabled: the ripple must retain two palette steps of contrast without white
+sparkles. Run with a real renderer (Forward+ and Compatibility), not headless.
 
 `GUO_WATER_DEBUG=1` in the client's environment paints every fragment that takes
 the water branch magenta, to see which tiles a style reaches; `2` paints the
