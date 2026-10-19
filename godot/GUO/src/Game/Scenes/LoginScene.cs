@@ -389,7 +389,7 @@ namespace GUO.Game.Scenes
             NetClient.Socket.Disconnected -= OnNetClientDisconnected;
             NetClient.Socket.Connected += OnNetClientConnected;
             NetClient.Socket.Disconnected += OnNetClientDisconnected;
-            // PORT DEVIATION (GUO): record the server and the client version reported to it (ServerIdentity, data_formats section 41).
+            // PORT DEVIATION (GUO): record the server and the client version reported to it (ServerIdentity, data_formats section 43).
             ServerIdentity.Connecting(Settings.GlobalSettings.IP, Settings.GlobalSettings.Port);
             NetClient.Socket.Connect(Settings.GlobalSettings.IP, Settings.GlobalSettings.Port);
         }

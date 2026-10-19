@@ -1789,7 +1789,7 @@ public partial class Main : Node
         /// <summary>Dotted client version, e.g. "7.0.107.76".</summary>
         public string ClientVersion { get; private set; } = "7.0.107.76";
 
-        /// <summary>Where ClientVersion came from: default, env, cli or shard_session (data_formats section 41).</summary>
+        /// <summary>Where ClientVersion came from: default, env, cli or shard_session (data_formats section 43).</summary>
         public string ClientVersionSource { get; private set; } = "default";
 
         /// <summary>Cliloc language suffix; "enu" for English.</summary>

@@ -108,7 +108,7 @@ foreach (byte bad in new byte[] { 0, 1, 2 })
 
 int guardChecks = checks;
 
-// ServerIdentity (NET-02, data_formats section 41): the reported version's dotted form, the server's refusal line,
+// ServerIdentity (NET-02, data_formats section 43): the reported version's dotted form, the server's refusal line,
 // and the plain sentence added to a disconnect.
 {
     Check(ServerIdentity.Format((7u << 24) | (0u << 16) | (107u << 8) | 76u) == "7.0.107.76", "dotted client version");

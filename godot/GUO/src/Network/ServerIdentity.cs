@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 
 namespace GUO.Network
 {
-    // GUO addition (no upstream counterpart), docs/data_formats.md section 41.
+    // GUO addition (no upstream counterpart), docs/data_formats.md section 43.
     // What the client learned about the server it logged in to, and the client
     // version it reported there. Filled by marked lines in the ported login and
     // packet code (ServerIdentity.Client.cs); this part has no engine or client

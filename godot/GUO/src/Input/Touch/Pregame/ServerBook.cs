@@ -102,7 +102,7 @@ internal sealed class ServerEntry
     /// <summary>When it was last played on (UTC), or null.</summary>
     [JsonPropertyName("last_played")] public DateTime? LastPlayed { get; set; }
 
-    /// <summary>What GUO reported and the server sent at the last entry into the world (data_formats section 41), or null.</summary>
+    /// <summary>What GUO reported and the server sent at the last entry into the world (data_formats section 43), or null.</summary>
     [JsonPropertyName("last_seen")] public ServerSeen LastSeen { get; set; }
 
     /// <summary>The dev build's own shard (never saved, never in a release build).</summary>

@@ -8,12 +8,12 @@ using GUO.Utility;
 
 namespace GUO.Network
 {
-    // GUO addition: the client side of ServerIdentity (docs/data_formats.md section 41).
+    // GUO addition: the client side of ServerIdentity (docs/data_formats.md section 43).
     // Each method is called by one line marked PORT DEVIATION (GUO) in the ported
     // login and packet code, and only records what that code already received.
     internal sealed partial class ServerIdentity
     {
-        // Where the configured client version came from (section 41), set by the
+        // Where the configured client version came from (section 43), set by the
         // bootstrap before the client starts: default, env, cli or shard_session.
         internal static string VersionSource { get; set; } = "default";
 

@@ -1176,7 +1176,7 @@ the address in use stays in `settings.json` (`ip`, `port`), which Play sets.
 | `last_played` | UTC time or absent | Set on each entry into the world; Recent is the newest five that are neither own nor favourite |
 | `data_folder` | path or absent | Where the player keeps a shard's own client files, picked once through the first-run screen; Play on a shard that needs them restarts GUO with them (section 19). An entry with one is never trimmed from Recent |
 | `accounts` | list or absent | The player's accounts on it: `name`, `secret` and `last_used`. `secret.store` is `dpapi` (Windows: `blob`, base64 DPAPI output), `android-keystore` (`iv` and `blob`: AES-GCM under a non-exportable AndroidKeyStore key), `libsecret` (nothing; the Secret Service keyring has it, schema `org.guo.Account`, attribute `binding`) or `none`; `secret` is absent when no password is kept. `dev` (true) marks a dev build's one-click dev login, on the dev shard's entry only. Never a plaintext password. The secret is bound to the entry's host:port:name. See docs/ui/second_screen_pregame.md, Accounts |
-| `last_seen` | object or absent | Written on each entry into the world (section 41): `client_version` (the version GUO reported there), `client_version_source`, `locked_features` and `character_list_flags` (uint or null) and `when` (UTC time). Never the address or an account |
+| `last_seen` | object or absent | Written on each entry into the world (section 43): `client_version` (the version GUO reported there), `client_version_source`, `locked_features` and `character_list_flags` (uint or null) and `when` (UTC time). Never the address or an account |
 | `era`, `emulator`, `client_version`, `encryption`, `needs_custom_data`, `third_party_clients`, `site`, `description` | optional | The community catalogue's manifest fields (step 3); `third_party_clients: false` or another client version or encryption keeps Play from playing |
 
 A debug build adds its dev shard (from `UO_SHARD_HOST` / `UO_SHARD_PORT`) as a favourite at run time. It is
@@ -2738,7 +2738,7 @@ thread with distance attenuation (full to 2 tiles, silent past 20).
 `VoiceManager.Status` reports the pipeline state for probes;
 `--voice`/`--say`/`--voice-fake`/`--hear-secs` drive it in walk-to runs.
 
-## 41. Server identity and client version (`src/Network/ServerIdentity.cs`)
+## 43. Server identity and client version (`src/Network/ServerIdentity.cs`)
 
 What the client learns about the server it is logged in to, and which client version it reported there. It is a
 GUO-owned record filled by marked lines (`PORT DEVIATION (GUO)`) in the ported login and packet code; it changes no

@@ -4044,7 +4044,7 @@ namespace GUO.Network
             }
 
             world.ClientLockedFeatures.SetFlags(flags);
-            // PORT DEVIATION (GUO): the server's enabled features (ServerIdentity, data_formats section 41).
+            // PORT DEVIATION (GUO): the server's enabled features (ServerIdentity, data_formats section 43).
             ServerIdentity.LockedFeaturesReceived((uint) flags);
 
             world.ChatManager.ChatIsEnabled = world.ClientLockedFeatures.Flags.HasFlag(
