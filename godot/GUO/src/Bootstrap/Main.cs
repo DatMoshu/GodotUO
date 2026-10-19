@@ -348,6 +348,10 @@ public partial class Main : Node
                 {
                     CallDeferred(nameof(PadRegressionThenQuit));
                 }
+                else if (_options.TouchGestureProbe)
+                {
+                    TouchGesturesThenQuit();
+                }
                 else if (_options.KeyboardProbe)
                 {
                     CallDeferred(nameof(KeyboardProbeThenQuit));
@@ -709,6 +713,7 @@ public partial class Main : Node
         || _options.GamepadProbe
         || _options.PadWheelsProbe
         || _options.PadRegressionProbe
+        || _options.TouchGestureProbe
         || _options.KeyboardProbe
         || _options.OneScreenProbe
         || _options.GlyphShots
@@ -832,6 +837,8 @@ public partial class Main : Node
     /// <summary>Shard-free injected controller dispatch and classic-gump regression checks.</summary>
     private void PadRegressionThenQuit() => Quit(PadRegressionProbe.Run() ? 0 : 1);
 
+    /// <summary>Shard-free touch scrolling at the login screen; see TouchGestureProbe.</summary>
+    private async void TouchGesturesThenQuit() => Quit(await TouchGestureProbe.Run(this) ? 0 : 1);
     /// <summary>Shard-free keyboard checks: key-ups on focus loss, AltGr text; see KeyboardProbe.</summary>
     private void KeyboardProbeThenQuit() => Quit(KeyboardProbe.Run() ? 0 : 1);
 
@@ -1526,6 +1533,7 @@ public partial class Main : Node
                 || GamepadProbe
                 || PadWheelsProbe
                 || PadRegressionProbe
+                || TouchGestureProbe
                 || KeyboardProbe
                 || OneScreenProbe
                 || GlyphShots
@@ -1691,6 +1699,8 @@ public partial class Main : Node
 
         public bool PadRegressionProbe { get; private set; }
 
+        /// <summary>--touch-gesture-probe: touch scrolling without a shard; see TouchGestureProbe.</summary>
+        public bool TouchGestureProbe { get; private set; }
         /// <summary>--keyboard-probe: the keyboard layer without a shard; see KeyboardProbe.</summary>
         public bool KeyboardProbe { get; private set; }
 
@@ -1975,6 +1985,11 @@ public partial class Main : Node
                         break;
                     case "--pad-regression-probe":
                         o.PadRegressionProbe = true;
+                        o.ScratchProfile = true;
+                        break;
+                    case "--touch-gesture-probe":
+                        o.TouchGestureProbe = true;
+                        o.Touch = true;
                         o.ScratchProfile = true;
                         break;
                     case "--keyboard-probe":

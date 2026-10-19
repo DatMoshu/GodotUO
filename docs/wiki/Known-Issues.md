@@ -22,9 +22,6 @@ this list, please report it (see [Contributing](Contributing.md)).
   ones on the lower screen alone, because those are meant to stay put. If the
   only open windows are on the lower screen, Back asks "Quit Ultima Online?".
   Choose Cancel, or press Back again, to carry on playing.
-- **Scrolling lists in Options.** Dragging a finger over an Options page does
-  not scroll it. Use the scroll bar at its right edge: tap its arrows or drag
-  its handle.
 - **Drop-down lists have small rows.** The lists in Options (for example the
   background picker) use the classic client's small rows, so pick carefully.
 - **The canvas background rarely shows.** On a phone the game world fills the

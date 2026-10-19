@@ -174,6 +174,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   says what it needs. ADR-0008.
 
 ### Playing
+- Touch: a long press on someone in the world opens their context menu, a
+  swipe scrolls any list or text with a scroll bar (books, quest pages), and
+  a two-finger pan over a window scrolls it like the mouse wheel.
 - Modern Options includes canvas backgrounds, the command-bar arrow inset,
   and fine second-screen scale. Classic drop-downs have taller touch targets;
   mouse-only lists keep their classic spacing.
