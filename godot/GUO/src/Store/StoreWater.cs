@@ -11,7 +11,7 @@ namespace GUO.Store;
 /// <summary>
 /// The guo/water@1 style file a <c>water</c> component names (ADR-0037
 /// decision 6): a built-in shading model and the numbers it reads, no code.
-/// tools/asset_store/water.py applies the same rules and the corpus holds both
+/// tools/asset_store/water_style.py applies the same rules and the corpus holds both
 /// to them. No Godot types, so the headless StoreSmoke compiles it too.
 /// </summary>
 internal sealed record StoreWater(
