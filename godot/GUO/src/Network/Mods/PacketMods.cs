@@ -213,7 +213,7 @@ namespace GUO.Network.Mods
         public bool Override;
     }
 
-    /// <summary><c>mod.json</c>, schema <c>guo/mod@1</c> (docs/data_formats.md section 41). Unknown
+    /// <summary><c>mod.json</c>, schema <c>guo/mod@1</c> (docs/data_formats.md section 42). Unknown
     /// fields are refused, so a typo cannot silently drop a declaration.</summary>
     internal sealed class ModManifest
     {

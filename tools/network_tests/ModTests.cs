@@ -191,7 +191,7 @@ static class ModTests
             r.Commit();
             Check(everywhere.TryGetLength(0xFC, out _), "shards [\"*\"] applies everywhere");
 
-            var named = new PacketModRegistry(Version, BaseHandled, null) { ShardHost = () => "10.0.0.5", ShardName = () => "Dreadcrest" };
+            var named = new PacketModRegistry(Version, BaseHandled, null) { ShardHost = () => "shard.example", ShardName = () => "Dreadcrest" };
             r = named.For(Manifest("named", "{\"id\":\"0xFC\",\"length\":3}", "[\"dreadcrest\"]"), new Context());
             r.AddPacket(new PacketRegistration { Id = 0xFC, Length = 3, Handler = nothing });
             r.Commit();

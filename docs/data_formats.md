@@ -2737,7 +2737,7 @@ thread with distance attenuation (full to 2 tiles, silent past 20).
 `VoiceManager.Status` reports the pipeline state for probes;
 `--voice`/`--say`/`--voice-fake`/`--hear-secs` drive it in walk-to runs.
 
-## 41. Packet mods (`Data/Mods/<mod>/mod.json`, `load_mods`, ADR-0038)
+## 42. Packet mods (`Data/Mods/<mod>/mod.json`, `load_mods`, ADR-0038)
 
 A packet mod is a folder the user installed beside `Data/Plugins`: a
 `mod.json` and the mod's assembly, built against `GUO.ModApi`

@@ -27,7 +27,7 @@ default, with the parity proof below.
    packet through the normal send path, write to the log. `ModAbi.Version` is
    1. A wider context is a new ABI version, never a reach into the client.
 2. **A mod is a folder the user installed**: `Data/Mods/<mod>/mod.json`
-   (schema `guo/mod@1`, `docs/data_formats.md` section 41) and the mod's
+   (schema `guo/mod@1`, `docs/data_formats.md` section 42) and the mod's
    assembly. The client never fetches a mod, and a shard cannot push one.
    MOD-03 adds the same mod as a Store component; this ADR does not.
 3. **Everything a mod touches is declared.** `mod.json` lists each packet id
@@ -88,7 +88,7 @@ only from a shard they trust, as with an assistant plugin today.
 - `dotnet run --project tools/network_tests`: the parse loop with both seams,
   the sample mod loaded from its DLL, off-state framing, the shard and
   client-version guards, 0xBF subcommands, every refusal and strict
-  `mod.json` (33 checks).
+  `mod.json` (34 checks).
 - `godot/GUO/src/Network/Mods/ModsProbe.tscn` (smoke line, scenario
   `client.mods.probe`): inside the Godot process, the sample loads through
   the client's loader, a packet stream goes through the real `PacketsTable`
