@@ -56,16 +56,16 @@ taken from `docs/controller_backlog.md` and `docs/wiki/Controller.md`
 
 | # | Action | ClassicUO (mouse/keyboard) | GUO with a pad | Sev |
 |---|---|---|---|---|
-| P1 | Answer a target cursor on the ground (a field spell, a teleport, a bola) | Left click on a land tile (`TargetManager.Target` from `GameSceneInputHandler`) | The radar picks entities only; there is no ground reticle (backlog T1, todo). The right-stick pointer plus A is a left click at the pointer, so a land tile can be clicked by steering there; whether that is usable is a live check | 1 |
+| P1 | Answer a target cursor on the ground (a field spell, a teleport, a bola) | Left click on a land tile (`TargetManager.Target` from `GameSceneInputHandler`) | The radar picks entities only; there is no ground reticle (backlog T1, todo). The right-stick pointer plus A is a left click at the pointer, so a land tile can be clicked by steering there; not tried in a live run | 1 |
 | P2 | Target self / cancel a target | Click yourself; Escape | B cancels (`PadRadar`). No pad input targets yourself: nothing in `Input/Gamepad` targets the player (backlog T1) | 2 |
 | P3 | Speech | Type in the chat line and press Enter | Chat strip hidden in gamepad mode; no in-world pad keyboard (backlog S4) | 1 |
 | P4 | Bandage self, last object, last spell | `BandageSelf`, `LastObject`, `LastSpell` macros on keys (`MacroManager.cs`) | Not on any default button or the macro row (backlog S1, S2) | 2 |
-| P5 | Rebind one action, cancel, reset to defaults | Options > Macros: each macro's hotkey box is set on its own (`Game/UI/Controls/HotkeyBox.cs`), and an unwanted entry is removed by itself | Set controls is a wizard over every row in order; one wrong press means walking the whole set again. No per-row rebind, no reset to defaults (reported by a community player, 2026-10-18) | 1 |
-| P9 | Mount a horse | Double-click your mount (`GameActions.DoubleClick` via `GameSceneInputHandler`) | Reported unreliable with the pad (community player, 2026-10-18). Cause: a mount takes a rider within one tile (the dev shard's `BaseMount.OnDoubleClick`), the radar offers mobiles up to 10 tiles away and A sent the double click from where the player stood; the radar never listed the player, so there was no pad double click on yourself to dismount. Fixed in INPUT-00 | 1 |
-| P10 | Lock a target on a monster | Click it (last target), or the `TargetNext` macro | Reported unreliable with the pad (community player, 2026-10-18). Cause: in war mode radar A sent a plain double click (upstream attacks, `GameSceneInputHandler.cs:781`) and radar X attacked the previous last target, not the choice. Fixed in INPUT-00 | 1 |
+| P5 | Rebind one action, cancel, reset to defaults | Options > Macros: each macro's hotkey box is set on its own (`Game/UI/Controls/HotkeyBox.cs`), and an unwanted entry is removed by itself | Set controls is a wizard over every row in order; one wrong press means walking the whole set again. No per-row rebind, no reset to defaults (reported by a community player, 2026-10-18). Fixed in INPUT-00: Options opens a list of jobs, one rebound at a time, with Reset to defaults | 1 |
 | P6 | Server gumps (quests, vendors, guild, house) | Mouse | Generic focus navigation (`PadGumpNav`, backlog G1) is in, needs a live server-gump pass; vendors, bank and guild have no pad screen (backlog L1, L3) | 2 |
 | P7 | Repeat in lists (journal, skills) | Hold the scroll arrow or wheel | D-pad is one step per press on screens; the left stick repeats | 3 |
 | P8 | Walk, run, war mode, attack last, target last / next, use, look, context menu, open pack, paperdoll, skills, spellbook, journal, map, options | Mouse and keys | Bound (Controller.md tables) | none |
+| P9 | Mount a horse | Double-click your mount (`GameActions.DoubleClick` via `GameSceneInputHandler`) | Reported unreliable with the pad (community player, 2026-10-18). Cause: a mount takes a rider within one tile (the dev shard's `BaseMount.OnDoubleClick`), the radar offers mobiles up to 10 tiles away and A sent the double click from where the player stood; the radar never listed the player, so there was no pad double click on yourself to dismount. Fixed in INPUT-00 | 1 |
+| P10 | Lock a target on a monster | Click it (last target), or the `TargetNext` macro | Reported unreliable with the pad (community player, 2026-10-18). Cause: in war mode radar A sent a plain double click (upstream attacks, `GameSceneInputHandler.cs:781`) and radar X attacked the previous last target, not the choice. Fixed in INPUT-00 | 1 |
 
 ## Touch
 
@@ -95,10 +95,10 @@ shared runs area under `20261018_guo-worker-input_input-audit` and
 | Mode | Run | Result |
 |---|---|---|
 | Gamepad | `--pad-regression-probe` (synthetic pad, no shard) | 52/52 after INPUT-00 |
-| Gamepad | `--pad-wheels-probe` on the dev shard, twice (2026-10-18 22:44Z, 22:55Z) | Wheel, radar, Set controls, screens, mount by walk-up and dismount pass. The shard lacked the pad dummies (patch 0004), so the attack and use dummies were not reached; once the shard sent no target cursor for a party invite |
-| Keyboard and mouse | `launchers\dev\playtest.bat` | pending a shard window |
-| Touch (desktop layer) | `launchers\dev\touch_probe.bat` | pending a shard window |
-| Touch (emulator) | `launchers\android\smoke.bat --avd` | pending the emulator |
+| Gamepad | `--pad-wheels-probe` on the dev shard, twice (2026-10-18 22:44Z, 22:55Z) | Wheel, radar, Set controls, screens, mount by walk-up and dismount pass. The shard lacked the pad dummies (patch 0004), so the attack and use dummies were not reached and the attack lock (P10) has no shard proof yet; once the shard sent no target cursor for a party invite |
+| Keyboard and mouse | `launchers\dev\playtest.bat` on the dev shard (2026-10-19 00:24Z) | 23 checks pass: log in, walk, open the backpack, drag an item and drop it back, a skill target cursor answered by a click, empty the hands and equip a weapon, war mode, the options, journal, minimap, world map and paperdoll, picking the character out of the world, speech, window follow and recovery. 5 fail, all needing someone else near: the account stood where the shard had sent no attackable or vendor NPC, and the second client needs a second account. No input finding |
+| Touch (desktop layer) | `launchers\dev\touch_probe.bat`, twice (00:29Z, 00:33Z) | 5 of 6 both times: the touch layer is on, a tap is a left click, the tapped field takes keyboard focus, a long press over a gump is a right click. Both runs stopped at login: the shard dropped the connection before the account was checked, a shard fault that night, not input. The in-world gestures were not reached |
+| Touch (emulator) | `launchers\android\smoke.bat --avd` | Not run: the shard window was too short for an export and an emulator boot |
 
 K1 and K2 cannot be shown by a scripted run: focus loss and an AltGr layout
 come from the operating system, not from an injected event. Both rest on the
