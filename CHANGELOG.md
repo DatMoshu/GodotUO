@@ -5,6 +5,13 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 
 ## Unreleased
 
+### Performance
+- Windows draws the land as one array and covering land in runs by default
+  (proposed; the owner decides). At 2560x1440 and zoom 2.5 the Britain bank
+  goes from 26 to 40 fps and a dungeon from 44 to 97, with the same pixels.
+  `--merged-land=off --merged-cover=off` brings back the old draw
+  (`docs/perf/2026-10-19_cover_regression.md`).
+
 ### Editor
 - The Admin tab's god view works with nobody logged in: **Go there**,
   **Bring here**, **Open paperdoll** and **Follow** use the server's hidden
