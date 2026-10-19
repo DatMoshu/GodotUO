@@ -7,7 +7,9 @@ this list, please report it (see [Contributing](Contributing.md)).
 
 Last checked against the code on October 18, 2026. Items marked
 *(code)* were confirmed by reading the current code and still need a fresh
-run on a device or the emulator; the others were also seen running that day.
+run on a device or the emulator. Desktop login and in-game resizing were
+checked again on October 19; the dropped-login observation dates from
+October 18. Phone and combat items still need fresh runtime checks.
 
 ## On phones and handhelds (Android)
 
@@ -51,9 +53,17 @@ run on a device or the emulator; the others were also seen running that day.
 
 ## On a desktop
 
-- **The login window is small.** The desktop login screen keeps the classic
-  640x480 window, so a canvas background is not visible there and the login
-  panel stays in the top-left corner when you enlarge the window.
+- **The login window is small.** The classic desktop login starts at
+  640x480. Enlarging the window leaves the login panel at the same size in
+  the top-left corner, with the canvas background around it. Rechecked on
+  October 19 at 640x480 and maximized to 3840x2054, with the optional 3D
+  pre-game screen disabled.
+
+The October 19 desktop in-game check reached the world and resized between
+640x480 and 3840x2054. The world followed the window size; the paperdoll,
+backpack and journal opened at their classic sizes and overlapped at their
+default positions. This check does not verify the lower-screen layout,
+phone gestures, backpack grid persistence or combat targeting.
 
 ## Everywhere
 
