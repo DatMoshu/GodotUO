@@ -5,7 +5,7 @@ using Godot;
 namespace GUO.Renderer.Water;
 
 /// <summary>
-/// Rendered regression for diagonal surf bars (WATER-05). Run this scene
+/// Rendered regression for diagonal surf bars (WATER-06). Run this scene
 /// with a real renderer, once with forward_plus and once with gl_compatibility.
 /// All inputs are synthetic; no shard or client artwork is needed.
 /// </summary>
