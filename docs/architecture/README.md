@@ -44,6 +44,8 @@ it is taken even if its file has not landed yet.
 | 0033 | SpriteMotion fit lab in a native editor host | main |
 | 0034 | Extracted art sets (atlas pages of the user's own install) | work/art-ax0 |
 | 0035 | The admin channel: token, access levels, audit log | work/AD0 (proposed) |
+| 0036 | Recorded audio packs | main |
+| 0037 | Water render modes | work/water-20261018 (proposed) |
 | 0040 | One Input page for keyboard and mouse, controller and touch | work/input-05-20261018 (proposed) |
 
-Next free: 0036.
+Next free: 0038.
