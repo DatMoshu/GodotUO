@@ -170,6 +170,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- Performance reports have a count comparator: draw calls may rise by at most
+  5% per scene and batcher items may not rise. Frame times remain advisory;
+  CI runner provisioning and a measured baseline are still pending.
 - World editor: the Layers menu (Land, Statics, Multis, Roofs, Objects and the
   live layers) now looks like a button beside the others, keeps its ticks for
   the whole editor session, and switching Roofs off takes effect at once.
