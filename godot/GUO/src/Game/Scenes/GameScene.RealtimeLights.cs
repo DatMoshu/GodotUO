@@ -231,8 +231,9 @@ namespace GUO.Game.Scenes
                                 }
                                 else if (data.IsSurface && data.Height < 4 && obj.Z >= groundZ + RealtimeLightField.UpperFloorZ)
                                 {
-                                    // An upper storey's floor (or a flat rooftop) covers what is under it.
-                                    _rtField.SetCover(tx, ty, obj.Z);
+                                    // An upper storey's floor (or a flat rooftop): covers
+                                    // and shades what is under it, as a roof does.
+                                    _rtField.SetRoof(tx, ty, obj.Z, roofFlag: false);
                                 }
                                 if (RealtimeLightField.Blocks(data.IsWall, data.IsImpassable, data.IsDoor, data.IsWindow, data.Height))
                                 {
@@ -290,16 +291,23 @@ namespace GUO.Game.Scenes
                             // anything that stands up takes its tile's. A flat
                             // piece above the lights (a floor used as a roof, an
                             // upper storey) is drawn, in the roof ambient.
+                            // Flat pieces at ground level take the land's smooth
+                            // light; an upper floor is drawn (it is cover) and takes
+                            // its own cell's light at its height.
                             bool flat = data.Height < 4 && !data.IsWall && !data.IsRoof && !data.IsFoliage;
-                            if (flat && !_rtField.IsAboveLight(obj.X, obj.Y, obj.Z)) continue;
+                            if (flat && obj.Z < _rtField.GroundZ(obj.X, obj.Y) + RealtimeLightField.UpperFloorZ) continue;
 
-                            // Under a drawn roof or an upper floor the world shows
-                            // the cover, not the furniture; no light sprite for what
-                            // it covers (walls keep theirs: their outer face shows).
-                            if (!_noDrawRoofs && !data.IsWall && !data.IsRoof)
+                            // Under drawn cover (a roof, an upper floor below the
+                            // view's cut) the world shows the cover, not what is
+                            // beneath; no light sprite for that (walls keep theirs:
+                            // their outer face shows). Standing on the cover is not
+                            // under it, and a viewer under it sees no cover at all.
+                            if (!data.IsWall && !data.IsRoof)
                             {
                                 short coverZ = _rtField.CoverZ(obj.X, obj.Y);
-                                if (coverZ != RealtimeLightField.NoBlock && obj.Z < coverZ) continue;
+                                bool coverDrawn = coverZ != RealtimeLightField.NoBlock && coverZ < _maxZ
+                                    && !(_noDrawRoofs && _rtField.CoverIsRoofFlag(obj.X, obj.Y));
+                                if (coverDrawn && obj.Z < coverZ) continue;
                             }
 
                             // Only what the target can show.
@@ -328,14 +336,20 @@ namespace GUO.Game.Scenes
                 int py = sy + 44 - art.UV.Height;
                 // A roof stands above every light on its tile: ambient only
                 // (with the roof dim, like the cells it covers).
-                bool roof = obj.Graphic < statics.Length && statics[obj.Graphic].IsRoof;
+                ref StaticTiles sdata = ref statics[obj.Graphic];
+                bool roof = sdata.IsRoof;
                 if (roof) _rtRoofs++;
                 else if (_rtField.IsAboveLight(obj.X, obj.Y, obj.Z)) _rtAbove++;
+                Color bottom = roof ? _rtField.RoofAmbient : _rtField.CellAt(obj.X, obj.Y, obj.Z);
+                // Light falls off going up: a wall's top course is lit less by a
+                // lamp at its foot. Flat pieces and roofs are one colour.
+                Color top = roof || sdata.Height < 4 ? bottom : bottom.Lerp(_rtField.RoofAmbient, Math.Min(1f, sdata.Height / 20f) * 0.75f);
                 _rtTarget.AddSprite(
                     new Rect2(px, py, art.UV.Width, art.UV.Height),
                     art.Texture,
                     art.UV.ToGodotF(),
-                    roof ? _rtField.RoofAmbient : _rtField.CellAt(obj.X, obj.Y, obj.Z));
+                    bottom,
+                    top);
             }
 
             _rtTarget.End();

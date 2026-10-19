@@ -81,6 +81,30 @@ public partial class RealtimeLightsProbe : Node
             field.Compute(0.0625f, ReadOnlySpan<RealtimeLightField.Source>.Empty);
             Require(Math.Abs(field.Cell(2, 2).R - field.Cell(4, 4).R) < 0.01f, "Roofed tiles are not dimmer at night");
 
+            // Cover: an upper floor at 20 covers what stands below it on that cell,
+            // not a lamp standing on it (z == cover) nor the cell beside it; a
+            // roof-flagged cover is told apart from a floor; a lamp on the upper
+            // floor lights the floor (not "above the light"), while a floor over a
+            // ground lamp is.
+            field.Begin(0, 0, 8, 8);
+            field.SetGround(3, 3, 0);
+            field.SetRoof(3, 3, 20, roofFlag: false);
+            field.SetRoof(5, 5, 24);
+            Require(field.CoverZ(3, 3) == 20 && field.CoverZ(4, 3) == RealtimeLightField.NoBlock, "Cover is per cell at the floor's base Z");
+            Require(!field.CoverIsRoofFlag(3, 3) && field.CoverIsRoofFlag(5, 5), "Floor cover and roof cover are told apart");
+            Require(field.IsRoofed(3, 3), "An upper floor shades the cell under it like a roof");
+            var upperLamp = new RealtimeLightField.Source(3, 3, 20, 3, Colors.White);
+            field.Compute(0.0625f, new[] { upperLamp });
+            Require(!field.IsAboveLight(3, 3, 20), "A floor with a lamp standing on it is lit by it");
+            Require(!(20 < field.CoverZ(3, 3)), "A lamp standing on the floor is not under it");
+            field.Begin(0, 0, 8, 8);
+            field.SetGround(3, 3, 0);
+            field.SetRoof(3, 3, 20, roofFlag: false);
+            var groundLamp = new RealtimeLightField.Source(3, 3, 0, 3, Colors.White);
+            field.Compute(0.0625f, new[] { groundLamp });
+            Require(field.IsAboveLight(3, 3, 20), "A floor over a ground lamp is above the light");
+            Require(0 < field.CoverZ(3, 3), "A ground lamp under the floor is covered");
+
             // Corners average their four cells.
             field.Begin(0, 0, 4, 4);
             field.Compute(1f, ReadOnlySpan<RealtimeLightField.Source>.Empty);

@@ -89,6 +89,7 @@ namespace GUO.Renderer.Lights
         private short[] _blockTop = Array.Empty<short>();
         private bool[] _roof = Array.Empty<bool>();
         private short[] _roofZ = Array.Empty<short>();
+        private bool[] _roofFlag = Array.Empty<bool>();
         private float[] _field = Array.Empty<float>();
         private short[] _lightTop = Array.Empty<short>();
         private float[] _scratchVis = Array.Empty<float>();
@@ -127,6 +128,7 @@ namespace GUO.Renderer.Lights
                 _blockTop = new short[cells];
                 _roof = new bool[cells];
                 _roofZ = new short[cells];
+                _roofFlag = new bool[cells];
                 _field = new float[cells * 3];
                 _lightTop = new short[cells];
             }
@@ -145,6 +147,7 @@ namespace GUO.Renderer.Lights
             Array.Fill(_lightTop, NoBlock);
             Array.Fill(_roof, false);
             Array.Fill(_roofZ, NoBlock);
+            Array.Fill(_roofFlag, false);
             Array.Clear(_groundZ);
         }
 
@@ -168,13 +171,20 @@ namespace GUO.Renderer.Lights
             if (top > _blockTop[i]) _blockTop[i] = top;
         }
 
-        /// <summary>A roof over a tile: the roof dim, and cover at its base Z.</summary>
-        public void SetRoof(int x, int y, int z = 0)
+        /// <summary>A roof (or an upper floor) over a tile: the roof dim, and cover at its base Z.</summary>
+        public void SetRoof(int x, int y, int z = 0, bool roofFlag = true)
         {
             if (!Contains(x, y)) return;
             _roof[Index(x, y)] = true;
+            if (roofFlag) _roofFlag[Index(x, y)] = true;
             SetCover(x, y, z);
         }
+
+        /// <summary>Whether the cover over a tile is a roof-flagged static (hidden with the roofs) rather than an upper floor.</summary>
+        public bool CoverIsRoofFlag(int x, int y) => Contains(x, y) && _roofFlag[Index(x, y)];
+
+        /// <summary>The ground Z of a tile (0 outside the grid).</summary>
+        public sbyte GroundZ(int x, int y) => Contains(x, y) ? _groundZ[Index(x, y)] : (sbyte)0;
 
         /// <summary>
         /// Something that covers the tile from above at base Z: a roof piece, or

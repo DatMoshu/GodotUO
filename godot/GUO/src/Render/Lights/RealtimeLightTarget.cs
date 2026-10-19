@@ -33,7 +33,11 @@ void fragment() {
         private readonly List<Vector2> _points = new();
         private readonly List<Color> _colors = new();
         private readonly List<int> _indices = new();
-        private readonly List<(Rect2 rect, Texture2D texture, Rect2 source, Color color)> _sprites = new();
+        private readonly List<(Rect2 rect, Texture2D texture, Rect2 source, Color bottom, Color top)> _sprites = new();
+        private readonly List<Vector2> _spritePoints = new();
+        private readonly List<Vector2> _spriteUvs = new();
+        private readonly List<Color> _spriteColors = new();
+        private readonly List<int> _spriteIndices = new();
         private bool _disposed;
 
         public bool IsBuilt => _target != null && !_target.IsDisposed && !_disposed;
@@ -83,11 +87,14 @@ void fragment() {
             _indices.Add(b); _indices.Add(b + 2); _indices.Add(b + 3);
         }
 
-        /// <summary>One tall static: its sprite, in its tile's light.</summary>
-        public void AddSprite(Rect2 rect, Texture2D texture, Rect2 source, Color color)
+        /// <summary>
+        /// One tall static: its sprite, lit <paramref name="bottom"/> at its base
+        /// and <paramref name="top"/> at its top (light falls off going up a wall).
+        /// </summary>
+        public void AddSprite(Rect2 rect, Texture2D texture, Rect2 source, Color bottom, Color top)
         {
             if (texture == null) return;
-            _sprites.Add((rect, texture, source, Opaque(color)));
+            _sprites.Add((rect, texture, source, Opaque(bottom), Opaque(top)));
         }
 
         /// <summary>Send the frame: the land first, the sprites over it in the order added.</summary>
@@ -102,11 +109,47 @@ void fragment() {
                     _item, _indices.ToArray(), _points.ToArray(), _colors.ToArray());
             }
 
+            // Sprites go as textured quads with a colour per corner, one
+            // triangle array per run of the same atlas page, in order.
+            Texture2D run = null;
             foreach (var s in _sprites)
             {
-                RenderingServer.CanvasItemAddTextureRectRegion(
-                    _item, s.rect, s.texture.GetRid(), s.source, s.color, false, false);
+                if (!ReferenceEquals(run, s.texture))
+                {
+                    FlushSprites(run);
+                    run = s.texture;
+                }
+
+                float tw = Math.Max(1, s.texture.GetWidth()), th = Math.Max(1, s.texture.GetHeight());
+                float u0 = s.source.Position.X / tw, v0 = s.source.Position.Y / th;
+                float u1 = s.source.End.X / tw, v1 = s.source.End.Y / th;
+                int b = _spritePoints.Count;
+                _spritePoints.Add(s.rect.Position);
+                _spritePoints.Add(new Vector2(s.rect.End.X, s.rect.Position.Y));
+                _spritePoints.Add(s.rect.End);
+                _spritePoints.Add(new Vector2(s.rect.Position.X, s.rect.End.Y));
+                _spriteUvs.Add(new Vector2(u0, v0)); _spriteUvs.Add(new Vector2(u1, v0));
+                _spriteUvs.Add(new Vector2(u1, v1)); _spriteUvs.Add(new Vector2(u0, v1));
+                _spriteColors.Add(s.top); _spriteColors.Add(s.top); _spriteColors.Add(s.bottom); _spriteColors.Add(s.bottom);
+                _spriteIndices.Add(b); _spriteIndices.Add(b + 1); _spriteIndices.Add(b + 2);
+                _spriteIndices.Add(b); _spriteIndices.Add(b + 2); _spriteIndices.Add(b + 3);
             }
+
+            FlushSprites(run);
+        }
+
+        private void FlushSprites(Texture2D texture)
+        {
+            if (_spritePoints.Count == 0 || texture == null)
+            {
+                _spritePoints.Clear(); _spriteUvs.Clear(); _spriteColors.Clear(); _spriteIndices.Clear();
+                return;
+            }
+
+            RenderingServer.CanvasItemAddTriangleArray(
+                _item, _spriteIndices.ToArray(), _spritePoints.ToArray(), _spriteColors.ToArray(),
+                _spriteUvs.ToArray(), null, null, texture.GetRid());
+            _spritePoints.Clear(); _spriteUvs.Clear(); _spriteColors.Clear(); _spriteIndices.Clear();
         }
 
         private static Color Opaque(Color c) => new(c.R, c.G, c.B, 1f);
