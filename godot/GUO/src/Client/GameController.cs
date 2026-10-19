@@ -404,8 +404,9 @@ namespace GUO
             // input in it. There is nothing to install: Godot delivers input
             // to _Input and window changes to _Notification, and
             // src/Input/GodotInput.cs replaces the filter wholesale. ADR-0006.
-            // TextInputEXT.StartTextInput goes the same way -- Godot has no
-            // global text-input mode to turn on.
+            // TextInputEXT.StartTextInput becomes the window's input method,
+            // turned on for good (GodotInput.StartTextInput).
+            GodotInput.StartTextInput();
 
             _displayScale = DpiScale;
         }
@@ -1215,6 +1216,8 @@ namespace GUO
 
                 case NotificationApplicationFocusOut:
                     if (GUO.Input.Touch.TouchInput.Enabled) GUO.Input.Touch.TouchInput.CancelGesture();
+                    // PORT DEVIATION (GUO): the key-ups SDL raises when focus goes; see GodotInput.ReleaseHeldKeys.
+                    GodotInput.ReleaseHeldKeys();
                     Deactivated?.Invoke(this, EventArgs.Empty);
                     Plugin.OnFocusLost();
 

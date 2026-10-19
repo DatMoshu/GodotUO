@@ -6,14 +6,11 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Performance
-- **Perf lab**: `launchers\dev\perf_lab.bat` measures GUO's frame rate on
-  your machine at 1920x1080 and at 2560x1440 zoomed out, prints the table and
-  writes a short report you can paste in Discord (GPU, driver, CPU, OS and the
-  numbers; no paths or names). It needs the dev shard running; the wiki page
-  Performance says how to run it and read it.
-- The perf probe times the world frame stage by stage (gather, sort, land,
-  statics, covering land, mobiles, items) and gains two places: a crypt under
-  the land and open sea. `docs/perf/2026-10-18_britain_breakdown.md` reads it.
+- Windows draws the land as one array and covering land in runs by default
+  (proposed; the owner decides). At 2560x1440 and zoom 2.5 the Britain bank
+  goes from 26 to 40 fps and a dungeon from 44 to 97, with the same pixels.
+  `--merged-land=off --merged-cover=off` brings back the old draw
+  (`docs/perf/2026-10-19_cover_regression.md`).
 
 ### Editor
 - The editor's automation (MCP) tools have per-user permissions in Editor
@@ -180,6 +177,11 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Modern Options includes canvas backgrounds, the command-bar arrow inset,
   and fine second-screen scale. Classic drop-downs have taller touch targets;
   mouse-only lists keep their classic spacing.
+- After Alt-Tab, Alt, Ctrl and Shift no longer stay held: the next click is
+  a plain click again, as in ClassicUO.
+- AltGr characters type on keyboards that need them (the `@`, `{` or `\` of
+  German, French, Polish and similar layouts), and Chinese, Japanese and
+  Korean input methods work in text fields.
 - When a server refuses GUO's client version, the disconnect message says
   so in plain words, with the server's own words and the version GUO
   reported, instead of a bare "connection lost"; a server that drops the
@@ -246,6 +248,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- `docs/input_audit_2026-10-18.md`: every input in keyboard and mouse, gamepad
+  and touch compared with ClassicUO, with a severity each, the upstream line
+  it differs from, and the scripted runs behind it. It sets the order of the
+  input fixes that follow.
 - Readying a fresh git worktree (`launchers\dev\worktree_setup.bat`) also
   copies your Claude Code approvals (`.claude/settings.local.json`), so a new
   worktree no longer asks again to approve the project's MCP servers.
