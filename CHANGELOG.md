@@ -163,6 +163,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+
+- Dev shard: exempt loopback from automatic behavioral ban contributions so a
+  silent readiness connection cannot reject all local clients for 15 minutes;
+  preserve explicit bans and LAN/public protection (NET-00c, MUO patch).
 - World editor: the Layers menu (Land, Statics, Multis, Roofs, Objects and the
   live layers) now looks like a button beside the others, keeps its ticks for
   the whole editor session, and switching Roofs off takes effect at once.
