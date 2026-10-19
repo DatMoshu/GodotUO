@@ -119,6 +119,7 @@ internal static class PadRegressionProbe
             }
             FocusTransitions();
             Axes();
+            Rebind();
             ReviewRegressions();
         }
         catch (Exception e) { Check($"unexpected exception {e}", false); }
@@ -131,6 +132,106 @@ internal static class PadRegressionProbe
         }
         GD.Print($"[GUO] pad regression: {(_failed == 0 ? "PASS" : "FAIL")} ({_checks - _failed}/{_checks})");
         return _failed == 0;
+    }
+
+    /// <summary>
+    /// "Set controls" from Options: one job rebound without touching the others,
+    /// a tap of B keeping a job, leaving unsaved, defaults, and a stolen input.
+    /// The wizard's clock is driven here (PadWizard.Update) rather than by frames.
+    /// </summary>
+    private static void Rebind()
+    {
+        PadBindings.ResetToDefaults();
+        GamepadInput.KnownLayout(Device, GamepadLayout.Labels);
+        PadWizard.OfferAllowed = false;
+
+        void Hold(JoyButton b, double seconds)
+        {
+            Button(b, true);
+            for (double t = 0; t < seconds; t += 0.05) PadWizard.Update(0.05);
+            Button(b, false);
+            PadWizard.Update(0.05);
+        }
+
+        void Settle()
+        {
+            for (int i = 0; i < 30 && PadWizard.IsOpen; i++) PadWizard.Update(0.05);
+        }
+
+        int Row(PadCommand c) => Array.IndexOf(PadBindings.Order, c);
+
+        void Go(int row)
+        {
+            while (PadWizard.ListRow != row && PadWizard.ListRow >= 0) Tap(JoyButton.DpadDown);
+        }
+
+        var defaults = new Dictionary<PadCommand, PadInput>(PadBindings.Map);
+
+        // One job: War mode onto Y. Every other job keeps its input, except the
+        // one Y belonged to (one input, one job).
+        PadWizard.OpenList();
+        Check("rebind: Options opens the list at the first job", PadWizard.IsOpen && PadWizard.ListRow == 0);
+        Go(Row(PadCommand.WarMode));
+        Tap(JoyButton.A);
+        Check("rebind: A on a job asks for that job only", PadWizard.Asking == PadCommand.WarMode);
+        Hold(JoyButton.Y, PadWizard.Hold + 0.2);
+        Check("rebind: the held input is taken and the list comes back", PadWizard.ListRow == Row(PadCommand.WarMode)
+            && PadWizard.Pending(PadCommand.WarMode) == PadInput.Button(JoyButton.Y));
+        PadCommand? hadY = null;
+        foreach (var kv in defaults) if (kv.Value == PadInput.Button(JoyButton.Y)) hadY = kv.Key;
+        Check("rebind: the job that had the input loses it", hadY == null || PadWizard.Pending(hadY.Value) == null);
+
+        // A tap of B (under the hold) while binding keeps the job as it was.
+        Go(Row(PadCommand.AlwaysRun));
+        Tap(JoyButton.A);
+        Hold(JoyButton.B, 0.1);
+        Check("rebind: a tap of B keeps the job", PadWizard.ListRow == Row(PadCommand.AlwaysRun)
+            && PadWizard.Pending(PadCommand.AlwaysRun) == defaults[PadCommand.AlwaysRun]);
+
+        // Save: only War mode (and Y's old job) changed.
+        Go(PadWizard.ListRows - 1);
+        Tap(JoyButton.A);
+        Settle();
+        bool others = true;
+        foreach (PadCommand c in PadBindings.Order)
+        {
+            if (c == PadCommand.WarMode || c == hadY) continue;
+            others &= PadBindings.For(c) == defaults[c];
+        }
+        Check("rebind: Save keeps the one change and nothing else",
+            PadWizard.LastResult == "applied" && PadBindings.For(PadCommand.WarMode) == PadInput.Button(JoyButton.Y) && others);
+
+        // Leaving with B drops changes.
+        PadWizard.OpenList();
+        Go(Row(PadCommand.Use));
+        Tap(JoyButton.A);
+        Hold(JoyButton.X, PadWizard.Hold + 0.2);
+        Tap(JoyButton.B);
+        Settle();
+        Check("rebind: B on the list leaves and saves nothing",
+            PadWizard.LastResult == "cancelled" && PadBindings.For(PadCommand.Use) == defaults[PadCommand.Use]);
+
+        // Reset to defaults, then Save.
+        PadWizard.OpenList();
+        Go(PadWizard.ListRows - 2);
+        Tap(JoyButton.A);
+        Check("rebind: Reset to defaults shows the shipped set before saving",
+            PadWizard.Pending(PadCommand.WarMode) == defaults[PadCommand.WarMode] && PadBindings.For(PadCommand.WarMode) == PadInput.Button(JoyButton.Y));
+        Go(PadWizard.ListRows - 1);
+        Tap(JoyButton.A);
+        Settle();
+        bool all = true;
+        foreach (PadCommand c in PadBindings.Order) all &= PadBindings.For(c) == defaults[c];
+        Check("rebind: Reset to defaults then Save restores every job", PadWizard.LastResult == "applied" && all);
+
+        // Three at once still cancels the list.
+        PadWizard.OpenList();
+        Button(JoyButton.LeftShoulder, true); Button(JoyButton.RightShoulder, true); Button(JoyButton.X, true);
+        PadWizard.Update(0.05);
+        Button(JoyButton.LeftShoulder, false); Button(JoyButton.RightShoulder, false); Button(JoyButton.X, false);
+        Settle();
+        Check("rebind: three inputs at once cancel", PadWizard.LastResult == "cancelled" && !PadWizard.IsOpen);
+        PadBindings.ResetToDefaults();
     }
 
     private static void ReviewRegressions()

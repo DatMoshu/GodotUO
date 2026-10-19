@@ -2393,7 +2393,7 @@ namespace GUO.Game.UI.Gumps
             {
                 IsSelectable = false, ButtonParameter = (int) Buttons.Disabled
             };
-            setControls.MouseUp += (s, e) => GUO.Input.Gamepad.PadWizard.Open();
+            setControls.MouseUp += (s, e) => GUO.Input.Gamepad.PadWizard.OpenList();
             sectionPad.Add(setControls);
 
             // PORT DEVIATION (GUO): what each pad button does, in the glyphs of
