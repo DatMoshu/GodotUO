@@ -18,7 +18,9 @@ public partial class EditorSmoke
     /// <summary>
     /// With the world shot: FRAMES walks a torch-bearer along the street with
     /// the camera on them, a second torch-bearer the other way and a lantern
-    /// carrier across, saving <c>world_pan/frame_NNNN.png</c> each frame. The
+    /// carrier across, saving <c>world_pan/frame_NNNN.png</c> each frame;
+    /// <c>FRAMES,fixed</c> keeps the camera on the shot cell and the walkers
+    /// cross the frame. The
     /// walkers take real steps (walk animation, facing) through the mobile's
     /// own step queue; their lit hand-held light feeds the scene's lights.
     /// </summary>
@@ -35,14 +37,17 @@ public partial class EditorSmoke
     private readonly List<DemoActor> _demoActors = new();
     private int _demoFrames, _demoTaken;
     private int _demoFacet;
-    private ulong _demoNextMs, _demoStartMs;
+    private bool _demoFixed;
+    private ulong _demoNextMs, _demoStartMs, _demoLastMs;
     private const int DemoFps = 30;
     private readonly List<System.Threading.Tasks.Task> _demoWrites = new();
     private System.IO.StreamWriter _demoTimes;
 
     private void StartLightsDemo(int facet, int x, int y)
     {
-        _demoFrames = int.Parse(ArgValue(LightsDemoFlag));
+        string[] demo = ArgValue(LightsDemoFlag).Split(',');
+        _demoFrames = int.Parse(demo[0]);
+        _demoFixed = demo.Length > 1 && demo[1] == "fixed";
         _demoTaken = 0;
         _demoFacet = facet;
         World world = _world.Host.World;
@@ -220,7 +225,7 @@ public partial class EditorSmoke
         // The camera rides the first walker: same tile, same step offset.
         PlayerMobile player = world.Player;
         Mobile lead = _demoActors[0].Mobile;
-        if (player != null && lead != null)
+        if (!_demoFixed && player != null && lead != null)
         {
             if (player.X != lead.X || player.Y != lead.Y || player.Z != lead.Z)
             {
@@ -241,6 +246,9 @@ public partial class EditorSmoke
             return;
         }
 
+        ulong sinceLast = _demoLastMs == 0 ? 0 : now - _demoLastMs;
+        _demoLastMs = now;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         _demoNextMs = Math.Max(_demoNextMs + 1000UL / DemoFps, now);
         if (_demoTaken == 0)
         {
@@ -251,17 +259,23 @@ public partial class EditorSmoke
         }
 
         Image frame = _world.Capture();
+        long captureMs = sw.ElapsedMilliseconds;
         if (frame != null && !frame.IsEmpty())
         {
             string path = Path.Combine(_out, "world_pan", $"frame_{_demoTaken:0000}.png");
             _demoWrites.RemoveAll(t => t.IsCompleted);
-            while (_demoWrites.Count >= 6)
+            while (_demoWrites.Count >= 12)
             {
                 _demoWrites[0].Wait();
                 _demoWrites.RemoveAt(0);
             }
 
             _demoWrites.Add(System.Threading.Tasks.Task.Run(() => { frame.SavePng(path); frame.Dispose(); }));
+        }
+
+        if (sinceLast > 80)
+        {
+            GD.Print($"[lights-demo] slow frame {_demoTaken}: {sinceLast} ms since the last; capture {captureMs} ms, write queue {sw.ElapsedMilliseconds - captureMs} ms, gc gen0/1/2 {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}");
         }
 
         _demoTimes.WriteLine($"{_demoTaken} {now - _demoStartMs}");
