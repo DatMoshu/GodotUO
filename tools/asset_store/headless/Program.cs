@@ -167,6 +167,43 @@ if (args.Length == 2 && args[0] == "deactivate-content")
     return 0;
 }
 
+// MOD-03: a mod pack installed as StoreClient.Install does (extract, payload check), then the
+// approval lifecycle the client's loader relies on: unapproved, approved, tampered, forgotten.
+if (args.Length == 3 && args[0] == "mods")
+{
+    void Require(bool condition, string message) { if (!condition) throw new InvalidDataException("FAIL mods: " + message); }
+    string root = args[2];
+    string stage = Path.Combine(root, ".stage-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(stage);
+    var manifest = StorePack.Extract(args[1], stage);
+    StoreMods.CheckPayload(manifest, name => File.ReadAllBytes(Path.Combine(stage, name.Replace('/', Path.DirectorySeparatorChar))));
+    string destination = Path.Combine(root, manifest.Id, manifest.Version);
+    Directory.CreateDirectory(Path.GetDirectoryName(destination));
+    Directory.Move(stage, destination);
+
+    using var store = new StoreClient("http://127.0.0.1:18865", root, int.MaxValue);
+    var info = StoreMods.Installed(store).Single();
+    var refused = new List<string>();
+    Require(!info.Approved && StoreMods.ApprovedFolders(store, refused).Count == 0 && refused.Count == 0, "an installed mod loads nothing until approved");
+    StoreMods.Approve(store, manifest.Id, manifest.Version, info.Component.Id);
+    var folders = StoreMods.ApprovedFolders(store, refused);
+    Require(folders.Count == 1 && File.Exists(Path.Combine(folders[0], "mod.json")) && refused.Count == 0, "an approved mod's folder is handed to the loader");
+
+    string modJson = Path.Combine(destination, info.Component.Entry.Replace('/', Path.DirectorySeparatorChar));
+    byte[] original = File.ReadAllBytes(modJson);
+    File.WriteAllBytes(modJson, original.Append((byte)' ').ToArray());
+    folders = StoreMods.ApprovedFolders(store, refused);
+    Require(folders.Count == 0 && refused.Count == 1 && refused[0].Contains("changed since you approved it"), "a changed mod is refused until reviewed again");
+    File.WriteAllBytes(modJson, original);
+    refused.Clear();
+    Require(StoreMods.ApprovedFolders(store, refused).Count == 1, "restored bytes match the approval again");
+
+    StoreMods.Forget(root, manifest.Id);
+    Require(StoreMods.ApprovedFolders(store, refused).Count == 0 && refused.Count == 0, "removing the pack's approvals loads nothing");
+    Console.WriteLine($"PASS mods: {info.Identity} key {info.Fingerprint}, packets {info.Packets}; unapproved, approved, tampered, restored, forgotten");
+    return 0;
+}
+
 if (args.Length == 3 && args[0] == "extract-content")
 {
     string stage = Path.Combine(args[2], ".stage-" + Guid.NewGuid().ToString("N"));

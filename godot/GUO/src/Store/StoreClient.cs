@@ -204,6 +204,7 @@ internal sealed class StoreClient : IDisposable
     public async Task<string> Install(StoreEntry entry, CancellationToken ct = default)
     {
         StorePack.Validate(entry.Manifest); StorePack.Digest(entry.Sha256);
+        StorePack.Require(GUO.Network.Mods.ModLoader.PlatformSupported || entry.Manifest.Components?.All(c => c.Type != "mod") != false, StoreMods.Unavailable);
         StorePack.Require(entry.Manifest.MinProfileVersion <= _profileVersion, "This pack requires a newer GUO profile version");
         StorePack.Require(entry.Size > 0 && entry.Size <= StorePack.MaxZip, "Invalid ZIP size");
         string destination = Destination(entry.Manifest.Id, entry.Manifest.Version);
@@ -240,6 +241,7 @@ internal sealed class StoreClient : IDisposable
             Directory.CreateDirectory(stage);
             var manifest = await Task.Run(() => StorePack.Extract(zip, stage), ct).ConfigureAwait(false);
             StorePack.Require(StorePack.Equivalent(manifest, entry.Manifest), "Index and pack manifest disagree");
+            StoreMods.CheckPayload(manifest, name => File.ReadAllBytes(Path.Combine(stage, name.Replace('/', Path.DirectorySeparatorChar))));
             ct.ThrowIfCancellationRequested();
             NoLinks(destination);
             Directory.CreateDirectory(Path.GetDirectoryName(destination));
@@ -410,6 +412,8 @@ internal sealed class StoreClient : IDisposable
                 "This pack is selected for startup. Select original assets or another deployment before uninstalling it.");
         }
         if (Directory.Exists(destination)) DeleteTree(destination);
+        // Removing a pack removes its mods' approvals; reinstalling asks again.
+        if (!Installed().Any(m => m.Id == id)) StoreMods.Forget(_root, id);
         guard.Dispose();
         Changed("uninstall", id, version);
         LastUninstallMessage = BackgroundRemoved?.Invoke(id, version) == true
