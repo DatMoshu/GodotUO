@@ -1,0 +1,13 @@
+{
+  "id": "client.input.gamepad",
+  "title": "Controller: Set controls rebinds one job, keeps, leaves unsaved and resets to defaults",
+  "surface": "client",
+  "requires": {"build": "debug"},
+  "timeouts": {"step_s": 90, "run_s": 150},
+  "steps": [
+    {"id": "launch", "do": {"kind": "launch", "args": ["--pad-regression-probe", "--pregame-classic", "--silent"], "settings": {"autologin": false, "username": "", "password": ""}},
+     "say": "Drive the controller layer with a synthetic pad, without a shard or a real controller.",
+     "expect": {"log.contains": "[GUO] pad regression: PASS", "within_s": 75}},
+    {"id": "summary", "do": {"kind": "note", "text": "The rebind checks open Set controls as Options does, rebind War mode alone, keep a job with a tap of B, leave without saving, reset to defaults and save, and cancel with three inputs held. The shard-backed --pad-wheels-probe covers mounting, dismounting and the attack lock."}}
+  ]
+}
