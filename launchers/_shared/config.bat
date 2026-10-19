@@ -284,4 +284,5 @@ if not defined UO_ART_EXCHANGE      set "UO_ART_EXCHANGE=%UO_BUILD_DIR%\art_exch
 if not defined UO_PIXELORAMA        set "UO_PIXELORAMA="
 if not defined UO_PINTA             set "UO_PINTA="
 if not defined UO_COMFY_URL         set "UO_COMFY_URL=http://127.0.0.1:8188"
+if not defined UO_COMFY_DIR         set "UO_COMFY_DIR="
 if not defined UO_COMFY_WORKFLOWS   set "UO_COMFY_WORKFLOWS=%UO_BUILD_DIR%\art_exchange\workflows"
