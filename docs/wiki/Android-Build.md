@@ -16,7 +16,7 @@ launchers\android\smoke.bat      REM export, install, run, wait for the login gu
 launchers\android\dual_probe.bat REM the second-screen probe, see Dual Screen
 ```
 
-Underneath: `python tools\android\run.py <doctor|templates|keystore|settings|preset|export|install|run|logcat|push|smoke|dual_probe|displays>`.
+Underneath: `python tools\android\run.py <doctor|templates|keystore|release-keystore|settings|preset|export|install|run|logcat|push|smoke|dual_probe|displays>`.
 
 ## What the export needs
 
@@ -38,6 +38,17 @@ does so before every export. The export preset is rendered from
 `godot\GUO\export_presets.cfg`, which carries the keystore path and password;
 that is why the preset is never committed. The preset excludes
 `addons/guo_editor/*` so the editor add-on's sources are not packed.
+
+## A release APK
+
+`export.bat --release` makes `build\android\GUO-release.apk`, signed with
+your own key: `UO_ANDROID_RELEASE_KEYSTORE`, `_USER` and `_PASSWORD`, set in
+`config.local.bat` or the environment, never in the repository. The keystore
+must live outside the checkout. `python tools\android\run.py release-keystore`
+makes one and `doctor.bat --release` checks it. The `release` workflow builds
+one on a tag when the repository has the matching secrets. Details, and why the
+key never reaches the preset file: `tools/android/README.md`, "A release APK,
+signed with your key".
 
 ## The client data on the device
 
