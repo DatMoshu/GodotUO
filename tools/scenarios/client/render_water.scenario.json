@@ -1,6 +1,6 @@
 {
   "id": "client.render.water",
-  "title": "Realtime water: same draw list as ClassicUO, animated water at the docks and the bay",
+  "title": "Realtime water: same draw list as ClassicUO, animated water and ripples at the docks and the bay",
   "surface": "client",
   "requires": {
     "shard": "dev",
@@ -220,10 +220,69 @@
       "shot": true
     },
     {
+      "id": "go_swim",
+      "do": {
+        "kind": "chat",
+        "text": "[go 1504 1762 -5"
+      },
+      "say": "Stand in the water beside the Britain docks pier.",
+      "expect": {
+        "world.position": {
+          "x": 1504,
+          "y": 1762,
+          "map": 0,
+          "tolerance": 1
+        },
+        "within_s": 20
+      }
+    },
+    {
+      "id": "lap",
+      "do": {
+        "kind": "wait",
+        "seconds": 3
+      },
+      "say": "Standing in the water: small rings lap around the player.",
+      "shot": true
+    },
+    {
+      "id": "swim_1",
+      "do": {
+        "kind": "ui.key",
+        "key": "Down"
+      },
+      "say": "Wade a step."
+    },
+    {
+      "id": "swim_2",
+      "do": {
+        "kind": "ui.key",
+        "key": "Down"
+      },
+      "say": "And another."
+    },
+    {
+      "id": "swim_3",
+      "do": {
+        "kind": "ui.key",
+        "key": "Down"
+      },
+      "say": "And another."
+    },
+    {
+      "id": "wake",
+      "do": {
+        "kind": "wait",
+        "seconds": 1
+      },
+      "say": "The water behind the player is still rippling.",
+      "shot": true
+    },
+    {
       "id": "summary",
       "do": {
         "kind": "note",
-        "text": "Realtime water (ADR-0037) at the Britain docks and the Trinsic bay. Classic is the default and draws the tiles as before; its pixel parity with main and the perf_probe britain-docks and trinsic-bay timings are separate evidence."
+        "text": "Realtime water and ripples (ADR-0037) at the Britain docks and the Trinsic bay. Classic is the default and draws the tiles as before; its pixel parity with main and the perf_probe britain-docks and trinsic-bay timings are separate evidence."
       }
     }
   ]

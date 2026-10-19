@@ -62,7 +62,27 @@ public partial class WaterProbe : Node
             int plain = (int)Math.Round(UltimaBatcher2D.Encode(new Vector3(0, ShaderHueTranslator.SHADER_HUED, 1f)).B * 255f);
             Require((plain & WaterRender.ModeBit) == 0, "a tile without water must not carry the bit");
 
-            GD.Print("[water] PASS: Classic default and persistence, unknown styles Classic, --water-style override, upstream effect replaced, choices, mode byte");
+            // Ripples: a stamp pushes the surface down, the wave spreads out
+            // from it, the window keeps it when it follows the player, and it calms.
+            var ripples = new WaterRipples();
+            ripples.CentreOnForProbe(1000, 1000);
+            ripples.Stamp(1000, 1000, 0.6f, 0.8f);
+            Require(ripples.HeightAt(1000, 1000) < -0.2f, "a stamp must push the surface down");
+            Require(Math.Abs(ripples.HeightAt(1003, 1000)) < 1e-6f, "a stamp must stay local");
+            ripples.StepForProbe(30);
+            Require(Math.Abs(ripples.HeightAt(1003, 1000)) > 1e-3f, "the wave must spread");
+            ripples.CentreOnForProbe(1030, 1000);
+            Require(Math.Abs(ripples.HeightAt(1003, 1000)) > 1e-3f, "following the player must keep the waves");
+            ripples.StepForProbe(600);
+            float left = 0f;
+            for (int x = 990; x <= 1020; x++)
+            {
+                left = Math.Max(left, Math.Abs(ripples.HeightAt(x, 1000)));
+            }
+            Require(left < 0.01f, $"the water must calm (still {left:F4})");
+            Require(ripples.Texture != null && ripples.Texture.GetWidth() == WaterRipples.Size, "the ripple texture");
+
+            GD.Print("[water] PASS: Classic default and persistence, unknown styles Classic, --water-style override, upstream effect replaced, choices, mode byte, ripples spread, follow and calm");
             return true;
         }
         catch (Exception ex)

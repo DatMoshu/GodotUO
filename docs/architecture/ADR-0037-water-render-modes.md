@@ -125,12 +125,15 @@ machine (`docs/perf/2026-09-27_baseline_1280.md`).
    the installer (`StoreContent`) validate the same rules, with corpus cases
    for an accepted pack and each refusal. `docs/asset_pack_ecosystem.md` and
    `docs/data_formats.md` gain the component before anything emits it.
-7. **The option.** `Profile.WaterStyle` (string, default `"classic"`, a
-   `PlatformDefaults` entry with a version bump, as Enhanced HD did) and an
+7. **The option.** `Profile.WaterStyle` (string, default `"classic"`) and an
    Options entry, **Water**, in both Options interfaces, listing Classic plus
    the styles of installed, verified packs that the shard allows. Changing it
-   dirties the chunk meshes (the `ThemeManager.Reapply` walk). The editor's
-   World view gets the same choice in its Layers menu.
+   dirties the chunk meshes (the renderer does it on the frame it sees the
+   change). The editor's World view gets the same choice in its Layers menu.
+   No `PlatformDefaults` entry or version bump: Classic is the default on
+   every platform, the field's initialiser gives it to new and old profiles
+   alike, and an entry whose platform value equals the desktop default changes
+   nothing (amended 2026-10-19, WATER-03).
 8. **Shard control, with consent.** Until STORE-02's content negotiation
    lands, a shard's server pack (`Data/GUO/server-content.json`) may carry a
    `water` block: `allowed` (style ids), `default`, `lock`. The client offers
@@ -213,8 +216,7 @@ table, from the client data with `tools/guo` (`uomap`, `uoread.TileData`).
 - The fragment finds its world pixel from one mapping the batcher sets per
   frame (`water_target_to_world`), and its cell from the mask's water height,
   so no vertex data was added.
-- `Profile.WaterStyle` has no `PlatformDefaults` entry: Classic is the default
-  on every platform, which the field's initialiser already gives.
+- `Profile.WaterStyle` has no `PlatformDefaults` entry (decision 7).
 - `--water-style ID` sets the style for one session without saving it, for
   probes, scenarios and the perf lab.
 - Styles are `IWaterStyle` (`Id`, `DisplayName`, `Bind`); a pack style can
@@ -229,3 +231,12 @@ machine, one run each, so indicative): `britain-docks` mean frame 1.245 ->
 budget. Draw calls rose at the bay (157 -> 199); WATER-03 looks at why. With
 Classic, the docks and the bay are pixel-identical to `main` (0 of 921,600
 pixels) with identical draw lists.
+
+Ripples (WATER-03, 2026-10-19): a 20 Hz CPU wave field over a 128-cell
+window (decision 5). The debug view (`GUO_WATER_DEBUG=2`) shows rings round a
+wading character and a bow wave and wake behind a sailing boat. Perf with the
+style on is within run-to-run noise of off at the docks and the bay (two runs
+each, about +0.01 and 0.00 ms), and the bay's draw calls vary between runs
+whether water is on or off (156 to 199), so the earlier 157 -> 199 was not the
+water. Classic stays pixel-identical. Wave speed and stamps are per second,
+not per frame.

@@ -2764,12 +2764,28 @@ bit 6, circle-of-transparency in bit 7). Classic never sets it.
 | `water_mask_origin` | vec2 | the ring's first cell; cells outside it read as water at z -5 |
 | `water_tint` | vec4 | the colour swells lean towards |
 | `water_params` | vec4 | speed, scale (1 / world px), wave strength, foam strength |
-| `water_params2` | vec4 | glint, foam width (cells), brightness levels (0 smooth), unused |
+| `water_params2` | vec4 | glint, foam width (cells), brightness levels (0 smooth), ripple strength (0 ignores ripples) |
+| `water_ripples` | sampler2D | 256 x 256 R8, the ripple field over 128 x 128 cells, 2 x 2 texels a cell; 128 is flat |
+| `water_ripples_origin` | vec2 | the ripple window's first cell; outside it the surface is flat |
 
 The mask is rebuilt on the CPU when the player moves 8 cells or the loaded
-chunks change. A style is `IWaterStyle` (`Id`, `DisplayName`, `Bind`); a Store
+chunks change.
+
+**Ripples** (`WaterRipples`, WATER-03) are a two-buffer wave equation stepped
+at 20 Hz on the CPU (a front moves about three cells a second) over the ripple window, which follows the player (it
+shifts by whole cells when the player is 16 cells from its centre, keeping
+the waves inside). Disturbances: a mobile on a water cell no higher than its
+surface + 1 (moving pushes harder than standing); a multi on water that moves
+(its hull outline, `Item.MultiInfo`, at a rate scaled by its speed); an item that
+moves onto water or appears there within 14 cells of the player; a fixed
+effect that appears over water and a moving effect that ends there. After 6
+seconds without a disturbance the field stops stepping and uploading. The
+style's `BindRipples` sets the strength and damping (the `uo` style: 1.0 and
+0.985 a step). Continuous pushes are rates per second, so the field looks the
+same at any frame rate. A style is `IWaterStyle` (`Id`, `DisplayName`, `Bind`); a Store
 `water` component (WATER-04) will implement the same interface and is
 specified here before anything emits one.
 
 `GUO_WATER_DEBUG=1` in the client's environment paints every fragment that takes
-the water branch magenta, to see which tiles a style reaches.
+the water branch magenta, to see which tiles a style reaches; `2` paints the
+ripple field in grey (mid grey is flat).

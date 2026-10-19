@@ -15,7 +15,10 @@ water exactly as ClassicUO does.
 
 The water keeps the tiles' own colours, so hued water, night and the seasons
 look as they did. On top of that a slow swell crosses it, crests catch the
-light, and surf breaks where the water meets the shore. It changes only how
+light, and surf breaks where the water meets the shore. Anything in the
+water moves it: a creature or a wading character sends out rings, a boat
+under way leaves a bow wave and a wake, and something that lands in the
+water splashes. It changes only how
 water is coloured: what is drawn, in which order, and what a click picks are
 the same as with Classic tiles.
 
@@ -24,7 +27,7 @@ tiles. A water style replaces it while the style is on.
 
 ## Coming next
 
-Ripples behind the player and boats, more styles (pixel art, cel shaded,
+More styles (pixel art, cel shaded,
 realistic) as Store packs, and a setting a shard owner can use to choose which
 styles their players may use. The decision behind all of it is ADR-0037 in
 `docs/architecture/`.
