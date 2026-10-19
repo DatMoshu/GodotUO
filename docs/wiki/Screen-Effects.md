@@ -47,8 +47,17 @@ game:
 - **Blood Rush** narrows and reddens the view as you lose health.
 - **Battle Focus** turns colder and harder in war mode.
 
+There is also a Silhouettes look in the built-in set.
+
 On a desktop GPU each look costs well under a millisecond a frame. The
 measured costs are in ADR-0023.
+
+GUO also has an optional pack, **JarJar's screen effects**: 32 more looks by
+MeesaJarJar (fog, rain, snow, night vision, thermal, depth of field, damage,
+poison and more). Install it from Options > Video > Store
+([Asset Store](Asset-Store.md), [Content Packs](Content-Packs.md)).
+Installing it does not switch a look on; pick one in Screen effects, and
+choose Classic to turn every effect off.
 
 ## Your own looks
 
@@ -85,6 +94,11 @@ you play is picked up within a second.
   - `time` (seconds).
 - Nothing carries over from one frame to the next, so no effect can smear or
   shimmer the art.
+- A setting that takes whole numbers stays whole and inside its range, also
+  when a saved look is loaded. Resizing the window with an effect on keeps
+  the picture.
+- For one scripted run, `--postfx NAME` (or `--postfx off`) picks the look
+  without saving it.
 
 ## Your own shaders
 

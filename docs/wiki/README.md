@@ -21,15 +21,16 @@ the same root.
 
 ## Publishing to the GitHub Wiki
 
-The wiki is a separate git repository, `<repo>.wiki.git`. GitHub Wiki
-resolves page links without the `.md` suffix, so strip it on the way over:
+The wiki is a separate git repository, `<repo>.wiki.git`, and it is a
+generated copy. The `wiki` workflow runs `tools/wiki_publish` on every push
+to `main` that touches `docs/wiki/`: it rewrites page links for the wiki
+(dropping `.md`), turns links into the rest of the repository into GitHub
+URLs, leaves this README out and deletes pages removed here. To check the
+links or see the converted pages locally:
 
-```sh
-git clone https://github.com/<owner>/<repo>.wiki.git ../wiki
-cp docs/wiki/*.md ../wiki/
-rm ../wiki/README.md
-sed -i -E 's/\]\(([A-Za-z0-9_-]+)\.md\)/](\1)/g' ../wiki/*.md
-cd ../wiki && git add -A && git commit -m "Sync from docs/wiki" && git push
+```
+python tools\wiki_publish\run.py --check
+python tools\wiki_publish\run.py --out DIR
 ```
 
 Only the repository owner pushes (see [Contributing](Contributing.md)).
