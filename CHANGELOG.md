@@ -142,7 +142,8 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ### Playing
 - Water can move: **Options > Video > Water > Realtime (UO colours)** draws
   the sea, rivers and lakes with a slow swell, light on the crests and surf
-  at the shore, in the tiles' own colours. Off by default; Classic tiles
+  at the shore, in the tiles' own colours, and ripples where something
+  wades, swims, sails or splashes into it. Off by default; Classic tiles
   draws water as before. The editor's UO World tab has it under
   **Layers > Realtime water**.
 - Canvas background behind the game: grey, wood, your own image or video,

@@ -30,6 +30,12 @@ internal interface IWaterStyle
     /// style becomes active, not every frame.
     /// </summary>
     void Bind(Action<string, Variant> set);
+
+    /// <summary>
+    /// The style's ripple settings: how hard things push the water and how
+    /// fast it calms. A style without ripples sets Strength to 0.
+    /// </summary>
+    void BindRipples(WaterRipples ripples);
 }
 
 /// <summary>
@@ -48,8 +54,14 @@ internal sealed class UoRealtimeWaterStyle : IWaterStyle
         set("water_tint", new Color(0.12f, 0.24f, 0.42f, 1f));
         // speed, scale (1 / world px), wave strength, foam strength
         set("water_params", new Vector4(1.0f, 0.045f, 0.22f, 0.85f));
-        // glint, foam width (cells), brightness levels, unused
-        set("water_params2", new Vector4(0.35f, 0.22f, 6f, 0f));
+        // glint, foam width (cells), brightness levels, ripple strength
+        set("water_params2", new Vector4(0.35f, 0.22f, 6f, 1.0f));
+    }
+
+    public void BindRipples(WaterRipples ripples)
+    {
+        ripples.Strength = 1f;
+        ripples.Damping = 0.985f;
     }
 }
 
@@ -78,6 +90,9 @@ internal static class WaterRender
     private static IWaterStyle _bound;
     private static bool _boundOnce;
     private static readonly WaterMask _mask = new WaterMask();
+    private static readonly WaterRipples _ripples = new WaterRipples();
+    private static long _lastTicks;
+    private static int _lastMap = -1;
 
     /// <summary>Every style Options can offer, Classic first, as (id, name).</summary>
     public static IEnumerable<(string Id, string Name)> Choices()
@@ -216,7 +231,9 @@ internal static class WaterRender
                 return;
             }
             style.Bind(batcher.SetWaterUniform);
-            batcher.SetWaterUniform("water_debug", System.Environment.GetEnvironmentVariable("GUO_WATER_DEBUG") == "1" ? 1 : 0);
+            style.BindRipples(_ripples);
+            _ripples.Reset();
+            batcher.SetWaterUniform("water_debug", int.TryParse(System.Environment.GetEnvironmentVariable("GUO_WATER_DEBUG"), out int debug) ? debug : 0);
             _mask.Invalidate();
         }
 
@@ -236,12 +253,33 @@ internal static class WaterRender
             "water_target_to_world",
             new Vector4(inv.X.X, inv.Y.Y, inv.Origin.X + offsetX + 22, inv.Origin.Y + offsetY + 22));
 
-        if (world?.Player != null && _mask.Update(world, world.Player.X, world.Player.Y))
+        if (world?.Player == null)
+        {
+            return;
+        }
+
+        if (_mask.Update(world, world.Player.X, world.Player.Y))
         {
             batcher.SetWaterUniform("water_mask", _mask.Texture);
             batcher.SetWaterUniform("water_mask_origin", new Vector2(_mask.OriginX, _mask.OriginY));
         }
+
+        if (world.Map.Index != _lastMap)
+        {
+            _lastMap = world.Map.Index;
+            _ripples.Reset();
+        }
+        float delta = _lastTicks == 0 ? 0f : Math.Clamp((Time.Ticks - _lastTicks) / 1000f, 0f, 0.25f);
+        _lastTicks = Time.Ticks;
+        if (_ripples.Update(world, _mask, delta))
+        {
+            batcher.SetWaterUniform("water_ripples", _ripples.Texture);
+            batcher.SetWaterUniform("water_ripples_origin", new Vector2(_ripples.OriginX, _ripples.OriginY));
+        }
     }
+
+    /// <summary>The ripple field, for probes (stamps, steps, cost).</summary>
+    internal static WaterRipples Ripples => _ripples;
 
     /// <summary>For the probe: how long the last mask rebuild took, and how many.</summary>
     public static (double Ms, int Rebuilds) MaskStats => (_mask.LastBuildMs, _mask.Rebuilds);
@@ -269,6 +307,23 @@ internal sealed class WaterMask
     public double LastBuildMs { get; private set; }
     public int Rebuilds { get; private set; }
     public Texture2D Texture => _texture;
+
+    /// <summary>Whether the last build saw water at a cell, and its height. False outside the window.</summary>
+    public bool WaterAt(int x, int y, out int z)
+    {
+        z = 0;
+        if (_texture == null || x < OriginX || y < OriginY || x >= OriginX + Size || y >= OriginY + Size)
+        {
+            return false;
+        }
+        int at = (((y & (Size - 1)) * Size) + (x & (Size - 1))) * 4;
+        if (_pixels[at] == 0)
+        {
+            return false;
+        }
+        z = _pixels[at + 1] - 128;
+        return true;
+    }
 
     public void Invalidate()
     {
