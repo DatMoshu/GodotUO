@@ -450,6 +450,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
             AddDock(_ai);
         }
         _art?.ApplyAiFeatures();
+        _studio?.ApplyAiFeatures();
         _zones?.ApplyAiFeatures();
         _searchContext.Ai = _ai;
         SearchPopup.Remove(_search);
