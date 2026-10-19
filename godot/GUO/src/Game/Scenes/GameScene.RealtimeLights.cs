@@ -28,7 +28,7 @@ namespace GUO.Game.Scenes
         private int _rtSourceCount;
         private readonly List<(float key, GameObject obj)> _rtSprites = new();
         private long _rtLogAt;
-        private int _rtRoofs, _rtAbove;
+        private int _rtRoofs, _rtAbove, _rtDarkQuads;
 
         /// <summary>Margin of tiles around the visible chunks, so a light just off screen still reaches in.</summary>
         private const int RtMargin = 8;
@@ -132,7 +132,7 @@ namespace GUO.Game.Scenes
                     _rtLogAt = Time.Ticks;
                     string line = $"[realtime-lights] grid={_rtField.Width}x{_rtField.Height} lights={_rtSourceCount} " +
                               $"computed={_rtField.LastComputed} cached={_rtField.CacheCount} " +
-                              $"quads={_rtTarget.LastQuads} sprites={_rtTarget.LastSprites} roofs={_rtRoofs} above={_rtAbove}";
+                              $"quads={_rtTarget.LastQuads} sprites={_rtTarget.LastSprites} roofs={_rtRoofs} above={_rtAbove} darkQuads={_rtDarkQuads} ambient={_rtField.Ambient}";
                     Log.Trace(line);
                     // The editor's World tab has no client log file: its console gets the line.
                     if (Engine.IsEditorHint()) GD.Print(line);
@@ -256,6 +256,7 @@ namespace GUO.Game.Scenes
             _rtSprites.Clear();
             _rtRoofs = 0;
             _rtAbove = 0;
+            _rtDarkQuads = 0;
             ref var statics = ref Client.Game.UO.FileManager.TileData.StaticData;
 
             foreach (Chunk chunk in _visibleChunks)
@@ -271,7 +272,8 @@ namespace GUO.Game.Scenes
                             {
                                 int ly = ((land.X + land.Y) * 22 - (land.Z << 2)) - _offset.Y - 22;
                                 int lx = ((land.X - land.Y) * 22) - _offset.X - 22;
-                                if (ly >= -100 && ly <= _rtTarget.Height / zoom + 100 && lx >= -60 && lx <= _rtTarget.Width / zoom + 60)
+                                // Generous: a hill's corners sit well above its tile's own Z.
+                                if (ly >= -320 && ly <= _rtTarget.Height / zoom + 120 && lx >= -120 && lx <= _rtTarget.Width / zoom + 120)
                                 {
                                     AddRealtimeLand(land);
                                 }
@@ -378,8 +380,9 @@ namespace GUO.Game.Scenes
                 left = new Vector2(sx, sy + 22);
             }
 
-            _rtTarget.AddLand(top, right, bottom, left,
-                _rtField.Corner(x, y), _rtField.Corner(x + 1, y), _rtField.Corner(x + 1, y + 1), _rtField.Corner(x, y + 1));
+            Color c0 = _rtField.Corner(x, y), c1 = _rtField.Corner(x + 1, y), c2 = _rtField.Corner(x + 1, y + 1), c3 = _rtField.Corner(x, y + 1);
+            if (Math.Min(Math.Min(c0.R, c1.R), Math.Min(c2.R, c3.R)) < 0.05f) _rtDarkQuads++;
+            _rtTarget.AddLand(top, right, bottom, left, c0, c1, c2, c3);
         }
 
         /// <summary>A light's tint: the classic light palette, or the hue when the offer is hued.</summary>

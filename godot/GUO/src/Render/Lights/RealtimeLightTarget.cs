@@ -19,12 +19,15 @@ namespace GUO.Renderer.Lights
         private const string ShaderCode = @"shader_type canvas_item;
 render_mode blend_disabled;
 // ADR-0039: the vertex colour is the light; the texture only masks it.
-// Fragment COLOR here is the vertex colour alone (the default multiply by
-// the texture happens only in the built-in fragment).
+// The light rides a varying from the vertex stage: fragment COLOR is
+// already multiplied by the texture sample (as the batcher's id shader
+// notes), and a sprite's own colours must not tint its light.
+varying vec3 light;
+void vertex() { light = COLOR.rgb; }
 void fragment() {
     float a = texture(TEXTURE, UV).a;
     if (a < 0.5) { discard; }
-    COLOR = vec4(COLOR.rgb, 1.0);
+    COLOR = vec4(light, 1.0);
 }";
 
         private RenderTarget2D _target;
