@@ -47,6 +47,8 @@ echo [smoke] optional audio pack contracts (synthetic; no shard or AI service)
 echo [smoke] optional HD pack contracts (synthetic)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Store/StoreHdProbe.tscn || set "FAIL=1"
 
+echo [smoke] server lab tables and server rows (synthetic; nothing fetched or started)
+"%UO_PYTHON%" "%UO_TOOLS%\server_lab\test_server_lab.py" || set "FAIL=1"
 echo [smoke] perf lab report: fields kept, privacy refusal, size (synthetic; tools\perf_lab)
 "%UO_PYTHON%" -m pytest "%UO_TOOLS%\perf_lab" -q -p no:cacheprovider || set "FAIL=1"
 

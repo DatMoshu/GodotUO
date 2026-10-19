@@ -5,8 +5,9 @@
     python tools/server_lab/run.py setup BACKEND          fetch at the pin, patch, build, configure, admin, profile
     python tools/server_lab/run.py start BACKEND | stop BACKEND | status BACKEND
     python tools/server_lab/run.py seed BACKEND           give the lab account its character (once per world)
-    python tools/server_lab/run.py cases BACKEND [--case 0,1,9] [--no-record]
-    python tools/server_lab/run.py row BACKEND [--no-record]     all of the above, then stop, wiki, card
+    python tools/server_lab/run.py cases BACKEND [--case 0,1,9] [--no-record] [--client-version V] [--evidence ID]
+    python tools/server_lab/run.py row BACKEND [--no-record] [--client-version V] [--evidence ID]
+                                                          all of the above, then stop, wiki, card
     python tools/server_lab/run.py wiki                   rewrite docs/wiki/Server-Compatibility.md from the grid
     python tools/server_lab/run.py card BACKEND           build/server_lab/card_<backend>.json; sends nothing
 
@@ -15,7 +16,8 @@ Every lab server listens on 127.0.0.1 only and has its own admin account, genera
 servers.json, started and stopped through tools/server_manager (the run bar's own process record), and the cases are
 scenarios run by tools/scenario_run with `--server`. The grid is build/server_lab/grid.json (data_formats section 36).
 
-Backends: modernuo (SV1). ServUO, UOX3 and Sphere X join with SV4, SV5 and SV6.
+Backends: modernuo (SV1), servuo (NET-01). UOX3 and Sphere X join with SV5 and SV6; POL's row is documented in
+docs/server_lab.md and not set up yet.
 Take the machine leases first (switchboard): build:D for setup, shard:<port> and godot:runtime for start/seed/cases.
 """
 
@@ -27,7 +29,6 @@ import os
 import re
 import secrets
 import shutil
-import socket
 import string
 import subprocess
 import sys
@@ -41,6 +42,8 @@ sys.path.insert(0, str(HERE))
 
 import grid as grid_mod  # noqa: E402
 import modernuo  # noqa: E402
+import servuo  # noqa: E402
+import listeners  # noqa: E402
 from guo import load_config  # noqa: E402
 
 
@@ -53,7 +56,7 @@ def _server_manager():
 
 
 sm = _server_manager()
-SUPPORTED = {"modernuo": modernuo}
+SUPPORTED = {"modernuo": modernuo, "servuo": servuo}
 READY_S = 240
 SEED_S = 480
 _ALPHABET = string.ascii_letters + string.digits
@@ -79,7 +82,7 @@ def table() -> dict:
 
 
 def build_dir() -> Path:
-    return ROOT / "build" / "server_lab"
+    return load_config().build / "server_lab"
 
 
 class Lab:
@@ -90,7 +93,7 @@ class Lab:
         if backend_id not in known:
             raise SystemExit(f"{backend_id}: not a lab backend ({', '.join(sorted(known))})")
         if backend_id not in SUPPORTED:
-            raise SystemExit(f"{backend_id}: its lab row arrives with a later story (SV4 ServUO, SV5 UOX3, SV6 Sphere X)")
+            raise SystemExit(f"{backend_id}: its lab row arrives with a later story (SV5 UOX3, SV6 Sphere X)")
         self.id = backend_id
         self.cfg = cfg
         self.backend = known[backend_id]
@@ -100,6 +103,7 @@ class Lab:
         self.state_dir = Path(cfg.workspace_dir) / "server_lab" / backend_id
         self.state_file = self.state_dir / "lab.json"
         self.port = int(self.backend["port"])
+        self.client_version = ""          # --client-version: report this version instead of UO_CLIENT_VERSION
 
     # --- state, secrets, profile -------------------------------------------------------------------------------
     def state(self) -> dict:
@@ -173,14 +177,19 @@ class Lab:
             self.module.build(src, say, log)
         wrote = self.module.configure(src, self.cfg.client_data, self.table["shard_name"], self.port)
         say("configured on 127.0.0.1:%d%s" % (self.port, (" (" + ", ".join(wrote) + ")") if wrote else ""))
-        self.credentials(create=True)
+        self.ensure_admin(*self.credentials(create=True))
         profile = self.register()
         say(f"profile {profile['Name']!r} saved in the workspace's servers.json")
 
+    def ensure_admin(self, account: str, password: str) -> None:
+        """A backend whose admin is a file written before the first boot (ServUO) writes it here; the others make
+        theirs from the server environment at boot."""
+        write = getattr(self.module, "ensure_admin", None)
+        if write and write(self.src(), account, password):
+            print(f"[lab] {self.id}: wrote the lab admin into the new world's accounts")
+
     def listening(self) -> bool:
-        with socket.socket() as s:
-            s.settimeout(0.5)
-            return s.connect_ex(("127.0.0.1", self.port)) == 0
+        return listeners.listening(self.port)
 
     def start(self) -> None:
         profile = self.need_profile()
@@ -191,6 +200,7 @@ class Lab:
             raise SystemExit(f"[lab] port {self.port} is taken by another program; stop it first")
         self.module.configure(self.src(), self.cfg.client_data, self.table["shard_name"], self.port)
         account, password = self.credentials()
+        self.ensure_admin(account, password)
         pid = sm.start_server(self.ws, profile, self.module.server_env(dict(os.environ), account, password))
         print(f"[lab] {profile['Name']} starting (PID {pid}); waiting for 127.0.0.1:{self.port}")
         end = time.monotonic() + READY_S
@@ -224,6 +234,8 @@ class Lab:
     def client_env(self) -> dict[str, str]:
         account, password = self.credentials()
         env = dict(os.environ)
+        if self.client_version:
+            env["UO_CLIENT_VERSION"] = self.client_version
         env.update({"UO_SHARD_HOST": "127.0.0.1", "UO_SHARD_PORT": str(self.port), "UO_SHARD_OWNER": account,
                     "UO_SHARD_OWNER_PASSWORD": password, "GUO_SCENARIO_ACCOUNT": account, "GUO_SCENARIO_PASSWORD": password})
         env.pop("UO_SHARD_GM_ACCOUNTS", None)
@@ -249,9 +261,9 @@ class Lab:
                 code = proc.wait(timeout=SEED_S)
             except subprocess.TimeoutExpired:
                 subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True)
-                raise SystemExit(f"[lab] seeding did not finish in {SEED_S} s; see {log.relative_to(ROOT)}")
+                raise SystemExit(f"[lab] seeding did not finish in {SEED_S} s; see {log}")
         if code != 0:
-            raise SystemExit(f"[lab] seeding exited {code}; see {log.relative_to(ROOT)}")
+            raise SystemExit(f"[lab] seeding exited {code}; see {log}")
         self.save_state(seeded=grid_mod.now())
         print("[lab] seeded")
 
@@ -276,13 +288,13 @@ class Lab:
                 run_id = match.group(2)
                 break
         failed = []
-        if run_id and (ROOT / "build" / "runs" / run_id / "run.json").is_file():
-            manifest = load_json(ROOT / "build" / "runs" / run_id / "run.json")
+        if run_id and (self.cfg.build / "runs" / run_id / "run.json").is_file():
+            manifest = load_json(self.cfg.build / "runs" / run_id / "run.json")
             failed = [s["id"] for s in manifest.get("steps", []) if s.get("ok") is False]
         note = "" if run_id else (lines[-1].strip() if lines else f"exit {code}")
-        return grid_mod.cell_from_run(case, code, run_id, failed, note)
+        return grid_mod.cell_from_run(case, code, run_id, failed, note, self.client_version or self.cfg.client_version)
 
-    def run_cases(self, numbers: list[int] | None, record: bool) -> dict:
+    def run_cases(self, numbers: list[int] | None, record: bool, evidence: str = "") -> dict:
         path = build_dir() / "grid.json"
         grid = grid_mod.load(path)
         grid_mod.ensure_row(grid, self.backend, self.backend["lab"]["era"]["lab"])
@@ -292,6 +304,8 @@ class Lab:
             grid = grid_mod.load(path)            # re-read: a long run may overlap a wiki rebuild
             row = grid_mod.ensure_row(grid, self.backend, self.backend["lab"]["era"]["lab"])
             row["cells"][str(case["n"])] = cell
+            if evidence:
+                row["evidence"] = evidence
             grid.update({"updated": grid_mod.now(), "client_version": self.cfg.client_version, "commit": git_commit()})
             grid_mod.save(path, grid)
             print(f"[lab] case {case['n']}: {cell['result']}")
@@ -366,6 +380,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-record", action="store_true", help="cases, row: stills and events only, no video")
     ap.add_argument("--skip-build", action="store_true", help="setup: keep an existing build")
     ap.add_argument("--reseed", action="store_true", help="row: seed even when the lab account was seeded before")
+    ap.add_argument("--client-version", default="", help="cases, row, seed: the client version GUO reports (default UO_CLIENT_VERSION)")
+    ap.add_argument("--evidence", default="", help="cases, row: the shared evidence run id these results are filed under")
     args = ap.parse_args(argv)
     cfg = load_config()
     if args.command == "doctor":
@@ -376,6 +392,12 @@ def main(argv: list[str] | None = None) -> int:
     if not args.backend:
         ap.error(f"{args.command} needs a backend")
     lab = Lab(args.backend, cfg)
+    if args.client_version:
+        if not re.fullmatch(r"\d+\.\d+\.\d+(\.\d+)?", args.client_version):
+            ap.error("--client-version is four numbers, such as 7.0.107.76")
+        lab.client_version = args.client_version
+    if args.evidence and not re.fullmatch(r"[0-9a-z][0-9a-z_.-]{0,127}", args.evidence):
+        ap.error("--evidence is an evidence run id, such as 20261018_guo-worker-netcompat_server-matrix")
     numbers = [int(n) for n in args.case.split(",")] if args.case else None
     if args.command == "setup":
         lab.setup(args.skip_build)
@@ -391,7 +413,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "seed":
         lab.seed()
     elif args.command == "cases":
-        lab.run_cases(numbers, not args.no_record)
+        lab.run_cases(numbers, not args.no_record, args.evidence)
     elif args.command == "card":
         write_card(lab)
     elif args.command == "row":
@@ -403,7 +425,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             if args.reseed or not lab.state().get("seeded"):
                 lab.seed()
-            lab.run_cases(numbers, not args.no_record)
+            lab.run_cases(numbers, not args.no_record, args.evidence)
         finally:
             if started_here:
                 lab.stop()
