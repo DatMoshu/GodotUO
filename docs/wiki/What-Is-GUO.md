@@ -37,7 +37,7 @@ developed and tested against a local ModernUO shard; the editor also talks to Se
 | In a web browser | no | yes, plays on a shard in Chrome (a community engine build; early) |
 | Assistant plugins (Razor etc.) | yes | yes on Windows, through ClassicUO's plugin interface |
 | Built-in world and art editor | no | yes, inside the Godot editor (see below) |
-| Content packs / Asset Store | no | yes: backgrounds, screensavers, themes, sounds, layout presets |
+| Content packs / Asset Store | no | yes: backgrounds, themes, sounds, layout presets, screen effects, HD art, regional audio and recorded voices ([Content Packs](Content-Packs.md)) |
 | Licence | BSD 2-Clause | BSD 2-Clause (keeps ClassicUO's copyright) |
 
 On a desktop with a mouse, GUO aims to look and play exactly like ClassicUO. The mobile features below
@@ -56,7 +56,7 @@ only switch on for touch screens.
 - **The Asset Store:** a catalogue you can run yourself. The client installs, updates and removes packs,
   checking every file. It never accepts UO game data.
 - **Quality of life:** a canvas background around the game, OLED screensavers, a boot splash, per-platform
-  default settings, and downloadable builds for every platform from each change.
+  default settings, and builds for Windows, Steam Deck and Android from each change (a tagged release is the owner's call).
 
 ## What it isn't (yet)
 
@@ -64,6 +64,8 @@ only switch on for touch screens.
   ClassicUO everywhere. Known Issues lists the gaps.
 - **Not a server.** To play you need a shard (your own, or one you trust).
 - **No game data.** Every build needs your own UO installation.
+- **Kept in layers.** The port itself matches ClassicUO; GUO's own options are off by default; experiments
+  never ship in a build. See [Feature Layers](Feature-Layers.md).
 
 ## Where to go next
 

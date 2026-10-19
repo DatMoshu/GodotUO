@@ -1,6 +1,6 @@
 # Gump size and screen controls
 
-The touch layer supports independent size controls for paperdolls, classic and grid containers, status windows, and classic/resizable journals. Other gumps retain their existing behavior. This is the floating-gump implementation; companion tabs are still a separate proposal.
+The touch layer supports independent size controls for paperdolls, classic and grid containers, status windows, and classic/resizable journals. Other gumps retain their existing behavior. This is the floating-gump implementation; companion tabs on the second screen exist only as an off-by-default prototype (see [Dual Screen](Dual-Screen.md)).
 
 ## How the sizes combine
 
@@ -68,7 +68,7 @@ batcher probe PASS.
 
 First validated on September 27, 2026: .NET build succeeded with zero errors (seven existing warnings); touch probe passed 44/44 checks, including identical server container-drop coordinates at 100% and 150%; batcher probe passed 253 checks, including three new transform/clipping checks. The desktop dual-screen probe passed transfer, remembered-position, inverse-coordinate, and mixed-display gesture checks.
 
-Use `launchers/dev/touch_probe.bat` against the local dev shard. Its added checks cover gump pinch ownership, inverse hit testing, pointer coordinates, raw/native event deduplication, lock/reset, cancelled gestures, saved scale, and item-drop parity. The screenshot `build/screenshots/gump_scale_150.png` captures a scaled paperdoll for visual inspection.
+Use `launchers/dev/touch_probe.bat` against the local dev shard. Its added checks cover gump pinch ownership, inverse hit testing, pointer coordinates, raw/native event deduplication, lock/reset, cancelled gestures, saved scale, and item-drop parity. The screenshot it names is not kept in the repository.
 
 Use `launchers/game/play.bat --dual-screen 1240x1080 --dual-probe` for the desktop second-display simulator. It additionally checks transfer in both directions, remembered position, prevention of automatic re-shelving, and mixed-display gesture rejection. The simulator does not establish physical Android gesture delivery or controller focus behavior; those still need an on-device pass.
 

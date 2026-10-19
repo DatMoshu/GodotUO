@@ -16,7 +16,8 @@ with the project, and the client only ever reads your install.
 | **Release state** | Pre-release. Playable on a local shard; not yet at pixel parity with ClassicUO. |
 | **Port coverage** | 396 / 396 upstream files present, by the audit's count (`docs/port_status.md`). "Ported" means present and compiling, not proven working. |
 | **What is verified** | Logs in, walks, opens gumps and hosts assistant plugins against a local ModernUO shard (`launchers\dev\playtest.bat`, `plugin_probe.bat`). Side-by-side sweeps against ClassicUO in eight places: `docs/parity_2026-09-23.md`, `docs/parity_2026-09-26_night.md`. |
-| **Platforms** | Windows 10/11 x64 (developed and exported). Android 12+ ARM64 debug APK, run on one device (ADR-0017). Steam Deck (SteamOS, Linux x86_64) export (ADR-0018). Web: plays on a local shard in Chrome (Firefox to the login screen) on a community engine build, see [Web Client](Web-Client.md). |
+| **Platforms** | Windows 10/11 x64 (developed and exported). Android 12+ ARM64 debug APK, run on one device and in GUO's own emulator (ADR-0017). Steam Deck (SteamOS, Linux x86_64) export (ADR-0018). Web: plays on a local shard in Chrome (Firefox to the login screen) on a community engine build, see [Web Client](Web-Client.md). |
+| **Options and packs** | Enhanced HD art and regional audio with recorded voices are options, off by default, fed by installed [Content Packs](Content-Packs.md). Every feature sits in a [layer](Feature-Layers.md). |
 | **Engine** | Godot 4.7.2 stable, mono/.NET build, pinned and fetched by the bootstrap step. The non-mono build will not work. |
 | **Language** | C# on `net8.0` (`net9.0` for the Android export), Python 3.12 tooling. |
 
@@ -24,7 +25,7 @@ with the project, and the client only ever reads your install.
 
 - New here: [Getting Started](Getting-Started.md), then [Configuration](Configuration.md).
 - Want a build: [Windows Build](Windows-Build.md), [Android Build](Android-Build.md), [Steam Deck](Steam-Deck.md), [Web Client](Web-Client.md), [Dual Screen](Dual-Screen.md), or [Download a build](Getting-Started.md#download-a-build).
-- Playing: [Servers and Accounts](Servers-and-Accounts.md), [Controller](Controller.md), [Asset Store](Asset-Store.md).
+- Playing: [Servers and Accounts](Servers-and-Accounts.md), [Controller](Controller.md), [Asset Store](Asset-Store.md), [Content Packs](Content-Packs.md).
 - Playing on a phone: [Mobile UI](Mobile-UI.md), [Canvas Background](Canvas-Background.md).
 - Something wrong: [Troubleshooting](Troubleshooting.md), [Known Issues](Known-Issues.md), [Community and Support](Community-and-Support.md).
 - Building content: [Building Multis](Building-Multis.md), [Author UO Data](Author-UO-Data.md).
@@ -34,7 +35,7 @@ with the project, and the client only ever reads your install.
 - Planning the second screen: [OpenMW-DS comparison, tabs, gump transfer, and pinch scaling](../second-screen-ui-research.md).
 - Resizing or moving windows: [Gump size and screen controls](Gump-Size-and-Screen.md).
 - Need a server: [Dev Shard](Dev-Shard.md).
-- Working on the port: [Launchers and Tools](Launchers-and-Tools.md), [Scripted Runs and Probes](Scripted-Runs-and-Probes.md), [Parity and Drift](Parity-and-Drift.md), [Architecture](Architecture.md), [Editor](Editor.md), [Manage Your Shard From the Editor](Manage-Your-Shard-From-The-Editor.md), [Author UO Data](Author-UO-Data.md), [Contributing](Contributing.md).
+- Working on the port: [Launchers and Tools](Launchers-and-Tools.md), [Scripted Runs and Probes](Scripted-Runs-and-Probes.md), [Parity and Drift](Parity-and-Drift.md), [Architecture](Architecture.md), [Editor](Editor.md), [Manage Your Shard From the Editor](Manage-Your-Shard-From-The-Editor.md), [Admin Tab](Admin-Tab.md), [Author UO Data](Author-UO-Data.md), [Feature Layers](Feature-Layers.md), [Contributing](Contributing.md).
 - New to GUO: [What is GUO?](What-Is-GUO.md), and how it differs from ClassicUO.
 - Short answers: [FAQ](FAQ.md).
 - What does not work yet: [Known Issues](Known-Issues.md).

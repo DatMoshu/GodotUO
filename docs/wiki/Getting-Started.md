@@ -76,8 +76,10 @@ launcher layer. The full health check is:
 launchers\dev\smoke.bat
 ```
 
-Five steps: the engine answers, the project imports, the C# builds, the
-client data verifies, and the client loads offline. It must pass before a
+Seven steps: the engine answers, the project imports, the C# builds, the
+client data verifies, the client loads offline, the editor add-on loads and
+every launcher passes the lint, then a few quick synthetic checks of the
+optional packs. It ends with `OK`. It must pass before a
 commit (see [Contributing](Contributing.md)).
 
 ## 5. Play
@@ -119,8 +121,9 @@ Where to find them:
   summary page (you need to be signed in to GitHub). The workflow runs on
   pushes to `main` that touch the client or the export tools, and on demand
   (**Run workflow**). Artifacts expire after GitHub's retention period.
-- **Releases**: a `v*` tag makes a draft release with the Windows and Steam
-  Deck builds zipped and attached; the owner publishes it.
+- **Releases**: a `v*` tag makes a draft release with the Windows, Steam
+  Deck and Android builds attached; the owner publishes it. None has been
+  published yet, so take the Actions artifacts for now.
 
 **Every build needs your own UO install.** None of them contains any game
 data, and none ever will: point the client at your install. The exported
@@ -163,6 +166,6 @@ it removes the first-visit hitch. The cache can be deleted at any time.
 
 | | |
 |---|---|
-| `build\` | Every generated artifact: screenshots, exports, probe output. Gitignored. |
+| `build\` | Every generated artifact: screenshots, exports, probe output. Gitignored. Set `UO_BUILD_DIR` to put it outside the checkout ([Configuration](Configuration.md#generated-output)). |
 | `%LOCALAPPDATA%\GUO\cache` | The decode cache (`UO_CACHE_DIR`). |
 | `godot\GUO\` | The Godot project. Settings, profiles and logs are written under the client's working directory, as in ClassicUO. |
