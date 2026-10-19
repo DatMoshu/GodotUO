@@ -6,14 +6,11 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Performance
-- **Perf lab**: `launchers\dev\perf_lab.bat` measures GUO's frame rate on
-  your machine at 1920x1080 and at 2560x1440 zoomed out, prints the table and
-  writes a short report you can paste in Discord (GPU, driver, CPU, OS and the
-  numbers; no paths or names). It needs the dev shard running; the wiki page
-  Performance says how to run it and read it.
-- The perf probe times the world frame stage by stage (gather, sort, land,
-  statics, covering land, mobiles, items) and gains two places: a crypt under
-  the land and open sea. `docs/perf/2026-10-18_britain_breakdown.md` reads it.
+- Windows draws the land as one array and covering land in runs by default
+  (proposed; the owner decides). At 2560x1440 and zoom 2.5 the Britain bank
+  goes from 26 to 40 fps and a dungeon from 44 to 97, with the same pixels.
+  `--merged-land=off --merged-cover=off` brings back the old draw
+  (`docs/perf/2026-10-19_cover_regression.md`).
 
 ### Editor
 - The editor's automation (MCP) tools have per-user permissions in Editor

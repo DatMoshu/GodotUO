@@ -1853,6 +1853,17 @@ public partial class Main : Node
                 MergedLandMode(true, true, true);
             }
 
+            // PERF-REG, Windows: the land array and merged cover (B4 fix 2c) by
+            // default, pending the owner's decision (docs/perf/2026-10-19_cover_regression.md).
+            // The riverbank cover fix doubled the covering land; merged cover draws
+            // it as runs at 0 strict pixels of parity. --merged-land=off and
+            // --merged-cover=off restore upstream's draw.
+            if (OperatingSystem.IsWindows())
+            {
+                MergedLandMode(true, true, true);
+                GUO.Renderer.UltimaBatcher2D.MergedCover = true;
+            }
+
             var list = new List<string>(args);
             for (int i = 0; i < list.Count; i++)
             {
@@ -1960,6 +1971,9 @@ public partial class Main : Node
                         GUO.Renderer.UltimaBatcher2D.MergedCover = true;
                         GUO.Host.PerfProbe.ParityToggle = on => GUO.Renderer.UltimaBatcher2D.MergedCover = on;
                         GUO.Host.PerfProbe.ParityState = () => GUO.Renderer.UltimaBatcher2D.MergedCover;
+                        break;
+                    case "--merged-cover=off":
+                        GUO.Renderer.UltimaBatcher2D.MergedCover = false;
                         break;
                     case "--batched-world":
                         GUO.Renderer.UltimaBatcher2D.BatchedWorld = true;
