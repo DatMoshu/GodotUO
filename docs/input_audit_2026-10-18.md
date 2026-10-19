@@ -97,8 +97,8 @@ shared runs area under `20261018_guo-worker-input_input-audit` and
 | Gamepad | `--pad-regression-probe` (synthetic pad, no shard) | 52/52 after INPUT-00 |
 | Gamepad | `--pad-wheels-probe` on the dev shard, twice (2026-10-18 22:44Z, 22:55Z) | Wheel, radar, Set controls, screens, mount by walk-up and dismount pass. The shard lacked the pad dummies (patch 0004), so the attack and use dummies were not reached; once the shard sent no target cursor for a party invite |
 | Keyboard and mouse | `launchers\dev\playtest.bat` | pending a shard window |
-| Touch (desktop layer) | `launchers\dev	ouch_probe.bat` | pending a shard window |
-| Touch (emulator) | `launchersndroid\smoke.bat --avd` | pending the emulator |
+| Touch (desktop layer) | `launchers\dev\touch_probe.bat` | pending a shard window |
+| Touch (emulator) | `launchers\android\smoke.bat --avd` | pending the emulator |
 
 K1 and K2 cannot be shown by a scripted run: focus loss and an AltGr layout
 come from the operating system, not from an injected event. Both rest on the
