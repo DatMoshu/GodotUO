@@ -84,16 +84,35 @@ def test_a_report_naming_someone_is_not_written(tmp_path):
     assert not list(tmp_path.iterdir())
 
 
-def test_shard_up_sees_a_listener():
+def test_shard_up_sees_a_listener_without_connecting(monkeypatch):
     srv = socket.socket()
     srv.bind(("127.0.0.1", 0))
     srv.listen(1)
+    srv.settimeout(0.2)
     port = srv.getsockname()[1]
     try:
         assert run.shard_up("127.0.0.1", port)
+        # Nothing connected to find that out (the shard bans a silent connection).
+        with pytest.raises(socket.timeout):
+            srv.accept()
     finally:
         srv.close()
-    assert not run.shard_up("127.0.0.1", port, timeout=0.5)
+    assert not run.shard_up("127.0.0.1", port)
+
+
+def test_a_remote_shard_is_not_checked():
+    assert run.shard_up("shard.example.org", 2593) is None
+
+
+def test_parse_listening_reads_netstat_and_ss():
+    windows = ("  TCP    0.0.0.0:2593           0.0.0.0:0              LISTENING       62360\n"
+               "  TCP    127.0.0.1:50001        127.0.0.1:2593         ESTABLISHED     1\n"
+               "  TCP    [::]:445               [::]:0                 LISTENING       4")
+    linux = "LISTEN 0      512          0.0.0.0:2593      0.0.0.0:*\nLISTEN 0 4096 [::]:22 [::]:*"
+    mac = "tcp4       0      0  *.2593                 *.*                    LISTEN"
+    assert run.parse_listening(windows) == {2593, 445}
+    assert run.parse_listening(linux) == {2593, 22}
+    assert run.parse_listening(mac) == {2593}
 
 
 def test_a_two_preset_report_fits_a_discord_message(tmp_path):

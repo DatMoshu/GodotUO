@@ -55,12 +55,48 @@ ME = r"launchers\dev\perf_lab.bat"
 
 # --- the doctor -------------------------------------------------------------
 
-def shard_up(host: str, port: int, timeout: float = 2.0) -> bool:
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
+LISTEN_PORT = re.compile(r"[:.](\d{1,5})\s")
+
+
+def listening_ports() -> set[int] | None:
+    """The TCP ports something listens on here, from the OS's own listing; None if it cannot say.
+
+    Never by connecting: the dev shard's AutoDenylist bans 127.0.0.1 for 15
+    minutes after a connection that sends nothing, so a bare connect to see
+    whether it is up locks every client on this machine out of it.
+    """
+    if sys.platform == "win32":
+        cmd = ["netstat", "-ano", "-p", "TCP"]
+    elif sys.platform == "darwin":
+        cmd = ["netstat", "-anv", "-p", "tcp"]
+    else:
+        cmd = ["ss", "-Hltn"]
     try:
-        with socket.create_connection((host, port), timeout=timeout):
-            return True
-    except OSError:
-        return False
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return parse_listening(out)
+
+
+def parse_listening(text: str) -> set[int]:
+    """Ports in the LISTEN(ING) lines of netstat or ss output: the first address on the line is the local one."""
+    ports = set()
+    for line in text.splitlines():
+        if "LISTEN" not in line:
+            continue
+        m = LISTEN_PORT.search(line + " ")
+        if m:
+            ports.add(int(m.group(1)))
+    return ports
+
+
+def shard_up(host: str, port: int) -> bool | None:
+    """Whether something listens on the shard's port here; None when that cannot be told without connecting."""
+    if host not in LOCAL_HOSTS:
+        return None
+    ports = listening_ports()
+    return None if ports is None else port in ports
 
 
 def doctor(cfg, port: int | None = None) -> list[tuple[bool, str, str]]:
@@ -80,9 +116,11 @@ def doctor(cfg, port: int | None = None) -> list[tuple[bool, str, str]]:
                    "found" if ok else r"not set or missing: set UO_CLIENT_DATA in launchers\_shared\config.local.bat "
                                       "to your Ultima Online folder"))
     up = shard_up(cfg.shard_host, port)
-    checks.append((up, "shard",
-                   f"answering on {cfg.shard_host}:{port}" if up else
-                   f"nothing answers on {cfg.shard_host}:{port}. The perf lab plays on a shard where its account "
+    checks.append((up is not False, "shard",
+                   f"listening on {cfg.shard_host}:{port}" if up else
+                   f"not checked on {cfg.shard_host}:{port} (only a local shard can be checked without connecting); "
+                   "the run's login says whether it answers" if up is None else
+                   f"nothing listens on {cfg.shard_host}:{port}. The perf lab plays on a shard where its account "
                    r"is a GM: start the local dev shard with launchers\shard\run.bat and leave it running "
                    r"(first time: launchers\shard\fetch.bat, launchers\shard\build.bat; see the wiki page Dev-Shard)"))
     return checks
