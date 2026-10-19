@@ -9,10 +9,10 @@
   ],
   "speed": 0.7,
   "scale": 0.03,
-  "wave": 0.35,
+  "wave": 0.12,
   "foam": 1,
   "foam_width": 0.3,
-  "glint": 0.5,
+  "glint": 0.3,
   "levels": 3,
   "grain": 1,
   "ripples": {

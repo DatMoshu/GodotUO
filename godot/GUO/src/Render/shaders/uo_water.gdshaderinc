@@ -164,7 +164,9 @@ vec3 water_pixel(vec3 base, vec2 cell, vec2 f, vec2 world, float t, float light,
 	shade = floor(shade * levels + d) / levels;
 	vec3 c = base + shade * mix(base, water_tint.rgb, 0.5);
 	c = floor(c * 12.0 + d) / 12.0;
-	float glint = step(0.985 - water_params2.x * 0.03, light + d * 0.02);
+	// Only the steepest-lit few percent, and half of those by the dither:
+	// single bright pixels, not patches (about 1% of the sea at glint 0.6).
+	float glint = step(0.995 - water_params2.x * 0.005, light) * step(0.5, d);
 	c = mix(c, vec3(0.92, 0.96, 1.0), glint);
 	float foam = step(d + 0.01, water_edge(cell, f) * water_params.w
 			* (0.55 + 0.45 * sin(t * 1.6 + (cell.x + cell.y) * 0.9)));
@@ -180,10 +182,12 @@ vec3 water_cel(vec3 base, vec2 cell, vec2 f, float t, float light, float ripple,
 	vec3 flat_c = water_tint.rgb * (0.55 + 1.6 * luma);
 	float levels = max(water_params2.z, 2.0);
 	float band = floor(clamp((light - 0.55) * water_params.z * 4.0 + 0.5, 0.0, 0.999) * levels) / (levels - 1.0);
-	vec3 c = flat_c * (0.8 + 0.4 * band);
+	// The light band sits one step above the base, not two: next to UO's
+	// art a brighter one read cartoon-loud.
+	vec3 c = flat_c * (0.8 + 0.3 * band);
 	float r = abs(ripple * rs);
 	c = mix(c, flat_c * 1.6 + 0.08, step(0.08, r) * (1.0 - step(0.2, r)));
-	c += vec3(step(0.97, light) * water_params2.x);
+	c += vec3(step(0.985, light) * water_params2.x);
 	float edge = water_edge(cell, f) * (0.85 + 0.15 * sin(t * 1.6 + (cell.x + cell.y) * 0.9));
 	float on = step(0.01, water_params.w);
 	float foam = step(0.5, edge) * on;
