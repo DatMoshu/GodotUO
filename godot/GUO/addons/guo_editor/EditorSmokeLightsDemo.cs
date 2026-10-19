@@ -38,7 +38,8 @@ public partial class EditorSmoke
     private int _demoFrames, _demoTaken;
     private int _demoFacet;
     private bool _demoFixed;
-    private ulong _demoNextMs, _demoStartMs, _demoLastMs;
+    private ulong _demoStartMs, _demoLastMs;
+    private uint _demoClockStart;
     private const int DemoFps = 30;
     private readonly List<System.Threading.Tasks.Task> _demoWrites = new();
     private System.IO.StreamWriter _demoTimes;
@@ -50,6 +51,8 @@ public partial class EditorSmoke
         _demoFixed = demo.Length > 1 && demo[1] == "fixed";
         _demoTaken = 0;
         _demoFacet = facet;
+        _demoClockStart = GUO.Time.Ticks;
+        _world.Host.CaptureTicks = _demoClockStart;
         World world = _world.Host.World;
         if (world?.Map == null)
         {
@@ -60,6 +63,18 @@ public partial class EditorSmoke
 
         // The editor runs no audio: a walker's footsteps must not look for it.
         if (ProfileManager.CurrentProfile != null) ProfileManager.CurrentProfile.EnableFootstepsSound = false;
+        // No shard packets or Options Apply run in the editor. Initialize the
+        // classic light state too, exactly as the light override does there,
+        // so ON/OFF compare the same night rather than night against daylight.
+        Profile profile = ProfileManager.CurrentProfile;
+        if (profile?.UseCustomLightLevel == true)
+        {
+            world.Light.Overall = profile.LightLevelType == 1
+                ? Math.Min(world.Light.RealOverall, profile.LightLevel)
+                : profile.LightLevel;
+            world.Light.Personal = 0;
+        }
+        GD.Print($"[lights-demo] realtime={profile?.RealtimeLights} overall={world.Light.Overall} personal={world.Light.Personal} classicAmbient={world.Light.IsometricLevel}");
         ushort torch = FirstLight(0x0A12, 0x0A0F, 0x0F6B);
         ushort lantern = FirstLight(0x0A25, 0x0A22, 0x0A18, 0x0A15, torch);
         LightColors.GetHue(torch, out ushort torchColor, out bool torchIsHue);
@@ -193,6 +208,12 @@ public partial class EditorSmoke
 
         // An unfocused editor sleeps 100 ms a frame; the clip needs 30 a second.
         OS.LowProcessorUsageModeSleepUsec = 1000;
+
+        // Fixed timestep: the game clock the walkers step and animate by
+        // advances exactly one frame per captured frame, however long the
+        // editor took to draw it, so machine load cannot show in the clip.
+        GUO.Time.Ticks = unchecked(_demoClockStart + (uint)((long)_demoTaken * 1000 / DemoFps));
+        _world.Host.CaptureTicks = GUO.Time.Ticks;
         World world = _world.Host.World;
         foreach (DemoActor a in _demoActors)
         {
@@ -236,20 +257,14 @@ public partial class EditorSmoke
             player.Offset = lead.Offset;
         }
 
-        // Frames are taken on the clock, at most DemoFps a second, and each
-        // frame's real time goes to times.txt so the clip can be cut at
-        // walking speed however fast the editor ran. The PNGs are written
-        // off the main thread: encoding them on it starves the editor.
+        // Every editor frame is a clip frame; times.txt carries each frame's
+        // clock time (always 1000/DemoFps apart) and its real time. The PNGs
+        // are written off the main thread: encoding them on it starves the
+        // editor.
         ulong now = Time.GetTicksMsec();
-        if (now < _demoNextMs)
-        {
-            return;
-        }
-
         ulong sinceLast = _demoLastMs == 0 ? 0 : now - _demoLastMs;
         _demoLastMs = now;
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        _demoNextMs = Math.Max(_demoNextMs + 1000UL / DemoFps, now);
         if (_demoTaken == 0)
         {
             _demoStartMs = now;
@@ -263,14 +278,30 @@ public partial class EditorSmoke
         if (frame != null && !frame.IsEmpty())
         {
             string path = Path.Combine(_out, "world_pan", $"frame_{_demoTaken:0000}.png");
-            _demoWrites.RemoveAll(t => t.IsCompleted);
+            _demoWrites.RemoveAll(t =>
+            {
+                if (!t.IsCompleted) return false;
+                t.GetAwaiter().GetResult();
+                return true;
+            });
             while (_demoWrites.Count >= 12)
             {
                 _demoWrites[0].Wait();
                 _demoWrites.RemoveAt(0);
             }
 
-            _demoWrites.Add(System.Threading.Tasks.Task.Run(() => { frame.SavePng(path); frame.Dispose(); }));
+            _demoWrites.Add(System.Threading.Tasks.Task.Run(() =>
+            {
+                using (frame)
+                {
+                    Error error = frame.SavePng(path);
+                    if (error != Error.Ok) throw new IOException($"lights demo frame write failed: {error}");
+                }
+            }));
+        }
+        else
+        {
+            throw new IOException($"lights demo frame {_demoTaken} was empty");
         }
 
         if (sinceLast > 80)
@@ -278,7 +309,7 @@ public partial class EditorSmoke
             GD.Print($"[lights-demo] slow frame {_demoTaken}: {sinceLast} ms since the last; capture {captureMs} ms, write queue {sw.ElapsedMilliseconds - captureMs} ms, gc gen0/1/2 {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}");
         }
 
-        _demoTimes.WriteLine($"{_demoTaken} {now - _demoStartMs}");
+        _demoTimes.WriteLine(FormattableString.Invariant($"{_demoTaken} {_demoTaken * 1000.0 / DemoFps:F6} {now - _demoStartMs}"));
         if (_demoTaken % 30 == 0)
         {
             GD.Print($"[lights-demo] frame {_demoTaken} at {now - _demoStartMs} ms: A={lead?.X},{lead?.Y} steps={lead?.Steps.Count} offset={lead?.Offset.X:0},{lead?.Offset.Y:0} anim={lead?.AnimIndex}");
@@ -292,6 +323,7 @@ public partial class EditorSmoke
             _demoTimes.Dispose();
             _demoTimes = null;
             SaveWorldShot();
+            _world.Host.CaptureTicks = null;
             Finish();
         }
     }
