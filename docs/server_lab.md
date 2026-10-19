@@ -29,7 +29,7 @@ upstream to any server project until Moshu has reviewed it.
 - **Sphere X** had no recorded commit: the adapter probe ran a nightly build, and the repo's `Nightly` tag dates from
   2022. The pins above are the heads of the stable branches on 2026-10-09. Scripts-X dropped its own licence
   boilerplate in that commit; its LICENSE file is Apache-2.0, as Source-X's.
-- RunUO and POL are later rows and have no `lab` entry yet.
+- RunUO and POL are later rows and have no `lab` entry yet; POL's is assessed below (NET-01, 2026-10-18).
 
 ## What each server needs
 
@@ -42,6 +42,49 @@ upstream to any server project until Moshu has reviewed it.
 
 GUO connects as client `UO_CLIENT_VERSION` (7.0.107.76 by default) without encryption, which every row accepts once
 configured as above.
+
+## Client versions
+
+### Native matrix, 2026-10-19
+
+ModernUO on 2610 passed cases 0, 1 and 9. ServUO on 2611 passed cases 0 and 9; case 1 reached the world but failed
+`go_bank`: the character was at the expected 1434,1697 on map 1 (Trammel), while the shared dev-shard scenario
+requires map 0 (Felucca). This is a scenario/backend setup mismatch; it does not show a failed login handshake.
+The recorded failing result is retained rather than reported as a pass. Twenty-three cases have no scenario yet.
+See the [generated matrix](wiki/Server-Compatibility.md) and evidence run
+`20261019_guo-codex-worker-netcompat_native-matrix` for the dated results.
+
+Both servers ran natively; no container or POL run is claimed. ModernUO readiness was checked from the operating
+system's listening table without sending a TCP connection. ServUO's new lab account was created and saved with the
+client's probe before running its cases; the probe now recognizes an empty account's creation screen.
+
+The lab runs each row as `UO_CLIENT_VERSION`; `--client-version` reports another one for a run, and each result keeps
+the version it ran as (the wiki's "GUO reported as" column). The installed data set used for the 2026-10-19 native
+matrix is 7.0.107.76. This covers the requested 7.0.107 family; it does not establish which numeric version EA's
+patcher currently distributes. The latest-version row remains pending until that version is verified and matching
+data is installed beside the existing data, never over it. A version known to ClassicUO's table alone is not proof
+that it is the latest official client.
+
+## POL (assessed for NET-01, not a row yet)
+
+A community POL shard (moving from 0.98 to 100.3) reports that GUO logs in and plays. The lab does not run POL yet;
+this is what a row needs, checked against the upstream repositories on 2026-10-18.
+
+| | |
+|---|---|
+| **Version** | 100.3 is not released: `polserver/polserver` says "active development is now 100.3" (#865); its Nightly release (2026-10-14) is the 100.3 build. The newest stable release is v100.2.0 (2026-02-16). Both ship Windows, Linux and macOS zips |
+| **Scripts** | POL runs nothing without a script package: `polserver/ModernDistro` (2026-09-13) or `ClassicDistro` (2026-03-07), compiled with POL's own `ecompile` |
+| **World** | `uoconvert` builds the realm from the client data. It reads UOP maps (`pol-core/plib/uopreader`), so it can read this install; the output goes to the lab's folder, never into the install |
+| **Licence** | GPL-2.0 core; fetched into the workspace at a pin, never vendored, like the other rows |
+| **Container** | `polserver/distro-docker-runner` is POL's own image: Ubuntu 20.04, downloads the Nightly Linux core and ModernDistro, runs `uoconvert`, listens on port 5003 only. Its last change is from 2020 and it pins a 2019 MySQL client package |
+
+**Why it is not a container row tonight.** Docker Desktop is installed on the lab machine but its engine is not
+running. ModernUO and ServUO are tested as native Windows lab servers on ports 2610 and 2611. The POL runner image is also stale
+(2020, fixed port 5003, no loopback setting of its own). A native Windows row needs no new service: the Nightly
+Windows zip and a distro, `uoconvert` and `ecompile` run once at setup, `pol.cfg` and `servers.cfg` on
+127.0.0.1:2613, and the lab admin written into `accounts.txt` before the first boot, as the ServUO row writes
+`accounts.xml`. That is the proposed POL row (`tools/server_lab/pol.py`), a story of its own; the container variant
+remains untested. No Docker service is required for the native ModernUO and ServUO rows.
 
 ## Consequences for the later stories
 

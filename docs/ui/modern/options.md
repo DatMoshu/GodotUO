@@ -74,6 +74,8 @@ tall, and all of it is the target.
 - **Sound:** sounds and their volume, music and its volume, footsteps,
   combat music.
 - **Video:**
+  - canvas background: original grey, dark wood, shipped and installed Store
+    backgrounds; an existing custom path is retained and edited in Classic view;
   - hide roofs, trees to stumps, hide vegetation;
   - circle of transparency;
   - shadows;
@@ -123,6 +125,8 @@ tall, and all of it is the target.
   and a gold bar under it. The hue is written on Apply, as the classic's is.
 - **Containers:** grid view, grid slot size.
 - **Touch:**
+  - command-bar arrow inset (0–200);
+  - fine second-screen scale (Off, 1.0x, 1.25x, 1.5x), only with a second display;
   - vibrate when the bar snaps;
   - reduce motion;
   - hold-and-flick (four choices);
@@ -143,6 +147,20 @@ profile field the classic Apply writes, with the same side effects:
 - cleaning the tree textures.
 
 Cancel writes nothing.
+
+## Desktop regression check
+
+`client.ui.options_touch` runs a bounded Options-only synthetic-touch probe
+on a scratch profile. Pass `account`, `character` and `shots` (a capture
+directory outside the checkout) as scenario variables. The launcher reads
+the assigned dev-shard account's configured password; do not put it in
+scenario JSON or command-line arguments. Reserve the shard and runtime slot
+before running it. It does not exercise movement or combat.
+
+The same probe can run through `launchers/dev/touch_probe.bat` with
+`--options-touch-probe --account ACCOUNT --character CHARACTER
+--window-size 1920,1080 --screenshot-dir OUTPUT`. Phone and physical
+dual-display verification remain separate.
 
 ## Review against the brief
 

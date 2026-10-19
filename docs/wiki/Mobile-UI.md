@@ -69,6 +69,18 @@ fullscreen, soft keyboard..." and "GridContainerGump..."). On the desktop,
 and checks each gesture against the shard; `--touch` enables the layer on the
 desktop and `--touch-trace` logs each gesture decision.
 
+### Options
+
+Modern Options keeps the classic dark panel and jewelled buttons, with rows
+that scroll by dragging. Video includes the canvas background picker;
+Touch includes the command-bar arrow inset and, when a second display is
+present, fine second-screen scale. Apply and Okay use the same profile
+fields as Classic view. A custom background path stays available through
+Classic view and is preserved when changing other settings.
+
+In Classic view, drop-down rows have taller, full-row targets while the
+touch layer is enabled. Mouse-only desktop lists keep their classic spacing.
+
 ### The touch bar
 
 `TouchGumpBar.cs` is a CanvasLayer overlay along the bottom, drawn with the

@@ -19,11 +19,30 @@ sys.path.insert(0, str(ROOT / "tools" / "server_manager"))
 import grid  # noqa: E402
 import modernuo  # noqa: E402
 import process  # noqa: E402
+import servuo  # noqa: E402
+import listeners  # noqa: E402
 
 BACKENDS = json.loads((ROOT / "tools" / "server_manager" / "backends.json").read_text(encoding="utf-8"))
 CASES = json.loads((HERE / "cases.json").read_text(encoding="utf-8"))["cases"]
 TABLE = json.loads((HERE / "table.json").read_text(encoding="utf-8"))["backends"]
 MODERNUO = next(b for b in BACKENDS if b["id"] == "modernuo")
+SERVUO = next(b for b in BACKENDS if b["id"] == "servuo")
+
+
+@unittest.skipUnless(sys.platform == "win32" or sys.platform.startswith("linux"), "listener table platform")
+class ListenerTests(unittest.TestCase):
+    def test_readiness_finds_listener_without_connecting(self):
+        import socket
+        with socket.socket() as server:
+            server.bind(("127.0.0.1", 0))
+            port = server.getsockname()[1]
+            self.assertFalse(listeners.listening(port))
+            server.listen()
+            self.assertTrue(listeners.listening(port))
+            server.settimeout(0.1)
+            with self.assertRaises(socket.timeout):
+                server.accept()
+        self.assertFalse(listeners.listening(port))
 
 
 class TableTests(unittest.TestCase):
@@ -86,6 +105,21 @@ class GridTests(unittest.TestCase):
         self.assertNotIn(":\\", page)                          # no machine paths
         self.assertNotIn("r1", page.split("## Results")[1].split("## How")[0].replace("Results", ""))
 
+    def test_wiki_last_run_has_date_client_and_evidence(self):
+        self.row["cells"]["1"] = grid.cell_from_run(self.case1, 0, "r1", [], client_version="7.0.107.76")
+        self.row["cells"]["1"]["when"] = "2026-10-18T22:00:00Z"
+        self.row["evidence"] = "20261018_guo-worker-netcompat_server-matrix"
+        page = grid.wiki_page(self.grid, CASES, BACKENDS)
+        line = next(l for l in page.splitlines() if l.startswith("| ModernUO |"))
+        self.assertIn("| 2026-10-18 | 7.0.107.76 | `20261018_guo-worker-netcompat_server-matrix` |", line)
+        servuo_line = next(l for l in page.splitlines() if l.startswith("| ServUO |"))
+        self.assertIn("| never | - | - |", servuo_line)
+        self.assertEqual(grid.last_run(None), ("never", "", ""))
+
+    def test_cell_records_its_client_version(self):
+        self.assertEqual(grid.cell_from_run(self.case1, 0, "r1", [], client_version="7.0.61.0")["client_version"], "7.0.61.0")
+        self.assertNotIn("client_version", grid.cell_from_run(self.case1, 0, "r1", []))
+
     def test_card_is_plain(self):
         for n in (0, 1, 9):
             self.row["cells"][str(n)] = grid.cell_from_run(CASES[n], 0, f"run{n}", [])
@@ -128,6 +162,46 @@ class ModernUOConfigTests(unittest.TestCase):
         self.assertEqual((env["UO_SHARD_OWNER"], env["UO_SHARD_OWNER_PASSWORD"], env["X"]), ("guolab", "pw", "1"))
         self.assertNotIn("UO_SHARD_GM_ACCOUNTS", env)
         self.assertNotIn("UO_SHARD_GM_PASSWORD", env)
+
+
+class ServUOTests(unittest.TestCase):
+    def test_table_entry_and_pin_match_the_servuo_tool(self):
+        self.assertIn("servuo", TABLE)
+        tool = servuo._servuo_tool()
+        self.assertEqual(SERVUO["lab"]["repos"][0]["commit"], tool.PIN)
+        self.assertNotEqual(SERVUO["port"], tool.PORT)                 # the lab row never shares the private shard's port
+
+    def test_configure_is_loopback_on_the_lab_port(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src, data = Path(tmp) / "src", Path(tmp) / "data"
+            data.mkdir()
+            (src / "Config").mkdir(parents=True)
+            (src / "Config" / "Server.cfg").write_text("# upstream\nListen=0.0.0.0\nPort=2593\nName=My Shard\n", encoding="utf-8")
+            wrote = servuo.configure(src, data, "GUO Lab ServUO", 2611)
+            self.assertIn("Server.cfg", wrote)
+            text = (src / "Config" / "Server.cfg").read_text(encoding="utf-8")
+            self.assertIn("Listen=127.0.0.1", text)
+            self.assertIn("Port=2611", text)
+            self.assertIn("Name=GUO Lab ServUO", text)
+            self.assertNotIn("0.0.0.0", text)
+            self.assertIn(f"CustomPath={data}", (src / "Config" / "DataPath.cfg").read_text(encoding="utf-8"))
+
+    def test_admin_is_written_once_as_owner(self):
+        import xml.etree.ElementTree as ET
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp)
+            self.assertTrue(servuo.ensure_admin(src, "guolab", "a<b&c"))
+            root = ET.parse(servuo.accounts_file(src)).getroot()
+            account = root.find("account")
+            self.assertEqual((root.tag, account.findtext("username"), account.findtext("password"),
+                              account.findtext("accessLevel")), ("accounts", "guolab", "a<b&c", "Owner"))
+            self.assertFalse(servuo.ensure_admin(src, "other", "x"))     # ServUO's own file is never replaced
+            self.assertEqual(ET.parse(servuo.accounts_file(src)).getroot().find("account").findtext("username"), "guolab")
+
+    def test_server_env_carries_no_dev_shard_accounts(self):
+        env = servuo.server_env({"UO_SHARD_OWNER": "dev", "UO_SHARD_OWNER_PASSWORD": "p", "UO_SHARD_GM_ACCOUNTS": "a", "X": "1"},
+                                "guolab", "pw")
+        self.assertEqual(env, {"X": "1"})
 
 
 @unittest.skipUnless(sys.platform == "win32", "the process record is Windows only")
