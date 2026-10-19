@@ -19,6 +19,11 @@ python tools\multi\run.py prove NAME --clip OUT.mp4   place it on the private sh
 python tools\multi\run.py show ID               render any multi, the client's or yours
 ```
 
+For a scene of several multis there are `scene-build`, `scene-write` and
+`scene-prove` in the same tool (`python tools\multi\run.py -h` lists every
+command). `launchers\world\multi.bat` and `launchers\world\decorate.bat` run
+the tools from the launchers folder.
+
 `tools/multi/examples/` holds generic descriptions: seven houses (one and two
 storeys) and a small castle scene. The description format, the catalogue and
 the built multi's sidecar are documented in `docs/data_formats.md` section 16.
@@ -78,6 +83,9 @@ The database and previews come from your client data, so they stay in
 
 - [Author UO Data](Author-UO-Data.md): the staged data set and ID ranges.
 - [Dev Shard](Dev-Shard.md): the private shard the proofs run on.
-- [Editor](Editor.md): view and place multis in the world editor.
+- [Editor](Editor.md): the **Multis** tab edits a multi by hand, reads and
+  writes formats such as UO Architect text and binary, and takes an area from
+  the World tab (see [World Editing](World-Editing.md#from-an-area-to-a-building)).
+- [Content Packs](Content-Packs.md): sharing finished content.
 - The `/uo-multi` and `/uo-decorate` agent skills run these flows in order (see
   [Working with AI Agents](Working-With-AI-Agents.md)).

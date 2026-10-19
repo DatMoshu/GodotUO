@@ -1,4 +1,4 @@
-// Packet length guard checks (SF9). Run: dotnet run --project tools/network_tests
+// Packet length guard (SF9) and server identity (NET-02) checks. Run: dotnet run --project tools/network_tests
 // The parse loop below follows PacketHandlers.ParsePackets step for step, with
 // the engine-bound parts (socket, plugins, handlers) replaced by a length table
 // and a list of what was dispatched.
@@ -106,4 +106,34 @@ foreach (byte bad in new byte[] { 0, 1, 2 })
     Check(dropped == 1 && got.Count == 2 && got[1].SequenceEqual(new byte[] { Static3, 5, 6 }), "guard across wrap-around");
 }
 
-Console.WriteLine($"PASS: {checks} packet length guard checks (short, malformed, split and wrapped headers).");
+int guardChecks = checks;
+
+// ServerIdentity (NET-02, data_formats section 43): the reported version's dotted form, the server's refusal line,
+// and the plain sentence added to a disconnect.
+{
+    Check(ServerIdentity.Format((7u << 24) | (0u << 16) | (107u << 8) | 76u) == "7.0.107.76", "dotted client version");
+
+    var journal = new[] { "You will be disconnected in 20 seconds.", "This server doesn't support clients older than 7.0.108.0.", "Welcome" };
+    Check(ServerIdentity.RefusalLine(journal) == "This server doesn't support clients older than 7.0.108.0.", "ModernUO refusal found");
+    Check(ServerIdentity.RefusalLine(new[] { "This server requires your client version be at least 7.0.110.0." }) != null, "RunUO/ServUO refusal found");
+    Check(ServerIdentity.RefusalLine(new[] { "This server does not support clients newer than 7.0.50.0." }) != null, "newer-than refusal found");
+    Check(ServerIdentity.RefusalLine(new[] { "Hail, traveller", "", null }) == null, "ordinary speech is no refusal");
+    var old = Enumerable.Repeat("chatter", ServerIdentity.RefusalLinesSearched).Append("This server doesn't support clients older than 1.0.0.0.");
+    Check(ServerIdentity.RefusalLine(old) == null, "only the newest lines are searched");
+
+    var id = new ServerIdentity { Host = "play.example.com", Port = 2593, ClientVersion = "7.0.107.76" };
+    Check(ServerIdentity.ExplainDisconnect("Connection lost", null, null) == "Connection lost", "no login, no change");
+    string early = ServerIdentity.ExplainDisconnect("Connection lost", id, null);
+    Check(early.Contains("during the login") && early.Contains("7.0.107.76"), "drop before the server list explained");
+    Check(!early.Contains("play.example.com"), "the address is never in the message");
+    Check(!id.Describe().Contains("play.example.com") && !id.Describe().Contains("2593") && id.Describe().Contains("client 7.0.107.76"),
+          "the log line names the version, never the address");
+    id.ReachedServerList = true;
+    Check(ServerIdentity.ExplainDisconnect("Connection lost", id, null) == "Connection lost", "a later drop without a refusal is unchanged");
+    string refused = ServerIdentity.ExplainDisconnect("Connection lost", id, "This server doesn't support clients older than 7.0.108.0.");
+    Check(refused.StartsWith("Connection lost") && refused.Contains("refused this client version") && refused.Contains("older than 7.0.108.0")
+          && refused.Contains("client 7.0.107.76"), "refusal explained with the server's words and the reported version");
+}
+
+Console.WriteLine($"PASS: {guardChecks} packet length guard checks (short, malformed, split and wrapped headers), "
+    + $"{checks - guardChecks} server identity checks.");

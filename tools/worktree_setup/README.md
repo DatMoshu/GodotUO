@@ -2,8 +2,8 @@
 
 Makes a fresh git worktree ready to build, run and smoke with no directory
 links: copies the gitignored per-user files it lacks from the main checkout
-(`launchers/_shared/config.local.bat`, `tools/privacy_scan/deny.local.txt`;
-never overwriting), checks the engine and the upstream reference resolve to
+(`launchers/_shared/config.local.bat`, `tools/privacy_scan/deny.local.txt`,
+`.claude/settings.local.json`; never overwriting), checks the engine and the upstream reference resolve to
 the main checkout's copies, and runs the console engine once with
 `--headless --import`.
 
@@ -16,4 +16,5 @@ launchers\dev\worktree_setup.bat
 
 ## Tests
 
-No unit tests. The worktree fallback it relies on is covered by `python tools/guo/test_config.py`. Exit 0 when everything resolved and the import passed.
+`python -m pytest tools/worktree_setup` covers the copy of the per-user files.
+The worktree fallback it relies on is covered by `python tools/guo/test_config.py`. Exit 0 when everything resolved and the import passed.

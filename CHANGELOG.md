@@ -6,16 +6,20 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Performance
-- **Perf lab**: `launchers\dev\perf_lab.bat` measures GUO's frame rate on
-  your machine at 1920x1080 and at 2560x1440 zoomed out, prints the table and
-  writes a short report you can paste in Discord (GPU, driver, CPU, OS and the
-  numbers; no paths or names). It needs the dev shard running; the wiki page
-  Performance says how to run it and read it.
-- The perf probe times the world frame stage by stage (gather, sort, land,
-  statics, covering land, mobiles, items) and gains two places: a crypt under
-  the land and open sea. `docs/perf/2026-10-18_britain_breakdown.md` reads it.
+- Windows draws the land as one array and covering land in runs by default
+  (proposed; the owner decides). At 2560x1440 and zoom 2.5 the Britain bank
+  goes from 26 to 40 fps and a dungeon from 44 to 97, with the same pixels.
+  `--merged-land=off --merged-cover=off` brings back the old draw
+  (`docs/perf/2026-10-19_cover_regression.md`).
 
 ### Editor
+- The editor's automation (MCP) tools have per-user permissions in Editor
+  Settings: reading state, moving around and connecting start on; anything
+  that changes your server starts off until you turn it on. Every call is
+  checked against your saved choices, changes to them go in the Admin
+  audit log, a damaged permissions file denies access without touching your
+  manual tools, and switching AI off hides the settings and stops the work.
+  None of this is in an exported client.
 - StaticStudio now respects the editor AI switch: generation and workflow
   discovery stop when disabled, pending or rebound jobs cannot publish stale
   images, and saved-theme/staged-content authoring remains available.
@@ -86,6 +90,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   bridge when that shard loads it.
 
 ### Safety
+- The voice tool can no longer hang the voice worker: its output is read
+  while it runs, the time limit now works, and speech text and names from
+  the server reach it as whole arguments, so a stray quote or backslash
+  cannot shift them.
 - The editor bridge has an admin channel for the coming Admin tab: admin
   operations run only for an editor that sends the server's admin token
   (generated per user beside the shard passwords, never printed), each at a
@@ -138,6 +146,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   a patch that will not come off.
 
 ### Platforms
+- **Android emulator**: `launchers\android\smoke.bat --avd guo_phone`
+  boots GUO's own emulator, installs the app, waits for the login screen,
+  takes a screenshot and cleans up. It only ever touches the emulator it
+  started, and needs 10 GB of free memory.
 - **Android** (ARM64, debug): export, install, run and smoke from
   `launchers\android\`. Login screens are centred, the soft keyboard opens
   for text fields, chat sits above the keyboard, and Android Back closes the
@@ -157,10 +169,41 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   your local config. `doctor.bat --release` says what is missing. On a tag,
   the `release` workflow also builds one when the repository holds the key as
   secrets.
-- **Web**: still blocked upstream; `launchers\web\doctor.bat` reports why.
-  ADR-0008.
+- **Web**: plays on a local shard in Chrome, and reaches the login screen in
+  Firefox, on a community build of the engine; `launchers\web\doctor.bat`
+  says what it needs. ADR-0008.
 
 ### Playing
+- After Alt-Tab, Alt, Ctrl and Shift no longer stay held: the next click is
+  a plain click again, as in ClassicUO.
+- AltGr characters type on keyboards that need them (the `@`, `{` or `\` of
+  German, French, Polish and similar layouts), and Chinese, Japanese and
+  Korean input methods work in text fields.
+- When a server refuses GUO's client version, the disconnect message says
+  so in plain words, with the server's own words and the version GUO
+  reported, instead of a bare "connection lost"; a server that drops the
+  connection during the login gets the same hint. The Servers tab shows the
+  client version a shard needs, or the one you last played it as.
+- **Enhanced HD** (Options, off by default): world sprites can be drawn from
+  an installed, hash-checked HD art pack, with a choice of filter (Auto,
+  Point, Point with mipmaps, Smooth). Anything a pack does not cover stays
+  native art, and cursors, the backpack and clicking always use native art.
+  With it off, the game draws exactly as before. ADR-0027.
+- **Regional audio and recorded voices** (Options > Sound, off by default):
+  installed packs can play music and sounds by region and recorded voices
+  for NPCs, matched by name, then body. **Change:** ordinary NPC speech no
+  longer starts text-to-speech; an NPC is silent until a voice pack covers
+  it. ADR-0036.
+- **Screen effects**: 32 more looks, from MeesaJarJar, come as an optional
+  Store pack rather than as built-ins; the curated built-in looks stay.
+  Installing the pack does not switch a look on; Classic switches effects
+  off.
+- Screen effect sliders that take whole numbers stay whole and inside their
+  range, and resizing the window with an effect on no longer drops the
+  picture.
+- Clicking a replaced object (such as a 3D splat standing in for a statue)
+  now targets, uses or picks up the original, as it would without the
+  replacement.
 - Controller: a **Say** screen speaks the common commands with A (bank,
   vendor buy and sell, guards, hail, all follow me and the other pet
   commands). Find it at the top of the Macros screen or put it on the wheel.
@@ -206,6 +249,31 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   your machine, outside the checkout. Draw calls may rise by at most 5% per
   scene and batcher items may not rise; frame times remain advisory. Hosted
   CI tests the gate with synthetic reports and makes no FPS claim.
+- `docs/input_audit_2026-10-18.md`: every input in keyboard and mouse, gamepad
+  and touch compared with ClassicUO, with a severity each, the upstream line
+  it differs from, and the scripted runs behind it. It sets the order of the
+  input fixes that follow.
+- Readying a fresh git worktree (`launchers\dev\worktree_setup.bat`) also
+  copies your Claude Code approvals (`.claude/settings.local.json`), so a new
+  worktree no longer asks again to approve the project's MCP servers.
+- Generated output (screenshots, smoke runs, exports) can live outside the
+  checkout: set `UO_BUILD_DIR` in config.local.bat, one folder per checkout
+  with `%UO_CHECKOUT%`. Left unset, it stays `build\` as before.
+- `launchers\dev\build.bat` stops a headless build that runs longer than
+  `UO_BUILD_TIMEOUT` (180 seconds by default) and cleans up only the
+  processes it started.
+- GUO's features are sorted into layers, from the faithful port (L0) through
+  player options, content packs and editor packages to Labs (L4), with
+  review rules for each, in AGENTS.md and CONTRIBUTING.md. Labs features
+  build only in an opt-in Debug build and never ship in an export.
+- The Store knows three new pack kinds: HD art, 3D splats and recorded
+  voices. Installing one runs nothing; the publisher and the client check
+  the same rules.
+- The editor smoke's Roofs check judges only the roofs the World view
+  draws and waits for their fade to finish, so it no longer fails at
+  random.
+- `docs/data_formats.md` describes the Admin tab's backup folders and their
+  manifest.
 - Upstream drift report for 2026-10-18 (`docs/upstream/drift_2026-10-18.md`):
   the eight ClassicUO commits since the reviewed pin, each marked take, skip
   or later, and what the ClassicUO 2.0 beta means for GUO (its source is not

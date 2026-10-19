@@ -10,7 +10,7 @@
 | Report a bug | Issues → **Bug report** |
 | Report a security problem | **Privately**: the repository's Security tab, "Report a vulnerability" (see `SECURITY.md`) |
 | List your shard in the client | A pull request to `servers/catalogue.json` ([Servers and Accounts](Servers-and-Accounts.md)) |
-| Contribute code or docs | [Contributing](Contributing.md) |
+| Contribute code or docs | [Contributing](Contributing.md); a new feature starts with a Discussion or short ADR and names its [layer](Feature-Layers.md) |
 
 ## Good bug reports
 
