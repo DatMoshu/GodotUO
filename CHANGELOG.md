@@ -174,6 +174,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   says what it needs. ADR-0008.
 
 ### Playing
+- Touch: a long press on someone in the world opens their context menu, a
+  swipe scrolls any list or text with a scroll bar (books, quest pages), and
+  a two-finger pan over a window scrolls it like the mouse wheel.
 - Modern Options includes canvas backgrounds, the command-bar arrow inset,
   and fine second-screen scale. Classic drop-downs have taller touch targets;
   mouse-only lists keep their classic spacing.
@@ -252,6 +255,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   your machine, outside the checkout. Draw calls may rise by at most 5% per
   scene and batcher items may not rise; frame times remain advisory. Hosted
   CI tests the gate with synthetic reports and makes no FPS claim.
+- CI keeps NuGet packages between runs, and the Android release build also
+  keeps its Gradle downloads. The CI health report for 2026-10-18 (times per
+  workflow, every failure of the last three weeks, no flaky steps) is in
+  `docs/release/ci_2026-10-18.md`.
 
 - Dev shard: exempt loopback from automatic behavioral ban contributions so a
   silent readiness connection cannot reject all local clients for 15 minutes;

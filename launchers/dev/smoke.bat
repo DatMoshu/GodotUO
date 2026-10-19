@@ -55,6 +55,8 @@ echo [smoke] perf lab report: fields kept, privacy refusal, size (synthetic; too
 echo [smoke] PostFX engine regressions (synthetic)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Bootstrap/PostFxEngineProbe.tscn || set "FAIL=1"
 
+echo [smoke] touch: swipe and two-finger pan scroll lists (synthetic; no shard)
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" -- --touch-gesture-probe --pregame-classic --silent || set "FAIL=1"
 echo [smoke] packet mods (synthetic; builds the sample mod, ADR-0038)
 dotnet build "%UO_ROOT%\docs\modding\samples\announce\Announce.csproj" -nologo -v q || set "FAIL=1"
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Network/Mods/ModsProbe.tscn || set "FAIL=1"
