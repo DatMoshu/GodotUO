@@ -1,0 +1,21 @@
+{
+  "schema": "guo/store-pack@2",
+  "id": "guo-water-cel",
+  "version": "1.0.0",
+  "kind": "content",
+  "target": "client",
+  "title": "Cel-shaded water",
+  "author": "GUO",
+  "licence": "CC0-1.0",
+  "min_profile_version": 12,
+  "preview": "preview.png",
+  "dependencies": {},
+  "components": [
+    {
+      "id": "sea",
+      "type": "water",
+      "target": "client",
+      "entry": "water.json"
+    }
+  ]
+}

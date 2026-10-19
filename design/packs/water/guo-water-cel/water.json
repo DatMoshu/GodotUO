@@ -1,0 +1,22 @@
+{
+  "schema": "guo/water@1",
+  "name": "Cel water",
+  "model": "cel",
+  "tint": [
+    0.16,
+    0.42,
+    0.62
+  ],
+  "speed": 0.7,
+  "scale": 0.03,
+  "wave": 0.35,
+  "foam": 1,
+  "foam_width": 0.3,
+  "glint": 0.5,
+  "levels": 3,
+  "grain": 1,
+  "ripples": {
+    "strength": 1,
+    "damping": 0.985
+  }
+}

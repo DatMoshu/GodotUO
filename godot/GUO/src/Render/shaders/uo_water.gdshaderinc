@@ -27,8 +27,14 @@
 
 const int WATER_BIT = 0x40;
 const int WATER_UO = 1;
+const int WATER_PIXEL = 2;
+const int WATER_CEL = 3;
+const int WATER_REALISTIC = 4;
 
-// 0 is Classic: the branch is never taken. 1 is the built-in "uo" model.
+// 0 is Classic: the branch is never taken. 1 to 4 are the built-in models a
+// style picks (WaterRender.Model): uo, pixel, cel, realistic. Store packs set
+// the numbers below for one of them and carry no shader code (ADR-0037
+// decision 6).
 uniform int water_model = 0;
 
 // Seconds, from the client's own clock so a still and a dump are repeatable.
@@ -54,6 +60,8 @@ uniform vec2 water_ripples_origin = vec2(-100000.0, -100000.0);
 uniform vec4 water_tint = vec4(0.12, 0.24, 0.42, 1.0);
 uniform vec4 water_params = vec4(1.0, 0.045, 0.22, 0.85);
 uniform vec4 water_params2 = vec4(0.35, 0.22, 6.0, 0.0);
+// x: grain, the world pixels one water pixel covers (1 = the art's own grid).
+uniform vec4 water_params3 = vec4(1.0, 0.0, 0.0, 0.0);
 
 vec4 water_mask_at(vec2 cell) {
 	vec2 rel = cell - water_mask_origin;
@@ -113,7 +121,9 @@ float water_ripple(vec2 xy) {
 	return texture(water_ripples, rel / 128.0).r * 2.0 - 1.0;
 }
 
-float water_foam(vec2 cell, vec2 f, vec2 world, float t) {
+// How close this point is to a dry neighbour along a shared edge: 1 on the
+// edge, falling to 0 a foam width into the water.
+float water_edge(vec2 cell, vec2 f) {
 	float width = max(water_params2.y, 0.01);
 	float foam = 0.0;
 	// The four cells sharing an edge with this one, in cell space.
@@ -125,10 +135,87 @@ float water_foam(vec2 cell, vec2 f, vec2 world, float t) {
 			* (1.0 - smoothstep(0.0, width, 0.5 - f.y)));
 	foam = max(foam, (1.0 - step(0.5, water_mask_at(cell - vec2(0.0, 1.0)).r))
 			* (1.0 - smoothstep(0.0, width, 0.5 + f.y)));
+	return foam;
+}
+
+float water_foam(vec2 cell, vec2 f, vec2 world, float t) {
+	float foam = water_edge(cell, f);
 	// Broken up and breathing, so it reads as surf rather than an outline.
 	float lace = water_noise(world * 0.18 + vec2(t * 0.6, t * 0.35));
 	float pulse = 0.65 + 0.35 * sin(t * 1.6 + (cell.x + cell.y) * 0.9);
 	return foam * step(0.38, lace * pulse + foam * 0.35);
+}
+
+// The 4 x 4 ordered-dither threshold at a water pixel, 0 .. 15/16.
+float water_bayer(vec2 px) {
+	ivec2 i = ivec2(mod(px, 4.0));
+	int b[16] = int[16](0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5);
+	return float(b[i.y * 4 + i.x]) / 16.0;
+}
+
+// PIXEL: a 16-colour-era sea. Light falls in a few hard steps, dithered
+// between them on the water's own pixel grid instead of rounded, the colour
+// is cut to a short ramp, and surf and glints are whole pixels.
+vec3 water_pixel(vec3 base, vec2 cell, vec2 f, vec2 world, float t, float light, float ripple, float rs) {
+	vec2 px = floor(world / max(water_params3.x, 1.0));
+	float d = water_bayer(px);
+	float levels = max(water_params2.z, 1.0);
+	float shade = (light - 0.75) * water_params.z * 2.0 + ripple * rs * 0.6;
+	shade = floor(shade * levels + d) / levels;
+	vec3 c = base + shade * mix(base, water_tint.rgb, 0.5);
+	c = floor(c * 12.0 + d) / 12.0;
+	float glint = step(0.985 - water_params2.x * 0.03, light + d * 0.02);
+	c = mix(c, vec3(0.92, 0.96, 1.0), glint);
+	float foam = step(d + 0.01, water_edge(cell, f) * water_params.w
+			* (0.55 + 0.45 * sin(t * 1.6 + (cell.x + cell.y) * 0.9)));
+	c = mix(c, vec3(0.9, 0.95, 1.0), foam);
+	return clamp(c, 0.0, 1.0);
+}
+
+// CEL: flat colour in the style's tint, lit by the tile's own light so
+// night still falls; a few bold light bands, white surf with a dark ink line
+// on its water side, and ripples drawn as crisp rings.
+vec3 water_cel(vec3 base, vec2 cell, vec2 f, float t, float light, float ripple, float rs) {
+	float luma = dot(base, vec3(0.299, 0.587, 0.114));
+	vec3 flat_c = water_tint.rgb * (0.55 + 1.6 * luma);
+	float levels = max(water_params2.z, 2.0);
+	float band = floor(clamp((light - 0.55) * water_params.z * 4.0 + 0.5, 0.0, 0.999) * levels) / (levels - 1.0);
+	vec3 c = flat_c * (0.8 + 0.4 * band);
+	float r = abs(ripple * rs);
+	c = mix(c, flat_c * 1.6 + 0.08, step(0.08, r) * (1.0 - step(0.2, r)));
+	c += vec3(step(0.97, light) * water_params2.x);
+	float edge = water_edge(cell, f) * (0.85 + 0.15 * sin(t * 1.6 + (cell.x + cell.y) * 0.9));
+	float on = step(0.01, water_params.w);
+	float foam = step(0.5, edge) * on;
+	float ink = step(0.3, edge) * (1.0 - foam) * on;
+	c = mix(c, flat_c * 0.35, ink);
+	c = mix(c, vec3(0.95, 0.98, 1.0), foam);
+	return clamp(c, 0.0, 1.0);
+}
+
+// REALISTIC: smooth light, no steps; open water deepens towards the tint
+// away from the shore, the sun's highlight is sharp with a glitter of small
+// sparkles, and surf is soft. On Compatibility the glitter is left out, with
+// the chop above.
+vec3 water_realistic(vec3 base, vec2 cell, vec2 f, vec2 world, float t, float light, float ripple, float rs) {
+	float edge = water_edge(cell, f);
+	float open_w = water_mask_at(cell + vec2(2.0, 0.0)).r * water_mask_at(cell - vec2(2.0, 0.0)).r
+			* water_mask_at(cell + vec2(0.0, 2.0)).r * water_mask_at(cell - vec2(0.0, 2.0)).r;
+	float luma = dot(base, vec3(0.299, 0.587, 0.114));
+	vec3 deep = water_tint.rgb * (0.5 + 1.2 * luma);
+	vec3 c = mix(base, deep, 0.35 + 0.35 * open_w * (1.0 - edge));
+	c *= 1.0 + (light - 0.75) * water_params.z * 2.4;
+	c += ripple * rs * vec3(0.20, 0.24, 0.27);
+	float spec = pow(clamp(light, 0.0, 1.0), 48.0) * water_params2.x * 2.0;
+#if CURRENT_RENDERER != RENDERER_COMPATIBILITY
+	float sparkle = step(0.94, water_noise(world * 0.5 + vec2(t * 2.3, -t * 1.7))) * step(0.9, light);
+	spec += sparkle * water_params2.x;
+#endif
+	c += vec3(spec) * (0.4 + 1.6 * luma);
+	float lace = water_noise(world * 0.12 + vec2(t * 0.5, t * 0.3));
+	float foam = edge * smoothstep(0.3, 0.7, lace + edge * 0.4) * water_params.w;
+	c = mix(c, vec3(0.88, 0.93, 0.96), foam);
+	return clamp(c, 0.0, 1.0);
 }
 
 uniform int water_debug = 0;
@@ -140,7 +227,9 @@ vec3 water_shade(vec3 base, vec2 target_px) {
 	}
 	// Snap to the art's pixel grid so the water keeps the tiles' pixels at
 	// any zoom (AGENTS.md rule 7: native art is never filtered).
-	vec2 world = floor(target_px * water_target_to_world.xy + water_target_to_world.zw) + 0.5;
+	// A coarser grain makes bigger water pixels, still on whole art pixels.
+	float grain = max(water_params3.x, 1.0);
+	vec2 world = (floor((target_px * water_target_to_world.xy + water_target_to_world.zw) / grain) + 0.5) * grain;
 	float t = water_time * water_params.x;
 
 	vec2 f;
@@ -151,6 +240,16 @@ vec3 water_shade(vec3 base, vec2 target_px) {
 	float h = water_height(p, t);
 	float hx = water_height(p + vec2(e, 0.0), t) - h;
 	float hy = water_height(p + vec2(0.0, e), t) - h;
+	if (water_model == WATER_REALISTIC) {
+		// Finer chop on the swell. Compatibility (the web build) skips it:
+		// three more noise lookups a fragment are too dear there.
+#if CURRENT_RENDERER != RENDERER_COMPATIBILITY
+		vec2 q = p * 3.1 + vec2(t * 0.9, t * 0.6);
+		float chop = water_noise(q) - 0.5;
+		hx += (water_noise(q + vec2(e * 3.1, 0.0)) - 0.5 - chop) * 0.5;
+		hy += (water_noise(q + vec2(0.0, e * 3.1)) - 0.5 - chop) * 0.5;
+#endif
+	}
 	// Ripples tilt the surface along their slope, in cell space turned to
 	// the screen's (a cell step along X is (+22, +22) px, along Y (-22, +22)).
 	float rs = water_params2.w;
@@ -168,6 +267,16 @@ vec3 water_shade(vec3 base, vec2 target_px) {
 	}
 	vec3 n = normalize(vec3(-hx, -hy, 0.6));
 	float light = dot(n, normalize(vec3(-0.4, -0.6, 0.7)));
+
+	if (water_model == WATER_PIXEL) {
+		return water_pixel(base, cell, f, world, t, light, ripple, rs);
+	}
+	if (water_model == WATER_CEL) {
+		return water_cel(base, cell, f, t, light, ripple, rs);
+	}
+	if (water_model == WATER_REALISTIC) {
+		return water_realistic(base, cell, f, world, t, light, ripple, rs);
+	}
 
 	float shade = (light - 0.75) * water_params.z * 2.0;
 	float levels = water_params2.z;
