@@ -397,7 +397,7 @@ left edge (or to the panel).
 
 The character-swapper flyout (below) is **not bound** in any of these contexts.
 
-## Note for Moshu — multibox / character swapper
+## Multibox and the character swapper (not built)
 
 One UO connection is one character. Multibox means **several clients**, not a zoomed-out view of one world. Do not build a fake camera pull-back for this.
 
@@ -444,7 +444,7 @@ and UOSteam habits, and community guides:
 | 9 | Pet commands (all follow/stop/stay/attack) | Tamers — speech payloads |
 | 10 | Vendor / bank / trade / party / guild | Town and social — later |
 
-Baldur's Gate 3 mapping (Moshu suggested looking here):
+Baldur's Gate 3 mapping (suggested by the project owner):
 
 | BG3 idea | GUO analogue |
 |---|---|
@@ -505,8 +505,7 @@ See `docs/controller_backlog.md` for the ranked backlog with acceptance checks.
 - The code is `src/Input/Gamepad/GamepadInput.cs` and `src/Input/InputMode.cs`.
 - The menu wheel, radar and Set controls are `src/Input/Gamepad/PadWheel.cs`,
   `PadRadar.cs`, `PadWizard.cs`; the action map is `PadBindings.cs`; their
-  layer and art are `PadOverlay.cs`. Set controls ports the behaviour of
-  Ghostroads' own "Set controls" (`game/ui/set_controls.gd`).
+  layer and art are `PadOverlay.cs`.
 - `--gamepad-probe` checks the bindings with scripted pad events, and
   `--pad-wheels-probe` the wheel, the radar, the new buttons, Set controls and
   the trackpad, with a picture at each step (see
