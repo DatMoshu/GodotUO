@@ -150,6 +150,7 @@ unset _guo_shared_dir
 : "${UO_PIXELORAMA:=}"
 : "${UO_PINTA:=}"
 : "${UO_COMFY_URL:=http://127.0.0.1:8188}"
+: "${UO_COMFY_DIR:=}"
 : "${UO_COMFY_WORKFLOWS:=$UO_BUILD_DIR/art_exchange/workflows}"
 
 set +a

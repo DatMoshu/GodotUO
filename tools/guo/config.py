@@ -325,6 +325,7 @@ class Config:
     pixelorama_setting: Path | None = None
     pinta_setting: Path | None = None
     comfy_url: str = "http://127.0.0.1:8188"
+    comfy_dir: str = ""
     comfy_workflows: Path | None = None
     # Read-only local layout source installations; blank means not configured.
     layout_cdda_dir: Path | None = None
@@ -617,6 +618,7 @@ def load_config(root: Path | None = None) -> Config:
         pixelorama_setting=path_or_none("UO_PIXELORAMA"),
         pinta_setting=path_or_none("UO_PINTA"),
         comfy_url=get("UO_COMFY_URL", "http://127.0.0.1:8188"),
+        comfy_dir=native_path(get("UO_COMFY_DIR", "")),
         comfy_workflows=Path(native_path(get("UO_COMFY_WORKFLOWS").replace("%UO_ROOT%", str(root)) or str(Path(build_dir) / "art_exchange" / "workflows"))),
         layout_cdda_dir=path_or_none("UO_LAYOUT_CDDA_DIR"),
         layout_zomboid_dir=path_or_none("UO_LAYOUT_ZOMBOID_DIR"),

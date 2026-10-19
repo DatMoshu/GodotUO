@@ -54,6 +54,14 @@ class ConfigTests(unittest.TestCase):
         os.environ["UO_WORKSPACE_DIR"] = str(self.root / "ws-env")
         self.assertEqual(load_config(self.root).workspace_dir, self.root / "ws-env")
 
+    def test_comfy_install_directory_precedence(self):
+        self.assertEqual(load_config(self.root).comfy_dir, "")
+        local = str(self.root / "comfy-local")
+        self.local.write_text(f'set "UO_COMFY_DIR={local}"', encoding="utf-8")
+        self.assertEqual(load_config(self.root).comfy_dir, local)
+        os.environ["UO_COMFY_DIR"] = str(self.root / "comfy-env")
+        self.assertEqual(load_config(self.root).comfy_dir, os.environ["UO_COMFY_DIR"])
+
     def test_shard_passwords_come_from_the_workspace_secrets_file(self):
         # No default anywhere: nothing configured means no password.
         cfg = load_config(self.root)

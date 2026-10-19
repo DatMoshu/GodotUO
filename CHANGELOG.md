@@ -16,6 +16,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   the land and open sea. `docs/perf/2026-10-18_britain_breakdown.md` reads it.
 
 ### Editor
+- ComfyUI setup now pins custom nodes to commits and verifies model SHA256
+  hashes. The new ComfyUI doctor checks an existing installation offline;
+  mismatched files stay untouched and first-use models are marked unverified.
 - The Admin tab's god view works with nobody logged in: **Go there**,
   **Bring here**, **Open paperdoll** and **Follow** use the server's hidden
   presence when no staff character of yours is online (or pick it in

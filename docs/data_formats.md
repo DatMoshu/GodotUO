@@ -2713,6 +2713,28 @@ from client art), place staged splats by tile, and apply/clear zones against
 the open world. Splat generation itself stays in `tools/comfy`; the dock
 lists staged splats and writes placements into the staged manifest.
 
+### ComfyUI studio dependency manifest (`tools/comfy/models.json`)
+
+Tools-only `format: 1` inventory for `setup_studio.py`. `custom_nodes` entries
+carry `dir`, HTTPS `repo`, and a full 40-character git `commit`; existing packs
+must have that HEAD and a clean working tree. Installation never updates or
+replaces an existing pack. `models` entries carry `file`, relative `dest`,
+HTTPS `url`, byte `size` and lowercase `sha256`. Hugging Face file URLs use
+immutable commit revisions. Optional `aliases` accept identical bytes under
+another filename. Existing files and completed `.part` downloads are hashed;
+only verified downloads are promoted to their final names. A mismatch fails
+without replacing an existing file. Paths must remain below the chosen root.
+
+Optional `references` entries describe `source: node-managed` folders and
+external tool weights, separately from the hashed `models` inventory. These are
+informational only: their revision metadata does not pin a node's first-use
+download, and the doctor never calls them verified. They need separate package
+verification before use. `--check` is offline and read-only; `--validate` alone
+contacts `/object_info` to compare workflow node types without queuing work.
+`UO_COMFY_DIR` follows environment, local config, shared config, then optional
+manifest guesses; `--comfy-dir` overrides it. No default central installation
+is selected. Node requirements are installed manually with ComfyUI's Python.
+
 ## 40. Voice profiles and text-to-speech (`build/voice_profiles`, `IO/Audio/VoiceManager.cs`)
 
 `tools/comfy/voice.py` enrolls a voice from the player's own sample with the
