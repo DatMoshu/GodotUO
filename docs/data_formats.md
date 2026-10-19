@@ -2875,6 +2875,56 @@ presets:
 path or carries the login name, computer name, home folder or a shard account
 name. A change to `columns` bumps `format`.
 
+### Count comparison and local baselines (PERF-02)
+
+`tools/perf_probe/gate.py` accepts two probe reports. Each must be optimized
+and contain exactly one `login`, `open-field`, `britain-bank`, `dense-forest`,
+`dungeon`, and `walk`. Stationary scenes need at least 360 measured frames;
+the timed walk needs at least one measured frame and one tile moved. Counts
+and mean/p95/p99 times must be finite positive numbers, draws per frame must
+be at least 0.95, and p95 cannot exceed p99. Window and postfx must match.
+Draw calls greater than baseline times 1.05 fail; any batcher-item increase
+fails. Frame times are advisory. Exit 0 passes, 1 fails counts, 2 refuses
+invalid inputs. An optional summary path receives appended Markdown.
+
+`launchers/dev/perf_gate.bat` / `.sh` runs the real optimized probe and uses
+`<UO_BUILD_DIR>/perf/gate/<machine-tag>/<name>.baseline.json`, never a
+committed baseline. `UO_BUILD_DIR` must resolve outside the checkout. Names
+and fixture labels are 1-48 lowercase letters, digits, underscores or
+hyphens, starting with a letter or digit. A machine tag is the first 16 hex
+digits of SHA-256 over the computer name, OS family and architecture joined
+by `|`; the name itself is not written. The baseline object is:
+
+| Key | Value |
+|---|---|
+| `schema` | `"guo/perf_gate@1"` |
+| `recorded` | UTC ISO-8601 time |
+| `context.machine` | machine tag used for the containing directory |
+| `context.window` | requested `"WxH"`; must equal the measured window |
+| `context.zoom` | finite positive requested zoom, default 1.0 |
+| `context.renderer` | `forward_plus` (default), `mobile`, or `gl_compatibility` |
+| `context.client_version` | configured client version |
+| `context.fixture` | required user label for the shard world/data fixture |
+| `context.shard` | first 16 hex digits of SHA-256 of `host:port` |
+| `context.args` | exact extra client flag string, default empty |
+| `report` | complete validated probe JSON |
+
+Context equality is binding before comparison. The tool does not validate
+world contents or freeze live entities: fixture consistency is the operator's
+responsibility. `--record-baseline` creates exclusively and refuses an
+existing file. `--replace-baseline` requires an existing baseline and replaces
+it through a sibling `.json.tmp` after a successful probe. Failed probes
+cannot replace it. Recording exits 0 but explicitly reports that no regression
+comparison occurred. Each measurement gets a fresh `gate_<uuid>` label.
+Comparison summaries are `<name>.gate_<uuid>.md` beside the baseline; raw
+probe reports/logs remain under `<UO_BUILD_DIR>/perf/`. Local baselines and
+reports may contain private paths or identifiers in optional fields and
+must never be committed or automatically uploaded.
+
+Hosted CI's `perf` job tests these contracts with synthetic result files.
+It does not run the real probe or measure FPS; no private runner or service
+is required. See [the gate guide](perf/performance_gate.md) for commands,
+doctor behavior, smoke steps and limitations.
 ## 43. Server identity and client version (`src/Network/ServerIdentity.cs`)
 
 What the client learns about the server it is logged in to, and which client version it reported there. It is a
