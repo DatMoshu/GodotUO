@@ -44,6 +44,9 @@ echo [smoke] optional audio pack contracts (synthetic; no shard or AI service)
 echo [smoke] optional HD pack contracts (synthetic)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Store/StoreHdProbe.tscn || set "FAIL=1"
 
+echo [smoke] perf lab report: fields kept, privacy refusal, size (synthetic; tools\perf_lab)
+"%UO_PYTHON%" -m pytest "%UO_TOOLS%\perf_lab" -q -p no:cacheprovider || set "FAIL=1"
+
 echo [smoke] PostFX engine regressions (synthetic)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Bootstrap/PostFxEngineProbe.tscn || set "FAIL=1"
 
