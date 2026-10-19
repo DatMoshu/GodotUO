@@ -155,6 +155,17 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   ADR-0008.
 
 ### Playing
+- Controller: **Set controls...** in Options is now a list of jobs. Pick one
+  with the D-pad and set only that one; a quick tap of B keeps it as it was,
+  **Reset to defaults** puts the shipped layout back, **Save** keeps your
+  changes and B leaves without changing anything. One wrong press no longer
+  means setting every button again.
+- Controller: mounting works from the radar. Choosing a horse that is a few
+  tiles away walks you up to it and mounts; while riding, choose yourself in
+  the radar to get off.
+- Controller: in war mode, A on a monster in the radar attacks it, as a
+  double click does with the mouse, and keeps it as your target, so X goes
+  on attacking it after the radar closes.
 - Canvas background behind the game: grey, wood, your own image or video,
   or one of ten built-in CC0 loops. ADR-0016.
 - Containers can open as a grid of finger-sized slots (mobile default), and

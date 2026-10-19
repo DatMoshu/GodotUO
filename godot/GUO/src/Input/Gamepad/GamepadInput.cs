@@ -200,6 +200,7 @@ namespace GUO.Input.Gamepad
             }
 
             Walk();
+            PadRadar.Approach();
 
             // The radar takes the right stick; the left one still walks.
             if (PadRadar.IsOpen)
@@ -806,6 +807,9 @@ namespace GUO.Input.Gamepad
             {
                 return;
             }
+
+            // A walk the radar started (to a mount out of reach) yields to the stick.
+            PadRadar.CancelApproach();
 
             var world = Client.Game?.UO?.World;
             Profile profile = ProfileManager.CurrentProfile;
