@@ -248,6 +248,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+
+- Dev shard: exempt loopback from automatic behavioral ban contributions so a
+  silent readiness connection cannot reject all local clients for 15 minutes;
+  preserve explicit bans and LAN/public protection (NET-00c, MUO patch).
 - A Modding page on the wiki: how to write, test and ship a mod, and how to
   measure one that slows the game down (`--load-mods` for a single run).
 - A shard can publish its client mod in the Store. A mod pack is signed by

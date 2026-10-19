@@ -921,6 +921,23 @@ index 29331c5c6..920cfa242 100644
  
 MUO_EOF_0
 chmod 0644 $BASE/patches/0005-system-message-hook.patch
+install -d "$(dirname $BASE/patches/0006-loopback-ban-exemption.patch)"
+cat > $BASE/patches/0006-loopback-ban-exemption.patch <<'MUO_EOF_0'
+diff --git a/Projects/UOContent/Network/BanExemptions.cs b/Projects/UOContent/Network/BanExemptions.cs
+--- a/Projects/UOContent/Network/BanExemptions.cs
++++ b/Projects/UOContent/Network/BanExemptions.cs
+@@ -53,2 +53,9 @@ public static class BanExemptions
++        // GUO's local readiness checks can leave a silent connection behind. Do not
++        // escalate that into a ban on every local client; explicit bans still win.
++        if (IPAddress.IsLoopback(address))
++        {
++            return true;
++        }
++
+         // Deliberate and unconditional, so it wins and must not spend the earned list's strikes.
+         if (ManualAllowlist.Contains(address))
+MUO_EOF_0
+chmod 0644 $BASE/patches/0006-loopback-ban-exemption.patch
 
 # checkout at the pin; patches off before the pin moves, on after
 if [ ! -d "$SRC/.git" ]; then as_user git clone --no-checkout "$CLONE_URL" "$SRC"; fi
@@ -930,6 +947,7 @@ as_user git -C "$SRC" update-index --no-skip-worktree global.json 2>/dev/null ||
 as_user git -C "$SRC" checkout -q -- global.json 2>/dev/null || true
 head="$(as_user git -C "$SRC" rev-parse -q --verify HEAD 2>/dev/null || true)"
 if [ "$head" != "$PIN" ]; then
+    if as_user git -C "$SRC" apply -R --check "$BASE/patches/0006-loopback-ban-exemption.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0006-loopback-ban-exemption.patch"; fi
     if as_user git -C "$SRC" apply -R --check "$BASE/patches/0005-system-message-hook.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0005-system-message-hook.patch"; fi
     if as_user git -C "$SRC" apply -R --check "$BASE/patches/0005-guo-pad-attack-record.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0005-guo-pad-attack-record.patch"; fi
     if as_user git -C "$SRC" apply -R --check "$BASE/patches/0004-guo-pad-dummies.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0004-guo-pad-dummies.patch"; fi
@@ -985,6 +1003,14 @@ elif as_user git -C "$SRC" apply -R --check "$BASE/patches/0005-system-message-h
 else
     as_user git -C "$SRC" apply --check "$BASE/patches/0005-system-message-hook.patch" || true
     die "0005-system-message-hook.patch does not apply to the checkout at $PIN; stopping"
+fi
+if as_user git -C "$SRC" apply --check "$BASE/patches/0006-loopback-ban-exemption.patch" >/dev/null 2>&1; then
+    as_user git -C "$SRC" apply "$BASE/patches/0006-loopback-ban-exemption.patch"
+elif as_user git -C "$SRC" apply -R --check "$BASE/patches/0006-loopback-ban-exemption.patch" >/dev/null 2>&1; then
+    echo "muo_shard: 0006-loopback-ban-exemption.patch already applied, skipping"
+else
+    as_user git -C "$SRC" apply --check "$BASE/patches/0006-loopback-ban-exemption.patch" || true
+    die "0006-loopback-ban-exemption.patch does not apply to the checkout at $PIN; stopping"
 fi
 
 # the archive's SDK can trail the SDK version the pin's global.json names; build with the installed one
