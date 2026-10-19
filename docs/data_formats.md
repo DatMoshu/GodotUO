@@ -2713,6 +2713,18 @@ from client art), place staged splats by tile, and apply/clear zones against
 the open world. Splat generation itself stays in `tools/comfy`; the dock
 lists staged splats and writes placements into the staged manifest.
 
+StaticStudio is an L3 editor package (`#if TOOLS`). Its generation controls,
+workflow discovery and request building use `AiFeatures`; disabling AI cancels
+the current job, clears its unsaved gallery/preview and hides generation UI.
+Late results from a disabled, replaced or closed dock cannot publish a gallery.
+Theme names, applying/clearing saved themes and placing already-staged content
+remain manual operations. No service is contacted until **Generate image** is
+requested. Connection/workflow failures point to the ComfyUI doctor; node-type
+validation and dependency installation remain explicit tool operations.
+Client generation migration/removal is separate from this editor package.
+See [Repaint statics in StaticStudio](editor_staticstudio.md) for the authoring
+workflow and [its headless scenario](../tools/scenarios/editor/staticstudio_repaint.md).
+
 ### ComfyUI studio dependency manifest (`tools/comfy/models.json`)
 
 Tools-only `format: 1` inventory for `setup_studio.py`. `custom_nodes` entries
