@@ -163,6 +163,11 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- Upstream drift report for 2026-10-18 (`docs/upstream/drift_2026-10-18.md`):
+  the eight ClassicUO commits since the reviewed pin, each marked take, skip
+  or later, and what the ClassicUO 2.0 beta means for GUO (its source is not
+  public, so it is a reference for the water, terrain and modding work, not
+  code to port).
 - World editor: the Layers menu (Land, Statics, Multis, Roofs, Objects and the
   live layers) now looks like a button beside the others, keeps its ticks for
   the whole editor session, and switching Roofs off takes effect at once.
