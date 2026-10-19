@@ -27,7 +27,7 @@ namespace GUO.Host;
 /// the dev shard, as every probe that plays does; without it those checks
 /// fail and say so.
 /// </remarks>
-internal static class TouchProbe
+internal static partial class TouchProbe
 {
     public static bool Passed { get; private set; }
 
