@@ -440,6 +440,10 @@ namespace GUO
             }
             _pluginsInitialized = true;
 
+            // PORT DEVIATION (GUO): packet mods from Data/Mods, when the user
+            // turned "Load mods" on (ADR-0038). Off loads nothing.
+            GUO.Network.Mods.ClientMods.Load(UO.FileManager.Version);
+
             Log.Trace("Done!");
 
             // PORT DEVIATION (GUO): the touch layer's whole-number screen
