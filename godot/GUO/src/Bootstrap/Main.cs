@@ -1017,7 +1017,10 @@ public partial class Main : Node
     /// </summary>
     private async void TouchProbeThenQuit()
     {
-        await TouchProbe.Run(this);
+        if (_options.OptionsTouchProbe)
+            await TouchProbe.RunOptions(this, _options.ScreenshotDir);
+        else
+            await TouchProbe.Run(this);
         await CaptureFrame();
         Quit(TouchProbe.Passed ? 0 : 1);
     }
@@ -1702,6 +1705,7 @@ public partial class Main : Node
 
         /// <summary>Drive the touch layer with synthetic fingers and check the client reacted.</summary>
         public bool TouchProbe { get; private set; }
+        public bool OptionsTouchProbe { get; private set; }
 
         /// <summary>
         /// Run in a client home of its own, made fresh (<see cref="ScratchHome"/>):
@@ -2042,6 +2046,9 @@ public partial class Main : Node
                     case "--touch":
                         o.Touch = true;
                         break;
+                    case "--options-touch-probe":
+                        o.OptionsTouchProbe = true;
+                        goto case "--touch-probe";
                     case "--touch-probe":
                         o.Touch = true;
                         o.TouchProbe = true;
