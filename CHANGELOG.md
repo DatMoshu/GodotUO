@@ -163,6 +163,11 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- A shard can publish its client mod in the Store. A mod pack is signed by
+  its publisher and lists the packets it touches; installing it runs
+  nothing. The Store shows who signed it and what it changes, and it loads
+  only after you approve it and turn on **Load mods** (desktop only). An
+  updated or re-signed mod asks again.
 - Shards with their own packets can ship a mod instead of asking players for
   a forked client: a mod declares the packets it adds, and GUO loads it from
   `Data/Mods` when you tick **Load mods on the next start** in Options (off

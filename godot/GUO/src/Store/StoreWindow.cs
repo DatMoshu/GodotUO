@@ -266,6 +266,40 @@ internal sealed partial class StoreWindow : CanvasLayer
         dismiss.Pressed += () => { _approvals.RemoveChild(card); card.QueueFree(); };
     }
 
+    /// <summary>Each installed mod component: what it touches, who signed it, and the user's choice
+    /// (ADR-0038 amendment). Approving loads nothing now; the mod loads on the next start with
+    /// Load mods on.</summary>
+    private void ModReview(VBoxContainer info, StoreManifest m)
+    {
+        System.Collections.Generic.List<StoreModInfo> mods;
+        try { mods = StoreMods.Installed(_client).Where(x => x.Pack.Id == m.Id && x.Pack.Version == m.Version).ToList(); }
+        catch (Exception e) { info.AddChild(Text("Could not read this pack's mods: " + e.Message, 12, new Color("f0a090"))); return; }
+        foreach (StoreModInfo mod in mods)
+        {
+            var card = new PanelContainer(); card.AddThemeStyleboxOverride("panel", Box("2b231c", "b4a16b", 10));
+            info.AddChild(card);
+            var column = new VBoxContainer(); card.AddChild(column);
+            column.AddChild(Text((mod.Approved ? "Mod approved: " : "Mod: ") + mod.Component.Id, 15, Gold));
+            column.AddChild(Text("Publisher key " + mod.Fingerprint + ". Packets: " + mod.Packets + ". Shards: " + string.Join(", ", mod.Shards) + ".", 12, new Color("eeeade")));
+            column.AddChild(Text("A mod is code that runs in GUO with your rights. Approve it only if you trust this shard and its publisher. "
+                + "It loads on the next start, when Options has Load mods on.", 12, Muted));
+            var choice = Touchable(new Button { Text = mod.Approved ? "Revoke" : "Approve", Disabled = _busy || !GUO.Network.Mods.ModLoader.PlatformSupported });
+            choice.SizeFlagsHorizontal = Control.SizeFlags.ShrinkBegin;
+            column.AddChild(choice);
+            choice.Pressed += () =>
+            {
+                try
+                {
+                    if (mod.Approved) StoreMods.Revoke(_client.Root, mod.Identity);
+                    else StoreMods.Approve(_client, m.Id, m.Version, mod.Component.Id);
+                    _status.Text = mod.Approved ? "Mod approval removed. It will not load on the next start." : "Mod approved. Restart GUO with Load mods on to use it.";
+                    Render();
+                }
+                catch (Exception e) { _status.Text = "Could not change the mod's approval: " + e.Message; }
+            };
+        }
+    }
+
     private async Task Add()
     {
         try
@@ -343,6 +377,8 @@ internal sealed partial class StoreWindow : CanvasLayer
                 };
                 info.AddChild(Text("Preview and add personal copies. Nothing runs automatically.", 12, Muted));
             }
+            if (present && m.Components?.Any(c => c.Type == "mod") == true)
+                ModReview(info, m);
         }
         // Installed packs remain removable even if a publisher delists them.
         foreach (var m in installed.Where(m => !_entries.Any(p => p.Manifest.Id == m.Id && p.Manifest.Version == m.Version)))
