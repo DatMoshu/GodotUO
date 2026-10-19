@@ -313,6 +313,53 @@ buffer.
 | picking (highest depth wins) | a query over the chunks under the mouse, pixel-checked as today |
 | post-processing id pass (ADR-0023) | the id rides in the instance; the id pass draws the same instances |
 
+### ADR-0001
+
+ADR-0001 governs the renderer. It keeps one presenter, and makes
+`CalculateDepthZ()` the only source of depth, for drawing and picking alike.
+This amendment keeps both, but it changes two things ADR-0001 states, so it
+also needs an **ADR-0001 amendment**, for the owner to decide with this one.
+
+**What stays:**
+
+- **One presenter.** The depth viewport is a different way for the one world
+  pass to put its objects on screen. It is not a second presenter. There is
+  no presenter registry and no alternate look. `--gpu-world` is a fallback
+  and parity switch inside that pass, like `--merged-land`, and is removed
+  once the owner sets the default. (The `IScenePresenter` of ADR-0001 was
+  never written; today the presenter is `RenderLists.DrawWorld` plus
+  `UltimaBatcher2D`.)
+- **One depth function.** The GPU depth key is computed from
+  `CalculateDepthZ()`, never alongside it:
+  `D = round(100 * (CalculateDepthZ() - d0))`, where `d0` is the first visible
+  diagonal. Because `CalculateDepthZ() = (x + y) + (127 + PriorityZ) * 0.01`,
+  this is a lossless integer rescale of that value. A mobile body's `+ 0.5`
+  is the same `+ 0.5` the sort adds today (`+ 50` in hundredths). The ordering
+  that results is the one the sort gives, applied by the GPU.
+- **Picking does not change.** It still takes the highest
+  `CalculateDepthZ()` under the mouse, now over the queued objects plus a
+  query of the instanced statics in the chunks under the mouse. It never
+  reads the GPU depth buffer.
+
+**What changes, needing the ADR-0001 amendment:**
+
+1. **Instanced statics leave the per-frame queue.** ADR-0001 says the
+   presenter draws what the queue holds. Instanced statics would instead be
+   drawn from buffers that `ChunkMesh` builds when a chunk changes. Land
+   already works this way (ADR-0004's chunk land meshes). This extends the
+   same exception to statics.
+2. **Between instanced statics and queued objects, order comes from the
+   depth test, not from queue order.** ADR-0001 says "the order IS the draw
+   order". Here the depth key decides, and so it must reproduce the sort's
+   tie-break as well: equal `CalculateDepthZ()`, then insertion order
+   (`_queued`). Queued objects keep their exact `_queued` order inside their
+   page buffer. Instanced statics carry a tie field (their index in the tile
+   and their rank along the diagonal) that must equal the insertion order the
+   tile walk gives them. Step 1's all-ties scene checks this. Any class of
+   static where it does not hold stays queued. This is how upstream orders
+   its world (a depth buffer over `CalculateDepthZ()`), so it moves GUO
+   towards upstream, not away from it.
+
 ### The switch and the fallback
 
 `--gpu-world[=off]`, off by default. The sorted canvas path stays whole and
