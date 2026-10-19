@@ -2742,7 +2742,8 @@ thread with distance attenuation (full to 2 tiles, silent past 20).
 `Profile.WaterStyle` is a string, default `"classic"`, saved in the profile
 JSON like every other option. `"classic"` (or empty, or an id the client does
 not know, logged once) draws water as upstream does. Any other value names a
-water style; the built-in one is `"uo"`. `--water-style ID` sets the style for
+water style: the built-in `"uo"`, or a Store pack's style by its component
+identity, `pack-id:component-id` (below). `--water-style ID` sets the style for
 one session ahead of the profile and is never saved (probes, scenarios, the
 perf lab). Options > Video > **Water** and the editor World view's Layers >
 **Realtime water** write the same field.
@@ -2757,7 +2758,7 @@ bit 6, circle-of-transparency in bit 7). Classic never sets it.
 
 | Uniform | Type | Meaning |
 |---|---|---|
-| `water_model` | int | 0 Classic (branch never taken), 1 the built-in `uo` model |
+| `water_model` | int | 0 Classic (branch never taken), 1 `uo`, 2 `pixel`, 3 `cel`, 4 `realistic` |
 | `water_time` | float | seconds from the client clock |
 | `water_target_to_world` | vec4 | world px = target px * xy + zw; a tile's centre is ((X - Y) * 22, (X + Y) * 22 - 4 Z) |
 | `water_mask` | sampler2D | 128 x 128 RGBA8 ring of world cells (texel x & 127, y & 127): R 255 water / 0 dry, G water z + 128 |
@@ -2765,6 +2766,7 @@ bit 6, circle-of-transparency in bit 7). Classic never sets it.
 | `water_tint` | vec4 | the colour swells lean towards |
 | `water_params` | vec4 | speed, scale (1 / world px), wave strength, foam strength |
 | `water_params2` | vec4 | glint, foam width (cells), brightness levels (0 smooth), ripple strength (0 ignores ripples) |
+| `water_params3` | vec4 | x: grain, world pixels per water pixel (1 the art's own grid); yzw unused |
 | `water_ripples` | sampler2D | 256 x 256 R8, the ripple field over 128 x 128 cells, 2 x 2 texels a cell; 128 is flat |
 | `water_ripples_origin` | vec2 | the ripple window's first cell; outside it the surface is flat |
 
@@ -2782,9 +2784,49 @@ effect that appears over water and a moving effect that ends there. After 6
 seconds without a disturbance the field stops stepping and uploading. The
 style's `BindRipples` sets the strength and damping (the `uo` style: 1.0 and
 0.985 a step). Continuous pushes are rates per second, so the field looks the
-same at any frame rate. A style is `IWaterStyle` (`Id`, `DisplayName`, `Bind`); a Store
-`water` component (WATER-04) will implement the same interface and is
-specified here before anything emits one.
+same at any frame rate. A style is `IWaterStyle` (`Id`, `DisplayName`, `Bind`,
+`BindRipples`).
+
+**Models.** Every style picks one of four models built into the shader; no
+style carries shader code. `uo`: the tile's own colours under crossing swells
+in a few brightness steps. `pixel`: the steps dithered (4 x 4 ordered) on the
+water's own grid, the colour cut to a short ramp, surf and glints as whole
+pixels. `cel`: flat colour in the tint, lit by the tile's light level, bold
+bands, white surf with a dark ink line, ripples as crisp rings. `realistic`:
+smooth light with a finer chop, open water deepening to the tint away from the
+shore, a sharp highlight with sparkles and soft surf; on the Compatibility
+renderer (the web build) the chop and the sparkles are left out.
+
+**Store water styles** (WATER-04). A v2 content pack's `water` component
+(`docs/asset_pack_ecosystem.md`) targets `client` and names a JSON entry, a
+`guo/water@1` style file. Every field is required and no other is allowed:
+
+| Field | Value | Uniform |
+|---|---|---|
+| `schema` | `"guo/water@1"` | |
+| `name` | 1..48 UTF-16 units, not blank, no control characters; the Options entry | |
+| `model` | `uo`, `pixel`, `cel` or `realistic` | `water_model` |
+| `tint` | three numbers 0..1, RGB | `water_tint` |
+| `speed` | 0..4 | `water_params.x` |
+| `scale` | 0.005..0.25 (1 / world px) | `water_params.y` |
+| `wave` | 0..1 | `water_params.z` |
+| `foam` | 0..1 | `water_params.w` |
+| `glint` | 0..1 | `water_params2.x` |
+| `foam_width` | 0..0.5 (cells) | `water_params2.y` |
+| `levels` | integer 0..16 (0 smooth) | `water_params2.z` |
+| `grain` | integer 1..8 | `water_params3.x` |
+| `ripples` | `{"strength": 0..2, "damping": 0.9..0.999}` | `WaterRipples.Strength` / `.Damping`; `water_params2.w` is 1 when strength > 0 |
+
+At most 16 KiB, UTF-8 without a byte order mark, unique keys, numbers as JSON
+numbers (an integer field refuses `2.0`). `tools/asset_store/water_style.py`
+and `Store/StoreWater.cs` check the file when a pack is verified or installed;
+the shared corpus (`corpus/water.py`) holds them to the same verdicts. A
+deployment's water components need no numeric binding: the client offers each
+under Options > **Water** by its `name` and saves its identity in
+`Profile.WaterStyle`. A style whose pack is no longer deployed draws Classic.
+The three GUO packs, `guo-water-pixel`, `guo-water-cel` and
+`guo-water-realistic` (component `sea`), are built from `design/packs/water`
+by `tools/asset_store/water_packs.py`.
 
 `GUO_WATER_DEBUG=1` in the client's environment paints every fragment that takes
 the water branch magenta, to see which tiles a style reaches; `2` paints the

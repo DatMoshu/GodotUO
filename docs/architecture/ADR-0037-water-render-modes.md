@@ -125,6 +125,13 @@ machine (`docs/perf/2026-09-27_baseline_1280.md`).
    the installer (`StoreContent`) validate the same rules, with corpus cases
    for an accepted pack and each refusal. `docs/asset_pack_ecosystem.md` and
    `docs/data_formats.md` gain the component before anything emits it.
+   *Amended 2026-10-19 (WATER-04):* v1 carries numbers only. The normal,
+   flow and foam textures are left out: all four models make their own
+   surface procedurally, and an image the shader samples would be one more
+   filtering question under rule 7. A `grain` number (whole world pixels per
+   water pixel) is added instead, for the pixel model. Ripple settings are
+   strength and damping; wake length stays the client's. A later amendment
+   can add textures as declared PNGs.
 7. **The option.** `Profile.WaterStyle` (string, default `"classic"`) and an
    Options entry, **Water**, in both Options interfaces, listing Classic plus
    the styles of installed, verified packs that the shard allows. Changing it
@@ -186,7 +193,9 @@ Godot 4.7.2 mono. Uses only the canvas shading language features the world
 shaders already use, plus `TIME` and one extra `sampler2D` global uniform.
 Works on every renderer the client exports with (Forward+, Mobile,
 Compatibility for web); the realistic model must degrade on Compatibility and
-WATER-04 says how.
+WATER-04 says how: on Compatibility (`CURRENT_RENDERER == RENDERER_COMPATIBILITY`
+in the shader preprocessor) it drops its finer chop and its sparkles, three and
+one noise lookups a fragment, and keeps the rest.
 
 ## GDD Requirements Addressed
 
@@ -240,3 +249,17 @@ each, about +0.01 and 0.00 ms), and the bay's draw calls vary between runs
 whether water is on or off (156 to 199), so the earlier 157 -> 199 was not the
 water. Classic stays pixel-identical. Wave speed and stamps are per second,
 not per frame.
+
+## Implementation notes (WATER-04)
+
+- The shader holds the four models (`water_model` 1 to 4); a style picks one.
+  `uo` is unchanged by the addition: at grain 1 its pixel snap is the same.
+- A `water` component's style file is `guo/water@1`
+  (`docs/data_formats.md` section 44), checked whole when a pack is verified
+  or installed, by `water_style.py` and `StoreWater.cs`; the corpus has 49
+  water cases and both validators agree on all 183 files.
+- The deployment's styles are offered after the built-in one, by their
+  `name`, and saved as `pack-id:component-id`. They need no numeric binding.
+- `guo-water-pixel`, `guo-water-cel` and `guo-water-realistic` are built from
+  `design/packs/water` and published like any pack; the catalogue's index
+  signature covers their hashes.
