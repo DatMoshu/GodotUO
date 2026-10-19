@@ -13,5 +13,6 @@
   <ItemGroup>
     <ProjectReference Include="../../godot/GUO.ModApi/GUO.ModApi.csproj" />
     <ProjectReference Include="../../docs/modding/samples/announce/Announce.csproj" />
+    <Compile Include="../../godot/GUO/src/Network/ServerIdentity.cs" Link="ServerIdentity.cs" />
   </ItemGroup>
 </Project>
