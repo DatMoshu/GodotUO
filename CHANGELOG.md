@@ -172,8 +172,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   your local config. `doctor.bat --release` says what is missing. On a tag,
   the `release` workflow also builds one when the repository holds the key as
   secrets.
-- **Web**: still blocked upstream; `launchers\web\doctor.bat` reports why.
-  ADR-0008.
+- **Web**: plays on a local shard in Chrome, and reaches the login screen in
+  Firefox, on a community build of the engine; `launchers\web\doctor.bat`
+  says what it needs. ADR-0008.
 
 ### Playing
 - **Enhanced HD** (Options, off by default): world sprites can be drawn from
@@ -186,9 +187,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   for NPCs, matched by name, then body. **Change:** ordinary NPC speech no
   longer starts text-to-speech; an NPC is silent until a voice pack covers
   it. ADR-0036.
-- **Screen effects** come as an optional Store pack (32 looks, from
-  MeesaJarJar) instead of being built in. Installing it does not switch a
-  look on; Classic switches effects off.
+- **Screen effects**: 32 more looks, from MeesaJarJar, come as an optional
+  Store pack rather than as built-ins; the curated built-in looks stay.
+  Installing the pack does not switch a look on; Classic switches effects
+  off.
 - Screen effect sliders that take whole numbers stay whole and inside their
   range, and resizing the window with an effect on no longer drops the
   picture.
