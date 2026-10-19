@@ -131,6 +131,51 @@ adaptive foreground as the Android 12 splash-screen icon
 master changes and commit what it wrote. See `tools\windows\README.md`
 for the whole icon table and the evidence.
 
+## A release APK, signed with your key
+
+`export.bat --release` exports `build\android\GUO-release.apk` with Godot's
+`--export-release`, signed with YOUR release key instead of the shared debug
+key. It is a player's build: audible, with no `--client-data` and no
+`UO_ANDROID_ACCOUNT` baked in, so the client finds its data itself (or asks,
+G2a) and logs in as whoever plays it.
+
+The key comes from three settings, never from the repository:
+
+| Setting | What |
+|---|---|
+| `UO_ANDROID_RELEASE_KEYSTORE` | the keystore file, **outside the checkout**; the tool refuses one inside it |
+| `UO_ANDROID_RELEASE_KEYSTORE_USER` | the key's alias |
+| `UO_ANDROID_RELEASE_KEYSTORE_PASSWORD` | its password; set it in the environment, or in `config.local.bat` (gitignored) |
+
+`config.bat` leaves all three empty on purpose. The tool hands them to Godot
+through Godot's own `GODOT_ANDROID_KEYSTORE_RELEASE_PATH`, `_USER` and
+`_PASSWORD` environment variables, for the one export process: the release
+key is never written into `export_presets.cfg`, the editor settings or a
+command line. keytool gets the password on stdin.
+
+```
+python tools\android\run.py release-keystore     make the key at UO_ANDROID_RELEASE_KEYSTORE (RSA 4096, PKCS12; never overwrites)
+launchers\android\doctor.bat --release           check it: set, outside the checkout, there, and keytool opens it
+launchers\android\export.bat --release           build\android\GUO-release.apk
+```
+
+Back the keystore and its password up as soon as you make it. Android only
+installs an update signed with the same key, so a lost key means a new app.
+A release APK does not install over a debug one (different keys): uninstall
+the debug build first.
+
+**In GitHub Actions** the `release` workflow builds the release APK on a `v*`
+tag or a manual run, only when the repository has three secrets:
+`ANDROID_RELEASE_KEYSTORE_B64` (the keystore, base64), `ANDROID_RELEASE_KEYSTORE_USER`
+and `ANDROID_RELEASE_KEYSTORE_PASSWORD`. Without them it says so in a notice and
+builds the debug APK as before. With them, the key is written to the runner's
+temp folder for that one step and deleted after it, and the APK is uploaded as
+`GUO-android-arm64-release` (and attached to a tag's draft release).
+
+Proved 2026-10-18 with a throwaway key: `apksigner verify --print-certs`
+reports one signer, the throwaway key's DN, under APK Signature Scheme v2,
+and the export log never holds the password. Not yet installed on a device.
+
 ## The smoke
 
 `smoke.bat` exports a build with `--login-probe-stay`, installs it, clears
