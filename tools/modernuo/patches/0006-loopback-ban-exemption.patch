@@ -1,0 +1,13 @@
+diff --git a/Projects/UOContent/Network/BanExemptions.cs b/Projects/UOContent/Network/BanExemptions.cs
+--- a/Projects/UOContent/Network/BanExemptions.cs
++++ b/Projects/UOContent/Network/BanExemptions.cs
+@@ -53,2 +53,9 @@ public static class BanExemptions
++        // GUO's local readiness checks can leave a silent connection behind. Do not
++        // escalate that into a ban on every local client; explicit bans still win.
++        if (IPAddress.IsLoopback(address))
++        {
++            return true;
++        }
++
+         // Deliberate and unconditional, so it wins and must not spend the earned list's strikes.
+         if (ManualAllowlist.Contains(address))

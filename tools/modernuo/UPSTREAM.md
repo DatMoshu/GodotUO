@@ -37,7 +37,37 @@ is retired (as `0004-multi-tile-enumerator` was).
 | 0004-pad | Controller probe dummies | **ours** | none |
 | 0005-pad | Record controller probe attacks | **ours**, depends on 0004-pad | none |
 | 0005 | System message hook | **ours** | none |
+| 0006 | Keep loopback out of automatic behavioral bans | **ours**, local development probes | none |
 | issue | `MultiData.LoadUOP` and uncompressed entries | **upstream** (issue, no patch) | `upstream/issue-multidata-loaduop-uncompressed.md` |
+
+### 0006: loopback ban exemption (NET-00c, MUO patch)
+
+GUO patch: `patches/0006-loopback-ban-exemption.patch`. A silent local
+connection can contribute `silent-connect` through `BanChannel` to the
+automatic denylist. The IP rate limiter exempts private addresses, but this
+separate path does not. The earned login allowlist also excludes private
+addresses. With the default 15-minute denylist hold, subsequent local clients
+are rejected at accept, before the server list or password check. Restarting
+clears the in-memory hold. A bad password itself is not a behavioral ban reason.
+
+The patch exempts only `IPAddress.IsLoopback` from behavioral contributions,
+before consulting the earned allowlist. Manual bans and unknown reasons still
+reach reporters; LAN and public addresses retain their existing policy.
+It does not clear existing holds or alter passwords. Apply with
+`launchers/shard/fetch.bat`, rebuild with `launchers/shard/build.bat`, and
+restart the development shard in an agreed maintenance window.
+
+`python -m pytest tools/modernuo/test_loopback_bans.py -q -s` compiles the
+actual pinned exemption, ban channel and automatic denylist with runtime
+stand-ins. It first reproduces the unpatched 15-minute loopback hold, then
+applies the patch in a temporary directory and proves local accepts survive
+all four behavioral reasons. IPv4, IPv6, mapped IPv4, manual/unknown reasons,
+LAN/public protection and allowlist strike accounting are covered. No socket
+or live account is used. This proves the mechanism; attributing an incident
+still requires the shard console's detection/filter messages.
+
+**Verdict: ours.** Local readiness checks and development clients share one
+address. Keep this narrow policy separate from public-shard ban policy.
 
 ### 0001: headless owner account
 
