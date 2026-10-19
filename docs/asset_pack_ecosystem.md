@@ -222,8 +222,8 @@ Component fields, all required; any other field refuses the pack:
 | `abi` | integer; must equal `mod.json`'s `abi` |
 | `packets` | exactly `mod.json`'s `packets` array, same order and values |
 | `gumps` | array of gump ids the mod opens or replaces; must be empty for ABI 1, which has no gump call |
-| `key` | the publisher's Ed25519 public key, `ed25519:` and 64 hex digits |
-| `signature` | `ed25519:` and 128 hex digits, over the message below |
+| `key` | the publisher's Ed25519 public key: `ed25519:` and standard base64 of its 32 bytes, as catalogue keys are written |
+| `signature` | `ed25519:` and base64 of the 64-byte signature over the message below |
 
 The declarations sit on the component as well as in `mod.json` so a
 catalogue, the Store window and a reviewer can read what a mod touches
@@ -232,9 +232,10 @@ declarations differ from its `mod.json`, and the client's loader then refuses
 anything the mod registers that `mod.json` did not declare.
 
 A `.dll` payload is allowed only as a `mod` component's `assembly`; one in any
-other pack, or one no component names, refuses the pack. A pack may hold any
-number of `mod` components, each with its own folder; a mod's other files
-(its own dependencies) are declared payloads in that folder.
+other pack, or one no component names, refuses the pack. A pack may hold
+several `mod` components, each in its own folder. A mod is one assembly: this
+version carries no dependency DLLs, so a mod that needs a library compiles it
+in.
 
 **Signature.** The message is UTF-8, each line ending in `\n`:
 

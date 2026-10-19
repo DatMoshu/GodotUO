@@ -270,30 +270,39 @@ namespace GUO.Network.Mods
                 m.Shards.Add(s.GetString().Trim());
             }
 
-            Require(root.TryGetProperty("packets", out JsonElement packets) && packets.ValueKind == JsonValueKind.Array && packets.GetArrayLength() is > 0 and <= 64,
-                $"{m.Id}: packets must declare 1-64 packets");
+            Require(root.TryGetProperty("packets", out JsonElement packets), $"{m.Id}: packets must declare 1-64 packets");
+            m.Packets = ParsePackets(packets, m.Id);
+            return m;
+        }
+
+        /// <summary>A <c>packets</c> array, as in mod.json and on a Store mod component.</summary>
+        internal static List<ModPacket> ParsePackets(JsonElement packets, string modId)
+        {
+            var list = new List<ModPacket>();
+            Require(packets.ValueKind == JsonValueKind.Array && packets.GetArrayLength() is > 0 and <= 64,
+                $"{modId}: packets must declare 1-64 packets");
             foreach (JsonElement e in packets.EnumerateArray())
             {
-                Require(e.ValueKind == JsonValueKind.Object, $"{m.Id}: a packet is not an object");
+                Require(e.ValueKind == JsonValueKind.Object, $"{modId}: a packet is not an object");
                 foreach (JsonProperty p in e.EnumerateObject())
-                    Require(PacketFields.Contains(p.Name), $"{m.Id}: a packet has an unknown field \"{p.Name}\"");
+                    Require(PacketFields.Contains(p.Name), $"{modId}: a packet has an unknown field \"{p.Name}\"");
                 var packet = new ModPacket
                 {
-                    Id = (byte)Number(e, "id", 0xFF, m.Id),
-                    Subcommand = e.TryGetProperty("subcommand", out _) ? (ushort)Number(e, "subcommand", 0xFFFF, m.Id) : null,
+                    Id = (byte)Number(e, "id", 0xFF, modId),
+                    Subcommand = e.TryGetProperty("subcommand", out _) ? (ushort)Number(e, "subcommand", 0xFFFF, modId) : null,
                     Length = e.TryGetProperty("length", out JsonElement len) && len.ValueKind == JsonValueKind.Number && len.TryGetInt16(out short l) ? l : (short)-1,
                     Override = e.TryGetProperty("override", out JsonElement ov) && ov.ValueKind == JsonValueKind.True
                 };
                 if (e.TryGetProperty("override", out ov))
-                    Require(ov.ValueKind is JsonValueKind.True or JsonValueKind.False, $"{m.Id}: override is true or false");
+                    Require(ov.ValueKind is JsonValueKind.True or JsonValueKind.False, $"{modId}: override is true or false");
                 if (e.TryGetProperty("length", out len))
-                    Require(len.ValueKind == JsonValueKind.Number && len.TryGetInt16(out _), $"{m.Id}: length is a number");
-                Require(!m.Packets.Any(p => p.Id == packet.Id && p.Subcommand == packet.Subcommand), $"{m.Id}: packet 0x{packet.Id:X2} is declared twice");
+                    Require(len.ValueKind == JsonValueKind.Number && len.TryGetInt16(out _), $"{modId}: length is a number");
+                Require(!list.Any(p => p.Id == packet.Id && p.Subcommand == packet.Subcommand), $"{modId}: packet 0x{packet.Id:X2} is declared twice");
                 Require(packet.Subcommand is not ushort reserved || packet.Id != 0xBF || !PacketModRegistry.ReservedSubcommands.Contains(reserved),
-                    $"{m.Id}: 0xBF subcommand 0x{packet.Subcommand:X4} is reserved by GUO");
-                m.Packets.Add(packet);
+                    $"{modId}: 0xBF subcommand 0x{packet.Subcommand:X4} is reserved by GUO");
+                list.Add(packet);
             }
-            return m;
+            return list;
         }
 
         private static string Str(JsonElement o, string name)
@@ -334,11 +343,16 @@ namespace GUO.Network.Mods
     {
         public static List<ModLoadResult> LoadAll(string modsFolder, PacketModRegistry registry, Func<ModManifest, IModContext> contextFor)
         {
-            var results = new List<ModLoadResult>();
             if (string.IsNullOrEmpty(modsFolder) || !Directory.Exists(modsFolder))
-                return results;
+                return new List<ModLoadResult>();
+            return LoadFolders(Directory.GetDirectories(modsFolder).OrderBy(f => f, StringComparer.Ordinal), registry, contextFor);
+        }
 
-            foreach (string folder in Directory.GetDirectories(modsFolder).OrderBy(f => f, StringComparer.Ordinal))
+        /// <summary>Loads each folder that holds a mod.json, in the order given.</summary>
+        public static List<ModLoadResult> LoadFolders(IEnumerable<string> folders, PacketModRegistry registry, Func<ModManifest, IModContext> contextFor)
+        {
+            var results = new List<ModLoadResult>();
+            foreach (string folder in folders)
             {
                 string manifestPath = Path.Combine(folder, "mod.json");
                 if (!File.Exists(manifestPath))
