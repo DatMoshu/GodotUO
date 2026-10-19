@@ -44,6 +44,8 @@ echo "[smoke] PostFX engine regressions (synthetic)"
 
 echo "[smoke] touch: swipe and two-finger pan scroll lists (synthetic; no shard)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" -- --touch-gesture-probe --pregame-classic --silent || FAIL=1
+echo "[smoke] keyboard: key-ups on focus loss, AltGr text (synthetic; no shard)"
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" -- --keyboard-probe --pregame-classic --silent || FAIL=1
 echo "[smoke] controller regressions and Set controls (synthetic pad; no shard)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" -- --pad-regression-probe --pregame-classic --silent || FAIL=1
 

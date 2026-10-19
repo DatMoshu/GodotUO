@@ -346,6 +346,10 @@ public partial class Main : Node
                 {
                     TouchGesturesThenQuit();
                 }
+                else if (_options.KeyboardProbe)
+                {
+                    CallDeferred(nameof(KeyboardProbeThenQuit));
+                }
                 else if (_options.PadWheelsProbe)
                 {
                     PadWheelsProbeThenQuit();
@@ -702,6 +706,7 @@ public partial class Main : Node
         || _options.PadWheelsProbe
         || _options.PadRegressionProbe
         || _options.TouchGestureProbe
+        || _options.KeyboardProbe
         || _options.OneScreenProbe
         || _options.GlyphShots
         || _options.AssetProbe.Length > 0
@@ -826,6 +831,8 @@ public partial class Main : Node
 
     /// <summary>Shard-free touch scrolling at the login screen; see TouchGestureProbe.</summary>
     private async void TouchGesturesThenQuit() => Quit(await TouchGestureProbe.Run(this) ? 0 : 1);
+    /// <summary>Shard-free keyboard checks: key-ups on focus loss, AltGr text; see KeyboardProbe.</summary>
+    private void KeyboardProbeThenQuit() => Quit(KeyboardProbe.Run() ? 0 : 1);
 
     /// <summary>The menu wheel, the interact radar, the new buttons and "Set controls"; see PadWheelsProbe.</summary>
     private async void PadWheelsProbeThenQuit()
@@ -1516,6 +1523,7 @@ public partial class Main : Node
                 || PadWheelsProbe
                 || PadRegressionProbe
                 || TouchGestureProbe
+                || KeyboardProbe
                 || OneScreenProbe
                 || GlyphShots
                 || EffectsProbe > 0
@@ -1675,6 +1683,8 @@ public partial class Main : Node
 
         /// <summary>--touch-gesture-probe: touch scrolling without a shard; see TouchGestureProbe.</summary>
         public bool TouchGestureProbe { get; private set; }
+        /// <summary>--keyboard-probe: the keyboard layer without a shard; see KeyboardProbe.</summary>
+        public bool KeyboardProbe { get; private set; }
 
         /// <summary>--one-screen-probe: the one-screen drawer in the world; see OneScreenProbe.</summary>
         public bool OneScreenProbe { get; private set; }
@@ -1865,6 +1875,17 @@ public partial class Main : Node
                 MergedLandMode(true, true, true);
             }
 
+            // PERF-REG, Windows: the land array and merged cover (B4 fix 2c) by
+            // default, pending the owner's decision (docs/perf/2026-10-19_cover_regression.md).
+            // The riverbank cover fix doubled the covering land; merged cover draws
+            // it as runs at 0 strict pixels of parity. --merged-land=off and
+            // --merged-cover=off restore upstream's draw.
+            if (OperatingSystem.IsWindows())
+            {
+                MergedLandMode(true, true, true);
+                GUO.Renderer.UltimaBatcher2D.MergedCover = true;
+            }
+
             var list = new List<string>(args);
             for (int i = 0; i < list.Count; i++)
             {
@@ -1952,6 +1973,10 @@ public partial class Main : Node
                         o.Touch = true;
                         o.ScratchProfile = true;
                         break;
+                    case "--keyboard-probe":
+                        o.KeyboardProbe = true;
+                        o.ScratchProfile = true;
+                        break;
                     case "--pad-wheels-probe":
                         o.PadWheelsProbe = true;
                         o.ScratchProfile = true;
@@ -1977,6 +2002,9 @@ public partial class Main : Node
                         GUO.Renderer.UltimaBatcher2D.MergedCover = true;
                         GUO.Host.PerfProbe.ParityToggle = on => GUO.Renderer.UltimaBatcher2D.MergedCover = on;
                         GUO.Host.PerfProbe.ParityState = () => GUO.Renderer.UltimaBatcher2D.MergedCover;
+                        break;
+                    case "--merged-cover=off":
+                        GUO.Renderer.UltimaBatcher2D.MergedCover = false;
                         break;
                     case "--batched-world":
                         GUO.Renderer.UltimaBatcher2D.BatchedWorld = true;
