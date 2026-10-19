@@ -88,6 +88,7 @@ namespace GUO.Renderer.Lights
         private sbyte[] _groundZ = Array.Empty<sbyte>();
         private short[] _blockTop = Array.Empty<short>();
         private bool[] _roof = Array.Empty<bool>();
+        private short[] _roofZ = Array.Empty<short>();
         private float[] _field = Array.Empty<float>();
         private short[] _lightTop = Array.Empty<short>();
         private float[] _scratchVis = Array.Empty<float>();
@@ -125,6 +126,7 @@ namespace GUO.Renderer.Lights
                 _groundZ = new sbyte[cells];
                 _blockTop = new short[cells];
                 _roof = new bool[cells];
+                _roofZ = new short[cells];
                 _field = new float[cells * 3];
                 _lightTop = new short[cells];
             }
@@ -142,6 +144,7 @@ namespace GUO.Renderer.Lights
             Array.Fill(_blockTop, NoBlock);
             Array.Fill(_lightTop, NoBlock);
             Array.Fill(_roof, false);
+            Array.Fill(_roofZ, NoBlock);
             Array.Clear(_groundZ);
         }
 
@@ -165,11 +168,32 @@ namespace GUO.Renderer.Lights
             if (top > _blockTop[i]) _blockTop[i] = top;
         }
 
-        /// <summary>A roof over a tile.</summary>
-        public void SetRoof(int x, int y)
+        /// <summary>A roof over a tile: the roof dim, and cover at its base Z.</summary>
+        public void SetRoof(int x, int y, int z = 0)
         {
-            if (Contains(x, y)) _roof[Index(x, y)] = true;
+            if (!Contains(x, y)) return;
+            _roof[Index(x, y)] = true;
+            SetCover(x, y, z);
         }
+
+        /// <summary>
+        /// Something that covers the tile from above at base Z: a roof piece, or
+        /// a floor of an upper storey (the lowest cover wins). What stands below
+        /// it is hidden by it in the world draw.
+        /// </summary>
+        public void SetCover(int x, int y, int z)
+        {
+            if (!Contains(x, y)) return;
+            int i = Index(x, y);
+            short cz = (short)Math.Clamp(z, short.MinValue + 1, short.MaxValue);
+            if (_roofZ[i] == NoBlock || cz < _roofZ[i]) _roofZ[i] = cz;
+        }
+
+        /// <summary>The base Z of the lowest cover over a tile, or <see cref="NoBlock"/>.</summary>
+        public short CoverZ(int x, int y) => Contains(x, y) ? _roofZ[Index(x, y)] : NoBlock;
+
+        /// <summary>A floor piece this far above the ground is an upper storey (cover), not the floor.</summary>
+        public const int UpperFloorZ = 10;
 
         public bool IsRoofed(int x, int y) => Contains(x, y) && _roof[Index(x, y)];
         public short BlockTop(int x, int y) => Contains(x, y) ? _blockTop[Index(x, y)] : NoBlock;

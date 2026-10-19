@@ -27,7 +27,7 @@ namespace GUO.Game.Scenes
         private RealtimeLightField.Source[] _rtSources;
         private int _rtSourceCount;
         private readonly List<(float key, GameObject obj)> _rtSprites = new();
-        private long _rtLogAt, _rtDebugAt;
+        private long _rtLogAt;
         private int _rtRoofs, _rtAbove;
 
         /// <summary>Margin of tiles around the visible chunks, so a light just off screen still reaches in.</summary>
@@ -93,13 +93,6 @@ namespace GUO.Game.Scenes
         /// <summary>After the world draw: consume this frame's offers and draw the field.</summary>
         private void DrawRealtimeLights(RenderTargets renderTargets, ref Transform2D matrix)
         {
-            // DEBUG (temporary): the roof rule's inputs in both modes, editor console.
-            if (Engine.IsEditorHint() && Time.Ticks - _rtDebugAt > 5000)
-            {
-                _rtDebugAt = Time.Ticks;
-                GD.Print($"[rt-debug] on={UseRealtimeLights} maxZ={_maxZ} maxGroundZ={_maxGroundZ} noRoofs={_noDrawRoofs} player={_world.Player?.X},{_world.Player?.Y},{_world.Player?.Z} lights={_lightCount} chunks={_visibleChunks.Count}");
-            }
-
             if (!UseRealtimeLights)
             {
                 return;
@@ -234,7 +227,12 @@ namespace GUO.Game.Scenes
                                 ref StaticTiles data = ref statics[graphic];
                                 if (data.IsRoof && obj.Z > groundZ)
                                 {
-                                    _rtField.SetRoof(tx, ty);
+                                    _rtField.SetRoof(tx, ty, obj.Z);
+                                }
+                                else if (data.IsSurface && data.Height < 4 && obj.Z >= groundZ + RealtimeLightField.UpperFloorZ)
+                                {
+                                    // An upper storey's floor (or a flat rooftop) covers what is under it.
+                                    _rtField.SetCover(tx, ty, obj.Z);
                                 }
                                 if (RealtimeLightField.Blocks(data.IsWall, data.IsImpassable, data.IsDoor, data.IsWindow, data.Height))
                                 {
@@ -294,6 +292,15 @@ namespace GUO.Game.Scenes
                             // upper storey) is drawn, in the roof ambient.
                             bool flat = data.Height < 4 && !data.IsWall && !data.IsRoof && !data.IsFoliage;
                             if (flat && !_rtField.IsAboveLight(obj.X, obj.Y, obj.Z)) continue;
+
+                            // Under a drawn roof or an upper floor the world shows
+                            // the cover, not the furniture; no light sprite for what
+                            // it covers (walls keep theirs: their outer face shows).
+                            if (!_noDrawRoofs && !data.IsWall && !data.IsRoof)
+                            {
+                                short coverZ = _rtField.CoverZ(obj.X, obj.Y);
+                                if (coverZ != RealtimeLightField.NoBlock && obj.Z < coverZ) continue;
+                            }
 
                             // Only what the target can show.
                             int sy = ((obj.X + obj.Y) * 22 - (obj.Z << 2)) - _offset.Y - 22;
