@@ -14,6 +14,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Exercises the strict gate with synthetic files only. Hosted runners do
+  # not have a UO install or a shard; real performance is measured locally.
+  perf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Performance gate contracts (synthetic reports)
+        run: |
+          python -m pip install --quiet pytest
+          python -m pytest -q tools/perf_probe
+      - name: Explain the performance signals
+        if: always()
+        run: |
+          echo '## Performance gate contracts' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Synthetic reports verify: draw calls over +5% fail; any batcher-item growth fails; frame times are advisory. This job does not measure FPS.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Run launchers/dev/perf_gate locally for real measurements. Baselines stay per machine under UO_BUILD_DIR and are never committed.' >> "$GITHUB_STEP_SUMMARY"
+
   # Cheap checks that need no toolchain: nothing proprietary and nothing
   # machine-specific may ever be committed.
   guard:
