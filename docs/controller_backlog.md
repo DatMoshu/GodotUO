@@ -30,7 +30,7 @@ Status: `todo` | `doing` | `done` | `blocked`
 |---|---|---|---|
 | C1 | Rebind one job without redoing the set; cancel; reset to defaults | Options opens a list; A on one row rebinds it alone; B tap keeps; B leaves unsaved; Reset to defaults + Save restores all (`--pad-regression-probe`) | done |
 | C2 | Mounting with the pad | Radar A on a horse out of reach walks up and mounts; radar lists yourself while mounted, A dismounts (`--pad-wheels-probe`) | done |
-| C3 | Target lock on monsters | War mode: radar A attacks the choice and makes it last target; X afterwards attacks the same one (`--pad-wheels-probe`) | done |
+| C3 | Target lock on monsters | War mode: radar A attacks the choice and makes it last target; X afterwards attacks the same one (`--pad-wheels-probe`) | doing — code in; shard proof pending (the dev shard lacks patch 0004, the pad dummies) |
 
 ## P1 — solo essentials
 
