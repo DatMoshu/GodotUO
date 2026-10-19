@@ -178,6 +178,11 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   says what it needs. ADR-0008.
 
 ### Playing
+- **Realtime lights** (Options > Video, off by default): torches and lamps
+  light the tiles around them and walls block them, so a lit room stays lit
+  and the one next door stays dark; day and night follow the shard's light
+  level (the Light level setting still overrides it), with interiors dimmer
+  by day. Off, the world lights exactly as before. ADR-0039.
 - Water can move: **Options > Video > Water > Realtime (UO colours)** draws
   the sea, rivers and lakes with a slow swell, light on the crests and surf
   at the shore, in the tiles' own colours, and ripples where something

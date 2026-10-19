@@ -2794,6 +2794,48 @@ thread with distance attenuation (full to 2 tiles, silent past 20).
 `VoiceManager.Status` reports the pipeline state for probes;
 `--voice`/`--say`/`--voice-fake`/`--hear-secs` drive it in walk-to runs.
 
+## 45. Realtime lights (`Profile.RealtimeLights`, ADR-0039)
+
+An L1 client option, default off, in Options > Video on both interfaces.
+Profile field `RealtimeLights` (bool). No other file, pack or setting; the
+existing **Light level** override (`UseCustomLightLevel`, `LightLevel`,
+`LightLevelType`) is the override slider for the shard's light level.
+
+On, each frame the scene builds a tile grid over the visible chunks plus an
+8-tile margin (side capped at 192): per cell the ground Z (`Land.AverageZ`),
+the top Z of the tallest light blocker (tiledata `Wall`, or `Impassable` with
+`Height >= 8`; never `Door` or `Window`) and whether a `Roof` static covers it.
+Ambient is `RealtimeLightField.AmbientFor(IsometricLight.IsometricLevel)`:
+white at level 0, warm through the middle, blue-grey at night. The ramp's
+luminance is normalized to the classic grey (weights 0.2126, 0.7152, 0.0722),
+so equal night levels retain equal ambient brightness. Roofed cells take 55 % of daylight ambient, scaling to
+100 % at night. Each accepted light offer (`AddLight`) adds a source at its
+tile with radius `round(light.mul width / 44)` tiles (2..8) and the
+classic light tint (the light-shader palette, or the hue's table entry 16;
+an untinted light is warm RGB (1, 0.72, 0.38)), at an energy of 2.2. A source's reach
+is a `(2(r+1)+1)^2` visibility map: hard line-of-light through the blocker grid (blockers
+above source Z + 3 block; neither end blocks), a 3x3 box blur, times
+`Falloff(d, r)` (smoothstep), times 0.35 where the ground is more than
+20 Z from the source. Reaches are cached by (x, y, z, r) while the blocker
+grid's FNV-1a hash is unchanged. Distance falloff is evaluated each frame at
+the sprite's interpolated position: tile offsets are `(Offset.X + Offset.Y)/44`
+and `(Offset.Y - Offset.X)/44`. Moving pools therefore advance between tile
+completions without recomputing cached visibility. The sum has no ceiling: a cell brighter
+than white is scaled by its brightest channel when read, keeping its hue.
+
+The field is drawn into a GUO-owned target the size of the classic light
+target: every visible land tile as its iso quad (stretched corners from
+`YOffsets`) with the field's corner colours, then every visible standing
+static (`Height >= 4`, wall, roof or foliage; not above `_maxZ`, not a hidden
+roof) as its own art sprite in its cell's colour, masked by the sprite's
+alpha. `RenderTargets.LightOverride` carries the texture; `RenderTargets.Draw`
+blends it with the classic darkness blend in place of the light target. The
+option off never builds the target.
+
+Log line every 5 s at trace level: `[realtime-lights] grid=WxH lights=N
+computed=N cached=N quads=N sprites=N`. Scenario `client.realtime.lights`
+(`--realtime-lights-probe`, `RealtimeLightsProbe.tscn`) checks the contract
+headless and prints `[Realtime lights] PASS`.
 ## 44. Water render modes (`Profile.WaterStyle`, `Render/Water`, ADR-0037)
 
 `Profile.WaterStyle` is a string, default `"classic"`, saved in the profile

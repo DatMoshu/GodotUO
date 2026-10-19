@@ -36,6 +36,8 @@ echo "[smoke] optional audio pack contracts (synthetic; no shard or AI service)"
 echo "[smoke] optional HD pack contracts (synthetic)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Store/StoreHdProbe.tscn || FAIL=1
 
+echo "[smoke] Realtime lights contract (synthetic; ADR-0039)"
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/Lights/RealtimeLightsProbe.tscn || FAIL=1
 echo "[smoke] water render modes contract (synthetic; ADR-0037)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/Water/WaterProbe.tscn || FAIL=1
 echo "[smoke] perf lab report: fields kept, privacy refusal, size (synthetic; tools/perf_lab)"
