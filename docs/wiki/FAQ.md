@@ -54,7 +54,8 @@ rejects a machine path anywhere else.
 
 **Can I commit a screenshot?**
 Not one rendered from game data. Captures of the client are proprietary art;
-they stay under `build\` (gitignored). Describe what the picture showed in
+they stay out of the repository (under `build\`, or wherever `UO_BUILD_DIR`
+points). Describe what the picture showed in
 the commit message and keep the file locally.
 
 **The client connects to nothing.**
@@ -72,9 +73,27 @@ pass is behind `--allow-foreground`.
 The marker on every unavoidable change to a ported file. It is what gets
 reconciled on an upstream merge. See [Parity and Drift](Parity-and-Drift.md).
 
+**Why are NPCs silent? Did GUO read speech aloud before?**
+NPC speech no longer uses text-to-speech. An NPC speaks only when an
+installed voice pack has a recording for it, with Options > Sound >
+**Regional audio and recorded NPC voices** on. See [Content Packs](Content-Packs.md).
+
+**Where did the extra screen effects go?**
+They are an optional Store pack now. Installing it does not switch a look
+on, and Classic switches effects off. See [Screen Effects](Screen-Effects.md).
+
+**What is Enhanced HD?**
+An Options entry, off by default, that draws world tiles from an installed
+HD art pack. With it off the game draws exactly as before.
+
+**Where does a new feature belong?**
+In one of five layers, from the port itself to Labs. See
+[Feature Layers](Feature-Layers.md).
+
 **Which phones work?**
-One Android 13 handheld has been run, including its second screen. Anything
-else is written, not verified. See [Android Build](Android-Build.md) and
+One Android 13 handheld has been run, including its second screen, and the
+smoke runs on GUO's own emulator (`launchers\android\smoke.bat --avd guo_phone`).
+Anything else is written, not verified. See [Android Build](Android-Build.md) and
 [Mobile UI](Mobile-UI.md).
 
 **Does an exported build load Razor and the other assistants?**

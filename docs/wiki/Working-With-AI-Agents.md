@@ -31,6 +31,7 @@ copy serves every tool. Some you'll use most:
 | `uo-data` | Authors new art, gumps or animations into a staged data set and proves them in game. |
 | `uo-multi`, `uo-decorate` | Build and furnish new multis ([Building Multis](Building-Multis.md)). |
 | `editor-smoke` | Proves the editor add-on panel by panel. |
+| `uo-world-authoring`, `localize` | World authoring flows, and UI and shard translations. |
 
 The rest come from Claude Code Game Studios (MIT): design, QA, release and
 production workflows. `launchers\dev\agent_skills.bat --check` validates every
@@ -52,10 +53,17 @@ area. The port-specific roles:
 | `mobile-web-engineer` | Android, web, touch, and their CI |
 | `uo-editor-engineer` | The editor add-on and the world tools |
 | `uo-multi-architect` | Authoring new multis |
+| `localization-lead` | UI and shard translations, new languages and onboarding |
 
 ## Rules agents work under
 
 The same rules as people ([Contributing](Contributing.md)), plus:
+- **Pick the feature layer first** ([Feature Layers](Feature-Layers.md)), and
+  fill in the same review template as people: layer, toggle, parity proof,
+  scenario, doctor and docs.
+- **AI is optional in the editor.** Every AI feature is behind Editor Settings
+  > GUO > AI > Enabled. With it off, the AI and automation surfaces are hidden
+  and their work stops.
 - **Never edit `sources/`.** The upstream reference is read-only.
 - **Measure, don't estimate.** Progress claims come from the audit.
   "Ported" isn't "working": say whether there's a smoke test or a screenshot.
@@ -65,9 +73,19 @@ The same rules as people ([Contributing](Contributing.md)), plus:
   person uses the machine.
 - **A person reviews and merges.** Agents work on branches; nothing they make
   goes to `main` without passing the same checks as any change.
+- **Scripted proofs** run through `tools/scenario_run`
+  (`launchers\dev\scenario_run.bat`); the scenario files are in
+  `tools/scenarios/`.
 
 ## MCP
 
 `tools/guoasset` is an MCP server that renders UO art with upstream's own
 loaders, as the parity reference. Any MCP-capable agent can use it; see its
 README.
+
+`tools/guo_mcp` drives a running client (`launchers\dev\mcp.bat`).
+`tools/editor_mcp` drives the editor. It is off unless the editor is started
+with a port and token in its environment. Editor Settings > GUO > MCP Access
+has one switch per group of tools; anything that changes your server starts
+off, and each call is checked against your choices. See
+`tools\editor_mcp\README.md`.
