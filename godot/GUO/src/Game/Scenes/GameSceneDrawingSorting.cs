@@ -709,6 +709,9 @@ namespace GUO.Game.Scenes
                     hueY = ShaderHueTranslator.SHADER_NONE;
             }
 
+            // PORT DEVIATION (GUO): keep the water bit on Wet land under a water style (ADR-0037).
+            hueY += GUO.Renderer.Water.WaterRender.Flag(obj is Land wetLand && wetLand.TileData.IsWet);
+
             layer.SetHue(obj.MeshSpriteIndex, hueX, hueY);
         }
 

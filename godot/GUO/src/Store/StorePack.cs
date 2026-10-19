@@ -285,6 +285,10 @@ internal static class StorePack
             Require(HashFile(target) == expected, "Payload hash mismatch: " + name);
             if (IsScript(name)) ScriptText(File.ReadAllBytes(target));
         }
+        // Water styles are data, so they are checked whole at install (pack.py verify does the same).
+        if (m.Schema == "guo/store-pack@2")
+            foreach (var c in m.Components.Where(c => c.Type == "water"))
+                StoreWater.Parse(File.ReadAllBytes(Path.Combine(staging, c.Entry.Replace('/', Path.DirectorySeparatorChar))));
         File.WriteAllBytes(Path.Combine(staging, "manifest.json"), raw);
         return m;
     }

@@ -62,6 +62,23 @@ internal sealed class WorldHost : IDisposable
     public bool ShowStatics { get => _showStatics; set { _showStatics = value; _layersTouched = true; } }
     public bool ShowMultis { get => _showMultis; set { _showMultis = value; _layersTouched = true; } }
 
+    /// <summary>
+    /// The water style the view draws (ADR-0037): the editor profile's
+    /// WaterStyle, "classic" or a style id. The renderer rebuilds the meshes
+    /// on its next frame.
+    /// </summary>
+    public string WaterStyle
+    {
+        get => ProfileManager.CurrentProfile?.WaterStyle ?? GUO.Renderer.Water.WaterRender.Classic;
+        set
+        {
+            if (ProfileManager.CurrentProfile != null)
+            {
+                ProfileManager.CurrentProfile.WaterStyle = value;
+            }
+        }
+    }
+
     public bool ShowRoofs
     {
         get => ProfileManager.CurrentProfile?.DrawRoofs ?? true;

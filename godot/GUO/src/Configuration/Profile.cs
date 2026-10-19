@@ -401,6 +401,11 @@ namespace GUO.Configuration
         public bool EnhancedHD { get; set; } = false;
         public HdFilterMode HdFilter { get; set; } = HdFilterMode.Auto;
 
+        // PORT DEVIATION (GUO): water render style (ADR-0037). "classic"
+        // draws the tiles as upstream does; any other value names a water
+        // style (Renderer.Water.WaterRender). Default classic.
+        public string WaterStyle { get; set; } = "classic";
+
         public bool HideChatGradient { get; set; } = false;
 
         public bool StandardSkillsGump { get; set; } = true;

@@ -5,6 +5,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 
 ## Unreleased
 
+### Water
+- The UO+ water pack keeps the native water art with a gentle shimmer and
+  shore lap. All water styles follow a continuous coast contour to avoid
+  repeated tile-edge surf bars; high cliffs no longer produce surf.
 ### Performance
 - Windows draws the land as one array and covering land in runs by default
   (proposed; the owner decides). At 2560x1440 and zoom 2.5 the Britain bank
@@ -174,6 +178,16 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   says what it needs. ADR-0008.
 
 ### Playing
+- Water can move: **Options > Video > Water > Realtime (UO colours)** draws
+  the sea, rivers and lakes with a slow swell, light on the crests and surf
+  at the shore, in the tiles' own colours, and ripples where something
+  wades, swims, sails or splashes into it. Off by default; Classic tiles
+  draws water as before. The editor's UO World tab has it under
+  **Layers > Realtime water**.
+- Three more water styles as Store packs: pixel art, cel shaded and
+  realistic. Install one, select its deployment, restart, and pick it under
+  **Options > Video > Water**. A pack style is numbers for a look built into
+  GUO, never code. ADR-0037.
 - Touch: a long press on someone in the world opens their context menu, a
   swipe scrolls any list or text with a scroll bar (books, quest pages), and
   a two-finger pan over a window scrolls it like the mouse wheel.

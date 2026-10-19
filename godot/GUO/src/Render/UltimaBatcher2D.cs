@@ -353,6 +353,17 @@ namespace GUO.Renderer
         /// Setting only the plain one is how one effect sprite ends up unhued
         /// while everything beside it looks right.
         /// </summary>
+        // PORT DEVIATION (GUO): water render modes (ADR-0037). The water
+        // uniforms are kept so a blend material made later gets them too.
+        private readonly Dictionary<string, Variant> _waterUniforms = new Dictionary<string, Variant>();
+
+        /// <summary>Sets one water uniform (uo_water.gdshaderinc) on every world material.</summary>
+        public void SetWaterUniform(string name, Variant value)
+        {
+            _waterUniforms[name] = value;
+            SetOnAllMaterials(name, value);
+        }
+
         private void SetOnAllMaterials(string name, Variant value)
         {
             _material.SetShaderParameter(name, value);
@@ -1058,6 +1069,12 @@ void fragment() {
             // a blend material draws the same sprites, so it needs them too.
             material.SetShaderParameter("hue_texture", _material.GetShaderParameter("hue_texture"));
             material.SetShaderParameter("light_texture", _material.GetShaderParameter("light_texture"));
+
+            // PORT DEVIATION (GUO): the water uniforms are global state too (ADR-0037).
+            foreach (KeyValuePair<string, Variant> w in _waterUniforms)
+            {
+                material.SetShaderParameter(w.Key, w.Value);
+            }
 
             _blendMaterials[key] = material;
 

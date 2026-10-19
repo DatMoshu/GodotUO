@@ -1,0 +1,289 @@
+{
+  "id": "client.render.water",
+  "title": "Realtime water: same draw list as ClassicUO, animated water and ripples at the docks and the bay",
+  "surface": "client",
+  "requires": {
+    "shard": "dev",
+    "account": "$account",
+    "build": "debug"
+  },
+  "timeouts": {
+    "step_s": 60,
+    "run_s": 600
+  },
+  "steps": [
+    {
+      "id": "launch",
+      "do": {
+        "kind": "launch",
+        "args": [
+          "--scratch-profile",
+          "--water-style",
+          "uo"
+        ],
+        "settings": {
+          "autologin": true
+        }
+      },
+      "say": "Start GUO with the realtime water style for this session only.",
+      "timeout_s": 240,
+      "expect": {
+        "scene": "LoginScene",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "login_screen",
+      "do": {
+        "kind": "wait",
+        "seconds": 2
+      },
+      "say": "The login screen is up.",
+      "shot": true
+    },
+    {
+      "id": "type_account",
+      "do": {
+        "kind": "ui.fill",
+        "control": {
+          "type": "StbTextBox"
+        },
+        "text": "$account"
+      },
+      "say": "Type the account name."
+    },
+    {
+      "id": "type_password",
+      "do": {
+        "kind": "ui.fill",
+        "control": {
+          "type": "PasswordStbTextBox"
+        },
+        "text": "$password"
+      },
+      "say": "Type the password."
+    },
+    {
+      "id": "log_in",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 2
+        }
+      },
+      "say": "Press Login.",
+      "expect": {
+        "scene": "GameScene",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "in_world",
+      "do": {
+        "kind": "wait",
+        "seconds": 4
+      },
+      "say": "We are in the world.",
+      "shot": true,
+      "expect": {
+        "ui.exists": "WorldViewportGump"
+      }
+    },
+    {
+      "id": "go_docks",
+      "do": {
+        "kind": "chat",
+        "text": "[go 1499 1761 -3"
+      },
+      "say": "Say a GM command to go to the Britain docks.",
+      "expect": {
+        "world.position": {
+          "x": 1499,
+          "y": 1761,
+          "map": 0,
+          "tolerance": 3
+        },
+        "within_s": 20
+      }
+    },
+    {
+      "id": "settle_docks",
+      "do": {
+        "kind": "wait",
+        "seconds": 8
+      },
+      "say": "Wait for the map to settle and the water mask to build."
+    },
+    {
+      "id": "dump_docks",
+      "do": {
+        "kind": "renderdump",
+        "name": "water_docks"
+      },
+      "say": "Dump what the client drew at the Britain docks."
+    },
+    {
+      "id": "diff_docks",
+      "do": {
+        "kind": "render_diff",
+        "name": "water_docks"
+      },
+      "say": "Compare with ClassicUO at the same spot: the water style changes colours, never what is drawn or in which order.",
+      "expect": {
+        "render_diff": {
+          "max_drawn_diff": 0
+        }
+      }
+    },
+    {
+      "id": "shot_docks",
+      "do": {
+        "kind": "wait",
+        "seconds": 1
+      },
+      "say": "Realtime water at the Britain docks.",
+      "shot": true
+    },
+    {
+      "id": "shot_docks_later",
+      "do": {
+        "kind": "wait",
+        "seconds": 2
+      },
+      "say": "Two seconds on: the swell has moved.",
+      "shot": true
+    },
+    {
+      "id": "go_bay",
+      "do": {
+        "kind": "chat",
+        "text": "[go 2087 2861 -3"
+      },
+      "say": "Say a GM command to go to the Trinsic bay.",
+      "expect": {
+        "world.position": {
+          "x": 2087,
+          "y": 2861,
+          "map": 0,
+          "tolerance": 3
+        },
+        "within_s": 20
+      }
+    },
+    {
+      "id": "settle_bay",
+      "do": {
+        "kind": "wait",
+        "seconds": 8
+      },
+      "say": "Wait for the map to settle and the water mask to build."
+    },
+    {
+      "id": "dump_bay",
+      "do": {
+        "kind": "renderdump",
+        "name": "water_bay"
+      },
+      "say": "Dump what the client drew at the Trinsic bay."
+    },
+    {
+      "id": "diff_bay",
+      "do": {
+        "kind": "render_diff",
+        "name": "water_bay"
+      },
+      "say": "Compare with ClassicUO at the same spot: the water style changes colours, never what is drawn or in which order.",
+      "expect": {
+        "render_diff": {
+          "max_drawn_diff": 0
+        }
+      }
+    },
+    {
+      "id": "shot_bay",
+      "do": {
+        "kind": "wait",
+        "seconds": 1
+      },
+      "say": "Realtime water at the Trinsic bay.",
+      "shot": true
+    },
+    {
+      "id": "shot_bay_later",
+      "do": {
+        "kind": "wait",
+        "seconds": 2
+      },
+      "say": "Two seconds on: the swell has moved.",
+      "shot": true
+    },
+    {
+      "id": "go_swim",
+      "do": {
+        "kind": "chat",
+        "text": "[go 1504 1762 -5"
+      },
+      "say": "Stand in the water beside the Britain docks pier.",
+      "expect": {
+        "world.position": {
+          "x": 1504,
+          "y": 1762,
+          "map": 0,
+          "tolerance": 1
+        },
+        "within_s": 20
+      }
+    },
+    {
+      "id": "lap",
+      "do": {
+        "kind": "wait",
+        "seconds": 3
+      },
+      "say": "Standing in the water: small rings lap around the player.",
+      "shot": true
+    },
+    {
+      "id": "swim_1",
+      "do": {
+        "kind": "ui.key",
+        "key": "Down"
+      },
+      "say": "Wade a step."
+    },
+    {
+      "id": "swim_2",
+      "do": {
+        "kind": "ui.key",
+        "key": "Down"
+      },
+      "say": "And another."
+    },
+    {
+      "id": "swim_3",
+      "do": {
+        "kind": "ui.key",
+        "key": "Down"
+      },
+      "say": "And another."
+    },
+    {
+      "id": "wake",
+      "do": {
+        "kind": "wait",
+        "seconds": 1
+      },
+      "say": "The water behind the player is still rippling.",
+      "shot": true
+    },
+    {
+      "id": "summary",
+      "do": {
+        "kind": "note",
+        "text": "Realtime water and ripples (ADR-0037) at the Britain docks and the Trinsic bay. Classic is the default and draws the tiles as before; its pixel parity with main and the perf_probe britain-docks and trinsic-bay timings are separate evidence."
+      }
+    }
+  ]
+}

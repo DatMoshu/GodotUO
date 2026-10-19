@@ -70,6 +70,9 @@ uniform vec2 circle_of_transparency_center = vec2(0.0, 0.0);
 
 varying vec4 packed_hue;
 
+// PORT DEVIATION (GUO): water render modes, ADR-0037. Inert under Classic.
+#include "uo_water.gdshaderinc"
+
 // Upstream's IN.Normal: the vertex normal, interpolated, not yet normalised.
 varying vec3 land_normal;
 
@@ -130,7 +133,9 @@ vec4 uo_shade(vec4 color, vec2 screen_uv, vec2 screen_pixel_size) {
 	// signals by adding 1.0 to the alpha component. Alpha has to stay inside
 	// 0..1 to survive the channel, so the flag moved to the spare bit.
 	bool use_trans = (raw_mode & 0x80) != 0;
-	int mode = raw_mode & 0x7F;
+	// PORT DEVIATION (GUO): bit 6 marks a Wet tile under a water style.
+	bool water = (raw_mode & WATER_BIT) != 0;
+	int mode = raw_mode & 0x3F;
 
 	if (alpha == 0.0) {
 		discard;
@@ -168,6 +173,10 @@ vec4 uo_shade(vec4 color, vec2 screen_uv, vec2 screen_pixel_size) {
 		color.rgb = get_colored_light(hue - 1.0, color.r);
 	} else if (mode == EFFECT_HUED) {
 		color.rgb = get_rgb(color.g, hue);
+	}
+
+	if (water && water_model > 0) {
+		color.rgb = water_shade(color.rgb, screen_uv * (1.0 / screen_pixel_size));
 	}
 
 	if (use_trans && circle_of_transparency_radius > 0.0) {

@@ -2022,6 +2022,10 @@ public partial class Main : Node
                         GUO.Host.PerfProbe.ParityToggle = on => GUO.Renderer.UltimaBatcher2D.MergedCover = on;
                         GUO.Host.PerfProbe.ParityState = () => GUO.Renderer.UltimaBatcher2D.MergedCover;
                         break;
+                    case "--water-style":
+                        // ADR-0037: this session's water style, not saved to the profile.
+                        GUO.Renderer.Water.WaterRender.Override = Next();
+                        break;
                     case "--merged-cover=off":
                         GUO.Renderer.UltimaBatcher2D.MergedCover = false;
                         break;

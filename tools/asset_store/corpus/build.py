@@ -127,9 +127,12 @@ def build(out: Path) -> dict:
     cases = json.loads((HERE / "cases.json").read_text(encoding="utf-8"))["cases"]
     try:
         from .media import media_cases
+        from .water import water_cases
     except ImportError:
         from media import media_cases
+        from water import water_cases
     cases.extend(media_cases())
+    cases.extend(water_cases())
     out.mkdir(parents=True, exist_ok=True)
     for f in out.iterdir():
         if f.suffix in {".json", ".zip"}:

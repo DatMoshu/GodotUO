@@ -161,6 +161,10 @@ internal sealed partial class ModernOptions : ModernGump
         Choice("Video", "HD filtering", new[] { "Auto", "Point", "Point mipmaps", "Smooth" },
             p => (int)p.HdFilter, (p, v) => p.HdFilter = (HdFilterMode)Math.Clamp(v, 0, 3));
 
+        // ADR-0037: the water style; the renderer rebuilds the meshes when it sees the change.
+        Choice("Video", "Water", GUO.Renderer.Water.WaterRender.ChoiceLists().Names,
+            p => GUO.Renderer.Water.WaterRender.ChoiceIndex(p.WaterStyle),
+            (p, v) => p.WaterStyle = GUO.Renderer.Water.WaterRender.ChoiceId(v));
         // Moved here from Classic view (UX-02), the same Profile fields the
         // classic Apply writes: the canvas background, the second screen's
         // fine scale and the command bar arrow's inset.
