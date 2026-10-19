@@ -33,6 +33,9 @@ public partial class Main : Node
         /// <summary>Draw through the batcher, check the pixels, then quit.</summary>
         BatcherProbe,
 
+        /// <summary>Draw through the world depth pass, check it against the canvas, then quit.</summary>
+        DepthProbe,
+
         /// <summary>Decode a sample of art and show it. No client startup.</summary>
         ArtSample,
     }
@@ -130,6 +133,13 @@ public partial class Main : Node
         if (_options.Mode == RunMode.BatcherProbe)
         {
             BatcherProbe.Run(this);
+            return;
+        }
+
+        // PERF-GPU step 1: synthetic art too, no install needed.
+        if (_options.Mode == RunMode.DepthProbe)
+        {
+            DepthProbe.Run(this);
             return;
         }
 
@@ -1865,6 +1875,9 @@ public partial class Main : Node
                         break;
                     case "--batcher-probe":
                         o.Mode = RunMode.BatcherProbe;
+                        break;
+                    case "--depth-probe":
+                        o.Mode = RunMode.DepthProbe;
                         break;
                     case "--art-sample":
                         o.Mode = RunMode.ArtSample;

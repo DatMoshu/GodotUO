@@ -46,9 +46,11 @@ this list, please report it (see [Contributing](Contributing.md)).
 
 ## On a desktop
 
-- **The login window is small.** The desktop login screen keeps the classic
-  640x480 window, so a canvas background is not visible there and the login
-  panel stays in the top-left corner when you enlarge the window.
+- **The login window is small.** The classic desktop login starts at
+  640x480. Enlarging the window leaves the login panel at the same size in
+  the top-left corner, with the canvas background around it.
+- **Windows open on top of each other.** The paperdoll, backpack and journal
+  overlap at their default positions. You can move them by dragging.
 
 ## Everywhere
 

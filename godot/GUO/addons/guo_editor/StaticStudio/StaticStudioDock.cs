@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BSD-2-Clause
 #if TOOLS
 namespace GUO.Editor;
 
@@ -25,7 +26,13 @@ public partial class StaticStudioDock : EditorDock
     private Func<Inspection> _source = () => null;
     private Func<GUO.Game.World> _world;
     private CancellationTokenSource _cts = new();
-    private bool _ready;
+    private bool _ready, _stopped;
+    private int _jobVersion;
+    private bool _busy;
+    private VBoxContainer _aiControls;
+    private const string DoctorHelp = "Run launchers/comfy/doctor.bat (or doctor.sh) --validate; use setup_studio to install missing dependencies.";
+    internal bool AiControlsVisible => _aiControls?.Visible == true;
+    internal int WorkflowCount => AiFeatures.Enabled && _workflowPick?.Disabled == false ? _workflowPick.ItemCount : 0;
 
     private Label _target, _status;
     private LineEdit _prompt, _themeName, _zone, _placeX, _placeY, _placeZ;
@@ -84,8 +91,11 @@ public partial class StaticStudioDock : EditorDock
         _target = new Label { Text = "(nothing bound: pick art in the UO Inspector)", SizeFlagsHorizontal = SizeFlags.ExpandFill };
         pick.AddChild(_target);
 
+        _aiControls = new VBoxContainer();
+        root.AddChild(_aiControls);
+
         var wf = new HBoxContainer();
-        root.AddChild(wf);
+        _aiControls.AddChild(wf);
         wf.AddChild(new Label { Text = "Workflow" });
         _workflowPick = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         wf.AddChild(_workflowPick);
@@ -94,10 +104,10 @@ public partial class StaticStudioDock : EditorDock
         wf.AddChild(refresh);
 
         _prompt = new LineEdit { PlaceholderText = "prompt (img2img over the bound static)", SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        root.AddChild(_prompt);
+        _aiControls.AddChild(_prompt);
 
         var go = new HBoxContainer();
-        root.AddChild(go);
+        _aiControls.AddChild(go);
         _queue = new Button { Text = "Generate image" };
         _queue.Pressed += () => _ = QueueFromUi();
         go.AddChild(_queue);
@@ -125,10 +135,10 @@ public partial class StaticStudioDock : EditorDock
                 Report(SetPreview(true));
             }
         };
-        root.AddChild(_gallery);
+        _aiControls.AddChild(_gallery);
 
         var bg = new HBoxContainer();
-        root.AddChild(bg);
+        _aiControls.AddChild(bg);
         bg.AddChild(new Label
         {
             Text = "Background",
@@ -199,7 +209,7 @@ public partial class StaticStudioDock : EditorDock
 
         _status = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
         root.AddChild(_status);
-        RefreshWorkflows();
+        ApplyAiFeatures();
         RefreshSplats();
     }
 
@@ -227,9 +237,7 @@ public partial class StaticStudioDock : EditorDock
             return;
         }
 
-        _targetKind = ins.ArtKind;
-        _targetId = ins.ArtId;
-        _target.Text = $"{ArtSidecar.KindName(ins.ArtKind.Value)} 0x{ins.ArtId:X4}";
+        BindTarget(ins.ArtKind.Value, ins.ArtId, ins.Image);
         Report($"bound {_target.Text}");
         if (_preview?.ButtonPressed == true)
         {
@@ -240,29 +248,117 @@ public partial class StaticStudioDock : EditorDock
     /// <summary>Binds a target without the UI (the smoke check).</summary>
     public void BindTarget(AssetKind kind, int id, Image image)
     {
+        if (_stopped) return;
+        CancelGeneration();
+        ClearGallery();
+        if (_preview?.ButtonPressed == true)
+        {
+            _preview.SetPressedNoSignal(false);
+            SetPreview(false);
+        }
+        _boundImage?.Dispose();
+        _boundImage = null;
+        if (image != null)
+        {
+            _boundImage = new Image();
+            _boundImage.LoadPngFromBuffer(image.SavePngToBuffer());
+        }
         _targetKind = kind;
         _targetId = id;
-        _boundImage = image;
         if (_target != null)
         {
             _target.Text = $"{ArtSidecar.KindName(kind)} 0x{id:X4}";
         }
     }
 
-    /// <summary>Runs an image request on a worker and files the gallery (the smoke check).</summary>
+    /// <summary>Runs an explicit image job; disabled/stale jobs never reach the gallery.</summary>
     public async Task<ImageResult> RunImageAsync(IImageProvider provider, ImageRequest req)
     {
-        ImageResult r = await Task.Run(() => provider.RunAsync(req, null, _cts.Token));
-        Finish(r);
-        return r;
+        if (!AiFeatures.Enabled) return new ImageResult { Error = AiFeatures.DisabledMessage };
+        if (_stopped) return new ImageResult { Error = "StaticStudio is closed." };
+        if (_busy) return new ImageResult { Error = "An image job is already running." };
+        if (req == null || provider == null) return new ImageResult { Error = "Bind an asset and choose an API-format workflow first. " + DoctorHelp };
+        using var life = AiFeatures.Link(_cts.Token);
+        int version = ++_jobVersion;
+        _busy = true;
+        if (_queue != null) _queue.Disabled = true;
+        try
+        {
+            ImageResult r = await Task.Run(() => provider.RunAsync(req, null, life.Token), life.Token);
+            // A provider can finish after cancellation, or after disable/re-enable.
+            // Compare this job's lifetime/version before touching any Godot object.
+            if (life.IsCancellationRequested || _stopped || version != _jobVersion || !AiFeatures.Enabled)
+                return new ImageResult { Error = "Image generation cancelled." };
+            if (r == null || r.Error != null)
+                return new ImageResult { Error = "ComfyUI could not complete the image job. " + DoctorHelp };
+            Finish(r);
+            return r;
+        }
+        catch (OperationCanceledException)
+        {
+            return new ImageResult { Error = "Image generation cancelled." };
+        }
+        catch (Exception)
+        {
+            return new ImageResult { Error = "ComfyUI could not complete the image job. " + DoctorHelp };
+        }
+        finally
+        {
+            if (!_stopped && version == _jobVersion)
+            {
+                _busy = false;
+                if (_queue != null) _queue.Disabled = false;
+            }
+        }
+    }
+
+    /// <summary>Refreshes only AI controls; saved themes and staged content stay manual.</summary>
+    internal void ApplyAiFeatures()
+    {
+        if (!_ready || _stopped) return;
+        _aiControls.Visible = AiFeatures.Enabled;
+        _saveVariant.Visible = AiFeatures.Enabled;
+        if (AiFeatures.Enabled)
+        {
+            RefreshWorkflows();
+            return;
+        }
+        CancelGeneration();
+        _workflowPick.Clear();
+        _prompt.Text = "";
+        _preview.SetPressedNoSignal(false);
+        SetPreview(false);
+        ClearGallery();
+        Report(AiFeatures.DisabledMessage);
+    }
+
+    private void CancelGeneration()
+    {
+        ++_jobVersion;
+        _cts.Cancel();
+        _cts.Dispose();
+        _cts = new CancellationTokenSource();
+        _busy = false;
+        if (_queue != null) _queue.Disabled = false;
+    }
+
+    private void ClearGallery()
+    {
+        _gallery?.Clear();
+        foreach (Image image in _images) image.Dispose();
+        _images.Clear();
+        _lastResult = null;
+        _lastWorkflow = "";
+        _lastSeed = -1;
     }
 
     private Image _boundImage;
 
     // --- image jobs (the Art dock's providers) -----------------------------------
 
-    private void RefreshWorkflows()
+    internal void RefreshWorkflows()
     {
+        if (_stopped || !AiFeatures.Enabled) return;
         _workflowPick.Clear();
         foreach (string f in ComfyUiProvider.Workflows(ArtDock.WorkflowFolder))
         {
@@ -283,26 +379,33 @@ public partial class StaticStudioDock : EditorDock
 
     private async Task QueueFromUi()
     {
-        string url = EditorData.Setting("UO_COMFY_URL", "http://127.0.0.1:8188");
-        var provider = new ComfyUiProvider(url);
+        if (!AiFeatures.Enabled || _stopped) return;
         string wf = _workflowPick.ItemCount > 0 && !_workflowPick.Disabled
             ? (string)_workflowPick.GetItemMetadata(_workflowPick.Selected) : "";
-        ImageRequest req = BuildRequest(_prompt.Text, wf);
-        if (req == null)
+        if (string.IsNullOrEmpty(wf))
         {
+            Report("Choose an API-format workflow. " + DoctorHelp);
             return;
         }
-
+        ImageRequest req = BuildRequest(_prompt.Text, wf);
+        if (req == null) return;
+        string url = EditorData.Setting("UO_COMFY_URL", "http://127.0.0.1:8188");
+        using var provider = new ComfyUiProvider(url);
         Report($"queued on {provider.Name}...");
-        ImageResult r = await Task.Run(() => provider.RunAsync(req, null, _cts.Token));
-        Finish(r);
-        Report(r.Error ?? $"{r.Pngs.Count} image(s) ready; pick one and save it as a theme variant");
-        provider.Dispose();
+        int version = _jobVersion + 1;
+        ImageResult r = await RunImageAsync(provider, req);
+        if (!_stopped && AiFeatures.Enabled && version == _jobVersion)
+            Report(r.Error ?? $"{r.Pngs.Count} image(s) ready; pick one and save it as a theme variant");
     }
 
     /// <summary>The request for a prompt, a workflow file and the bound static as input.</summary>
     public ImageRequest BuildRequest(string prompt, string workflowPath)
     {
+        if (!AiFeatures.Enabled || _stopped)
+        {
+            if (!_stopped) Report(AiFeatures.DisabledMessage);
+            return null;
+        }
         if (_targetKind == null)
         {
             Report("no target: bind a static first");
@@ -330,11 +433,10 @@ public partial class StaticStudioDock : EditorDock
 
     private void Finish(ImageResult r)
     {
+        ClearGallery();
         _lastResult = r;
         _lastWorkflow = r.Workflow;
         _lastSeed = r.Seed;
-        _images.Clear();
-        _gallery?.Clear();
         foreach (byte[] png in r.Pngs)
         {
             var img = new Image();
@@ -681,12 +783,20 @@ public partial class StaticStudioDock : EditorDock
     /// <summary>Cancels running work; called before a reload or when the dock closes.</summary>
     public void Shutdown()
     {
+        if (_stopped) return;
+        _stopped = true;
+        ++_jobVersion;
         _cts.Cancel();
-        _cts = new CancellationTokenSource();
+        _cts.Dispose();
+        ClearGallery();
+        _boundImage?.Dispose();
+        _boundImage = null;
         // A preview must not outlive the dock: take it down without saving.
         GUO.Assets.VariantAtlas.ClearPreview();
         GUO.Game.Managers.ThemeManager.Touch();
         RepaintWorld();
     }
+
+    public override void _ExitTree() => Shutdown();
 }
 #endif
