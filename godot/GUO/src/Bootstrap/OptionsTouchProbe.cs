@@ -42,12 +42,22 @@ internal static partial class TouchProbe
         foreach (bool touch in new[] { false, true })
         {
             TouchInput.Enabled = touch;
+            async System.Threading.Tasks.Task Pick(Vector2 at)
+            {
+                if (touch) { await Tap(host, at); return; }
+                GUO.Input.GodotInput.Handle(new InputEventMouseMotion { Position = at });
+                await Frames(host, 2);
+                GUO.Input.GodotInput.Handle(new InputEventMouseButton { Position = at, ButtonIndex = MouseButton.Left, Pressed = true });
+                await Frames(host, 6);
+                GUO.Input.GodotInput.Handle(new InputEventMouseButton { Position = at, ButtonIndex = MouseButton.Left, Pressed = false });
+                await Frames(host, 25);
+            }
             var fixture = new Gump(world, 0, 0) { X = 180, Y = 140 };
             var combo = new Combobox(0, 0, 180, new[] { "First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh", "Last" }, 0, 104);
             fixture.Add(combo);
             UIManager.Add(fixture);
             await Frames(host, 10);
-            await Tap(host, DrawnCentre(combo));
+            await Pick(DrawnCentre(combo));
             await Frames(host, 10);
             Gump list = UIManager.Gumps.FirstOrDefault(g => !g.IsDisposed && g.GetType().Name == "ComboboxGump");
             Check(touch ? "touch popup opens" : "mouse popup opens", list != null);
@@ -62,10 +72,10 @@ internal static partial class TouchProbe
                 var row = rows[1];
                 var point = GumpPresentation.ToScreen(row, new GUO.Compat.Point(row.ScreenCoordinateX + 12,
                     row.ScreenCoordinateY + (touch ? 24 : 5)));
-                await Tap(host, Client(new Vector2(point.X, point.Y)));
+                await Pick(Client(new Vector2(point.X, point.Y)));
                 await Frames(host, 5);
                 Check(touch ? "touch row padding selects its own item" : "mouse selection stays classic", combo.SelectedIndex == 1 && list.IsDisposed);
-                await Tap(host, DrawnCentre(combo));
+                await Pick(DrawnCentre(combo));
                 await Frames(host, 5);
                 list = UIManager.Gumps.First(g => !g.IsDisposed && g.GetType().Name == "ComboboxGump");
                 area = list.FindControls<ScrollArea>().OfType<ScrollArea>().First();
@@ -75,7 +85,7 @@ internal static partial class TouchProbe
                 // ScrollArea applies the scrollbar offset when drawing its children.
                 point = GumpPresentation.ToScreen(last, new GUO.Compat.Point(last.ScreenCoordinateX + 12,
                     last.ScreenCoordinateY + last.Height / 2 - area.ScrollValue));
-                await Tap(host, Client(new Vector2(point.X, point.Y)));
+                await Pick(Client(new Vector2(point.X, point.Y)));
                 await Frames(host, 5);
                 Check(touch ? "touch popup scrolls to the last item" : "mouse popup scrolls to the last item", combo.SelectedIndex == 7 && list.IsDisposed,
                     $"selected {combo.SelectedIndex}");
