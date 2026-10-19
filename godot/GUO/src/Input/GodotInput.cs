@@ -51,6 +51,69 @@ namespace GUO.Input
         /// </summary>
         private static bool _ignoreNextTextInput;
 
+        /// <summary>
+        /// The keys that went down and have not come up, as SDL keycodes, so
+        /// <see cref="ReleaseHeldKeys"/> can raise their key-ups.
+        /// </summary>
+        private static readonly HashSet<uint> _held = new();
+
+        /// <summary>
+        /// Upstream's <c>TextInputEXT.StartTextInput()</c> (GameController.
+        /// Initialize): text input on for the life of the window.
+        /// </summary>
+        /// <remarks>
+        /// PORT DEVIATION (GUO): SDL's text input is what enables the
+        /// platform's input method. Godot detaches the IME from the window
+        /// until <c>WindowSetImeActive(true)</c>, so without it a CJK input
+        /// method never composes, and on Windows an AltGr character (the @ of
+        /// a German keyboard) arrives with Ctrl and Alt still set -- Godot
+        /// clears them only while the IME is active -- and is dropped as a
+        /// command. Phones and the browser raise their own keyboards; this is
+        /// the desktop's.
+        /// </remarks>
+        public static void StartTextInput()
+        {
+            if (OS.HasFeature("mobile") || OS.HasFeature("web") || !DisplayServer.HasFeature(DisplayServer.Feature.Ime))
+            {
+                return;
+            }
+
+            DisplayServer.WindowSetImeActive(true);
+        }
+
+        /// <summary>
+        /// A key-up for every key still down, through the filter's own key-up
+        /// arm. Called when the window loses focus.
+        /// </summary>
+        /// <remarks>
+        /// PORT DEVIATION (GUO): SDL resets the keyboard when its window loses
+        /// focus and raises a key-up for each key still held, so upstream's
+        /// Keyboard.Alt, Ctrl and Shift are false again when the player comes
+        /// back. Godot only clears its own tables (Input.release_pressed_events)
+        /// and delivers no event, which left a modifier held after Alt-Tab and
+        /// made the next click a modified one. This raises the key-ups SDL
+        /// would have.
+        /// </remarks>
+        public static void ReleaseHeldKeys()
+        {
+            if (_held.Count == 0)
+            {
+                return;
+            }
+
+            var keys = new List<uint>(_held);
+            _held.Clear();
+
+            foreach (uint key in keys)
+            {
+                SDL.SDL_KeyboardEvent ev = default;
+                ev.key = key;
+                ev.mod = SDL.SDL_Keymod.SDL_KMOD_NONE;
+                ev.down = false;
+                KeyUp(ev);
+            }
+        }
+
         public static void Handle(InputEvent e)
         {
             switch (e)
@@ -88,6 +151,7 @@ namespace GUO.Input
 
             if (e.Pressed)
             {
+                _held.Add(ev.key);
                 Keyboard.OnKeyDown(ev);
 
                 if (Plugin.ProcessHotkeys((int)ev.key, (int)ev.mod, true))
@@ -111,9 +175,16 @@ namespace GUO.Input
                 return;
             }
 
+            _held.Remove(ev.key);
+            KeyUp(ev);
+        }
+
+        /// <summary>The filter's SDL_EVENT_KEY_UP arm.</summary>
+        private static void KeyUp(SDL.SDL_KeyboardEvent ev)
+        {
             Keyboard.OnKeyUp(ev);
             UIManager.KeyboardFocusControl?.InvokeKeyUp((SDL.SDL_Keycode)ev.key, ev.mod);
-            Client.Game.Scene.OnKeyUp(ev);
+            Client.Game.Scene?.OnKeyUp(ev);
             Plugin.ProcessHotkeys(0, 0, false);
 
             if ((SDL.SDL_Keycode)ev.key == SDL.SDL_Keycode.SDLK_PRINTSCREEN)
