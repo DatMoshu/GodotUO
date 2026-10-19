@@ -78,7 +78,7 @@ screen, so Status is a screen of the character's numbers instead.
 - B while the wheel is up closes it without opening anything. B on a screen
   closes the screen.
 - Which window sits in which slice is chosen at the end of Set controls.
-  Status and Party are offered too.
+  Status, Party and Say are offered too.
 
 ## The interact radar (RT)
 
@@ -97,23 +97,65 @@ it) on its tile. Names are not drawn on every mark.
 
 | Button (default) | With a choice |
 |---|---|
-| A | Use (a double click; in war mode on a mobile, an attack, as the client does) |
-| X | Look (a single click: its name) |
+| A | Use (a double click). In war mode on a mobile, an attack, as the client's double click does; it also makes that mobile your last target, so X and LB stay on it after the radar closes |
+| X | Look (a single click: its name). In war mode: attack the choice when it is a mobile, else your last target |
 | Y | Its context menu |
 | B | Close the radar |
 | Let go of RT | Use, if you chose something and pressed nothing; otherwise nothing |
 
+**Out of reach.** A double click on a mobile only works next to it (a horse
+takes a rider within one tile). When you use a mobile farther away than that,
+your character walks up to it first, on the client's own pathfinder, and uses
+it on arrival; a mount that wanders is followed for up to six seconds. Push
+the stick or the D-pad to stop the walk.
+
+**Mounting.** Hold RT, choose the horse, press A (or let go of RT). While you
+ride, the radar lists **you** too: choose yourself and press A to get off,
+the same double click on yourself that the mouse uses.
+
 **Target cursors.** When a spell, skill or item puts up a target cursor, the
 radar is how a pad picks the target: hold RT, choose, and A sends the target
-to the choice; B cancels the cursor (and leaves the radar up).
+to the choice; B cancels the cursor (and leaves the radar up). The radar lists
+**you** while a target cursor is up, so a heal or a bandage on yourself is RT,
+choose yourself, A.
+
+**Ground targets.** A field, a teleport or anything else aimed at the ground:
+when a target cursor comes up while you are using the pad, the pointer jumps to
+the tile in front of your character. Press A to target that tile, or move the
+pointer with the right stick first. The pointer moves smoothly, not tile by
+tile.
+
+## Say (speech without a keyboard)
+
+The **Say** screen is a list of what players say most: Bank, Balance, Vendor
+buy, Vendor sell, Guards, Hail, and the pet commands All follow me, All come,
+All guard me, All stay, All stop and All kill. Pick one with the D-pad and
+press A to say it. Open it from the Macros screen (**Say...**, the first line),
+or put it on a wheel slice in Set controls. Anything else still needs a
+keyboard.
 
 The reach is `radarRange` in `padbindings.json` (1 to 24 tiles, 10 by default).
 
 ## Set controls
 
-Options > Video > Controller buttons > **Set controls...**, and offered once
-after your first login with a pad (B on that card skips it; it is not offered
-again).
+Options > Video > Controller buttons > **Set controls...** opens the list of
+jobs, to change one at a time:
+
+| On the list | Does |
+|---|---|
+| D-pad up / down | Move between the jobs and the three actions below them |
+| A on a job | Set that job only: hold the input you want (0.7 s). A quick tap of **B** keeps what it had |
+| A on **Menu wheel slices** | Choose the wheel's eight slices, then back to the list |
+| A on **Reset to defaults** | Puts the shipped layout back on the list (not saved yet) |
+| A on **Save** | Keeps every change and closes |
+| B | Leaves; nothing you changed is kept |
+
+Each job shows what it will be saved as. Giving one input to a job takes it
+away from the job that had it; that one then reads "nothing" until you give
+it something else or reset.
+
+The first time you log in with a pad, GUO offers the whole walk-through
+instead (B on that card skips it; it is not offered again):
 
 1. Every job is a row: the action, the glyph for what it is set to, and
    that input's name. Nothing else. The order is Use, Cancel, Attack last,
@@ -127,7 +169,7 @@ again).
 4. Everything is applied together at the end. Giving one input to a job takes
    it away from any other job.
 
-**Cancel:** hold three or more inputs at once, at any point. Nothing changes.
+**Cancel:** hold three or more inputs at once, at any point, on the list or in the walk-through. Nothing changes.
 
 Triggers and stick directions count as inputs (on past 60%, off under 30%).
 A stick direction bound to a job no longer walks or moves the pointer that way.
@@ -273,12 +315,13 @@ against one shard character.
 | Skills (use skill) | Bound | LT wheel → skills screen (A uses a clickable skill) |
 | Spells / spellbook | Bound | LT wheel → spellbook screen (A casts) |
 | Macros | Bound | Y / wheel Macros screen |
-| Options / Set controls | Bound | Start; Options screen; Set controls wizard |
+| Options / Set controls | Bound | Start; Options screen; Set controls list (one job at a time, reset to defaults) or the first-login walk-through |
 | Status (vitals) | Bound | Wheel Status screen (numbers) |
 | Party list | Bound | Wheel Party screen (roster only) |
 | World map (nearby) | Bound | Wheel World map screen |
+| Mount / dismount | Bound | Radar A on the horse (walks up when out of reach); radar A on yourself while riding |
 | Loot corpse / open container | Bound | Radar use / double-click; loot dummy probe |
-| Talk / speech | Partial | Chat input strip hidden in gamepad mode; no dedicated pad keyboard in-world yet; OSK is pregame |
+| Talk / speech | Partial | The **Say** screen (Macros screen, "Say...", or a wheel slice) says a common phrase with A: bank, balance, vendor buy and sell, guards, hail and the pet commands. Free text still needs a keyboard; the chat strip is hidden in gamepad mode |
 | Context menus | Bound | Radar Y; backpack/paperdoll Back |
 | Vendors (buy/sell) | Partial | Radar can use a vendor; no dedicated vendor pad screen |
 | Banking | Partial | Radar can use a banker/bank box; no dedicated bank pad screen |
@@ -314,7 +357,7 @@ not a promise of later chords.
 |---|---|---|---|
 | LT | Reopen the last wheel window (under 0.2 s, stick centred) | The eight-slice wheel. Release opens the lit slice. Stick in the middle: nothing. B closes without opening | Points at a slice, same as the left stick. D-pad does **not** steer the wheel (**not bound**) |
 
-Slices (default): up Backpack, up-right Paperdoll, right Journal, down-right Skills, down Spellbook, down-left World map, left Macros, up-left Options. Status and Party are offered in Set controls.
+Slices (default): up Backpack, up-right Paperdoll, right Journal, down-right Skills, down Spellbook, down-left World map, left Macros, up-left Options. Status, Party and Say are offered in Set controls.
 
 ### A wheel window (backpack, paperdoll, journal, …)
 
