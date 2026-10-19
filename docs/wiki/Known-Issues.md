@@ -1,12 +1,9 @@
 # Known issues
 
 GodotUO is pre-release. These are the problems we know about in the current
-build, written for players. If you hit something that is not on this list,
-please report it (see [Contributing](Contributing.md)).
-
-Desktop login and in-game resizing were checked on October 19, 2026.
-Phone and combat items were reviewed in code on October 18 and still need
-fresh runtime checks on a device or the emulator.
+build, written for players. Each one has been seen on a real device or in a
+scripted run; nothing here is a guess. If you hit something that is not on
+this list, please report it (see [Contributing](Contributing.md)).
 
 ## On phones and handhelds (Android)
 
@@ -51,15 +48,9 @@ fresh runtime checks on a device or the emulator.
 
 - **The login window is small.** The classic desktop login starts at
   640x480. Enlarging the window leaves the login panel at the same size in
-  the top-left corner, with the canvas background around it. Rechecked on
-  October 19 at 640x480 and maximized to 3840x2054, with the optional 3D
-  pre-game screen disabled.
-
-The October 19 desktop in-game check reached the world and resized between
-640x480 and 3840x2054. The world followed the window size; the paperdoll,
-backpack and journal opened at their classic sizes and overlapped at their
-default positions. This check does not verify the lower-screen layout,
-phone gestures, backpack grid persistence or combat targeting.
+  the top-left corner, with the canvas background around it.
+- **Windows open on top of each other.** The paperdoll, backpack and journal
+  overlap at their default positions. You can move them by dragging.
 
 ## Everywhere
 

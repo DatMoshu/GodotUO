@@ -140,8 +140,6 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   ADR-0008.
 
 ### Playing
-- Known Issues now records desktop login and in-game resize checks, and
-  distinguishes them from phone and combat checks still awaiting verification.
 - Canvas background behind the game: grey, wood, your own image or video,
   or one of ten built-in CC0 loops. ADR-0016.
 - Containers can open as a grid of finger-sized slots (mobile default), and
