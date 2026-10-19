@@ -109,6 +109,14 @@ internal sealed partial class ModernOptions : ModernGump
         Bool("General", "Show mobiles' hits", p => p.ShowMobilesHP, (p, v) => p.ShowMobilesHP = v);
         Bool("General", "Highlight the poisoned", p => p.HighlightMobilesByPoisoned, (p, v) => p.HighlightMobilesByPoisoned = v);
         Bool("General", "Names overhead always on", p => p.NameOverheadToggled, (p, v) => p.NameOverheadToggled = v);
+        // Packet mods (ADR-0038): settings.json, not the profile; read on the next start.
+        if (GUO.Network.Mods.ClientMods.Supported)
+            Bool("General", "Load mods on the next start", _ => Settings.GlobalSettings.LoadMods, (_, v) =>
+            {
+                if (v == Settings.GlobalSettings.LoadMods) return;
+                Settings.GlobalSettings.LoadMods = v;
+                Settings.GlobalSettings.Save();
+            });
 
         Bool("Sound", "Sounds", p => p.EnableSound, (p, v) => { p.EnableSound = v; _audioChanged = true; });
         Int("Sound", "Sounds volume", 0, 100, p => p.SoundVolume, (p, v) => { p.SoundVolume = v; _audioChanged = true; });

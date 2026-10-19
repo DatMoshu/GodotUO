@@ -191,11 +191,16 @@ def test_guo_dev_pin_is_the_shared_pin():
     assert ref and good()["server"]["source"]["ref"] == ref
 
 
+# Patches deliberately carried by guo-dev only (owner decision). Anything else must be on both profiles.
+DEV_ONLY_PATCHES = {"0006-loopback-ban-exemption.patch"}
+
+
 @pytest.mark.parametrize("profile", [GUO, VPS])
 def test_guo_profiles_name_every_patch(profile):
     on_disk = sorted(p.name for p in (REPO / "tools" / "modernuo" / "patches").glob("*.patch"))
     data = json.loads(profile.read_text(encoding="utf-8"))
-    assert sorted(Path(p).name for p in data["server"]["patches"]) == on_disk
+    expected = [n for n in on_disk if profile == GUO or n not in DEV_ONLY_PATCHES]
+    assert sorted(Path(p).name for p in data["server"]["patches"]) == expected
 
 
 # ------------------------------------------------------------ plans
@@ -699,7 +704,10 @@ def test_guo_vps_validates_without_a_warning(capsys):
 
 def test_guo_vps_shares_the_dev_pin_patches_and_listen_port():
     dev, vps = json.loads(GUO.read_text(encoding="utf-8")), json.loads(VPS.read_text(encoding="utf-8"))
-    assert vps["server"] == dev["server"]
+    dev_server = json.loads(json.dumps(dev["server"]))
+    dev_server["patches"] = [p for p in dev_server["patches"] if Path(p).name not in DEV_ONLY_PATCHES]
+    assert vps["server"] == dev_server
+    assert not DEV_ONLY_PATCHES & {Path(p).name for p in vps["server"]["patches"]}
     assert vps["listen"] == dev["listen"] == {"port": 2593}
     assert vps["service"]["memory_max"] == "4G"
     assert vps["backup"]["on_calendar"]

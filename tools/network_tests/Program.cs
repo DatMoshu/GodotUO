@@ -137,3 +137,6 @@ int guardChecks = checks;
 
 Console.WriteLine($"PASS: {guardChecks} packet length guard checks (short, malformed, split and wrapped headers), "
     + $"{checks - guardChecks} server identity checks.");
+
+int modChecks = ModTests.Run();
+Console.WriteLine($"PASS: {modChecks} packet mod checks (registry, mod.json, the sample mod, both seams).");

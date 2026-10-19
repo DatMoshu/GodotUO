@@ -1,0 +1,15 @@
+{
+  "schema": "guo/mod@1",
+  "id": "announce",
+  "version": "1.0.0",
+  "title": "Shard announcements",
+  "author": "GUO samples",
+  "licence": "BSD-2-Clause",
+  "abi": 1,
+  "assembly": "Announce.dll",
+  "entry": "GuoMods.Announce.AnnounceMod",
+  "shards": ["127.0.0.1", "localhost"],
+  "packets": [
+    { "id": "0xF9", "length": -1, "override": false }
+  ]
+}
