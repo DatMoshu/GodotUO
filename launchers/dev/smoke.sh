@@ -38,12 +38,16 @@ echo "[smoke] optional HD pack contracts (synthetic)"
 
 echo "[smoke] Realtime lights contract (synthetic; ADR-0039)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/Lights/RealtimeLightsProbe.tscn || FAIL=1
+echo "[smoke] water render modes contract (synthetic; ADR-0037)"
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/Water/WaterProbe.tscn || FAIL=1
 echo "[smoke] perf lab report: fields kept, privacy refusal, size (synthetic; tools/perf_lab)"
 "$UO_PYTHON" -m pytest "$UO_TOOLS/perf_lab" -q -p no:cacheprovider || FAIL=1
 
 echo "[smoke] PostFX engine regressions (synthetic)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Bootstrap/PostFxEngineProbe.tscn || FAIL=1
 
+echo "[smoke] hosted catalogue (a local Pages branch and loopback HTTP; no network)"
+"$UO_PYTHON" "$UO_TOOLS/asset_store/hosted_proof.py" || FAIL=1
 echo "[smoke] touch: swipe and two-finger pan scroll lists (synthetic; no shard)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" -- --touch-gesture-probe --pregame-classic --silent || FAIL=1
 echo "[smoke] packet mods (synthetic; builds the sample mod, ADR-0038)"

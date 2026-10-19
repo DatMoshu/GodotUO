@@ -43,6 +43,9 @@ internal static class PerfProbe
         new("britain-bank", "[go 1434 1699 0", "the Britain bank: dense statics, roofs, vendors and passers-by"),
         new("dense-forest", "[go 633 858", "the forest east of Yew (ab_compare yew-forest)"),
         new("dungeon", "[go 5401 629", "the mouth of Despise (ab_compare despise-mouth): dungeon light level, torches"),
+        // ADR-0037: the water budget's scenes, on a pier with water on every side.
+        new("britain-docks", "[go 1499 1761 -3", "the Britain docks: water land and water statics around a pier"),
+        new("trinsic-bay", "[go 2087 2861 -3", "the Trinsic bay: water at three heights around a pier"),
         // The community's cases (PERF-03): a crypt at z -60 under land at
         // z 0, where everything above the roof must be culled, and open sea
         // with no statics. Their dense city is britain-bank, their forest

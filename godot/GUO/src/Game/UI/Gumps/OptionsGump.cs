@@ -199,6 +199,7 @@ namespace GUO.Game.UI.Gumps
         private Checkbox _realtimeLights; // PORT DEVIATION (GUO): Realtime lights (ADR-0039)
         private Combobox _lightLevelType;
         private Combobox _hdFilter; // PORT DEVIATION (GUO): optional HD pack sampling.
+        private Combobox _waterStyle; // PORT DEVIATION (GUO): water render style (ADR-0037).
         private Checkbox _use_smooth_boat_movement;
         private HSliderBar _terrainShadowLevel;
 
@@ -2145,6 +2146,13 @@ namespace GUO.Game.UI.Gumps
             section4.AddRight(_hdFilter = AddCombobox(null,
                 new[] { "Auto", "Point", "Point mipmaps", "Smooth" },
                 Math.Clamp((int)_currentProfile.HdFilter, 0, 3), startX, startY, 180));
+
+            // PORT DEVIATION (GUO): water render style (ADR-0037); Classic
+            // draws the tiles as upstream does and replaces nothing.
+            section4.Add(AddLabel(null, "Water", startX, startY));
+            section4.AddRight(_waterStyle = AddCombobox(null,
+                GUO.Renderer.Water.WaterRender.ChoiceLists().Names,
+                GUO.Renderer.Water.WaterRender.ChoiceIndex(_currentProfile.WaterStyle), startX, startY, 180));
 
             SettingsSection section5 = AddSettingsSection(box, "Shadows");
             section5.Y = section4.Bounds.Bottom + 40;
@@ -4196,6 +4204,7 @@ namespace GUO.Game.UI.Gumps
                     _enhancedHD.IsChecked = videoDefaults.EnhancedHD; // PORT DEVIATION (GUO)
                     _hdFilter.SelectedIndex = (int)videoDefaults.HdFilter;
                     _realtimeLights.IsChecked = videoDefaults.RealtimeLights; // PORT DEVIATION (GUO)
+                    _waterStyle.SelectedIndex = 0; // PORT DEVIATION (GUO): Classic
                     _partyAuraColorPickerBox.Hue = 0x0044;
 
                     break;
@@ -4779,6 +4788,9 @@ namespace GUO.Game.UI.Gumps
 
             _currentProfile.HdFilter = (HdFilterMode)Math.Clamp(_hdFilter.SelectedIndex, 0, 3);
             _currentProfile.RealtimeLights = _realtimeLights.IsChecked; // PORT DEVIATION (GUO): ADR-0039
+
+            // PORT DEVIATION (GUO): the renderer rebuilds the meshes when it sees the change.
+            _currentProfile.WaterStyle = GUO.Renderer.Water.WaterRender.ChoiceId(_waterStyle.SelectedIndex);
 
             _currentProfile.PartyAura = _partyAura.IsChecked;
             _currentProfile.PartyAuraHue = _partyAuraColorPickerBox.Hue;

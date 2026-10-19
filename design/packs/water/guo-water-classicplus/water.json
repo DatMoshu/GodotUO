@@ -1,0 +1,15 @@
+{
+  "schema": "guo/water@1",
+  "name": "UO+",
+  "model": "classicplus",
+  "tint": [0.1, 0.22, 0.45],
+  "speed": 0.22,
+  "scale": 0.017,
+  "wave": 0.1,
+  "foam": 0.08,
+  "foam_width": 0.24,
+  "glint": 0,
+  "levels": 0,
+  "grain": 1,
+  "ripples": { "strength": 0.3, "damping": 0.98 }
+}

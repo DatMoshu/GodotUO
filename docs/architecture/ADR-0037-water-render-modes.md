@@ -2,6 +2,13 @@
 
 ## Status
 
+WATER-06 amendment (owner request, 2026-10-19): retain the three WATER-04
+packs and add the data-only `guo-water-classicplus` pack, displayed as UO+.
+Its built-in model 5 preserves native water texels with a subtle dithered
+shimmer and shore lap. All styles use a continuous low-shore contour instead
+of independent tile-edge ramps; Classic's branch and sampling are unchanged.
+The `guo/water@1` model enumeration is extended in section 44 and both validators.
+
 Proposed — 2026-10-18 (WATER-01). Needs the owner's decision before WATER-02.
 
 ## Date
@@ -125,12 +132,22 @@ machine (`docs/perf/2026-09-27_baseline_1280.md`).
    the installer (`StoreContent`) validate the same rules, with corpus cases
    for an accepted pack and each refusal. `docs/asset_pack_ecosystem.md` and
    `docs/data_formats.md` gain the component before anything emits it.
-7. **The option.** `Profile.WaterStyle` (string, default `"classic"`, a
-   `PlatformDefaults` entry with a version bump, as Enhanced HD did) and an
+   *Amended 2026-10-19 (WATER-04):* v1 carries numbers only. The normal,
+   flow and foam textures are left out: all four models make their own
+   surface procedurally, and an image the shader samples would be one more
+   filtering question under rule 7. A `grain` number (whole world pixels per
+   water pixel) is added instead, for the pixel model. Ripple settings are
+   strength and damping; wake length stays the client's. A later amendment
+   can add textures as declared PNGs.
+7. **The option.** `Profile.WaterStyle` (string, default `"classic"`) and an
    Options entry, **Water**, in both Options interfaces, listing Classic plus
    the styles of installed, verified packs that the shard allows. Changing it
-   dirties the chunk meshes (the `ThemeManager.Reapply` walk). The editor's
-   World view gets the same choice in its Layers menu.
+   dirties the chunk meshes (the renderer does it on the frame it sees the
+   change). The editor's World view gets the same choice in its Layers menu.
+   No `PlatformDefaults` entry or version bump: Classic is the default on
+   every platform, the field's initialiser gives it to new and old profiles
+   alike, and an entry whose platform value equals the desktop default changes
+   nothing (amended 2026-10-19, WATER-03).
 8. **Shard control, with consent.** Until STORE-02's content negotiation
    lands, a shard's server pack (`Data/GUO/server-content.json`) may carry a
    `water` block: `allowed` (style ids), `default`, `lock`. The client offers
@@ -183,7 +200,9 @@ Godot 4.7.2 mono. Uses only the canvas shading language features the world
 shaders already use, plus `TIME` and one extra `sampler2D` global uniform.
 Works on every renderer the client exports with (Forward+, Mobile,
 Compatibility for web); the realistic model must degrade on Compatibility and
-WATER-04 says how.
+WATER-04 says how: on Compatibility (`CURRENT_RENDERER == RENDERER_COMPATIBILITY`
+in the shader preprocessor) it drops its finer chop and its sparkles, three and
+one noise lookups a fragment, and keeps the rest.
 
 ## GDD Requirements Addressed
 
@@ -204,3 +223,50 @@ requirement is the owner's ask of 2026-10-18 (five styles, shard control).
 This ADR is validated when WATER-02 merges with the Classic parity dumps and
 the perf table above. Numbers measured for this ADR: the cell counts in the
 table, from the client data with `tools/guo` (`uomap`, `uoread.TileData`).
+
+## Implementation notes (WATER-02)
+
+- `SHADER_WATER` is a bit, not a mode value: bit 6 (0x40) of the mode byte,
+  beside the mode (bits 0-5) and circle-of-transparency (bit 7), so a hued or
+  lit Wet tile keeps its own mode. `docs/data_formats.md` section 44.
+- The fragment finds its world pixel from one mapping the batcher sets per
+  frame (`water_target_to_world`), and its cell from the mask's water height,
+  so no vertex data was added.
+- `Profile.WaterStyle` has no `PlatformDefaults` entry (decision 7).
+- `--water-style ID` sets the style for one session without saving it, for
+  probes, scenarios and the perf lab.
+- Styles are `IWaterStyle` (`Id`, `DisplayName`, `Bind`); a pack style can
+  implement it later whichever way decision 6 lands.
+- The chunk mesh's per-frame hue sync (`GameSceneDrawingSorting.ApplyMeshHue`)
+  rewrites each meshed sprite's mode, so it keeps the water bit too; without
+  it deep-water land lost the style a frame after it was built.
+
+Measured 2026-10-18 on the baseline machine (RTX 4090, 1280 x 720, a quiet
+machine, one run each, so indicative): `britain-docks` mean frame 1.245 ->
+1.355 ms (+0.11), `trinsic-bay` 1.095 -> 1.168 ms (+0.07), inside the 1 ms
+budget. Draw calls rose at the bay (157 -> 199); WATER-03 looks at why. With
+Classic, the docks and the bay are pixel-identical to `main` (0 of 921,600
+pixels) with identical draw lists.
+
+Ripples (WATER-03, 2026-10-19): a 20 Hz CPU wave field over a 128-cell
+window (decision 5). The debug view (`GUO_WATER_DEBUG=2`) shows rings round a
+wading character and a bow wave and wake behind a sailing boat. Perf with the
+style on is within run-to-run noise of off at the docks and the bay (two runs
+each, about +0.01 and 0.00 ms), and the bay's draw calls vary between runs
+whether water is on or off (156 to 199), so the earlier 157 -> 199 was not the
+water. Classic stays pixel-identical. Wave speed and stamps are per second,
+not per frame.
+
+## Implementation notes (WATER-04)
+
+- The shader holds the four models (`water_model` 1 to 4); a style picks one.
+  `uo` is unchanged by the addition: at grain 1 its pixel snap is the same.
+- A `water` component's style file is `guo/water@1`
+  (`docs/data_formats.md` section 44), checked whole when a pack is verified
+  or installed, by `water_style.py` and `StoreWater.cs`; the corpus has 49
+  water cases and both validators agree on all 183 files.
+- The deployment's styles are offered after the built-in one, by their
+  `name`, and saved as `pack-id:component-id`. They need no numeric binding.
+- `guo-water-pixel`, `guo-water-cel` and `guo-water-realistic` are built from
+  `design/packs/water` and published like any pack; the catalogue's index
+  signature covers their hashes.

@@ -49,6 +49,8 @@ echo [smoke] optional HD pack contracts (synthetic)
 
 echo [smoke] Realtime lights contract (synthetic; ADR-0039)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/Lights/RealtimeLightsProbe.tscn || set "FAIL=1"
+echo [smoke] water render modes contract (synthetic; ADR-0037)
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/Water/WaterProbe.tscn || set "FAIL=1"
 echo [smoke] server lab tables and server rows (synthetic; nothing fetched or started)
 "%UO_PYTHON%" "%UO_TOOLS%\server_lab\test_server_lab.py" || set "FAIL=1"
 echo [smoke] perf lab report: fields kept, privacy refusal, size (synthetic; tools\perf_lab)
@@ -57,6 +59,8 @@ echo [smoke] perf lab report: fields kept, privacy refusal, size (synthetic; too
 echo [smoke] PostFX engine regressions (synthetic)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Bootstrap/PostFxEngineProbe.tscn || set "FAIL=1"
 
+echo [smoke] hosted catalogue (a local Pages branch and loopback HTTP; no network)
+"%UO_PYTHON%" "%UO_TOOLS%\asset_store\hosted_proof.py" || set "FAIL=1"
 echo [smoke] touch: swipe and two-finger pan scroll lists (synthetic; no shard)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" -- --touch-gesture-probe --pregame-classic --silent || set "FAIL=1"
 echo [smoke] packet mods (synthetic; builds the sample mod, ADR-0038)

@@ -5,6 +5,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 
 ## Unreleased
 
+### Water
+- The UO+ water pack keeps the native water art with a gentle shimmer and
+  shore lap. All water styles follow a continuous coast contour to avoid
+  repeated tile-edge surf bars; high cliffs no longer produce surf.
 ### Performance
 - Windows draws the land as one array and covering land in runs by default
   (proposed; the owner decides). At 2560x1440 and zoom 2.5 the Britain bank
@@ -179,6 +183,16 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   and the one next door stays dark; day and night follow the shard's light
   level (the Light level setting still overrides it), with interiors dimmer
   by day. Off, the world lights exactly as before. ADR-0039.
+- Water can move: **Options > Video > Water > Realtime (UO colours)** draws
+  the sea, rivers and lakes with a slow swell, light on the crests and surf
+  at the shore, in the tiles' own colours, and ripples where something
+  wades, swims, sails or splashes into it. Off by default; Classic tiles
+  draws water as before. The editor's UO World tab has it under
+  **Layers > Realtime water**.
+- Three more water styles as Store packs: pixel art, cel shaded and
+  realistic. Install one, select its deployment, restart, and pick it under
+  **Options > Video > Water**. A pack style is numbers for a look built into
+  GUO, never code. ADR-0037.
 - Touch: a long press on someone in the world opens their context menu, a
   swipe scrolls any list or text with a scroll bar (books, quest pages), and
   a two-finger pan over a window scrolls it like the mouse wheel.
@@ -256,6 +270,15 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- Host a pack catalogue of your own on GitHub Pages: `run.py init-catalogue`
+  writes its repository, and `launchers/store/push_catalogue` signs the
+  index with your key and pushes it to the Pages branch. Players add the
+  address in the Store and approve its key once. `launchers/store/hosted_proof`
+  tries the whole path on your computer first.
+- `perf_gate` runs the real performance probe against a baseline kept on
+  your machine, outside the checkout. Draw calls may rise by at most 5% per
+  scene and batcher items may not rise; frame times remain advisory. Hosted
+  CI tests the gate with synthetic reports and makes no FPS claim.
 - CI keeps NuGet packages between runs, and the Android release build also
   keeps its Gradle downloads. The CI health report for 2026-10-18 (times per
   workflow, every failure of the last three weeks, no flaky steps) is in

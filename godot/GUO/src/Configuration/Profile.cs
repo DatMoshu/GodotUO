@@ -406,6 +406,10 @@ namespace GUO.Configuration
         // shard's light level colours; off is the classic light target,
         // byte-identical. Default off.
         public bool RealtimeLights { get; set; } = false;
+        // PORT DEVIATION (GUO): water render style (ADR-0037). "classic"
+        // draws the tiles as upstream does; any other value names a water
+        // style (Renderer.Water.WaterRender). Default classic.
+        public string WaterStyle { get; set; } = "classic";
 
         public bool HideChatGradient { get; set; } = false;
 

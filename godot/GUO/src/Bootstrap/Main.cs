@@ -109,6 +109,11 @@ public partial class Main : Node
             Store.StoreAudioProbe.Run();
         }
 
+        // A hosted catalogue approved, listed and installed from, for client.store.hosted_catalogue.
+        int catalogueProbe = Array.IndexOf(OS.GetCmdlineUserArgs(), Store.StoreCatalogueProbe.Flag);
+        if (catalogueProbe >= 0 && catalogueProbe + 1 < OS.GetCmdlineUserArgs().Length)
+            Store.StoreCatalogueProbe.Run(OS.GetCmdlineUserArgs()[catalogueProbe + 1]);
+
         // Parsed in _EnterTree; Godot calls that first, and the window flags
         // wanted deciding before anything else ran.
         _options ??= Options.Parse(OS.GetCmdlineUserArgs());
@@ -2023,6 +2028,10 @@ public partial class Main : Node
                         GUO.Host.PerfProbe.ParityToggle = on => GUO.Renderer.UltimaBatcher2D.MergedCover = on;
                         GUO.Host.PerfProbe.ParityState = () => GUO.Renderer.UltimaBatcher2D.MergedCover;
                         break;
+                    case "--water-style":
+                        // ADR-0037: this session's water style, not saved to the profile.
+                        GUO.Renderer.Water.WaterRender.Override = Next();
+                        break;
                     case "--merged-cover=off":
                         GUO.Renderer.UltimaBatcher2D.MergedCover = false;
                         break;
@@ -2397,6 +2406,9 @@ public partial class Main : Node
                         break;
                     case "--theme-zone":
                         o.WalkToThemeZone = Next();
+                        break;
+                    case Store.StoreCatalogueProbe.Flag:
+                        Next(); // the catalogue URL; the probe already ran in _Ready
                         break;
                     default:
                         GD.Print($"[GUO] ignoring unknown argument: {arg}");

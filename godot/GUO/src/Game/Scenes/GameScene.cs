@@ -1081,6 +1081,9 @@ namespace GUO.Game.Scenes
             Profiler.EnterContext(Profiler.ProfilerContext.RENDER_FRAME_WORLD);
             batcher.SetSampler(SamplerState.PointClamp);
 
+            // PORT DEVIATION (GUO): water render modes (ADR-0037); binds nothing under Classic.
+            GUO.Renderer.Water.WaterRender.PrepareFrame(_world, batcher, matrix, _offset.X, _offset.Y);
+
             batcher.Begin(matrix);
             batcher.SetBrightlight(ProfileManager.CurrentProfile.TerrainShadowsLevel * 0.1f);
 

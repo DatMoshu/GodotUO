@@ -698,6 +698,26 @@ mirrors after the store's own copy, and `sha256` and `size` are not needed.
 followed by `ed25519:` and the base64 of the 32-byte seed. It is never
 committed, and never leaves the publisher's machine or CI secret store.
 
+**A hosted catalogue** (`run.py push-catalogue`, `tools/asset_store/hosting.py`): the whole tree of one git
+branch, `gh-pages` by default, served as it is by GitHub Pages or any static host. A push reads the branch,
+signs a new index over it and pushes a new commit on top; it never rewrites the branch, and a branch that moved
+after it was read refuses the push.
+
+```
+index.json, index.json.sig     the signed index above; sequence above the one already on the branch
+packs/<id>/<version>.zip       packs hosted on the site itself (--pack); immutable once pushed
+previews/<id>/<version>/<file> one preview per listed version
+index.html                     the catalogue's web page
+.nojekyll                      Pages serves files without processing them
+.gitattributes                 `* -text`, so git never rewrites line endings in the signed bytes
+```
+
+A pack is either hosted on the site (its `urls` start with its relative path, or `UO_STORE_BASE_URL` and the
+path) or named by a listing file whose `urls` point elsewhere; the same id and version may not be both.
+`run.py init-catalogue FOLDER --id ID --title TITLE` writes the repository a catalogue of your own starts from:
+`README.md`, `packs/README.md`, `LICENSE`, `.gitignore` (`*.key`, `site/`) and the two workflows of
+`catalogue_repo/` with the catalogue's id and title. It refuses `guo-official` and writes no key.
+
 ### Shard content descriptor, `guo/shard-content@1` (ADR-0026)
 
 What a shard runs, for its players' clients. `tools/shard_content/run.py
@@ -2816,6 +2836,110 @@ Log line every 5 s at trace level: `[realtime-lights] grid=WxH lights=N
 computed=N cached=N quads=N sprites=N`. Scenario `client.realtime.lights`
 (`--realtime-lights-probe`, `RealtimeLightsProbe.tscn`) checks the contract
 headless and prints `[Realtime lights] PASS`.
+## 44. Water render modes (`Profile.WaterStyle`, `Render/Water`, ADR-0037)
+
+`Profile.WaterStyle` is a string, default `"classic"`, saved in the profile
+JSON like every other option. `"classic"` (or empty, or an id the client does
+not know, logged once) draws water as upstream does. Any other value names a
+water style: the built-in `"uo"`, or a Store pack's style by its component
+identity, `pack-id:component-id` (below). `--water-style ID` sets the style for
+one session ahead of the profile and is never saved (probes, scenarios, the
+perf lab). Options > Video > **Water** and the editor World view's Layers >
+**Realtime water** write the same field.
+
+**Mode byte.** Under a style, a Wet tile (tiledata flag 0x80: land in the
+chunk mesh, or a static sprite) carries bit 6 (0x40) of the shader mode byte
+in the packed vertex colour (ADR-0002's B channel: mode in bits 0-5, water in
+bit 6, circle-of-transparency in bit 7). Classic never sets it.
+
+**Uniforms** (`uo_water.gdshaderinc`, on every world material through
+`UltimaBatcher2D.SetWaterUniform`):
+
+| Uniform | Type | Meaning |
+|---|---|---|
+| `water_model` | int | 0 Classic (branch never taken), 1 `uo`, 2 `pixel`, 3 `cel`, 4 `realistic`, 5 `classicplus` |
+| `water_time` | float | seconds from the client clock |
+| `water_target_to_world` | vec4 | world px = target px * xy + zw; a tile's centre is ((X - Y) * 22, (X + Y) * 22 - 4 Z) |
+| `water_mask` | sampler2D | 128 x 128 RGBA8 ring of world cells (texel x & 127, y & 127): R 255 water / 0 dry; G + 128 is the water's z, or for a dry cell its highest land or static z (0 when it has none) |
+| `water_mask_origin` | vec2 | the ring's first cell; cells outside it read as water at z -5 |
+| `water_tint` | vec4 | the colour swells lean towards |
+| `water_params` | vec4 | speed, scale (1 / world px), wave strength, foam strength |
+| `water_params2` | vec4 | glint, foam width (cells), brightness levels (0 smooth), ripple strength (0 ignores ripples) |
+| `water_params3` | vec4 | x: grain, world pixels per water pixel (1 the art's own grid); yzw unused |
+| `water_ripples` | sampler2D | 256 x 256 R8, the ripple field over 128 x 128 cells, 2 x 2 texels a cell; 128 is flat |
+| `water_ripples_origin` | vec2 | the ripple window's first cell; outside it the surface is flat |
+
+The mask is rebuilt on the CPU when the player moves 8 cells or the loaded
+chunks change.
+
+**Ripples** (`WaterRipples`, WATER-03) are a two-buffer wave equation stepped
+at 20 Hz on the CPU (a front moves about three cells a second) over the ripple window, which follows the player (it
+shifts by whole cells when the player is 16 cells from its centre, keeping
+the waves inside). Disturbances: a mobile on a water cell no higher than its
+surface + 1 (moving pushes harder than standing); a multi on water that moves
+(its hull outline, `Item.MultiInfo`, at a rate scaled by its speed); an item that
+moves onto water or appears there within 14 cells of the player; a fixed
+effect that appears over water and a moving effect that ends there. After 6
+seconds without a disturbance the field stops stepping and uploading. The
+style's `BindRipples` sets the strength and damping (the `uo` style: 1.0 and
+0.985 a step). Continuous pushes are rates per second, so the field looks the
+same at any frame rate. A style is `IWaterStyle` (`Id`, `DisplayName`, `Bind`,
+`BindRipples`).
+
+**Models.** Every style picks one of five models built into the shader; no
+style carries shader code. `uo`: the tile's own colours under crossing swells
+in a few brightness steps. `pixel`: the steps dithered (4 x 4 ordered) on the
+water's own grid, the colour cut to a short ramp, surf and glints as whole
+pixels. `cel`: flat colour in the tint, lit by the tile's light level, bold
+bands, white surf with a dark ink line, ripples as crisp rings. `realistic`:
+smooth light with a finer chop, open water deepening to the tint away from the
+shore, a sharp highlight with sparkles and soft surf; on the Compatibility
+renderer (the web build) the chop and the sparkles are left out. `classicplus`
+keeps the hued and lit native texel, adding only a world-snapped, ordered-dither
+brightness shimmer and quiet ripple/shore modulation. It does not replace the
+native texture, quantise its palette or add white foam. In this model `wave`
+controls shimmer, `foam` controls shore modulation; `tint`, `scale`, `glint`
+and `levels` are reserved and do not change its output.
+All models reconstruct a continuous low-shore contour between the mask's cell
+centres; surf no longer restarts at each tile edge. World-anchored noise
+breaks bright surf into wavelets rather than a continuous offshore outline.
+Only dry ground at most
+8 above the water produces surf, so cliffs remain free of foam.
+
+**Store water styles** (WATER-04). A v2 content pack's `water` component
+(`docs/asset_pack_ecosystem.md`) targets `client` and names a JSON entry, a
+`guo/water@1` style file. Every field is required and no other is allowed:
+
+| Field | Value | Uniform |
+|---|---|---|
+| `schema` | `"guo/water@1"` | |
+| `name` | 1..48 UTF-16 units, not blank, no control characters; the Options entry | |
+| `model` | `uo`, `pixel`, `cel`, `realistic` or `classicplus` | `water_model` |
+| `tint` | three numbers 0..1, RGB | `water_tint` |
+| `speed` | 0..4 | `water_params.x` |
+| `scale` | 0.005..0.25 (1 / world px) | `water_params.y` |
+| `wave` | 0..1 | `water_params.z` |
+| `foam` | 0..1 | `water_params.w` |
+| `glint` | 0..1 | `water_params2.x` |
+| `foam_width` | 0..0.5 (cells) | `water_params2.y` |
+| `levels` | integer 0..16 (0 smooth) | `water_params2.z` |
+| `grain` | integer 1..8 | `water_params3.x` |
+| `ripples` | `{"strength": 0..2, "damping": 0.9..0.999}` | `WaterRipples.Strength` / `.Damping`; `water_params2.w` is 1 when strength > 0 |
+
+At most 16 KiB, UTF-8 without a byte order mark, unique keys, numbers as JSON
+numbers (an integer field refuses `2.0`). `tools/asset_store/water_style.py`
+and `Store/StoreWater.cs` check the file when a pack is verified or installed;
+the shared corpus (`corpus/water.py`) holds them to the same verdicts. A
+deployment's water components need no numeric binding: the client offers each
+under Options > **Water** by its `name` and saves its identity in
+`Profile.WaterStyle`. A style whose pack is no longer deployed draws Classic.
+The four GUO packs, `guo-water-pixel`, `guo-water-cel`,
+`guo-water-realistic` and `guo-water-classicplus` (component `sea`), are built from `design/packs/water`
+by `tools/asset_store/water_packs.py`.
+
+`GUO_WATER_DEBUG=1` in the client's environment paints every fragment that takes
+the water branch magenta, to see which tiles a style reaches; `2` paints the
+ripple field in grey (mid grey is flat).
 ## 42. Packet mods (`Data/Mods/<mod>/mod.json`, `load_mods`, ADR-0038)
 
 A packet mod is a folder the user installed beside `Data/Plugins`: a
@@ -2897,6 +3021,56 @@ presets:
 path or carries the login name, computer name, home folder or a shard account
 name. A change to `columns` bumps `format`.
 
+### Count comparison and local baselines (PERF-02)
+
+`tools/perf_probe/gate.py` accepts two probe reports. Each must be optimized
+and contain exactly one `login`, `open-field`, `britain-bank`, `dense-forest`,
+`dungeon`, and `walk`. Stationary scenes need at least 360 measured frames;
+the timed walk needs at least one measured frame and one tile moved. Counts
+and mean/p95/p99 times must be finite positive numbers, draws per frame must
+be at least 0.95, and p95 cannot exceed p99. Window and postfx must match.
+Draw calls greater than baseline times 1.05 fail; any batcher-item increase
+fails. Frame times are advisory. Exit 0 passes, 1 fails counts, 2 refuses
+invalid inputs. An optional summary path receives appended Markdown.
+
+`launchers/dev/perf_gate.bat` / `.sh` runs the real optimized probe and uses
+`<UO_BUILD_DIR>/perf/gate/<machine-tag>/<name>.baseline.json`, never a
+committed baseline. `UO_BUILD_DIR` must resolve outside the checkout. Names
+and fixture labels are 1-48 lowercase letters, digits, underscores or
+hyphens, starting with a letter or digit. A machine tag is the first 16 hex
+digits of SHA-256 over the computer name, OS family and architecture joined
+by `|`; the name itself is not written. The baseline object is:
+
+| Key | Value |
+|---|---|
+| `schema` | `"guo/perf_gate@1"` |
+| `recorded` | UTC ISO-8601 time |
+| `context.machine` | machine tag used for the containing directory |
+| `context.window` | requested `"WxH"`; must equal the measured window |
+| `context.zoom` | finite positive requested zoom, default 1.0 |
+| `context.renderer` | `forward_plus` (default), `mobile`, or `gl_compatibility` |
+| `context.client_version` | configured client version |
+| `context.fixture` | required user label for the shard world/data fixture |
+| `context.shard` | first 16 hex digits of SHA-256 of `host:port` |
+| `context.args` | exact extra client flag string, default empty |
+| `report` | complete validated probe JSON |
+
+Context equality is binding before comparison. The tool does not validate
+world contents or freeze live entities: fixture consistency is the operator's
+responsibility. `--record-baseline` creates exclusively and refuses an
+existing file. `--replace-baseline` requires an existing baseline and replaces
+it through a sibling `.json.tmp` after a successful probe. Failed probes
+cannot replace it. Recording exits 0 but explicitly reports that no regression
+comparison occurred. Each measurement gets a fresh `gate_<uuid>` label.
+Comparison summaries are `<name>.gate_<uuid>.md` beside the baseline; raw
+probe reports/logs remain under `<UO_BUILD_DIR>/perf/`. Local baselines and
+reports may contain private paths or identifiers in optional fields and
+must never be committed or automatically uploaded.
+
+Hosted CI's `perf` job tests these contracts with synthetic result files.
+It does not run the real probe or measure FPS; no private runner or service
+is required. See [the gate guide](perf/performance_gate.md) for commands,
+doctor behavior, smoke steps and limitations.
 ## 43. Server identity and client version (`src/Network/ServerIdentity.cs`)
 
 What the client learns about the server it is logged in to, and which client version it reported there. It is a

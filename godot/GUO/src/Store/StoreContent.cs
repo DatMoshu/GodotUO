@@ -40,7 +40,7 @@ internal sealed class StoreComponent
 
 internal static class StoreContent
 {
-    public static readonly HashSet<string> Types = new("static land texmap tiledata gump animation wearable hue sound music effect light translation font map region multi decoration item crafting loot vendor creature spawner encounter quest dialogue presentation authoring script hd-art splat voice mod".Split(' '), StringComparer.Ordinal);
+    public static readonly HashSet<string> Types = new("static land texmap tiledata gump animation wearable hue sound music effect light translation font map region multi decoration item crafting loot vendor creature spawner encounter quest dialogue presentation authoring script hd-art splat voice mod water".Split(' '), StringComparer.Ordinal);
 
     private static void ValidateMedia(StoreComponent c, StoreManifest m)
     {
@@ -100,6 +100,12 @@ internal static class StoreContent
             StorePack.Require(c.Entry != null && m.Files.ContainsKey(c.Entry), "Undeclared component entry");
             StorePack.Require(Path.GetExtension(c.Entry).ToLowerInvariant() is ".json" or ".png" or ".wav" or ".ogg" or ".razor" or ".ply", "Invalid content entry type");
             ValidateMedia(c, m);
+            if (c.Type == "water")
+            {
+                // A style (ADR-0037 decision 6): data for a built-in model, read by the client only.
+                StorePack.Require(c.Target == "client", "Water component must target client");
+                StorePack.Require(Path.GetExtension(c.Entry).Equals(".json", StringComparison.OrdinalIgnoreCase), "Water entry must be JSON");
+            }
             StoreMods.Validate(c, m);
             StorePack.Require(c.References == null || c.References.Count <= 512, "Invalid references");
             foreach (string reference in c.References ?? new())
