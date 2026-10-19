@@ -1,0 +1,13 @@
+{
+  "id": "client.input.keyboard_mouse",
+  "title": "Keyboard: modifiers come up on focus loss, AltGr characters are typed",
+  "surface": "client",
+  "requires": {"build": "debug"},
+  "timeouts": {"step_s": 90, "run_s": 150},
+  "steps": [
+    {"id": "launch", "do": {"kind": "launch", "args": ["--keyboard-probe", "--pregame-classic", "--silent"], "settings": {"autologin": false, "username": "", "password": ""}},
+     "say": "Drive the keyboard layer with injected keys at the login screen, without a shard.",
+     "expect": {"log.contains": "[GUO] keyboard probe: PASS", "within_s": 75}},
+    {"id": "summary", "do": {"kind": "note", "text": "Alt, Ctrl and Shift held over a focus loss are released, keys already up are not released twice, an AltGr character as Godot sends it with the input method on reaches a text field, and Ctrl+C stays a command. Focus loss and the keyboard layout come from the operating system, so the focus-out notification is sent to the client directly."}}
+  ]
+}

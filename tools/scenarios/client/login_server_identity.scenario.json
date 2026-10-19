@@ -1,0 +1,112 @@
+{
+  "id": "client.login.server_identity",
+  "title": "Log in and check the client records the server and the client version it reported (NET-02)",
+  "surface": "client",
+  "requires": {
+    "shard": "dev",
+    "account": "$account",
+    "build": "debug"
+  },
+  "timeouts": {
+    "step_s": 60,
+    "run_s": 300
+  },
+  "steps": [
+    {
+      "id": "launch",
+      "do": {
+        "kind": "launch",
+        "args": [
+          "--scratch-profile"
+        ],
+        "settings": {
+          "autologin": false
+        }
+      },
+      "say": "Start GUO.",
+      "timeout_s": 240,
+      "expect": {
+        "scene": "LoginScene",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "type_account",
+      "do": {
+        "kind": "ui.fill",
+        "control": {
+          "type": "StbTextBox"
+        },
+        "text": "$account"
+      },
+      "say": "Type the account name."
+    },
+    {
+      "id": "type_password",
+      "do": {
+        "kind": "ui.fill",
+        "control": {
+          "type": "PasswordStbTextBox"
+        },
+        "text": "$password"
+      },
+      "say": "Type the password."
+    },
+    {
+      "id": "log_in",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 2
+        }
+      },
+      "say": "Press Login.",
+      "expect": {
+        "ui.exists": "ServerSelectionGump",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "pick_server",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "ServerEntryGump",
+          "index": 0
+        }
+      },
+      "say": "Pick the first server."
+    },
+    {
+      "id": "server_next",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 1
+        }
+      },
+      "say": "Press Next; the character list arrives and the client logs what it learned about the server.",
+      "expect": {
+        "ui.exists": "CharacterSelectionGump",
+        "log.contains": "[GUO] server identity: \"",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "identity_logged",
+      "do": {
+        "kind": "wait",
+        "seconds": 1
+      },
+      "say": "The log names the shard, the client version GUO reported and the server's flags, never its address.",
+      "shot": true,
+      "expect": {
+        "log.contains": "character list 0x"
+      }
+    }
+  ]
+}

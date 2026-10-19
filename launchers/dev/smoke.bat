@@ -38,6 +38,9 @@ echo [smoke] 7/7 launchers (tools\launcher_lint)
 echo [smoke] selection seam (synthetic; no shard or install)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Bootstrap/SelectionSeamProbe.tscn || set "FAIL=1"
 
+echo [smoke] network checks: packet length guard, server identity (tools\network_tests; no shard)
+dotnet run --project "%UO_ROOT%\tools\network_tests\NetworkTests.csproj" --nologo || set "FAIL=1"
+
 echo [smoke] optional audio pack contracts (synthetic; no shard or AI service)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Store/StoreAudioProbe.tscn || set "FAIL=1"
 
@@ -50,6 +53,8 @@ echo [smoke] perf lab report: fields kept, privacy refusal, size (synthetic; too
 echo [smoke] PostFX engine regressions (synthetic)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Bootstrap/PostFxEngineProbe.tscn || set "FAIL=1"
 
+echo [smoke] keyboard: key-ups on focus loss, AltGr text (synthetic; no shard)
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" -- --keyboard-probe --pregame-classic --silent || set "FAIL=1"
 echo [smoke] controller regressions and Set controls (synthetic pad; no shard)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" -- --pad-regression-probe --pregame-classic --silent || set "FAIL=1"
 
