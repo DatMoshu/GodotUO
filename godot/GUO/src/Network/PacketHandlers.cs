@@ -49,6 +49,10 @@ namespace GUO.Network
 
         public void Add(byte id, OnPacketBufferReader handler) => _handlers[id] = handler;
 
+        // PORT DEVIATION (GUO): lets the mod registry tell a new id from an
+        // override (ADR-0038).
+        internal bool HasHandler(byte id) => _handlers[id] != null;
+
         private byte[] _readingBuffer = new byte[4096];
         private readonly PacketLogger _packetLogger = new PacketLogger();
         private readonly CircularBuffer _buffer = new CircularBuffer();
@@ -143,6 +147,11 @@ namespace GUO.Network
         private void AnalyzePacket(World world, ReadOnlySpan<byte> data, int offset)
         {
             if (data.IsEmpty)
+                return;
+
+            // PORT DEVIATION (GUO): a packet an installed mod registered goes to
+            // the mod, only while "Load mods" is on (ADR-0038). Null otherwise.
+            if (Mods.PacketModRegistry.Current is { } mods && mods.TryDispatch(data))
                 return;
 
             var bufferReader = _handlers[data[0]];

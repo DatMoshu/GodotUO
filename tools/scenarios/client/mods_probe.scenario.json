@@ -1,0 +1,13 @@
+{
+  "id": "client.mods.probe",
+  "title": "Packet mods: off by default, the sample mod through the real packet seams",
+  "surface": "client",
+  "requires": {"build": "debug"},
+  "timeouts": {"step_s": 60, "run_s": 180},
+  "steps": [
+    {"id": "launch", "do": {"kind": "launch", "args": ["--mods-probe"], "settings": {"autologin": false, "username": "", "password": ""}},
+     "say": "Load the sample mod and push a packet stream through the client's length table and handler table, with mods off and on. Needs the sample built: dotnet build docs/modding/samples/announce/Announce.csproj.",
+     "expect": {"log.contains": "[mods] PASS", "within_s": 45}},
+    {"id": "summary", "do": {"kind": "note", "text": "Checks cover off by default, off-state framing, in-process loading with the client's ABI assembly, the length and handler seams, the shard guard and strict mod.json."}}
+  ]
+}
