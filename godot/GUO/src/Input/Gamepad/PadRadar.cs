@@ -63,6 +63,22 @@ namespace GUO.Input.Gamepad
 
         private static World World => Client.Game?.UO?.World;
 
+        /// <summary>
+        /// How near a mobile has to be for its double click to do anything: a
+        /// mount takes a rider within one tile (the shard's BaseMount.OnDoubleClick,
+        /// "That is too far away to ride").
+        /// </summary>
+        public const int UseReach = 1;
+
+        /// <summary>How long a walk to a mobile chosen out of reach may take before it is given up.</summary>
+        public const uint ApproachMs = 6000;
+
+        private static uint _approach;
+        private static uint _approachUntil;
+
+        /// <summary>For probes: the mobile being walked to so it can be used, or 0.</summary>
+        public static uint Approaching => _approach;
+
         public static void Begin()
         {
             World world = World;
@@ -159,6 +175,15 @@ namespace GUO.Input.Gamepad
                 {
                     _near.Add(m);
                 }
+            }
+
+            // Mounted, the player is a choice too: a double click on yourself
+            // is how a rider gets off, with the mouse as with the pad. With a
+            // target cursor up, so is yourself: a heal or a bandage on you is a
+            // click on your own character with the mouse.
+            if (world.Player.IsMounted || world.TargetManager.IsTargeting)
+            {
+                _near.Add(world.Player);
             }
 
             foreach (Item i in world.Items.Values)
@@ -266,6 +291,21 @@ namespace GUO.Input.Gamepad
                 LastAction = $"target 0x{e.Serial:X8}";
                 world.TargetManager.Target(e.Serial);
             }
+            else if (e is Mobile mob && mob != world.Player && world.Player.InWarMode)
+            {
+                // Upstream's double click on a mobile in war mode is an attack
+                // (GameSceneInputHandler.OnLeftMouseDoubleClick), not a use.
+                Attack(world, mob);
+            }
+            else if (e is Mobile far && far != world.Player && far.Distance > UseReach
+                && world.Player.Pathfinder.WalkTo(far.X, far.Y, far.Z, UseReach))
+            {
+                // Out of reach (a mount wandered off): walk up to it with
+                // upstream's pathfinder, then use it (Approach).
+                _approach = far.Serial;
+                _approachUntil = Time.Ticks + ApproachMs;
+                LastAction = $"approach 0x{e.Serial:X8}";
+            }
             else if (e is Item item && item.IsCorpse)
             {
                 LastAction = $"use 0x{e.Serial:X8}";
@@ -280,14 +320,92 @@ namespace GUO.Input.Gamepad
             GD.Print($"[GUO] pad radar: {LastAction} ({NameOf(e)})");
         }
 
-        /// <summary>Attack the last target without also using the radar choice on release.</summary>
+        /// <summary>
+        /// Attack the choice when it is a mobile, else the last target, without
+        /// also using the radar choice on release.
+        /// </summary>
         public static void AttackLast()
         {
             World world = World;
             if (world == null) return;
             _acted = true;
+
+            if (Chosen is Mobile m && m != world.Player)
+            {
+                Attack(world, m);
+                return;
+            }
+
             LastAction = "attack last";
             PadWheel.RunMacro(world, MacroType.AttackLast);
+        }
+
+        /// <summary>
+        /// Attack <paramref name="m"/> and make it the last target, so attack
+        /// last and target last stay on it after the radar closes. The target
+        /// half is what upstream's Select Next macro does (MacroManager.SetLastTarget).
+        /// </summary>
+        private static void Attack(World world, Mobile m)
+        {
+            GameActions.MessageOverhead(world, string.Format(Resources.ResGeneral.Target0, m.Name), Notoriety.GetHue(m.NotorietyFlag), world.Player);
+            world.TargetManager.NewTargetSystemSerial = m.Serial;
+            world.TargetManager.SelectedTarget = m.Serial;
+            world.TargetManager.LastTargetInfo.SetEntity(m.Serial);
+            GameActions.Attack(world, m.Serial);
+            LastAction = $"attack 0x{m.Serial:X8}";
+            GD.Print($"[GUO] pad radar: {LastAction} ({NameOf(m)})");
+        }
+
+        /// <summary>
+        /// Once a frame: a mobile chosen out of reach is used as soon as the walk
+        /// brings it within reach. A walk that stops short is tried again while
+        /// there is time (a mount moves); a held direction gives it up.
+        /// </summary>
+        public static void Approach()
+        {
+            if (_approach == 0)
+            {
+                return;
+            }
+
+            World world = World;
+            Mobile m = world?.Mobiles.Get(_approach);
+
+            if (world == null || !world.InGame || world.Player == null || m == null || m.IsDestroyed)
+            {
+                _approach = 0;
+                return;
+            }
+
+            if (m.Distance <= UseReach)
+            {
+                _approach = 0;
+                world.Player.Pathfinder.StopAutoWalk();
+                LastAction = $"use 0x{m.Serial:X8}";
+                GameActions.DoubleClick(world, m.Serial);
+                GD.Print($"[GUO] pad radar: {LastAction} ({NameOf(m)}), walked up to it");
+                return;
+            }
+
+            if (!world.Player.Pathfinder.AutoWalking
+                && (Time.Ticks > _approachUntil || !world.Player.Pathfinder.WalkTo(m.X, m.Y, m.Z, UseReach)))
+            {
+                _approach = 0;
+                LastAction = "approach gave up";
+                GD.Print($"[GUO] pad radar: could not reach {NameOf(m)}");
+            }
+        }
+
+        /// <summary>The player took the walking back: stop walking to the choice.</summary>
+        public static void CancelApproach()
+        {
+            if (_approach == 0)
+            {
+                return;
+            }
+
+            _approach = 0;
+            Client.Game?.UO?.World?.Player?.Pathfinder.StopAutoWalk();
         }
 
         /// <summary>X: look (single-click: the name over its head).</summary>
