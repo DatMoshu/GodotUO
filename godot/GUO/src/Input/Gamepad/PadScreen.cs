@@ -526,6 +526,7 @@ namespace GUO.Input.Gamepad
                 case WheelWindow.Options: Options(world); break;
                 case WheelWindow.Status: Status(world, player); break;
                 case WheelWindow.Party: Party(world); break;
+                case WheelWindow.Speech: Speech(); break;
             }
 
             if (_lines.Count == 0)
@@ -819,8 +820,46 @@ namespace GUO.Input.Gamepad
             });
         }
 
+        /// <summary>
+        /// What a player types most, said with A: the shard's spoken commands
+        /// (bank, vendors, guards, pets). The pad has no keyboard in the world;
+        /// this is the speech it can reach.
+        /// </summary>
+        public static readonly string[] Phrases =
+        {
+            "Bank", "Balance", "Vendor buy", "Vendor sell", "Guards", "Hail",
+            "All follow me", "All come", "All guard me", "All stay", "All stop", "All kill",
+        };
+
+        private static void Speech()
+        {
+            foreach (string phrase in Phrases)
+            {
+                string said = phrase;
+                _lines.Add(new Line
+                {
+                    Label = said,
+                    Act = () =>
+                    {
+                        GameActions.Say(said.ToLowerInvariant());
+                        Close();
+                    },
+                });
+            }
+        }
+
         private static void Macros(World world)
         {
+            _lines.Add(new Line
+            {
+                Label = "Say...",
+                Act = () =>
+                {
+                    Close();
+                    Open(WheelWindow.Speech);
+                },
+            });
+
             foreach (Macro macro in world.Macros.GetAllMacros())
             {
                 if (macro?.Items is not MacroObject first)
@@ -850,7 +889,7 @@ namespace GUO.Input.Gamepad
                 Act = () =>
                 {
                     Close();
-                    PadWizard.Open();
+                    PadWizard.OpenList();
                 },
             });
             _lines.Add(new Line

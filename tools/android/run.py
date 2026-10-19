@@ -2,13 +2,14 @@ r"""Build, install, run and smoke-test GUO on an Android device.
 
     launchers\android\doctor.bat      what is missing, and the fix for each
     launchers\android\export.bat      a debug APK, headless, into build\android
+                                      (--release: a release APK signed with your key)
     launchers\android\install.bat     adb install onto the attached device
     launchers\android\run.bat         start it and stream its logcat
     launchers\android\smoke.bat       export, install, run, wait for the login
                                       gump, pull a screenshot and a log
 
-    python tools\android\run.py <doctor|templates|keystore|settings|preset|
-                                 export|install|run|logcat|push|push-stage|smoke|avd> [...]
+    python tools\android\run.py <doctor|templates|keystore|release-keystore|settings|
+                                 preset|export|install|run|logcat|push|push-stage|smoke|avd> [...]
 
 `smoke --avd guo_phone` runs the smoke on GUO's own emulator instead of a
 device: boots it headless (see avd.py), exports for x86_64, puts the UO data
@@ -23,8 +24,11 @@ not from ANDROID_HOME, not from JAVA_HOME -- so `settings` writes the values
 from config.bat into that file, and `export` does so before every export.
 
 The export preset is rendered from export_presets.template.cfg into
-godot\GUO\export_presets.cfg, which is gitignored: it carries the keystore
-path and password from config.bat.
+godot\GUO\export_presets.cfg, which is gitignored: it carries the debug
+keystore path and password from config.bat. The RELEASE key never goes into
+it: `export --release` hands Godot the UO_ANDROID_RELEASE_KEYSTORE* settings
+through Godot's own GODOT_ANDROID_KEYSTORE_RELEASE_* environment variables,
+for that one export process only.
 
 WHAT IT TOUCHES
 
@@ -83,6 +87,7 @@ class Paths:
         self.project = cfg.godot_project
         self.out_dir = cfg.build / "android"
         self.apk = self.out_dir / "GUO-debug.apk"
+        self.release_apk = self.out_dir / "GUO-release.apk"
         self.preset_file = self.project / "export_presets.cfg"
         self.solution = self.project / "GUO.sln"
 
@@ -103,6 +108,7 @@ class Paths:
         ) or shutil.which("adb")
         self.jdk = cfg.android_jdk
         self.keystore = cfg.android_keystore
+        self.release_keystore = cfg.android_release_keystore
 
     @staticmethod
     def _first_existing(candidates: list[Path]) -> Path | None:
@@ -192,7 +198,7 @@ class Doctor:
                 print(f"       fix: {fix}")
         return ok
 
-    def run(self, publish_check: bool) -> int:
+    def run(self, publish_check: bool, release: bool = False) -> int:
         p, cfg = self.p, self.p.cfg
         print("[android] doctor -- what a Godot 4.7 .NET Android export needs on this machine\n")
 
@@ -252,6 +258,17 @@ class Doctor:
         # --- signing -------------------------------------------------------
         self.check("debug keystore", p.keystore.exists(), str(p.keystore),
                    "python tools\\android\\run.py keystore")
+        problems = release_signing_problems(p, verify=release)
+        if release:
+            for what, detail, fix in problems:
+                self.check(what, False, detail, fix)
+            if not problems:
+                self.check("release keystore", True,
+                           f"{p.release_keystore} (alias {cfg.android_release_keystore_user})")
+        else:
+            print("  info release keystore              "
+                  + ("set; `doctor --release` opens it" if not problems else
+                     "not set up (only `export --release` needs it; `doctor --release` says what is missing)"))
 
         # --- Godot's editor settings ---------------------------------------
         settings = read_editor_settings(p.editor_settings)
@@ -527,6 +544,104 @@ def make_keystore(p: Paths) -> int:
     return result.returncode
 
 
+RELEASE_FIX = ("set it in launchers\\_shared\\config.local.bat or the environment, "
+               "then check with launchers\\android\\doctor.bat --release")
+
+
+def release_signing_problems(p: Paths, verify: bool = True) -> list[tuple[str, str, str]]:
+    """What stops a release APK being signed with the user's own key, as doctor rows (what, detail, fix).
+
+    Empty when the keystore is set, outside the checkout and there, the alias
+    and password are set, and (verify) keytool opens it with them.
+    """
+    cfg = p.cfg
+    ks = p.release_keystore
+    rows: list[tuple[str, str, str]] = []
+    if ks is None:
+        rows.append(("release keystore", "UO_ANDROID_RELEASE_KEYSTORE is not set",
+                     "point it at your keystore, or at a new path and run "
+                     "python tools\\android\\run.py release-keystore; " + RELEASE_FIX))
+    elif inside_checkout(ks, cfg.root):
+        rows.append(("release keystore", f"{ks} is inside the checkout",
+                     "move it outside the repository (a key must never be committed) and update "
+                     "UO_ANDROID_RELEASE_KEYSTORE"))
+    elif not ks.is_file():
+        rows.append(("release keystore", f"no file at {ks}",
+                     "python tools\\android\\run.py release-keystore makes it there, or fix the path"))
+    if not cfg.android_release_keystore_user:
+        rows.append(("release key alias", "UO_ANDROID_RELEASE_KEYSTORE_USER is not set", RELEASE_FIX))
+    if not cfg.android_release_keystore_password:
+        rows.append(("release key password", "UO_ANDROID_RELEASE_KEYSTORE_PASSWORD is not set", RELEASE_FIX))
+    if verify and not rows:
+        keytool = p.java("keytool")
+        if keytool is None:
+            rows.append(("release keystore", "keytool not found, cannot open it",
+                         "install a JDK 17 and set UO_ANDROID_JDK"))
+        else:
+            # The password on stdin, never on a command line other processes can read.
+            result = subprocess.run(
+                [str(keytool), "-list", "-keystore", str(ks), "-alias", cfg.android_release_keystore_user],
+                input=cfg.android_release_keystore_password + "\n", capture_output=True, text=True,
+            )
+            if result.returncode != 0:
+                rows.append(("release keystore", f"keytool cannot open alias "
+                             f"{cfg.android_release_keystore_user!r} in {ks} with the configured password",
+                             "check UO_ANDROID_RELEASE_KEYSTORE_USER and UO_ANDROID_RELEASE_KEYSTORE_PASSWORD"))
+    return rows
+
+
+def inside_checkout(path: Path, root: Path) -> bool:
+    return path.resolve().is_relative_to(root.resolve())
+
+
+def release_env(p: Paths) -> dict[str, str]:
+    """The environment of a release export: Godot reads the release key from these, not from the preset."""
+    return {
+        **os.environ,
+        "GODOT_ANDROID_KEYSTORE_RELEASE_PATH": str(p.release_keystore),
+        "GODOT_ANDROID_KEYSTORE_RELEASE_USER": p.cfg.android_release_keystore_user,
+        "GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD": p.cfg.android_release_keystore_password,
+    }
+
+
+def make_release_keystore(p: Paths, dname: str) -> int:
+    """Generate the user's own release key at UO_ANDROID_RELEASE_KEYSTORE. Never overwrites one."""
+    cfg = p.cfg
+    unset = [name for name, value in (("UO_ANDROID_RELEASE_KEYSTORE", p.release_keystore),
+                                      ("UO_ANDROID_RELEASE_KEYSTORE_USER", cfg.android_release_keystore_user),
+                                      ("UO_ANDROID_RELEASE_KEYSTORE_PASSWORD",
+                                       cfg.android_release_keystore_password))
+             if not value]
+    if unset:
+        sys.exit(f"[android] set {', '.join(unset)} first; " + RELEASE_FIX)
+    ks = p.release_keystore
+    if inside_checkout(ks, cfg.root):
+        sys.exit(f"[android] {ks} is inside the checkout; a release key must live outside the repository")
+    if ks.exists():
+        say(f"release keystore already there, left alone: {ks}")
+        return 0
+    if len(cfg.android_release_keystore_password) < 6:
+        sys.exit("[android] UO_ANDROID_RELEASE_KEYSTORE_PASSWORD must be at least 6 characters (keytool's rule)")
+    keytool = p.java("keytool")
+    if not keytool:
+        sys.exit("[android] keytool not found; install a JDK 17 and set UO_ANDROID_JDK")
+    ks.parent.mkdir(parents=True, exist_ok=True)
+    # The password on stdin, never on the command line: keytool asks for the
+    # store password twice. PKCS12 keeps the key password the same.
+    result = subprocess.run(
+        [str(keytool), "-genkeypair", "-keystore", str(ks), "-storetype", "PKCS12",
+         "-alias", cfg.android_release_keystore_user, "-keyalg", "RSA", "-keysize", "4096",
+         "-validity", "10000", "-dname", dname],
+        input=(cfg.android_release_keystore_password + "\n") * 3, capture_output=True, text=True,
+    )
+    if result.returncode != 0 or not ks.is_file():
+        print(result.stdout + result.stderr)
+        sys.exit("[android] keytool could not make the release keystore")
+    say(f"made {ks} (alias {cfg.android_release_keystore_user}, RSA 4096, PKCS12)")
+    say("BACK IT UP NOW, with its password, somewhere safe: an app signed with a lost key can never be updated")
+    return 0
+
+
 ABIS = ("arm64", "x86_64", "both")
 
 
@@ -580,7 +695,7 @@ def ensure_solution(p: Paths) -> None:
         sys.exit("[android] could not produce GUO.sln; the .NET export needs one")
 
 
-def device_args(p: Paths, extra: str, sound: bool = False, client_data: bool = True) -> str:
+def device_args(p: Paths, extra: str, sound: bool = False, client_data: bool = True, account: bool = True) -> str:
     """The client's command line on the device: where its data is, then whatever the caller adds.
 
     client_data=False leaves the data folder out, as a player's install has it:
@@ -596,7 +711,7 @@ def device_args(p: Paths, extra: str, sound: bool = False, client_data: bool = T
     if not sound:
         base += " --silent"
     # The configured account, unless the caller names one itself.
-    if p.cfg.android_account and "--account" not in extra:
+    if account and p.cfg.android_account and "--account" not in extra:
         base += f" --account {p.cfg.android_account}"
     # A tool run (a probe, a perf walk, the smoke) in the Classic look: the
     # device keeps a player's look in files/postfx/state.json across
@@ -642,25 +757,34 @@ def ensure_android_source(p: Paths) -> None:
 
 
 def export(p: Paths, extra_args: str, apk: Path, sound: bool = False, client_data: bool = True,
-           abi: str = "arm64") -> int:
+           abi: str = "arm64", release: bool = False) -> int:
     console = p.godot_console()
     if not console.exists():
         sys.exit(f"[android] Godot console not found at {console}; run doctor")
+    if release:
+        problems = release_signing_problems(p)
+        for what, detail, fix in problems:
+            say(f"{what}: {detail}\n          fix: {fix}")
+        if problems:
+            say("no release export without your release key; launchers\\android\\doctor.bat --release checks it")
+            return 1
     p.out_dir.mkdir(parents=True, exist_ok=True)
     apk = apk_path(apk)
     apk.parent.mkdir(parents=True, exist_ok=True)
     write_editor_settings(p)
     ensure_solution(p)
     ensure_android_source(p)
-    render_preset(p, device_args(p, extra_args, sound, client_data), apk, abi)
+    # A release is for players: never this machine's dev account (UO_ANDROID_ACCOUNT).
+    render_preset(p, device_args(p, extra_args, sound, client_data, account=not release), apk, abi)
     if apk.exists():
         apk.unlink()
 
     log = p.out_dir / "export.log"
-    cmd = [console, "--headless", "--path", p.project, "--export-debug", PRESET_NAME, apk]
+    cmd = export_command(console, p.project, apk, release)
     say("$ " + " ".join(f'"{c}"' if " " in str(c) else str(c) for c in cmd))
     with open(log, "w", encoding="utf-8") as f:
-        proc = subprocess.Popen([str(c) for c in cmd], stdout=f, stderr=subprocess.STDOUT, text=True)
+        proc = subprocess.Popen([str(c) for c in cmd], stdout=f, stderr=subprocess.STDOUT, text=True,
+                                env=release_env(p) if release else None)
         returncode, stopped = wait_for_export(proc, log)
     text = log.read_text(encoding="utf-8", errors="replace")
     for line in text.splitlines():
@@ -680,6 +804,12 @@ def export(p: Paths, extra_args: str, apk: Path, sound: bool = False, client_dat
         return 1
     say(f"exported {apk} ({apk.stat().st_size // 1024 // 1024} MB); log: {log}")
     return 0
+
+
+def export_command(console: Path, project: Path, apk: Path, release: bool) -> list:
+    """Godot's headless export: --export-release signs with the key in release_env, else the debug key."""
+    return [console, "--headless", "--path", project, "--export-release" if release else "--export-debug",
+            PRESET_NAME, apk]
 
 
 EXPORT_GRACE_S = 60      # after Godot logs the export DONE
@@ -1210,13 +1340,20 @@ def main(argv: list[str] | None = None) -> int:
 
     d = sub.add_parser("doctor", help="check the toolchain and say what is missing")
     d.add_argument("--publish", action="store_true", help="also dotnet publish the C# for android-arm64")
+    d.add_argument("--release", action="store_true", help="also check your release keystore (export --release)")
     sub.add_parser("templates", help="unpack the mono export templates for the pinned Godot")
     sub.add_parser("keystore", help="generate the standard debug keystore")
+    rk = sub.add_parser("release-keystore",
+                        help="generate YOUR release keystore at UO_ANDROID_RELEASE_KEYSTORE (never overwrites)")
+    rk.add_argument("--dname", default="CN=GUO", help="the certificate's subject (default CN=GUO)")
     sub.add_parser("settings", help="write the Android paths into Godot's editor settings")
     pr = sub.add_parser("preset", help="render export_presets.cfg from the template")
     pr.add_argument("--args", default="", help="extra client flags to bake in")
     pr.add_argument("--sound", action="store_true", help="audible build (default bakes --silent)")
-    ex = sub.add_parser("export", help="export a debug APK, headless")
+    ex = sub.add_parser("export", help="export a debug APK, headless (--release: signed with your key)")
+    ex.add_argument("--release", action="store_true",
+                    help="a release APK, build\\android\\GUO-release.apk, signed with UO_ANDROID_RELEASE_KEYSTORE; "
+                         "a player's build: audible, no --client-data baked in")
     ex.add_argument("--args", default="", help="extra client flags to bake in (after --play --client-data ...)")
     ex.add_argument("--out", default=None, help="APK path (default build\\android\\GUO-debug.apk)")
     ex.add_argument("--sound", action="store_true", help="audible build (default bakes --silent)")
@@ -1257,11 +1394,13 @@ def main(argv: list[str] | None = None) -> int:
     p = Paths(load_config())
 
     if args.command == "doctor":
-        return Doctor(p).run(args.publish)
+        return Doctor(p).run(args.publish, args.release)
     if args.command == "templates":
         return install_templates(p)
     if args.command == "keystore":
         return make_keystore(p)
+    if args.command == "release-keystore":
+        return make_release_keystore(p, args.dname)
     if args.command == "settings":
         write_editor_settings(p)
         return 0
@@ -1269,6 +1408,10 @@ def main(argv: list[str] | None = None) -> int:
         render_preset(p, device_args(p, args.args, args.sound), p.apk)
         return 0
     if args.command == "export":
+        if args.release:
+            # A release is a player's build: it finds its data itself and is not muted.
+            return export(p, args.args, Path(args.out) if args.out else p.release_apk, True, False,
+                          args.abi, release=True)
         return export(p, args.args, Path(args.out) if args.out else p.apk, args.sound, not args.no_client_data,
                       args.abi)
     if args.command == "install":

@@ -311,7 +311,7 @@ edge-swipe gump paging; haptics.
 
 ### 6. Out of scope for this ADR
 
-Release signing and distribution; the Play Store; an AAB; Android plugins
+Distribution (release signing: see the 2026-10-18 amendment); the Play Store; an AAB; Android plugins
 (and therefore Gradle builds); iOS, which reuses the touch layer but needs
 its own export decisions; a controller mapping; on-device shard discovery;
 save-game and profile sync between devices; any change to the gumps' pixel
@@ -335,7 +335,27 @@ on the land-only atlas (`docs/perf/2026-09-28_land_array_walk.md`):
 the web are unchanged. The next step, if the hitch matters, is uploading only
 the rows of a page that changed.
 
-## Alternatives Rejected
+## Amendment, 2026-10-18: a release-signed APK path
+
+Release signing moves out of "out of scope" (section 6); distribution, the
+Play Store and an AAB stay there. Ordered by the owner for the 2026-10-18
+sprint (PLAT-02).
+
+- `tools/android/run.py export --release` runs `--export-release` and signs
+  with the user's own key, taken from `UO_ANDROID_RELEASE_KEYSTORE`, `_USER`
+  and `_PASSWORD` (the environment or the gitignored `config.local.bat`; empty
+  in `config.bat`). A keystore inside the checkout is refused.
+- The key reaches Godot only through Godot's own
+  `GODOT_ANDROID_KEYSTORE_RELEASE_*` environment variables, set for the
+  export process alone. The preset template keeps `keystore/release*` empty,
+  so the rendered `export_presets.cfg` never carries the release key, and the
+  password never appears on a command line.
+- A release build is a player's build: no `--silent`, no baked
+  `--client-data`, no dev `--account`.
+- CI builds it on a tag or a manual run only when the three
+  `ANDROID_RELEASE_KEYSTORE_*` repository secrets exist. Making the key and
+  setting those secrets is the owner's job.
+
 
 - **Godot stretch (`canvas_items`/`viewport`) for the phone.** Filters the
   frame and keeps the root viewport at a size the client did not ask for;
