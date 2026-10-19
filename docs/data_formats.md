@@ -2736,3 +2736,66 @@ attenuated by the speaker's tile distance. Synthesis shells `voice.py`
 thread with distance attenuation (full to 2 tiles, silent past 20).
 `VoiceManager.Status` reports the pipeline state for probes;
 `--voice`/`--say`/`--voice-fake`/`--hear-secs` drive it in walk-to runs.
+
+## 41. Perf probe and perf lab reports (`build/perf`, `tools/perf_probe`, `tools/perf_lab`)
+
+**Probe JSON**, `perf_<label>.json`, written by the client's `--perf-probe`
+(`src/Bootstrap/PerfProbe.cs`): `{label, window "WxH", optimized, postfx,
+scenes[]}`. Each scene carries `scene`, `what`, `at`, `frames`, `fps`,
+`mean_ms`, `p95_ms`, `p99_ms`, `draws_per_frame`, `draw_calls`,
+`batcher_items`, `texture_switches`, `world_prepare_ms`, `world_draw_ms`,
+`render_cpu_ms`, `render_gpu_ms`, `tiles_moved` and land, cover and allocation
+counts. Readers ignore unknown fields; older reports lack newer columns.
+Perf lab extensions may also supply `zoom` and a hardware-only `system`
+object. The local gate does not require those optional extensions.
+
+### Count comparison and local baselines (PERF-02)
+
+`tools/perf_probe/gate.py` accepts two probe reports. Each must be optimized
+and contain exactly one `login`, `open-field`, `britain-bank`, `dense-forest`,
+`dungeon`, and `walk`. Stationary scenes need at least 360 measured frames;
+the timed walk needs at least one measured frame and one tile moved. Counts
+and mean/p95/p99 times must be finite positive numbers, draws per frame must
+be at least 0.95, and p95 cannot exceed p99. Window and postfx must match.
+Draw calls greater than baseline times 1.05 fail; any batcher-item increase
+fails. Frame times are advisory. Exit 0 passes, 1 fails counts, 2 refuses
+invalid inputs. An optional summary path receives appended Markdown.
+
+`launchers/dev/perf_gate.bat` / `.sh` runs the real optimized probe and uses
+`<UO_BUILD_DIR>/perf/gate/<machine-tag>/<name>.baseline.json`, never a
+committed baseline. `UO_BUILD_DIR` must resolve outside the checkout. Names
+and fixture labels are 1-48 lowercase letters, digits, underscores or
+hyphens, starting with a letter or digit. A machine tag is the first 16 hex
+digits of SHA-256 over the computer name, OS family and architecture joined
+by `|`; the name itself is not written. The baseline object is:
+
+| Key | Value |
+|---|---|
+| `schema` | `"guo/perf_gate@1"` |
+| `recorded` | UTC ISO-8601 time |
+| `context.machine` | machine tag used for the containing directory |
+| `context.window` | requested `"WxH"`; must equal the measured window |
+| `context.zoom` | finite positive requested zoom, default 1.0 |
+| `context.renderer` | `forward_plus` (default), `mobile`, or `gl_compatibility` |
+| `context.client_version` | configured client version |
+| `context.fixture` | required user label for the shard world/data fixture |
+| `context.shard` | first 16 hex digits of SHA-256 of `host:port` |
+| `context.args` | exact extra client flag string, default empty |
+| `report` | complete validated probe JSON |
+
+Context equality is binding before comparison. The tool does not validate
+world contents or freeze live entities: fixture consistency is the operator's
+responsibility. `--record-baseline` creates exclusively and refuses an
+existing file. `--replace-baseline` requires an existing baseline and replaces
+it through a sibling `.json.tmp` after a successful probe. Failed probes
+cannot replace it. Recording exits 0 but explicitly reports that no regression
+comparison occurred. Each measurement gets a fresh `gate_<uuid>` label.
+Comparison summaries are `<name>.gate_<uuid>.md` beside the baseline; raw
+probe reports/logs remain under `<UO_BUILD_DIR>/perf/`. Local baselines and
+reports may contain private paths or identifiers in optional fields and
+must never be committed or automatically uploaded.
+
+Hosted CI's `perf` job tests these contracts with synthetic result files.
+It does not run the real probe or measure FPS; no private runner or service
+is required. See [the gate guide](perf/performance_gate.md) for commands,
+doctor behavior, smoke steps and limitations.

@@ -64,6 +64,8 @@ def main() -> int:
     ap.add_argument("--args", default="", help="extra client flags, e.g. --batched-world")
     ap.add_argument("--size", default="1280,720", help="window size; frame times compare only at one size")
     ap.add_argument("--zoom", type=float, default=0, help="camera zoom for the world scenes (0 = the profile's)")
+    ap.add_argument("--renderer", choices=("forward_plus", "mobile", "gl_compatibility"),
+                    help="pin the Godot rendering method before the client starts")
     ap.add_argument("--compare", nargs=2, metavar=("A", "B"), help="compare two labels already measured")
     ap.add_argument("--as-built", action="store_true",
                     help="run GUO as it is built, instead of rebuilding it optimised first (tools/guo/build.py)")
@@ -82,7 +84,8 @@ def main() -> int:
     env = {**os.environ, "UO_CLIENT_DATA": str(cfg.client_data), "UO_CACHE_DIR": str(home / "cache"),
            "UO_CLIENT_VERSION": cfg.client_version, "UO_SHARD_HOST": cfg.shard_host,
            "UO_SHARD_PORT": str(args.port or cfg.shard_port)}
-    cmd = [str(cfg.godot_console_exe), "--path", str(cfg.godot_project), "--", "--play", "--silent",
+    cmd = [str(cfg.godot_console_exe), "--path", str(cfg.godot_project),
+           *(["--rendering-method", args.renderer] if args.renderer else []), "--", "--play", "--silent",
            "--window-size", args.size, "--perf-probe", "--perf-out", str(out), "--perf-label", args.label, *(["--perf-zoom", str(args.zoom)] if args.zoom else []),
            # Timed in the Classic look unless the caller names one: a saved
            # look adds its passes to every number. The report says which ran.

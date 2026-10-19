@@ -18,7 +18,7 @@ python tools/perf_probe/run.py --compare A B
 ## Compare counts against a baseline
 
 ```
-python tools/perf_probe/gate.py --baseline docs/perf/baseline_ci.json --report <measured-report.json> --summary <summary.md>
+python tools/perf_probe/gate.py --baseline <baseline-report.json> --report <measured-report.json> --summary <summary.md>
 ```
 
 The comparator accepts the client's existing PerfProbe JSON format. Draw calls
@@ -39,24 +39,39 @@ one measured frame and a positive integer `tiles_moved`. Missing, duplicate,
 extra, idle or unoptimized scenes fail validation. Additional probe fields
 are allowed and ignored by the comparator.
 
-A real CI baseline and probe job are **not yet provisioned**. The example
-baseline path above is the reserved PERF-02 location, not a checked-in sample
-measurement. Do not replace a real measurement with synthetic values or use
-desktop counts as a CI baseline. A deliberate baseline commit must identify
-the runner, source revision, client data version, shard fixture, renderer,
-window size, zoom and flags. Keep proprietary files and account credentials
-on the approved runner, outside repository artifacts. The current probe JSON
-does not record zoom, renderer or world-fixture identity, so the runner must
-pin these separately before a live gate can be trusted. A login-only run
-cannot pass this comparator.
+Hosted CI runs a `perf` job testing the comparator and local orchestration
+with synthetic report files. It does not measure FPS or need client data,
+a shard or a private runner. A login-only report cannot pass the comparator.
+
+## Local gate
+
+```
+launchers/dev/perf_gate.bat --doctor
+launchers/dev/perf_gate.bat --fixture dev-world-v1 --record-baseline
+launchers/dev/perf_gate.bat --fixture dev-world-v1
+```
+
+Use the `.sh` twin on Linux/macOS. Configure `UO_BUILD_DIR` outside the
+checkout first. The launcher runs the optimized real probe, then compares
+against `<UO_BUILD_DIR>/perf/gate/<machine-tag>/<name>.baseline.json`.
+There is no committed live baseline. Use `--name` for separate configurations;
+`--replace-baseline` deliberately replaces an existing baseline only after
+a successful probe. Missing or mismatched baselines fail before launching
+the client. `--doctor` never connects to the shard.
+
+See [the gate guide](../../docs/perf/performance_gate.md) for prerequisites,
+flags, smoke steps and limitations, and [section 41](../../docs/data_formats.md#41-perf-probe-and-perf-lab-reports-buildperf-toolsperf_probe-toolsperf_lab)
+for the baseline contract.
 
 ## Tests
 
 ```
-python -m pytest -q tools/perf_probe/test_gate.py
+python -m pytest -q tools/perf_probe
 ```
 
 The comparator tests use synthetic numbers to check threshold boundaries,
-invalid inputs, advisory timings, exit codes and summary output. They make
-no claim about renderer speed. The actual probe still needs a windowed
+invalid inputs, advisory timings, exit codes and summary output. Local-gate
+tests mock the real probe to prove baseline creation/replacement, failed-run
+preservation, settings matching and output containment. They make no claim
+about renderer speed. The actual probe still needs a windowed
 Godot client, a client data install and a GM account on a shard.
