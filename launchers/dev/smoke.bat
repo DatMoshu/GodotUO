@@ -57,6 +57,8 @@ echo [smoke] perf lab report: fields kept, privacy refusal, size (synthetic; too
 echo [smoke] PostFX engine regressions (synthetic)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Bootstrap/PostFxEngineProbe.tscn || set "FAIL=1"
 
+echo [smoke] hosted catalogue (a local Pages branch and loopback HTTP; no network)
+"%UO_PYTHON%" "%UO_TOOLS%\asset_store\hosted_proof.py" || set "FAIL=1"
 echo [smoke] touch: swipe and two-finger pan scroll lists (synthetic; no shard)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" -- --touch-gesture-probe --pregame-classic --silent || set "FAIL=1"
 echo [smoke] packet mods (synthetic; builds the sample mod, ADR-0038)

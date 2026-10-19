@@ -265,6 +265,11 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- Host a pack catalogue of your own on GitHub Pages: `run.py init-catalogue`
+  writes its repository, and `launchers/store/push_catalogue` signs the
+  index with your key and pushes it to the Pages branch. Players add the
+  address in the Store and approve its key once. `launchers/store/hosted_proof`
+  tries the whole path on your computer first.
 - `perf_gate` runs the real performance probe against a baseline kept on
   your machine, outside the checkout. Draw calls may rise by at most 5% per
   scene and batcher items may not rise; frame times remain advisory. Hosted

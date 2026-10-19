@@ -698,6 +698,26 @@ mirrors after the store's own copy, and `sha256` and `size` are not needed.
 followed by `ed25519:` and the base64 of the 32-byte seed. It is never
 committed, and never leaves the publisher's machine or CI secret store.
 
+**A hosted catalogue** (`run.py push-catalogue`, `tools/asset_store/hosting.py`): the whole tree of one git
+branch, `gh-pages` by default, served as it is by GitHub Pages or any static host. A push reads the branch,
+signs a new index over it and pushes a new commit on top; it never rewrites the branch, and a branch that moved
+after it was read refuses the push.
+
+```
+index.json, index.json.sig     the signed index above; sequence above the one already on the branch
+packs/<id>/<version>.zip       packs hosted on the site itself (--pack); immutable once pushed
+previews/<id>/<version>/<file> one preview per listed version
+index.html                     the catalogue's web page
+.nojekyll                      Pages serves files without processing them
+.gitattributes                 `* -text`, so git never rewrites line endings in the signed bytes
+```
+
+A pack is either hosted on the site (its `urls` start with its relative path, or `UO_STORE_BASE_URL` and the
+path) or named by a listing file whose `urls` point elsewhere; the same id and version may not be both.
+`run.py init-catalogue FOLDER --id ID --title TITLE` writes the repository a catalogue of your own starts from:
+`README.md`, `packs/README.md`, `LICENSE`, `.gitignore` (`*.key`, `site/`) and the two workflows of
+`catalogue_repo/` with the catalogue's id and title. It refuses `guo-official` and writes no key.
+
 ### Shard content descriptor, `guo/shard-content@1` (ADR-0026)
 
 What a shard runs, for its players' clients. `tools/shard_content/run.py
