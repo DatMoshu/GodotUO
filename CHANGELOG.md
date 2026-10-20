@@ -6,6 +6,8 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Water
+- Preview a selected water preset on a fixed synthetic beach in the browser,
+  while keeping the working draft and comparison untouched.
 - Share water presets as editable JSON text, or load pasted JSON as a new
   draft or comparison reference with validation and Undo.
 - A numeric label drag in the water editor now undoes as one adjustment;

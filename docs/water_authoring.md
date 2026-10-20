@@ -81,6 +81,14 @@ presets and saved working files; the summary shows their stored wave, shore
 and ripple values. Clear the search or reset the filters if nothing matches.
 Unreadable drafts are skipped and counted; **Refresh** retries the library.
 
+Selecting a result shows its own synthetic preview: low beach, daylight, and
+splash + hull paused at 1.50 seconds. Each selection rebuilds the same pose
+with the selected style; it does not load or alter your working draft,
+reference, save destination, history or preview clock. An unfrozen working
+preview continues running normally. Saved selections are
+read again from disk. An unreadable selection clears the old picture and
+reports recovery. Closing the browser or hiding the panel releases its preview.
+
 **Load selected** makes that preset the working document. Loading a saved draft
 attaches its save destination; **Undo** restores the prior document and edits.
 **Use as reference** instead puts the selected style on the left of Compare,

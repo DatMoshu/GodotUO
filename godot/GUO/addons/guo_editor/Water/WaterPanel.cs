@@ -411,6 +411,7 @@ internal partial class WaterPanel : ScrollContainer
     internal void Shutdown()
     {
         CloseJson();
+        ClearLibraryPreview();
         // Child previews may already have exited and disposed their renderer resources.
         FinishNumericScrub(false);
         SetProcess(false);

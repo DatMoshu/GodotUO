@@ -82,8 +82,13 @@ internal partial class WaterPreview : SubViewportContainer
 
     private void SetBoth(string name, Variant value)
     {
-        _material?.SetShaderParameter(name, value);
-        _referenceMaterial?.SetShaderParameter(name, value);
+        // Callers pass temporary Variants. Texture-bearing temporaries otherwise retain
+        // native references until managed finalization, after a short-lived audition closes.
+        using (value)
+        {
+            _material?.SetShaderParameter(name, value);
+            _referenceMaterial?.SetShaderParameter(name, value);
+        }
     }
 
     private void EachField(Action<WaterRipples> action)
@@ -134,8 +139,8 @@ internal partial class WaterPreview : SubViewportContainer
                 bool dry = scene != 0 && cx + cy >= 2;
                 image.SetPixel(x, y, new Color(dry ? 0 : 1, (dry && scene == 2 ? 148f : 123f) / 255f, 0, 1));
             }
-        _mask?.Dispose();
-        _mask = ImageTexture.CreateFromImage(image);
+        if (_mask == null) _mask = ImageTexture.CreateFromImage(image);
+        else _mask.Update(image);
         SetBoth("water_mask", _mask);
         ResetWaves();
     }
@@ -178,8 +183,13 @@ internal partial class WaterPreview : SubViewportContainer
 
     private void BindWaves()
     {
-        _material?.SetShaderParameter("water_ripples", _ripples.Texture);
-        if (ReferenceStyle != null) _referenceMaterial?.SetShaderParameter("water_ripples", _referenceRipples.Texture);
+        using Variant waves = _ripples.Texture;
+        _material?.SetShaderParameter("water_ripples", waves);
+        if (ReferenceStyle != null)
+        {
+            using Variant referenceWaves = _referenceRipples.Texture;
+            _referenceMaterial?.SetShaderParameter("water_ripples", referenceWaves);
+        }
     }
 
     internal void Advance(float delta)
@@ -220,8 +230,13 @@ internal partial class WaterPreview : SubViewportContainer
     internal void Shutdown()
     {
         SetProcess(false);
-        if (_material != null) _material.SetShaderParameter("water_ripples", default(Variant));
-        if (_referenceMaterial != null) _referenceMaterial.SetShaderParameter("water_ripples", default(Variant));
+        // Release native material ownership before disposing short-lived audition textures.
+        if (GodotObject.IsInstanceValid(_rect)) _rect.Material = null;
+        if (GodotObject.IsInstanceValid(_referenceRect)) _referenceRect.Material = null;
+        SetBoth("water_ripples", default(Variant));
+        SetBoth("water_mask", default(Variant));
+        if (_material != null) _material.Shader = null;
+        if (_referenceMaterial != null) _referenceMaterial.Shader = null;
         _mask?.Dispose(); _mask = null;
         _material?.Dispose(); _material = null;
         _referenceMaterial?.Dispose(); _referenceMaterial = null;

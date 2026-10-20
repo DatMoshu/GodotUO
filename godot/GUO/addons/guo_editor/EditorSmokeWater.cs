@@ -82,6 +82,31 @@ public partial class EditorSmoke
             panel.LoadStyle(previous);
         }));
         _steps.Add((1, CheckWaterNativeActors));
+        _steps.Add((1, CheckWaterLibraryPreview));
+    }
+
+    private void CheckWaterLibraryPreview()
+    {
+        var panel = new WaterPanel { DraftFolderOverride = System.IO.Path.Combine(_out, "water-audition-drafts") };
+        AddChild(panel);
+        try
+        {
+            panel.LoadStyle(WaterAuthoring.Presets[1]);
+            panel.NumberInput("Wave strength").Value = .77;
+            panel.KeepReference();
+            int history = panel.HistoryPosition;
+            panel.ShowLibrary();
+            Expect(panel.LibraryPreview != null && panel.LibraryPreview.Paused
+                && panel.LibraryPreview.Seconds == 1.5f && panel.LibraryPreview.Scene == 1
+                && panel.HistoryPosition == history && panel.Style.Wave == .77f
+                && panel.Preview.ReferenceStyle.Wave == .77f,
+                "water_library_audition_preserves_working_draft_and_reference");
+            var preview = panel.LibraryPreview;
+            panel.CloseLibrary();
+            Expect(panel.LibraryPreview == null && !preview.IsProcessing(),
+                "water_library_close_stops_and_releases_audition");
+        }
+        finally { panel.Shutdown(); panel.Free(); }
     }
 
     private void CheckWaterNativeActors()

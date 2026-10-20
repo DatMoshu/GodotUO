@@ -43,7 +43,10 @@ public partial class EditorTour
                 "the inline preset browser lists starter styles");
             Check(panel.GetGlobalRect().HasPoint(panel.LibraryTree.GetGlobalRect().Position + new Vector2(20, 40)),
                 "the browser opens with a result row visible in the native scroll area");
-            Say("Browse presets searches by name and filters by model or source. Use as reference compares a saved style while keeping the working draft and undo history.");
+            Check(panel.LibraryPreview != null && panel.LibraryPreview.Paused && panel.LibraryPreview.Seconds == 1.5f
+                && panel.LibraryPreview.Scene == 1 && panel.GetGlobalRect().Encloses(panel.LibraryPreview.GetGlobalRect()),
+                "the selected preset's fixed beach preview is fully visible with the result rows");
+            Say("Browse presets shows the selected style on a fixed synthetic beach with splash and hull inputs. Selection keeps your working draft; Load selected and Use as reference are explicit actions.");
             await Shot(3);
             var browserDraft = WaterAuthoring.Serialize(panel.Style);
             int browserHistory = panel.HistoryPosition;

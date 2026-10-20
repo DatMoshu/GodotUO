@@ -50,23 +50,29 @@ internal partial class WaterPanel
         _libraryLoad = AddButton(actions, "Load selected", () => LibraryAction(false));
         _libraryReference = AddButton(actions, "Use as reference", () => LibraryAction(true));
         _libraryReference.TooltipText = "Compare the selected preset on the left. Retains your current draft, save destination and undo history.";
-        AddButton(actions, "Close browser", () => _library.Hide());
+        AddButton(actions, "Close browser", CloseLibrary);
         _libraryCount = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart }; _library.AddChild(_libraryCount);
         _libraryTree = new Tree { Columns = 3, HideRoot = true, ColumnTitlesVisible = true,
-            CustomMinimumSize = new Vector2(0, 160), SizeFlagsHorizontal = SizeFlags.ExpandFill };
+            CustomMinimumSize = new Vector2(0, 96), SizeFlagsHorizontal = SizeFlags.ExpandFill };
         foreach (var (column, title, minimum) in new[] { (0, "Preset", 120), (1, "Model", 65), (2, "Source", 65) })
         { _libraryTree.SetColumnTitle(column, title); _libraryTree.SetColumnCustomMinimumWidth(column, minimum); }
         _libraryTree.SelectMode = Tree.SelectModeEnum.Row;
         _library.AddChild(_libraryTree); _libraryTree.ItemSelected += LibrarySelected;
         _libraryTree.ItemActivated += () => LibraryAction(false);
+        BuildLibraryPreview();
         _libraryInfo = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart }; _library.AddChild(_libraryInfo);
-
+        _library.VisibilityChanged += () =>
+        {
+            if (_library.IsVisibleInTree()) LibrarySelected();
+            else ClearLibraryPreview();
+        };
     }
 
     internal void ShowLibrary()
     {
         RefreshPresets();
         _library.Show();
+        LibrarySelected();
         // Start at the library itself, so a short World tool area shows results,
         // rather than spending its height on the authoring header above it.
         Callable.From(() => { if (_library.Visible) ScrollVertical = (int)_library.Position.Y; }).CallDeferred();
@@ -118,9 +124,16 @@ internal partial class WaterPanel
         var entry = SelectedLibraryEntry();
         _libraryLoad.Disabled = _libraryReference.Disabled = entry == null;
         if (entry == null)
-        { _libraryInfo.Text = "No matching presets. Clear the search or choose All models and All sources."; return; }
+        { ClearLibraryPreview(); _libraryInfo.Text = "No matching presets. Clear the search or choose All models and All sources."; return; }
         _libraryKey = entry.Key;
-        var s = entry.Style;
+        StoreWater s;
+        try { s = PreviewLibraryEntry(entry); }
+        catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            ClearLibraryPreview();
+            _libraryInfo.Text = "Could not preview this preset. Close and reopen the browser to refresh, or select another preset. " + ex.Message;
+            return;
+        }
         _libraryInfo.Text = $"{s.Name} — {ModelName(s.Model)}\nWave {s.Wave:0.##} · speed {s.Speed:0.##} · foam {s.Foam:0.##}\nRipple {s.RippleStrength:0.##} · retention {s.RippleDamping:0.###}\n"
             + (entry.Path == null ? "Starter preset. Load to edit a copy." : "Saved draft. Load to edit its working file; Duplicate saves a separate copy.");
     }
@@ -143,10 +156,10 @@ internal partial class WaterPanel
                 LoadStyle(style, entry.Path);
                 _status.Text = "Preset loaded. Undo restores the previous draft.";
             }
-            _library.Hide(); ScrollVertical = 0;
+            CloseLibrary(); ScrollVertical = 0;
         }
         catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException or ArgumentException)
-        { _libraryInfo.Text = "Could not open this preset. Close and reopen the browser to refresh, or select another preset. " + ex.Message; }
+        { ClearLibraryPreview(); _libraryInfo.Text = "Could not open this preset. Close and reopen the browser to refresh, or select another preset. " + ex.Message; }
     }
 }
 #endif
