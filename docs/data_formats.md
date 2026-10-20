@@ -528,10 +528,12 @@ Writes remain in the project and refuse resolved installation/escaping paths.
 See [item metadata workflow](editor/item_metadata.md) and
 [synthetic recipe](../tools/scenarios/fiddler-f06a/README.md).
 
-### Sound naming working documents (F14b)
+### Sound working documents (F14b/F14c)
 
-`<world-project>/metadata/sounds/0xNNNN.json` is editor-only inert JSON, schema 1:
-`kind: guo/sound-name`, effect `id`, `source_sha256` and working `name`.
+`<world-project>/metadata/sounds/0xNNNN.json` is editor-only inert JSON, schema 2:
+`kind: guo/sound-effect`, effect `id`, `source_sha256`, working `name` and
+`pcm_sha256` (null for source PCM, otherwise lowercase SHA-256 of raw PCM).
+Legacy schema 1 `guo/sound-name` documents remain readable and upgrade on save.
 The fingerprint is SHA-256 of ASCII decimal UTF-8 source-name byte count plus
 `:` followed by those complete name bytes and the active loader's PCM bytes.
 The displayed source name stops at its first NUL; bytes after it still bind
@@ -539,9 +541,17 @@ the document to that source. New names fit 32 UTF-8 bytes without NUL.
 The original display name may retain a larger decoded size unchanged.
 Documents larger than 16 KiB, mismatched IDs/hashes and invalid names are refused.
 Saves recheck the active source and use atomic project-only replacement with
-resolved installation/path-escape protection. No PCM is stored, no native sound
-header is emitted, and no runtime name or sound is modified. Undo and local
-draft recovery belong to the editor. See the [sound document workflow](editor/sound_documents.md).
+resolved installation/path-escape protection. Changed PCM is stored in canonical
+WAV blobs at `assets/sound-documents/<pcm_sha256>.wav`, derived only from validated
+hashes. Blob decoding and raw PCM checksums are verified on reopen and reuse;
+missing/corrupt references are refused. Blob writes precede atomic manifest
+replacement. Unreferenced blobs are retained; no automatic deletion is implied.
+Recovery also materializes blobs and stores references with saved-name/PCM
+baselines. It can therefore write project audio before an explicit Save copy.
+Imports accept one fmt-16 PCM mono 16-bit 22050 Hz format before one nonempty,
+even data chunk (at most 64 MiB; file at most 65 MiB), validating RIFF and padded
+chunk bounds. No native sound header is emitted and no runtime sound is changed.
+See [naming](editor/sound_documents.md) and [WAV import](editor/sound_wav_import.md).
 
 ## 12. GUO Asset Store packs (ADR-0019)
 

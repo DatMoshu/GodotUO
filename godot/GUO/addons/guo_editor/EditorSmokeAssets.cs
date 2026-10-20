@@ -241,6 +241,7 @@ public partial class EditorSmoke
                 CheckClilocDocuments();
                 CheckSoundWaveExport();
         CheckSoundDocuments();
+        CheckSoundImport();
             }
 
             foreach (var (name, when) in AssetStamp())

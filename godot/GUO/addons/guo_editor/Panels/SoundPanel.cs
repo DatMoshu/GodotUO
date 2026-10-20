@@ -26,6 +26,10 @@ public partial class SoundPanel : GridPanel
     private readonly Dictionary<int, (string Name, bool Loop)> _music = new();
     private IO.Audio.Sound _playing;
     private readonly HashSet<IO.Audio.Sound> _played = new();
+    private AudioStreamPlayer _projectPlayer;
+    private AudioStreamWav _projectStream;
+    internal bool ProjectPreviewPlaying => IsInstanceValid(_projectPlayer) && _projectPlayer.Playing;
+    internal int ProjectPreviewSamples => _projectStream?.Data.Length / 2 ?? 0;
     private readonly Dictionary<string, SoundDocument> _documents = new();
     private readonly Dictionary<string, string> _documentErrors = new();
     private readonly HashSet<string> _loadedProjects = new();
@@ -61,7 +65,7 @@ public partial class SoundPanel : GridPanel
 
         var stop = AssetUi.Action("Stop", "Stop sound or music playback", Stop);
         bar.AddChild(stop);
-        ReopenButton = AssetUi.Action("Reload", "Reopen selected sound and saved naming document…", ReopenSound); bar.AddChild(ReopenButton);
+        ReopenButton = AssetUi.Action("Reload", "Reopen selected sound and saved working document…", ReopenSound); bar.AddChild(ReopenButton);
     }
 
     protected override IEnumerable<int> Ids()
@@ -133,10 +137,11 @@ public partial class SoundPanel : GridPanel
     {
         if (Music || Selected is not int id) return;
         string key = Key(id);
-        var dialog = new ConfirmationDialog { Title = "Reopen sound?", DialogText = $"Discard unsaved name edits for 0x{id:X4} and reopen its active source plus saved project document?", OkButtonText = "Reopen sound" };
+        var dialog = new ConfirmationDialog { Title = "Reopen sound?", DialogText = $"Discard unsaved name and PCM edits for 0x{id:X4} and reopen its active source plus saved project document?", OkButtonText = "Reopen sound" };
         dialog.Canceled += dialog.QueueFree;
         dialog.Confirmed += () =>
         {
+            Stop();
             if (_documents.TryGetValue(key, out var document)) DocumentReopening?.Invoke(document);
             _documents.Remove(key); _documentErrors.Remove(key); dialog.QueueFree(); OnAssetsChanged();
         };
@@ -178,29 +183,49 @@ public partial class SoundPanel : GridPanel
         if (!music && document != null)
         {
             inspection.Sound = document; inspection.SoundChanged = () => { if (IsVisibleInTree() && !Music) OnAssetsChanged(); };
-            inspection.Origin = "Project naming document · active PCM and native archive unchanged";
+            inspection.Origin = document.HasPcmChange ? "Project PCM · native archive unchanged" : "Source PCM · project working document";
         }
         else if (!music && _documentErrors.TryGetValue(Key(id), out string error)) inspection.Fields.Add(("Document", error));
         if (music) inspection.Fields.Add(("Loop", _music.GetValueOrDefault(id).Loop ? "Yes" : "No"));
         else
         {
-            int bytes = _effects.GetValueOrDefault(id).Bytes;
+            int bytes = document?.Samples * 2 ?? _effects.GetValueOrDefault(id).Bytes;
             inspection.Fields.Add(("Format", "PCM · mono · 16-bit"));
             inspection.Fields.Add(("Sample rate", "22050 Hz"));
             inspection.Fields.Add(("Samples", (bytes / 2).ToString()));
             inspection.Fields.Add(("Duration", $"{bytes / 2.0 / SoundWave.Frequency:0.000} s"));
+            if (document?.HasPcmChange == true) inspection.Fields.Add(("Source duration", $"{document.SourceSamples / (double)SoundWave.Frequency:0.000} s"));
         }
-        inspection.Actions.Add(new("play-sound", music ? "Play music" : "Play sound", "Play", () => Play(id, music)));
+        inspection.Actions.Add(new("play-sound", music ? "Play music" : document?.HasPcmChange == true ? "Play project PCM" : "Play sound", "Play", () => Play(id, music)));
         inspection.Actions.Add(new("stop-sound", "Stop playback", "Stop", Stop));
-        if (!music) inspection.Actions.Add(new("export-wav", "Export WAV… · PCM 22050 Hz mono 16-bit", "Save", () => OpenWavExport(id)));
+        if (!music)
+        {
+            inspection.Actions.Add(new("export-wav", "Export working WAV… · PCM 22050 Hz mono 16-bit", "Save", () => OpenWavExport(id)));
+            if (document != null && document.RecoveryError == null) inspection.Actions.Add(new("import-wav", "Import WAV into working copy…", "Load", () => OpenWavImport(id)));
+            if (document?.HasPcmChange == true) inspection.Actions.Add(new("play-source-sound", "Play active source sound", "Play", () => PlaySource(id, false), false));
+        }
         return inspection;
     }
 
     internal EditorFileDialog OpenWavExport(int id) => AssetActions.Pick(EditorFileDialog.FileModeEnum.SaveFile,
-        $"sound_0x{id:X4}.wav", path => ExportWav(id, path), new[] { "*.wav ; PCM WAVE audio" }, this);
+        $"sound_0x{id:X4}.wav", path => ExportWav(id, path), new[] { "*.wav ; PCM WAVE audio" }, this, "Export sound WAV");
+
+    internal EditorFileDialog OpenWavImport(int id) => AssetActions.Pick(EditorFileDialog.FileModeEnum.OpenFile, null,
+        path => OpenImportReview(id, path), new[] { "*.wav ; PCM WAVE audio" }, this, "Import sound WAV");
+
+    internal SoundImportDialog OpenImportReview(int id, string path)
+    {
+        SoundDocument document = WorkingDocument(id) ?? throw new IOException("Open a valid sound document before importing WAV.");
+        if (document.RecoveryError != null) throw new IOException(document.RecoveryError);
+        return SoundImportDialog.Open(this, document, SoundWave.ReadFile(path), path);
+    }
 
     internal void ExportWav(int id, string path)
     {
+        SoundDocument document = WorkingDocument(id);
+        if (document != null) { document.ExportWave(path); return; }
+        if (_documentErrors.TryGetValue(Key(id), out string error))
+            throw new IOException("Working sound document could not be opened. Repair or reopen it before WAV export: " + error);
         if (id < 0 || !Data.Files.Sounds.TryGetSound(id, out byte[] pcm, out _))
             throw new IOException("The selected sound effect could not be read. Reload the sound library and select it again.");
         SoundWave.Export(pcm, path);
@@ -208,6 +233,12 @@ public partial class SoundPanel : GridPanel
 
     /// <summary>Plays a sound or a piece of music. Returns false if the game's audio would not.</summary>
     public bool Play(int id, bool music)
+    {
+        if (!music && WorkingDocument(id) is { HasPcmChange: true } document) return PlayPcm(document.Pcm());
+        return PlaySource(id, music);
+    }
+
+    private bool PlaySource(int id, bool music)
     {
         Stop();
         _playing = music ? Data.Sounds.GetMusic(id) : Data.Sounds.GetSound(id);
@@ -230,13 +261,27 @@ public partial class SoundPanel : GridPanel
         return Play(Selected.Value, Music) ? null : $"sound 0x{Selected.Value:X4} did not start";
     }
 
-    private void Stop()
+    internal bool PlayPcm(byte[] pcm)
+    {
+        SoundWave.ValidateLength(pcm?.Length ?? 0); Stop();
+        if (!IsInstanceValid(_projectPlayer)) { _projectPlayer = new AudioStreamPlayer(); AddChild(_projectPlayer); }
+        _projectPlayer.Stream = null; _projectStream?.Dispose();
+        _projectStream = new AudioStreamWav { Data = pcm, MixRate = SoundWave.Frequency, Stereo = false,
+            Format = AudioStreamWav.FormatEnum.Format16Bits, LoopMode = AudioStreamWav.LoopModeEnum.Disabled };
+        _projectPlayer.Stream = _projectStream; _projectPlayer.Play(); return _projectPlayer.Playing;
+    }
+
+    internal void Stop()
     {
         _playing?.Stop();
+        if (IsInstanceValid(_projectPlayer)) _projectPlayer.Stop();
     }
 
     public override void Shutdown()
     {
+        Stop();
+        if (IsInstanceValid(_projectPlayer)) { _projectPlayer.Stream = null; _projectPlayer.Free(); }
+        _projectPlayer = null; _projectStream?.Dispose(); _projectStream = null;
         // Frees the AudioStreamPlayer the game's audio parented under the
         // editor's root.
         foreach (IO.Audio.Sound s in _played)

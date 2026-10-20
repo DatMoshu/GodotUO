@@ -57,6 +57,7 @@ public partial class EditorSmoke
     private int _assetsProofStep, _assetsProofFrames;
     private StaticStageDialog _stageProof;
     private BatchStaticDialog _batchProof;
+    private SoundImportDialog _soundImportProof;
 
     private void StepAssetWorkbenchProof()
     {
@@ -148,11 +149,28 @@ public partial class EditorSmoke
             _inspector.Sound.NameInput.EmitSignal(LineEdit.SignalName.TextChanged, "Project forest effect");
             _assetsProofStep = 9; return;
         }
+        if (_assetsProofStep == 9)
+        {
         SaveAssetProof("sound-wave-export", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
         MetadataCheck("sound_wave_export_ready", _inspector.Current.Actions.Exists(action => action.Id == "export-wav")
             && _inspector.ActionToolbar.GetChildren().OfType<Control>().All(control => control.GetGlobalRect().End.X <= _inspector.ActionToolbar.GetGlobalRect().End.X + 2));
         MetadataCheck("sound_name_document_ready", _inspector.Sound.Visible && !_inspector.Sound.SaveButton.Disabled);
-        _inspector.Sound.Undo();
+        _soundImportProof = SoundImportDialog.Open(_assets.Panel<SoundPanel>(), _inspector.Sound.Document,
+            SoundWave.Encode(new byte[4410]), "synthetic-silence.wav");
+        _assetsProofStep = 10; return;
+        }
+        if (_assetsProofStep == 10)
+        {
+            SaveAssetProof("sound-wav-import-review", _soundImportProof.GetTexture()?.GetImage());
+            MetadataCheck("sound_import_review_fits", _soundImportProof.Size.Y <= DisplayServer.ScreenGetUsableRect().Size.Y
+                && _soundImportProof.GetOkButton().Text == "Import into working copy");
+            _soundImportProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed);
+            _assetsProofStep = 11; return;
+        }
+        SaveAssetProof("sound-project-pcm", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
+        MetadataCheck("sound_project_pcm_ready", _inspector.Sound.Document.HasPcmChange && _inspector.Sound.Document.Samples == 2205
+            && _inspector.Current.Origin.Contains("Project PCM") && !_inspector.Sound.SaveButton.Disabled);
+        _inspector.Sound.Undo(); _inspector.Sound.Undo();
         Finish();
     }
 

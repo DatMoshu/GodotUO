@@ -66,6 +66,12 @@ effect names, retained invalid drafts, undo/redo/revert, source-bound JSON saves
 and editor-local recovery. Saved names participate in the browser's name search;
 PCM import, native sound writing and music editing remain separate milestones.
 
+F14c [WAV import and project PCM](sound_wav_import.md) then adds validated PCM
+import with current/incoming review, name retention, undo/revert, project audio
+preview/export, schema 2 WAV-blob documents and source-bound draft recovery.
+The legacy naming schema remains readable. Native sound staging, names/list
+exchange, slot controls and music editing are still separate milestones.
+
 Phase 1 proposal, 2026-10-19. guo-director first-pass review received;
 catalogue and survey await guo-director and exec-fable sign-off.
 F01a has separate director authorization for assignment (inbox #11093);

@@ -168,7 +168,7 @@ public static class AssetActions
         return pinta ? ExternalTools.OpenPinta(png) : ExternalTools.OpenPixelorama(png, embedded);
     }
 
-    public static void ReportEdit(string why)
+    public static void ReportEdit(string why, string title = "Edit in an outside editor", Node owner = null)
     {
         if (why == null)
         {
@@ -176,10 +176,10 @@ public static class AssetActions
         }
 
         GD.PushWarning($"[GUO editor] {why}");
-        var dlg = new AcceptDialog { DialogText = why, Title = "Edit in an outside editor" };
+        var dlg = new AcceptDialog { DialogText = why, Title = title };
         dlg.Confirmed += () => dlg.QueueFree();
         dlg.Canceled += () => dlg.QueueFree();
-        EditorInterface.Singleton.GetBaseControl().AddChild(dlg);
+        (owner ?? EditorInterface.Singleton.GetBaseControl()).AddChild(dlg);
         dlg.PopupCentered();
     }
 
@@ -191,7 +191,7 @@ public static class AssetActions
         _ => "hue",
     };
 
-    internal static EditorFileDialog Pick(EditorFileDialog.FileModeEnum mode, string file, Action<string> then, string[] filters = null, Node owner = null)
+    internal static EditorFileDialog Pick(EditorFileDialog.FileModeEnum mode, string file, Action<string> then, string[] filters = null, Node owner = null, string title = null)
     {
         var dlg = new EditorFileDialog
         {
@@ -199,6 +199,7 @@ public static class AssetActions
             Access = EditorFileDialog.AccessEnum.Filesystem,
             Filters = filters ?? new[] { "*.png ; PNG image" },
         };
+        if (title != null) dlg.Title = title;
 
         if (file != null)
         {
@@ -208,7 +209,7 @@ public static class AssetActions
         dlg.FileSelected += path =>
         {
             try { then(path); }
-            catch (Exception ex) { ReportEdit(ex.Message); }
+            catch (Exception ex) { ReportEdit(ex.Message, title ?? "Asset operation", owner); }
             dlg.QueueFree();
         };
         dlg.Canceled += () => dlg.QueueFree();

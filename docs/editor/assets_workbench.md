@@ -84,3 +84,7 @@ whole stage. It leaves project image overlays and metadata documents unchanged.
 [Sound naming documents](sound_documents.md) add inline working names and a
 persistent undo/save footer to effect selections. Invalid names survive selection
 changes; project saves and editor-local draft recovery leave source PCM unchanged.
+[WAV import](sound_wav_import.md) adds captured current/incoming review,
+undoable project PCM, project preview/export and checksum-bound project WAV blobs.
+Reopen confirms discarding both unsaved names and PCM. Native sound archives
+remain outside this workflow.

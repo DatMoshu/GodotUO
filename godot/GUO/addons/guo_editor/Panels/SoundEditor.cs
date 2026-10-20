@@ -24,7 +24,7 @@ public partial class SoundEditor : VBoxContainer
     internal LineEdit NameInput => _name;
     internal Button SaveButton => _save;
     public event Action Changed;
-    public string Summary => _document == null ? "Select a sound effect." : $"Sound 0x{_document.Id:X4} · {(_document.IsDirty || _document.Pending ? "unsaved naming document" : "saved naming document")}";
+    public string Summary => _document == null ? "Select a sound effect." : $"Sound 0x{_document.Id:X4} · {(_document.IsDirty || _document.Pending ? "unsaved document" : "saved document")} · {(_document.HasPcmChange ? "project PCM" : "source PCM")}";
 
     public override void _Ready()
     {
@@ -37,11 +37,11 @@ public partial class SoundEditor : VBoxContainer
         _status = AssetUi.Label(""); AddChild(_status);
         Footer = new VBoxContainer(); AddChild(Footer); _state = AssetUi.Label(""); Footer.AddChild(_state);
         var bar = new HBoxContainer(); Footer.AddChild(bar);
-        _undo = AssetUi.Action("Undo", "Undo sound name edit", Undo); bar.AddChild(_undo);
-        _redo = AssetUi.Action("Redo", "Redo sound name edit", () => { _document?.Redo(); Read(); Notify(); }); bar.AddChild(_redo);
-        bar.AddChild(AssetUi.Action("Reload", "Revert sound name to source (undoable)", () => { _document?.Revert(); Read(); Notify(); }));
+        _undo = AssetUi.Action("Undo", "Undo sound document edit", Undo); bar.AddChild(_undo);
+        _redo = AssetUi.Action("Redo", "Redo sound document edit", () => { _document?.Redo(); Read(); Notify(); }); bar.AddChild(_redo);
+        bar.AddChild(AssetUi.Action("Reload", "Revert name and PCM to source (undoable)", () => { _document?.Revert(); Read(); Notify(); }));
         bar.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
-        _save = AssetUi.Action("Save", "Save sound naming document · Ctrl+S", () => Save()); _save.Text = "Save copy"; bar.AddChild(_save);
+        _save = AssetUi.Action("Save", "Save sound working document · Ctrl+S", () => Save()); _save.Text = "Save copy"; bar.AddChild(_save);
     }
     internal void Bind(SoundDocument document, Action changed)
     {
@@ -62,8 +62,8 @@ public partial class SoundEditor : VBoxContainer
     internal bool Save()
     {
         if (_document == null) return false;
-        try { _document.Save(); StashDrafts(); Read(); _state.Text = "Saved project name. Native sound and PCM unchanged."; Notify(); return true; }
-        catch (Exception e) { _status.Text = e.Message; return false; }
+        try { _document.Save(); StashDrafts(); Read(); _state.Text = "Saved project sound document. Native archive unchanged."; Notify(); return true; }
+        catch (Exception e) { _status.Text = e.Message; _status.Visible = true; return false; }
     }
     internal void Undo() { _document?.Undo(); Read(); Notify(); }
     private void Read()
@@ -77,7 +77,8 @@ public partial class SoundEditor : VBoxContainer
         if (_document == null) return;
         _status.Text = _document.RecoveryError ?? _document.Validation;
         _status.Visible = _status.Text.Length > 0;
-        _state.Text = _document.IsDirty || _document.Pending ? "Unsaved sound name · PCM unchanged" : "No unsaved changes";
+        _state.Text = (_document.IsDirty || _document.Pending ? "Unsaved sound document" : "No unsaved changes")
+            + (_document.HasPcmChange ? " · project PCM" : " · source PCM");
         _name.TooltipText = Encoding.UTF8.GetByteCount(_document.DraftName ?? "") + " / 32 UTF-8 bytes";
         _save.Disabled = _document.RecoveryError != null || _document.Validation.Length > 0 || (!_document.Pending && !_document.IsDirty);
         _undo.Disabled = _document.RecoveryError != null || (!_document.CanUndo && !_document.Pending);
@@ -117,10 +118,18 @@ public partial class SoundEditor : VBoxContainer
     public void StashDrafts()
     {
         if (_documents.Count == 0) return;
-        var known = _documents.Where(d => d.RecoveryError == null).Select(d => d.RecoveryKey).ToHashSet();
-        var rows = new JsonArray(); foreach (JsonNode row in Drafts()) if (!known.Contains((string)row?["key"])) rows.Add(row.DeepClone());
+        var rows = (JsonArray)Drafts().DeepClone();
         foreach (var document in _documents)
-            if (document.RecoveryError == null && (document.Pending || document.IsDirty)) rows.Add(document.Recovery());
+        {
+            if (document.RecoveryError != null) continue;
+            try
+            {
+                JsonObject next = document.Pending || document.IsDirty ? document.Recovery() : null;
+                foreach (JsonNode row in rows.Where(row => (string)row?["key"] == document.RecoveryKey).ToArray()) rows.Remove(row);
+                if (next != null) rows.Add(next);
+            }
+            catch (Exception e) { GD.PushWarning("Sound recovery could not be saved: " + e.Message); if (_state != null) _state.Text = "Recovery failed. Save the sound copy before closing: " + e.Message; }
+        }
         string json = rows.ToJsonString();
         if (json.Length <= 4 * 1024 * 1024) EditorInterface.Singleton.GetEditorSettings().SetProjectMetadata("guo_sound", "drafts", json);
         else if (_state != null) _state.Text = "Sound draft recovery exceeds 4 MiB. Save valid copies before closing.";

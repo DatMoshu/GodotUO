@@ -11,9 +11,10 @@ Export WAV opens Godot's filesystem save picker, suggesting
 so addon teardown closes it. Music retains its existing playback actions and is
 not offered this effect-PCM exporter; MP3 conversion is separate work.
 
-The exporter reads the selected effect again through `SoundsLoader.TryGetSound`.
-This is the same active PCM the existing player receives, including supported
-loose/pack overrides. It wraps those bytes in a RIFF WAVE PCM header: 22,050 Hz,
+F14a reads the selected effect through `SoundsLoader.TryGetSound`, including
+supported loose/pack overrides. F14c [working documents](sound_wav_import.md)
+export their working PCM after rechecking the active source binding. Naming-only
+edits leave samples unchanged. The exporter wraps PCM in a RIFF header: 22,050 Hz,
 one channel, 16 bits, little endian, block alignment 2 and byte rate 44,100.
 Sample data is copied unchanged. There is no resampling, normalization, silence
 trimming, name conversion or modification of the native sound archive/index.
@@ -40,9 +41,9 @@ The authorized `--windowed --assets-workbench` proof includes a sound inspector
 capture. Reproducible fixture details are in
 `tools/scenarios/fiddler-f14a/README.md`.
 
-Sound working documents, WAV replacement/import, staged native sound writing,
-names/list exchange, batch WAV export and slot/removal controls remain separate
-F14 stories. This slice exports a selected existing effect to a standard WAV.
+F14b/c add sound working documents and WAV replacement/import. Staged native
+sound writing, names/list exchange, batch WAV export and slot/removal controls
+remain separate F14 stories.
 
 The refreshed Fiddler 4.24 reader (`610c930833dac8d158f08a0af36da43dd90d08b4`,
 `Ultima/Sound.cs`) uses a 40-byte header, matching GUO's active PCM boundary.
