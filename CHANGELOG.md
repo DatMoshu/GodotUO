@@ -6,6 +6,7 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Editor
+- The editor smoke check no longer reports offscreen roofs as a failed Roofs toggle.
 - The Admin tab's god view works with nobody logged in: **Go there**,
   **Bring here**, **Open paperdoll** and **Follow** use the server's hidden
   presence when no staff character of yours is online (or pick it in

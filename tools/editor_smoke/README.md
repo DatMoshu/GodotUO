@@ -152,3 +152,13 @@ places live in `Search/places.json` (the client data has no town names). The smo
 "3701", "statics", "grid", a coordinate, "project settings", "bp" and a typo, asserts the top result's kind, runs two
 harmless entries, and (windowed) saves `search_backpack.png`. The recent-use history is in the editor's project
 metadata, not in a tracked file.
+
+## Roof layer regression (ROOF-01)
+
+The World Layers smoke samples roof anchors inside the current camera viewport.
+It projects tile coordinates through the scene draw offset and camera, since a
+culled object can retain an old screen position and alpha. Offscreen roofs do
+not advance their fade and are not evidence that the Roofs switch failed.
+The baseline must contain shown roofs; switching Roofs off must fade the sample
+to zero, and switching it on must restore the baseline. The temporary roof and
+editor-size reflection diagnostic has been removed.
