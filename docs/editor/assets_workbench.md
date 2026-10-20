@@ -19,6 +19,9 @@ this text-only document. [CSV exchange](cliloc_csv_exchange.md) reviews imports
 and provides explicit export scope/dialect choices. Two [custom source slots](cliloc_custom_sources.md)
 open arbitrary exact files with independent working documents and read-only
 source protection. Native cliloc output is a separate milestone.
+The [tiledata sync review](cliloc_tiledata_sync.md) maps source/project item names
+to Cliloc IDs, reviews selected adds/updates/removals and applies one undoable
+working-document batch. It does not mutate tiledata or runtime strings.
 
 Sounds uses aligned audio fields and native Play/Stop icons. Effects also offer
 [WAV export](sound_wav_export.md); music does not use the effect-PCM exporter.

@@ -60,6 +60,7 @@ public partial class EditorSmoke
     private SoundImportDialog _soundImportProof;
     private SoundExportDialog _soundExportProof;
     private ClilocCsvDialog _clilocCsvProof;
+    private ClilocTileSyncDialog _tileSyncProof;
 
     private void StepAssetWorkbenchProof()
     {
@@ -228,12 +229,36 @@ public partial class EditorSmoke
             _clilocCsvProof = _assets.Panel<ClilocPanel>().OpenImportReview(csv, ClilocCsvFormat.Fiddler);
             _assetsProofStep = 17; return;
         }
-        SaveAssetProof("cliloc-custom-csv-review", _clilocCsvProof.GetTexture()?.GetImage());
-        MetadataCheck("cliloc_custom_csv_review_ready", _clilocCsvProof.Plan.Changes.Count == 1
-            && _clilocCsvProof.Size.Y <= DisplayServer.ScreenGetUsableRect().Size.Y);
-        _clilocCsvProof.Free();
-        var custom = _inspector.Strings.Document; _inspector.Strings.Undo(); _inspector.Strings.Discard(custom);
-        _assets.Panel<ClilocPanel>().ChooseLanguage("enu");
+        if (_assetsProofStep == 17)
+        {
+            SaveAssetProof("cliloc-custom-csv-review", _clilocCsvProof.GetTexture()?.GetImage());
+            MetadataCheck("cliloc_custom_csv_review_ready", _clilocCsvProof.Plan.Changes.Count == 1
+                && _clilocCsvProof.Size.Y <= DisplayServer.ScreenGetUsableRect().Size.Y);
+            _clilocCsvProof.Free();
+            var custom = _inspector.Strings.Document; _inspector.Strings.Undo(); _inspector.Strings.Discard(custom);
+            string tiledata = Path.Combine(_out, "visual-tiledata.mul"), cliloc = Path.Combine(_out, "Cliloc.sync-preview");
+            File.WriteAllBytes(tiledata, TileSyncFixture(true, 32, new System.Collections.Generic.Dictionary<int, byte[]>
+                { [1] = System.Text.Encoding.ASCII.GetBytes("stone wall"), [4] = System.Text.Encoding.ASCII.GetBytes("new item name") }));
+            File.WriteAllBytes(cliloc, ClilocFixture((1020001, 0xE3, "Old wall ~1_NAME~"), (1020002, 7, "Unused item label")));
+            var panel = _assets.Panel<ClilocPanel>(); var document = panel.OpenCustomFile("custom2", cliloc, remember: false);
+            TileNameSnapshot Capture() => TileNameSnapshot.Capture(tiledata, true, Path.Combine(_out, "sync-project"), _data.ClientData, Array.Empty<ItemNameDraft>());
+            _tileSyncProof = ClilocTileSyncDialog.Open(panel, document, new ClilocTileSyncPlan(document, Capture(), Capture));
+            _tileSyncProof.ChooseFilter(2); _tileSyncProof.SelectMatching(); _tileSyncProof.ChooseFilter(1); _tileSyncProof.SelectMatching(); _tileSyncProof.ChooseFilter(0);
+            _assetsProofStep = 18; return;
+        }
+        if (_assetsProofStep == 18)
+        {
+            SaveAssetProof("cliloc-tiledata-sync-review", _tileSyncProof.GetTexture()?.GetImage());
+            MetadataCheck("cliloc_tiledata_sync_review_ready", _tileSyncProof.SelectionCount == 2 && _tileSyncProof.Rows.GetRoot().GetChildCount() == 3
+                && _tileSyncProof.Size.Y <= DisplayServer.ScreenGetUsableRect().Size.Y);
+            _tileSyncProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); _assetsProofStep = 19; return;
+        }
+        SaveAssetProof("cliloc-tiledata-sync-working", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
+        MetadataCheck("cliloc_tiledata_sync_working_ready", _inspector.Strings.Document.Get(1020001).Text == "stone wall"
+            && _inspector.Strings.Document.Get(1020002).Text == "Unused item label" && _inspector.Strings.Document.Get(1020004).Text == "new item name");
+        var synchronized = _inspector.Strings.Document; _inspector.Strings.Undo();
+        MetadataCheck("cliloc_tiledata_sync_single_undo", synchronized.Get(1020001).Text == "Old wall ~1_NAME~" && synchronized.Get(1020004) == null);
+        _inspector.Strings.Discard(synchronized); _assets.Panel<ClilocPanel>().ChooseLanguage("enu");
         Finish();
     }
 

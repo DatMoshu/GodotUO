@@ -105,6 +105,7 @@ public partial class EditorSmoke
         ClilocCheck("confirmed_reopen_reloads_saved_copy", panel.WorkingDocument != current && !panel.WorkingDocument.IsDirty
             && panel.WorkingDocument.Get(500207).Text != "temporary smoke draft");
         CheckCustomClilocSources();
+        CheckClilocTileSync();
     }
 
     private void CheckClilocEditor(ClilocDocument document, string source, string project, string install)

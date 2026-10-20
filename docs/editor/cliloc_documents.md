@@ -60,3 +60,7 @@ batch undo and separate Fiddler/quoted UTF-8 dialects. F15b native binary stagin
 and independent binary read-back remain separate stories. F15e adds custom-file
 opening with source/slot/version-isolated project copies. This document
 does not claim a runtime localization pipeline or language/font certification.
+
+F16a/b adds [selected tiledata-name synchronization](cliloc_tiledata_sync.md):
+preview mapped Add/Update/Remove changes, include valid project metadata names,
+and apply a chosen subset as one project-document undo step.

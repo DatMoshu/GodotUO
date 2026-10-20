@@ -130,6 +130,7 @@ public partial class AssetsView : VBoxContainer
         {
             strings.DocumentReopening += document => _inspector?.Strings?.Discard(document);
             strings.PreparingExchange = document => _inspector?.Strings?.PrepareExchange(document) == true;
+            strings.CaptureItemNames = () => _inspector?.Metadata?.NameDrafts(_data.Assets?.Root ?? EditorData.ProjectRoot()) ?? Array.Empty<ItemNameDraft>();
         }
         if (panel is SoundPanel sounds) sounds.DocumentReopening += document => _inspector?.Sound?.Discard(document);
         _tabs.AddChild(panel);

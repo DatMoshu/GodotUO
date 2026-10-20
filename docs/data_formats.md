@@ -557,6 +557,14 @@ refuse the whole import. Export omits tombstones and uses atomic standard-file
 replacement outside the installation. See [working documents](editor/cliloc_documents.md)
 and [CSV exchange](editor/cliloc_csv_exchange.md). Neither emits native cliloc data.
 
+[Tiledata-name synchronization](editor/cliloc_tiledata_sync.md) uses the same
+Cliloc JSON/tombstone contract. Legacy 37-byte and modern 41-byte item tables
+map IDs below `0x4000` to ID+1020000, below `0x8000` to ID+1078872, and the rest
+through `0xFFFF` to ID+1084024. Source name fields decode first-NUL ASCII;
+explicit project name edits retain authored Unicode. Captured saved/draft item
+metadata is validated against source records. Selected changes apply atomically,
+preserving existing flags and binding review to source/document/name snapshots.
+
 ### Sound working documents (F14b/F14c)
 
 `<world-project>/metadata/sounds/0xNNNN.json` is editor-only inert JSON, schema 2:

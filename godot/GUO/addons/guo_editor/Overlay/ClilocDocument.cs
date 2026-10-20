@@ -109,12 +109,18 @@ public sealed class ClilocDocument
         ApplyTextBatch(new Dictionary<int, string> { [id] = text });
     }
     internal void ApplyTextBatch(IReadOnlyDictionary<int, string> rows, bool validateOnly = false)
+        => ApplyTextBatch(rows, validateOnly, false);
+    internal void ApplySyncBatch(IReadOnlyDictionary<int, string> rows, bool validateOnly = false)
+        => ApplyTextBatch(rows, validateOnly, true);
+    private void ApplyTextBatch(IReadOnlyDictionary<int, string> rows, bool validateOnly, bool allowRemovals)
     {
         var edits = new List<EditStep>();
         foreach (var row in rows)
         {
             if (row.Key < 0) throw new ArgumentException("Cliloc IDs must be non-negative whole numbers.");
             Entry before = Get(row.Key);
+            if (row.Value == null && allowRemovals)
+            { if (before != null) edits.Add(new(row.Key, before, null)); continue; }
             // Untouched long source records are legal and must survive a whole-language roundtrip.
             if (before != null && before.Text == row.Value) continue;
             if (row.Value == null || row.Value.Contains('\0') || Utf8.GetByteCount(row.Value) > 32767)

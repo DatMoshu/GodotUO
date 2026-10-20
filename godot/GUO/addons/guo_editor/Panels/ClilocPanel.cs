@@ -27,9 +27,11 @@ public partial class ClilocPanel : GridPanel
     private readonly Dictionary<string, string> _activeCustomKeys = new();
     internal event Action<ClilocDocument> DocumentReopening;
     internal Func<ClilocDocument, bool> PreparingExchange;
+    internal Func<IReadOnlyList<ItemNameDraft>> CaptureItemNames;
     internal Button ImportCsvButton { get; private set; }
     internal Button ExportCsvButton { get; private set; }
     internal Button OpenCustomButton { get; private set; }
+    internal Button SyncButton { get; private set; }
     internal Button AddButton => _add;
     internal Button ReloadButton => _reload;
     internal string SourceStatus => _scope.Text;
@@ -70,6 +72,7 @@ public partial class ClilocPanel : GridPanel
         OpenCustomButton = AssetUi.Action("Folder", "Choose a file for the selected custom Cliloc slot…", () => OpenCustomPicker()); tools.AddChild(OpenCustomButton);
         ImportCsvButton = AssetUi.Action("Load", "Import Cliloc CSV into this language's working document…", () => ClilocCsvDialog.Choose(this, true)); tools.AddChild(ImportCsvButton);
         ExportCsvButton = AssetUi.Action("Save", "Export Cliloc CSV from the working language…", () => ClilocCsvDialog.Choose(this, false)); tools.AddChild(ExportCsvButton);
+        SyncButton = AssetUi.Action("Reload", "Preview item-name synchronization from tiledata into this Cliloc working document…", () => OpenTileSync()); tools.AddChild(SyncButton);
         _scope = AssetUi.Label("Exact file records; runtime fallback and Clilocs.txt are separate."); tools.AddChild(_scope);
     }
     internal void PrepareExchange(ClilocDocument document)
@@ -81,6 +84,14 @@ public partial class ClilocPanel : GridPanel
     {
         ClilocDocument document = WorkingDocument; PrepareExchange(document);
         return ClilocCsvDialog.Review(this, document, new ClilocCsvPlan(document, ClilocCsv.ReadFile(path), format), path);
+    }
+    internal ClilocTileSyncDialog OpenTileSync()
+    {
+        ClilocDocument document = WorkingDocument; PrepareExchange(document);
+        TileNameSnapshot Capture() => TileNameSnapshot.Capture(Data.Files.GetUOFilePath("tiledata.mul"),
+            Data.Files.Version >= GUO.Utility.ClientVersion.CV_7090, Project, Data.ClientData,
+            CaptureItemNames?.Invoke() ?? Array.Empty<ItemNameDraft>());
+        return ClilocTileSyncDialog.Open(this, document, new ClilocTileSyncPlan(document, Capture(), Capture));
     }
 
     public override void OnDataLoaded()
@@ -147,7 +158,7 @@ public partial class ClilocPanel : GridPanel
         bool assigned = _files.TryGetValue(Language, out string source);
         bool custom = Language is "custom1" or "custom2";
         _add.Disabled = Speech || !assigned; _reload.Disabled = _add.Disabled;
-        ImportCsvButton.Disabled = ExportCsvButton.Disabled = _add.Disabled;
+        ImportCsvButton.Disabled = ExportCsvButton.Disabled = SyncButton.Disabled = _add.Disabled;
         OpenCustomButton.Disabled = Speech || !custom;
         OpenCustomButton.TooltipText = custom ? "Choose a Cliloc source file for this custom slot; other source drafts are retained."
             : "Select Custom 1 or Custom 2 to open a Cliloc file outside the installed language list.";

@@ -68,6 +68,12 @@ choices leave the previous assignment intact; empty sources can receive Add/CSV.
 Sources outside the installation also receive shared export/project write guards.
 Native binary writing and runtime language registration remain separate.
 
+F16a/b [tiledata-to-Cliloc synchronization](cliloc_tiledata_sync.md) previews the
+three Fiddler item-ID ranges using ASCII source names plus valid project name
+edits/recovery, and applies selected adds/updates/removals to the Cliloc working
+document as one undo step. It includes paged/filterable selection, source/draft
+stale guards and atomic patch budgets. Reverse sync and variant navigation remain.
+
 F14a [sound-effect WAV export](sound_wav_export.md) adds standard RIFF output
 from the active effect's PCM, typed Play/Stop/Export actions and audio-specific
 inspector fields. It preserves sample bytes and leaves native archives unchanged.

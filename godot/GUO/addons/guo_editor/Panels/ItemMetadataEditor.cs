@@ -209,6 +209,31 @@ public partial class ItemMetadataEditor : VBoxContainer
         .Where(d => d.Dirty || d.Document.Current != d.Document.Original)
         .Select(d => (d.Document.Id, d.Dirty ? "Unsaved metadata" : "Saved metadata document")).ToArray();
 
+    // Capture raw fields without committing them. Sync validates every captured draft
+    // against its exact source record; unvisited recovered drafts must not disappear.
+    internal IReadOnlyList<ItemNameDraft> NameDrafts(string projectRoot)
+    {
+        var rows = new Dictionary<int, ItemNameDraft>();
+        Variant value = EditorInterface.Singleton.GetEditorSettings().GetProjectMetadata("guo_assets", "metadata_drafts", new Godot.Collections.Array());
+        if (value.VariantType == Variant.Type.Array)
+            foreach (Variant entry in value.AsGodotArray())
+            {
+                if (entry.VariantType != Variant.Type.Dictionary) continue;
+                var row = entry.AsGodotDictionary();
+                if (!row.TryGetValue("root", out Variant root) || !string.Equals(root.AsString(), projectRoot, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!row.TryGetValue("id", out Variant id) || !row.TryGetValue("hash", out Variant hash)
+                    || !row.TryGetValue("name", out Variant name) || !row.TryGetValue("flags", out Variant flags) || !row.TryGetValue("height", out Variant height))
+                    throw new IOException("A recovered item metadata draft is incomplete. Open and repair its metadata before synchronizing.");
+                int number = id.AsInt32();
+                if (!rows.TryAdd(number, new(number, hash.AsString(), name.AsString(), flags.AsString(), height.AsString())))
+                    throw new IOException("Duplicate recovered item metadata drafts. Repair recovery before synchronizing.");
+            }
+        foreach (Draft draft in _drafts.Values.Where(d => string.Equals(d.Root, projectRoot, StringComparison.OrdinalIgnoreCase)))
+            if (draft.Dirty) rows[draft.Document.Id] = new(draft.Document.Id, draft.Document.SourceHash, draft.Name, draft.Flags, draft.Height);
+            else rows.Remove(draft.Document.Id);
+        return rows.Values.OrderBy(row => row.Id).ToArray();
+    }
+
     // Recovery drafts are editor-local, not saved project documents. They survive assembly reload
     // and editor restart without silently accepting or exporting the user's edits.
     public void StashDrafts()
