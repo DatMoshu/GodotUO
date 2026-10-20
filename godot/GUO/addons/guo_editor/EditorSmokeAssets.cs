@@ -239,6 +239,7 @@ public partial class EditorSmoke
                 CheckAssetWorkbench(art, FixtureStatic);
                 CheckBatchStaticReview();
                 CheckClilocDocuments();
+                CheckSoundWaveExport();
             }
 
             foreach (var (name, when) in AssetStamp())

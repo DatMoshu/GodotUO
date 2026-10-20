@@ -56,6 +56,11 @@ preserved header/flags/IDs, undo, source-bound project JSON and editor-local
 draft recovery. They do not modify runtime strings or emit native cliloc files;
 F15b binary staging and F15c/d CSV compatibility remain separate work.
 
+F14a [sound-effect WAV export](sound_wav_export.md) adds standard RIFF output
+from the active effect's PCM, typed Play/Stop/Export actions and audio-specific
+inspector fields. It preserves sample bytes and leaves native archives unchanged.
+Sound documents, WAV replacement and staged native writing remain separate.
+
 Phase 1 proposal, 2026-10-19. guo-director first-pass review received;
 catalogue and survey await guo-director and exec-fable sign-off.
 F01a has separate director authorization for assignment (inbox #11093);

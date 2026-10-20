@@ -191,13 +191,13 @@ public static class AssetActions
         _ => "hue",
     };
 
-    private static void Pick(EditorFileDialog.FileModeEnum mode, string file, Action<string> then)
+    internal static EditorFileDialog Pick(EditorFileDialog.FileModeEnum mode, string file, Action<string> then, string[] filters = null, Node owner = null)
     {
         var dlg = new EditorFileDialog
         {
             FileMode = mode,
             Access = EditorFileDialog.AccessEnum.Filesystem,
-            Filters = new[] { "*.png ; PNG image" },
+            Filters = filters ?? new[] { "*.png ; PNG image" },
         };
 
         if (file != null)
@@ -212,8 +212,9 @@ public static class AssetActions
             dlg.QueueFree();
         };
         dlg.Canceled += () => dlg.QueueFree();
-        EditorInterface.Singleton.GetBaseControl().AddChild(dlg);
+        (owner ?? EditorInterface.Singleton.GetBaseControl()).AddChild(dlg);
         dlg.PopupFileDialog();
+        return dlg;
     }
 
     public static void EnsureExportDestination(string path)

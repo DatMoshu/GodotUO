@@ -135,8 +135,16 @@ public partial class EditorSmoke
             var cliloc = _assets.Panel<ClilocPanel>(); cliloc.ChooseLanguage("jpn"); cliloc.Search("500207");
             _assetsProofStep = 7; return;
         }
+        if (_assetsProofStep == 7)
+        {
         SaveAssetProof("cliloc-japanese-source", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
         MetadataCheck("cliloc_japanese_ready", _inspector.Strings.Document.Language == "jpn" && _inspector.Strings.TextInput.Text.Length > 0);
+        var sounds = _assets.Panel<SoundPanel>(); _assets.ShowPanel(sounds); sounds.SelectKind(false); sounds.Search(sounds.SmokeQuery);
+        _assetsProofStep = 8; return;
+        }
+        SaveAssetProof("sound-wave-export", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
+        MetadataCheck("sound_wave_export_ready", _inspector.Current.Actions.Exists(action => action.Id == "export-wav")
+            && _inspector.ActionToolbar.GetChildren().OfType<Control>().All(control => control.GetGlobalRect().End.X <= _inspector.ActionToolbar.GetGlobalRect().End.X + 2));
         Finish();
     }
 

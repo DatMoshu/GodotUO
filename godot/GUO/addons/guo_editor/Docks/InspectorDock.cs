@@ -122,8 +122,8 @@ public partial class InspectorDock : EditorDock
         if (Strings.Visible) Strings.Bind(inspection.Strings, inspection.StringId, inspection.StringsChanged);
         _history.Text = Strings.Visible ? Strings.Summary : Metadata.Visible ? Metadata.Summary : "No project document for this asset.";
         _previewArea.Visible = _previewControls.Visible = inspection.Image != null;
-        _pages.SetTabHidden(1, inspection.Strings != null);
-        if (inspection.Strings != null && _pages.CurrentTab == 1) _pages.CurrentTab = 0;
+        _pages.SetTabHidden(1, inspection.Image == null);
+        if (inspection.Image == null && _pages.CurrentTab == 1) _pages.CurrentTab = 0;
         BuildActions(inspection);
         _actions.Visible = _actions.GetChildCount() > 0;
         _dimensions.Text = inspection.Image == null ? "" : $"{inspection.Image.GetWidth()} × {inspection.Image.GetHeight()} px";

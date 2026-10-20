@@ -3,6 +3,7 @@ namespace GUO.Editor;
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using Godot;
@@ -50,8 +51,7 @@ public partial class SoundPanel : GridPanel
         _kind.ItemSelected += _ => Refresh();
         bar.AddChild(_kind);
 
-        var stop = new Button { Text = "Stop" };
-        stop.Pressed += Stop;
+        var stop = AssetUi.Action("Stop", "Stop sound or music playback", Stop);
         bar.AddChild(stop);
     }
 
@@ -118,9 +118,32 @@ public partial class SoundPanel : GridPanel
 
         bool music = Music;
         var inspection = Inspection.Still("Sounds", $"0x{id:X4}", null, sb.ToString());
-        inspection.Actions.Add(("Play", () => Play(id, music)));
-        inspection.Actions.Add(("Stop", Stop));
+        inspection.Title = music ? "Music" : "Sound effect";
+        inspection.Origin = music ? "Active music · read-only" : "Active sound effect · read-only";
+        inspection.Fields.Add(("Name", NameOf(id)));
+        if (music) inspection.Fields.Add(("Loop", _music.GetValueOrDefault(id).Loop ? "Yes" : "No"));
+        else
+        {
+            int bytes = _effects.GetValueOrDefault(id).Bytes;
+            inspection.Fields.Add(("Format", "PCM · mono · 16-bit"));
+            inspection.Fields.Add(("Sample rate", "22050 Hz"));
+            inspection.Fields.Add(("Samples", (bytes / 2).ToString()));
+            inspection.Fields.Add(("Duration", $"{bytes / 2.0 / SoundWave.Frequency:0.000} s"));
+        }
+        inspection.Actions.Add(new("play-sound", music ? "Play music" : "Play sound", "Play", () => Play(id, music)));
+        inspection.Actions.Add(new("stop-sound", "Stop playback", "Stop", Stop));
+        if (!music) inspection.Actions.Add(new("export-wav", "Export WAV… · PCM 22050 Hz mono 16-bit", "Save", () => OpenWavExport(id)));
         return inspection;
+    }
+
+    internal EditorFileDialog OpenWavExport(int id) => AssetActions.Pick(EditorFileDialog.FileModeEnum.SaveFile,
+        $"sound_0x{id:X4}.wav", path => ExportWav(id, path), new[] { "*.wav ; PCM WAVE audio" }, this);
+
+    internal void ExportWav(int id, string path)
+    {
+        if (id < 0 || !Data.Files.Sounds.TryGetSound(id, out byte[] pcm, out _))
+            throw new IOException("The selected sound effect could not be read. Reload the sound library and select it again.");
+        SoundWave.Export(pcm, path);
     }
 
     /// <summary>Plays a sound or a piece of music. Returns false if the game's audio would not.</summary>

@@ -17,6 +17,10 @@ working/source text, preserved record flags, token warnings and a language-wide
 Save copy action. The pixel preview, image toolbar and Image tab are hidden for
 this text-only document. Native cliloc output is a separate milestone.
 
+Sounds uses aligned audio fields and native Play/Stop icons. Effects also offer
+[WAV export](sound_wav_export.md); music does not use the effect-PCM exporter.
+Selections without an image hide the Image tab and pixel preview controls.
+
 The inspector starts with identity, copy ID and origin, then a bounded pixel
 preview with integer nearest-neighbor zoom. Animation playback and frame scrub
 remain available. The action row uses theme-native icons with tooltips and
