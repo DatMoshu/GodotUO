@@ -79,6 +79,7 @@ public partial class EditorSmoke
         SoundExportCheck("install_and_unknown_format_refused", SoundDocumentRefused(() => new SoundExportJob(plan, SoundExportFormat.Utf8Csv, Path.Combine(_data.ClientData, "guo-sound-list-refusal.csv"), true, 0))
             && SoundDocumentRefused(() => new SoundExportJob(plan, (SoundExportFormat)99, csv, true, 0)) && !File.Exists(Path.Combine(_data.ClientData, "guo-sound-list-refusal.csv")));
         CheckSoundExportPanel(root);
+        CheckSoundAudition();
     }
     private void CheckSoundExportPanel(string root)
     {

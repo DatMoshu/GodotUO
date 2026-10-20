@@ -61,6 +61,8 @@ public partial class EditorSmoke
     private SoundExportDialog _soundExportProof;
     private ClilocCsvDialog _clilocCsvProof;
     private ClilocTileSyncDialog _tileSyncProof;
+    private SoundDocument _auditionProofDocument;
+    private ulong _auditionProofStarted;
 
     private void StepAssetWorkbenchProof()
     {
@@ -253,12 +255,41 @@ public partial class EditorSmoke
                 && _tileSyncProof.Size.Y <= DisplayServer.ScreenGetUsableRect().Size.Y);
             _tileSyncProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); _assetsProofStep = 19; return;
         }
+        if (_assetsProofStep == 19)
+        {
         SaveAssetProof("cliloc-tiledata-sync-working", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
         MetadataCheck("cliloc_tiledata_sync_working_ready", _inspector.Strings.Document.Get(1020001).Text == "stone wall"
             && _inspector.Strings.Document.Get(1020002).Text == "Unused item label" && _inspector.Strings.Document.Get(1020004).Text == "new item name");
         var synchronized = _inspector.Strings.Document; _inspector.Strings.Undo();
         MetadataCheck("cliloc_tiledata_sync_single_undo", synchronized.Get(1020001).Text == "Old wall ~1_NAME~" && synchronized.Get(1020004) == null);
         _inspector.Strings.Discard(synchronized); _assets.Panel<ClilocPanel>().ChooseLanguage("enu");
+        var sound = _assets.Panel<SoundPanel>(); _assets.ShowPanel(sound); sound.SelectKind(false); sound.ViewSlots(0); sound.Search(sound.SmokeQuery);
+        _auditionProofDocument = _inspector.Sound.Document; _auditionProofDocument.ImportWave(SoundWave.Encode(new byte[4410])); sound.OnAssetsChanged();
+        sound.LoopEffect(_auditionProofDocument.Id); _auditionProofStarted = Time.GetTicksMsec();
+        GetWindow().Size = AssetProofSize(1366, 900); _assetsProofStep = 20; return;
+        }
+        var soundsProof = _assets.Panel<SoundPanel>();
+        if (_assetsProofStep <= 22)
+        {
+            int width = new[] { 1366, 1024, 1920 }[_assetsProofStep - 20];
+            SaveAssetProof($"sound-loop-audition-{width}", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
+            MetadataCheck($"sound_loop_survives_multiple_cycles_{width}", soundsProof.Looping && soundsProof.ProjectPreviewSamples == 2205 && Time.GetTicksMsec() - _auditionProofStarted > 100);
+            Control tools = soundsProof.GetChild<Control>(0);
+            MetadataCheck($"sound_tools_fit_{width}", tools.GetGlobalRect().End.X <= soundsProof.GetGlobalRect().End.X + 2
+                && tools.GetChildren().OfType<Control>().All(c => c.GetGlobalRect().End.X <= tools.GetGlobalRect().End.X + 2));
+            _assetsProofStep++;
+            if (_assetsProofStep == 21) GetWindow().Size = AssetProofSize(1024, 768);
+            else if (_assetsProofStep == 22) GetWindow().Size = AssetProofSize(1920, 1080);
+            else
+            {
+                soundsProof.Stop(); _auditionProofDocument.Revert(); soundsProof.OnAssetsChanged(); soundsProof.ViewSlots(2); soundsProof.Search("");
+                soundsProof.Search(soundsProof.ResultAssetIds().First().ToString()); GetWindow().Size = AssetProofSize(1366, 900);
+            }
+            return;
+        }
+        SaveAssetProof("sound-empty-slot", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
+        MetadataCheck("sound_empty_slot_ready", _inspector.Current.Title == "Empty sound slot" && !_inspector.Sound.Visible && _inspector.Current.Actions.Count == 0 && soundsProof.LoopButton.Disabled);
+        soundsProof.ViewSlots(0); soundsProof.Search(_auditionProofDocument.Id.ToString());
         Finish();
     }
 

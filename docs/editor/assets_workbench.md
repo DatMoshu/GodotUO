@@ -26,6 +26,10 @@ working-document batch. It does not mutate tiledata or runtime strings.
 Sounds uses aligned audio fields and native Play/Stop icons. Effects also offer
 [WAV export](sound_wav_export.md); music does not use the effect-PCM exporter.
 Selections without an image hide the Image tab and pixel preview controls.
+[Loop audition and slot browsing](sound_audition_slots.md) add active-library
+occupied/empty counts, all/empty views, read-only empty inspectors and next-empty
+navigation. The loop status distinguishes source/project PCM and stops on
+selection, family or working-document changes; no native slot writer is included.
 
 The inspector starts with identity, copy ID and origin, then a bounded pixel
 preview with integer nearest-neighbor zoom. Animation playback and frame scrub

@@ -22,6 +22,7 @@ public partial class SoundExportDialog : ConfirmationDialog
     private SoundExportPlan _plan;
     private SoundExportJob _job;
     private bool _reviewError;
+    private int _browserTotal, _selectedTotal;
     internal bool IsBusy => _job is { Finished: false };
     internal SoundExportPlan Plan => _plan;
     internal Tree Rows => _rows;
@@ -30,9 +31,9 @@ public partial class SoundExportDialog : ConfirmationDialog
     internal bool ExportSucceeded => _job?.Succeeded == true;
     private SoundExportFormat Format => (SoundExportFormat)_format.Selected;
 
-    internal static SoundExportDialog Open(SoundPanel panel, int[] all, int[] browser, int[] selected, bool wave)
+    internal static SoundExportDialog Open(SoundPanel panel, int[] all, int[] browser, int[] selected, bool wave, int browserTotal, int selectedTotal)
     {
-        var dialog = new SoundExportDialog { _panel = panel, _scopes = new[] { all, browser, selected },
+        var dialog = new SoundExportDialog { _panel = panel, _scopes = new[] { all, browser, selected }, _browserTotal = browserTotal, _selectedTotal = selectedTotal,
             Title = "Export sound effects", DialogHideOnOk = false, OkButtonText = "Export" };
         dialog.Build(); panel.AddChild(dialog);
         dialog._format.Selected = wave ? 2 : 0; dialog._scope.Selected = wave ? 2 : 0; dialog.Review(); dialog.FitReview(); return dialog;
@@ -42,7 +43,7 @@ public partial class SoundExportDialog : ConfirmationDialog
         var body = new VBoxContainer { Size = new Vector2(840, 0) * EditorInterface.Singleton.GetEditorScale() }; AddChild(body);
         var options = new HBoxContainer(); body.AddChild(options);
         options.AddChild(new Label { Text = "Scope" }); _scope = new OptionButton { AccessibilityName = "Sound export scope" };
-        foreach (string label in new[] { $"All effects ({_scopes[0].Length})", $"Browser results ({_scopes[1].Length})", $"Selected ({_scopes[2].Length})" }) _scope.AddItem(label);
+        foreach (string label in new[] { $"All occupied effects ({_scopes[0].Length})", $"Browser occupied ({_scopes[1].Length}/{_browserTotal})", $"Selected occupied ({_scopes[2].Length}/{_selectedTotal})" }) _scope.AddItem(label);
         options.AddChild(_scope); options.AddChild(new Label { Text = "Format" });
         _format = new OptionButton { AccessibilityName = "Sound export format", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         foreach (string label in new[] { "CSV · UTF-8", "CSV · Fiddler Windows-1252", "WAV batch · new folder" }) _format.AddItem(label);
@@ -55,7 +56,7 @@ public partial class SoundExportDialog : ConfirmationDialog
             CustomMinimumSize = new Vector2(0, 230) * EditorInterface.Singleton.GetEditorScale() };
         foreach (var pair in new[] { (0, "Native ID"), (1, "Working name"), (2, "Seconds"), (3, "Output") }) _rows.SetColumnTitle(pair.Item1, pair.Item2);
         _rows.SetColumnExpand(0, false); _rows.SetColumnCustomMinimumWidth(0, (int)(90 * EditorInterface.Singleton.GetEditorScale())); body.AddChild(_rows);
-        body.AddChild(AssetUi.Label("CSV uses ID;Name;Length. WAVs use reviewed working PCM and include a UTF-8 SoundList.csv. Project names and unsaved PCM are included; native archives stay unchanged."));
+        body.AddChild(AssetUi.Label("Empty slots are excluded from every scope. CSV uses ID;Name;Length. WAVs use reviewed working PCM and include a UTF-8 SoundList.csv. Project names and unsaved PCM are included; native archives stay unchanged."));
         var destination = new HBoxContainer(); body.AddChild(destination);
         _destination = new LineEdit { PlaceholderText = "Choose a CSV file or a new WAV output folder", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, AccessibilityName = "Sound export destination" }; destination.AddChild(_destination);
         _browse = AssetUi.Action("Folder", "Choose export destination…", () => Browse()); destination.AddChild(_browse);

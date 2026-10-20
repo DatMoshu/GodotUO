@@ -17,11 +17,20 @@ using Godot;
 [Tool]
 public partial class SoundPanel : GridPanel
 {
-    private const int MaxSound = 0x1000;
+    internal const int MaxSound = 0x1000;
     private const int MaxMusic = 0x100;
 
     private OptionButton _kind;
     private OptionButton _sort;
+    private OptionButton _slots;
+    private Label _counts, _audition;
+    internal Button LoopButton { get; private set; }
+    internal Button NextEmptyButton { get; private set; }
+    private int? _loopId;
+    internal bool Looping => _loopId.HasValue && ProjectPreviewPlaying && _projectStream?.LoopMode == AudioStreamWav.LoopModeEnum.Forward;
+    internal int PreviewLoopEnd => _projectStream?.LoopEnd ?? 0;
+    internal string SlotCounts => _counts?.Text ?? "";
+    internal string AuditionStatus => _audition?.Text ?? "";
     internal Button ExportButton { get; private set; }
     internal bool CanExportEffects => !Music;
     private readonly List<int>[] _ids = new List<int>[2];
@@ -51,6 +60,7 @@ public partial class SoundPanel : GridPanel
     public void SelectKind(bool music)
     {
         EnsureUi();
+        Stop();
         _kind.Selected = music ? 1 : 0;
         UpdateSoundTools();
     }
@@ -64,12 +74,23 @@ public partial class SoundPanel : GridPanel
         _kind = new OptionButton();
         _kind.AddItem("Effects");
         _kind.AddItem("Music");
-        _kind.ItemSelected += _ => { UpdateSoundTools(); Refresh(); };
+        _kind.ItemSelected += _ => { Stop(); UpdateSoundTools(); Refresh(); };
         bar.AddChild(_kind);
 
+        LoopButton = AssetUi.Action("Loop", "Loop selected working sound until Stop; click again to stop", () => { if (Selected is int id) LoopEffect(id); });
+        LoopButton.ToggleMode = true; bar.AddChild(LoopButton);
         var stop = AssetUi.Action("Stop", "Stop sound or music playback", Stop);
         bar.AddChild(stop);
         ReopenButton = AssetUi.Action("Reload", "Reopen selected sound and saved working document…", ReopenSound); bar.AddChild(ReopenButton);
+        var slots = new HBoxContainer(); AddChild(slots);
+        _slots = new OptionButton { AccessibilityName = "Sound effect slot view", TooltipText = "Active loader occupancy in IDs 0x0000–0x0FFF; aliases count as occupied. Empty is not a native insertion guarantee." };
+        foreach (string label in new[] { "Occupied effects", "All effect slots", "Empty effect slots" }) _slots.AddItem(label);
+        _slots.ItemSelected += _ => { Stop(); Refresh(); UpdateSoundTools(); }; slots.AddChild(_slots);
+        NextEmptyButton = AssetUi.Action("Forward", "Select next empty effect ID after the selection; no wrap. Clears search and uses ID order.", () => NextEmpty()); slots.AddChild(NextEmptyButton);
+        _counts = AssetUi.Label(""); slots.AddChild(_counts);
+        _audition = AssetUi.Label(""); AddChild(_audition); _audition.Visible = false;
+        VisibilityChanged += () => { if (!IsVisibleInTree()) Stop(); };
+        Activated += id => Play(id, Music);
     }
 
     protected override void SearchUiReady()
@@ -88,6 +109,24 @@ public partial class SoundPanel : GridPanel
         if (Music && _sort.Selected >= 2) _sort.Selected = 0;
         ExportButton.Disabled = Music;
         ExportButton.TooltipText = Music ? "Batch export supports sound effects; music uses its existing playback controls." : "Export sound list or WAV batch…";
+        _slots.Visible = NextEmptyButton.Visible = _counts.Visible = !Music;
+        ReopenButton.Disabled = Music || Selected is not int selected || !_effects.ContainsKey(selected);
+        LoopButton.Disabled = Music || Selected is not int effect || !_effects.ContainsKey(effect);
+        NextEmptyButton.Disabled = Music || NextEmptyId() < 0;
+        _counts.Text = $"{_effects.Count:N0} occupied · {MaxSound - _effects.Count:N0} empty · 0x0000–0x0FFF";
+    }
+    internal void ViewSlots(int view) { EnsureUi(); if (view < 0 || view > 2) throw new ArgumentOutOfRangeException(nameof(view)); _slots.Selected = view; Stop(); Refresh(); UpdateSoundTools(); }
+    private int NextEmptyId()
+    {
+        for (int id = Math.Max(0, (Selected ?? -1) + 1); id < MaxSound; id++) if (!_effects.ContainsKey(id)) return id;
+        return -1;
+    }
+    internal int? NextEmpty()
+    {
+        if (Music) return null;
+        Ids(); int id = NextEmptyId(); if (id < 0) return null;
+        Stop(); if (_slots.Selected == 0) _slots.Selected = 1; _sort.Selected = 0;
+        return Search($"0x{id:X4}");
     }
     internal void SortSounds(int order) { EnsureUi(); _sort.Selected = order; Refresh(); }
     protected override void SortResults(List<int> results)
@@ -104,7 +143,8 @@ public partial class SoundPanel : GridPanel
     internal SoundExportDialog OpenExportDialog(int[] selected = null, bool wave = false)
     {
         if (Music) throw new IOException("Choose Effects before exporting a sound list or WAV batch.");
-        return SoundExportDialog.Open(this, Ids().ToArray(), ResultAssetIds(), selected ?? SelectedAssetIds(), wave);
+        Ids(); int[] browser = ResultAssetIds(), selection = selected ?? SelectedAssetIds();
+        return SoundExportDialog.Open(this, _ids[0].ToArray(), browser.Where(_effects.ContainsKey).ToArray(), selection.Where(_effects.ContainsKey).ToArray(), wave, browser.Length, selection.Length);
     }
     internal SoundExportPlan ExportPlan(IEnumerable<int> ids) => new(ids, id =>
     {
@@ -122,7 +162,7 @@ public partial class SoundPanel : GridPanel
         if (_ids[k] != null)
         {
             if (!Music) LoadProjectNames();
-            return _ids[k];
+            return !Music && _slots.Selected > 0 ? Enumerable.Range(0, MaxSound) : _ids[k];
         }
 
         var list = new List<int>();
@@ -151,8 +191,11 @@ public partial class SoundPanel : GridPanel
 
         _ids[k] = list;
         if (!Music) LoadProjectNames();
-        return list;
+        UpdateSoundTools();
+        return !Music && _slots.Selected > 0 ? Enumerable.Range(0, MaxSound) : list;
     }
+
+    protected override bool Include(int id) => Music || _slots.Selected != 2 || !_effects.ContainsKey(id);
 
     private void LoadProjectNames()
     {
@@ -201,13 +244,24 @@ public partial class SoundPanel : GridPanel
             ? _music.TryGetValue(id, out var m) ? m.Name : ""
             : _documents.TryGetValue(Key(id), out var document) ? document.CurrentName : _effects.TryGetValue(id, out var e) ? e.Name : "";
 
-    protected override string Caption(int id) => $"0x{id:X4}  {NameOf(id)}";
+    protected override string Caption(int id) => $"0x{id:X4}  {(!Music && !_effects.ContainsKey(id) ? "[empty slot]" : NameOf(id))}";
 
     protected override bool Matches(int id, string query) =>
         NameOf(id).Contains(query, StringComparison.OrdinalIgnoreCase);
 
     protected override Inspection Describe(int id)
     {
+        if (_loopId.HasValue && (Music || _loopId != id)) Stop();
+        UpdateSoundTools();
+        if (!Music && !_effects.ContainsKey(id))
+        {
+            var empty = Inspection.Still("Sounds", $"0x{id:X4}", null, "No playable effect at this ID in the active library.");
+            empty.Title = "Empty sound slot"; empty.Origin = "Active loader · read-only slot";
+            empty.Fields.Add(("State", "Empty · no PCM"));
+            empty.Fields.Add(("Scope", "0x0000–0x0FFF active effect IDs"));
+            empty.Fields.Add(("Editing", "Choose an occupied effect to edit its name or import WAV audio."));
+            return empty;
+        }
         var sb = new StringBuilder();
         if (Music)
         {
@@ -248,6 +302,7 @@ public partial class SoundPanel : GridPanel
         inspection.Actions.Add(new("stop-sound", "Stop playback", "Stop", Stop));
         if (!music)
         {
+            inspection.Actions.Add(new("loop-sound", "Loop working sound until Stop; click again to stop", "Loop", () => LoopEffect(id)));
             inspection.Actions.Add(new("export-wav", "Export working WAV… · PCM 22050 Hz mono 16-bit", "Save", () => OpenWavExport(id)));
             if (document != null && document.RecoveryError == null) inspection.Actions.Add(new("import-wav", "Import WAV into working copy…", "Load", () => OpenWavImport(id)));
             if (document?.HasPcmChange == true) inspection.Actions.Add(new("play-source-sound", "Play active source sound", "Play", () => PlaySource(id, false), false));
@@ -282,6 +337,7 @@ public partial class SoundPanel : GridPanel
     /// <summary>Plays a sound or a piece of music. Returns false if the game's audio would not.</summary>
     public bool Play(int id, bool music)
     {
+        if (!music && !_effects.ContainsKey(id)) { Stop(); return false; }
         if (!music && WorkingDocument(id) is { HasPcmChange: true } document) return PlayPcm(document.Pcm());
         return PlaySource(id, music);
     }
@@ -309,13 +365,33 @@ public partial class SoundPanel : GridPanel
         return Play(Selected.Value, Music) ? null : $"sound 0x{Selected.Value:X4} did not start";
     }
 
-    internal bool PlayPcm(byte[] pcm)
+    internal bool LoopEffect(int id)
+    {
+        try
+        {
+        if (Music || !_effects.ContainsKey(id)) { Stop(); return false; }
+        if (Looping && _loopId == id) { Stop(); return false; }
+        var document = WorkingDocument(id) ?? throw new IOException(_documentErrors.GetValueOrDefault(Key(id), "Open a valid sound document before looping."));
+        if (document.RecoveryError != null) throw new IOException(document.RecoveryError);
+        bool playing = PlayPcm(document.Pcm(), loop: true);
+        if (playing)
+        {
+            _loopId = id;
+            _audition.Text = $"Looping 0x{id:X4} · {(document.HasPcmChange ? "project" : "source")} PCM · Stop or Escape ends audition"; _audition.Visible = true;
+        }
+        return playing;
+        }
+        finally { LoopButton?.SetPressedNoSignal(Looping); }
+    }
+
+    internal bool PlayPcm(byte[] pcm, bool loop = false)
     {
         SoundWave.ValidateLength(pcm?.Length ?? 0); Stop();
         if (!IsInstanceValid(_projectPlayer)) { _projectPlayer = new AudioStreamPlayer(); AddChild(_projectPlayer); }
         _projectPlayer.Stream = null; _projectStream?.Dispose();
         _projectStream = new AudioStreamWav { Data = pcm, MixRate = SoundWave.Frequency, Stereo = false,
-            Format = AudioStreamWav.FormatEnum.Format16Bits, LoopMode = AudioStreamWav.LoopModeEnum.Disabled };
+            Format = AudioStreamWav.FormatEnum.Format16Bits, LoopMode = loop ? AudioStreamWav.LoopModeEnum.Forward : AudioStreamWav.LoopModeEnum.Disabled,
+            LoopBegin = 0, LoopEnd = pcm.Length / 2 };
         _projectPlayer.Stream = _projectStream; _projectPlayer.Play(); return _projectPlayer.Playing;
     }
 
@@ -323,7 +399,20 @@ public partial class SoundPanel : GridPanel
     {
         _playing?.Stop();
         if (IsInstanceValid(_projectPlayer)) _projectPlayer.Stop();
+        _loopId = null;
+        LoopButton?.SetPressedNoSignal(false);
+        if (_audition != null) { _audition.Text = ""; _audition.Visible = false; }
     }
+
+    public override void _Input(InputEvent input)
+    {
+        // Stop our audition before a text field/editor shortcut consumes Escape.
+        // Leave the event available for its ordinary focus/dialog behavior too.
+        if (_loopId.HasValue && input is InputEventKey { Pressed: true, Echo: false, Keycode: Godot.Key.Escape })
+        { Stop(); }
+    }
+
+    public override void OnAssetsChanged() { Stop(); base.OnAssetsChanged(); UpdateSoundTools(); }
 
     public override void Shutdown()
     {

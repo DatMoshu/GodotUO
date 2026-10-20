@@ -96,6 +96,11 @@ cancellable new-folder WAV output, working-PCM validation and name/duration
 sorting. Native sound staging, CSV name import, free slots and deletion remain
 outside these standard-file exports.
 
+F14f [sound audition and slot browsing](sound_audition_slots.md) adds working-PCM
+loop audition, active-library occupied/empty counts, all/empty views and next-empty
+navigation. Empty inspectors stay read-only and export reviews explicitly exclude
+empty rows. Native insertion/removal and sound archive staging remain separate.
+
 Phase 1 proposal, 2026-10-19. guo-director first-pass review received;
 catalogue and survey await guo-director and exec-fable sign-off.
 F01a has separate director authorization for assignment (inbox #11093);
