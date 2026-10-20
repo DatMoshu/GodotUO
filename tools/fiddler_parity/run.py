@@ -164,6 +164,10 @@ def invoke(oracle: Path, args: list[str]) -> dict:
 
 
 def doctor(oracle: Path, build: bool = False) -> dict:
+    try:
+        import PIL
+    except ImportError as e:
+        raise RuntimeError("Install the project's Python requirements (Pillow), then rerun " + DOCTOR) from e
     config = load_config()
     if build:
         if not shutil.which("dotnet"):
@@ -175,7 +179,7 @@ def doctor(oracle: Path, build: bool = False) -> dict:
             f"-p:OracleSourceHash={source_hash}", "--nologo", "-v", "q"], timeout=180, capture_output=True, text=True)
         if result.returncode:
             raise RuntimeError("Oracle build failed: " + result.stdout[-6000:] + result.stderr[-2000:])
-    return invoke(oracle, ["identity"])
+    return {**invoke(oracle, ["identity"]), "pillow": PIL.__version__}
 
 
 def verify(stage: Path, source: Path, manifest: Path, out: Path, oracle: Path) -> dict:

@@ -109,7 +109,10 @@ def prepare(source: Path, stage: Path, image: Path, ident: int, plan: Path, vers
         effective[name] = path
     if any(path.is_symlink() or path.stat().st_nlink > 1 for path in effective.values()):
         raise ValueError("Aliased art containers are refused")
-    from PIL import Image
+    try:
+        from PIL import Image
+    except ImportError as e:
+        raise RuntimeError("PNG support is missing. Run " + parity.DOCTOR) from e
     with Image.open(image) as img:
         if img.format != "PNG" or not (0 < img.width <= 1024 and 0 < img.height <= 1024):
             raise ValueError("Choose a PNG no larger than 1024x1024")
@@ -193,7 +196,7 @@ def _apply(path: Path, oracle: Path) -> dict:
         journal.rename(journal.with_name(journal.name + ".history-" + uuid.uuid4().hex))
     backup = stage.with_name(stage.name + ".previous-" + uuid.uuid4().hex)
     entry = {"schema": 1, "stage": str(stage), "backup": str(backup), "plan": str(plan),
-        "prior_exists": stage.exists(), "state": "promoting"}
+        "source": str(source), "prior_exists": stage.exists(), "state": "promoting"}
     json_write(journal, entry)
     try:
         if stage.exists():
@@ -202,7 +205,7 @@ def _apply(path: Path, oracle: Path) -> dict:
         writer.Stage(stage, source).save()
     except BaseException:
         # Preserve even a partially promoted candidate for diagnosis.
-        if stage.exists() and backup.exists():
+        if stage.exists() and (backup.exists() or not entry["prior_exists"]):
             stage.rename(stage.with_name(stage.name + ".failed-" + uuid.uuid4().hex))
         if backup.exists():
             backup.rename(stage)
@@ -229,9 +232,15 @@ def _recover(stage: Path) -> dict:
     if journal.is_symlink() or journal.stat().st_nlink > 1:
         raise ValueError("Aliased recovery journal refused")
     entry = json.loads(parity.bounded(journal, 1024 * 1024))
+    if entry.get("schema") != 1 or entry.get("state") not in ("promoting", "complete", "recovered"):
+        raise ValueError("Invalid recovery journal schema/state")
     if entry.get("state") == "recovered":
         raise ValueError("This promotion has already been recovered")
     backup = Path(entry["backup"])
+    parity.protect_install(backup)
+    if entry.get("source") and (parity.overlap(Path(entry["source"]).resolve(), backup.resolve())
+        or parity.overlap(Path(entry["source"]).resolve(), stage)):
+        raise ValueError("Recovery would move or replace the source installation")
     if (Path(entry["stage"]).resolve() != stage or backup.parent.resolve() != stage.parent
         or not backup.name.startswith(stage.name + ".previous-") or backup.resolve() != backup or backup.is_symlink()
         or (hasattr(backup, "is_junction") and backup.is_junction())):

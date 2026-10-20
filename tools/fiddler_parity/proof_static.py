@@ -241,6 +241,17 @@ def test_failed_promotion_restores_prior_stage(tmp_path, oracle, monkeypatch):
     assert journal["state"] == "recovered"
 
 
+def test_first_stage_failure_restores_absence(tmp_path, oracle, monkeypatch):
+    _, _, stage, plan = prepared_case(tmp_path, oracle)
+    def failed_save(instance):
+        raise OSError("synthetic metadata-save failure")
+    monkeypatch.setattr(writer.Stage, "save", failed_save)
+    with pytest.raises(OSError, match="synthetic"):
+        replacement.apply(plan / "plan.json", oracle)
+    assert not stage.exists()
+    assert list(tmp_path.glob("output.failed-*"))
+
+
 def test_interrupted_promotion_can_be_recovered(tmp_path, oracle):
     source, image, stage, plan = prepared_case(tmp_path, oracle)
     replacement.apply(plan / "plan.json", oracle)
@@ -260,3 +271,38 @@ def test_stage_lock_rejects_second_writer(tmp_path):
         with pytest.raises(OSError):
             with replacement.stage_lock(stage):
                 pytest.fail("second writer acquired the stage lock")
+
+
+def test_recovery_cannot_move_configured_install(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    stage = tmp_path / "output"
+    stage.mkdir()
+    (stage / "keep.txt").write_text("current")
+    protected = stage.with_name(stage.name + ".previous-protected-install")
+    protected.mkdir()
+    (protected / "art.mul").write_bytes(b"protected input")
+    config = SimpleNamespace(client_data=protected, client_data_env="", client_data_setting="")
+    monkeypatch.setattr(parity, "load_config", lambda: config)
+    replacement.json_write(stage.with_name(stage.name + ".fiddler-journal.json"),
+        {"schema": 1, "state": "complete", "stage": str(stage), "backup": str(protected), "prior_exists": True})
+    with pytest.raises(ValueError, match="read-only"):
+        replacement.recover(stage)
+    assert (protected / "art.mul").read_bytes() == b"protected input"
+    assert (stage / "keep.txt").read_text() == "current"
+
+
+def test_output_cannot_use_install_alias(tmp_path, oracle):
+    import os
+    source, _, _ = fixture(tmp_path / "fixture", "mul")
+    alias = tmp_path / "install-alias"
+    try:
+        os.symlink(source, alias, target_is_directory=True)
+    except OSError:
+        try:
+            import _winapi
+            _winapi.CreateJunction(str(source), str(alias))
+        except (ImportError, OSError):
+            pytest.skip("Directory links unavailable; alias proof not certified")
+    with pytest.raises(ValueError, match="overlap"):
+        parity.verify(tmp_path / "fixture" / "stage", source, tmp_path / "fixture" / "expected.json", alias / "report", oracle)
+    assert not (source / "report").exists()
