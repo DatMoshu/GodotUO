@@ -55,6 +55,13 @@ public partial class EditorTour
             await Shot(3);
             panel.KeepReference();
             float before = panel.Style.Glint;
+            int scrubHistory = panel.HistoryPosition;
+            var scrubLabel = WaterWorkbenchProbe.ScrubLabel(panel, "Glints");
+            WaterWorkbenchProbe.ScrubButton(scrubLabel, true);
+            for (int i = 0; i < 5; i++) WaterWorkbenchProbe.ScrubMove(scrubLabel, 3);
+            WaterWorkbenchProbe.ScrubButton(scrubLabel, false);
+            Check(panel.HistoryPosition == scrubHistory + 1, "a numeric label drag creates one history action");
+            panel.Undo(); Check(panel.Style.Glint == before, "one Undo restores the label drag's starting value");
             panel.NumberInput("Glints").Value = 0;
             Check(panel.Style.Glint == 0 && panel.Dirty, "the numeric control updates the draft");
             panel.Undo(); Check(panel.Style.Glint == before, "water tuning is undoable");

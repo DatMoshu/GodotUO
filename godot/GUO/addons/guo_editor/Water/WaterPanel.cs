@@ -189,8 +189,8 @@ internal partial class WaterPanel : ScrollContainer
         var label = new Label { Text = title, SizeFlagsHorizontal = SizeFlags.ExpandFill }; row.AddChild(label);
         var input = new SpinBox { MinValue = min, MaxValue = max, Step = step, CustomMinimumSize = new Vector2(105, 0) };
         row.AddChild(input); _numbers[title] = input; _read[title] = read;
-        input.ValueChanged += v => { if (!_sync && input.Editable) Change(write(_style, (float)v)); };
-        NumericScrub.Attach(label, input);
+        input.ValueChanged += v => { if (!_sync && input.Editable) ChangeNumber(title, write(_style, (float)v)); };
+        AttachWaterScrub(label, input, title);
     }
     private void CommitName() { if (!_sync) Change(_style with { Name = _name.Text.Trim() }); }
 
@@ -220,22 +220,23 @@ internal partial class WaterPanel : ScrollContainer
     internal void Change(StoreWater style)
         => Push(style, _document);
 
-    private void Push(StoreWater style, DraftDocument document)
+    private void Push(StoreWater style, DraftDocument document, bool refresh = true)
     {
+        EndNumericScrub();
         WaterAuthoring.Serialize(style);
         if (ReferenceEquals(document, _document)
             && WaterAuthoring.Serialize(style).AsSpan().SequenceEqual(WaterAuthoring.Serialize(_style))) return;
         _style = style; _document = document;
         _history.RemoveRange(_position + 1, _history.Count - _position - 1);
         _history.Add((style, document)); if (_history.Count > 64) _history.RemoveAt(0);
-        _position = _history.Count - 1; Sync();
+        _position = _history.Count - 1; if (refresh) Sync();
     }
     private void Restore(int position)
     {
         _position = position; (_style, _document) = _history[position]; Sync();
     }
-    internal void Undo() { if (_position > 0) Restore(_position - 1); }
-    internal void Redo() { if (_position + 1 < _history.Count) Restore(_position + 1); }
+    internal void Undo() { EndNumericScrub(); if (_position > 0) Restore(_position - 1); }
+    internal void Redo() { EndNumericScrub(); if (_position + 1 < _history.Count) Restore(_position + 1); }
     internal void LoadStyle(StoreWater style, string path = null)
     {
         Push(style, new DraftDocument(style, path));
@@ -263,7 +264,8 @@ internal partial class WaterPanel : ScrollContainer
             "pixel" => "Dithered light and whole-pixel glints. Palette levels adjust the light bands; the short colour ramp remains.",
             _ => "Native tile colour with animated swell and ripple highlights. Palette levels at zero gives smooth light."
         };
-        _undo.Disabled = _position <= 0; _redo.Disabled = _position + 1 >= _history.Count;
+        _undo.Disabled = _position <= 0 && !ScrubChanged;
+        _redo.Disabled = ScrubChanged || _position + 1 >= _history.Count;
         _dirty.Text = Dirty ? "Modified" : "Unmodified";
         _preview.SetStyle(_style);
         _liveStyle = new PackWaterStyle("editor-draft", _style);
@@ -396,6 +398,7 @@ internal partial class WaterPanel : ScrollContainer
     }
     public override void _Process(double delta)
     {
+        if (_scrubKey != null && (!IsVisibleInTree() || !Input.IsMouseButtonPressed(MouseButton.Left))) EndNumericScrub();
         if (_native.Active && _worldVisible?.Invoke() == false) StopWorldTest();
         UpdateWorld();
         bool active = _native.Active;
@@ -406,6 +409,8 @@ internal partial class WaterPanel : ScrollContainer
     }
     internal void Shutdown()
     {
+        // Child previews may already have exited and disposed their renderer resources.
+        FinishNumericScrub(false);
         SetProcess(false);
         StopWorldTest();
         if (_ownedWorld != null && WaterRender.EditorWorld == _ownedWorld) { WaterRender.EditorWorld = null; WaterRender.EditorStyle = null; }

@@ -18,6 +18,16 @@ public partial class EditorSmoke
             bool previousFreeze = panel.FreezeToggle.ButtonPressed;
             string playerStyle = ProfileManager.CurrentProfile.WaterStyle;
             panel.LoadStyle(WaterAuthoring.Presets[1]);
+            int scrubHistory = panel.HistoryPosition;
+            var scrubLabel = WaterWorkbenchProbe.ScrubLabel(panel, "Wave strength");
+            WaterWorkbenchProbe.ScrubButton(scrubLabel, true);
+            for (int i = 0; i < 5; i++) WaterWorkbenchProbe.ScrubMove(scrubLabel, 3);
+            WaterWorkbenchProbe.ScrubButton(scrubLabel, false);
+            Expect(panel.HistoryPosition == scrubHistory + 1 && Math.Abs(panel.Style.Wave - .35f) < .001f,
+                "water_label_drag_is_one_history_action");
+            panel.Undo();
+            Expect(panel.HistoryPosition == scrubHistory && panel.Style.Wave == WaterAuthoring.Presets[1].Wave,
+                "water_label_drag_undo_restores_starting_value");
             panel.ReplayTime.Value = 1.5; panel.ReplayPreview();
             Expect(panel.Preview.Paused && panel.Preview.Seconds == 1.5f && panel.Style.Name == "Pixel water",
                 "water_replay_pauses_synthetic_pose_without_editing_style");

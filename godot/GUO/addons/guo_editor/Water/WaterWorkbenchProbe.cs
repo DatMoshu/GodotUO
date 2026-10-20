@@ -160,6 +160,7 @@ public partial class WaterWorkbenchProbe : Node
             CheckPresetBrowser(panel, draftB);
             CheckReplayControls(panel);
             CheckPreviewFiles(panel, data);
+            CheckWaterScrub(panel, data);
             var nameInput = Descendants(panel).OfType<LineEdit>().Single(e => e.PlaceholderText == "Preset name");
             nameInput.Text = ""; nameInput.EmitSignal(LineEdit.SignalName.TextSubmitted, "");
             Require(panel.StatusText.StartsWith("Could not complete water action:")

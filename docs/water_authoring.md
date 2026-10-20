@@ -116,6 +116,12 @@ test before exporting a capture that should exclude them.
 
 ## Save and share
 
+Drag a numeric control's label left or right to tune it live; hold Shift for
+fine adjustment. Each label drag is one **Undo** step, regardless of its length.
+Returning to the starting value keeps history and redo intact. Separate drags,
+typed values and preset loads remain separate actions. Undo, saving, loading or
+leaving the panel finishes a pending drag. Disabled model controls cannot drag.
+
 **Save preview PNG** saves the most recently rendered synthetic preview at its
 original resolution, including Compare or Classic. Use **Freeze** or a repeatable
 test first to hold a particular pose. The PNG contains only the synthetic
