@@ -406,6 +406,12 @@ namespace GUO.Configuration
         // shard's light level colours; off is the classic light target,
         // byte-identical. Default off.
         public bool RealtimeLights { get; set; } = false;
+        // PORT DEVIATION (GUO): Realtime lights' shadows (ADR-0039 amendment).
+        // With Realtime lights on, trees, rocks and tall statics cast shadows
+        // from each light and from the ambient, and replace the classic
+        // shadows; RealtimeClassicShadows keeps the classic ones as well.
+        public bool RealtimeShadows { get; set; } = true;
+        public bool RealtimeClassicShadows { get; set; } = false;
         // PORT DEVIATION (GUO): water render style (ADR-0037). "classic"
         // draws the tiles as upstream does; any other value names a water
         // style (Renderer.Water.WaterRender). Default classic.

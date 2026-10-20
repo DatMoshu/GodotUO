@@ -85,6 +85,10 @@ namespace GUO.Renderer
 
         public Texture2D Texture => _viewport.GetTexture();
 
+        /// <summary>The viewport itself: a target nested under it renders before it
+        /// (Realtime lights' shadow mask, ADR-0039).</summary>
+        public SubViewport ViewportNode => _viewport;
+
         /// <summary>The node the viewport hangs under; the post-processing stack
         /// (ADR-0023) puts its own viewport beside it.</summary>
         public Node Parent => _viewport.GetParent();

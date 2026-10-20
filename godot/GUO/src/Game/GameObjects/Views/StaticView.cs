@@ -84,6 +84,7 @@ namespace GUO.Game.GameObjects
                 hueVec,
                 ProfileManager.CurrentProfile.ShadowsEnabled
                     && ProfileManager.CurrentProfile.ShadowsStatics
+                    && !GameScene.RealtimeReplacesClassicShadows // PORT DEVIATION (GUO): ADR-0039
                     && (isTree || ItemData.IsFoliage || StaticFilters.IsRock(graphic)),
                 depth,
                 GUO.Renderer.Water.WaterRender.UpstreamWobble(ProfileManager.CurrentProfile) && ItemData.IsWet,

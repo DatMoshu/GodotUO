@@ -55,7 +55,8 @@ ADR-0023's rules (stateless, nearest, the world draw unchanged).
    blends it exactly where it blends the classic light target, with the
    classic darkness blend. The world draw itself is not touched.
 4. **No sun shadows, no tonemap, no normals.** The art's baked shading is the
-   light direction. Time of day is colour only.
+   light direction. Time of day is colour only. (Amended 2026-10-20: shadows
+   from lights and the ambient, below.)
 5. The option is active in daylight too: with level 0 the field is white
    outdoors and the result is the classic frame; indoors it is the roof dim.
    With the option off the classic path runs byte for byte as before: the
@@ -86,6 +87,36 @@ the effective footprint after corner averaging and falloff.
 The ambient colour ramp is normalized to the classic grey's luminance, keeping
 the same night level equally dark in the ON/OFF comparison. Untinted lamps use
 a warm flame tint. These adjustments affect only the enabled option.
+
+Night quality pass and shadows (2026-10-20, owner brief for the night seat):
+make the pools look right, cast shadows from the real-time lights, and let
+those replace UO's static shadows with an opt-out. This amends decision 4.
+
+- **Pools.** Each light is evaluated at every tile corner (its own distance,
+  the mean visibility of the four cells) and at the tile centre, and land is
+  four triangles fanned from the centre: pools are round and peak at their
+  light instead of being averaged a tile wide. Radius becomes `width / 54`
+  tiles (exact corners no longer shrink the footprint). An uncoloured light
+  is warm white, not the torch's orange, so a lantern and a torch differ as
+  they do in classic. Unhued lights flicker a few percent. A walking light
+  crossfades the visibility of the two tiles it is between.
+- **Day.** Light scales with the ambient's headroom, so a torch at noon adds
+  nothing (classic draws no lights by day). Roof sprites, what stands on a
+  cover, and a building's outer edge take the open ambient; the indoor dim
+  is for what is under the roof. With the option on at level 0 the frame
+  again matches classic apart from interiors seen through doors and windows.
+- **Shadows (Realtime shadows, on under the option; Keep classic shadows,
+  off).** Trees, foliage, rocks and tall statics cast sprite shadows into two
+  masks the land reads: the ambient's, in the classic shape and 40 % share
+  (by day the classic shadow, redrawn in the light), and each light's, the
+  sprite laid on the ground away from that light, its length growing with
+  distance, the light left sampled on a 3x3 grid. Trees and thin posts no
+  longer block the tile grid, which cut blocky wedges out of the pools. The
+  classic static shadows step aside unless kept; mobiles keep theirs until
+  they cast realtime ones. The world draw changes only by that gate.
+
+Cost at the Britain bank street, editor, 1280x720: 2.9 to 3.4 ms a frame for
+grid, field, geometry and shadows together (25 casters, up to 8 lights).
 
 ## Validation
 

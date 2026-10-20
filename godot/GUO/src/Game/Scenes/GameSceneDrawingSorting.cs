@@ -657,6 +657,7 @@ namespace GUO.Game.Scenes
             bool isShadow =
                 ProfileManager.CurrentProfile.ShadowsEnabled
                 && ProfileManager.CurrentProfile.ShadowsStatics
+                && !RealtimeReplacesClassicShadows // PORT DEVIATION (GUO): ADR-0039
                 && (
                     StaticFilters.IsTree(obj.Graphic, out _)
                     || itemData.IsFoliage

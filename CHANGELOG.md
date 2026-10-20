@@ -5,6 +5,16 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 
 ## Unreleased
 
+### Lighting
+- **Realtime lights** look better: round pools that peak at their light, a
+  lantern's warm white beside a torch's orange, a gentle flame flicker, and
+  pools that slide past door posts as their carrier walks. A torch adds
+  nothing at noon, and roofs no longer darken by day.
+- **Realtime shadows** (on with Realtime lights): trees, rocks and tall
+  objects cast shadows away from each torch and lamp, and the sky's shadow
+  by day; they replace the old static tree shadows unless **Keep classic
+  shadows** is ticked. ADR-0039.
+
 ### Water
 - The UO+ water pack keeps the native water art with a gentle shimmer and
   shore lap. All water styles follow a continuous coast contour to avoid
