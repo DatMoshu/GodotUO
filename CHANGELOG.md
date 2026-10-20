@@ -167,6 +167,7 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   your machine, outside the checkout. Draw calls may rise by at most 5% per
   scene and batcher items may not rise; frame times remain advisory. Hosted
   CI tests the gate with synthetic reports and makes no FPS claim.
+  Oversized numeric inputs return an invalid-report result instead of crashing.
 - World editor: the Layers menu (Land, Statics, Multis, Roofs, Objects and the
   live layers) now looks like a button beside the others, keeps its ticks for
   the whole editor session, and switching Roofs off takes effect at once.
