@@ -40,7 +40,10 @@ class LauncherSecretsTests(unittest.TestCase):
             "keys=('UO_SHARD_OWNER_PASSWORD','UO_SHARD_GM_PASSWORD','UO_BRIDGE_ADMIN_TOKEN')\n"
             "pathlib.Path('observed.json').write_text(json.dumps({k:os.environ.get(k) for k in keys}))\n",
             encoding="utf-8")
-        prefix = (ROOT / "launchers/shard/run.bat").read_text(encoding="utf-8").split("echo [shard] %UO_SHARD_NAME%")[0]
+        launcher = (ROOT / "launchers/shard/run.bat").read_text(encoding="utf-8")
+        stop = "echo [shard] %UO_SHARD_NAME%"
+        self.assertEqual(launcher.count(stop), 1, "launcher fixture stop marker changed")
+        prefix = launcher.split(stop)[0]
         (self.root / "launchers/shard/check.bat").write_text(
             prefix + '\n"%UO_PYTHON%" "%UO_ROOT%\\capture.py"\nexit /b %ERRORLEVEL%\n',
             encoding="utf-8", newline="\r\n")
@@ -76,6 +79,12 @@ class LauncherSecretsTests(unittest.TestCase):
         observed, _ = self.launch()
         self.assertTrue(observed == shard_secrets.read(shard_secrets.path_for(self.root / "workspace")))
 
+    def test_second_launch_keeps_migrated_values(self):
+        self.write_old()
+        first, _ = self.launch()
+        second, _ = self.launch()
+        self.assertTrue(second == first, "second launch changed migrated values")
+
     def test_explicit_environment_overrides_survive_rotation(self):
         self.write_old()
         explicit = {key: f"Explicit{index}" for index, key in enumerate(shard_secrets.KEYS)}
@@ -90,6 +99,16 @@ class LauncherSecretsTests(unittest.TestCase):
             ''.join(f'if not defined {k} set "{k}={v}"\n' for k, v in explicit.items()), encoding="utf-8")
         observed, _ = self.launch()
         self.assertTrue(observed == explicit, "local configuration was overwritten")
+
+    def test_environment_wins_over_local_configuration_during_rotation(self):
+        self.write_old()
+        (self.root / "launchers/_shared/config.local.bat").write_text(
+            ''.join(f'if not defined {k} set "{k}=Local{index}"\n'
+                    for index, k in enumerate(shard_secrets.KEYS)), encoding="utf-8")
+        explicit = {key: f"Explicit{index}" for index, key in enumerate(shard_secrets.KEYS)}
+        self.env.update(explicit)
+        observed, _ = self.launch()
+        self.assertTrue(observed == explicit, "local configuration shadowed the environment")
 
 
 class ShellExportsTests(unittest.TestCase):

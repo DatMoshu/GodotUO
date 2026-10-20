@@ -56,9 +56,10 @@ on that same launch. Explicit environment and local configuration overrides
 keep their usual precedence. Both launcher twins use this order.
 
 `python tools/modernuo/test_launcher_secrets.py` exercises this migration,
-first-run generation and overrides in temporary fixtures. It executes the
-Windows launcher prefix but stops before starting any server; the shell-export
-check runs on every platform. The full smoke includes these checks.
+first-run generation, repeat launches and override precedence in temporary
+fixtures. It executes the Windows launcher prefix but stops before starting
+any server; the shell-export check runs on every platform. The full smoke
+includes these checks.
 
 That second account is why `accountHandler.maxAccountsPerIP` is **4** in the
 template rather than ModernUO's default of 1: two clients on one machine are
