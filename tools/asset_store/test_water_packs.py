@@ -14,7 +14,7 @@ from asset_store.water_style import MODELS, validate_water  # noqa: E402
 
 def test_four_styles_reproducible_and_data_only(tmp_path):
     first, second = build(tmp_path / "a"), build(tmp_path / "b")
-    assert [p.name for p in first] == ["guo-water-cel-1.0.0.zip", "guo-water-classicplus-1.0.0.zip", "guo-water-pixel-1.0.0.zip", "guo-water-realistic-1.0.0.zip"]
+    assert [p.name for p in first] == ["guo-water-cel-1.0.0.zip", "guo-water-classicplus-1.0.0.zip", "guo-water-pixel-1.0.1.zip", "guo-water-realistic-1.0.0.zip"]
     models = set()
     for a, b in zip(first, second):
         assert a.read_bytes() == b.read_bytes()

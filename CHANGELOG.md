@@ -6,6 +6,12 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Water
+- UO+ keeps its quiet native surface while making boat wakes and local
+  ripples readable on dark water. Moving hulls now disturb their swept path
+  by distance travelled, avoiding frame-dependent wake strength.
+- Pixel water starts with gentler swells and highlights; its glint strength
+  now controls highlight brightness. UO+ and Pixel editor starters match
+  their curated runtime packs.
 - Judge selected water presets across open water, beach and cliff scenes,
   with daylight, dusk and night lighting, directly in the preset browser.
 - Preview a selected water preset on a fixed synthetic beach in the browser,

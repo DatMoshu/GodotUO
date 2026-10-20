@@ -112,8 +112,46 @@ public partial class WaterRippleProbe : Node
             material.SetShaderParameter("water_params2", new Vector4(0.6f, 0.25f, 3f, 0f));
             await Draw();
             using var glint = viewport.GetTexture().GetImage();
-            if (Peak(glint) < 0.9f)
-                throw new InvalidOperationException("positive glint must retain crest highlights");
+            if (Peak(glint) < 0.6f || Peak(glint) > 0.8f)
+                throw new InvalidOperationException("partial glint must lift crests without becoming full white");
+            material.SetShaderParameter("water_params2", new Vector4(1f, 0.25f, 3f, 0f));
+            await Draw();
+            using var fullGlint = viewport.GetTexture().GetImage();
+            if (Peak(fullGlint) < 0.9f)
+                throw new InvalidOperationException("full glint must retain bright crests");
+            material.SetShaderParameter("probe_glint", false);
+            material.SetShaderParameter("water_model", 5);
+            material.SetShaderParameter("water_params2", new Vector4(0f, 0.25f, 0f, 1f));
+            material.SetShaderParameter("water_ripples", flatTexture);
+            await Draw();
+            using var nativeCalm = viewport.GetTexture().GetImage();
+            material.SetShaderParameter("water_ripples", ripples.Texture);
+            await Draw();
+            using var nativeWave = viewport.GetTexture().GetImage();
+            int nativeVisible = 0;
+            float nativeContrast = 0;
+            for (int y = 0; y < 256; y++)
+                for (int x = 0; x < 512; x++)
+                {
+                    Color a = nativeCalm.GetPixel(x, y), b = nativeWave.GetPixel(x, y);
+                    float difference = Math.Max(Math.Abs(a.R - b.R), Math.Max(Math.Abs(a.G - b.G), Math.Abs(a.B - b.B)));
+                    nativeContrast = Math.Max(nativeContrast, difference);
+                    if (difference >= 0.025f) nativeVisible++;
+                }
+            GD.Print($"[water ripple] UO+ visible pixels={nativeVisible}, maximum contrast={nativeContrast:F4}");
+            if (nativeVisible < 250 || nativeContrast < 0.045f || Peak(nativeWave) > 0.4f)
+                throw new InvalidOperationException("UO+ must show local ripples on dark art without white highlights");
+            if (!string.IsNullOrEmpty(output))
+            {
+                string renderer = RenderingServer.GetCurrentRenderingMethod().ToString();
+                Save(nativeCalm, output, $"uo-plus-calm-{renderer}.png");
+                Save(nativeWave, output, $"uo-plus-ripple-{renderer}.png");
+            }
+            material.SetShaderParameter("water_params2", new Vector4(0f, 0.25f, 0f, 0f));
+            await Draw();
+            using var nativeDisabled = viewport.GetTexture().GetImage();
+            if (!nativeDisabled.GetData().AsSpan().SequenceEqual(nativeCalm.GetData()))
+                throw new InvalidOperationException("UO+ zero ripples must exactly preserve calm native pixels");
             GD.Print("[water ripple] PASS: visible spreading ring, zero strength byte parity, zero/positive glint crests");
             GetTree().Quit();
         }

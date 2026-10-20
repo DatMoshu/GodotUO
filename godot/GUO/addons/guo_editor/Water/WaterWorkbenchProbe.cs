@@ -39,6 +39,13 @@ public partial class WaterWorkbenchProbe : Node
         try
         {
             GetWindow().Unfocusable = true;
+            string packs = Path.GetFullPath(Path.Combine(ProjectSettings.GlobalizePath("res://"), "..", "..", "design", "packs", "water"));
+            foreach (var (index, id) in new[] { (0, "guo-water-classicplus"), (1, "guo-water-pixel") })
+            {
+                var packed = StoreWater.Parse(File.ReadAllBytes(Path.Combine(packs, id, "water.json")));
+                Require(WaterAuthoring.Serialize(packed).AsSpan().SequenceEqual(WaterAuthoring.Serialize(WaterAuthoring.Presets[index])),
+                    id + " editor starter matches runtime pack numbers");
+            }
             string output = System.Environment.GetEnvironmentVariable("GUO_WATER_WORKBENCH_OUT")
                 ?? Path.Combine(EditorData.BuildDirectory, "water", "probe");
             Directory.CreateDirectory(output);

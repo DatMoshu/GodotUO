@@ -300,9 +300,9 @@ internal sealed class WaterRipples
 
     // ---- what disturbs the water --------------------------------------
 
-    // Continuous disturbances (a swimmer, a hull under way) are rates per
-    // second, scaled by the frame's length, so they push the same at any
-    // frame rate; one-off splashes are not.
+    // Continuous mobile disturbances are rates per second, scaled by frame
+    // length. Hulls integrate distance in StampHull; one-off splashes use a
+    // fixed impulse. Packet timing must not set a moving boat's wake strength.
     private float _dt;
 
     private void Disturb(World world, WaterMask mask, float deltaSeconds)
@@ -376,22 +376,7 @@ internal sealed class WaterRipples
                 continue;
             }
 
-            // The hull's outline, pushed a little every frame it moves: the
-            // waves it leaves behind become the wake, the ones ahead the bow wave.
-            Rectangle r = item.MultiInfo.Value;
-            // Cells a second; a boat under way makes two to four.
-            float speed = Math.Min(1f, MathF.Sqrt(dx * dx + dy * dy) / _dt / 3f);
-            float push = 3f * speed * _dt;
-            for (int ox = r.X; ox <= r.Width; ox++)
-            {
-                Stamp(x + ox, y + r.Y - 0.5f, 0.5f, push);
-                Stamp(x + ox, y + r.Height + 0.5f, 0.5f, push);
-            }
-            for (int oy = r.Y; oy <= r.Height; oy++)
-            {
-                Stamp(x + r.X - 0.5f, y + oy, 0.5f, push);
-                Stamp(x + r.Width + 0.5f, y + oy, 0.5f, push);
-            }
+            StampHull(item.MultiInfo.Value, was.X, was.Y, x, y);
         }
 
         _drop.Clear();
@@ -405,6 +390,38 @@ internal sealed class WaterRipples
         foreach (uint serial in _drop)
         {
             _boats.Remove(serial);
+        }
+    }
+
+    // Movement packets may arrive on any rendered frame. Integrate displacement,
+    // not that frame's dt, and sweep half-cell intervals so sparse updates do not
+    // leave isolated rectangular splashes. Teleports never draw a wake between ports.
+    internal void StampHull(Rectangle r, float fromX, float fromY, float x, float y)
+    {
+        float dx = x - fromX, dy = y - fromY;
+        float distance = MathF.Sqrt(dx * dx + dy * dy);
+        if (distance < 0.0001f || distance > 4f) return;
+        int samples = (int)MathF.Ceiling(distance * 2f);
+        // Surface displacement per hull cell travelled, before the preset's
+        // ripple strength. Subdivision changes sample positions, not total input.
+        const float pushPerCell = 0.18f;
+        float push = pushPerCell * distance / samples;
+        for (int sample = 1; sample <= samples; sample++)
+        {
+            // Midpoint integration keeps one-cell packet steps centred on the
+            // same path as smaller interpolated steps, including a heading change.
+            float fraction = (sample - 0.5f) / samples;
+            float sx = fromX + dx * fraction, sy = fromY + dy * fraction;
+            for (int ox = r.X; ox <= r.Width; ox++)
+            {
+                Stamp(sx + ox, sy + r.Y - 0.5f, 0.5f, push);
+                Stamp(sx + ox, sy + r.Height + 0.5f, 0.5f, push);
+            }
+            for (int oy = r.Y; oy <= r.Height; oy++)
+            {
+                Stamp(sx + r.X - 0.5f, sy + oy, 0.5f, push);
+                Stamp(sx + r.Width + 0.5f, sy + oy, 0.5f, push);
+            }
         }
     }
 

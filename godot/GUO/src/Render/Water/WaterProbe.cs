@@ -82,6 +82,26 @@ public partial class WaterProbe : Node
             Require(left < 0.01f, $"the water must calm (still {left:F4})");
             Require(ripples.Texture != null && ripples.Texture.GetWidth() == WaterRipples.Size, "the ripple texture");
 
+            var hull = new GUO.Compat.Rectangle(-2, -4, 2, 4);
+            var packetWake = new WaterRipples(); packetWake.CentreOnForProbe(1000, 1000);
+            var interpolatedWake = new WaterRipples(); interpolatedWake.CentreOnForProbe(1000, 1000);
+            packetWake.StampHull(hull, 1000, 1000, 1000, 1002);
+            for (int i = 0; i < 4; i++)
+                interpolatedWake.StampHull(hull, 1000, 1000 + i * .5f, 1000, 1000 + (i + 1) * .5f);
+            float hullEnergy = 0;
+            for (int x = 994; x <= 1006; x++)
+                for (int y = 992; y <= 1010; y++)
+                {
+                    float a = packetWake.HeightAt(x, y), b = interpolatedWake.HeightAt(x, y);
+                    Require(Math.Abs(a - b) < 0.00001f, "hull displacement must be independent of packet subdivision");
+                    hullEnergy += Math.Abs(a);
+                }
+            Require(hullEnergy > .1f, "a travelling hull must disturb its path");
+            int hullStamps = packetWake.Stamps;
+            packetWake.StampHull(hull, 1000, 1002, 1000, 1002);
+            packetWake.StampHull(hull, 1000, 1002, 1050, 1050);
+            Require(packetWake.Stamps == hullStamps, "stopped and teleported boats must not stamp a wake");
+
             int packs = PackStyles();
 
             GD.Print($"[water] PASS: Classic default and persistence, unknown styles Classic, --water-style override, upstream effect replaced, choices, mode byte, ripples spread, follow and calm, {packs} Store pack styles installed, mounted and bound");

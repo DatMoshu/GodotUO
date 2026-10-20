@@ -203,10 +203,10 @@ vec3 water_pixel(vec3 base, vec2 cell, vec2 f, vec2 world, float t, float light,
 	c = floor(c * 12.0 + d) / 12.0;
 	// Only the steepest-lit few percent, and half of those by the dither:
 	// single bright pixels, not patches (about 1% of the sea at glint 0.6).
-	// The threshold alone still admits highlights at zero: explicitly honour
-	// a pack disabling glints, without changing any positive setting.
+	// The threshold alone still admits highlights at zero. Scale the lift by
+	// the requested strength too: small values must not become full white.
 	float glint = step(0.995 - water_params2.x * 0.005, light) * step(0.5, d)
-			* sign(water_params2.x);
+			* water_params2.x;
 	c = mix(c, vec3(0.92, 0.96, 1.0), glint);
 	float foam = step(d + 0.01, water_surf(cell, f, t) * water_params.w
 			* (0.55 + 0.45 * sin(t * 1.6 + (cell.x + f.x + cell.y + f.y) * 0.9)));
@@ -289,10 +289,21 @@ vec3 water_shade(vec3 base, vec2 target_px) {
 		float phase = sin(dot(world, vec2(0.017, 0.011)) - t);
 		float ripple = water_ripple(cell + f) * water_params2.w;
 		float lap = water_shore(cell, f) * sin(t * 0.7 + dot(world, vec2(0.013, 0.009)));
-		float shift = phase * water_params.z + ripple * 0.12 + lap * water_params.w;
+		float shift = phase * water_params.z + lap * water_params.w;
 		float threshold = water_bayer(floor(world / grain));
 		float step_count = floor(abs(shift) * 8.0 + threshold);
-		return clamp(base + sign(shift) * step_count * base / 16.0, 0.0, 1.0);
+		vec3 c = base + sign(shift) * step_count * base / 16.0;
+		// Interaction needs its own contrast on dark native art. A proportional
+		// lift rounded away there. Keep ambient shimmer quiet, but draw local
+		// crests in a muted blue-grey and troughs as a share of the native texel.
+		// Remove the R8 flat value (128/255) before amplification, so calm water
+		// and a pack with zero ripple strength retain the ambient result exactly.
+		float ring = sign(ripple) * max(abs(ripple) - water_params2.w / 255.0, 0.0);
+		ring = clamp(ring * 8.0, -0.5, 0.5);
+		ring = sign(ring) * floor(abs(ring) * 16.0 + threshold) / 16.0;
+		c += max(ring, 0.0) * vec3(0.22, 0.28, 0.32);
+		c *= 1.0 + min(ring, 0.0) * 0.45;
+		return clamp(c, 0.0, 1.0);
 	}
 
 	vec2 p = world * water_params.y;

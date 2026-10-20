@@ -23,7 +23,7 @@ public partial class EditorSmoke
             WaterWorkbenchProbe.ScrubButton(scrubLabel, true);
             for (int i = 0; i < 5; i++) WaterWorkbenchProbe.ScrubMove(scrubLabel, 3);
             WaterWorkbenchProbe.ScrubButton(scrubLabel, false);
-            Expect(panel.HistoryPosition == scrubHistory + 1 && Math.Abs(panel.Style.Wave - .35f) < .001f,
+            Expect(panel.HistoryPosition == scrubHistory + 1 && Math.Abs(panel.Style.Wave - (WaterAuthoring.Presets[1].Wave + .05f)) < .001f,
                 "water_label_drag_is_one_history_action");
             panel.Undo();
             Expect(panel.HistoryPosition == scrubHistory && panel.Style.Wave == WaterAuthoring.Presets[1].Wave,

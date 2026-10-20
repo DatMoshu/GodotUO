@@ -21,8 +21,8 @@ internal static class WaterAuthoring
 
     internal static readonly StoreWater[] Presets =
     {
-        new("UO+", "classicplus", new[] { .12f, .24f, .42f }, .55f, .035f, .09f, .12f, .18f, 0, 0, 1, .8f, .98f),
-        new("Pixel water", "pixel", new[] { .1f, .22f, .45f }, .8f, .035f, .3f, .9f, .25f, .6f, 3, 2, 1, .98f),
+        new("UO+", "classicplus", new[] { .1f, .22f, .45f }, .22f, .017f, .1f, .08f, .24f, 0, 0, 1, .3f, .98f),
+        new("Pixel water", "pixel", new[] { .1f, .22f, .45f }, .8f, .035f, .1f, .45f, .25f, .2f, 6, 2, 1, .98f),
         new("Cel water", "cel", new[] { .08f, .28f, .42f }, .7f, .03f, .22f, .7f, .2f, .08f, 3, 1, 1, .98f),
         new("Realistic water", "realistic", new[] { .06f, .2f, .32f }, 1, .035f, .24f, .6f, .24f, .3f, 0, 1, 1, .985f),
         new("Calm harbor", "classicplus", new[] { .1f, .22f, .34f }, .35f, .02f, .05f, .08f, .15f, 0, 0, 1, .65f, .97f),

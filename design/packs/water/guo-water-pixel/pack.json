@@ -1,7 +1,7 @@
 {
   "schema": "guo/store-pack@2",
   "id": "guo-water-pixel",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "kind": "content",
   "target": "client",
   "title": "Pixel-art water",

@@ -32,6 +32,14 @@ Higher wave retention makes disturbances last longer. Zero glint suppresses
 highlights. UO+ preserves native texels and uses shore foam as a subtle lap;
 its model does not use a replacement tint or glints. Pixel and Cel retain
 their characteristic bands even when palette levels is zero.
+UO+ gives local ripple crests a muted blue-grey lift separately from ambient
+shimmer, so wakes remain visible over dark native tiles without white foam.
+Moving native hulls stamp their swept path by distance travelled; stopped
+hulls and jumps over four cells add no new wake. Existing waves keep decaying.
+Pixel glint strength scales highlight brightness as well as crest selection;
+zero disables it and one allows full bright crests. Its curated starting
+preset uses gentler swells and glints. The UO+ and Pixel editor starters use
+the same numbers as their corresponding runtime packs.
 The model description explains these differences in the panel. Controls unused
 by the selected model are dimmed and read-only; switching models preserves
 their values. Realistic does not use palette levels, while UO+ also leaves
