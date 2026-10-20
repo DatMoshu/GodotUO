@@ -109,6 +109,8 @@ namespace GUO.Game.Map
         public bool IsDirty = true;
 
         private bool _animatedWaterEffect;
+        // PORT DEVIATION (GUO): Wet land carries the water bit (ADR-0037).
+        private bool _waterStyled;
         /// <summary>
         /// This chunk's meshed land, in the order it is drawn.
         /// </summary>
@@ -154,7 +156,10 @@ namespace GUO.Game.Map
             if (profile == null)
                 return;
 
-            _animatedWaterEffect = profile.AnimatedWaterEffect;
+            // PORT DEVIATION (GUO): a water style replaces upstream's
+            // Animated water effect, so wet land stays meshed (ADR-0037).
+            _animatedWaterEffect = GUO.Renderer.Water.WaterRender.UpstreamWobble(profile);
+            _waterStyled = GUO.Renderer.Water.WaterRender.IsStyled(profile);
 
             // Pass 1: count sprites per texture
             _landOrder.Clear();
@@ -362,6 +367,10 @@ namespace GUO.Game.Map
                     : ShaderHueTranslator.SHADER_NONE;
             }
             hueVec.Z = 1f;
+            if (_waterStyled && land.TileData.IsWet)
+            {
+                hueVec.Y += GUO.Renderer.Water.WaterRender.ModeBit;
+            }
 
             float depth = land.CalculateDepthZ() + 0.5f;
             int baseX = (land.X - land.Y) * 22 - 22;

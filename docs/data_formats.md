@@ -698,6 +698,26 @@ mirrors after the store's own copy, and `sha256` and `size` are not needed.
 followed by `ed25519:` and the base64 of the 32-byte seed. It is never
 committed, and never leaves the publisher's machine or CI secret store.
 
+**A hosted catalogue** (`run.py push-catalogue`, `tools/asset_store/hosting.py`): the whole tree of one git
+branch, `gh-pages` by default, served as it is by GitHub Pages or any static host. A push reads the branch,
+signs a new index over it and pushes a new commit on top; it never rewrites the branch, and a branch that moved
+after it was read refuses the push.
+
+```
+index.json, index.json.sig     the signed index above; sequence above the one already on the branch
+packs/<id>/<version>.zip       packs hosted on the site itself (--pack); immutable once pushed
+previews/<id>/<version>/<file> one preview per listed version
+index.html                     the catalogue's web page
+.nojekyll                      Pages serves files without processing them
+.gitattributes                 `* -text`, so git never rewrites line endings in the signed bytes
+```
+
+A pack is either hosted on the site (its `urls` start with its relative path, or `UO_STORE_BASE_URL` and the
+path) or named by a listing file whose `urls` point elsewhere; the same id and version may not be both.
+`run.py init-catalogue FOLDER --id ID --title TITLE` writes the repository a catalogue of your own starts from:
+`README.md`, `packs/README.md`, `LICENSE`, `.gitignore` (`*.key`, `site/`) and the two workflows of
+`catalogue_repo/` with the catalogue's id and title. It refuses `guo-official` and writes no key.
+
 ### Shard content descriptor, `guo/shard-content@1` (ADR-0026)
 
 What a shard runs, for its players' clients. `tools/shard_content/run.py
@@ -1176,6 +1196,7 @@ the address in use stays in `settings.json` (`ip`, `port`), which Play sets.
 | `last_played` | UTC time or absent | Set on each entry into the world; Recent is the newest five that are neither own nor favourite |
 | `data_folder` | path or absent | Where the player keeps a shard's own client files, picked once through the first-run screen; Play on a shard that needs them restarts GUO with them (section 19). An entry with one is never trimmed from Recent |
 | `accounts` | list or absent | The player's accounts on it: `name`, `secret` and `last_used`. `secret.store` is `dpapi` (Windows: `blob`, base64 DPAPI output), `android-keystore` (`iv` and `blob`: AES-GCM under a non-exportable AndroidKeyStore key), `libsecret` (nothing; the Secret Service keyring has it, schema `org.guo.Account`, attribute `binding`) or `none`; `secret` is absent when no password is kept. `dev` (true) marks a dev build's one-click dev login, on the dev shard's entry only. Never a plaintext password. The secret is bound to the entry's host:port:name. See docs/ui/second_screen_pregame.md, Accounts |
+| `last_seen` | object or absent | Written on each entry into the world (section 43): `client_version` (the version GUO reported there), `client_version_source`, `locked_features` and `character_list_flags` (uint or null) and `when` (UTC time). Never the address or an account |
 | `era`, `emulator`, `client_version`, `encryption`, `needs_custom_data`, `third_party_clients`, `site`, `description` | optional | The community catalogue's manifest fields (step 3); `third_party_clients: false` or another client version or encryption keeps Play from playing |
 
 A debug build adds its dev shard (from `UO_SHARD_HOST` / `UO_SHARD_PORT`) as a favourite at run time. It is
@@ -2660,7 +2681,7 @@ The lab runs the scenario cases of `tools/server_lab/cases.json` against each se
 ```
 <workspace>/server_lab/<backend>/lab.json       {"profile_id": 32 hex, "seeded": UTC ISO-8601 or absent}
 <workspace>/server_lab/<backend>/secrets.json   {"account", "password"}: the lab admin, generated; never committed
-<workspace>/servers/<profile_id>/src/            the server checkout and build (ModernUO: src/Distribution)
+<workspace>/servers/<profile_id>/src/            the server checkout and build (ModernUO: src/Distribution; ServUO: src)
 build/server_lab/grid.json                       the grid (below)
 build/server_lab/card_<backend>.json             a row's card: {title, ok, passed, scripted, body}; sends nothing
 build/server_lab/<backend>/{build,seed}.log      setup and seed output
@@ -2675,7 +2696,9 @@ id, or null until written) and `needs_server` (false only for case 0). **`table.
 null, "rows": {"<backend>": {name, row, era, pins: [{role, commit (9 hex), date}], cells: {"<n>": cell}}}}`. A cell:
 `result` (`PASS`, `FAIL (GUO)`, `FAIL (server gap)`, `FAIL (untriaged)`, `n/a`, `not run`), `scenario`, `run_id` and
 `run_dir` (`build/runs/<run_id>`, or null when the run could not start), `failed_steps` (step ids), `when`, and
-optionally `note` (why it did not run, at most 300 characters) and `why` (from triage). Runner exit 0 is `PASS`, 2 or
+optionally `note` (why it did not run, at most 300 characters), `why` (from triage) and `client_version` (the
+version GUO reported for the run: `UO_CLIENT_VERSION`, or `--client-version`). A row may carry `evidence`, the shared
+evidence run id (`<YYYYMMDD>_<seat-or-story>_<topic>`) its latest results are filed under (`--evidence`). Runner exit 0 is `PASS`, 2 or
 no run id `not run`, anything else `FAIL (untriaged)`; triage then names the owner. The file holds no machine paths
 and no credentials. `docs/wiki/Server-Compatibility.md` is generated from it with `triage.json` applied.
 
@@ -2713,6 +2736,40 @@ from client art), place staged splats by tile, and apply/clear zones against
 the open world. Splat generation itself stays in `tools/comfy`; the dock
 lists staged splats and writes placements into the staged manifest.
 
+StaticStudio is an L3 editor package (`#if TOOLS`). Its generation controls,
+workflow discovery and request building use `AiFeatures`; disabling AI cancels
+the current job, clears its unsaved gallery/preview and hides generation UI.
+Late results from a disabled, replaced or closed dock cannot publish a gallery.
+Theme names, applying/clearing saved themes and placing already-staged content
+remain manual operations. No service is contacted until **Generate image** is
+requested. Connection/workflow failures point to the ComfyUI doctor; node-type
+validation and dependency installation remain explicit tool operations.
+Client generation migration/removal is separate from this editor package.
+See [Repaint statics in StaticStudio](editor_staticstudio.md) for the authoring
+workflow and [its headless scenario](../tools/scenarios/editor/staticstudio_repaint.md).
+
+### ComfyUI studio dependency manifest (`tools/comfy/models.json`)
+
+Tools-only `format: 1` inventory for `setup_studio.py`. `custom_nodes` entries
+carry `dir`, HTTPS `repo`, and a full 40-character git `commit`; existing packs
+must have that HEAD and a clean working tree. Installation never updates or
+replaces an existing pack. `models` entries carry `file`, relative `dest`,
+HTTPS `url`, byte `size` and lowercase `sha256`. Hugging Face file URLs use
+immutable commit revisions. Optional `aliases` accept identical bytes under
+another filename. Existing files and completed `.part` downloads are hashed;
+only verified downloads are promoted to their final names. A mismatch fails
+without replacing an existing file. Paths must remain below the chosen root.
+
+Optional `references` entries describe `source: node-managed` folders and
+external tool weights, separately from the hashed `models` inventory. These are
+informational only: their revision metadata does not pin a node's first-use
+download, and the doctor never calls them verified. They need separate package
+verification before use. `--check` is offline and read-only; `--validate` alone
+contacts `/object_info` to compare workflow node types without queuing work.
+`UO_COMFY_DIR` follows environment, local config, shared config, then optional
+manifest guesses; `--comfy-dir` overrides it. No default central installation
+is selected. Node requirements are installed manually with ComfyUI's Python.
+
 ## 40. Voice profiles and text-to-speech (`build/voice_profiles`, `IO/Audio/VoiceManager.cs`)
 
 `tools/comfy/voice.py` enrolls a voice from the player's own sample with the
@@ -2737,17 +2794,232 @@ thread with distance attenuation (full to 2 tiles, silent past 20).
 `VoiceManager.Status` reports the pipeline state for probes;
 `--voice`/`--say`/`--voice-fake`/`--hear-secs` drive it in walk-to runs.
 
+## 45. Realtime lights (`Profile.RealtimeLights`, ADR-0039)
+
+An L1 client option, default off, in Options > Video on both interfaces.
+Profile field `RealtimeLights` (bool). No other file, pack or setting; the
+existing **Light level** override (`UseCustomLightLevel`, `LightLevel`,
+`LightLevelType`) is the override slider for the shard's light level.
+
+On, each frame the scene builds a tile grid over the visible chunks plus an
+8-tile margin (side capped at 192): per cell the ground Z (`Land.AverageZ`),
+the top Z of the tallest light blocker (tiledata `Wall`, or `Impassable` with
+`Height >= 8`; never `Door` or `Window`) and whether a `Roof` static covers it.
+Ambient is `RealtimeLightField.AmbientFor(IsometricLight.IsometricLevel)`:
+white at level 0, warm through the middle, blue-grey at night. The ramp's
+luminance is normalized to the classic grey (weights 0.2126, 0.7152, 0.0722),
+so equal night levels retain equal ambient brightness. Roofed cells take 55 % of daylight ambient, scaling to
+100 % at night. Each accepted light offer (`AddLight`) adds a source at its
+tile with radius `round(light.mul width / 44)` tiles (2..8) and the
+classic light tint (the light-shader palette, or the hue's table entry 16;
+an untinted light is warm RGB (1, 0.72, 0.38)), at an energy of 2.2. A source's reach
+is a `(2(r+1)+1)^2` visibility map: hard line-of-light through the blocker grid (blockers
+above source Z + 3 block; neither end blocks), a 3x3 box blur, times
+`Falloff(d, r)` (smoothstep), times 0.35 where the ground is more than
+20 Z from the source. Reaches are cached by (x, y, z, r) while the blocker
+grid's FNV-1a hash is unchanged. Distance falloff is evaluated each frame at
+the sprite's interpolated position: tile offsets are `(Offset.X + Offset.Y)/44`
+and `(Offset.Y - Offset.X)/44`. Moving pools therefore advance between tile
+completions without recomputing cached visibility. The sum has no ceiling: a cell brighter
+than white is scaled by its brightest channel when read, keeping its hue.
+
+The field is drawn into a GUO-owned target the size of the classic light
+target: every visible land tile as its iso quad (stretched corners from
+`YOffsets`) with the field's corner colours, then every visible standing
+static (`Height >= 4`, wall, roof or foliage; not above `_maxZ`, not a hidden
+roof) as its own art sprite in its cell's colour, masked by the sprite's
+alpha. `RenderTargets.LightOverride` carries the texture; `RenderTargets.Draw`
+blends it with the classic darkness blend in place of the light target. The
+option off never builds the target.
+
+Log line every 5 s at trace level: `[realtime-lights] grid=WxH lights=N
+computed=N cached=N quads=N sprites=N`. Scenario `client.realtime.lights`
+(`--realtime-lights-probe`, `RealtimeLightsProbe.tscn`) checks the contract
+headless and prints `[Realtime lights] PASS`.
+## 44. Water render modes (`Profile.WaterStyle`, `Render/Water`, ADR-0037)
+
+`Profile.WaterStyle` is a string, default `"classic"`, saved in the profile
+JSON like every other option. `"classic"` (or empty, or an id the client does
+not know, logged once) draws water as upstream does. Any other value names a
+water style: the built-in `"uo"`, or a Store pack's style by its component
+identity, `pack-id:component-id` (below). `--water-style ID` sets the style for
+one session ahead of the profile and is never saved (probes, scenarios, the
+perf lab). Options > Video > **Water** and the editor World view's Layers >
+**Realtime water** write the same field.
+
+**Mode byte.** Under a style, a Wet tile (tiledata flag 0x80: land in the
+chunk mesh, or a static sprite) carries bit 6 (0x40) of the shader mode byte
+in the packed vertex colour (ADR-0002's B channel: mode in bits 0-5, water in
+bit 6, circle-of-transparency in bit 7). Classic never sets it.
+
+**Uniforms** (`uo_water.gdshaderinc`, on every world material through
+`UltimaBatcher2D.SetWaterUniform`):
+
+| Uniform | Type | Meaning |
+|---|---|---|
+| `water_model` | int | 0 Classic (branch never taken), 1 `uo`, 2 `pixel`, 3 `cel`, 4 `realistic`, 5 `classicplus` |
+| `water_time` | float | seconds from the client clock |
+| `water_target_to_world` | vec4 | world px = target px * xy + zw; a tile's centre is ((X - Y) * 22, (X + Y) * 22 - 4 Z) |
+| `water_mask` | sampler2D | 128 x 128 RGBA8 ring of world cells (texel x & 127, y & 127): R 255 water / 0 dry; G + 128 is the water's z, or for a dry cell its highest land or static z (0 when it has none) |
+| `water_mask_origin` | vec2 | the ring's first cell; cells outside it read as water at z -5 |
+| `water_tint` | vec4 | the colour swells lean towards |
+| `water_params` | vec4 | speed, scale (1 / world px), wave strength, foam strength |
+| `water_params2` | vec4 | glint, foam width (cells), brightness levels (0 smooth), ripple strength (0 ignores ripples) |
+| `water_params3` | vec4 | x: grain, world pixels per water pixel (1 the art's own grid); yzw unused |
+| `water_ripples` | sampler2D | 256 x 256 R8, the ripple field over 128 x 128 cells, 2 x 2 texels a cell; 128 is flat |
+| `water_ripples_origin` | vec2 | the ripple window's first cell; outside it the surface is flat |
+
+The mask is rebuilt on the CPU when the player moves 8 cells or the loaded
+chunks change.
+
+**Ripples** (`WaterRipples`, WATER-03) are a two-buffer wave equation stepped
+at 20 Hz on the CPU (a front moves about three cells a second) over the ripple window, which follows the player (it
+shifts by whole cells when the player is 16 cells from its centre, keeping
+the waves inside). Disturbances: a mobile on a water cell no higher than its
+surface + 1 (moving pushes harder than standing); a multi on water that moves
+(its hull outline, `Item.MultiInfo`, at a rate scaled by its speed); an item that
+moves onto water or appears there within 14 cells of the player; a fixed
+effect that appears over water and a moving effect that ends there. After 6
+seconds without a disturbance the field stops stepping and uploading. The
+style's `BindRipples` sets the strength and damping (the `uo` style: 1.0 and
+0.985 a step). Continuous pushes are rates per second, so the field looks the
+same at any frame rate. A style is `IWaterStyle` (`Id`, `DisplayName`, `Bind`,
+`BindRipples`).
+
+**Models.** Every style picks one of five models built into the shader; no
+style carries shader code. `uo`: the tile's own colours under crossing swells
+in a few brightness steps. `pixel`: the steps dithered (4 x 4 ordered) on the
+water's own grid, the colour cut to a short ramp, surf and glints as whole
+pixels. `cel`: flat colour in the tint, lit by the tile's light level, bold
+bands, white surf with a dark ink line, ripples as crisp rings. `realistic`:
+smooth light with a finer chop, open water deepening to the tint away from the
+shore, a sharp highlight with sparkles and soft surf; on the Compatibility
+renderer (the web build) the chop and the sparkles are left out. `classicplus`
+keeps the hued and lit native texel, adding only a world-snapped, ordered-dither
+brightness shimmer and quiet ripple/shore modulation. It does not replace the
+native texture, quantise its palette or add white foam. In this model `wave`
+controls shimmer, `foam` controls shore modulation; `tint`, `scale`, `glint`
+and `levels` are reserved and do not change its output.
+All models reconstruct a continuous low-shore contour between the mask's cell
+centres; surf no longer restarts at each tile edge. World-anchored noise
+breaks bright surf into wavelets rather than a continuous offshore outline.
+Only dry ground at most
+8 above the water produces surf, so cliffs remain free of foam.
+
+**Store water styles** (WATER-04). A v2 content pack's `water` component
+(`docs/asset_pack_ecosystem.md`) targets `client` and names a JSON entry, a
+`guo/water@1` style file. Every field is required and no other is allowed:
+
+| Field | Value | Uniform |
+|---|---|---|
+| `schema` | `"guo/water@1"` | |
+| `name` | 1..48 UTF-16 units, not blank, no control characters; the Options entry | |
+| `model` | `uo`, `pixel`, `cel`, `realistic` or `classicplus` | `water_model` |
+| `tint` | three numbers 0..1, RGB | `water_tint` |
+| `speed` | 0..4 | `water_params.x` |
+| `scale` | 0.005..0.25 (1 / world px) | `water_params.y` |
+| `wave` | 0..1 | `water_params.z` |
+| `foam` | 0..1 | `water_params.w` |
+| `glint` | 0..1 | `water_params2.x` |
+| `foam_width` | 0..0.5 (cells) | `water_params2.y` |
+| `levels` | integer 0..16 (0 smooth) | `water_params2.z` |
+| `grain` | integer 1..8 | `water_params3.x` |
+| `ripples` | `{"strength": 0..2, "damping": 0.9..0.999}` | `WaterRipples.Strength` / `.Damping`; `water_params2.w` is 1 when strength > 0 |
+
+At most 16 KiB, UTF-8 without a byte order mark, unique keys, numbers as JSON
+numbers (an integer field refuses `2.0`). `tools/asset_store/water_style.py`
+and `Store/StoreWater.cs` check the file when a pack is verified or installed;
+the shared corpus (`corpus/water.py`) holds them to the same verdicts. A
+deployment's water components need no numeric binding: the client offers each
+under Options > **Water** by its `name` and saves its identity in
+`Profile.WaterStyle`. A style whose pack is no longer deployed draws Classic.
+The four GUO packs, `guo-water-pixel`, `guo-water-cel`,
+`guo-water-realistic` and `guo-water-classicplus` (component `sea`), are built from `design/packs/water`
+by `tools/asset_store/water_packs.py`.
+
+`GUO_WATER_DEBUG=1` in the client's environment paints every fragment that takes
+the water branch magenta, to see which tiles a style reaches; `2` paints the
+ripple field in grey (mid grey is flat).
+## 42. Packet mods (`Data/Mods/<mod>/mod.json`, `load_mods`, ADR-0038)
+
+A packet mod is a folder the user installed beside `Data/Plugins`: a
+`mod.json` and the mod's assembly, built against `GUO.ModApi`
+(`godot/GUO.ModApi`). The client loads mods once at start, only when
+`settings.json` has `"load_mods": true` (default false, absent in older
+files). Android and web builds never load them. Nothing is downloaded.
+
+`mod.json`, schema `guo/mod@1`. Every field below is the whole set; any other
+field refuses the mod.
+
+| Field | Type | Rule |
+|---|---|---|
+| `schema` | string | `guo/mod@1` |
+| `id` | string | 1-64 of `a-z`, `0-9`, `-`; unique among installed mods |
+| `version` | string | three numbers, `1.0.0` |
+| `title`, `author` | string | required, at most 100 characters |
+| `licence` | string | optional, at most 64 characters |
+| `abi` | integer | the `ModAbi.Version` it was built for; must equal the client's (1) |
+| `assembly` | string | a `.dll` file name in the mod's folder, no path |
+| `entry` | string | full name of the public `IGuoMod` type |
+| `shards` | string array | 1-32 shards the mod applies to: login hosts or shard names, compared case-insensitively with the login server address and the chosen server name; or `"*"` |
+| `packets` | object array | 1-64 declarations, each `{id, subcommand?, length?, override?}` |
+
+A packet declaration: `id` 0..255 as a number or `"0xF9"`; `subcommand`
+(0xBF only) 0..65535 as a number or hex string; `length` -1 (dynamic, bytes
+1-2 carry it; the default) or 1..32767; `override` true only when the client
+already handles that id or subcommand. Declaring the same id and subcommand
+twice is refused. 0xBF subcommands GUO reserves for itself are refused
+whatever the declaration: 0x4755 (the shard offer, `guo/shard-offer@1`).
+
+At start each mod's `IGuoMod.Register` calls `AddPacket` for packets it
+declared. A registration whose client-version range excludes this client is
+skipped. Anything else that disagrees with `mod.json`, replaces a client
+handler without `override`, or collides with another mod refuses the whole
+mod; its reason goes to the client log (`[mods] refused ...`) and Options
+shows a count. On a shard not in `shards` the mod's packets are inactive.
+
+A handler gets the whole framed packet (id and length bytes included) on the
+game thread. An exception drops that packet and is logged
+(`[mods] <id>: dropped packet ...`).
 ## 41. Perf probe and perf lab reports (`build/perf`, `tools/perf_probe`, `tools/perf_lab`)
 
 **Probe JSON**, `perf_<label>.json`, written by the client's `--perf-probe`
-(`src/Bootstrap/PerfProbe.cs`): `{label, window "WxH", optimized, postfx,
-scenes[]}`. Each scene carries `scene`, `what`, `at`, `frames`, `fps`,
-`mean_ms`, `p95_ms`, `p99_ms`, `draws_per_frame`, `draw_calls`,
+(`src/Bootstrap/PerfProbe.cs`): `{label, window "WxH", zoom, optimized,
+postfx, system, scenes[]}`. `zoom` is the camera's at the end of the run.
+Each scene object carries the probe's columns (`scene`, `what`, `at`,
+`frames`, `fps`, `mean_ms`, `p95_ms`, `p99_ms`, `draw_calls`,
 `batcher_items`, `texture_switches`, `world_prepare_ms`, `world_draw_ms`,
-`render_cpu_ms`, `render_gpu_ms`, `tiles_moved` and land, cover and allocation
-counts. Readers ignore unknown fields; older reports lack newer columns.
-Perf lab extensions may also supply `zoom` and a hardware-only `system`
-object. The local gate does not require those optional extensions.
+`render_cpu_ms`, `render_gpu_ms` and the land, cover and allocation counts);
+readers must ignore keys they do not know, and older runs lack the newer ones.
+Since PERF-03 each scene also carries `render_frame_ms`, `ui_ms`,
+`update_world_ms`, `stage_<stage>_ms` for every `PerfStages.Stage`
+(`gather`, `mesh_build`, `gather_tail`, `land_mesh`, `land_loose`, `sort`,
+`statics`, `mobiles`, `items`, `cover_land`, `multis`, `other`,
+`transparent`; per frame) and `drawn_<stage>` (objects drawn per frame, the
+sorted-list stages only, absent when none). Scenes `cave-roof` and
+`open-sea` were added after `dungeon`.
+Since PERF-01, `system` is `{gpu, gpu_vendor, gpu_api, driver,
+driver_version, rendering_method, cpu, cpu_threads, ram_gib, os, os_version,
+screen "WxH", refresh_hz, engine}`, from Godot's `RenderingServer`, `OS`
+and `DisplayServer`: hardware and versions only, no paths or names.
+
+**Perf lab report**, `perf_lab_<YYYYMMDDTHHMMZ>.json` (UTC), the file a
+player shares; one line of compact JSON, under 2,000 characters for two
+presets:
+
+| Key | Value |
+|---|---|
+| `format` | `"guo-perf-lab/1"` |
+| `when` | UTC minute, `YYYY-MM-DDTHH:MMZ` |
+| `guo` | `git describe --always --dirty` of the checkout, or `unknown` |
+| `system` | the probe's `system`, the keys above |
+| `runs[]` | per preset: `preset`, `window_asked`, `window`, `zoom`, `optimized`, `postfx`, `columns`, `rows` |
+| `runs[].columns` | `scene, fps, mean_ms, p95_ms, p99_ms, draw_calls, batcher_items, texture_switches, world_prepare_ms, world_draw_ms, render_gpu_ms` |
+| `runs[].rows` | one array per scene in `columns` order; `null` where the probe has no value (the login scene's percentiles in old runs) |
+
+`tools/perf_lab` refuses to write a report in which any string looks like a
+path or carries the login name, computer name, home folder or a shard account
+name. A change to `columns` bumps `format`.
 
 ### Count comparison and local baselines (PERF-02)
 
@@ -2799,3 +3071,31 @@ Hosted CI's `perf` job tests these contracts with synthetic result files.
 It does not run the real probe or measure FPS; no private runner or service
 is required. See [the gate guide](perf/performance_gate.md) for commands,
 doctor behavior, smoke steps and limitations.
+## 43. Server identity and client version (`src/Network/ServerIdentity.cs`)
+
+What the client learns about the server it is logged in to, and which client version it reported there. It is a
+GUO-owned record filled by marked lines (`PORT DEVIATION (GUO)`) in the ported login and packet code; it changes no
+ported behaviour. Other GUO code reads it, among them the packet extension points (ADR-0038), which key on
+`ClientVersion` and on `Host` or `ShardName`.
+
+`GUO.Network.ServerIdentity.Current` is null until a login connects, is replaced at each new login connection, and
+stays after a disconnect so the failure text can use it.
+
+| Field | Type | Set when | Meaning |
+|---|---|---|---|
+| `Host`, `Port` | string, int | the login connection starts | The login server's address, as typed or listed. Never written to logs, evidence or packet logs unredacted |
+| `ShardName` | string or null | a game server is chosen from the server list (0xA8) | The entry's name, as `World.ServerName` |
+| `ClientVersion` | string | the login connection starts | The version GUO reports to the server in the login seed (0xEF) and in the version reply (0xBD), four dotted numbers (`7.0.107.76`) |
+| `ClientVersionSource` | string | the login connection starts | Where that version came from: `default` (GUO's built-in 7.0.107.76), `env` (`UO_CLIENT_VERSION`), `cli` (`--client-version`), `shard_session` (the shard's own files, section 19, from its `servers.json` entry's `client_version`) or `client_exe` (the configured text was not a version, so the client read `client.exe`) |
+| `LockedFeatures` | uint or null | the server's 0xB9 | The expansion features the server enables (upstream `LockedFeatureFlags`) |
+| `CharacterListFlags` | uint or null | the character list (0xA9) | The server's character list flags (upstream `CharacterListFlags`) |
+| `Backend` | string or null | the login connection starts | The server software, from the `servers.json` entry or the community catalogue (`emulator`, section 17), when known |
+
+**Version refused.** When the connection drops and the server's last words in the journal say the client version is
+refused (ModernUO "doesn't support clients older than" or "newer than", RunUO and ServUO "requires your client
+version"), or the server closes the connection during the login before any server list, the disconnect message adds
+a plain sentence: the version GUO reported and, for a refusal, the server's own words. Nothing is retried and no
+version is changed for the player.
+
+**Persisted.** On each entry into the world the record goes into the server's `servers.json` entry as `last_seen`
+(section 17).

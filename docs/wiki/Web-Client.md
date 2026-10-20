@@ -51,7 +51,18 @@ launchers\web\serve.bat           REM leave it running
 
 Then open `http://127.0.0.1:8060/GUO.html` in Chrome or Firefox. Optional
 page parameters: `?host=ws://...&port=...` for another bridge, `?arg=--foo`
-for any client argument.
+for any client argument, `?data=uo/` for where the install is served (`none`
+mounts nothing).
+
+## Play on a phone
+
+Off by default. Set `UO_WEB_LAN=1` (or pass `--lan`) and `serve` and the
+bridge listen on this PC's private network address only, over https and
+wss, and turn away connections from non-private addresses. A phone's browser
+needs the page on https, so `serve` makes a small certificate authority for
+this PC that the phone installs once. `UO_WEB_LAN_HOST` names the address if
+the wrong network card is picked. Steps: `tools/web/README.md`. Written from
+that README, not run here.
 
 ## What works
 

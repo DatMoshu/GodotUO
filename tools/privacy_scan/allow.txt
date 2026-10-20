@@ -16,3 +16,6 @@ s\.connect\(\("10\.255\.255\.255", 1\)\)
 
 # Hyllian's published contact address, in the MIT notice of his xBR shaders (docs/upstream/XBR-HYLLIAN-MIT.md).
 sergiogdb@gmail\.com
+
+# NET-00c: synthetic LAN address in the offline ban-policy harness; never contacted.
+^        foreach \(string literal in new\[\] \{ "203\.0\.113\.9", "192\.168\.1\.9" \}\)$

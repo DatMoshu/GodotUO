@@ -1,7 +1,9 @@
 # Android Build
 
-GUO exports as an **ARM64 debug APK** for any Android 12 or newer device,
-without Gradle or the NDK. Source of truth: ADR-0017 (Accepted) and
+GUO exports as an **ARM64 debug APK** for an Android device (the build's
+floor is Android 7.0, ADR-0017; only Android 13 has been run), without the
+NDK. The export uses Godot's Gradle build: `run.py` installs the pinned
+source template, and the first export needs access to Maven. Source of truth: ADR-0017 (Accepted) and
 `tools\android\README.md`, whose run table records what actually ran on a
 device. The first device run is commit "Android: first run on a device";
 everything below has been exercised on one handheld with two screens, so a
@@ -14,9 +16,15 @@ launchers\android\install.bat    REM adb install onto the attached device
 launchers\android\run.bat        REM start it and stream its logcat
 launchers\android\smoke.bat      REM export, install, run, wait for the login gump, pull a screenshot and a log
 launchers\android\dual_probe.bat REM the second-screen probe, see Dual Screen
+launchers\android\portrait_probe.bat REM the portrait spike: turns the screen, photographs each state
+launchers\android\device_manager.bat REM the Device Test Manager: device profiles, emulator, screenshots
 ```
 
-Underneath: `python tools\android\run.py <doctor|templates|keystore|settings|preset|export|install|run|logcat|push|smoke|dual_probe|displays>`.
+Underneath: `python tools\android\run.py <doctor|templates|keystore|release-keystore|settings|preset|export|install|run|logcat|push|push-stage|smoke|avd|dual_probe|portrait_probe|displays>`.
+
+With no data on the device, the first-run screen's Choose folder opens the
+system folder picker and copies the folder into the app's own files; see
+`tools\android\README.md`.
 
 ## What the export needs
 
@@ -38,6 +46,17 @@ does so before every export. The export preset is rendered from
 `godot\GUO\export_presets.cfg`, which carries the keystore path and password;
 that is why the preset is never committed. The preset excludes
 `addons/guo_editor/*` so the editor add-on's sources are not packed.
+
+## A release APK
+
+`export.bat --release` makes `build\android\GUO-release.apk`, signed with
+your own key: `UO_ANDROID_RELEASE_KEYSTORE`, `_USER` and `_PASSWORD`, set in
+`config.local.bat` or the environment, never in the repository. The keystore
+must live outside the checkout. `python tools\android\run.py release-keystore`
+makes one and `doctor.bat --release` checks it. The `release` workflow builds
+one on a tag when the repository has the matching secrets. Details, and why the
+key never reaches the preset file: `tools/android/README.md`, "A release APK,
+signed with your key".
 
 ## The client data on the device
 
@@ -95,7 +114,10 @@ the measurements and the probe that took them are in the repository's
 `launchers\android\smoke.bat` exports, installs, launches, waits for the
 login probe's line on logcat (`[GUO]` prefix, the same line the web smoke
 waits for), pulls a screenshot and the log into `build\android\`. It exits 0
-only when the login gump was drawn. `run.py displays` lists the device's
+only when the login gump was drawn. `smoke.bat --avd guo_phone` does the
+same on GUO's own x86_64 emulator: it boots it headless (only with 10 GB of
+memory free), installs, waits for the login screen, takes a screenshot and
+cleans up, touching only the emulator it started. `run.py displays` lists the device's
 displays for [Dual Screen](Dual-Screen.md) work.
 
 ## What has been run, and what has not

@@ -28,6 +28,9 @@ internal sealed class StoreRuntimeContent : IDisposable
     public StoreAudioContent Audio { get; } = new();
     private readonly Dictionary<(bool Land, int Graphic), StoreHdAsset> _hd = new();
     public bool TryHd(bool land, int graphic, out StoreHdAsset asset) => _hd.TryGetValue((land, graphic), out asset);
+    private readonly List<(string Identity, StoreWater Style)> _water = new();
+    /// <summary>The deployment's water styles (ADR-0037 decision 6), as pack-id:component-id, in manifest order.</summary>
+    public IReadOnlyList<(string Identity, StoreWater Style)> WaterStyles => _water;
     public void ApplyMap(MapLoader maps, int map) => _maps.Apply(maps, map);
     public void Dispose() { foreach (var asset in _hd.Values) asset.Dispose(); _hd.Clear(); _maps.Dispose(); }
     // GUO addition (ADR-0034): the extracted art set answers after every pack, and is read a page at a time.
@@ -106,10 +109,12 @@ internal sealed class StoreRuntimeContent : IDisposable
             foreach (var component in pack.Manifest.Components ?? new())
             {
                 if (component.Target == "server" || component.Type == "script") continue; // Scripts have their own explicit approval/enable/run lifecycle.
-                StorePack.Require(component.Type is "static" or "land" or "texmap" or "gump" or "hue" or "translation" or "sound" or "music" or "multi" or "tiledata" or "light" or "animation" or "wearable" or "font" or "map" or "region" or "voice" or "hd-art", "No client consumer for " + component.Type);
+                StorePack.Require(component.Type is "static" or "land" or "texmap" or "gump" or "hue" or "translation" or "sound" or "music" or "multi" or "tiledata" or "light" or "animation" or "wearable" or "font" or "map" or "region" or "voice" or "hd-art" or "water", "No client consumer for " + component.Type);
                 byte[] data = pack.ReadPayload(component.Entry);
                 payloadTotal += data.Length;
                 StorePack.Require(payloadTotal <= 256 * 1024 * 1024, "Content payload memory budget exceeded");
+                // A water style takes no numeric slot: Profile.WaterStyle names it by identity.
+                if (component.Type == "water") { result._water.Add((pack.Id + ":" + component.Id, StoreWater.Parse(data))); continue; }
                 if (component.Type == "region") { result.Audio.AddRegion(pack.Id + ":" + component.Id, component, data); continue; }
                 if (component.Type == "hd-art")
                 {

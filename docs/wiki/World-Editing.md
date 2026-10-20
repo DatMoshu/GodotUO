@@ -62,11 +62,16 @@ first if a key does nothing.
 | MoveObject | | First click picks up one of the project's objects, second click puts it down. |
 | DeleteObject | | Deletes one of the project's objects. |
 | Measure | M | First click starts, second click gives the distance in tiles. |
+| Pick region | N | Selects the smallest region covering the cell, in the Regions dock. |
 | Area | G | Two clicks set the corners of a rectangle; **Area to multi** (under Advanced > World & overlays) takes its items into the Multi Editor (see [From an area to a building](#from-an-area-to-a-building)). |
 
 The rail also has **Route** (the walking path between two clicks) and
 **Pin**. Hover over a rail button to see its name and key. The four
 object tools, Route and Pin have no key; click their buttons.
+
+The **Layers** menu (a button beside the others) shows or
+hides Land, Statics, Multis, Roofs, Objects and the live layers. Your ticks
+stay for the whole editor session.
 
 Two more keys: **[** and **]** shrink and grow the brush, and **Q** opens
 your quick favourites.

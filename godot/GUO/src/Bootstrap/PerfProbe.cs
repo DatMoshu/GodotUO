@@ -43,6 +43,15 @@ internal static class PerfProbe
         new("britain-bank", "[go 1434 1699 0", "the Britain bank: dense statics, roofs, vendors and passers-by"),
         new("dense-forest", "[go 633 858", "the forest east of Yew (ab_compare yew-forest)"),
         new("dungeon", "[go 5401 629", "the mouth of Despise (ab_compare despise-mouth): dungeon light level, torches"),
+        // ADR-0037: the water budget's scenes, on a pier with water on every side.
+        new("britain-docks", "[go 1499 1761 -3", "the Britain docks: water land and water statics around a pier"),
+        new("trinsic-bay", "[go 2087 2861 -3", "the Trinsic bay: water at three heights around a pier"),
+        // The community's cases (PERF-03): a crypt at z -60 under land at
+        // z 0, where everything above the roof must be culled, and open sea
+        // with no statics. Their dense city is britain-bank, their forest
+        // dense-forest.
+        new("cave-roof", "[go 1010 760 -60", "a crypt under the land near Yew: a floor at z -60 under land at z 0"),
+        new("open-sea", "[go 3600 1400", "open sea between Vesper and Moonglow: water and nothing on it"),
         // Standing still, nothing new reaches the atlas; running, new land and
         // statics are added to its pages almost every step, and with
         // --merged-land=array or --merged-cover each changed page is copied
@@ -264,6 +273,14 @@ internal static class PerfProbe
         // frames never sees a few dozen.
         var uploadMs = new List<double>();
         bool uploadedLast = false;
+        // Stage by stage (PERF-03): summed over the frames, read back per frame.
+        int stages = (int)PerfStages.Stage.Count;
+        double[] stageMs = new double[stages], frameStageMs = new double[stages];
+        long[] stageDrawn = new long[stages];
+        int[] frameDrawn = new int[stages];
+        double renderFrame = 0, ui = 0, update = 0;
+        PerfStages.Enabled = true;
+        PerfStages.Take(frameStageMs, frameDrawn);
         long allocatedBefore = System.GC.GetTotalAllocatedBytes();
         System.TimeSpan pausedBefore = System.GC.GetTotalPauseDuration();
         await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
@@ -308,9 +325,20 @@ internal static class PerfProbe
             prepare += GUO.Utility.Profiler.GetContext(GUO.Utility.Profiler.ProfilerContext.RENDER_FRAME_WORLD_PREPARE).LastTime;
             world += GUO.Utility.Profiler.GetContext(GUO.Utility.Profiler.ProfilerContext.RENDER_FRAME_WORLD).LastTime;
             cpu += RenderingServer.ViewportGetMeasuredRenderTimeCpu(viewport);
+            PerfStages.Take(frameStageMs, frameDrawn);
+            for (int s = 0; s < stages; s++)
+            {
+                stageMs[s] += frameStageMs[s];
+                stageDrawn[s] += frameDrawn[s];
+            }
+
+            renderFrame += GUO.Utility.Profiler.GetContext(GUO.Utility.Profiler.ProfilerContext.RENDER_FRAME).LastTime;
+            ui += GUO.Utility.Profiler.GetContext(GUO.Utility.Profiler.ProfilerContext.RENDER_FRAME_UI).LastTime;
+            update += GUO.Utility.Profiler.GetContext(GUO.Utility.Profiler.ProfilerContext.UPDATE_WORLD).LastTime;
             gpu += RenderingServer.ViewportGetMeasuredRenderTimeGpu(viewport);
         }
 
+        PerfStages.Enabled = false;
         n = ms.Count;
         long draws = UltimaBatcher2D.FramesBegun - drawsBefore;
         int uploads = LandPages.Uploads - uploadsBefore;
@@ -375,7 +403,19 @@ internal static class PerfProbe
             ["upload_frames_mean_ms"] = uploadMs.Count > 0 ? System.Math.Round(uploadMs.Average(), 3) : 0.0,
             ["upload_frames_max_ms"] = uploadMs.Count > 0 ? System.Math.Round(uploadMs.Max(), 3) : 0.0,
             ["max_ms"] = System.Math.Round(ms.Max(), 3),
+            ["render_frame_ms"] = System.Math.Round(renderFrame / n, 3),
+            ["ui_ms"] = System.Math.Round(ui / n, 3),
+            ["update_world_ms"] = System.Math.Round(update / n, 3),
         };
+        for (int s = 0; s < stages; s++)
+        {
+            string stage = StageName((PerfStages.Stage)s);
+            r[$"stage_{stage}_ms"] = System.Math.Round(stageMs[s] / n, 3);
+            if (stageDrawn[s] > 0)
+            {
+                r[$"drawn_{stage}"] = System.Math.Round((double)stageDrawn[s] / n, 1);
+            }
+        }
         if (parity != null)
         {
             foreach (var kv in parity)
@@ -478,6 +518,10 @@ internal static class PerfProbe
         };
     }
 
+    /// <summary>A stage's name in the report: snake case of the enum name.</summary>
+    private static string StageName(PerfStages.Stage stage) =>
+        string.Concat(stage.ToString().Select((c, i) => i > 0 && char.IsUpper(c) ? "_" + char.ToLowerInvariant(c) : char.ToLowerInvariant(c).ToString()));
+
     private static void Write(string outDir, string label, List<Dictionary<string, object>> results)
     {
         string dir = string.IsNullOrWhiteSpace(outDir) ? ProjectSettings.GlobalizePath("user://perf") : outDir;
@@ -528,6 +572,18 @@ internal static class PerfProbe
                           + $"{r.GetValueOrDefault("upload_frames_mean_ms", 0)} | {r.GetValueOrDefault("upload_frames_max_ms", 0)} | {r.GetValueOrDefault("max_ms", 0)} |");
         }
 
+        // Where the world frame goes (PERF-03, src/Render/PerfStages.cs).
+        string[] names = System.Enum.GetValues<PerfStages.Stage>().Where(s => s != PerfStages.Stage.Count).Select(StageName).ToArray();
+        md.AppendLine();
+        md.AppendLine("| Scene | update ms | render frame ms | UI ms | " + string.Join(" | ", names.Select(s => s.Replace('_', ' ') + " ms")) + " | statics drawn | mobiles drawn | items drawn | cover land drawn | multis drawn | other drawn |");
+        md.AppendLine("|---|" + string.Concat(Enumerable.Repeat("---:|", 3 + names.Length + 6)));
+        foreach (var r in results)
+        {
+            md.AppendLine($"| {r["scene"]} | {r.GetValueOrDefault("update_world_ms", 0)} | {r.GetValueOrDefault("render_frame_ms", 0)} | {r.GetValueOrDefault("ui_ms", 0)} | "
+                          + string.Join(" | ", names.Select(s => r.GetValueOrDefault($"stage_{s}_ms", 0)))
+                          + $" | {r.GetValueOrDefault("drawn_statics", 0)} | {r.GetValueOrDefault("drawn_mobiles", 0)} | {r.GetValueOrDefault("drawn_items", 0)} | {r.GetValueOrDefault("drawn_cover_land", 0)} | {r.GetValueOrDefault("drawn_multis", 0)} | {r.GetValueOrDefault("drawn_other", 0)} |");
+        }
+
         if (results.Any(r => r.ContainsKey("parity_violations")))
         {
             md.AppendLine();
@@ -543,8 +599,40 @@ internal static class PerfProbe
         md.AppendLine("Batcher items: canvas items the batcher opened (each is a batch break). Draw commands: sprites, meshes and triangle lists added.");
         File.WriteAllText(Path.Combine(dir, stem + ".md"), md.ToString());
         File.WriteAllText(Path.Combine(dir, stem + ".json"),
-            JsonSerializer.Serialize(new Dictionary<string, object> { ["label"] = label, ["window"] = $"{size.X}x{size.Y}", ["optimized"] = optimized, ["postfx"] = look, ["scenes"] = results },
+            JsonSerializer.Serialize(new Dictionary<string, object>
+                {
+                    ["label"] = label, ["window"] = $"{size.X}x{size.Y}", ["zoom"] = System.Math.Round(Client.Game?.Scene?.Camera?.Zoom ?? 0, 2),
+                    ["optimized"] = optimized, ["postfx"] = look, ["system"] = SystemInfo(), ["scenes"] = results,
+                },
                 new JsonSerializerOptions { WriteIndented = true }));
         GD.Print($"[GUO] perf probe: wrote {Path.Combine(dir, stem + ".md")}");
+    }
+
+    /// <summary>
+    /// What the numbers were measured on, for a report someone else reads
+    /// (tools\perf_lab): the GPU, its driver, the CPU and the OS. No paths and
+    /// no names: nothing here identifies the person or the machine.
+    /// </summary>
+    private static Dictionary<string, object> SystemInfo()
+    {
+        string[] driver = OS.GetVideoAdapterDriverInfo();
+        var engine = Engine.GetVersionInfo();
+        return new Dictionary<string, object>
+        {
+            ["gpu"] = RenderingServer.GetVideoAdapterName(),
+            ["gpu_vendor"] = RenderingServer.GetVideoAdapterVendor(),
+            ["gpu_api"] = RenderingServer.GetVideoAdapterApiVersion(),
+            ["driver"] = driver.Length > 0 ? driver[0] : "",
+            ["driver_version"] = driver.Length > 1 ? driver[1] : "",
+            ["rendering_method"] = RenderingServer.GetCurrentRenderingMethod(),
+            ["cpu"] = OS.GetProcessorName().Trim(),
+            ["cpu_threads"] = OS.GetProcessorCount(),
+            ["ram_gib"] = System.Math.Round((double)OS.GetMemoryInfo()["physical"] / (1L << 30), 1),
+            ["os"] = OS.GetName(),
+            ["os_version"] = OS.GetVersion(),
+            ["screen"] = $"{DisplayServer.ScreenGetSize().X}x{DisplayServer.ScreenGetSize().Y}",
+            ["refresh_hz"] = System.Math.Round(DisplayServer.ScreenGetRefreshRate(), 1),
+            ["engine"] = $"{engine["major"]}.{engine["minor"]}.{engine["patch"]}.{engine["status"]}",
+        };
     }
 }

@@ -62,6 +62,23 @@ internal sealed class WorldHost : IDisposable
     public bool ShowStatics { get => _showStatics; set { _showStatics = value; _layersTouched = true; } }
     public bool ShowMultis { get => _showMultis; set { _showMultis = value; _layersTouched = true; } }
 
+    /// <summary>
+    /// The water style the view draws (ADR-0037): the editor profile's
+    /// WaterStyle, "classic" or a style id. The renderer rebuilds the meshes
+    /// on its next frame.
+    /// </summary>
+    public string WaterStyle
+    {
+        get => ProfileManager.CurrentProfile?.WaterStyle ?? GUO.Renderer.Water.WaterRender.Classic;
+        set
+        {
+            if (ProfileManager.CurrentProfile != null)
+            {
+                ProfileManager.CurrentProfile.WaterStyle = value;
+            }
+        }
+    }
+
     public bool ShowRoofs
     {
         get => ProfileManager.CurrentProfile?.DrawRoofs ?? true;
@@ -109,6 +126,10 @@ internal sealed class WorldHost : IDisposable
     public World World => _game?.UO.World;
     public GameScene Scene => _scene;
     public long BootMilliseconds { get; private set; }
+
+    // Editor smoke movie capture owns this clock while it records. Normal
+    // authoring keeps using wall time; drawing and mobile updates must agree.
+    internal uint? CaptureTicks { get; set; }
 
     public int Facet => World?.MapIndex ?? -1;
     public int X => World?.Player?.X ?? 0;
@@ -266,7 +287,7 @@ internal sealed class WorldHost : IDisposable
 
         // Keep bounds current before camera update and picking consume them.
         _game.SetEmbeddedClientBounds(new Rectangle(0, 0, size.X, size.Y));
-        GUO.Time.Ticks = (uint)Godot.Time.GetTicksMsec();
+        GUO.Time.Ticks = CaptureTicks ?? (uint)Godot.Time.GetTicksMsec();
         _scene.Camera.Bounds = new Rectangle(0, 0, size.X, size.Y);
 
         CPoint m = mouse.HasValue ? new CPoint(mouse.Value.X, mouse.Value.Y) : new CPoint(-1, -1);

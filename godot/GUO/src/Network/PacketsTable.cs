@@ -398,6 +398,13 @@ namespace GUO.Network
 
         public short GetPacketLength(int id)
         {
+            // PORT DEVIATION (GUO): an installed mod's length for a packet it
+            // declared, only while "Load mods" is on (ADR-0038).
+            if (id >= 0 && id < 0xFF && Mods.PacketModRegistry.Current is { } mods && mods.TryGetLength((byte) id, out short modLength))
+            {
+                return modLength;
+            }
+
             return (short) (id >= 0xFF ? -1 : _packetsTable[id]);
         }
     }

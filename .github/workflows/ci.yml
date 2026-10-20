@@ -138,6 +138,13 @@ jobs:
           dotnet-version: |
             8.0.x
             10.0.x
+      # NuGet packages per job, keyed on every project file (sources/ is upstream's).
+      - name: Cache NuGet
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ github.workflow }}-${{ github.job }}-${{ strategy.job-index }}-${{ hashFiles('**/*.csproj', '**/*.props', '**/*.targets', '!sources/**') }}
+          restore-keys: nuget-${{ runner.os }}-${{ github.workflow }}-${{ github.job }}-${{ strategy.job-index }}-
 
       - uses: actions/setup-python@v7
         with:
@@ -222,6 +229,12 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 8.0.x
+      - name: Cache NuGet
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ github.workflow }}-${{ github.job }}-${{ strategy.job-index }}-${{ hashFiles('**/*.csproj', '**/*.props', '**/*.targets', '!sources/**') }}
+          restore-keys: nuget-${{ runner.os }}-${{ github.workflow }}-${{ github.job }}-${{ strategy.job-index }}-
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'

@@ -68,6 +68,8 @@ namespace GUO.Game.GameObjects
             // Trees and foliage stay visible inside CoT circle
             bool cot = !isTree && !ItemData.IsFoliage && TransparentTest(World.Player.Z + 5);
             Vector3 hueVec = ShaderHueTranslator.GetHueVector(hue, partial, AlphaHue / 255f, circletrans: cot);
+            // PORT DEVIATION (GUO): a Wet static under a water style (ADR-0037).
+            hueVec.Y += GUO.Renderer.Water.WaterRender.Flag(ItemData.IsWet);
 
             if (isTree && ProfileManager.CurrentProfile.TreeToStumps)
             {
@@ -84,7 +86,7 @@ namespace GUO.Game.GameObjects
                     && ProfileManager.CurrentProfile.ShadowsStatics
                     && (isTree || ItemData.IsFoliage || StaticFilters.IsRock(graphic)),
                 depth,
-                ProfileManager.CurrentProfile.AnimatedWaterEffect && ItemData.IsWet,
+                GUO.Renderer.Water.WaterRender.UpstreamWobble(ProfileManager.CurrentProfile) && ItemData.IsWet,
                 ThemedVariant
             );
 

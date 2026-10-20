@@ -325,9 +325,9 @@ namespace GUO.Input.Touch
 
                     return true;
 
-                case InputEventPanGesture:
-                    // A two-finger scroll on Android. The client has no
-                    // gesture for it; consumed so it cannot become a click.
+                case InputEventPanGesture pan:
+                    // A two-finger scroll on Android: the wheel over a gump.
+                    Pan(pan);
                     return true;
 
                 case InputEventMouseButton button:
@@ -384,6 +384,24 @@ namespace GUO.Input.Touch
 
             if (OverWorld(_lastAt))
             {
+                if (SelectedObject.Object is Game.GameObjects.Mobile m && m != Client.Game.UO.World?.Player)
+                {
+                    // Held still on someone: a long press is their context
+                    // menu (vendor, banker, pet), as over a gump it is the
+                    // right click. Until then nothing starts; a finger that
+                    // moves first walks, as on open ground.
+                    if (held < LongPressMs)
+                    {
+                        return;
+                    }
+
+                    GameActions.OpenPopupMenu(m.Serial);
+                    _phase = Phase.Done;
+                    Note($"long press on {m.Name} -> context menu");
+
+                    return;
+                }
+
                 if (SelectedObject.Object is Item)
                 {
                     // Held on an item: pick it up. The client picks up on a
@@ -805,9 +823,75 @@ namespace GUO.Input.Touch
 
                     return true;
                 }
+
+                // Any other list that carries its own scroll bar (a book or
+                // HTML text, a journal page): the same, on that bar.
+                if (c is not Game.UI.Gumps.Gump && OwnScrollBar(c) is Game.UI.Controls.ScrollBarBase own)
+                {
+                    _scrollBar = own;
+                    _scrollStart = own.Value;
+                    _phase = Phase.Scroll;
+                    Note($"swipe in {c.GetType().Name} -> scroll");
+
+                    return true;
+                }
             }
 
             return false;
+        }
+
+        /// <summary>A scroll bar among <paramref name="c"/>'s own children with somewhere to go, or null.</summary>
+        private static Game.UI.Controls.ScrollBarBase OwnScrollBar(Game.UI.Controls.Control c)
+        {
+            foreach (Game.UI.Controls.Control child in c.Children)
+            {
+                if (child is Game.UI.Controls.ScrollBarBase bar && bar.IsVisible && bar.MaxValue > bar.MinValue)
+                {
+                    return bar;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>Two-finger pan distance that is one wheel notch.</summary>
+        public const float PanStepPixels = 40f;
+
+        private static float _panAccumulated;
+        private static ulong _panLast;
+
+        /// <summary>
+        /// A two-finger pan over a gump scrolls it as the mouse wheel does
+        /// there, one notch per <see cref="PanStepPixels"/>; the wheel is what
+        /// upstream's lists already answer. Over the world it does nothing, so
+        /// it cannot become a zoom or a click.
+        /// </summary>
+        private static void Pan(InputEventPanGesture pan)
+        {
+            if (GumpPresentation.At(Logical(pan.Position)) == null)
+            {
+                _panAccumulated = 0f;
+                return;
+            }
+
+            ulong now = Godot.Time.GetTicksMsec();
+
+            if (now - _panLast > 250)
+            {
+                _panAccumulated = 0f;
+            }
+
+            _panLast = now;
+            _panAccumulated += pan.Delta.Y * (Client.Game?.DpiScale ?? 1f);
+
+            while (System.Math.Abs(_panAccumulated) >= PanStepPixels)
+            {
+                bool down = _panAccumulated > 0;
+                _panAccumulated -= down ? PanStepPixels : -PanStepPixels;
+                MouseButton wheel = down ? MouseButton.WheelDown : MouseButton.WheelUp;
+                GodotInput.Handle(new InputEventMouseButton { ButtonIndex = wheel, Pressed = true, Position = pan.Position });
+                Note($"two-finger pan -> {(down ? "wheel down" : "wheel up")}");
+            }
         }
 
         private static void FingerUp(int index, Vector2 at)

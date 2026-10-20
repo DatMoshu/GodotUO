@@ -8,6 +8,8 @@ import run
 def test_renderer_is_passed_before_engine_separator(tmp_path, monkeypatch):
     cfg = SimpleNamespace(build=tmp_path, client_data=tmp_path, client_version="test",
                           shard_host="localhost", shard_port=2593,
+                          shard_owner="", shard_owner_password="",
+                          shard_gm_accounts=[], shard_gm_password="",
                           godot_console_exe=tmp_path / "godot-console", godot_project=tmp_path)
     monkeypatch.setattr(run, "load_config", lambda: cfg)
     monkeypatch.setattr(run, "no_activate", lambda: {})

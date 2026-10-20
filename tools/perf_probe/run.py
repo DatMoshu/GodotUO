@@ -84,6 +84,13 @@ def main() -> int:
     env = {**os.environ, "UO_CLIENT_DATA": str(cfg.client_data), "UO_CACHE_DIR": str(home / "cache"),
            "UO_CLIENT_VERSION": cfg.client_version, "UO_SHARD_HOST": cfg.shard_host,
            "UO_SHARD_PORT": str(args.port or cfg.shard_port)}
+    # The probe logs in as the owner account, whose password the launchers
+    # export from the per-user secrets file; run from Python, nothing did, and
+    # the shard refused it.
+    for key, value in (("UO_SHARD_OWNER", cfg.shard_owner), ("UO_SHARD_OWNER_PASSWORD", cfg.shard_owner_password),
+                       ("UO_SHARD_GM_ACCOUNTS", ",".join(cfg.shard_gm_accounts)), ("UO_SHARD_GM_PASSWORD", cfg.shard_gm_password)):
+        if value and not env.get(key):
+            env[key] = value
     cmd = [str(cfg.godot_console_exe), "--path", str(cfg.godot_project),
            *(["--rendering-method", args.renderer] if args.renderer else []), "--", "--play", "--silent",
            "--window-size", args.size, "--perf-probe", "--perf-out", str(out), "--perf-label", args.label, *(["--perf-zoom", str(args.zoom)] if args.zoom else []),

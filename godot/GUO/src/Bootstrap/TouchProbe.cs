@@ -27,7 +27,7 @@ namespace GUO.Host;
 /// the dev shard, as every probe that plays does; without it those checks
 /// fail and say so.
 /// </remarks>
-internal static class TouchProbe
+internal static partial class TouchProbe
 {
     public static bool Passed { get; private set; }
 
@@ -182,6 +182,7 @@ internal static class TouchProbe
             (int u, int d, int l, int r) kept = (prof.FlickUp, prof.FlickDown, prof.FlickLeft, prof.FlickRight);
             prof.FlickUp = prof.FlickDown = prof.FlickLeft = prof.FlickRight = 0;
             await LongPressCheck(host);
+            await MobileLongPressCheck(host, world);
             (prof.FlickUp, prof.FlickDown, prof.FlickLeft, prof.FlickRight) = kept;
         }
         await GumpScaleCheck(host, world);
@@ -2327,6 +2328,102 @@ internal static class TouchProbe
             string.Join(" | ", TouchInput.Trace)
         );
         Check("the paperdoll closed", paperdoll.IsDisposed || UIManager.GetGump<PaperDollGump>() == null);
+    }
+
+    /// <summary>
+    /// A long press on someone in the world opens their context menu (INPUT-04):
+    /// a banker beside the character ("[add", an owner command), pressed and
+    /// held, and the shard's menu comes back. The banker is removed after.
+    /// </summary>
+    private static async System.Threading.Tasks.Task MobileLongPressCheck(Node host, Game.World world)
+    {
+        var before = new System.Collections.Generic.HashSet<uint>(System.Linq.Enumerable.Select(world.Mobiles.Values, m => m.Serial));
+        Game.GameObjects.Mobile banker = null;
+        world.TargetManager.CancelTarget();
+
+        // Asked twice: a busy shard has let one "[add" go without a target cursor.
+        for (int attempt = 0; attempt < 2 && banker == null; attempt++)
+        {
+            await InputProbe.Say(host, "[add Banker");
+
+            for (int i = 0; i < 180 && !world.TargetManager.IsTargeting; i++)
+            {
+                await Frames(host, 1);
+            }
+
+            if (world.TargetManager.IsTargeting)
+            {
+                world.TargetManager.Target(0, (ushort) (world.Player.X + 2), world.Player.Y, world.Player.Z);
+            }
+
+            for (int i = 0; i < 240 && banker == null; i++)
+            {
+                banker = System.Linq.Enumerable.FirstOrDefault(world.Mobiles.Values, m => !before.Contains(m.Serial) && !m.IsDestroyed && m != world.Player);
+                await Frames(host, 1);
+            }
+        }
+
+        if (banker == null)
+        {
+            Check("a banker for the long press on someone", false, "the shard sent none");
+
+            return;
+        }
+
+        await Frames(host, 30);
+
+        try
+        {
+            // A point on the banker's body: from the feet upward until the
+            // pointer selects them.
+            Vector2 foot = Input.Gamepad.RadarView.Foot(banker);
+            Vector2 at = foot;
+            bool found = false;
+
+            for (int up = 4; up <= 60 && !found; up += 8)
+            {
+                at = foot - new Vector2(0, up * GUO.Client.Game.DpiScale);
+                GodotInput.Handle(new InputEventMouseMotion { Position = at });
+                await Frames(host, 3);
+                found = Game.SelectedObject.Object == banker;
+            }
+
+            Check("a point on the banker was found", found, $"{at.X},{at.Y}");
+
+            TouchInput.Trace.Clear();
+            await Hold(host, at, TouchInput.LongPressMs + 150);
+
+            PopupMenuGump menu = null;
+
+            for (int i = 0; i < 240 && menu == null; i++)
+            {
+                menu = UIManager.GetGump<PopupMenuGump>();
+                await Frames(host, 1);
+            }
+
+            Check("a long press on someone asked for their context menu",
+                TouchInput.Trace.Exists(t => t.StartsWith("long press on ") && t.EndsWith("-> context menu")),
+                string.Join(" | ", TouchInput.Trace));
+            Check("the shard's context menu opened", menu != null);
+            menu?.Dispose();
+        }
+        finally
+        {
+            world.TargetManager.CancelTarget();
+            await InputProbe.Say(host, "[remove");
+
+            for (int i = 0; i < 180 && !world.TargetManager.IsTargeting; i++)
+            {
+                await Frames(host, 1);
+            }
+
+            if (world.TargetManager.IsTargeting)
+            {
+                world.TargetManager.Target(banker.Serial);
+            }
+
+            await Frames(host, 30);
+        }
     }
 
     private static async System.Threading.Tasks.Task GumpScaleCheck(Node host, Game.World world)

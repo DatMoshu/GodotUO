@@ -1,0 +1,22 @@
+{
+  "schema": "guo/water@1",
+  "name": "Pixel water",
+  "model": "pixel",
+  "tint": [
+    0.1,
+    0.22,
+    0.45
+  ],
+  "speed": 0.8,
+  "scale": 0.035,
+  "wave": 0.3,
+  "foam": 0.9,
+  "foam_width": 0.25,
+  "glint": 0.6,
+  "levels": 3,
+  "grain": 2,
+  "ripples": {
+    "strength": 1,
+    "damping": 0.98
+  }
+}

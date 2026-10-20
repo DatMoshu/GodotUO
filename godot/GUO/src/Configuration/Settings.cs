@@ -97,6 +97,10 @@ namespace GUO.Configuration
         [JsonPropertyName("encryption")] public byte Encryption { get; set; }
 
         [JsonPropertyName("plugins")] public string[] Plugins { get; set; } = { @"./Assistant/Razor.dll" };
+
+        // PORT DEVIATION (GUO): packet mods from Data/Mods (ADR-0038). Off by
+        // default; read at start, before any profile exists.
+        [JsonPropertyName("load_mods")] public bool LoadMods { get; set; }
         
         [JsonPropertyName("files_override")] public string OverrideFile { get; set; }
 

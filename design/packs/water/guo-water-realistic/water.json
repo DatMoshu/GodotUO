@@ -1,0 +1,22 @@
+{
+  "schema": "guo/water@1",
+  "name": "Realistic water",
+  "model": "realistic",
+  "tint": [
+    0.04,
+    0.16,
+    0.26
+  ],
+  "speed": 1,
+  "scale": 0.05,
+  "wave": 0.25,
+  "foam": 0.7,
+  "foam_width": 0.2,
+  "glint": 0.6,
+  "levels": 0,
+  "grain": 1,
+  "ripples": {
+    "strength": 1.2,
+    "damping": 0.99
+  }
+}
