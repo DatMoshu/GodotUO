@@ -158,6 +158,7 @@ public partial class WaterWorkbenchProbe : Node
             panel.RefreshPresets();
             Require(panel.DraftCount == 3 && panel.StatusText.StartsWith("Skipped 1"), "corrupt library item does not hide valid drafts");
             CheckPresetBrowser(panel, draftB);
+            CheckReplayControls(panel);
             var nameInput = Descendants(panel).OfType<LineEdit>().Single(e => e.PlaceholderText == "Preset name");
             nameInput.Text = ""; nameInput.EmitSignal(LineEdit.SignalName.TextSubmitted, "");
             Require(panel.StatusText.StartsWith("Could not complete water action:")
@@ -234,6 +235,8 @@ public partial class WaterWorkbenchProbe : Node
                     Require(libraryImage.SavePng(Path.Combine(stills, $"guo_WATER-EDITOR_library-{renderer}_still_{DateTime.UtcNow:yyyyMMdd-HHmm}.png")) == Error.Ok,
                         "capture searchable preset library and action controls");
                 Press(panel, "Close browser");
+                caption.Text = "Repeatable splash + hull: shared inputs from zero; reference left, draft right";
+                await CheckReplayRendering(panel, large, viewport, stills, renderer);
                 foreach (int preset in new[] { 0, 1, 5, 6, 8 })
                 {
                     var style = WaterAuthoring.Presets[preset];

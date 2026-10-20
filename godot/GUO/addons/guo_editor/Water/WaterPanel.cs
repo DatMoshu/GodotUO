@@ -76,6 +76,7 @@ internal partial class WaterPanel : ScrollContainer
         AddButton(presetRow, "Load", LoadSelected);
         AddButton(presetRow, "Refresh", RefreshPresets);
         BuildLibrary(body);
+        BuildReplayControls(body);
         _preview = new WaterPreview(); body.AddChild(_preview);
         body.AddChild(new Label { Text = "Synthetic water • no client art", AutowrapMode = TextServer.AutowrapMode.WordSmart });
         var tests = new HFlowContainer(); body.AddChild(tests);
@@ -355,6 +356,7 @@ internal partial class WaterPanel : ScrollContainer
 
     private void UpdateWorld()
     {
+        UpdateReplayControls();
         var world = _apply?.ButtonPressed == true ? _host?.Invoke()?.World : null;
         if (world == null && _native.Active) StopWorldTest();
         if (_preview != null) _preview.LiveWorld = world != null;

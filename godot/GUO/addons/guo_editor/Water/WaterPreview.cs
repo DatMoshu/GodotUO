@@ -154,6 +154,28 @@ internal partial class WaterPreview : SubViewportContainer
         BindWaves();
     }
 
+    /// <summary>Rebuilds a synthetic test from t=0 using fixed 20 Hz inputs, then pauses.</summary>
+    internal void Replay(int test, float seconds)
+    {
+        if (test < 0 || test > 2) throw new ArgumentOutOfRangeException(nameof(test));
+        if (!float.IsFinite(seconds)) throw new ArgumentOutOfRangeException(nameof(seconds));
+        int ticks = (int)MathF.Round(Math.Clamp(seconds, 0, 5) * 20);
+        bool movingHull = Boat;
+        ResetWaves(); _seconds = 0;
+        Paused = false; Boat = test != 0;
+        try
+        {
+            if (test != 1) Splash();
+            for (int i = 0; i < ticks; i++) Advance(.05f);
+        }
+        finally
+        {
+            Boat = movingHull; Paused = true;
+            _seconds = ticks * .05f;
+            Advance(0);
+        }
+    }
+
     private void BindWaves()
     {
         _material?.SetShaderParameter("water_ripples", _ripples.Texture);

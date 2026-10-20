@@ -23,6 +23,9 @@ public partial class EditorTour
         var previousReference = panel.Preview.ReferenceStyle;
         bool previousCompare = panel.CompareToggle.ButtonPressed;
         bool previousFreeze = panel.FreezeToggle.ButtonPressed;
+        bool previousReplay = panel.ReplayExpanded;
+        int previousTest = panel.ReplayTest.Selected;
+        double previousTestTime = panel.ReplayTime.Value;
         try
         {
             EditorInterface.Singleton.SetMainScreenEditor(GuoEditorPlugin.WorldTabName);
@@ -66,6 +69,19 @@ public partial class EditorTour
             Say("Classic comparison draws the original tiles. The draft remains available when comparison is turned off.");
             await Shot(3);
             panel.ClassicToggle.ButtonPressed = false;
+            panel.WorldToggle.ButtonPressed = false;
+            int replayHistory = panel.HistoryPosition;
+            panel.ReplayTest.Select(2); panel.ReplayTime.Value = 1.5;
+            panel.ReplayPreview(); panel.ShowReplayControls();
+            await Frames(3);
+            Check(panel.Preview.Paused && panel.Preview.Seconds == 1.5f && panel.HistoryPosition == replayHistory,
+                "repeatable synthetic test pauses at the chosen time without editing history");
+            Check(panel.GetGlobalRect().HasPoint(panel.Preview.GetGlobalRect().GetCenter()),
+                "repeatable test controls keep the synthetic preview visible in the native scroll area");
+            Say("Repeatable synthetic tests rebuild splash and hull inputs from time zero, then pause at the chosen time. Step 0.05 s compares the next fixed pose; this does not replay native World actors.");
+            await Shot(3);
+            panel.WorldToggle.ButtonPressed = true;
+            panel.FreezeToggle.ButtonPressed = false;
             string zip = Path.Combine(_out, "water-authoring.zip");
             WaterAuthoring.Export(panel.Style, zip, "water-tour", "1.0.0", "GUO tour", "CC0-1.0");
             Check(File.Exists(zip), "a data-only water pack was exported locally");
@@ -106,6 +122,7 @@ public partial class EditorTour
         finally
         {
             panel.StopWorldTest(); panel.FreezeToggle.ButtonPressed = previousFreeze;
+            panel.ShowReplayControls(previousReplay); panel.ReplayTest.Select(previousTest); panel.ReplayTime.Value = previousTestTime;
             panel.WorldToggle.ButtonPressed = false; panel.ClassicToggle.ButtonPressed = false;
             panel.SetReference(previousReference);
             panel.CompareToggle.ButtonPressed = previousCompare;

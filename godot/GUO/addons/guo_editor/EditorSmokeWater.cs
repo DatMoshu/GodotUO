@@ -15,9 +15,17 @@ public partial class EditorSmoke
             var panel = _world.WaterWorkspace;
             Expect(panel != null && panel.Name == "Water", "water_workspace_registered");
             var previous = panel.Style;
+            bool previousFreeze = panel.FreezeToggle.ButtonPressed;
             string playerStyle = ProfileManager.CurrentProfile.WaterStyle;
             panel.LoadStyle(WaterAuthoring.Presets[1]);
+            panel.ReplayTime.Value = 1.5; panel.ReplayPreview();
+            Expect(panel.Preview.Paused && panel.Preview.Seconds == 1.5f && panel.Style.Name == "Pixel water",
+                "water_replay_pauses_synthetic_pose_without_editing_style");
+            panel.FreezeToggle.ButtonPressed = previousFreeze;
             panel.WorldToggle.ButtonPressed = true;
+            panel.ReplayPreview();
+            Expect(panel.Preview.Seconds == 1.5f && panel.StatusText.StartsWith("Turn off Preview in World"),
+                "water_replay_refuses_world_mode_without_resetting_clock");
             Expect(WaterRender.EditorWorld == _world.Host.World && WaterRender.Resolve(ProfileManager.CurrentProfile)?.DisplayName == "Pixel water", "water_preview_scoped_to_world");
             var inspection = System.Text.Json.JsonSerializer.SerializeToElement(WaterRender.Inspect(_world.Host.World));
             Expect(inspection.GetProperty("selectedStyle").GetString() == "editor-draft", "water_diagnostics_report_selected_draft");

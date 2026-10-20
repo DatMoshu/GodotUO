@@ -6,6 +6,8 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Water
+- Replay synthetic splash and hull tests at a fixed time, or step by 0.05 s,
+  to compare water presets independently of earlier preview inputs.
 - Browse starter presets and saved water drafts by name, model or source,
   then load one or compare it without replacing your working draft.
 - The water editor can run temporary native boat and wader tests in World,

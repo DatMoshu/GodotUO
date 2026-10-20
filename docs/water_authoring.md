@@ -55,6 +55,24 @@ water selection. No player profile, map, client install or shard setting is
 saved by previewing. This preview does not change the World view's lighting;
 the daylight/dusk/night selector belongs to the synthetic test surface.
 
+## Repeatable synthetic tests
+
+With **Preview in World** off, open **Repeatable synthetic test** above the
+preview. Choose Splash, Hull pass or Splash + hull, set a time from 0 to 5
+seconds, then press **Replay at time**. It resets the synthetic clock and both
+ripple fields, applies the same inputs in 0.05-second steps from time zero,
+and enables **Freeze** at that time. **Step 0.05 s** rebuilds the next pose.
+This makes repeated comparisons independent of earlier splashes or time spent
+tuning. The current scene, light, settings and reference are retained.
+
+Replay does not edit the draft, save destination or undo history. The free
+**Moving hull** toggle is retained; unfreezing resumes normal preview behavior
+with that toggle. These controls are hidden in World mode and the action
+refuses World mode without resetting its clock. Native actors, world ripple
+state and the game clock are not replayed. Reproducibility applies to the same
+settings, scene, light, viewport and renderer; matching pixels across different
+renderer backends is not implied.
+
 ## Browse presets
 
 **Browse presets** opens an inline library of starter presets and saved drafts.
