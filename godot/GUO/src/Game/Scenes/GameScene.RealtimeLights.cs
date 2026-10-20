@@ -257,7 +257,8 @@ namespace GUO.Game.Scenes
                 _rtTarget.EnsureSize(lightTarget.Parent, lightTarget.Width, lightTarget.Height);
                 if (!_rtTarget.IsBuilt)
                 {
-                    // Not drawn: the classic shadows come back next frame.
+                    // Not drawn: this frame is unlit (the classic pass was
+                    // already skipped); classic shadows come back next frame.
                     renderTargets.LightOverride = null;
                     RealtimeLightTexture = null;
                     return;
@@ -295,7 +296,7 @@ namespace GUO.Game.Scenes
             }
             catch (Exception e)
             {
-                Log.Error($"[realtime-lights] frame failed, classic lighting this frame: {e.Message}");
+                Log.Error($"[realtime-lights] frame failed, unlit this frame: {e.Message}");
                 renderTargets.LightOverride = null;
                 RealtimeLightTexture = null;
             }
@@ -582,7 +583,20 @@ namespace GUO.Game.Scenes
                     int c = a.Page.CompareTo(b.Page);
                     if (c != 0) return c;
                     c = a.WX.CompareTo(b.WX);
-                    return c != 0 ? c : a.WY.CompareTo(b.WY);
+                    if (c != 0) return c;
+                    c = a.WY.CompareTo(b.WY);
+                    if (c != 0) return c;
+                    // Stacked casters on one tile: down to the art and its place.
+                    c = a.Z.CompareTo(b.Z);
+                    if (c != 0) return c;
+                    c = a.IsMobile.CompareTo(b.IsMobile);
+                    if (c != 0) return c;
+                    c = a.Source.Position.X.CompareTo(b.Source.Position.X);
+                    if (c != 0) return c;
+                    c = a.Source.Position.Y.CompareTo(b.Source.Position.Y);
+                    if (c != 0) return c;
+                    c = a.Px.CompareTo(b.Px);
+                    return c != 0 ? c : a.Py.CompareTo(b.Py);
                 });
                 AddRealtimeShadows();
             }
@@ -674,7 +688,8 @@ namespace GUO.Game.Scenes
                     // about classic's half height at most: a full-height canopy
                     // laid down from a torch covers the whole lawn and reads
                     // as dimness rather than as a shadow.
-                    float length = h * Math.Clamp(0.25f + 0.45f * d / s.Reach, 0.25f, 0.6f);
+                    // From the steady radius: the flame's breathing must not stretch it.
+                    float length = h * Math.Clamp(0.25f + 0.45f * d / s.Radius, 0.25f, 0.6f);
                     Vector2 foot = c.Foot;
                     Vector2 tip = foot + u * length;
                     Vector2 half = v * (w * 0.5f), spread = v * (w * 0.55f);

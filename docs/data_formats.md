@@ -2896,8 +2896,10 @@ takes its own cell's light):
   to 0.7 at the tip, then darkened by a further
   `0.45 * strike * (0.4 + 0.6 * row)` (strike: the light's luminance at the
   caster's foot over 0.3, at most 1; row 1 at the foot, 0 at the tip), as
-  classic's shadow is a flat 40 % black at any hour. The land is capped per channel by it; the cap scales all
-  channels alike, so a shadow does not shift the hue of what is left.
+  classic's shadow is a flat 40 % black at any hour. The land is capped per channel by it. Taking a tinted
+  light away does shift the hue (an orange torch's shadow over blue night is bluer); the contact factor
+  itself darkens all channels alike. `r` is the light's steady radius, so the flame's flicker does not
+  stretch the shadow.
 
 `RealtimeReplacesClassicShadows` (the live scene drew Realtime lights last
 frame, shadows on, classic not kept; false once the scene unloads) drops the
