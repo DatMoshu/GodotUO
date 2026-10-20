@@ -207,6 +207,21 @@ namespace GUO.Game.Scenes
                 return false;
             }
 
+            // Built here, before the classic pass is skipped: a target that
+            // cannot be built leaves this frame classic (its ambient), not unlit.
+            var lightTarget = renderTargets.LightRenderTarget;
+            if (lightTarget != null)
+            {
+                _rtTarget ??= new RealtimeLightTarget();
+                _rtTarget.EnsureSize(lightTarget.Parent, lightTarget.Width, lightTarget.Height);
+                if (!_rtTarget.IsBuilt)
+                {
+                    renderTargets.LightOverride = null;
+                    RealtimeLightTexture = null;
+                    return false;
+                }
+            }
+
             batcher.SetRenderTarget(renderTargets.LightRenderTarget);
             batcher.Clear(new Godot.Color(0, 0, 0, 0));
             batcher.SetRenderTarget(null);
@@ -257,8 +272,8 @@ namespace GUO.Game.Scenes
                 _rtTarget.EnsureSize(lightTarget.Parent, lightTarget.Width, lightTarget.Height);
                 if (!_rtTarget.IsBuilt)
                 {
-                    // Not drawn: this frame is unlit (the classic pass was
-                    // already skipped); classic shadows come back next frame.
+                    // Not drawn: PrepareRealtimeLightTarget already left this
+                    // frame to the classic pass; classic shadows come back next frame.
                     renderTargets.LightOverride = null;
                     RealtimeLightTexture = null;
                     return;
