@@ -161,6 +161,7 @@ public partial class WaterWorkbenchProbe : Node
             CheckReplayControls(panel);
             CheckPreviewFiles(panel, data);
             CheckWaterScrub(panel, data);
+            CheckWaterJson(panel, data);
             var nameInput = Descendants(panel).OfType<LineEdit>().Single(e => e.PlaceholderText == "Preset name");
             nameInput.Text = ""; nameInput.EmitSignal(LineEdit.SignalName.TextSubmitted, "");
             Require(panel.StatusText.StartsWith("Could not complete water action:")
@@ -226,6 +227,7 @@ public partial class WaterWorkbenchProbe : Node
                 await CheckPreviewExport(panel, data);
                 string stills = Path.Combine(output, "stills"); Directory.CreateDirectory(stills);
                 string renderer = RenderingServer.GetCurrentRenderingMethod().ToString().Replace('_', '-');
+                await CheckJsonRendering(panel, stills, renderer);
                 panel.ShowLibrary();
                 panel.LibrarySearch.Text = "";
                 panel.LibrarySearch.EmitSignal(LineEdit.SignalName.TextChanged, "");

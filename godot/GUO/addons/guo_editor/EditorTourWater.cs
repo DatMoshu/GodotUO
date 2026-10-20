@@ -51,6 +51,23 @@ public partial class EditorTour
             Check(!panel.LibraryOpen && panel.HistoryPosition == browserHistory
                 && WaterAuthoring.Serialize(panel.Style).AsSpan().SequenceEqual(browserDraft),
                 "browser reference keeps the working draft and history intact");
+            panel.OpenJson();
+            await Frames(4);
+            Check(panel.JsonDialog.Visible && panel.JsonText.Text.Contains("guo/water@1"), "the native sharing dialog shows editable preset JSON");
+            using (var image = panel.JsonDialog.GetTexture().GetImage())
+                Check(image.SavePng(Path.Combine(_out, "water-json-share.png")) == Error.Ok, "captured the JSON dialog's own rendered viewport");
+            panel.JsonText.Text = "{broken";
+            Check(!panel.ApplyJson(false) && panel.JsonDialog.Visible && panel.HistoryPosition == browserHistory,
+                "invalid pasted JSON keeps the dialog and working history");
+            await Frames(3);
+            using (var image = panel.JsonDialog.GetTexture().GetImage())
+                Check(image.SavePng(Path.Combine(_out, "water-json-error.png")) == Error.Ok, "captured JSON error recovery controls");
+            Say("Share JSON lets you copy a preset or paste water JSON. Load as new draft can be undone; Use as reference keeps your working draft. Invalid text stays editable.");
+            await Shot(3);
+            panel.JsonText.Text = System.Text.Encoding.UTF8.GetString(WaterAuthoring.Serialize(WaterAuthoring.Presets[6]));
+            Check(panel.ApplyJson(true) && panel.JsonDialog == null && panel.HistoryPosition == browserHistory
+                && WaterAuthoring.Serialize(panel.Style).AsSpan().SequenceEqual(browserDraft),
+                "pasted JSON becomes a reference without replacing the working draft");
             Say("Water has editable presets and a synthetic preview. Preview in World applies the same style to the map's wet tiles without saving a player setting.");
             await Shot(3);
             panel.KeepReference();
@@ -137,6 +154,7 @@ public partial class EditorTour
         }
         finally
         {
+            panel.CloseJson();
             panel.StopWorldTest(); panel.FreezeToggle.ButtonPressed = previousFreeze;
             panel.ShowReplayControls(previousReplay); panel.ReplayTest.Select(previousTest); panel.ReplayTime.Value = previousTestTime;
             panel.WorldToggle.ButtonPressed = false; panel.ClassicToggle.ButtonPressed = false;

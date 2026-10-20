@@ -150,6 +150,7 @@ internal partial class WaterPanel : ScrollContainer
         AddButton(draftActions, "Save draft", SaveDraft);
         AddButton(draftActions, "Duplicate", Duplicate);
         AddButton(draftActions, "Import JSON…", ImportDialog);
+        AddButton(draftActions, "Share JSON…", OpenJson).TooltipText = "Copy a preset's JSON, paste one as a new draft, or use it as a comparison reference.";
         _packId = Entry(drafts, "Pack ID", "my-water-style");
         _version = Entry(drafts, "Version", "1.0.0");
         _author = Entry(drafts, "Author", "");
@@ -409,6 +410,7 @@ internal partial class WaterPanel : ScrollContainer
     }
     internal void Shutdown()
     {
+        CloseJson();
         // Child previews may already have exited and disposed their renderer resources.
         FinishNumericScrub(false);
         SetProcess(false);

@@ -116,6 +116,14 @@ test before exporting a capture that should exclude them.
 
 ## Save and share
 
+**Share JSON** opens the current preset as editable text. Use the text editor's
+Copy/Paste actions to share it or replace it with a `guo/water@1` preset.
+**Load as new draft** detaches the save path; Undo restores the previous draft
+and its destination. **Use as reference** keeps your working draft, destination
+and history. Invalid or oversized input stays in the dialog with an explanation;
+correct it or **Close** without loading. The limit is 16 KB of UTF-8 text.
+These actions write no file or clipboard automatically and publish nothing.
+
 Drag a numeric control's label left or right to tune it live; hold Shift for
 fine adjustment. Each label drag is one **Undo** step, regardless of its length.
 Returning to the starting value keeps history and redo intact. Separate drags,

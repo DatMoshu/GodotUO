@@ -28,6 +28,17 @@ public partial class EditorSmoke
             panel.Undo();
             Expect(panel.HistoryPosition == scrubHistory && panel.Style.Wave == WaterAuthoring.Presets[1].Wave,
                 "water_label_drag_undo_restores_starting_value");
+            var jsonReference = panel.Preview.ReferenceStyle;
+            bool jsonCompare = panel.CompareToggle.ButtonPressed;
+            panel.OpenJson(); panel.JsonText.Text = "{broken";
+            Expect(!panel.ApplyJson(false) && panel.JsonDialog != null && panel.JsonError.StartsWith("Could not load this JSON:")
+                && panel.HistoryPosition == scrubHistory && panel.Style.Name == "Pixel water",
+                "water_json_error_keeps_working_draft_and_editable_dialog");
+            panel.JsonText.Text = System.Text.Encoding.UTF8.GetString(WaterAuthoring.Serialize(WaterAuthoring.Presets[6]));
+            Expect(panel.ApplyJson(true) && panel.JsonDialog == null && panel.HistoryPosition == scrubHistory
+                && panel.Style.Name == "Pixel water" && panel.Preview.ReferenceStyle.Name == WaterAuthoring.Presets[6].Name,
+                "water_json_reference_preserves_working_draft_and_history");
+            panel.SetReference(jsonReference); panel.CompareToggle.ButtonPressed = jsonCompare;
             panel.ReplayTime.Value = 1.5; panel.ReplayPreview();
             Expect(panel.Preview.Paused && panel.Preview.Seconds == 1.5f && panel.Style.Name == "Pixel water",
                 "water_replay_pauses_synthetic_pose_without_editing_style");

@@ -51,6 +51,14 @@ internal static class WaterAuthoring
         return StoreWater.Parse(File.ReadAllBytes(path));
     }
 
+    internal static StoreWater ParseText(string text)
+    {
+        var utf8 = new System.Text.UTF8Encoding(false, true);
+        if (utf8.GetByteCount(text) > StoreWater.MaxBytes)
+            throw new InvalidDataException("Water preset exceeds 16 KB of UTF-8 text.");
+        return StoreWater.Parse(utf8.GetBytes(text));
+    }
+
     // Authoring destinations must never touch the install or become imported game resources.
     internal static void CheckDestination(string path)
     {

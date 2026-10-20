@@ -6,6 +6,8 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Water
+- Share water presets as editable JSON text, or load pasted JSON as a new
+  draft or comparison reference with validation and Undo.
 - A numeric label drag in the water editor now undoes as one adjustment;
   dragging back to the starting value preserves history and redo.
 - Save the water editor's synthetic preview as a PNG, including its frozen
