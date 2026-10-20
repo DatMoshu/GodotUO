@@ -1,11 +1,11 @@
 {
   "id": "editor.water.authoring",
-  "title": "Author water, compare presets, export a pack and test native boat/wader previews",
+  "title": "Browse and author water presets, export a pack and test native boat/wader previews",
   "surface": "editor",
   "requires": { "build": "debug" },
   "timeouts": { "step_s": 240, "run_s": 600 },
   "steps": [
     { "id": "launch", "do": { "kind": "launch" }, "timeout_s": 300, "say": "Open the GUO editor." },
-    { "id": "water", "do": { "kind": "tour_segment", "id": "water" }, "say": "Keep a reference, tune and export a preset, then preview temporary native boat and wader interactions without a shard.", "shot": true }
+    { "id": "water", "do": { "kind": "tour_segment", "id": "water" }, "say": "Browse presets by name, model or source, keep a reference without replacing your draft, tune and export it, then test native boat and wader interactions without a shard.", "shot": true }
   ]
 }

@@ -55,6 +55,23 @@ water selection. No player profile, map, client install or shard setting is
 saved by previewing. This preview does not change the World view's lighting;
 the daylight/dusk/night selector belongs to the synthetic test surface.
 
+## Browse presets
+
+**Browse presets** opens an inline library of starter presets and saved drafts.
+Search by name, then narrow by model or source. The rows identify starter
+presets and saved working files; the summary shows their stored wave, shore
+and ripple values. Clear the search or reset the filters if nothing matches.
+Unreadable drafts are skipped and counted; **Refresh** retries the library.
+
+**Load selected** makes that preset the working document. Loading a saved draft
+attaches its save destination; **Undo** restores the prior document and edits.
+**Use as reference** instead puts the selected style on the left of Compare,
+retaining the working draft, save destination and history. Both actions read
+the selected saved file again, so a changed or removed file cannot silently
+use stale browser contents. An unreadable selection reports recovery inside
+the browser and preserves the working state. The browser closes after a
+successful action; **Close browser** returns to tuning without loading.
+
 ## Native interaction tests
 
 With **Preview in World** enabled, **Boat in World** and **Wader in World**

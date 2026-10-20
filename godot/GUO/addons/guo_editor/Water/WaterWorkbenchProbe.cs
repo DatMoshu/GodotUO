@@ -157,6 +157,7 @@ public partial class WaterWorkbenchProbe : Node
             File.Copy(malformed, Path.Combine(panel.DraftFolderOverride, "broken.json"));
             panel.RefreshPresets();
             Require(panel.DraftCount == 3 && panel.StatusText.StartsWith("Skipped 1"), "corrupt library item does not hide valid drafts");
+            CheckPresetBrowser(panel, draftB);
             var nameInput = Descendants(panel).OfType<LineEdit>().Single(e => e.PlaceholderText == "Preset name");
             nameInput.Text = ""; nameInput.EmitSignal(LineEdit.SignalName.TextSubmitted, "");
             Require(panel.StatusText.StartsWith("Could not complete water action:")
@@ -221,6 +222,18 @@ public partial class WaterWorkbenchProbe : Node
             {
                 string stills = Path.Combine(output, "stills"); Directory.CreateDirectory(stills);
                 string renderer = RenderingServer.GetCurrentRenderingMethod().ToString().Replace('_', '-');
+                panel.ShowLibrary();
+                panel.LibrarySearch.Text = "";
+                panel.LibrarySearch.EmitSignal(LineEdit.SignalName.TextChanged, "");
+                panel.LibrarySource.Select(0); panel.LibrarySource.EmitSignal(OptionButton.SignalName.ItemSelected, 0L);
+                caption.Text = "Preset library: filter, inspect, load or compare without replacing the working draft";
+                large.SetStyle(panel.Style); large.Compare = false; large.Paused = true; large.Advance(0);
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                using (var libraryImage = viewport.GetTexture().GetImage())
+                    Require(libraryImage.SavePng(Path.Combine(stills, $"guo_WATER-EDITOR_library-{renderer}_still_{DateTime.UtcNow:yyyyMMdd-HHmm}.png")) == Error.Ok,
+                        "capture searchable preset library and action controls");
+                Press(panel, "Close browser");
                 foreach (int preset in new[] { 0, 1, 5, 6, 8 })
                 {
                     var style = WaterAuthoring.Presets[preset];
@@ -326,6 +339,81 @@ public partial class WaterWorkbenchProbe : Node
             GetTree().Quit(1);
         }
         finally { panel?.Shutdown(); large?.Shutdown(); }
+    }
+
+    private void CheckPresetBrowser(WaterPanel panel, string savedDraft)
+    {
+        void Search(string text)
+        { panel.LibrarySearch.Text = text; panel.LibrarySearch.EmitSignal(LineEdit.SignalName.TextChanged, text); }
+        void Source(int index)
+        { panel.LibrarySource.Select(index); panel.LibrarySource.EmitSignal(OptionButton.SignalName.ItemSelected, (long)index); }
+        void Model(int index)
+        { panel.LibraryModel.Select(index); panel.LibraryModel.EmitSignal(OptionButton.SignalName.ItemSelected, (long)index); }
+        byte[] saved = File.ReadAllBytes(savedDraft);
+        int history = panel.HistoryPosition;
+        var originalReference = panel.Preview.ReferenceStyle;
+        try
+        {
+            var quickPreset = Descendants(panel).OfType<OptionButton>().Single(o => o.TooltipText.StartsWith("Starter presets"));
+            quickPreset.Select(1);
+            panel.ShowLibrary();
+            Require(quickPreset.Selected == 1, "opening browser preserves the quick preset selection");
+            Require(panel.LibraryOpen && panel.LibraryCount == WaterAuthoring.Presets.Length + 3,
+                "browser lists starter presets and valid drafts while skipping corrupt files");
+            Source(2); Search("pIxEl");
+            Require(panel.LibraryCount == 1 && panel.LibraryInfo.Contains("Saved draft"),
+                "browser combines case-insensitive name search with saved-draft source filtering");
+            Model(Array.IndexOf(StoreWater.Models, "cel") + 1);
+            Require(panel.LibraryCount == 0 && panel.LibraryInfo.Contains("No matching presets")
+                && Descendants(panel).OfType<Button>().Single(b => b.Text == "Load selected").Disabled
+                && Descendants(panel).OfType<Button>().Single(b => b.Text == "Use as reference").Disabled,
+                "empty filter state explains recovery and disables preset actions");
+            Model(0);
+            panel.NumberInput("Wave strength").Value = .77;
+            byte[] draft = WaterAuthoring.Serialize(panel.Style);
+            string path = panel.DraftPath; int position = panel.HistoryPosition;
+            panel.LibraryAction(true);
+            Require(!panel.LibraryOpen && panel.CompareToggle.ButtonPressed && panel.Dirty
+                && panel.DraftPath == path && panel.HistoryPosition == position
+                && WaterAuthoring.Serialize(panel.Style).AsSpan().SequenceEqual(draft)
+                && WaterAuthoring.Serialize(panel.Preview.ReferenceStyle).AsSpan().SequenceEqual(saved),
+                "using library reference preserves dirty draft, save identity and undo history");
+            panel.ShowLibrary();
+            var changed = WaterAuthoring.Read(savedDraft) with { Wave = .22f };
+            WaterAuthoring.Save(changed, savedDraft);
+            panel.LibraryAction(true);
+            Require(panel.Preview.ReferenceStyle.Wave == .22f,
+                "browser reference re-reads a draft changed since the library was refreshed");
+            panel.ShowLibrary();
+            File.WriteAllText(savedDraft, "{broken");
+            panel.LibraryAction(false);
+            Require(panel.LibraryOpen && panel.LibraryInfo.StartsWith("Could not open this preset")
+                && panel.DraftPath == path && panel.HistoryPosition == position
+                && WaterAuthoring.Serialize(panel.Style).AsSpan().SequenceEqual(draft)
+                && panel.Preview.ReferenceStyle.Wave == .22f,
+                "corrupt selected draft reports inside the browser and preserves working state");
+            File.Delete(savedDraft); panel.LibraryAction(true);
+            Require(panel.LibraryOpen && panel.LibraryInfo.StartsWith("Could not open this preset")
+                && panel.Preview.ReferenceStyle.Wave == .22f,
+                "removed selected draft preserves the prior reference and offers recovery");
+            File.WriteAllBytes(savedDraft, saved);
+            panel.LibraryAction(false);
+            Require(!panel.LibraryOpen && panel.DraftPath == savedDraft && !panel.Dirty,
+                "browser load attaches the selected saved document");
+            panel.Undo();
+            Require(panel.DraftPath == path && panel.Dirty && WaterAuthoring.Serialize(panel.Style).AsSpan().SequenceEqual(draft),
+                "undo browser load restores the unsaved draft and its save destination");
+            panel.Undo();
+            Require(panel.HistoryPosition == history && !panel.Dirty,
+                "browser reference actions add no hidden undo entries");
+        }
+        finally
+        {
+            File.WriteAllBytes(savedDraft, saved);
+            panel.SetReference(originalReference);
+            Search(""); Source(0); Model(0);
+            Press(panel, "Close browser");
+        }
     }
 }
 #endif

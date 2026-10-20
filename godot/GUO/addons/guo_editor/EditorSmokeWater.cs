@@ -22,6 +22,13 @@ public partial class EditorSmoke
             var inspection = System.Text.Json.JsonSerializer.SerializeToElement(WaterRender.Inspect(_world.Host.World));
             Expect(inspection.GetProperty("selectedStyle").GetString() == "editor-draft", "water_diagnostics_report_selected_draft");
             Expect(WaterRender.Inspect(null) == null, "water_diagnostics_before_world_are_null");
+            int history = panel.HistoryPosition;
+            panel.ShowLibrary();
+            Expect(panel.LibraryOpen && panel.LibraryCount >= WaterAuthoring.Presets.Length, "water_browser_starter_catalog_available");
+            panel.LibraryAction(true);
+            Expect(!panel.LibraryOpen && panel.HistoryPosition == history && panel.Style.Name == "Pixel water"
+                && WaterRender.Resolve(ProfileManager.CurrentProfile)?.DisplayName == "Pixel water",
+                "water_browser_reference_preserves_draft_history_and_world_style");
             panel.KeepReference();
             panel.LoadStyle(WaterAuthoring.Presets[6]);
             Expect(panel.Preview.ReferenceStyle.Name == "Pixel water"

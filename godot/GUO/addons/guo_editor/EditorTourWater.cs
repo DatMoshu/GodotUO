@@ -34,6 +34,20 @@ public partial class EditorTour
             Check(panel.IsVisibleInTree() && panel.Size.X >= 240 && panel.Size.Y >= 150,
                 "the Water workspace is visible at a usable size");
             Check(WaterRender.EditorWorld == _world.Host.World, "the draft previews only in this editor world");
+            panel.ShowLibrary();
+            await Frames(3);
+            Check(panel.LibraryOpen && panel.LibraryCount >= WaterAuthoring.Presets.Length,
+                "the inline preset browser lists starter styles");
+            Check(panel.GetGlobalRect().HasPoint(panel.LibraryTree.GetGlobalRect().Position + new Vector2(20, 40)),
+                "the browser opens with a result row visible in the native scroll area");
+            Say("Browse presets searches by name and filters by model or source. Use as reference compares a saved style while keeping the working draft and undo history.");
+            await Shot(3);
+            var browserDraft = WaterAuthoring.Serialize(panel.Style);
+            int browserHistory = panel.HistoryPosition;
+            panel.LibraryAction(true);
+            Check(!panel.LibraryOpen && panel.HistoryPosition == browserHistory
+                && WaterAuthoring.Serialize(panel.Style).AsSpan().SequenceEqual(browserDraft),
+                "browser reference keeps the working draft and history intact");
             Say("Water has editable presets and a synthetic preview. Preview in World applies the same style to the map's wet tiles without saving a player setting.");
             await Shot(3);
             panel.KeepReference();

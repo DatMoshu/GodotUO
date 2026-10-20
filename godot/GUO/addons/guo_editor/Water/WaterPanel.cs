@@ -43,7 +43,7 @@ internal partial class WaterPanel : ScrollContainer
     private VBoxContainer _nativeSection;
     private GUO.Game.World _ownedWorld;
     private IWaterStyle _liveStyle;
-    private readonly List<(string Name, string Path)> _drafts = new();
+    private readonly List<(StoreWater Style, string Path)> _drafts = new();
     internal StoreWater Style => _style;
     internal WaterPreview Preview => _preview;
     internal int HistoryPosition => _position;
@@ -75,6 +75,7 @@ internal partial class WaterPanel : ScrollContainer
         presetRow.AddChild(_presets);
         AddButton(presetRow, "Load", LoadSelected);
         AddButton(presetRow, "Refresh", RefreshPresets);
+        BuildLibrary(body);
         _preview = new WaterPreview(); body.AddChild(_preview);
         body.AddChild(new Label { Text = "Synthetic water • no client art", AutowrapMode = TextServer.AutowrapMode.WordSmart });
         var tests = new HFlowContainer(); body.AddChild(tests);
@@ -287,16 +288,24 @@ internal partial class WaterPanel : ScrollContainer
     internal int DraftCount => _drafts.Count;
     internal void RefreshPresets() => Try(() =>
     {
+        int selected = _presets.Selected;
+        string selectedPath = selected >= WaterAuthoring.Presets.Length
+            && selected - WaterAuthoring.Presets.Length < _drafts.Count
+            ? _drafts[selected - WaterAuthoring.Presets.Length].Path : null;
         _presets.Clear(); _drafts.Clear();
         foreach (var style in WaterAuthoring.Presets) _presets.AddItem(style.Name);
-        if (!Directory.Exists(DraftFolder)) return;
         int unreadable = 0;
-        foreach (string path in Directory.EnumerateFiles(DraftFolder, "*.json").OrderBy(p => p).Take(256))
+        foreach (string path in Directory.Exists(DraftFolder)
+            ? Directory.EnumerateFiles(DraftFolder, "*.json").OrderBy(p => p).Take(256) : Array.Empty<string>())
         {
-            try { var style = WaterAuthoring.Read(path); _drafts.Add((style.Name, path)); _presets.AddItem(style.Name + " (draft)"); }
+            try { var style = WaterAuthoring.Read(path); _drafts.Add((style, path)); _presets.AddItem(style.Name + " (draft)"); }
             catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException) { unreadable++; }
         }
+        int savedIndex = selectedPath == null ? -1 : _drafts.FindIndex(d => d.Path == selectedPath);
+        _presets.Select(savedIndex >= 0 ? WaterAuthoring.Presets.Length + savedIndex
+            : selected >= 0 && selected < WaterAuthoring.Presets.Length ? selected : 0);
         if (unreadable > 0) _status.Text = $"Skipped {unreadable} unreadable draft(s). Import a corrected JSON file to try again.";
+        RefreshLibrary(unreadable);
     });
     private void LoadSelected() => Try(() =>
     {
