@@ -75,6 +75,12 @@ namespace GUO.Renderer.Lights
                 Intensity = intensity;
             }
 
+            /// <summary>
+            /// The radius the falloff uses this frame: a dimming flame also
+            /// pulls its pool in a little (never past the cached reach).
+            /// </summary>
+            public float Reach => Radius * Math.Clamp(0.4f + 0.6f * Intensity, 0.85f, 1f);
+
             /// <summary>The light's continuous position in tile units (cell centres are integers).</summary>
             public float PosX => X + OffsetX;
             public float PosY => Y + OffsetY;
@@ -449,7 +455,7 @@ namespace GUO.Renderer.Lights
             ref readonly Lit lit = ref _lit[n];
             ref readonly Source s = ref lit.Source;
             float dx = wx - s.PosX, dy = wy - s.PosY;
-            float f = Falloff(MathF.Sqrt(dx * dx + dy * dy), s.Radius);
+            float f = Falloff(MathF.Sqrt(dx * dx + dy * dy), s.Reach);
             if (f <= 0f) return new Color(0, 0, 0);
             int cx = (int)MathF.Floor(wx + 0.5f), cy = (int)MathF.Floor(wy + 0.5f);
             if (!Contains(cx, cy)) return new Color(0, 0, 0);
@@ -694,7 +700,7 @@ namespace GUO.Renderer.Lights
             if (weight <= 0f) return;
             int r = s.Radius + 1;
             int side = r * 2 + 1;
-            float px = s.PosX, py = s.PosY;
+            float px = s.PosX, py = s.PosY, reach = s.Reach;
             float energy = Energy * s.Intensity * weight;
             for (int dy = -r; dy <= r; dy++)
             {
@@ -706,7 +712,7 @@ namespace GUO.Renderer.Lights
                     if (tx < _originX || tx >= _originX + _width) continue;
                     float v = map[(dy + r) * side + (dx + r)];
                     float fx = tx - px, fy = ty - py;
-                    v *= Falloff(MathF.Sqrt(fx * fx + fy * fy), s.Radius);
+                    v *= Falloff(MathF.Sqrt(fx * fx + fy * fy), reach);
                     if (v <= 0f) continue;
                     int cell = Index(tx, ty);
                     if (s.Z > _lightTop[cell]) _lightTop[cell] = (short)s.Z;
@@ -730,7 +736,7 @@ namespace GUO.Renderer.Lights
                     int cx = mx + dx;
                     if (cx < _originX || cx > _originX + _width) continue;
                     float fx = cx - 0.5f - px, fy = cy - 0.5f - py;
-                    float f = Falloff(MathF.Sqrt(fx * fx + fy * fy), s.Radius);
+                    float f = Falloff(MathF.Sqrt(fx * fx + fy * fy), reach);
                     if (f <= 0f) continue;
                     int a0 = (dy + r - 1) * side + (dx + r - 1);
                     float v = (map[a0] + map[a0 + 1] + map[a0 + side] + map[a0 + side + 1]) * 0.25f * f * energy;

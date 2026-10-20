@@ -2825,8 +2825,10 @@ Each accepted light offer (`AddLight`) adds a source at its tile with radius
 `round(light.mul width / 54)` tiles (2..8), the classic light tint (the
 light-shader palette, or the hue's table entry 16; an uncoloured light is warm
 white RGB (1, 0.88, 0.70)), an energy of 2.2 and an intensity: an unhued
-light flickers `1 + 0.05 sin(7.3 t + p) + 0.03 sin(17.9 t + 2.3 p)` (t in
-seconds of the game clock, p from the source's serial), a hued one holds 1.
+light flickers `1 + 0.07 sin(7.3 t + p) + 0.04 sin(17.9 t + 2.3 p)` (t in
+seconds of the game clock wrapped to an hour, p from the source's serial), a
+hued one holds 1; the falloff radius breathes with it,
+`r * clamp(0.4 + 0.6 intensity, 0.85, 1)`.
 A light's contribution is scaled by the ambient's headroom,
 `clamp((1 - luminance) / 0.75, 0, 1)`: full at night, none in full daylight
 (a torch at noon neither brightens nor tints the ground, as classic draws no
@@ -2855,8 +2857,8 @@ sprite in its cell's colour, masked by the sprite's alpha, its top lerped
 toward the sky ambient by `min(1, Height / 20) * 0.75`. A standing static in
 the open that is not a wall, door, window or roof is lit corner by corner:
 its left edge half way to the light at (x - 0.5, y + 0.5), its right edge
-half way to the light at (x + 0.5, y - 0.5), so the side toward a light is
-brighter.
+half way to the light at (x + 0.5, y - 0.5), never darker than its cell, so
+the side toward a light is brighter.
 `RenderTargets.LightOverride` carries the texture; `RenderTargets.Draw` blends
 it with the classic darkness blend in place of the light target. The option
 off never builds the target.
@@ -2866,7 +2868,10 @@ wall, door, window or roof, and are a tree, foliage, a rock, or at least 6 Z
 tall (not a low surface); and, while classic shadows are replaced, every
 mobile whose classic shadow was due (`MobileView` hands its body frame, draw
 position, mirror flag and foot point to `GameScene.RecordRealtimeMobileShadow`
-instead of drawing it; its ground point follows the walking offset). Two masks the size of the target, nested under its
+instead of drawing it; its ground point follows the walking offset). Only a
+mobile on open ground is taken: not under a roof and within 2 Z of the land
+there (on a floor, a dock or a rooftop the masks, which fall on land, would
+miss it, so its classic shadow is drawn as before). Two masks the size of the target, nested under its
 viewport so they render first, are read by the land only (what stands up
 takes its own cell's light):
 
@@ -2883,15 +2888,18 @@ takes its own cell's light):
   left out, ties by tile), weakest first. A caster between 0.75 tiles and the radius from a light, not
   more than 30 Z below it, with at least 0.02 of its light at its foot, lays
   its sprite on the ground away from the light: bottom row at the foot (10 px
-  above the art's bottom), top row `h * clamp(0.45 + 0.9 d / r, 0.45, 1.35)`
-  pixels along the ground direction, columns across it (widening 10 % at the
+  above the art's bottom for a static, the draw anchor for a mobile), top row
+  `h * clamp(0.35 + 0.65 d / r, 0.35, 1)` pixels along the ground direction, columns across it (widening 10 % at the
   tip; the sprite's left column stays on the screen's left). The quad is a 3x3 grid; each vertex carries the light left at its own
-  ground point, `Scale(raw - share * source)`, share 0.85 at the foot easing
-  to 0.47 at the tip. The land is capped per channel by it, so a shadow never
+  ground point, `Scale(raw - share * source)`, share 1 at the foot easing
+  to 0.7 at the tip, then darkened at the foot by a further
+  `0.3 * strike` (strike: the light's luminance at the caster's foot over
+  0.3, at most 1), easing to none at the tip, as classic's shadow is a flat
+  40 % black at any hour. The land is capped per channel by it, so a shadow never
   darkens below what is left nor shifts its hue.
 
-`RealtimeReplacesClassicShadows` (the live scene draws Realtime lights,
-shadows on, classic not kept; false once the scene unloads) drops the
+`RealtimeReplacesClassicShadows` (the live scene drew Realtime lights last
+frame, shadows on, classic not kept; false once the scene unloads) drops the
 classic tree, foliage and rock shadows from the world draw (`StaticView`, the
 sort's shadow pass) and the classic mobile shadows (cast in the realtime
 masks instead). `RealtimeClassicShadows` keeps both.

@@ -738,13 +738,14 @@ namespace GUO.Game.GameObjects
 
             SKIP:
 
-            if (hasShadow && GameScene.RealtimeReplacesClassicShadows)
-            {
-                // PORT DEVIATION (GUO): Realtime shadows (ADR-0039) cast this
-                // frame's shadow from the lights and the sky instead.
-                GameScene.RecordRealtimeMobileShadow(owner, spriteInfo.Texture, spriteInfo.UV, x, y, mirror,
+            // PORT DEVIATION (GUO): Realtime shadows (ADR-0039) cast this
+            // frame's shadow from the lights and the sky instead, where it
+            // stands on open ground; elsewhere the classic shadow stays.
+            if (hasShadow && GameScene.RealtimeReplacesClassicShadows
+                && GameScene.RecordRealtimeMobileShadow(owner, spriteInfo.Texture, spriteInfo.UV, x, y, mirror,
                     mirror ? x + spriteInfo.UV.Width - spriteInfo.Center.X : x + spriteInfo.Center.X,
-                    y + spriteInfo.UV.Height + spriteInfo.Center.Y);
+                    y + spriteInfo.UV.Height + spriteInfo.Center.Y))
+            {
             }
             else if (hasShadow)
             {
