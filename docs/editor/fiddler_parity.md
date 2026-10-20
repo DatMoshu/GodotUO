@@ -2,6 +2,8 @@
 
 Phase 1 proposal, 2026-10-19. guo-director first-pass review received;
 catalogue and survey await guo-director and exec-fable sign-off.
+F01a has separate director authorization for assignment (inbox #11093);
+that narrow read-only brief does not approve the remaining plan.
 No implementation, dispatch, sprint edits, publication or licence approval is implied.
 
 ## Variant survey: which tools deserve parity coverage first?
@@ -167,6 +169,23 @@ The CSV contains source anchors, format names, GUO evidence, limitations,
 proposed story families and inspection provenance. Filter `page` to review a
 page, `status` to find gaps, or `story` to collect a proposed work package.
 
+### Reading and maintaining the CSV
+
+`id` is a stable operation identifier; preserve it when revising a row.
+`page`, `feature` and `formats` describe the operation and its interchange
+scope. `status`, `guo_evidence` and `gap_or_limit` describe GUO at the stated
+baseline, while `upstream_source`, `baseline`, `variants` and
+`variant_evidence` identify the external evidence. The CSV's `baseline` is
+the external source revision or release, not GUO's commit. `verification`
+states how the row was inspected; `story` routes it to a proposed family.
+An out-of-scope row may use `-` instead of an implementation family.
+
+When a story lands, update only the operations its evidence covers and
+record the new GUO commit and proof in `guo_evidence`/`verification`.
+Retain the external provenance and remaining limits. Recount the statuses
+in this document whenever rows or statuses change. Do not promote an entire
+family because one format or one container passed.
+
 Status has a deliberately narrow meaning:
 
 | Status | Meaning in this research |
@@ -256,8 +275,8 @@ container conversion are four distinct operations.
 **Proposed on main**, confirmed by guo-director's first-pass review on
 2026-10-19. F02a occupied-record replacement waits for Moshu's approval.
 F01a adds independent read-back and needs no write-policy decision; it can
-be the first implementation story after plan approval. All work stays in
-the editor/tools layers and all writes target staged copies. Existing
+proceed through the director's separately authorized read-only brief. All
+work stays in the editor/tools layers and all writes target staged copies. Existing
 installations remain read-only throughout.
 
 ## Proposed delivery order
@@ -270,15 +289,20 @@ Specialist formats and destructive map maintenance follow.
 
 The first five proposed PRs are:
 
-1. **F01a: independent read-back runner.** Fileformat lane; no new writer.
+1. **F01a: independent static-art read-back runner.** Fileformat lane; no new writer.
    Read a synthetic stage with a pinned, independently built UOFiddler/ClassicUO
    reader and compare expected records, unknown bytes and untouched IDs. Run
    without GUI interaction or bundling proprietary data. Produce a dependency
-   doctor and a machine-readable mismatch report. This unlocks credible parity.
+   doctor and a machine-readable mismatch report. Start with static art,
+   certifying MUL/IDX and UOP independently where supported by the oracle.
+   Split unsupported or oversized container work explicitly; other domains
+   need their own F01b certification.
 2. **F02a: explicit existing-record stage replacement.** Fileformat lane,
    after F01a and Moshu's approval of occupied-record replacement. One
-   domain first: static art. Replace one occupied MUL or UOP ID, preserving the
-   rest and refusing install destinations. No general converter in this PR.
+   domain and container layout first: static art, using the layout certified
+   by F01a. Replace one occupied ID, preserving the rest and refusing install
+   destinations. Certify the other container separately; no general converter
+   in this PR.
 3. **F06a: item metadata document.** Editor lane with fileformat review,
    after F01a. Edit name, flags and height in a working copy with undo/revert;
    preserve all other fields. A following F06b PR stages that document after
@@ -292,7 +316,9 @@ The first five proposed PRs are:
    keep file flags/encoding, undo and reload a project document. F15b adds
    staged binary output; F15c handles CSV compatibility separately.
 
-These are proposals, not ready-to-launch assignments. Sound editing is next
+F01a alone is ready for director assignment under the separately approved
+static-art brief (inbox #11093, 2026-10-19). No worker is launched by this
+document. The other four remain proposals. Sound editing is next
 unless the director's modder feedback moves it ahead of localization.
 
 ## Story families and required splits
@@ -425,7 +451,8 @@ five stories together. Resolve these before dispatch:
 
 1. Director decision recorded: ADR-0022 remains Proposed on main. Hold F02a
    occupied-record replacement for Moshu; F01a independent read-back requires
-   no write-policy decision and may go first after plan approval. Route deletion,
+   no write-policy decision and has separate authorization for director
+   assignment under inbox #11093. Route deletion,
    container conversion and maintenance semantics for their own decisions.
    All work remains editor/tools only, with writes to staged copies.
 2. Confirm that this baseline excludes other lanes' pending work and reconcile
@@ -477,4 +504,12 @@ certifies the new third-party formats or their visual behavior.
 
 Phase 1 delivery is these two documents and a director review note. Phase 2
 review is in progress; the first-pass director decisions are recorded above.
-Phase 3 remains held until plan approval.
+Phase 3 remains held until plan approval, except the separately authorized
+F01a read-only runner brief. This branch adds no implementation or dispatch.
+
+Completion review run: `20261020_guo-worker-fiddler_parity-plan-review`.
+Catalogue structure/count checks, documentation links, privacy scan and the
+required full smoke passed (exit 0) after restoring this worktree's gitignored
+local configuration with the repository setup tool. The CSV and runtime code
+are unchanged. This verifies the planning cleanup and existing smoke coverage;
+it adds no third-party format or visual-parity certification.
