@@ -12,9 +12,12 @@ public partial class WaterRippleProbe : Node
     {
         try
         {
+            if (DisplayServer.GetName() == "headless")
+                throw new InvalidOperationException("run with a real renderer, without --headless");
             var viewport = new SubViewport
             {
                 Size = new Vector2I(512, 256),
+                CanvasItemDefaultTextureFilter = Viewport.DefaultCanvasItemTextureFilter.Nearest,
                 RenderTargetUpdateMode = SubViewport.UpdateMode.Always
             };
             AddChild(viewport);
@@ -34,8 +37,15 @@ public partial class WaterRippleProbe : Node
                     shader_type canvas_item;
                     render_mode unshaded;
                     #include "res://src/Render/shaders/uo_water.gdshaderinc"
+                    uniform bool probe_glint = false;
                     void fragment() {
                         COLOR = vec4(water_shade(vec3(0.07, 0.13, 0.21), FRAGCOORD.xy), 1.0);
+                        if (probe_glint) {
+                            // Force a fully lit crest: ambient swells may never
+                            // reach the threshold that leaked glints at zero.
+                            COLOR = vec4(water_pixel(vec3(0.07, 0.13, 0.21),
+                                vec2(0.0), vec2(0.0), FRAGCOORD.xy, 0.0, 1.0, 0.0, 0.0), 1.0);
+                        }
                     }
                     """
             };
@@ -52,12 +62,10 @@ public partial class WaterRippleProbe : Node
             var rect = new ColorRect { Size = new Vector2(512, 256), Material = material };
             viewport.AddChild(rect);
             material.SetShaderParameter("water_ripples", flatTexture);
-            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
-            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            await Draw();
             using var calm = viewport.GetTexture().GetImage();
             material.SetShaderParameter("water_ripples", ripples.Texture);
-            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
-            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            await Draw();
             using var wave = viewport.GetTexture().GetImage();
             int visible = 0;
             float max = 0f, brightest = 0f;
@@ -76,15 +84,37 @@ public partial class WaterRippleProbe : Node
             if (!string.IsNullOrEmpty(output))
             {
                 Directory.CreateDirectory(output);
-                calm.SavePng(Path.Combine(output, "guo_WATER-03_pixel-calm_still_20261019-0452.png"));
-                wave.SavePng(Path.Combine(output, "guo_WATER-03_pixel-ripple_still_20261019-0452.png"));
+                string stamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmm");
+                string renderer = RenderingServer.GetCurrentRenderingMethod().ToString().Replace('_', '-');
+                Save(calm, output, $"guo_WATER-03_pixel-calm-{renderer}_still_{stamp}.png");
+                Save(wave, output, $"guo_WATER-03_pixel-ripple-{renderer}_still_{stamp}.png");
             }
             GD.Print($"[water ripple] visible pixels={visible}, maximum channel contrast={max:F4}, brightest={brightest:F4}");
             if (brightest > 0.6f)
                 throw new InvalidOperationException("zero glint must not draw white sparkles on dark water");
             if (visible < 500 || max < 0.16f)
                 throw new InvalidOperationException("a spreading ripple must retain two palette steps of contrast on dark water");
-            GD.Print("[water ripple] PASS: visible spreading ring over dark pixel water");
+            // A pack disabling ripples must ignore even a disturbed texture.
+            material.SetShaderParameter("water_params2", new Vector4(0f, 0.25f, 3f, 0f));
+            await Draw();
+            using var disabledWave = viewport.GetTexture().GetImage();
+            material.SetShaderParameter("water_ripples", flatTexture);
+            await Draw();
+            using var disabledCalm = viewport.GetTexture().GetImage();
+            if (!disabledCalm.GetData().AsSpan().SequenceEqual(disabledWave.GetData()))
+                throw new InvalidOperationException("zero ripple strength must preserve every calm pixel");
+
+            material.SetShaderParameter("probe_glint", true);
+            await Draw();
+            using var noGlint = viewport.GetTexture().GetImage();
+            if (Peak(noGlint) > 0.6f)
+                throw new InvalidOperationException("zero glint must suppress even fully lit crest highlights");
+            material.SetShaderParameter("water_params2", new Vector4(0.6f, 0.25f, 3f, 0f));
+            await Draw();
+            using var glint = viewport.GetTexture().GetImage();
+            if (Peak(glint) < 0.9f)
+                throw new InvalidOperationException("positive glint must retain crest highlights");
+            GD.Print("[water ripple] PASS: visible spreading ring, zero strength byte parity, zero/positive glint crests");
             GetTree().Quit();
         }
         catch (Exception ex)
@@ -92,5 +122,30 @@ public partial class WaterRippleProbe : Node
             GD.PrintErr("[water ripple] FAIL: " + ex.Message);
             GetTree().Quit(1);
         }
+    }
+
+    private async System.Threading.Tasks.Task Draw()
+    {
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+    }
+
+    private static float Peak(Image image)
+    {
+        float peak = 0f;
+        for (int y = 0; y < image.GetHeight(); y++)
+            for (int x = 0; x < image.GetWidth(); x++)
+            {
+                Color c = image.GetPixel(x, y);
+                peak = Math.Max(peak, Math.Max(c.R, Math.Max(c.G, c.B)));
+            }
+        return peak;
+    }
+
+    private static void Save(Image image, string output, string name)
+    {
+        Error error = image.SavePng(Path.Combine(output, name));
+        if (error != Error.Ok)
+            throw new IOException($"could not save {name}: {error}");
     }
 }

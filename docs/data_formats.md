@@ -2840,7 +2840,19 @@ by `tools/asset_store/water_packs.py`.
 
 `WaterRippleProbe.tscn` renders a spreading wave on dark pixel water with
 glints disabled: the ripple must retain two palette steps of contrast without white
-sparkles. Run with a real renderer (Forward+ and Compatibility), not headless.
+sparkles. It also checks byte-identical calm output at zero ripple strength,
+and forces fully lit crests to verify zero glint suppresses highlights while
+positive glint retains them. All inputs are synthetic; no install or shard is needed.
+After building the C# project, run with both real renderers (never `--headless`):
+
+```bat
+godot-console --path godot/GUO --rendering-method forward_plus res://src/Render/Water/WaterRippleProbe.tscn
+godot-console --path godot/GUO --rendering-method gl_compatibility res://src/Render/Water/WaterRippleProbe.tscn
+```
+
+With the engine folder on `PATH`, these commands exit nonzero on a failed
+assertion. Set `GUO_WATER_PROBE_OUT` to an evidence run's `stills/` folder to
+save calm/ripple PNGs named with the renderer and current UTC capture time.
 
 `GUO_WATER_DEBUG=1` in the client's environment paints every fragment that takes
 the water branch magenta, to see which tiles a style reaches; `2` paints the
