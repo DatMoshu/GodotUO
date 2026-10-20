@@ -539,7 +539,8 @@ new IDs use flag zero. The source-bound patch is limited to 10,000 changes and
 
 Standard CSV exchange uses UTF-8 `Number;Text;Flag`, decimal IDs, Fiddler flag
 names (or unknown decimal bytes) and CRLF output. The explicit Fiddler dialect
-has line-based unquoted records and trims imported text. Quoted UTF-8 supports
+has line-based unquoted records and trims imported text. Input also detects
+BOM-marked UTF-16/UTF-32 LE/BE; unmarked input is strict UTF-8. Quoted UTF-8 supports
 multiline fields, semicolons and doubled quotes as a separate lossless dialect.
 Imports merge text only, preserve source flags, leave omitted IDs untouched and
 apply atomically as one undo step after review. A blank string is not deletion.

@@ -9,7 +9,10 @@ No binary cliloc writer or runtime localization change is introduced.
 
 Both formats use UTF-8 without BOM on export, semicolon-separated
 `Number;Text;Flag` columns, decimal non-negative IDs and CRLF records. Import
-accepts a UTF-8 BOM and optional header. Blank records and comment records
+accepts a UTF-8 BOM and optional header. The Fiddler dialect also detects BOM-marked
+UTF-16 LE/BE and UTF-32 LE/BE, matching its `StreamReader`; files without a BOM
+use strict UTF-8. Quoted UTF-8 stays explicitly UTF-8. Malformed encoded text is
+refused rather than decoded with replacement characters. Blank records and comment records
 beginning with `#` are ignored. Flags accept `Original` (0), `Custom` (1),
 `Modified` (2), `Custom, Modified` (3), or a decimal byte. Unknown byte values
 are preserved numerically on export. Files are bounded to 64 MiB and 500,000
@@ -75,7 +78,7 @@ inside the client installation and no native language file is emitted.
 ## Verification
 
 `python tools/editor_smoke/run.py --reload` checks exact Fiddler column/enum/UTF-8
-bytes, quoted multiline roundtrips, malformed inputs, atomic budget refusals,
+bytes, all five BOM variants against .NET `StreamReader`, quoted multiline roundtrips, malformed inputs, atomic budget refusals,
 single-step undo/redo, source and revision guards, invalid/recovered drafts,
 review confirmation, working export scope and installed ENU/JPN whole-language
 quoted CSV roundtrips. The authorized windowed workbench proof captures import

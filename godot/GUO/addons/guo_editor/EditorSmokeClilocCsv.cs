@@ -21,6 +21,18 @@ public partial class EditorSmoke
         byte[] export = ClilocCsv.Encode(native, legacy);
         CsvCheck("fiddler_exact_utf8_named_flags_crlf", export.AsSpan().SequenceEqual(Bytes("Number;Text;Flag\r\n1;日本語;Original\r\n2;custom;Custom\r\n3;modified;Modified\r\n4;both;Custom, Modified\r\n5;unknown;243\r\n")));
         CsvCheck("fiddler_flag_vocabulary_roundtrip", ClilocCsv.Parse(export, legacy).SequenceEqual(native));
+        string bomText = "Number;Text;Flag\r\n17;日本語 😀;Modified\r\n";
+        foreach (Encoding encoding in new Encoding[] { new UTF8Encoding(true, true), new UnicodeEncoding(false, true, true),
+            new UnicodeEncoding(true, true, true), new UTF32Encoding(false, true, true), new UTF32Encoding(true, true, true) })
+        {
+            byte[] bomFile = encoding.GetPreamble().Concat(encoding.GetBytes(bomText)).ToArray();
+            using var reference = new StreamReader(new MemoryStream(bomFile));
+            CsvCheck("fiddler_bom_" + encoding.WebName, reference.ReadToEnd() == bomText
+                && ClilocCsv.Parse(bomFile, legacy).Single() == new ClilocCsvRow(17, "日本語 😀", 2));
+        }
+        CsvCheck("malformed_bom_encodings_refused", ClilocRefused(() => ClilocCsv.Parse(new byte[] { 0xFF, 0xFE, 0x41 }, legacy))
+            && ClilocRefused(() => ClilocCsv.Parse(new byte[] { 0, 0, 0xFE, 0xFF, 0, 0x11, 0, 0 }, legacy)));
+        CsvCheck("quoted_dialect_remains_utf8_only", ClilocRefused(() => ClilocCsv.Parse(new byte[] { 0xFF, 0xFE, 0x41, 0 }, quoted)));
         var trimmed = ClilocCsv.Parse(Bytes("\uFEFF# comment;ignored\r\nNumber;Text;Flag\r\n\r\n 17 ; text ; Modified \r\n"), legacy);
         CsvCheck("fiddler_comments_bom_whitespace", trimmed.Single() == new ClilocCsvRow(17, "text", 2));
         CsvCheck("headerless_rows", ClilocCsv.Parse(Bytes("1;text;0"), legacy).Count == 1);
@@ -55,6 +67,11 @@ public partial class EditorSmoke
         plan.Apply();
         CsvCheck("merge_preserves_flags_omissions", doc.Get(1) == new ClilocDocument.Entry(243, "edited ~1_NAME~")
             && doc.Get(2).Flag == 130 && doc.Get(9).Flag == 0 && doc.Get(3).Text == "keep");
+        var utf16 = new UnicodeEncoding(false, true, true);
+        byte[] bomImport = utf16.GetPreamble().Concat(utf16.GetBytes("Number;Text;Flag\r\n3;UTF-16 日本語;Modified\r\n")).ToArray();
+        new ClilocCsvPlan(doc, bomImport, legacy).Apply();
+        CsvCheck("bom_import_uses_same_review_and_preserves_flags", doc.Get(3) == new ClilocDocument.Entry(7, "UTF-16 日本語"));
+        doc.Undo();
         doc.Undo(); CsvCheck("batch_single_undo_retains_prior_edits", doc.Get(1).Text == "source ~1_NAME~" && doc.Get(2).Text == "preexisting" && doc.Get(9) == null);
         doc.Redo(); CsvCheck("batch_single_redo", doc.Get(1).Text == "edited ~1_NAME~" && doc.Get(9).Text == "new");
         doc.Save(); CsvCheck("batch_persists_project_only", Open().Get(9).Text == "new" && File.ReadAllBytes(source).AsSpan().SequenceEqual(original) && File.GetLastWriteTimeUtc(source) == stamp);

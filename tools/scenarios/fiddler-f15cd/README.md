@@ -9,6 +9,8 @@ toggle, dependency service, native binary writer or client scenario verb.
 2. Synthetic fixtures cover exact Fiddler UTF-8/CRLF/enum output, legacy trims,
    quoted multiline text, blank strings, unknown flags, malformed/duplicate
    records, atomic patch budgets, review staleness, batch undo/redo and saves.
+   Five BOM encodings are compared with .NET StreamReader and used in reviewed
+   imports; malformed UTF-16/UTF-32 input is refused without replacement text.
 3. Installed ENU/JPN whole-language quoted exports are parsed and compared by
    ID/text/flag; unchanged re-imports must not create changes or history. Verify
    the source SHA-256 and mtime checks remain true.

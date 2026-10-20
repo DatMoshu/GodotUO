@@ -12,7 +12,7 @@ internal enum ClilocCsvFormat { Fiddler, QuotedUtf8 }
 internal sealed record ClilocCsvRow(int Id, string Text, byte Flag);
 internal sealed record ClilocCsvChange(int Id, string Before, string After, bool Added, string Warning);
 
-/// <summary>UTF-8 semicolon exchange; the legacy dialect matches Fiddler's line-based reader.</summary>
+/// <summary>UTF-8 output; legacy input also detects the BOM encodings accepted by Fiddler's StreamReader.</summary>
 internal static class ClilocCsv
 {
     internal const int MaxBytes = 64 * 1024 * 1024;
@@ -33,9 +33,7 @@ internal static class ClilocCsv
     internal static IReadOnlyList<ClilocCsvRow> Parse(byte[] bytes, ClilocCsvFormat format)
     {
         if (!Enum.IsDefined(format) || bytes == null || bytes.Length > MaxBytes) throw new IOException("Choose a supported CSV format of at most 64 MiB.");
-        string text;
-        try { text = Utf8.GetString(bytes).TrimStart('\uFEFF'); }
-        catch (DecoderFallbackException) { throw new IOException("CSV must be valid UTF-8. Re-export the spreadsheet as UTF-8."); }
+        string text = Decode(bytes, format);
         if (text.Contains('\0')) throw new IOException("CSV contains NUL characters; no rows were imported.");
         var result = new List<ClilocCsvRow>(); var seen = new HashSet<int>(); int record = 0;
         foreach (string[] fields in Records(text, format))
@@ -54,6 +52,22 @@ internal static class ClilocCsv
         }
         if (result.Count == 0) throw new IOException("CSV contains no localized string records.");
         return result.AsReadOnly();
+    }
+    private static string Decode(byte[] bytes, ClilocCsvFormat format)
+    {
+        ReadOnlySpan<byte> input = bytes; Encoding encoding = Utf8; int offset = 0;
+        if (input.StartsWith(new byte[] { 0xEF, 0xBB, 0xBF })) offset = 3;
+        else if (format == ClilocCsvFormat.Fiddler)
+        {
+            // Test four-byte markers before UTF-16 LE's shared FF FE prefix.
+            if (input.StartsWith(new byte[] { 0xFF, 0xFE, 0, 0 })) { encoding = new UTF32Encoding(false, false, true); offset = 4; }
+            else if (input.StartsWith(new byte[] { 0, 0, 0xFE, 0xFF })) { encoding = new UTF32Encoding(true, false, true); offset = 4; }
+            else if (input.StartsWith(new byte[] { 0xFF, 0xFE })) { encoding = new UnicodeEncoding(false, false, true); offset = 2; }
+            else if (input.StartsWith(new byte[] { 0xFE, 0xFF })) { encoding = new UnicodeEncoding(true, false, true); offset = 2; }
+        }
+        try { return encoding.GetString(input[offset..]); }
+        catch (DecoderFallbackException)
+        { throw new IOException($"CSV contains invalid {encoding.WebName} bytes. Re-export as valid UTF-8, or use a BOM-marked UTF-16/UTF-32 file with the Fiddler dialect."); }
     }
     private static IEnumerable<string[]> Records(string text, ClilocCsvFormat format)
     {
