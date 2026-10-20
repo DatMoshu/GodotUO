@@ -15,6 +15,12 @@ public partial class WaterWorkbenchProbe
         panel.LibrarySearch.EmitSignal(LineEdit.SignalName.TextChanged, name);
     }
 
+    internal static void LibraryContext(WaterPanel panel, int scene, int light)
+    {
+        panel.LibraryScene.Select(scene); panel.LibraryScene.EmitSignal(OptionButton.SignalName.ItemSelected, (long)scene);
+        panel.LibraryLight.Select(light); panel.LibraryLight.EmitSignal(OptionButton.SignalName.ItemSelected, (long)light);
+    }
+
     private void CheckLibraryPreview(WaterPanel owner, string data)
     {
         var panel = new WaterPanel { DraftFolderOverride = Path.Combine(data, "audition-library") };
@@ -50,15 +56,32 @@ public partial class WaterWorkbenchProbe
                     "each starter audition uses an isolated, cloned style and the same fixed beach pose");
             }
             Preserved("auditioning every starter preserves dirty document, reference, scene and working clock");
+            for (int scene = 0; scene < 3; scene++)
+                for (int light = 0; light < 3; light++)
+                {
+                    LibraryContext(panel, scene, light);
+                    Require(panel.LibraryPreview.Scene == scene && panel.LibraryPreview.Paused
+                        && panel.LibraryPreview.Seconds == 1.5f && panel.LibraryLight.Selected == light,
+                        "each browser scene/light combination rebuilds the same paused selected-style pose");
+                }
+            Preserved("all browser scene/light combinations preserve working settings, reference, history and clock");
+            LibrarySearchFor(panel, saved.Name);
+            Require(panel.LibraryScene.Selected == 2 && panel.LibraryLight.Selected == 2 && panel.LibraryPreview.Scene == 2,
+                "browsing another preset retains the selected scene and lighting");
+            panel.CloseLibrary(); panel.ShowLibrary();
+            Require(panel.LibraryScene.Selected == 2 && panel.LibraryLight.Selected == 2 && panel.LibraryPreview.Scene == 2,
+                "closing and reopening the browser retains context for this panel lifetime");
+            LibraryContext(panel, 1, 0);
             Require(File.ReadAllBytes(path).AsSpan().SequenceEqual(originalFile), "auditions never write the saved draft");
             LibrarySearchFor(panel, saved.Name);
             Require(panel.LibraryPreviewStyle.Wave == saved.Wave, "saved selection previews its disk values rather than working edits");
             var changed = saved with { Wave = .22f };
             WaterAuthoring.Save(changed, path);
-            panel.LibraryTree.EmitSignal(Tree.SignalName.ItemSelected);
-            Require(panel.LibraryPreviewStyle.Wave == .22f, "reselecting a saved row rereads changed disk content");
+            LibraryContext(panel, 2, 1);
+            Require(panel.LibraryPreviewStyle.Wave == .22f, "changing browser context rereads changed disk content");
+            LibraryContext(panel, 1, 0);
             File.WriteAllText(path, "{broken");
-            panel.LibraryTree.EmitSignal(Tree.SignalName.ItemSelected);
+            LibraryContext(panel, 2, 2);
             Require(panel.LibraryPreview == null && panel.LibraryPreviewStyle == null
                 && panel.LibraryInfo.StartsWith("Could not preview this preset"),
                 "corrupt selected files remove the stale picture and report local recovery");
@@ -67,6 +90,7 @@ public partial class WaterWorkbenchProbe
             Require(panel.LibraryPreview == null && !File.Exists(path), "missing selected files are not recreated by audition");
             WaterAuthoring.Save(changed, path); panel.LibraryTree.EmitSignal(Tree.SignalName.ItemSelected);
             Require(panel.LibraryPreviewStyle.Wave == .22f, "a corrected selected file can be previewed again");
+            LibraryContext(panel, 1, 0);
             var preview = panel.LibraryPreview;
             LibrarySearchFor(panel, "no-such-water-preset");
             Require(panel.LibraryPreview == null && !preview.IsProcessing(), "empty results stop and release the previous preview");
@@ -124,6 +148,25 @@ public partial class WaterWorkbenchProbe
             using var again = panel.LibraryPreview.Capture();
             Require(pixel.GetData().AsSpan().SequenceEqual(again.GetData()),
                 "returning to a preset restores byte-identical audition pixels within this renderer");
+            LibraryContext(panel, 1, 2); await Draw();
+            using var nightBeach = panel.LibraryPreview.Capture();
+            Require(DifferentPixels(pixel, nightBeach, 0, pixel.GetWidth()) > 100,
+                "changing only browser lighting changes actual selected-preview pixels");
+            LibraryContext(panel, 2, 2); await Draw();
+            using var nightCliff = panel.LibraryPreview.Capture();
+            Require(DifferentPixels(nightBeach, nightCliff, 0, pixel.GetWidth()) > 100,
+                "changing only browser scene changes actual selected-preview pixels");
+            LibraryContext(panel, 0, 1); await Draw();
+            using var duskOpen = panel.LibraryPreview.Capture();
+            Require(DifferentPixels(nightCliff, duskOpen, 0, pixel.GetWidth()) > 100,
+                "browser open-water/dusk controls render a different context");
+            Require(nightCliff.SavePng(Path.Combine(stills, $"guo_WATER-EDITOR_browser-night-cliff-{renderer}_still_{DateTime.UtcNow:yyyyMMdd-HHmm}.png")) == Error.Ok
+                && duskOpen.SavePng(Path.Combine(stills, $"guo_WATER-EDITOR_browser-dusk-open-{renderer}_still_{DateTime.UtcNow:yyyyMMdd-HHmm}.png")) == Error.Ok,
+                "capture actual selected-preview scene and lighting outputs");
+            LibraryContext(panel, 1, 0); await Draw();
+            using var restored = panel.LibraryPreview.Capture();
+            Require(pixel.GetData().AsSpan().SequenceEqual(restored.GetData()),
+                "restoring browser beach/daylight restores byte-identical selected-preview pixels");
             Require(panel.HistoryPosition == history && panel.Preview.Seconds == seconds
                 && WaterAuthoring.Serialize(panel.Style).AsSpan().SequenceEqual(working),
                 "rendered preset auditions preserve working history, settings and frozen time");
@@ -140,6 +183,7 @@ public partial class WaterWorkbenchProbe
         }
         finally
         {
+            LibraryContext(panel, 1, 0);
             LibrarySearchFor(panel, "");
             panel.LibrarySource.Select(0); panel.LibrarySource.EmitSignal(OptionButton.SignalName.ItemSelected, 0L);
             panel.CloseLibrary(); panel.FreezeToggle.ButtonPressed = frozen;

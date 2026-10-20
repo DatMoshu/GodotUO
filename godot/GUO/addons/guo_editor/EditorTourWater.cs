@@ -50,6 +50,18 @@ public partial class EditorTour
             await Shot(3);
             var browserDraft = WaterAuthoring.Serialize(panel.Style);
             int browserHistory = panel.HistoryPosition;
+            WaterWorkbenchProbe.LibraryContext(panel, 2, 2);
+            await Frames(3);
+            Check(panel.LibraryPreview.Scene == 2 && panel.LibraryPreview.Paused && panel.LibraryPreview.Seconds == 1.5f
+                && panel.LibraryLight.Selected == 2 && panel.HistoryPosition == browserHistory
+                && WaterAuthoring.Serialize(panel.Style).AsSpan().SequenceEqual(browserDraft)
+                && panel.GetGlobalRect().Encloses(panel.LibraryPreview.GetGlobalRect())
+                && panel.GetGlobalRect().Encloses(panel.LibraryScene.GetGlobalRect())
+                && panel.GetGlobalRect().Encloses(panel.LibraryLight.GetGlobalRect()),
+                "browser scene/light controls and their full selected preview are visible and preserve the draft");
+            Say("Change the browser scene and lighting to judge the same preset at a cliff, on a beach or in open water. The fixed splash and hull pose stays repeatable; your working preview and draft stay unchanged.");
+            await Shot(3);
+            WaterWorkbenchProbe.LibraryContext(panel, 1, 0);
             panel.LibraryAction(true);
             Check(!panel.LibraryOpen && panel.HistoryPosition == browserHistory
                 && WaterAuthoring.Serialize(panel.Style).AsSpan().SequenceEqual(browserDraft),

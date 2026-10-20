@@ -11,6 +11,8 @@ internal partial class WaterPanel
     private Label _libraryVisualInfo;
     private WaterPreview _libraryPreview;
     private StoreWater _libraryPreviewStyle;
+    internal OptionButton LibraryScene { get; private set; }
+    internal OptionButton LibraryLight { get; private set; }
     internal WaterPreview LibraryPreview => _libraryPreview;
     internal StoreWater LibraryPreviewStyle => _libraryPreviewStyle;
 
@@ -18,8 +20,20 @@ internal partial class WaterPanel
     {
         _libraryVisual = new VBoxContainer { Visible = false };
         _library.AddChild(_libraryVisual);
-        _libraryVisual.AddChild(new Label { Text = "Selection · fixed 1.50 s test",
-            TooltipText = "Low beach, daylight, splash + hull. A separate synthetic preview; selecting a preset keeps your draft unchanged." });
+        var context = new HBoxContainer { TooltipText = "Selected preset: splash + hull paused at 1.50 seconds. Your draft stays unchanged." };
+        _libraryVisual.AddChild(context);
+        LibraryScene = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            TooltipText = "Selected preset scene; splash + hull paused at 1.50 s. Kept while browsing; does not change the working preview or World." };
+        foreach (string scene in new[] { "Open water", "Low beach", "High cliff" }) LibraryScene.AddItem(scene);
+        LibraryScene.Select(1);
+        context.AddChild(LibraryScene);
+        LibraryLight = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            TooltipText = "Selected preset lighting; splash + hull paused at 1.50 s. Kept while browsing; does not change the working preview or World." };
+        foreach (string light in new[] { "Daylight", "Dusk", "Night" }) LibraryLight.AddItem(light);
+        context.AddChild(LibraryLight);
+        // Use the same guarded disk read as a new selection, including error recovery.
+        LibraryScene.ItemSelected += _ => LibrarySelected();
+        LibraryLight.ItemSelected += _ => LibrarySelected();
         _libraryVisualInfo = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
         _libraryVisual.AddChild(_libraryVisualInfo);
     }
@@ -41,10 +55,10 @@ internal partial class WaterPanel
             _libraryVisual.MoveChild(_libraryPreview, 1);
         }
         _libraryPreview.SetStyle(_libraryPreviewStyle);
-        _libraryPreview.SetScene(1);
-        _libraryPreview.SetBrightness(1);
+        _libraryPreview.SetScene(LibraryScene.Selected);
+        _libraryPreview.SetBrightness(LibraryLight.Selected == 0 ? 1 : LibraryLight.Selected == 1 ? .55f : .2f);
         _libraryPreview.Replay(2, 1.5f);
-        _libraryVisualInfo.Text = $"{style.Name}\nLow beach · daylight · splash + hull at 1.50 s. Synthetic water; your draft is unchanged.";
+        _libraryVisualInfo.Text = $"{style.Name}\n{LibraryScene.GetItemText(LibraryScene.Selected)} · {LibraryLight.GetItemText(LibraryLight.Selected)} · splash + hull at 1.50 s. Synthetic water; your draft is unchanged.";
         _libraryVisual.Show();
         return style;
     }

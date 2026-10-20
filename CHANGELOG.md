@@ -6,6 +6,8 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Water
+- Judge selected water presets across open water, beach and cliff scenes,
+  with daylight, dusk and night lighting, directly in the preset browser.
 - Preview a selected water preset on a fixed synthetic beach in the browser,
   while keeping the working draft and comparison untouched.
 - Share water presets as editable JSON text, or load pasted JSON as a new

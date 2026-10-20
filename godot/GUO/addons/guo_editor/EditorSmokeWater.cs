@@ -101,6 +101,11 @@ public partial class EditorSmoke
                 && panel.HistoryPosition == history && panel.Style.Wave == .77f
                 && panel.Preview.ReferenceStyle.Wave == .77f,
                 "water_library_audition_preserves_working_draft_and_reference");
+            WaterWorkbenchProbe.LibraryContext(panel, 2, 2);
+            Expect(panel.LibraryPreview.Scene == 2 && panel.LibraryPreview.Seconds == 1.5f
+                && panel.LibraryPreview.Paused && panel.HistoryPosition == history
+                && panel.Style.Wave == .77f && panel.Preview.ReferenceStyle.Wave == .77f,
+                "water_library_scene_and_light_preserve_working_draft_and_reference");
             var preview = panel.LibraryPreview;
             panel.CloseLibrary();
             Expect(panel.LibraryPreview == null && !preview.IsProcessing(),

@@ -81,8 +81,14 @@ presets and saved working files; the summary shows their stored wave, shore
 and ripple values. Clear the search or reset the filters if nothing matches.
 Unreadable drafts are skipped and counted; **Refresh** retries the library.
 
-Selecting a result shows its own synthetic preview: low beach, daylight, and
-splash + hull paused at 1.50 seconds. Each selection rebuilds the same pose
+Selecting a result shows its own synthetic preview, initially low beach and
+daylight, with splash + hull paused at 1.50 seconds. The scene and light selectors let you
+judge the selection in open water, at a low beach or a high cliff, with
+daylight, dusk or night lighting. They rebuild the same fixed test pose and
+keep your context as you browse or close and reopen this panel's library.
+They affect only the selected preset's synthetic preview, including when
+Preview in World is enabled. They do not change World lighting.
+Each selection rebuilds the same pose
 with the selected style; it does not load or alter your working draft,
 reference, save destination, history or preview clock. An unfrozen working
 preview continues running normally. Saved selections are
