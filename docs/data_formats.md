@@ -2852,14 +2852,21 @@ target: every visible land tile as four triangles fanned from its centre
 corners from `YOffsets`), then every visible standing static (`Height >= 4`,
 wall, roof or foliage; not above `_maxZ`, not a hidden roof) as its own art
 sprite in its cell's colour, masked by the sprite's alpha, its top lerped
-toward the sky ambient by `min(1, Height / 20) * 0.75`.
+toward the sky ambient by `min(1, Height / 20) * 0.75`. A standing static in
+the open that is not a wall, door, window or roof is lit corner by corner:
+its left edge half way to the light at (x - 0.5, y + 0.5), its right edge
+half way to the light at (x + 0.5, y - 0.5), so the side toward a light is
+brighter.
 `RenderTargets.LightOverride` carries the texture; `RenderTargets.Draw` blends
 it with the classic darkness blend in place of the light target. The option
 off never builds the target.
 
 **Shadows** (`RealtimeShadows`). Casters are the drawn statics that are not a
 wall, door, window or roof, and are a tree, foliage, a rock, or at least 6 Z
-tall (not a low surface). Two masks the size of the target, nested under its
+tall (not a low surface); and, while classic shadows are replaced, every
+mobile whose classic shadow was due (`MobileView` hands its body frame, draw
+position, mirror flag and foot point to `GameScene.RecordRealtimeMobileShadow`
+instead of drawing it; its ground point follows the walking offset). Two masks the size of the target, nested under its
 viewport so they render first, are read by the land only (what stands up
 takes its own cell's light):
 
@@ -2886,7 +2893,8 @@ takes its own cell's light):
 `RealtimeReplacesClassicShadows` (the live scene draws Realtime lights,
 shadows on, classic not kept; false once the scene unloads) drops the
 classic tree, foliage and rock shadows from the world draw (`StaticView`, the
-sort's shadow pass); mobiles keep theirs. `RealtimeClassicShadows` keeps both.
+sort's shadow pass) and the classic mobile shadows (cast in the realtime
+masks instead). `RealtimeClassicShadows` keeps both.
 
 Log line every 5 s at trace level (every 30 frames in the editor):
 `[realtime-lights] grid=WxH lights=N computed=N cached=N quads=N sprites=N

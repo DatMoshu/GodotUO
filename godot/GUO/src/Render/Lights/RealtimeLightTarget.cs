@@ -72,7 +72,7 @@ void fragment() {
         private readonly List<Vector2> _points = new();
         private readonly List<Color> _colors = new();
         private readonly List<int> _indices = new();
-        private readonly List<(Rect2 rect, Texture2D texture, Rect2 source, Color bottom, Color top)> _sprites = new();
+        private readonly List<(Rect2 rect, Texture2D texture, Rect2 source, Color bl, Color br, Color tl, Color tr)> _sprites = new();
         private readonly List<(int start, Texture2D texture)> _shadows = new();
         private readonly List<Vector2> _shadowPoints = new();
         private readonly List<Vector2> _shadowUvs = new();
@@ -192,7 +192,7 @@ void fragment() {
         public void AddSprite(Rect2 rect, Texture2D texture, Rect2 source, Color bottom, Color top)
         {
             if (texture == null) return;
-            _sprites.Add((rect, texture, source, Opaque(bottom), Opaque(top)));
+            _sprites.Add((rect, texture, source, Opaque(bottom), Opaque(bottom), Opaque(top), Opaque(top)));
         }
 
         /// <summary>
@@ -210,6 +210,16 @@ void fragment() {
 
         /// <summary>Cells per side of a shadow's grid: the light left is sampled at every vertex.</summary>
         public const int ShadowCells = 3;
+
+        /// <summary>
+        /// One tall static lit corner by corner: <paramref name="bottomLeft"/>
+        /// and <paramref name="bottomRight"/> at its base, the top pair above.
+        /// </summary>
+        public void AddSprite(Rect2 rect, Texture2D texture, Rect2 source, Color bottomLeft, Color bottomRight, Color topLeft, Color topRight)
+        {
+            if (texture == null) return;
+            _sprites.Add((rect, texture, source, Opaque(bottomLeft), Opaque(bottomRight), Opaque(topLeft), Opaque(topRight)));
+        }
 
         /// <summary>
         /// One shadow: a sprite's silhouette laid on the ground as a
@@ -263,7 +273,7 @@ void fragment() {
 
                 AddQuad(s.texture, s.source,
                     s.rect.Position, new Vector2(s.rect.End.X, s.rect.Position.Y), s.rect.End, new Vector2(s.rect.Position.X, s.rect.End.Y),
-                    s.top, s.top, s.bottom, s.bottom);
+                    s.tl, s.tr, s.br, s.bl);
             }
 
             Flush(_item, run);

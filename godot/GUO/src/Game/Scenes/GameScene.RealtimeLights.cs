@@ -78,22 +78,53 @@ namespace GUO.Game.Scenes
         /// <summary>Lights that cast shadows in one frame, the strongest.</summary>
         private const int MaxShadowLights = 24;
 
-        /// <summary>A sprite that casts shadows: where it stands and what it looks like.</summary>
+        /// <summary>
+        /// A sprite that casts shadows: what it looks like (its art at screen
+        /// Px, Py, mirrored when Flip), and where its foot stands, on the
+        /// ground in tile units (WX, WY at Z) and on the screen (Foot).
+        /// </summary>
         private readonly struct RtCaster
         {
-            public readonly GameObject Obj;
             public readonly Texture2D Texture;
             public readonly Rect2 Source;
             public readonly float Px, Py;
+            public readonly bool Flip;
+            public readonly float WX, WY;
+            public readonly int Z;
+            public readonly Vector2 Foot;
+            public readonly bool IsMobile;
 
-            public RtCaster(GameObject obj, Texture2D texture, Rect2 source, float px, float py)
+            public RtCaster(Texture2D texture, Rect2 source, float px, float py, bool flip, float wx, float wy, int z, Vector2 foot, bool isMobile = false)
             {
-                Obj = obj;
                 Texture = texture;
                 Source = source;
                 Px = px;
                 Py = py;
+                Flip = flip;
+                WX = wx;
+                WY = wy;
+                Z = z;
+                Foot = foot;
+                IsMobile = isMobile;
             }
+        }
+
+        /// <summary>Mobile body frames the world draw handed over this frame in place of their classic shadow.</summary>
+        private readonly List<RtCaster> _rtMobileCasters = new();
+
+        /// <summary>
+        /// MobileView, where it would draw a classic shadow while Realtime
+        /// shadows replace them: the frame it would have shadowed, at its
+        /// draw position, with the screen point it stands on.
+        /// </summary>
+        internal static void RecordRealtimeMobileShadow(Mobile owner, Texture2D texture, GUO.Compat.Rectangle uv, int x, int y, bool flip, int footX, int footY)
+        {
+            GameScene scene = _rtScene;
+            if (scene == null || texture == null || owner == null) return;
+            float ox = (owner.Offset.X + owner.Offset.Y) / 44f;
+            float oy = (owner.Offset.Y - owner.Offset.X) / 44f;
+            scene._rtMobileCasters.Add(new RtCaster(texture, uv.ToGodotF(), x, y, flip,
+                owner.X + ox, owner.Y + oy, owner.Z, new Vector2(footX, footY), true));
         }
 
         /// <summary>On, in game, and not during the black-and-white death frame (the classic path runs then).</summary>
@@ -243,6 +274,7 @@ namespace GUO.Game.Scenes
             }
             finally
             {
+                _rtMobileCasters.Clear();
                 _rtSourceCount = 0;
                 _lightCount = 0;
             }
@@ -485,21 +517,33 @@ namespace GUO.Game.Scenes
                 Color sky = _rtField.AmbientAt(obj.X, obj.Y, obj.Z);
                 // Light falls off going up: a wall's top course is lit less by a
                 // lamp at its foot. Flat pieces and roofs are one colour.
-                Color top = roof || sdata.Height < 4 ? bottom : bottom.Lerp(sky, Math.Min(1f, sdata.Height / 20f) * 0.75f);
+                float up = roof || sdata.Height < 4 ? 0f : Math.Min(1f, sdata.Height / 20f) * 0.75f;
+                Color left = bottom, right = bottom;
+                // A tree, a rock, a post in the open: the side toward a light
+                // is brighter, the light half a tile to either side of its foot
+                // (a wall keeps one colour: half a tile off is its other face).
+                if (!roof && !sdata.IsWall && !sdata.IsDoor && !sdata.IsWindow && sdata.Height >= 4
+                    && !_rtField.IsRoofed(obj.X, obj.Y) && !_rtField.IsAboveLight(obj.X, obj.Y, obj.Z))
+                {
+                    left = bottom.Lerp(RealtimeLightField.Scale(_rtField.RawAt(obj.X - 0.5f, obj.Y + 0.5f)), 0.5f);
+                    right = bottom.Lerp(RealtimeLightField.Scale(_rtField.RawAt(obj.X + 0.5f, obj.Y - 0.5f)), 0.5f);
+                }
                 _rtTarget.AddSprite(
                     new Rect2(px, py, art.UV.Width, art.UV.Height),
                     art.Texture,
                     art.UV.ToGodotF(),
-                    bottom,
-                    top);
+                    left, right, left.Lerp(sky, up), right.Lerp(sky, up));
 
                 if (!roof && CastsRealtimeShadow(obj.Graphic, ref sdata))
                 {
-                    _rtCasters.Add(new RtCaster(obj, art.Texture, art.UV.ToGodotF(), px, py));
+                    _rtCasters.Add(new RtCaster(art.Texture, art.UV.ToGodotF(), px, py, false,
+                        obj.X, obj.Y, obj.Z, RealtimeScreen(obj.X, obj.Y, obj.Z) + new Vector2(0f, 12f)));
                 }
             }
 
             _rtShadowLights.Clear();
+            _rtCasters.AddRange(_rtMobileCasters);
+            _rtMobileCasters.Clear();
             if (ProfileManager.CurrentProfile.RealtimeShadows)
             {
                 // One draw per atlas page rather than per caster.
@@ -530,18 +574,21 @@ namespace GUO.Game.Scenes
             // drawn over one does not erase it.
             // It replaces the classic static shadow, so it follows the same
             // Options (Shadows, Statics shadows); the lights' shadows do not.
+            // A mobile's frame only arrives when its classic shadow was due
+            // (Shadows on), so the statics' setting gates the statics alone.
             var profile = ProfileManager.CurrentProfile;
             bool sky = profile.ShadowsEnabled && profile.ShadowsStatics;
             foreach (RtCaster c in _rtCasters)
             {
-                if (!sky) break;
-                GameObject o = c.Obj;
-                if (_rtField.IsRoofed(o.X, o.Y)) continue;
+                if (!sky && !c.IsMobile) continue;
+                if (_rtField.IsRoofed((int)MathF.Floor(c.WX + 0.5f), (int)MathF.Floor(c.WY + 0.5f))) continue;
                 float w = c.Source.Size.X, h = c.Source.Size.Y * 0.5f;
                 float ty = c.Py + h - 10f, ratio = h / w;
-                _rtTarget.AddAmbientShadow(c.Texture, c.Source,
-                    new Vector2(c.Px + w * ratio, ty), new Vector2(c.Px + w * (ratio + 1f), ty),
-                    new Vector2(c.Px + w, ty + h), new Vector2(c.Px, ty + h));
+                Vector2 tl = new(c.Px + w * ratio, ty), tr = new(c.Px + w * (ratio + 1f), ty);
+                Vector2 br = new(c.Px + w, ty + h), bl = new(c.Px, ty + h);
+                // A mirrored frame: the same quad, its texture columns reversed.
+                if (c.Flip) _rtTarget.AddAmbientShadow(c.Texture, c.Source, tr, tl, bl, br);
+                else _rtTarget.AddAmbientShadow(c.Texture, c.Source, tl, tr, br, bl);
             }
 
             // The lights', the strongest few, weakest first.
@@ -563,14 +610,13 @@ namespace GUO.Game.Scenes
                 float lx = s.PosX, ly = s.PosY;
                 foreach (RtCaster c in _rtCasters)
                 {
-                    GameObject o = c.Obj;
-                    float dx = o.X - lx, dy = o.Y - ly;
+                    float dx = c.WX - lx, dy = c.WY - ly;
                     float d = MathF.Sqrt(dx * dx + dy * dy);
                     // Its own lamp post, or past the light's reach.
                     if (d < 0.75f || d >= s.Radius) continue;
                     // A light standing well above the caster's top throws no shadow on the ground beside it.
-                    if (s.Z > o.Z + 30) continue;
-                    Color blocked = _rtField.SourceAt(n, o.X, o.Y);
+                    if (s.Z > c.Z + 30) continue;
+                    Color blocked = _rtField.SourceAt(n, c.WX, c.WY);
                     if (blocked.R + blocked.G + blocked.B < 0.02f) continue;
 
                     // Away from the light along the ground, in screen space;
@@ -580,12 +626,13 @@ namespace GUO.Game.Scenes
                     // way the shadow falls, so a sign does not cast its mirror.
                     Vector2 v = new(u.Y, -u.X);
                     if (v.X > 0f) v = -v;
+                    if (c.Flip) v = -v;
                     float w = c.Source.Size.X, h = c.Source.Size.Y;
                     float length = h * Math.Clamp(0.45f + 0.9f * d / s.Radius, 0.45f, 1.35f);
-                    Vector2 foot = RealtimeScreen(o.X, o.Y, o.Z) + new Vector2(0f, 12f);
+                    Vector2 foot = c.Foot;
                     Vector2 tip = foot + u * length;
                     Vector2 half = v * (w * 0.5f), spread = v * (w * 0.55f);
-                    FillShadowGrid(tip + spread, tip - spread, foot + half, foot - half, o, n, LightShadowShare);
+                    FillShadowGrid(tip + spread, tip - spread, foot + half, foot - half, in c, n, LightShadowShare);
                     _rtTarget.AddShadow(c.Texture, c.Source, _rtShadowPoints, _rtShadowShades);
                 }
             }
@@ -605,9 +652,9 @@ namespace GUO.Game.Scenes
         /// <paramref name="light"/>'s share, fading toward the sprite's top row.
         /// </summary>
         private void FillShadowGrid(Vector2 topLeft, Vector2 topRight, Vector2 bottomLeft, Vector2 bottomRight,
-            GameObject caster, int light, float share)
+            in RtCaster caster, int light, float share)
         {
-            Vector2 origin = RealtimeScreen(caster.X, caster.Y, caster.Z);
+            Vector2 origin = RealtimeScreen(caster.WX, caster.WY, caster.Z);
             const int g = RealtimeLightTarget.ShadowGrid, cells = RealtimeLightTarget.ShadowCells;
             for (int j = 0; j < g; j++)
             {
@@ -621,7 +668,7 @@ namespace GUO.Game.Scenes
                     _rtShadowPoints[j * g + i] = p;
                     // The screen offset back to the ground, in tile units.
                     Vector2 off = p - origin;
-                    float wx = caster.X + (off.X + off.Y) / 44f, wy = caster.Y + (off.Y - off.X) / 44f;
+                    float wx = caster.WX + (off.X + off.Y) / 44f, wy = caster.WY + (off.Y - off.X) / 44f;
                     Color blocked = Share(_rtField.SourceAt(light, wx, wy), k);
                     _rtShadowShades[j * g + i] = RealtimeLightField.Without(_rtField.RawAt(wx, wy), blocked);
                 }

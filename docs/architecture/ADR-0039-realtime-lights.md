@@ -112,8 +112,11 @@ those replace UO's static shadows with an opt-out. This amends decision 4.
   sprite laid on the ground away from that light, its length growing with
   distance, the light left sampled on a 3x3 grid. Trees and thin posts no
   longer block the tile grid, which cut blocky wedges out of the pools. The
-  classic static shadows step aside unless kept; mobiles keep theirs until
-  they cast realtime ones. The world draw changes only by that gate.
+  classic static shadows step aside unless kept, and so do the mobiles':
+  `MobileView` hands the frame it would have shadowed to the realtime pass
+  (one marked branch), so a walker casts a shadow away from every torch near
+  them. A standing static in the open is lit brighter on the side toward a
+  light. The world draw changes only by those gates.
 
 Cost at the Britain bank street, editor, 1280x720: 2.9 to 3.4 ms a frame for
 grid, field, geometry and shadows together (25 casters, up to 8 lights).
