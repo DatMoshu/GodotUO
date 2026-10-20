@@ -20,6 +20,8 @@ public partial class EditorTour
         var panel = _world.WaterWorkspace;
         int tab = _world.SettingsTabs.CurrentTab;
         var previous = panel.Style;
+        var previousReference = panel.Preview.ReferenceStyle;
+        bool previousCompare = panel.CompareToggle.ButtonPressed;
         try
         {
             EditorInterface.Singleton.SetMainScreenEditor(GuoEditorPlugin.WorldTabName);
@@ -33,13 +35,15 @@ public partial class EditorTour
             Check(WaterRender.EditorWorld == _world.Host.World, "the draft previews only in this editor world");
             Say("Water has editable presets and a synthetic preview. Preview in World applies the same style to the map's wet tiles without saving a player setting.");
             await Shot(3);
+            panel.KeepReference();
             float before = panel.Style.Glint;
             panel.NumberInput("Glints").Value = 0;
             Check(panel.Style.Glint == 0 && panel.Dirty, "the numeric control updates the draft");
             panel.Undo(); Check(panel.Style.Glint == before, "water tuning is undoable");
             panel.Redo(); Check(panel.Style.Glint == 0, "water tuning is redoable");
+            Check(panel.Preview.ReferenceStyle.Glint == before, "kept reference survives tuning and undo");
             panel.Preview.Splash();
-            Say("Test a spreading splash or a moving synthetic hull, then freeze the water or compare with Classic tiles. These tests need no shard.");
+            Say("Keep reference compares the original preset on the left with your edited draft on the right. Splash and hull inputs share the same clock; only the draft previews in World.");
             await Shot(3);
             panel.ClassicToggle.ButtonPressed = true;
             await Frames(8);
@@ -56,6 +60,8 @@ public partial class EditorTour
         finally
         {
             panel.WorldToggle.ButtonPressed = false; panel.ClassicToggle.ButtonPressed = false;
+            panel.SetReference(previousReference);
+            panel.CompareToggle.ButtonPressed = previousCompare;
             panel.LoadStyle(previous); _world.SettingsTabs.CurrentTab = tab;
         }
     }

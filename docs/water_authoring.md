@@ -37,6 +37,17 @@ by the selected model are dimmed and read-only; switching models preserves
 their values. Realistic does not use palette levels, while UO+ also leaves
 tint, glints and wave scale unused. Cel uses shore foam as an on/off surf switch.
 
+Use **Keep reference** before tuning to retain a snapshot of the current draft.
+It enables **Compare**: the left half shows the reference, and the right half
+shows your current draft. Both halves use the same scene, lighting, clock and
+splash/hull inputs; each retains its own ripple strength and wave retention.
+Keeping or clearing a reference restarts both ripple fields. Later preset loads,
+edits and undo do not change the reference. **Clear reference** returns Compare
+to its original Classic-versus-draft view. **Classic** temporarily bypasses both
+styles. This reference is a temporary comparison, not another saved draft;
+save or export the draft separately to keep its settings between editor sessions.
+Only the synthetic preview is split; the World preview always uses the draft.
+
 Enable **Preview in World** to use the draft on the World view's wet tiles.
 It applies only to that embedded world instance. Classic comparison temporarily
 draws its original tiles. Disabling preview restores the editor's previous

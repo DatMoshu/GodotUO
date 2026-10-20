@@ -24,6 +24,14 @@ public partial class WaterWorkbenchProbe : Node
         if (!value) throw new InvalidOperationException(name);
         _checks++; GD.Print("[water authoring] PASS " + name);
     }
+    private static int DifferentPixels(Image a, Image b, int from, int to)
+    {
+        int count = 0;
+        for (int y = 0; y < a.GetHeight(); y++)
+            for (int x = from; x < to; x++)
+                if (a.GetPixel(x, y) != b.GetPixel(x, y)) count++;
+        return count;
+    }
     public override async void _Ready()
     {
         WaterPanel panel = null;
@@ -78,6 +86,21 @@ public partial class WaterWorkbenchProbe : Node
             panel.Undo(); panel.NumberInput("Glints").Value = 0;
             int history = panel.HistoryPosition;
             panel.Redo(); Require(panel.HistoryPosition == history && panel.Style.Glint == 0, "new edit discards redo branch");
+            panel.LoadStyle(WaterAuthoring.Presets[1]);
+            int beforeReference = panel.HistoryPosition;
+            Press(panel, "Keep reference");
+            Require(panel.CompareToggle.ButtonPressed && panel.Preview.ReferenceStyle.Name == panel.Style.Name
+                && !ReferenceEquals(panel.Preview.ReferenceStyle.Tint, panel.Style.Tint)
+                && !panel.Dirty && panel.HistoryPosition == beforeReference, "keeping a reference snapshots settings without editing or saving the draft");
+            byte[] referenceBytes = WaterAuthoring.Serialize(panel.Preview.ReferenceStyle);
+            panel.NumberInput("Wave strength").Value = .82;
+            panel.LoadStyle(WaterAuthoring.Presets[6]); panel.Undo(); panel.Redo();
+            Require(WaterAuthoring.Serialize(panel.Preview.ReferenceStyle).AsSpan().SequenceEqual(referenceBytes),
+                "reference survives edits, preset loads and undo independently");
+            byte[] beforeClear = WaterAuthoring.Serialize(panel.Style);
+            Press(panel, "Clear reference");
+            Require(panel.Preview.ReferenceStyle == null && panel.CompareToggle.ButtonPressed
+                && WaterAuthoring.Serialize(panel.Style).AsSpan().SequenceEqual(beforeClear), "clearing reference restores Classic comparison and preserves draft");
             panel.LoadStyle(WaterAuthoring.Presets[0]);
             Require(!panel.NumberInput("Glints").Editable && !panel.NumberInput("Wave scale").Editable
                 && !panel.NumberInput("Palette levels").Editable && panel.NumberInput("Pixel size").Editable,
@@ -216,6 +239,70 @@ public partial class WaterWorkbenchProbe : Node
                 Require(frozenA.GetData().AsSpan().SequenceEqual(frozenB.GetData()), "freeze preserves rendered bytes");
                 Require(frozenB.GetPixel(frozenB.GetWidth() - 4, frozenB.GetHeight() - 4).R < .4f,
                     "preview fills its resized viewport");
+                var reference = WaterAuthoring.Presets[1];
+                large.SetStyle(reference); large.SetScene(0);
+                large.Compare = false; large.Paused = true; large.Advance(0);
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                using var frozenBeforePin = large.Capture();
+                large.SetReference(reference); large.Compare = true; large.Advance(0);
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                using var frozenAfterPin = large.Capture();
+                int middle = frozenAfterPin.GetWidth() / 2;
+                Require(DifferentPixels(frozenBeforePin, frozenAfterPin, 0, middle - 2) == 0,
+                    "keeping a reference while frozen preserves the current wave phase");
+                large.Compare = false; large.Paused = false; large.Boat = true; large.Splash();
+                for (int i = 0; i < 30; i++) large.Advance(.05f);
+                large.Paused = true; large.Advance(0);
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                using var singleStyle = large.Capture();
+                large.Compare = true; large.Advance(0);
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                using var matched = large.Capture();
+                Require(DifferentPixels(singleStyle, matched, 0, middle - 2) == 0
+                    && DifferentPixels(singleStyle, matched, middle + 2, matched.GetWidth()) == 0,
+                    "identical reference and draft retain pixel-identical synchronized splash and hull fields");
+                large.SetStyle(reference with { Tint = new[] { .65f, .08f, .12f }, Wave = .85f });
+                large.Advance(0);
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                using var compared = large.Capture();
+                Require(DifferentPixels(matched, compared, 0, middle - 2) == 0
+                    && DifferentPixels(matched, compared, middle + 2, matched.GetWidth()) > 100,
+                    "editing draft changes right side while pinned left side stays byte-identical");
+                panel.LoadStyle(reference); Press(panel, "Keep reference");
+                panel.Change(reference with { Tint = new[] { .65f, .08f, .12f }, Wave = .85f });
+                panel.ScrollVertical = 0;
+                caption.Text = "Left: Pixel water reference\nRight: edited draft; identical time, lighting and stimuli";
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                using var comparisonShot = viewport.GetTexture().GetImage();
+                Require(comparisonShot.SavePng(Path.Combine(stills, $"guo_WATER-EDITOR_reference-{renderer}_still_{DateTime.UtcNow:yyyyMMdd-HHmm}.png")) == Error.Ok,
+                    "capture reference comparison controls and synchronized split");
+                large.Classic = true; large.Advance(0);
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                using var classicWithReference = large.Capture();
+                large.SetReference(null); large.Compare = false; large.Advance(0);
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                using var classicWithoutReference = large.Capture();
+                Require(classicWithReference.GetData().AsSpan().SequenceEqual(classicWithoutReference.GetData()),
+                    "Classic bypasses both pinned and draft styles");
+                var stillReference = reference with { Speed = 0, RippleStrength = 0 };
+                large.Classic = false; large.Boat = false; large.Paused = false; large.Compare = true;
+                large.SetStyle(stillReference with { RippleStrength = 1 }); large.SetReference(stillReference);
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                using var beforeSplash = large.Capture();
+                large.Splash();
+                for (int i = 0; i < 30; i++) large.Advance(.05f);
+                large.Paused = true; large.Advance(0);
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                using var afterSplash = large.Capture();
+                Require(DifferentPixels(beforeSplash, afterSplash, 0, middle - 2) == 0
+                    && DifferentPixels(beforeSplash, afterSplash, middle + 2, afterSplash.GetWidth()) > 100,
+                    "reference and draft apply independent ripple strength to the same splash input");
+                large.SetReference(null); large.Compare = false;
+                Press(panel, "Clear reference");
+                large.Classic = false; large.Advance(0);
+                caption.Text = "Frozen styled water • compare is off";
                 panel.ScrollVertical = 10000;
                 await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
                 await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);

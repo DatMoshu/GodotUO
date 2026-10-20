@@ -6,6 +6,8 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Water
+- Keep a reference in the water editor to compare a preset with your tuned
+  draft using synchronized lighting, waves and test splashes.
 - The editor has a Water workspace with editable starter presets, synthetic
   splash and hull previews, reversible tuning, Classic comparison, local
   drafts and data-only Store pack export.

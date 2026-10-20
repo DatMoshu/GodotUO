@@ -14,9 +14,13 @@ internal partial class WaterPreview : SubViewportContainer
     private SubViewport _viewport;
     private Shader _shader;
     private ShaderMaterial _material;
+    private ShaderMaterial _referenceMaterial;
     private ImageTexture _mask;
     private ColorRect _rect;
+    private ColorRect _referenceRect;
     private readonly WaterRipples _ripples = new();
+    private readonly WaterRipples _referenceRipples = new();
+    internal StoreWater ReferenceStyle { get; private set; }
     private float _step, _seconds, _boat;
     internal bool Paused;
     internal bool Boat;
@@ -42,9 +46,11 @@ internal partial class WaterPreview : SubViewportContainer
             uniform bool compare = false;
             uniform bool classic = false;
             uniform float brightness = 1.0;
+            uniform bool reference_side = false;
             void fragment() {
                 // Original synthetic texels; never samples client artwork.
                 vec2 pixel = FRAGCOORD.xy * water_target_to_world.xy;
+                if (reference_side && pixel.x >= 256.0) discard;
                 float check = mod(floor(pixel.x / 2.0) + floor(pixel.y / 2.0), 2.0);
                 vec3 base = mix(vec3(0.07, 0.13, 0.21), vec3(0.09, 0.16, 0.25), check) * brightness;
                 vec2 f;
@@ -54,19 +60,55 @@ internal partial class WaterPreview : SubViewportContainer
                 vec3 native = dry ? vec3(0.35, 0.30, 0.20) * brightness : base;
                 vec3 styled = dry ? native : water_shade(base, FRAGCOORD.xy);
                 COLOR = vec4(classic || (compare && pixel.x < 256.0) ? native : styled, 1.0);
-                if (compare && abs(pixel.x - 256.0) < 1.0) COLOR.rgb = vec3(0.65);
+                if (compare && !classic && abs(pixel.x - 256.0) < 1.0) COLOR.rgb = vec3(0.65);
             }
             """ };
         _material = new ShaderMaterial { Shader = _shader };
         _rect = new ColorRect { Size = new Vector2(512, 256), Material = _material, MouseFilter = MouseFilterEnum.Ignore };
         _viewport.AddChild(_rect);
-        _material.SetShaderParameter("water_mask_origin", new Vector2(-64, -64));
-        _material.SetShaderParameter("water_target_to_world", new Vector4(1, 1, -256, -148));
-        _material.SetShaderParameter("water_ripples_origin", new Vector2(-64, -64));
+        _referenceMaterial = new ShaderMaterial { Shader = _shader };
+        _referenceMaterial.SetShaderParameter("reference_side", true);
+        _referenceRect = new ColorRect { Size = _rect.Size, Material = _referenceMaterial,
+            MouseFilter = MouseFilterEnum.Ignore, Visible = false };
+        _viewport.AddChild(_referenceRect);
+        SetBoth("water_mask_origin", new Vector2(-64, -64));
+        SetBoth("water_target_to_world", new Vector4(1, 1, -256, -148));
+        SetBoth("water_ripples_origin", new Vector2(-64, -64));
         SetScene(0);
         SetStyle(WaterAuthoring.Presets[0]);
         ResetWaves();
         SetProcess(true);
+    }
+
+    private void SetBoth(string name, Variant value)
+    {
+        _material?.SetShaderParameter(name, value);
+        _referenceMaterial?.SetShaderParameter(name, value);
+    }
+
+    private void EachField(Action<WaterRipples> action)
+    {
+        action(_ripples);
+        if (ReferenceStyle != null) action(_referenceRipples);
+    }
+
+    internal void SetReference(StoreWater style)
+    {
+        ReferenceStyle = style == null ? null : style with { Tint = (float[])style.Tint.Clone() };
+        if (ReferenceStyle != null)
+        {
+            new PackWaterStyle("editor-reference", ReferenceStyle).Bind((name, value) => _referenceMaterial.SetShaderParameter(name, value));
+            _referenceRipples.Strength = ReferenceStyle.RippleStrength;
+            _referenceRipples.Damping = ReferenceStyle.RippleDamping;
+        }
+        else
+        {
+            _referenceRect.Visible = false;
+            _referenceMaterial.SetShaderParameter("water_ripples", default(Variant));
+            _referenceRipples.DisposeForEditor();
+        }
+        ResetWaves();
+        Advance(0);
     }
 
     internal void SetStyle(StoreWater style)
@@ -74,7 +116,7 @@ internal partial class WaterPreview : SubViewportContainer
         if (_material == null) return;
         Vector2I size = _viewport.Size;
         _rect.Size = size;
-        _material.SetShaderParameter("water_target_to_world", new Vector4(512f / Math.Max(1, size.X), 256f / Math.Max(1, size.Y), -256, -148));
+        SetBoth("water_target_to_world", new Vector4(512f / Math.Max(1, size.X), 256f / Math.Max(1, size.Y), -256, -148));
         new PackWaterStyle("editor-preview", style).Bind((name, value) => _material.SetShaderParameter(name, value));
         _ripples.Strength = style.RippleStrength;
         _ripples.Damping = style.RippleDamping;
@@ -94,38 +136,43 @@ internal partial class WaterPreview : SubViewportContainer
             }
         _mask?.Dispose();
         _mask = ImageTexture.CreateFromImage(image);
-        _material.SetShaderParameter("water_mask", _mask);
+        SetBoth("water_mask", _mask);
         ResetWaves();
     }
 
-    internal void SetBrightness(float value) => _material?.SetShaderParameter("brightness", value);
+    internal void SetBrightness(float value) => SetBoth("brightness", value);
     internal void Splash()
     {
-        _ripples.Stamp(0, 0, .7f, .8f);
-        _ripples.StepForProbe(0);
+        EachField(field => { field.Stamp(0, 0, .7f, .8f); field.StepForProbe(0); });
         BindWaves();
     }
 
     internal void ResetWaves()
     {
-        _ripples.Reset(); _ripples.CentreOnForProbe(0, 0); _ripples.StepForProbe(0);
+        EachField(field => { field.Reset(); field.CentreOnForProbe(0, 0); field.StepForProbe(0); });
         _boat = -3; _step = 0;
         BindWaves();
     }
 
-    private void BindWaves() => _material?.SetShaderParameter("water_ripples", _ripples.Texture);
+    private void BindWaves()
+    {
+        _material?.SetShaderParameter("water_ripples", _ripples.Texture);
+        if (ReferenceStyle != null) _referenceMaterial?.SetShaderParameter("water_ripples", _referenceRipples.Texture);
+    }
 
     internal void Advance(float delta)
     {
         if (_material == null) return;
         Vector2I size = _viewport.Size;
         _rect.Size = size;
-        _material.SetShaderParameter("water_target_to_world", new Vector4(512f / Math.Max(1, size.X), 256f / Math.Max(1, size.Y), -256, -148));
+        _referenceRect.Size = size;
+        SetBoth("water_target_to_world", new Vector4(512f / Math.Max(1, size.X), 256f / Math.Max(1, size.Y), -256, -148));
+        _referenceRect.Visible = ReferenceStyle != null && Compare && !Classic;
         _material.SetShaderParameter("compare", Compare);
         _material.SetShaderParameter("classic", Classic);
+        if (!Paused) _seconds += delta;
+        SetBoth("water_time", _seconds);
         if (Paused) return;
-        _seconds += delta;
-        _material.SetShaderParameter("water_time", _seconds);
         _step += Math.Min(delta, .2f);
         int steps = 0;
         while (_step >= .05f)
@@ -134,13 +181,16 @@ internal partial class WaterPreview : SubViewportContainer
             {
                 _boat += .08f; if (_boat > 3) _boat = -3;
                 // A moving synthetic hull: two sides and a bow; the field leaves the trail.
-                _ripples.Stamp(_boat, -1, .45f, .18f);
-                _ripples.Stamp(_boat, 1, .45f, .18f);
-                _ripples.Stamp(_boat + 1, 0, .5f, .25f);
+                EachField(field =>
+                {
+                    field.Stamp(_boat, -1, .45f, .18f);
+                    field.Stamp(_boat, 1, .45f, .18f);
+                    field.Stamp(_boat + 1, 0, .5f, .25f);
+                });
             }
             _step -= .05f; steps++;
         }
-        if (steps > 0) { _ripples.StepForProbe(steps); BindWaves(); }
+        if (steps > 0) { EachField(field => field.StepForProbe(steps)); BindWaves(); }
     }
 
     public override void _Process(double delta) { if (IsVisibleInTree() || LiveWorld) Advance((float)delta); }
@@ -149,10 +199,13 @@ internal partial class WaterPreview : SubViewportContainer
     {
         SetProcess(false);
         if (_material != null) _material.SetShaderParameter("water_ripples", default(Variant));
+        if (_referenceMaterial != null) _referenceMaterial.SetShaderParameter("water_ripples", default(Variant));
         _mask?.Dispose(); _mask = null;
         _material?.Dispose(); _material = null;
+        _referenceMaterial?.Dispose(); _referenceMaterial = null;
         _shader?.Dispose(); _shader = null;
         _ripples.DisposeForEditor();
+        _referenceRipples.DisposeForEditor();
     }
 
     public override void _ExitTree() => Shutdown();

@@ -1,11 +1,11 @@
 {
   "id": "editor.water.authoring",
-  "title": "Author water in the World workspace, compare Classic and export a local pack",
+  "title": "Author water in the World workspace, compare a kept reference and Classic, and export a local pack",
   "surface": "editor",
   "requires": { "build": "debug" },
   "timeouts": { "step_s": 240, "run_s": 600 },
   "steps": [
     { "id": "launch", "do": { "kind": "launch" }, "timeout_s": 300, "say": "Open the GUO editor." },
-    { "id": "water", "do": { "kind": "tour_segment", "id": "water" }, "say": "Load and tune a water preset, test undo and redo, compare Classic and export a local data-only pack.", "shot": true }
+    { "id": "water", "do": { "kind": "tour_segment", "id": "water" }, "say": "Keep a preset reference, tune the draft, test undo and redo, compare Classic and export a local data-only pack.", "shot": true }
   ]
 }

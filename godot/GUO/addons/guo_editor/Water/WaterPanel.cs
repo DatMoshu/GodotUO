@@ -30,9 +30,9 @@ internal partial class WaterPanel : ScrollContainer
     private LineEdit _name, _packId, _version, _author;
     private OptionButton _presets, _model, _licence;
     private ColorPickerButton _tint;
-    private Label _status, _dirty, _modelInfo;
-    private Button _undo, _redo;
-    private CheckBox _apply, _classic, _freeze;
+    private Label _status, _dirty, _modelInfo, _comparisonInfo;
+    private Button _undo, _redo, _clearReference;
+    private CheckBox _apply, _classic, _freeze, _compare;
     private WaterPreview _preview;
     private bool _sync;
     private Func<GUO.Game.World> _world;
@@ -46,6 +46,7 @@ internal partial class WaterPanel : ScrollContainer
     internal CheckBox WorldToggle => _apply;
     internal CheckBox ClassicToggle => _classic;
     internal CheckBox FreezeToggle => _freeze;
+    internal CheckBox CompareToggle => _compare;
     internal string DraftPath => _draft;
     internal string StatusText => _status.Text;
     internal bool Dirty => !WaterAuthoring.Serialize(_style).AsSpan().SequenceEqual(WaterAuthoring.Serialize(_baseline));
@@ -73,10 +74,15 @@ internal partial class WaterPanel : ScrollContainer
         Toggle(tests, "Moving hull", false, on => _preview.Boat = on);
         AddButton(tests, "Clear waves", () => _preview.ResetWaves());
         var viewing = new HFlowContainer(); body.AddChild(viewing);
-        Toggle(viewing, "Compare", false, on => _preview.Compare = on).TooltipText = "Left: original synthetic texels. Right: this style.";
-        _classic = Toggle(viewing, "Classic", false, on => { _preview.Classic = on; UpdateWorld(); });
+        _compare = Toggle(viewing, "Compare", false, on => { _preview.Compare = on; UpdateReference(); });
+        _classic = Toggle(viewing, "Classic", false, on => { _preview.Classic = on; UpdateReference(); UpdateWorld(); });
         _classic.TooltipText = "Temporarily show original tiles, retaining your draft.";
         _freeze = Toggle(viewing, "Freeze", false, on => _preview.Paused = on);
+        var referenceActions = new HFlowContainer(); body.AddChild(referenceActions);
+        AddButton(referenceActions, "Keep reference", () => Try(KeepReference)).TooltipText = "Keep this draft's settings on the left of Compare. Further edits affect only the right side. Restarts both ripple fields together.";
+        _clearReference = AddButton(referenceActions, "Clear reference", ClearReference);
+        _comparisonInfo = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        body.AddChild(_comparisonInfo); UpdateReference();
         var sceneRow = new HBoxContainer(); body.AddChild(sceneRow);
         var scene = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         foreach (string s in new[] { "Open water", "Low beach", "High cliff" }) scene.AddItem(s);
@@ -167,6 +173,29 @@ internal partial class WaterPanel : ScrollContainer
         NumericScrub.Attach(label, input);
     }
     private void CommitName() { if (!_sync) Change(_style with { Name = _name.Text.Trim() }); }
+
+    internal void KeepReference()
+    {
+        CommitName();
+        SetReference(_style);
+        _compare.ButtonPressed = true;
+        UpdateReference();
+    }
+    internal void ClearReference() => SetReference(null);
+    internal void SetReference(StoreWater style)
+    {
+        _preview.SetReference(style);
+        UpdateReference();
+    }
+    private void UpdateReference()
+    {
+        if (_comparisonInfo == null) return;
+        string left = _preview.ReferenceStyle?.Name ?? "Classic synthetic texels";
+        _compare.TooltipText = $"Left: {left}. Right: the current draft. Only the synthetic preview is split.";
+        _comparisonInfo.Text = $"Left: {left}\nRight: current draft";
+        _comparisonInfo.Visible = _compare.ButtonPressed && !_classic.ButtonPressed;
+        _clearReference.Disabled = _preview.ReferenceStyle == null;
+    }
 
     internal void Change(StoreWater style)
         => Push(style, _document);
