@@ -292,18 +292,19 @@ def replace_static_records(stage: Stage, records: dict[int, bytes]) -> None:
                         raise ValueError("compressed static replacement is not certified")
                     if min(offset, header, stored, length) < 0 or offset + header + stored > len(raw):
                         raise ValueError("invalid occupied UOP payload")
-                    found.append((at, key))
+                    found.append((at, key, raw[offset:offset + header]))
             block = nxt
-        if len(found) != len(targets) or len({key for _, key in found}) != len(targets):
+        if len(found) != len(targets) or len({key for _, key, _ in found}) != len(targets):
             raise ValueError("replacement requires exactly one occupied record per static ID")
         with path.open("r+b") as stream:
-            for at, key in found:
+            for at, key, header_bytes in found:
                 data = targets[key]
                 stream.seek(0, 2)
                 offset = stream.tell()
+                stream.write(header_bytes)
                 stream.write(data)
                 stream.seek(at)
-                stream.write(struct.pack("<qiiiQIh", offset, 0, len(data), len(data), key, zlib.adler32(data), 0))
+                stream.write(struct.pack("<qiiiQIh", offset, len(header_bytes), len(data), len(data), key, zlib.adler32(data), 0))
         _UOP_CACHE.clear()
     else:
         for item in records:

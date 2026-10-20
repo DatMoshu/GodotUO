@@ -24,13 +24,15 @@ def art(colors=(0x7c00, 0, 0x001f, 0x0421, 0x03e0, 0x7fff)):
         + struct.pack("<HH3HHH", 0, 3, *colors[3:], 0, 0) + b"preserved-padding")
 
 
-def make_uop(path, entries):
+def make_uop(path, entries, headers=None):
     data = bytearray(struct.pack("<IIIqIi", writer.UOP_MAGIC, 5, 0xFD23EC43, 0, 100, len(entries)))
     table = []
     for ident, raw in entries.items():
         offset = len(data)
+        prefix = (headers or {}).get(ident, b"")
+        data += prefix
         data += raw
-        table.append(struct.pack("<qiiiQIh", offset, 0, len(raw), len(raw),
+        table.append(struct.pack("<qiiiQIh", offset, len(prefix), len(raw), len(raw),
             parity.uop_hash(writer.ART_PATTERN.format(ident)), 0, 0))
     block = len(data)
     data += struct.pack("<iq", len(table), 0) + b"".join(table)

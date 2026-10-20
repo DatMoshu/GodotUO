@@ -22,7 +22,7 @@ with each image no larger than 1024 × 1024.
 
 Linked/hardlinked inputs, missing or empty IDs, malformed containers,
 source-layer verdata and unsupported UOP layouts are refused. Uncompressed,
-zero-entry-header art UOP and MUL/IDX are certified separately by the existing
+art UOP (including opaque entry headers) and MUL/IDX are certified separately by the existing
 independent ClassicUO oracle. An existing stage must belong to the selected
 installation and contain complete art containers when it overrides them.
 
@@ -57,5 +57,6 @@ against the independent pinned reader. They cover both containers, untouched
 records, headers, collisions, empty IDs, malformed PNGs, stale previews,
 per-image rechecks, cancellation and recovery. `editor_smoke --reload` checks
 dialog states/lifecycle; `--windowed --assets-workbench` captures the batch
-review alongside the workspace and single-record review. Real-install
-replacement and interactive folder picking are not inferred from those checks.
+review alongside the workspace and single-record review, pressing Scan against
+the configured dataset with generated PNG inputs. This writes no stage.
+Interactive folder picking is not inferred from those checks.

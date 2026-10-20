@@ -41,8 +41,8 @@ Apply reruns the verifier through `tools/fiddler_parity/replacement.py`, promote
 only a verified candidate, and retains the prior stage. Destination edits invalidate
 preparation. Recovery appears only when the destination has a recovery journal.
 Closing the review cancels its child job. The source installation stays read-only.
-The narrow writer's existing MUL/IDX and uncompressed, zero-entry-header UOP
-limits remain unchanged; this UI does not add binary tiledata output.
+The narrow writer handles MUL/IDX and uncompressed UOP, preserving opaque UOP
+entry headers. Compressed UOP and binary tiledata output remain unsupported.
 
 The source comparison uses the overlay's saved original index for one synchronous
 main-thread decode and restores the replacement index in `finally`. It writes no

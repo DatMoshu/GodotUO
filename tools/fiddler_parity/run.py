@@ -75,7 +75,7 @@ def check_art(raw: bytes) -> None:
             at += count * 2
 
 
-def records(stage: Path, packaging: str) -> tuple[dict[int, bytes], dict[str, str]]:
+def records(stage: Path, packaging: str, metadata: dict | None = None) -> tuple[dict[int, bytes], dict[str, str]]:
     """Validate selected container, then extract raw payloads for preservation checks."""
     result = {}
     if packaging == "mul":
@@ -98,7 +98,7 @@ def records(stage: Path, packaging: str) -> tuple[dict[int, bytes], dict[str, st
         if len(data) < 28 or struct.unpack_from("<I", data)[0] != 0x50594D:
             raise ValueError("Invalid UOP header")
         block = struct.unpack_from("<q", data, 12)[0]
-        seen, entries = set(), {}
+        seen, entries, entry_metadata = set(), {}, {}
         while block:
             if block in seen or block < 28 or block + 12 > len(data):
                 raise ValueError("Invalid or cyclic UOP block")
@@ -112,18 +112,19 @@ def records(stage: Path, packaging: str) -> tuple[dict[int, bytes], dict[str, st
                     continue
                 if flag != 0:
                     raise Unsupported("Compressed art UOP entries are not certified by this oracle")
-                if header != 0:
-                    raise Unsupported("UOP per-entry headers require separate preservation certification")
                 if min(offset, header, stored, size) < 0 or stored != size or offset + header + size > len(data):
                     raise ValueError("Invalid UOP payload range")
                 if key in entries:
                     raise ValueError("Duplicate UOP hash")
                 entries[key] = data[offset + header:offset + header + size]
+                entry_metadata[key] = (data[offset:offset + header], (header, stored, size, checksum, flag))
             block = nxt
         keys = {uop_hash(f"build/artlegacymul/{index:08d}.tga"): index for index in range(0x14000)}
         if entries.keys() - keys.keys():
             raise Unsupported("Unknown UOP entries; preservation cannot be certified")
         result = {keys[key]: value for key, value in entries.items()}
+        if metadata is not None:
+            metadata.update({keys[key]: value for key, value in entry_metadata.items()})
     else:
         raise Unsupported(f"Unsupported packaging: {packaging}")
     for index, raw in result.items():
@@ -227,14 +228,26 @@ def verify(stage: Path, source: Path, manifest: Path, out: Path, oracle: Path) -
     hashes = {str(p): digest(p) for p in paths}
     report["input_hashes"] = hashes
     try:
-        original, _ = records(source, packaging)
-        staged, _ = records(stage, packaging)
+        original_metadata, staged_metadata = {}, {}
+        original, _ = records(source, packaging, original_metadata)
+        staged, _ = records(stage, packaging, staged_metadata)
         changed = {ident + 0x4000 for ident in ids}
         preserved = sorted(index for index in original.keys() | staged.keys() if index not in changed)
         for index in preserved:
             if original.get(index) != staged.get(index):
                 report["mismatches"].append({"kind": "untouched_record", "container_index": index})
         report["preserved_records"] = len(preserved)
+        if packaging == "uop":
+            report["preserved_uop_headers"] = 0
+            for index in original_metadata.keys() | staged_metadata.keys():
+                old_header, old_table = original_metadata.get(index, (b"", None))
+                new_header, new_table = staged_metadata.get(index, (b"", None))
+                if old_header != new_header:
+                    report["mismatches"].append({"kind": "uop_entry_header", "container_index": index})
+                elif index in original_metadata:
+                    report["preserved_uop_headers"] += 1
+                if index not in changed and old_table != new_table:
+                    report["mismatches"].append({"kind": "untouched_uop_metadata", "container_index": index})
         if packaging == "mul":
             old_idx, new_idx = (bounded(root / "artidx.mul") for root in (source, stage))
             for index in range(max(len(old_idx), len(new_idx)) // 12):

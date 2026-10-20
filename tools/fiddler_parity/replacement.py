@@ -116,7 +116,10 @@ def prepare_many(source: Path, stage: Path, images: list[tuple[int, Path]], plan
     for name in names:
         path = stage / name if (stage / name).is_file() else source / name
         effective[name] = path
-    if any(path.is_symlink() or path.stat().st_nlink > 1 for path in effective.values()):
+    # Read-only install files may be hardlinked to a user's backups. Copy bytes
+    # into fresh, unlinked baseline/candidate files; never use those links as
+    # stage outputs. A hardlinked staged override is still refused.
+    if any(path.is_symlink() or (path.parent != source and path.stat().st_nlink > 1) for path in effective.values()):
         raise ValueError("Aliased art containers are refused")
     try:
         from PIL import Image

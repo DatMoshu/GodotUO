@@ -40,6 +40,11 @@ The subsequent F03a [batch static PNG replacement](batch_static_replacement.md)
 adds folder/ID collision review, per-image source comparison and a whole-batch
 candidate/verify/apply workflow. It shares F02a's recovery and rechecks every
 selected image before applying. Other domains and deletion remain separate.
+F01-UOP subsequently adds opaque per-entry header preservation. The private
+`20261020_guo-worker-fiddler-parity_uop-entry-headers` run verifies a disposable
+stage from the configured 7.0.107.76 archive: two edited IDs, 42,528 untouched
+records and all 42,530 entry headers preserved, with apply/recovery and an
+unchanged source installation. Compressed UOP remains outside certification.
 The headless asset report passes all 13 metadata checks, including the unsaved
 close/discard-cancel path. The editor rebuild/reload run also passed with an
 empty top-level failure list; neither result substitutes for windowed visual

@@ -76,6 +76,11 @@ public partial class EditorSmoke
             GetWindow().Size = AssetProofSize(1920, 1080);
             _assetsProofStep = 1; _assetsProofFrames = 0; return;
         }
+        if (_assetsProofStep == 5 && _batchProof.IsBusy)
+        {
+            if (_elapsed > TimeoutSeconds) { _failures.Add("Batch folder scan did not finish"); Finish(); }
+            return;
+        }
         if (++_assetsProofFrames < 35) return;
         _assetsProofFrames = 0;
         if (_assetsProofStep <= 3)
@@ -109,6 +114,7 @@ public partial class EditorSmoke
         _stageProof.Free();
         _data.Assets.Revert(AssetKind.Static, 0x001A); _data.ReapplyAssets(AssetKind.Static, 0x001A);
         _batchProof = BatchStaticDialog.Open(_data); _batchProof.ShowScan(BatchPreviewFixture());
+        GodotUi.Walk(_batchProof).OfType<Button>().First(button => button.Text == "Scan folder").EmitSignal(Button.SignalName.Pressed);
         _assetsProofStep = 5; return;
         }
         SaveAssetProof("batch-static-review", _batchProof.GetTexture()?.GetImage());

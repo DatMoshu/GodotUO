@@ -92,12 +92,12 @@ python tools/fiddler_parity/replacement.py apply --plan <new-preview-folder>/pla
 python tools/fiddler_parity/replacement.py recover --stage <stage> --confirm
 ```
 
-The first release replaces **one occupied static ID**, in MUL/IDX or an
-uncompressed, zero-entry-header art UOP. It preserves the original four-byte
+The single-record workflow replaces **one occupied static ID**, in MUL/IDX or an
+uncompressed art UOP, preserving opaque per-entry headers and the original four-byte
 static header and untouched records. Encoding can change edited-record padding
 and RLE layout; quantized pixels and intended payload are independently checked.
 PNG alpha below 128 becomes transparent; opaque black becomes near-black.
-No deletion, free-ID allocation, batch replacement, compressed UOP or verdata
+No deletion, free-ID allocation, compressed UOP or verdata
 install is added by this workflow. Source file names use canonical container
 names; unusual case-sensitive dataset layouts need a separate adapter.
 
@@ -122,8 +122,21 @@ by another tool after promotion; inspect any such changes before choosing it.
 - F01a alone establishes no occupied replacement. The following F02a adapter
   adds synthetic occupied replacement, stale-input rejection, failed-promotion
   rollback, interrupted-promotion recovery and exact prior-stage restoration.
-- No compressed UOP, per-entry UOP headers, gumps, land, tiledata, animation,
-  verdata or real-install compatibility claim follows from these synthetic proofs.
+- Opaque UOP per-entry headers are copied byte-for-byte, including changed IDs.
+  Verification separately checks header bytes and untouched entry metadata;
+  the independent reader checks edited pixels and payload hashes.
+- No compressed UOP, gumps, land, tiledata, animation or verdata certification
+  follows from these static-art proofs.
+
+`proof_uop_headers.py` adds literal opaque-header fixtures, target/untouched
+header corruption, untouched-checksum corruption and invalid-header ranges.
+Read-only hardlinked source files are copied into fresh unlinked candidates;
+hardlinked stage outputs remain refused. The local private run
+`20261020_guo-worker-fiddler-parity_uop-entry-headers` also prepared, verified,
+applied and recovered a disposable two-record stage from the configured
+7.0.107.76 installation, preserving 42,528 untouched records and all 42,530
+entry headers. The install and its hardlinks remained unchanged. This is a
+ClassicUO-oracle proof for that dataset, not every third-party client.
 
 The synthetic fixture specification is in
 `tools/scenarios/fiddler-f01a/README.md`.

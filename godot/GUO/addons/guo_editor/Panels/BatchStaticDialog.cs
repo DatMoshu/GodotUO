@@ -24,6 +24,7 @@ public partial class BatchStaticDialog : ConfirmationDialog
     private string _plan;
     private bool _busy, _applied;
     internal Tree Rows => _rows;
+    internal bool IsBusy => _busy;
     internal bool ReadyToPrepare => _scan != null && (bool?)_scan["ready"] == true && !_busy;
 
     public static BatchStaticDialog Open(EditorData data)
