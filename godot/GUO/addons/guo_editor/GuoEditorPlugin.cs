@@ -605,6 +605,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     private void TearDown()
     {
         _inspector?.Metadata?.StashDrafts();
+        _inspector?.Strings?.StashDrafts();
         RemoveUoLayout();
 
         if (_collapseBottomPanels != null)

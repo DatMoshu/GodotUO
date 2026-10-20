@@ -238,6 +238,7 @@ public partial class EditorSmoke
                 CheckItemMetadataDocument();
                 CheckAssetWorkbench(art, FixtureStatic);
                 CheckBatchStaticReview();
+                CheckClilocDocuments();
             }
 
             foreach (var (name, when) in AssetStamp())

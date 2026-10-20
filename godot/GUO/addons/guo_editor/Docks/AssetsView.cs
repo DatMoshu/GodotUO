@@ -126,6 +126,7 @@ public partial class AssetsView : VBoxContainer
         panel.Name = title;
         panel.Attach(_data);
         panel.Inspect += i => Inspect?.Invoke(i);
+        if (panel is ClilocPanel strings) strings.DocumentReopening += document => _inspector?.Strings?.Discard(document);
         _tabs.AddChild(panel);
         _panels.Add(panel);
     }

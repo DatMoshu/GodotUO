@@ -29,7 +29,7 @@ public static class AssetActions
         if (current != null)
         {
             ins.Actions.Add(new("export-png", "Export PNG…", "Save", () => Pick(EditorFileDialog.FileModeEnum.SaveFile, $"{Stem(kind)}_0x{id:X4}.png",
-                path => { EnsureExportDestination(path); if (current.SavePng(path) != Error.Ok) throw new IOException("Could not export PNG."); })));
+                path => ExportPng(current, path))));
         }
 
         if (current != null && kind != AssetKind.Hue)
@@ -90,7 +90,7 @@ public static class AssetActions
 
         ins.Origin = replaced ? "Project hue replacement" : "Install hue · read-only";
         ins.Actions.Add(new("export-hue", "Save strip PNG…", "Save", () => Pick(EditorFileDialog.FileModeEnum.SaveFile, $"hue_{hue}.png",
-            path => { EnsureExportDestination(path); strip.SavePng(path); })));
+            path => ExportPng(strip, path))));
         ins.Actions.Add(new("import-hue", "Import strip PNG…", "Load", () => Pick(EditorFileDialog.FileModeEnum.OpenFile, null, path =>
         {
             string why = ImportHueFile(data, hue, path, name, start, end);
@@ -220,10 +220,20 @@ public static class AssetActions
     {
         string configured = EditorData.Setting("UO_CLIENT_DATA", "");
         if (string.IsNullOrWhiteSpace(configured)) throw new IOException("Configure the client install before exporting; its read-only boundary must be known.");
-        string install = Path.GetFullPath(configured).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        string target = Path.GetFullPath(path);
-        if (target.Equals(install, StringComparison.OrdinalIgnoreCase) || target.StartsWith(install + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-            throw new IOException("Export into the client install is refused.");
+        EditorPaths.OutsideInstall(path, configured);
+    }
+
+    // Atomic replacement also avoids truncating a pre-existing hardlink's target.
+    internal static void ExportPng(Image image, string path)
+    {
+        EnsureExportDestination(path);
+        string temporary = path + ".tmp-" + Guid.NewGuid().ToString("N") + ".png";
+        try
+        {
+            if (image.SavePng(temporary) != Error.Ok) throw new IOException("Could not export PNG.");
+            File.Move(temporary, path, true);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 }
 #endif

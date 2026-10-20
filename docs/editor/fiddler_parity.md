@@ -50,6 +50,12 @@ close/discard-cancel path. The editor rebuild/reload run also passed with an
 empty top-level failure list; neither result substitutes for windowed visual
 review.
 
+F15a [localized-string working documents](cliloc_documents.md) follow batch
+replacement. They support installed plain/BWT language files, edit/add/remove,
+preserved header/flags/IDs, undo, source-bound project JSON and editor-local
+draft recovery. They do not modify runtime strings or emit native cliloc files;
+F15b binary staging and F15c/d CSV compatibility remain separate work.
+
 Phase 1 proposal, 2026-10-19. guo-director first-pass review received;
 catalogue and survey await guo-director and exec-fable sign-off.
 F01a has separate director authorization for assignment (inbox #11093);

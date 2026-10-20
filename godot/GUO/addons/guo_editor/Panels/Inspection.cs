@@ -34,6 +34,9 @@ public sealed class Inspection
     public string Origin;
     public readonly List<(string Name, string Value)> Fields = new();
     public EditorData MetadataData;
+    public ClilocDocument Strings;
+    public int StringId;
+    public Action StringsChanged;
 
     /// <summary>The overlay asset this shows, when it is one the art pipeline can edit (ADR-0029); else null.</summary>
     public AssetKind? ArtKind;

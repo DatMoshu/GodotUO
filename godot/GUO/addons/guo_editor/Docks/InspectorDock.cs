@@ -12,6 +12,7 @@ public partial class InspectorDock : EditorDock
     private TextureRect _preview;
     private OptionButton _zoom;
     private HBoxContainer _player, _actions;
+    private Control _previewArea, _previewControls;
     private Button _play;
     private HSlider _frame;
     private Label _title, _origin, _dimensions, _history;
@@ -25,6 +26,7 @@ public partial class InspectorDock : EditorDock
     public Inspection Current { get; private set; }
     public Texture2D Texture => _preview?.Texture;
     public ItemMetadataEditor Metadata { get; private set; }
+    public ClilocEditor Strings { get; private set; }
     internal Control TourFields => _fields;
     internal HBoxContainer ActionToolbar => _actions;
 
@@ -54,12 +56,14 @@ public partial class InspectorDock : EditorDock
         identity.AddChild(AssetUi.Action("ActionCopy", "Copy selected asset ID", () => { if (Current != null) DisplayServer.ClipboardSet(Current.Id); }));
         _origin = AssetUi.Label("Browse the Assets library to inspect a selection."); _content.AddChild(_origin);
         var previewScroll = new ScrollContainer { CustomMinimumSize = new Vector2(0, 160 * scale), SizeFlagsVertical = SizeFlags.Fill };
+        _previewArea = previewScroll;
         _content.AddChild(previewScroll);
         var center = new CenterContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsVertical = SizeFlags.ExpandFill };
         previewScroll.AddChild(center);
         _preview = new TextureRect { StretchMode = TextureRect.StretchModeEnum.Keep, ExpandMode = TextureRect.ExpandModeEnum.KeepSize, TextureFilter = TextureFilterEnum.Nearest };
         center.AddChild(_preview);
         var row = new HBoxContainer(); _content.AddChild(row);
+        _previewControls = row;
         _dimensions = new Label { SizeFlagsHorizontal = SizeFlags.ExpandFill }; row.AddChild(_dimensions);
         _zoom = new OptionButton { AccessibilityName = "Pixel preview zoom", TooltipText = "Integer zoom · nearest-neighbor sampling" };
         foreach (int z in new[] { 1, 2, 3, 4, 5, 6, 7, 8 }) _zoom.AddItem($"{z}×");
@@ -75,6 +79,8 @@ public partial class InspectorDock : EditorDock
         detailScroll.AddChild(_pages);
         _properties = new VBoxContainer { Name = "Properties", SizeFlagsHorizontal = SizeFlags.ExpandFill }; _pages.AddChild(_properties);
         Metadata = new ItemMetadataEditor { Visible = false }; _properties.AddChild(Metadata);
+        Strings = new ClilocEditor { Visible = false }; _properties.AddChild(Strings);
+        Strings.Changed += () => { if (Current?.Strings != null) _history.Text = Strings.Summary; };
         Metadata.Changed += () =>
         {
             if (Current?.MetadataData != null && Metadata.CurrentDocument is { } document)
@@ -88,17 +94,20 @@ public partial class InspectorDock : EditorDock
         _history = AssetUi.Label("Document undo/redo is available while editing item metadata.");
         var history = new VBoxContainer { Name = "History" }; history.AddChild(_history); _pages.AddChild(history);
         Metadata._Ready(); Metadata.Footer.Reparent(_content, false); Metadata.Footer.Visible = false;
+        Strings._Ready(); Strings.Footer.Reparent(_content, false); Strings.Footer.Visible = false;
     }
 
     public void ShowInspection(Inspection inspection)
     {
         if (_preview == null) _Ready();
+        Strings.CommitPending();
         Current = inspection;
         _title.Text = inspection.Title != null ? $"{inspection.Title} · {inspection.Id}" : $"{inspection.Source} · {inspection.Id}";
         _title.TooltipText = _title.Text;
         _origin.Text = inspection.Origin ?? "Source details below";
         _fields.Text = inspection.Text;
-        _fields.Visible = inspection.Fields.Count == 0;
+        _fields.Visible = inspection.Fields.Count == 0 && inspection.Strings == null;
+        _sourceFields.Visible = inspection.Strings == null;
         foreach (Node child in _sourceFields.GetChildren()) { _sourceFields.RemoveChild(child); child.QueueFree(); }
         foreach (var (name, value) in inspection.Fields)
         {
@@ -109,7 +118,14 @@ public partial class InspectorDock : EditorDock
         Metadata.Footer.Visible = Metadata.Visible;
         if (Metadata.Visible) Metadata.Bind(inspection.MetadataData, inspection.ArtId);
         else Metadata.CommitPending();
+        Strings.Visible = inspection.Strings != null; Strings.Footer.Visible = Strings.Visible;
+        if (Strings.Visible) Strings.Bind(inspection.Strings, inspection.StringId, inspection.StringsChanged);
+        _history.Text = Strings.Visible ? Strings.Summary : Metadata.Visible ? Metadata.Summary : "No project document for this asset.";
+        _previewArea.Visible = _previewControls.Visible = inspection.Image != null;
+        _pages.SetTabHidden(1, inspection.Strings != null);
+        if (inspection.Strings != null && _pages.CurrentTab == 1) _pages.CurrentTab = 0;
         BuildActions(inspection);
+        _actions.Visible = _actions.GetChildCount() > 0;
         _dimensions.Text = inspection.Image == null ? "" : $"{inspection.Image.GetWidth()} × {inspection.Image.GetHeight()} px";
         int frames = inspection.Frames.Length;
         _player.Visible = frames > 1; _frame.MaxValue = Math.Max(0, frames - 1); _frame.SetValueNoSignal(0);

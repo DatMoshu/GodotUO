@@ -117,10 +117,26 @@ public partial class EditorSmoke
         GodotUi.Walk(_batchProof).OfType<Button>().First(button => button.Text == "Scan folder").EmitSignal(Button.SignalName.Pressed);
         _assetsProofStep = 5; return;
         }
+        if (_assetsProofStep == 5)
+        {
         SaveAssetProof("batch-static-review", _batchProof.GetTexture()?.GetImage());
         MetadataCheck("batch_review_fits_screen", _batchProof.Size.Y <= DisplayServer.ScreenGetUsableRect().Size.Y);
         MetadataCheck("batch_review_ready", _batchProof.ReadyToPrepare && _batchProof.Rows.GetRoot().GetChildCount() == 2);
         _batchProof.Free();
+        var cliloc = _assets.Panel<ClilocPanel>(); _assets.ShowPanel(cliloc); cliloc.ChooseLanguage("enu"); cliloc.Search("500207");
+        _inspector.Strings.TextInput.Text = "Project backpack label"; _inspector.Strings.TextInput.EmitSignal(TextEdit.SignalName.TextChanged);
+        _assetsProofStep = 6; return;
+        }
+        if (_assetsProofStep == 6)
+        {
+            SaveAssetProof("cliloc-working-document", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
+            MetadataCheck("cliloc_editor_ready", _inspector.Strings.Visible && !_inspector.Strings.SaveButton.Disabled);
+            _inspector.Strings.Undo();
+            var cliloc = _assets.Panel<ClilocPanel>(); cliloc.ChooseLanguage("jpn"); cliloc.Search("500207");
+            _assetsProofStep = 7; return;
+        }
+        SaveAssetProof("cliloc-japanese-source", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
+        MetadataCheck("cliloc_japanese_ready", _inspector.Strings.Document.Language == "jpn" && _inspector.Strings.TextInput.Text.Length > 0);
         Finish();
     }
 
