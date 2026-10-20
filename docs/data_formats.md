@@ -513,6 +513,21 @@ Layouts, as `ArtLoader` and `GumpsLoader` read them (and as
 None of these files are committed: they derive from the install.
 ---
 
+### Item metadata working documents (F06a)
+
+`<world-project>/metadata/items/0xNNNN.json` is editor-only inert JSON, schema 1:
+`kind: guo/item-metadata`, `layout: modern-41`, item `id`, base64 `original`
+(exactly 41 source bytes), original-record `source_sha256`, UTF-8 `name`,
+hexadecimal-string `flags` (unsigned 64-bit) and integer `height` (0–255).
+Only name, flags and height are editable. The source record and all other fields
+are retained; an unchanged name retains its raw bytes. A changed name is at most
+20 UTF-8 bytes, without NUL, and zero-padded in the in-memory preview.
+The document does not modify runtime loaders or emit native tiledata. A changed
+source, mismatched ID/layout/hash or document larger than 16 KiB is refused.
+Writes remain in the project and refuse resolved installation/escaping paths.
+See [item metadata workflow](editor/item_metadata.md) and
+[synthetic recipe](../tools/scenarios/fiddler-f06a/README.md).
+
 ## 12. GUO Asset Store packs (ADR-0019)
 
 Version 2 content envelopes, deployment targets, dependencies, component

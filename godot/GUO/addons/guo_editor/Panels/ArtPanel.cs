@@ -132,6 +132,10 @@ public partial class ArtPanel : GridPanel
 
         Inspection ins = Inspection.Still("Art", $"0x{id:X4}", img, sb.ToString());
         AssetActions.Add(ins, Data, Land ? AssetKind.Land : AssetKind.Static, id, img);
+        if (!Land && Data.Assets != null && id < Data.Files.TileData.StaticData.Length)
+        {
+            ins.Actions.Add(("Edit item metadata…", () => ItemMetadataDialog.Open(Data, id)));
+        }
         return ins;
     }
 

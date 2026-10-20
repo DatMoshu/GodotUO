@@ -232,6 +232,10 @@ public partial class EditorSmoke
                 _assetReport["static_stage_dialog_ready"] = stageReady;
                 if (!stageReady) AssetFail("static-stage dialog did not start in prepare state");
                 stageDialog.Free(); // teardown/cancel without starting a process or changing a stage
+                bool metadataAction = _inspector.Current?.Actions.Exists(a => a.Label == "Edit item metadata…") == true;
+                _assetReport["item_metadata_action"] = metadataAction;
+                if (!metadataAction) AssetFail("static inspector is missing metadata document editing");
+                CheckItemMetadataDocument();
             }
 
             foreach (var (name, when) in AssetStamp())

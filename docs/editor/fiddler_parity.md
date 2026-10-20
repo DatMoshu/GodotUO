@@ -23,13 +23,23 @@ static-art F02a workflow; the original catalogue statuses are retained until
 operation-specific review records the implementation commit and visual proof.
 
 Run `20261020_guo-worker-fiddler-parity_static-art-verification` contains the
-synthetic reports and full-smoke logs. Thirty-one synthetic checks passed for
+synthetic reports and full-smoke logs. Thirty-four synthetic checks passed for
 direct decoding, free insertion, occupied replacement, corruption refusals,
 stale inputs, promotion rollback/recovery and stage locking. Both MUL/IDX and
 uncompressed, zero-entry-header UOP are covered separately. The .NET editor
 build and full headless smoke passed; the latter checks action registration,
 initial dialog state and teardown. No real-install replacement, compressed UOP
 or windowed visual-certification claim is made.
+
+The follow-on F06a [item metadata working document](item_metadata.md) adds
+name, 64-bit flags and height editing to the static-art inspector, with
+undo/redo/revert and project JSON save/reload. It preserves the original modern
+41-byte record and does not emit binary tiledata or mutate runtime metadata.
+F06b native staging and its independent tiledata oracle remain separate work.
+The headless asset report passes all 13 metadata checks, including the unsaved
+close/discard-cancel path. The editor rebuild/reload run also passed with an
+empty top-level failure list; neither result substitutes for windowed visual
+review.
 
 Phase 1 proposal, 2026-10-19. guo-director first-pass review received;
 catalogue and survey await guo-director and exec-fable sign-off.
