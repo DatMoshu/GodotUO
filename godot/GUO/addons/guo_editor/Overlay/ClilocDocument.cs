@@ -27,6 +27,10 @@ public sealed class ClilocDocument
     public string Install { get; }
     public string SourceFile { get; }
     public string SourceHash { get; }
+    internal bool IsCustom => Language is "custom1" or "custom2";
+    internal string SourceIdentity { get; }
+    internal string DisplayName => IsCustom ? $"Custom {Language[^1]} · {Path.GetFileName(SourceFile)}" : Language.ToUpperInvariant();
+    internal string RecoveryIdentity => Project + "|" + Language + "|" + (IsCustom ? SourceIdentity + "|" : "") + SourceHash;
     private readonly byte[] _header;
     public byte[] Header => (byte[])_header.Clone();
     public bool Compressed { get; }
@@ -44,8 +48,10 @@ public sealed class ClilocDocument
 
     private ClilocDocument(string project, string install, string language, string source, byte[] raw)
     {
-        if (!Regex.IsMatch(language, "^[a-z]{3}$")) throw new IOException("Choose a three-letter cliloc language.");
-        Project = Path.GetFullPath(project); Install = Path.GetFullPath(install); Language = language; SourceFile = source;
+        if (!Regex.IsMatch(language, "^(?:[a-z]{3}|custom[12])$")) throw new IOException("Choose an installed three-letter language or custom source slot 1/2.");
+        Project = Path.GetFullPath(project); Install = Path.GetFullPath(install); Language = language; SourceFile = EditorPaths.Real(source);
+        string identity = OperatingSystem.IsWindows() ? SourceFile.ToUpperInvariant() : SourceFile;
+        SourceIdentity = Convert.ToHexString(SHA256.HashData(Utf8.GetBytes(identity))).ToLowerInvariant();
         if (raw.Length < 6 || raw.Length > 64 * 1024 * 1024) throw new IOException("Cliloc file must contain 6 bytes to 64 MiB.");
         SourceHash = Convert.ToHexString(SHA256.HashData(raw)).ToLowerInvariant();
         Compressed = raw[3] == 0x8e;
@@ -65,6 +71,7 @@ public sealed class ClilocDocument
             at += length;
         }
         SourceRecords = count;
+        EditorPaths.ProtectSource(SourceFile);
     }
 
     // The ported BWT decoder owns decoding. Validate its frequency prefix first
@@ -155,15 +162,18 @@ public sealed class ClilocDocument
         var rows = new JsonArray();
         foreach (var row in _changes.OrderBy(row => row.Key))
             rows.Add(new JsonObject { ["id"] = row.Key, ["deleted"] = row.Value == null, ["flag"] = (int?)row.Value?.Flag, ["text"] = row.Value?.Text });
-        return new JsonObject { ["schema"] = 1, ["kind"] = "guo/cliloc-document", ["language"] = Language,
+        var snapshot = new JsonObject { ["schema"] = 1, ["kind"] = "guo/cliloc-document", ["language"] = Language,
             ["encoding"] = "UTF-8", ["source_sha256"] = SourceHash, ["source_compressed"] = Compressed,
             ["header"] = Convert.ToBase64String(Header), ["changes"] = rows };
+        if (IsCustom) snapshot["source_identity"] = SourceIdentity;
+        return snapshot;
     }
 
     public void Restore(JsonNode json, bool saved)
     {
         if ((int?)json["schema"] != 1 || (string)json["kind"] != "guo/cliloc-document" || (string)json["language"] != Language
             || (string)json["source_sha256"] != SourceHash || (string)json["encoding"] != "UTF-8"
+            || (IsCustom && (string)json["source_identity"] != SourceIdentity)
             || (string)json["header"] != Convert.ToBase64String(Header) || (bool?)json["source_compressed"] != Compressed)
             throw new IOException("Cliloc document belongs to another source or language.");
         var seen = new HashSet<int>(); var replacement = new Dictionary<int, Entry>(); int bytes = 0;
@@ -188,11 +198,20 @@ public sealed class ClilocDocument
         if (saved) _saved = new(_changes); else Recovered = true;
     }
 
-    public string DocumentPath => EditorPaths.ProjectFile(Project, Install, "metadata", "cliloc", Language + ".json");
+    public string DocumentPath => IsCustom
+        ? EditorPaths.ProjectFile(Project, Install, "metadata", "cliloc", "custom", SourceIdentity, SourceHash, Language + ".json")
+        : EditorPaths.ProjectFile(Project, Install, "metadata", "cliloc", Language + ".json");
+    internal string WritablePath(string path)
+    {
+        string target = EditorPaths.OutsideInstall(path, Install);
+        if (target.Equals(SourceFile, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+            throw new IOException("The selected Cliloc source file is read-only. Choose a different project/export destination.");
+        return target;
+    }
     public void Save()
     {
         CheckSource();
-        string path = DocumentPath, json = Snapshot().ToJsonString(new() { WriteIndented = true });
+        string path = WritablePath(DocumentPath), json = Snapshot().ToJsonString(new() { WriteIndented = true });
         if (Encoding.UTF8.GetByteCount(json) > 16 * 1024 * 1024) throw new IOException("Cliloc document exceeds 16 MiB.");
         Directory.CreateDirectory(Path.GetDirectoryName(path));
         string temporary = path + ".tmp-" + Guid.NewGuid().ToString("N");
@@ -204,7 +223,7 @@ public sealed class ClilocDocument
     {
         using var source = File.OpenRead(SourceFile);
         if (source.Length > 64 * 1024 * 1024 || Convert.ToHexString(SHA256.HashData(source)).ToLowerInvariant() != SourceHash)
-            throw new IOException("Source cliloc changed; reopen the language before saving or exchanging CSV.");
+            throw new IOException("Source cliloc changed; reopen the source document before saving or exchanging CSV.");
     }
 
     public static ClilocDocument Open(string project, string install, string language, string source)

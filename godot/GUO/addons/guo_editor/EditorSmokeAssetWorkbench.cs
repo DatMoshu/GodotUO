@@ -206,9 +206,34 @@ public partial class EditorSmoke
             _clilocCsvProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed);
             _assetsProofStep = 15; return;
         }
-        SaveAssetProof("cliloc-csv-working-document", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
-        MetadataCheck("cliloc_csv_working_document_ready", _inspector.Strings.Document.Get(500207).Text == "Project backpack ~1_NAME~" && !_inspector.Strings.SaveButton.Disabled);
-        _inspector.Strings.Undo();
+        if (_assetsProofStep == 15)
+        {
+            SaveAssetProof("cliloc-csv-working-document", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
+            MetadataCheck("cliloc_csv_working_document_ready", _inspector.Strings.Document.Get(500207).Text == "Project backpack ~1_NAME~" && !_inspector.Strings.SaveButton.Disabled);
+            _inspector.Strings.Undo();
+            string source = Path.Combine(_out, "Cliloc.guild-quests");
+            File.WriteAllBytes(source, ClilocFixture((700001, 0xE3, "Quest ~1_NAME~"), (700002, 7, "日本語")));
+            _assets.Panel<ClilocPanel>().OpenCustomFile("custom1", source, remember: false);
+            _inspector.Strings.TextInput.Text = "Working quest ~1_NAME~";
+            _inspector.Strings.TextInput.EmitSignal(TextEdit.SignalName.TextChanged);
+            _assetsProofStep = 16; return;
+        }
+        if (_assetsProofStep == 16)
+        {
+            SaveAssetProof("cliloc-custom-source", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
+            MetadataCheck("cliloc_custom_source_ready", _inspector.Strings.Document.IsCustom && _inspector.Strings.Id == 700001
+                && !_inspector.Strings.SaveButton.Disabled && _inspector.Current.Origin.Contains("Cliloc.guild-quests"));
+            string csv = Path.Combine(_out, "visual-custom-cliloc.csv");
+            File.WriteAllBytes(csv, ClilocCsv.Encode(new[] { new ClilocCsvRow(700001, "Incoming quest ~1_NAME~", 2) }, ClilocCsvFormat.Fiddler));
+            _clilocCsvProof = _assets.Panel<ClilocPanel>().OpenImportReview(csv, ClilocCsvFormat.Fiddler);
+            _assetsProofStep = 17; return;
+        }
+        SaveAssetProof("cliloc-custom-csv-review", _clilocCsvProof.GetTexture()?.GetImage());
+        MetadataCheck("cliloc_custom_csv_review_ready", _clilocCsvProof.Plan.Changes.Count == 1
+            && _clilocCsvProof.Size.Y <= DisplayServer.ScreenGetUsableRect().Size.Y);
+        _clilocCsvProof.Free();
+        var custom = _inspector.Strings.Document; _inspector.Strings.Undo(); _inspector.Strings.Discard(custom);
+        _assets.Panel<ClilocPanel>().ChooseLanguage("enu");
         Finish();
     }
 

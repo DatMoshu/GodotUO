@@ -39,7 +39,8 @@ count is visible in review; they do not authorize native metadata rewriting.
 
 ## Import review and undo
 
-CSV contains no language identity. The chooser names the target language and
+CSV contains no language identity. The chooser names the target language or
+custom slot/filename and
 asks the author to verify it. Import commits valid pending text drafts for that
 language as one transaction; invalid drafts or failed recovery block exchange.
 It then captures the CSV bytes and reviews changes against the working copy.
@@ -73,7 +74,9 @@ sibling and atomically replaces the selected output entry, checking both the
 configured and document installation boundaries. Directory aliases are resolved;
 atomic replacement avoids truncating an existing hardlink's backing file.
 The source cliloc hash is rechecked before publication. No output is written
-inside the client installation and no native language file is emitted.
+inside the client installation or over a registered custom source file, and no
+native language file is emitted. [Custom source slots](cliloc_custom_sources.md)
+use the same reviewed exchange and source-version checks.
 
 ## Verification
 

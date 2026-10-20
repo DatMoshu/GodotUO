@@ -115,7 +115,7 @@ public partial class ClilocEditor : VBoxContainer
         string value = _raw.GetValueOrDefault((_document, _id), current?.Text ?? "");
         if (_text.Text != value) _text.Text = value;
         _text.Editable = current != null && !_recoveryFailed.Contains(KeyOf(_document));
-        _identity.Text = $"{_document.Language.ToUpperInvariant()} · {_id} · flag 0x{(current?.Flag ?? original?.Flag ?? 0):X2} (preserved)\nUTF-8 · {(_document.Compressed ? "BWT source" : "plain source")}";
+        _identity.Text = $"{_document.DisplayName} · {_id} · flag 0x{(current?.Flag ?? original?.Flag ?? 0):X2} (preserved)\nUTF-8 · {(_document.Compressed ? "BWT source" : "plain source")}";
         _source.Text = original?.Text ?? "Not present in the source file.";
         _refreshing = false; UpdateState();
     }
@@ -162,7 +162,7 @@ public partial class ClilocEditor : VBoxContainer
         { if (key.ShiftPressed) { if (CommitPending()) _document.Redo(); Read(); Notify(); } else Undo(); GetViewport().SetInputAsHandled(); }
     }
 
-    private static string KeyOf(ClilocDocument document) => document.Project + "|" + document.Language + "|" + document.SourceHash;
+    private static string KeyOf(ClilocDocument document) => document.RecoveryIdentity;
     internal void Discard(ClilocDocument document)
     {
         foreach (var key in _raw.Keys.Where(key => key.Document == document).ToArray()) _raw.Remove(key);

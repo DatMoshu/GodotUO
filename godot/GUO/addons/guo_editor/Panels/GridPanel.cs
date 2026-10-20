@@ -382,7 +382,7 @@ public abstract partial class GridPanel : AssetPanel
     /// After the asset overlay changed (an import or a revert): rebuild the
     /// id list, redraw the page on show and inspect the selection again.
     /// </summary>
-    public void OnAssetsChanged()
+    public virtual void OnAssetsChanged()
     {
         if (Data == null || !Data.IsLoaded || _list == null)
         {

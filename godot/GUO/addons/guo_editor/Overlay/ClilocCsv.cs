@@ -137,10 +137,10 @@ internal static class ClilocCsv
         document.CheckSource();
         byte[] bytes = Encode(ids.Select(id => (Id: id, Entry: document.Get(id))).Where(row => row.Entry != null)
             .Select(row => new ClilocCsvRow(row.Id, row.Entry.Text, row.Entry.Flag)), format);
-        AssetActions.EnsureExportDestination(path); string target = EditorPaths.OutsideInstall(path, document.Install);
+        AssetActions.EnsureExportDestination(path); string target = document.WritablePath(path);
         if (!Directory.Exists(Path.GetDirectoryName(target))) throw new IOException("Choose an existing destination folder.");
         string temporary = target + ".tmp-" + Guid.NewGuid().ToString("N");
-        try { File.WriteAllBytes(temporary, bytes); AssetActions.EnsureExportDestination(target); EditorPaths.OutsideInstall(target, document.Install); document.CheckSource(); File.Move(temporary, target, true); }
+        try { File.WriteAllBytes(temporary, bytes); AssetActions.EnsureExportDestination(target); document.WritablePath(target); document.CheckSource(); File.Move(temporary, target, true); }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 }

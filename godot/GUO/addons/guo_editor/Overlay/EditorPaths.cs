@@ -2,11 +2,15 @@
 namespace GUO.Editor;
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 /// <summary>Resolve directory links before applying the editor's read-only install boundary.</summary>
 internal static class EditorPaths
 {
+    private static readonly HashSet<string> ReadOnlySources = new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+    internal static void ProtectSource(string path)
+    { string source = Real(path); lock (ReadOnlySources) ReadOnlySources.Add(source); }
     internal static string Real(string path)
     {
         string full = Path.GetFullPath(path), current = Path.GetPathRoot(full);
@@ -26,6 +30,8 @@ internal static class EditorPaths
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         if (target.Equals(source, comparison) || target.StartsWith(source + Path.DirectorySeparatorChar, comparison))
             throw new IOException("Writing into the client installation is refused.");
+        lock (ReadOnlySources)
+            if (ReadOnlySources.Contains(target)) throw new IOException("A source document is read-only. Choose a different project/export destination.");
         return target;
     }
 

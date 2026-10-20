@@ -61,6 +61,13 @@ quoted UTF-8 dialects, language-scoped merge review, atomic batch undo, preserve
 source flags, source/revision checks and all/browser/selected standard CSV export.
 It does not write native cliloc files or merge runtime fallback strings.
 
+F15e [custom Cliloc sources](cliloc_custom_sources.md) adds Fiddler-style Custom
+1/2 file slots, arbitrary filenames, plain/BWT exact-file loading and isolated
+working copies/recovery by source path, content version and slot. Invalid file
+choices leave the previous assignment intact; empty sources can receive Add/CSV.
+Sources outside the installation also receive shared export/project write guards.
+Native binary writing and runtime language registration remain separate.
+
 F14a [sound-effect WAV export](sound_wav_export.md) adds standard RIFF output
 from the active effect's PCM, typed Play/Stop/Export actions and audio-specific
 inspector fields. It preserves sample bytes and leaves native archives unchanged.

@@ -1,7 +1,8 @@
 # Localized-string working documents
 
 F15a, L3 editor authoring. The Assets library's Cliloc page edits one installed
-language at a time. It reads that exact `Cliloc.<language>` file, including BWT
+language at a time, or either of two [custom source slots](cliloc_custom_sources.md).
+It reads that exact `Cliloc.<language>` file, including BWT
 compressed files, instead of enumerating the runtime's merged language view.
 English fallback and `Clilocs.txt` remain runtime concerns and are not merged into
 this file editor. Speech keyword matching remains a separate read-only mode.
@@ -56,5 +57,6 @@ backing file. These aliases use synthetic fixtures, never the actual install.
 
 F15c/d adds [reviewed CSV exchange](cliloc_csv_exchange.md), including atomic
 batch undo and separate Fiddler/quoted UTF-8 dialects. F15b native binary staging,
-independent binary read-back and custom-language file opening remain separate stories. This document
+and independent binary read-back remain separate stories. F15e adds custom-file
+opening with source/slot/version-isolated project copies. This document
 does not claim a runtime localization pipeline or language/font certification.

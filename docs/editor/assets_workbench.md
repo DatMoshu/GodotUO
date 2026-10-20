@@ -16,7 +16,9 @@ Cliloc has a [localized-string working document](cliloc_documents.md) inspector:
 working/source text, preserved record flags, token warnings and a language-wide
 Save copy action. The pixel preview, image toolbar and Image tab are hidden for
 this text-only document. [CSV exchange](cliloc_csv_exchange.md) reviews imports
-and provides explicit export scope/dialect choices. Native cliloc output is a separate milestone.
+and provides explicit export scope/dialect choices. Two [custom source slots](cliloc_custom_sources.md)
+open arbitrary exact files with independent working documents and read-only
+source protection. Native cliloc output is a separate milestone.
 
 Sounds uses aligned audio fields and native Play/Stop icons. Effects also offer
 [WAV export](sound_wav_export.md); music does not use the effect-PCM exporter.

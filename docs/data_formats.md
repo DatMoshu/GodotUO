@@ -528,7 +528,7 @@ Writes remain in the project and refuse resolved installation/escaping paths.
 See [item metadata workflow](editor/item_metadata.md) and
 [synthetic recipe](../tools/scenarios/fiddler-f06a/README.md).
 
-### Cliloc working documents and CSV (F15a/F15c/F15d)
+### Cliloc working documents and CSV (F15a/F15c/F15d/F15e)
 
 `<world-project>/metadata/cliloc/<language>.json` is inert editor-only schema 1
 `guo/cliloc-document`, containing three-letter `language`, `encoding: UTF-8`,
@@ -536,6 +536,14 @@ source SHA-256, compression state, base64 six-byte header and changed rows
 (`id`, `deleted`, preserved byte `flag`, `text`). Tombstones omit active text;
 new IDs use flag zero. The source-bound patch is limited to 10,000 changes and
 2 MiB of text; edited strings fit 32,767 UTF-8 bytes without NUL.
+
+Custom sources use language `custom1` or `custom2` and additionally require
+`source_identity`: lowercase SHA-256 of the resolved absolute source path's
+UTF-8 bytes (uppercase path on Windows). Their project path is
+`metadata/cliloc/custom/<source_identity>/<source_sha256>/<language>.json`.
+Path identity, content version and slot isolate project patches and editor-local
+recovery. Raw source paths are remembered only in private editor metadata;
+installed-language documents remain unchanged. See [custom sources](editor/cliloc_custom_sources.md).
 
 Standard CSV exchange uses UTF-8 `Number;Text;Flag`, decimal IDs, Fiddler flag
 names (or unknown decimal bytes) and CRLF output. The explicit Fiddler dialect

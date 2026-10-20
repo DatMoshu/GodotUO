@@ -104,6 +104,7 @@ public partial class EditorSmoke
         reopen = panel.GetChildren().OfType<ConfirmationDialog>().Last(); reopen.EmitSignal(ConfirmationDialog.SignalName.Confirmed);
         ClilocCheck("confirmed_reopen_reloads_saved_copy", panel.WorkingDocument != current && !panel.WorkingDocument.IsDirty
             && panel.WorkingDocument.Get(500207).Text != "temporary smoke draft");
+        CheckCustomClilocSources();
     }
 
     private void CheckClilocEditor(ClilocDocument document, string source, string project, string install)

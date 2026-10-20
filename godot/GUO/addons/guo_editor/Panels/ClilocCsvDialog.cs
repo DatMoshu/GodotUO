@@ -22,7 +22,7 @@ public partial class ClilocCsvDialog : ConfirmationDialog
         catch (Exception e) { AssetActions.ReportEdit(e.Message, "Cliloc CSV", panel); return null; }
         var dialog = new ClilocCsvDialog { Title = import ? "Import Cliloc CSV" : "Export Cliloc CSV", OkButtonText = "Choose file…", DialogHideOnOk = false };
         var body = new VBoxContainer { CustomMinimumSize = new Vector2(540, 0) * EditorInterface.Singleton.GetEditorScale() }; dialog.AddChild(body);
-        body.AddChild(AssetUi.Label($"Target language: {document.Language.ToUpperInvariant()} · project working document"));
+        body.AddChild(AssetUi.Label($"Target: {document.DisplayName} · project working document"));
         body.AddChild(AssetUi.Label("Format")); var format = new OptionButton { AccessibilityName = "Cliloc CSV dialect" }; body.AddChild(format);
         dialog.FormatOption = format;
         format.AddItem("Fiddler CSV · UTF-8 · Number;Text;Flag"); format.AddItem("Quoted UTF-8 CSV · preserves multiline text and semicolons");
@@ -71,11 +71,11 @@ public partial class ClilocCsvDialog : ConfirmationDialog
     }
     internal static ClilocCsvDialog Review(ClilocPanel panel, ClilocDocument document, ClilocCsvPlan plan, string filename)
     {
-        var dialog = new ClilocCsvDialog { Plan = plan, Title = $"Review CSV import · {document.Language.ToUpperInvariant()}",
+        var dialog = new ClilocCsvDialog { Plan = plan, Title = $"Review CSV import · {document.DisplayName}",
             OkButtonText = "Import into working copy", DialogHideOnOk = false,
             Size = (Vector2I)(new Vector2(820, 0) * EditorInterface.Singleton.GetEditorScale()) };
         var body = new VBoxContainer(); dialog.AddChild(body);
-        body.AddChild(AssetUi.Label($"{Path.GetFileName(filename)} · Target language: {document.Language.ToUpperInvariant()}"));
+        body.AddChild(AssetUi.Label($"{Path.GetFileName(filename)} · Target: {document.DisplayName}"));
         body.AddChild(AssetUi.Label($"{plan.Records:N0} records · {plan.Changes.Count:N0} changes ({plan.Changes.Count(row => row.Added):N0} added) · {plan.Unchanged:N0} unchanged"));
         int tokenWarnings = plan.Changes.Count(row => row.Warning.Length > 0);
         if (tokenWarnings > 0) body.AddChild(AssetUi.Label($"{tokenWarnings:N0} changed string(s) alter placeholder/reference tokens. Check the consuming scripts before saving."));
