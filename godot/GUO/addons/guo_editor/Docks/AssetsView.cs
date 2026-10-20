@@ -127,6 +127,7 @@ public partial class AssetsView : VBoxContainer
         panel.Attach(_data);
         panel.Inspect += i => Inspect?.Invoke(i);
         if (panel is ClilocPanel strings) strings.DocumentReopening += document => _inspector?.Strings?.Discard(document);
+        if (panel is SoundPanel sounds) sounds.DocumentReopening += document => _inspector?.Sound?.Discard(document);
         _tabs.AddChild(panel);
         _panels.Add(panel);
     }

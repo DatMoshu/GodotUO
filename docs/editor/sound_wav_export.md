@@ -43,3 +43,9 @@ capture. Reproducible fixture details are in
 Sound working documents, WAV replacement/import, staged native sound writing,
 names/list exchange, batch WAV export and slot/removal controls remain separate
 F14 stories. This slice exports a selected existing effect to a standard WAV.
+
+The refreshed Fiddler 4.24 reader (`610c930833dac8d158f08a0af36da43dd90d08b4`,
+`Ultima/Sound.cs`) uses a 40-byte header, matching GUO's active PCM boundary.
+An older cached reader used 32 bytes; that historical difference is not a
+current native-audio gap. This exporter preserves active player PCM; F01 sound
+read-back is still required before a staged native sound writer.

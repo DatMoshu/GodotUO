@@ -606,6 +606,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
     {
         _inspector?.Metadata?.StashDrafts();
         _inspector?.Strings?.StashDrafts();
+        _inspector?.Sound?.StashDrafts();
         RemoveUoLayout();
 
         if (_collapseBottomPanels != null)

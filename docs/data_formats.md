@@ -528,6 +528,21 @@ Writes remain in the project and refuse resolved installation/escaping paths.
 See [item metadata workflow](editor/item_metadata.md) and
 [synthetic recipe](../tools/scenarios/fiddler-f06a/README.md).
 
+### Sound naming working documents (F14b)
+
+`<world-project>/metadata/sounds/0xNNNN.json` is editor-only inert JSON, schema 1:
+`kind: guo/sound-name`, effect `id`, `source_sha256` and working `name`.
+The fingerprint is SHA-256 of ASCII decimal UTF-8 source-name byte count plus
+`:` followed by those complete name bytes and the active loader's PCM bytes.
+The displayed source name stops at its first NUL; bytes after it still bind
+the document to that source. New names fit 32 UTF-8 bytes without NUL.
+The original display name may retain a larger decoded size unchanged.
+Documents larger than 16 KiB, mismatched IDs/hashes and invalid names are refused.
+Saves recheck the active source and use atomic project-only replacement with
+resolved installation/path-escape protection. No PCM is stored, no native sound
+header is emitted, and no runtime name or sound is modified. Undo and local
+draft recovery belong to the editor. See the [sound document workflow](editor/sound_documents.md).
+
 ## 12. GUO Asset Store packs (ADR-0019)
 
 Version 2 content envelopes, deployment targets, dependencies, component

@@ -37,6 +37,8 @@ public sealed class Inspection
     public ClilocDocument Strings;
     public int StringId;
     public Action StringsChanged;
+    public SoundDocument Sound;
+    public Action SoundChanged;
 
     /// <summary>The overlay asset this shows, when it is one the art pipeline can edit (ADR-0029); else null.</summary>
     public AssetKind? ArtKind;

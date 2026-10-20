@@ -142,9 +142,17 @@ public partial class EditorSmoke
         var sounds = _assets.Panel<SoundPanel>(); _assets.ShowPanel(sounds); sounds.SelectKind(false); sounds.Search(sounds.SmokeQuery);
         _assetsProofStep = 8; return;
         }
+        if (_assetsProofStep == 8)
+        {
+            _inspector.Sound.NameInput.Text = "Project forest effect";
+            _inspector.Sound.NameInput.EmitSignal(LineEdit.SignalName.TextChanged, "Project forest effect");
+            _assetsProofStep = 9; return;
+        }
         SaveAssetProof("sound-wave-export", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
         MetadataCheck("sound_wave_export_ready", _inspector.Current.Actions.Exists(action => action.Id == "export-wav")
             && _inspector.ActionToolbar.GetChildren().OfType<Control>().All(control => control.GetGlobalRect().End.X <= _inspector.ActionToolbar.GetGlobalRect().End.X + 2));
+        MetadataCheck("sound_name_document_ready", _inspector.Sound.Visible && !_inspector.Sound.SaveButton.Disabled);
+        _inspector.Sound.Undo();
         Finish();
     }
 

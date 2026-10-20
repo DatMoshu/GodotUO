@@ -27,6 +27,7 @@ public partial class InspectorDock : EditorDock
     public Texture2D Texture => _preview?.Texture;
     public ItemMetadataEditor Metadata { get; private set; }
     public ClilocEditor Strings { get; private set; }
+    public SoundEditor Sound { get; private set; }
     internal Control TourFields => _fields;
     internal HBoxContainer ActionToolbar => _actions;
 
@@ -80,6 +81,8 @@ public partial class InspectorDock : EditorDock
         _properties = new VBoxContainer { Name = "Properties", SizeFlagsHorizontal = SizeFlags.ExpandFill }; _pages.AddChild(_properties);
         Metadata = new ItemMetadataEditor { Visible = false }; _properties.AddChild(Metadata);
         Strings = new ClilocEditor { Visible = false }; _properties.AddChild(Strings);
+        Sound = new SoundEditor { Visible = false }; _properties.AddChild(Sound);
+        Sound.Changed += () => { if (Current?.Sound != null) _history.Text = Sound.Summary; };
         Strings.Changed += () => { if (Current?.Strings != null) _history.Text = Strings.Summary; };
         Metadata.Changed += () =>
         {
@@ -95,12 +98,14 @@ public partial class InspectorDock : EditorDock
         var history = new VBoxContainer { Name = "History" }; history.AddChild(_history); _pages.AddChild(history);
         Metadata._Ready(); Metadata.Footer.Reparent(_content, false); Metadata.Footer.Visible = false;
         Strings._Ready(); Strings.Footer.Reparent(_content, false); Strings.Footer.Visible = false;
+        Sound._Ready(); Sound.Footer.Reparent(_content, false); Sound.Footer.Visible = false;
     }
 
     public void ShowInspection(Inspection inspection)
     {
         if (_preview == null) _Ready();
         Strings.CommitPending();
+        Sound.CommitPending();
         Current = inspection;
         _title.Text = inspection.Title != null ? $"{inspection.Title} · {inspection.Id}" : $"{inspection.Source} · {inspection.Id}";
         _title.TooltipText = _title.Text;
@@ -120,7 +125,9 @@ public partial class InspectorDock : EditorDock
         else Metadata.CommitPending();
         Strings.Visible = inspection.Strings != null; Strings.Footer.Visible = Strings.Visible;
         if (Strings.Visible) Strings.Bind(inspection.Strings, inspection.StringId, inspection.StringsChanged);
-        _history.Text = Strings.Visible ? Strings.Summary : Metadata.Visible ? Metadata.Summary : "No project document for this asset.";
+        Sound.Visible = inspection.Sound != null; Sound.Footer.Visible = Sound.Visible;
+        if (Sound.Visible) Sound.Bind(inspection.Sound, inspection.SoundChanged);
+        _history.Text = Sound.Visible ? Sound.Summary : Strings.Visible ? Strings.Summary : Metadata.Visible ? Metadata.Summary : "No project document for this asset.";
         _previewArea.Visible = _previewControls.Visible = inspection.Image != null;
         _pages.SetTabHidden(1, inspection.Image == null);
         if (inspection.Image == null && _pages.CurrentTab == 1) _pages.CurrentTab = 0;

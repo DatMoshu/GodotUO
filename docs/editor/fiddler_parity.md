@@ -61,6 +61,11 @@ from the active effect's PCM, typed Play/Stop/Export actions and audio-specific
 inspector fields. It preserves sample bytes and leaves native archives unchanged.
 Sound documents, WAV replacement and staged native writing remain separate.
 
+F14b [sound naming documents](sound_documents.md) subsequently add project-only
+effect names, retained invalid drafts, undo/redo/revert, source-bound JSON saves
+and editor-local recovery. Saved names participate in the browser's name search;
+PCM import, native sound writing and music editing remain separate milestones.
+
 Phase 1 proposal, 2026-10-19. guo-director first-pass review received;
 catalogue and survey await guo-director and exec-fable sign-off.
 F01a has separate director authorization for assignment (inbox #11093);

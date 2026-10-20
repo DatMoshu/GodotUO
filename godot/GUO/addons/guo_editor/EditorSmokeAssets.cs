@@ -240,6 +240,7 @@ public partial class EditorSmoke
                 CheckBatchStaticReview();
                 CheckClilocDocuments();
                 CheckSoundWaveExport();
+        CheckSoundDocuments();
             }
 
             foreach (var (name, when) in AssetStamp())

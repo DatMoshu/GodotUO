@@ -80,3 +80,7 @@ export remains available; these future tools are not represented as working.
 Art and Bulk: scan filename IDs and errors, compare selected images, prepare
 one independently verified candidate, then explicitly apply or recover the
 whole stage. It leaves project image overlays and metadata documents unchanged.
+
+[Sound naming documents](sound_documents.md) add inline working names and a
+persistent undo/save footer to effect selections. Invalid names survive selection
+changes; project saves and editor-local draft recovery leave source PCM unchanged.

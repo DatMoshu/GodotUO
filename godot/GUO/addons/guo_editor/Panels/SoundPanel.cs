@@ -4,6 +4,7 @@ namespace GUO.Editor;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using Godot;
@@ -25,6 +26,13 @@ public partial class SoundPanel : GridPanel
     private readonly Dictionary<int, (string Name, bool Loop)> _music = new();
     private IO.Audio.Sound _playing;
     private readonly HashSet<IO.Audio.Sound> _played = new();
+    private readonly Dictionary<string, SoundDocument> _documents = new();
+    private readonly Dictionary<string, string> _documentErrors = new();
+    private readonly HashSet<string> _loadedProjects = new();
+    internal event Action<SoundDocument> DocumentReopening;
+    internal Button ReopenButton { get; private set; }
+    private string Project => Data.Assets?.Root ?? EditorData.ProjectRoot();
+    private string Key(int id) => Project + "|" + id;
 
     public override string SmokeQuery => Data?.IsLoaded == true && Ids().Any() ? $"0x{Ids().First():X4}" : "0x0000";
 
@@ -53,6 +61,7 @@ public partial class SoundPanel : GridPanel
 
         var stop = AssetUi.Action("Stop", "Stop sound or music playback", Stop);
         bar.AddChild(stop);
+        ReopenButton = AssetUi.Action("Reload", "Reopen selected sound and saved naming document…", ReopenSound); bar.AddChild(ReopenButton);
     }
 
     protected override IEnumerable<int> Ids()
@@ -60,6 +69,7 @@ public partial class SoundPanel : GridPanel
         int k = Music ? 1 : 0;
         if (_ids[k] != null)
         {
+            if (!Music) LoadProjectNames();
             return _ids[k];
         }
 
@@ -87,13 +97,56 @@ public partial class SoundPanel : GridPanel
             }
         }
 
-        return _ids[k] = list;
+        _ids[k] = list;
+        if (!Music) LoadProjectNames();
+        return list;
+    }
+
+    private void LoadProjectNames()
+    {
+        if (!_loadedProjects.Add(Project)) return;
+        string folder = EditorPaths.ProjectFile(Project, Data.ClientData, "metadata", "sounds");
+        if (!Directory.Exists(folder)) return;
+        foreach (string path in Directory.GetFiles(folder, "0x*.json"))
+        {
+            string stem = Path.GetFileNameWithoutExtension(path);
+            if (int.TryParse(stem.AsSpan(2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int id) && _ids[0].Contains(id)) WorkingDocument(id);
+        }
+    }
+    internal SoundDocument WorkingDocument(int id)
+    {
+        string key = Key(id);
+        if (_documents.TryGetValue(key, out var document)) return document;
+        if (_documentErrors.ContainsKey(key)) return null;
+        try
+        {
+            document = SoundDocument.Open(Project, Data.ClientData, id, () =>
+            {
+                if (!Data.Files.Sounds.TryGetSound(id, out byte[] pcm, out string name)) throw new IOException("Selected sound effect is no longer readable. Reopen the source library.");
+                return (pcm, name);
+            });
+            _documents[key] = document; return document;
+        }
+        catch (Exception e) { _documentErrors[key] = e.Message; return null; }
+    }
+    private void ReopenSound()
+    {
+        if (Music || Selected is not int id) return;
+        string key = Key(id);
+        var dialog = new ConfirmationDialog { Title = "Reopen sound?", DialogText = $"Discard unsaved name edits for 0x{id:X4} and reopen its active source plus saved project document?", OkButtonText = "Reopen sound" };
+        dialog.Canceled += dialog.QueueFree;
+        dialog.Confirmed += () =>
+        {
+            if (_documents.TryGetValue(key, out var document)) DocumentReopening?.Invoke(document);
+            _documents.Remove(key); _documentErrors.Remove(key); dialog.QueueFree(); OnAssetsChanged();
+        };
+        AddChild(dialog); dialog.PopupCentered();
     }
 
     private string NameOf(int id) =>
         Music
             ? _music.TryGetValue(id, out var m) ? m.Name : ""
-            : _effects.TryGetValue(id, out var e) ? e.Name : "";
+            : _documents.TryGetValue(Key(id), out var document) ? document.CurrentName : _effects.TryGetValue(id, out var e) ? e.Name : "";
 
     protected override string Caption(int id) => $"0x{id:X4}  {NameOf(id)}";
 
@@ -117,10 +170,17 @@ public partial class SoundPanel : GridPanel
         }
 
         bool music = Music;
+        SoundDocument document = music ? null : WorkingDocument(id);
         var inspection = Inspection.Still("Sounds", $"0x{id:X4}", null, sb.ToString());
         inspection.Title = music ? "Music" : "Sound effect";
         inspection.Origin = music ? "Active music · read-only" : "Active sound effect · read-only";
-        inspection.Fields.Add(("Name", NameOf(id)));
+        if (document == null) inspection.Fields.Add(("Name", NameOf(id)));
+        if (!music && document != null)
+        {
+            inspection.Sound = document; inspection.SoundChanged = () => { if (IsVisibleInTree() && !Music) OnAssetsChanged(); };
+            inspection.Origin = "Project naming document · active PCM and native archive unchanged";
+        }
+        else if (!music && _documentErrors.TryGetValue(Key(id), out string error)) inspection.Fields.Add(("Document", error));
         if (music) inspection.Fields.Add(("Loop", _music.GetValueOrDefault(id).Loop ? "Yes" : "No"));
         else
         {
