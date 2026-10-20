@@ -1,5 +1,36 @@
 # UOFiddler parity: a workbench for UO modders
 
+## Owner implementation decision, 2026-10-20
+
+Moshu approved implementation on this branch in the guo-worker-fiddler-parity
+terminal: independent static-art verification first, then select existing item
+art, replace its image, preview it, and export a verified staged copy. Occupied
+static-art replacement is approved only in staged copies, with explicit
+preview/confirmation, recovery of the prior stage and independent verification.
+Item metadata follows, then the recommended sequence below. This supersedes
+the earlier F02a owner hold for that narrow static-art workflow; it does not
+approve deletion, other-domain replacement, map maintenance, publication or a
+merge. The remaining catalogue is a proposed backlog, not one implementation PR.
+
+### First implementation milestone
+
+`tools/fiddler_parity` now contains an independent static-art reader and a
+single-record candidate/verify/promote adapter. The existing art inspector
+offers verified-stage export after image replacement; its editor-only dialog
+requires preparation and a separate Apply click and offers prior-stage recovery.
+The source installation remains read-only. This implements F01a and the narrow
+static-art F02a workflow; the original catalogue statuses are retained until
+operation-specific review records the implementation commit and visual proof.
+
+Run `20261020_guo-worker-fiddler-parity_static-art-verification` contains the
+synthetic reports and full-smoke logs. Thirty-one synthetic checks passed for
+direct decoding, free insertion, occupied replacement, corruption refusals,
+stale inputs, promotion rollback/recovery and stage locking. Both MUL/IDX and
+uncompressed, zero-entry-header UOP are covered separately. The .NET editor
+build and full headless smoke passed; the latter checks action registration,
+initial dialog state and teardown. No real-install replacement, compressed UOP
+or windowed visual-certification claim is made.
+
 Phase 1 proposal, 2026-10-19. guo-director first-pass review received;
 catalogue and survey await guo-director and exec-fable sign-off.
 F01a has separate director authorization for assignment (inbox #11093);

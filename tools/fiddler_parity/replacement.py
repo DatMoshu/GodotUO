@@ -1,0 +1,293 @@
+"""Prepare, independently verify and promote one occupied static replacement."""
+from __future__ import annotations
+
+import argparse
+from contextlib import contextmanager
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import struct
+import sys
+import uuid
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import run as parity
+from guo import uoart
+from uodata_write import uodata as writer
+
+
+def disjoint(*paths: Path) -> None:
+    for n, a in enumerate(paths):
+        for b in paths[n + 1:]:
+            if parity.overlap(a, b):
+                raise ValueError("Source, stage, image and plan must be separate, non-nested paths")
+
+
+def json_write(path: Path, data: dict) -> None:
+    if path.exists() and (path.is_symlink() or path.stat().st_nlink > 1):
+        raise ValueError("Aliased output is refused")
+    temporary = path.with_name(path.name + ".tmp-" + uuid.uuid4().hex)
+    with temporary.open("x", encoding="utf-8") as stream:
+        stream.write(json.dumps(data, indent=2) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+
+
+def stage_hashes(stage: Path) -> dict:
+    if not stage.exists():
+        return {}
+    if stage.resolve() != stage or stage.is_symlink() or (hasattr(stage, "is_junction") and stage.is_junction()):
+        raise ValueError("Aliased stage root refused")
+    hashes = {}
+    for path in stage.rglob("*"):
+        if path.is_symlink() or (hasattr(path, "is_junction") and path.is_junction()):
+            raise ValueError("Linked stage entries are refused")
+        if path.is_file():
+            if path.stat().st_nlink > 1:
+                raise ValueError("Hardlinked stage entries are refused")
+            hashes[path.relative_to(stage).as_posix()] = parity.digest(path)
+    return hashes
+
+
+@contextmanager
+def stage_lock(stage: Path):
+    """OS-held lock releases on process death; no stale lock-directory recovery."""
+    stage.parent.mkdir(parents=True, exist_ok=True)
+    path = stage.with_name(stage.name + ".fiddler-lock")
+    if path.exists() and (path.is_symlink() or path.stat().st_nlink > 1):
+        raise ValueError("Aliased stage lock refused")
+    with path.open("a+b") as stream:
+        stream.seek(0, 2)
+        if stream.tell() == 0:
+            stream.write(b"0")
+            stream.flush()
+        stream.seek(0)
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            yield
+        finally:
+            stream.seek(0)
+            if os.name == "nt":
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(stream, fcntl.LOCK_UN)
+
+
+def prepare(source: Path, stage: Path, image: Path, ident: int, plan: Path, version: str, oracle: Path) -> dict:
+    source, stage, image, plan = (path.resolve() for path in (source, stage, image, plan))
+    disjoint(source, stage, image, plan)
+    parity.protect_install(stage, plan)
+    if not 0 <= ident < 0x10000:
+        raise ValueError("Expected a static ID from 0x0000 to 0xFFFF")
+    if plan.exists():
+        raise ValueError("Plan folder must be new; existing plans are never overwritten")
+    if (source / "verdata.mul").exists():
+        raise parity.Unsupported("verdata installs require separate source-layer certification")
+    packaging = "uop" if (source / "artLegacyMUL.uop").exists() else "mul"
+    _, source_hashes = parity.records(source, packaging)
+    names = list(source_hashes)
+    prior = stage_hashes(stage)
+    if stage.exists() and not prior:
+        raise ValueError("Existing empty stage is refused; choose a new stage path")
+    if prior:
+        metadata = json.loads((stage / "stage.json").read_text(encoding="utf-8"))
+        if Path(metadata["install"]).resolve() != source:
+            raise ValueError("Stage belongs to another source")
+    # Existing stage may contain unrelated files. Preserve all of them, but
+    # read missing art containers directly from the explicit source.
+    effective = {}
+    for name in names:
+        path = stage / name if (stage / name).is_file() else source / name
+        effective[name] = path
+    if any(path.is_symlink() or path.stat().st_nlink > 1 for path in effective.values()):
+        raise ValueError("Aliased art containers are refused")
+    from PIL import Image
+    with Image.open(image) as img:
+        if img.format != "PNG" or not (0 < img.width <= 1024 and 0 < img.height <= 1024):
+            raise ValueError("Choose a PNG no larger than 1024x1024")
+    width, height, pixels = uoart.png_pixels(image, land=False)
+    # Quantized expected pixels derive from the intended PNG, not a decode of
+    # our encoder. Expand 5-bit channels with the upstream lookup convention.
+    def expand(c):
+        return c * 255 // 31
+    rgba = [0 if value == 0 else (expand((value >> 10) & 31) | expand((value >> 5) & 31) << 8
+        | expand(value & 31) << 16 | 0xff000000) for value in pixels]
+    plan.mkdir(parents=True)
+    baseline = plan / "baseline"
+    baseline.mkdir()
+    for name, path in effective.items():
+        shutil.copyfile(path, baseline / name)
+    existing, _ = parity.records(baseline, packaging)
+    if ident + 0x4000 not in existing:
+        raise ValueError("Choose an occupied static record; adding IDs is a separate workflow")
+    header = existing[ident + 0x4000][:4]
+    encoded = header + uoart.encode_static(pixels, width, height)[4:]
+    parity.check_art(encoded)
+    candidate = plan / "candidate"
+    if prior:
+        shutil.copytree(stage, candidate)
+    else:
+        candidate.mkdir()
+    staged = writer.Stage(candidate, source)
+    for name, path in effective.items():
+        shutil.copyfile(path, candidate / name)
+        staged.meta["files"][name.lower()] = {"name": name,
+            "source_sha1": writer.sha1(source / name), "source_size": (source / name).stat().st_size}
+    staged.save()
+    writer.replace_static_record(staged, ident, encoded)
+    expected = {"schema": 1, "packaging": packaging, "client_version": version,
+        "records": [{"id": ident, "width": width, "height": height, "rgba": rgba,
+            "raw_sha256": hashlib.sha256(encoded).hexdigest()}]}
+    json_write(plan / "expected.json", expected)
+    report = parity.verify(candidate, baseline, plan / "expected.json", plan / "verification", oracle)
+    if report["outcome"] != "pass":
+        raise ValueError("Candidate verification failed; see plan/verification/report.json")
+    # Stage metadata is generated again after promotion so its override paths
+    # point to the final destination. Everything else is retained byte-for-byte.
+    result = {"schema": 1, "state": "prepared", "id": ident, "width": width, "height": height,
+        "source": str(source), "stage": str(stage), "plan": str(plan), "packaging": packaging,
+        "source_hashes": source_hashes, "prior_hashes": prior, "candidate_hashes": stage_hashes(candidate),
+        "image_sha256": parity.digest(image), "image": str(image), "client_version": version}
+    json_write(plan / "plan.json", result)
+    return result
+
+
+def load_plan(path: Path) -> tuple[dict, Path, Path, Path]:
+    path = path.resolve()
+    spec = json.loads(parity.bounded(path, 16 * 1024 * 1024))
+    if spec.get("schema") != 1 or spec.get("state") != "prepared" or Path(spec["plan"]).resolve() != path.parent:
+        raise ValueError("Expected a prepared plan in its original folder")
+    source, stage = Path(spec["source"]).resolve(), Path(spec["stage"]).resolve()
+    disjoint(source, stage, path.parent)
+    parity.protect_install(stage, path.parent)
+    return spec, source, stage, path.parent
+
+
+def _apply(path: Path, oracle: Path) -> dict:
+    spec, source, stage, plan = load_plan(path)
+    candidate = plan / "candidate"
+    if stage_hashes(stage) != spec["prior_hashes"] or stage_hashes(candidate) != spec["candidate_hashes"]:
+        raise ValueError("Stage/candidate changed since preview; prepare again")
+    if parity.digest(Path(spec["image"])) != spec["image_sha256"]:
+        raise ValueError("Replacement image changed since preview; prepare again")
+    for name, wanted in spec["source_hashes"].items():
+        if parity.digest(source / name) != wanted:
+            raise ValueError("Source changed since preview; prepare again")
+    report = parity.verify(candidate, plan / "baseline", plan / "expected.json", plan / "recheck", oracle)
+    if report["outcome"] != "pass":
+        raise ValueError("Independent recheck failed; current stage is unchanged")
+    stage.parent.mkdir(parents=True, exist_ok=True)
+    journal = stage.with_name(stage.name + ".fiddler-journal.json")
+    if journal.exists():
+        previous = json.loads(parity.bounded(journal, 1024 * 1024))
+        if previous.get("state") not in ("complete", "recovered"):
+            raise ValueError("An unfinished promotion exists; recover it before applying another plan")
+        journal.rename(journal.with_name(journal.name + ".history-" + uuid.uuid4().hex))
+    backup = stage.with_name(stage.name + ".previous-" + uuid.uuid4().hex)
+    entry = {"schema": 1, "stage": str(stage), "backup": str(backup), "plan": str(plan),
+        "prior_exists": stage.exists(), "state": "promoting"}
+    json_write(journal, entry)
+    try:
+        if stage.exists():
+            stage.rename(backup)
+        candidate.rename(stage)
+        writer.Stage(stage, source).save()
+    except BaseException:
+        # Preserve even a partially promoted candidate for diagnosis.
+        if stage.exists() and backup.exists():
+            stage.rename(stage.with_name(stage.name + ".failed-" + uuid.uuid4().hex))
+        if backup.exists():
+            backup.rename(stage)
+        entry["state"] = "recovered"
+        json_write(journal, entry)
+        raise
+    entry["state"] = "complete"
+    json_write(journal, entry)
+    spec["state"] = "applied"
+    json_write(plan / "plan.json", spec)
+    return entry
+
+
+def apply(path: Path, oracle: Path) -> dict:
+    _, _, stage, _ = load_plan(path)
+    with stage_lock(stage):
+        return _apply(path, oracle)
+
+
+def _recover(stage: Path) -> dict:
+    stage = stage.resolve()
+    parity.protect_install(stage)
+    journal = stage.with_name(stage.name + ".fiddler-journal.json")
+    if journal.is_symlink() or journal.stat().st_nlink > 1:
+        raise ValueError("Aliased recovery journal refused")
+    entry = json.loads(parity.bounded(journal, 1024 * 1024))
+    if entry.get("state") == "recovered":
+        raise ValueError("This promotion has already been recovered")
+    backup = Path(entry["backup"])
+    if (Path(entry["stage"]).resolve() != stage or backup.parent.resolve() != stage.parent
+        or not backup.name.startswith(stage.name + ".previous-") or backup.resolve() != backup or backup.is_symlink()
+        or (hasattr(backup, "is_junction") and backup.is_junction())):
+        raise ValueError("Invalid recovery journal")
+    if not backup.is_dir():
+        if entry.get("prior_exists", True):
+            raise ValueError("Prior stage is unavailable; inspect the journal before continuing")
+        if stage.exists():
+            stage.rename(stage.with_name(stage.name + ".recovered-candidate-" + uuid.uuid4().hex))
+        entry["state"] = "recovered"
+        json_write(journal, entry)
+        return entry
+    if stage.exists():
+        stage.rename(stage.with_name(stage.name + ".recovered-candidate-" + uuid.uuid4().hex))
+    backup.rename(stage)
+    entry["state"] = "recovered"
+    json_write(journal, entry)
+    return entry
+
+
+def recover(stage: Path) -> dict:
+    parity.protect_install(stage)
+    with stage_lock(stage.resolve()):
+        return _recover(stage)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="command", required=True)
+    prep = sub.add_parser("prepare")
+    for name in ("source", "stage", "image", "plan"):
+        prep.add_argument("--" + name, type=Path, required=True)
+    prep.add_argument("--id", type=lambda value: int(value, 0), required=True)
+    prep.add_argument("--client-version", required=True)
+    commit = sub.add_parser("apply")
+    commit.add_argument("--plan", type=Path, required=True)
+    commit.add_argument("--confirm", action="store_true", required=True)
+    restore = sub.add_parser("recover")
+    restore.add_argument("--stage", type=Path, required=True)
+    restore.add_argument("--confirm", action="store_true", required=True)
+    for item in (prep, commit):
+        item.add_argument("--oracle", type=Path, default=parity.default_oracle())
+    args = parser.parse_args()
+    try:
+        if args.command == "prepare":
+            result = prepare(args.source, args.stage, args.image, args.id, args.plan, args.client_version, args.oracle)
+        elif args.command == "apply":
+            result = apply(args.plan, args.oracle)
+        else:
+            result = recover(args.stage)
+        print(json.dumps(result))
+        return 0
+    except (OSError, ValueError, RuntimeError, KeyError) as e:
+        print(f"[fiddler-parity] {e}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -257,6 +257,58 @@ def mul_occupied(idx: Path, index: int) -> bool:
     return idx_entry(idx, index)[1] > 0
 
 
+def replace_static_record(stage: Stage, item: int, data: bytes) -> None:
+    """Explicit occupied-static replacement, in a disposable candidate stage only.
+
+    Owner approval: Fiddler parity terminal, 2026-10-20. The transactional
+    adapter owns preview, independent verification and publication/recovery;
+    this low-level writer never broadens write_records' append-only UOP policy.
+    """
+    if not 0 <= item < 0x10000:
+        raise ValueError("static id is outside 0x0000-0xFFFF")
+    record = AssetRecord("static", item, data)
+    check_outputs(stage, [record])
+    index = LAND_COUNT + item
+    if _exists(stage, "artLegacyMUL.uop"):
+        path = stage.path("artLegacyMUL.uop")
+        raw = path.read_bytes()
+        target_hash = uop_hash(ART_PATTERN.format(index))
+        block = struct.unpack_from("<q", raw, 12)[0]
+        found, seen = [], set()
+        while block:
+            if block in seen or block < 28 or block + 12 > len(raw):
+                raise ValueError("invalid UOP block chain")
+            seen.add(block)
+            count, nxt = struct.unpack_from("<iq", raw, block)
+            if count < 0 or block + 12 + count * 34 > len(raw):
+                raise ValueError("invalid UOP entry table")
+            for n in range(count):
+                at = block + 12 + n * 34
+                offset, header, stored, length, key, checksum, flag = struct.unpack_from("<qiiiQIh", raw, at)
+                if key == target_hash and offset:
+                    if flag != 0:
+                        raise ValueError("compressed static replacement is not certified")
+                    if min(offset, header, stored, length) < 0 or offset + header + stored > len(raw):
+                        raise ValueError("invalid occupied UOP payload")
+                    found.append(at)
+            block = nxt
+        if len(found) != 1:
+            raise ValueError("replacement requires exactly one occupied static record")
+        with path.open("r+b") as stream:
+            stream.seek(0, 2)
+            offset = stream.tell()
+            stream.write(data)
+            stream.seek(found[0])
+            stream.write(struct.pack("<qiiiQIh", offset, 0, len(data), len(data), target_hash, zlib.adler32(data), 0))
+        _UOP_CACHE.clear()
+    else:
+        if not mul_occupied(stage.read_path("artidx.mul"), index):
+            raise ValueError("replacement requires an occupied static record")
+        extra = idx_entry(stage.read_path("artidx.mul"), index)[2]
+        mul_append(stage.path("art.mul"), stage.path("artidx.mul"), index, data, extra, replace=True)
+    stage.save()
+
+
 def mul_append(mul: Path, idx: Path, index: int, data: bytes, extra: int = 0, replace: bool = False) -> None:
     size = idx.stat().st_size // 12
     if index >= size:

@@ -51,6 +51,10 @@ public static class AssetActions
 
         if (replaced)
         {
+            if (kind == AssetKind.Static)
+            {
+                ins.Actions.Add(("Export verified static stage…", () => StaticStageDialog.Open(data, id, current)));
+            }
             ins.Actions.Add(("Revert", () =>
             {
                 string rel = assets.RelativePathOf(kind, id);
