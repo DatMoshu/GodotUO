@@ -131,6 +131,23 @@ internal static class WaterRender
     internal static float EditorSeconds;
     internal static bool EditorPaused;
     private static bool InEditorPreview => EditorWorld != null && ReferenceEquals(EditorWorld, Client.Game?.UO?.World);
+
+    /// <summary>Read-only scene-thread diagnostics for authoring and private interaction proofs.</summary>
+    internal static object Inspect(World world)
+    {
+        if (world?.Player == null) return null;
+        var player = world.Player;
+        bool wet = _mask.WaterAt(player.X, player.Y, out int z);
+        return new
+        {
+            selectedStyle = Resolve(ProfileManager.CurrentProfile)?.Id ?? Classic,
+            boundStyle = _bound?.Id ?? Classic, active = _styled,
+            playerWet = wet, surfaceZ = wet ? (int?)z : null,
+            playerDisturbs = wet && player.Z <= z + 1,
+            rippleStamps = _ripples.Stamps, rippleSteps = _ripples.Steps,
+            lastUpdateMs = _ripples.LastUpdateMs
+        };
+    }
 #endif
 
     private static IWaterStyle _bound;

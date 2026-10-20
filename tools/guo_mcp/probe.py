@@ -110,6 +110,7 @@ def main():
             assert snapshot()["headless"] == (not args.headed)
             state_now = json.loads(call("guo_state")["content"][0]["text"])
             assert isinstance(state_now["frame"], int) and state_now["frame"] > 0 and "scene" in state_now and "player" in state_now
+            assert "water" in state_now and state_now["water"] is None, "authoring water state is null before a world"
             if args.client:
                 deadline = time.monotonic() + 30
                 state = snapshot()

@@ -330,6 +330,9 @@ public partial class McpHost : Node
             width = size.X,
             height = size.Y,
             player = player == null ? null : new { map = Client.Game.UO.World.MapIndex, x = (int)player.X, y = (int)player.Y, z = (int)player.Z },
+#if TOOLS
+            water = Renderer.Water.WaterRender.Inspect(Client.Game?.UO?.World),
+#endif
             audio = new { enabled = Configuration.ProfileManager.CurrentProfile?.ContentAudioEnabled == true,
                 music = IO.Audio.MusicZones.Status, sound = IO.Audio.SfxZones.Status, recordedClipsPlayed = IO.Audio.PackVoice.Played }
         };

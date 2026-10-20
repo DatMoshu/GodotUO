@@ -1766,9 +1766,22 @@ no reply). `tools/guo_mcp/run.py` is the stdio bridge: it sends the token, then 
 | `guo_input` | `kind` `motion\|button\|key\|text`; `x`,`y`; `button` `Left\|Right\|Middle\|WheelUp\|WheelDown`; `key` (Godot key name); `pressed`; `text` (at most 1024 characters); `shift`,`ctrl`,`alt` | text content; `isError` on bad arguments |
 | `guo_wait` | `frames` 1..600 | text content after that many process frames |
 | `guo_screenshot` | none | `image/png` content (base64); `isError` when headless |
-| `guo_state` | none | JSON text: `frame` (process frame index; with `--write-movie` it is the movie frame), `scene`, `width`, `height`, `player` (`map`,`x`,`y`,`z`, or null before the world) |
+| `guo_state` | none | JSON text: `frame` (process frame index; with `--write-movie` it is the movie frame), `scene`, `width`, `height`, `player` (`map`,`x`,`y`,`z`, or null before the world). Editor builds also include read-only `water` diagnostics, below. |
 | `guo_quit` | none | text, then the client quits after two frames (finalises a MovieWriter file); the connection closes |
 | `guo_overlay` | `text` (caption, at most 300 characters), `step` (its label, e.g. `3/18`), `control` `{x,y,width,height,label?}` (an outline, viewport pixels), `clear`, `hide` (draw nothing; Space and Esc still count); none of them only reads | JSON text `{skip, abort}`: Space and Esc pressed since the last call (reading clears them). Draws the human driver's caption card and outline on a canvas layer above the game; the card's step label is a Godot `Label` named `HumanOverlayStep`, visible in `guo_ui`. Space does not count while a text field has focus |
+
+In an editor (`TOOLS`) build, `guo_state.water` is null before a world exists.
+In the world it reports `selectedStyle`, `boundStyle` and `active` (the latter
+two describe the last prepared draw), `playerWet` and nullable `surfaceZ` from
+the current water mask, and `playerDisturbs` (a wet cell with the player no
+higher than surface + 1). This is geometric eligibility, not proof that the
+player emitted a stamp. The mask describes the last styled draw, can be stale
+under Classic or during transitions, and treats unknown cells as wet.
+`rippleStamps` and `rippleSteps` are cumulative
+process counters; compare samples rather than assuming they reset on a style
+or map change. `lastUpdateMs` is the most recent ripple update duration, not a
+performance benchmark. Reading these fields changes no style or wave state.
+Exported clients omit this authoring-only block.
 
 No shell, script, file or packet tools exist. Synthetic keys and buttons still held when the last controller
 disconnects are released.
