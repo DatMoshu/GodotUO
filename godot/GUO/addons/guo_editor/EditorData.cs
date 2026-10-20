@@ -394,6 +394,20 @@ public sealed class EditorData : IDisposable
         }
     }
 
+    /// <summary>Main-thread comparison read. Restore the overlay entry even when decoding fails.</summary>
+    public Image SourceArtImage(uint index)
+    {
+        if (_assetsApplied == null || !_assetsApplied.Art.TryGetValue((int)index, out UOFileIndex source)) return ArtImage(index);
+        UOFileIndex replacement = _files.Arts.File.Entries[index];
+        try
+        {
+            _files.Arts.File.Entries[index] = source;
+            ArtInfo art = _files.Arts.GetArt(index);
+            return FromPixels(art.Pixels, art.Width, art.Height);
+        }
+        finally { _files.Arts.File.Entries[index] = replacement; }
+    }
+
     /// <summary>Decodes a gump through <see cref="GumpsLoader.GetGump"/>. Null when empty.</summary>
     public Image GumpImage(int index)
     {

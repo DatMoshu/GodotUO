@@ -21,13 +21,14 @@ public static class AssetActions
         }
 
         bool replaced = assets.Has(kind, id);
+        ins.Origin = replaced ? "Project image replacement" : "Install art · read-only";
         ins.Text += replaced
             ? $"[color=yellow]replaced by the world project[/color]: {assets.RelativePathOf(kind, id)} (in the world project)\n"
             : "from the install\n";
 
         if (current != null)
         {
-            ins.Actions.Add(("Export PNG...", () => Pick(EditorFileDialog.FileModeEnum.SaveFile, $"{Stem(kind)}_0x{id:X4}.png",
+            ins.Actions.Add(new("export-png", "Export PNG…", "Save", () => Pick(EditorFileDialog.FileModeEnum.SaveFile, $"{Stem(kind)}_0x{id:X4}.png",
                 path => { EnsureExportDestination(path); if (current.SavePng(path) != Error.Ok) throw new IOException("Could not export PNG."); })));
         }
 
@@ -35,12 +36,14 @@ public static class AssetActions
         {
             ins.ArtKind = kind;
             ins.ArtId = id;
-            ins.Actions.Add(("Edit in Pixelorama", () => ReportEdit(EditIn(data, kind, id, current, pinta: false))));
-            ins.Actions.Add(("Edit in the Pixelorama tab", () => ReportEdit(EditIn(data, kind, id, current, pinta: false, embedded: true))));
-            ins.Actions.Add(("Open configured image editor (Pinta)", () => ReportEdit(EditIn(data, kind, id, current, pinta: true))));
+            var edit = new InspectionAction("edit-image", "Edit image", "Edit", null);
+            edit.Children.Add(new("pixelorama-tab", "Open Pixelorama tab", "Edit", () => ReportEdit(EditIn(data, kind, id, current, pinta: false, embedded: true))));
+            edit.Children.Add(new("pixelorama-window", "Open Pixelorama window", "Edit", () => ReportEdit(EditIn(data, kind, id, current, pinta: false))));
+            edit.Children.Add(new("configured-editor", "Open configured image editor (Pinta)", "Edit", () => ReportEdit(EditIn(data, kind, id, current, pinta: true))));
+            ins.Actions.Insert(0, edit);
         }
 
-        ins.Actions.Add(("Replace from image...", () => Pick(EditorFileDialog.FileModeEnum.OpenFile, null, path =>
+        ins.Actions.Add(new("replace-image", "Replace from image…", "Load", () => Pick(EditorFileDialog.FileModeEnum.OpenFile, null, path =>
         {
             string why = ImportFile(data, kind, id, path);
             if (why != null)
@@ -53,15 +56,18 @@ public static class AssetActions
         {
             if (kind == AssetKind.Static)
             {
-                ins.Actions.Add(("Export verified static stage…", () => StaticStageDialog.Open(data, id, current)));
+                ins.Actions.Add(new("review-stage", "Export verified static stage…", "FileDialog", () => StaticStageDialog.Open(data, id, current)));
             }
-            ins.Actions.Add(("Revert", () =>
+            ins.Actions.Add(new("revert-image", "Revert project image…", "Reload", () =>
             {
-                string rel = assets.RelativePathOf(kind, id);
-                assets.Revert(kind, id);
-                new AssetProvenance(assets).Remove(rel);
-                data.ReapplyAssets(kind, id);
-            }));
+                ConfirmRevert(() =>
+                {
+                    string rel = assets.RelativePathOf(kind, id);
+                    assets.Revert(kind, id);
+                    new AssetProvenance(assets).Remove(rel);
+                    data.ReapplyAssets(kind, id);
+                });
+            }, false));
         }
     }
 
@@ -82,9 +88,10 @@ public static class AssetActions
             ? $"[color=yellow]replaced by the world project[/color]: {assets.RelativePathOf(AssetKind.Hue, hue)} (in the world project)\n"
             : "from the install\n";
 
-        ins.Actions.Add(("Save strip PNG...", () => Pick(EditorFileDialog.FileModeEnum.SaveFile, $"hue_{hue}.png",
-            path => strip.SavePng(path))));
-        ins.Actions.Add(("Import strip PNG...", () => Pick(EditorFileDialog.FileModeEnum.OpenFile, null, path =>
+        ins.Origin = replaced ? "Project hue replacement" : "Install hue · read-only";
+        ins.Actions.Add(new("export-hue", "Save strip PNG…", "Save", () => Pick(EditorFileDialog.FileModeEnum.SaveFile, $"hue_{hue}.png",
+            path => { EnsureExportDestination(path); strip.SavePng(path); })));
+        ins.Actions.Add(new("import-hue", "Import strip PNG…", "Load", () => Pick(EditorFileDialog.FileModeEnum.OpenFile, null, path =>
         {
             string why = ImportHueFile(data, hue, path, name, start, end);
             if (why != null)
@@ -101,6 +108,15 @@ public static class AssetActions
                 data.ReapplyAssets(AssetKind.Hue, hue);
             }));
         }
+    }
+
+    private static void ConfirmRevert(Action revert)
+    {
+        var dialog = new ConfirmationDialog { Title = "Revert project image?", DialogText = "Remove this image replacement from the project and show the installed art again.", OkButtonText = "Revert image" };
+        GuoEditorPlugin.AssetsMain.AddChild(dialog);
+        dialog.Confirmed += () => { try { revert(); } catch (Exception e) { ReportEdit(e.Message); } dialog.QueueFree(); };
+        dialog.Canceled += dialog.QueueFree;
+        dialog.PopupCentered();
     }
 
     public static string ImportHueFile(EditorData data, int hue, string path, string name, ushort start, ushort end)

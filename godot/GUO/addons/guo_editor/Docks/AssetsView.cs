@@ -63,7 +63,8 @@ public partial class AssetsView : VBoxContainer
 
         var bar = new HBoxContainer();
         AddChild(bar);
-        bar.AddChild(new Label { Text = "Cell size" });
+        bar.AddChild(new Label { Text = GumpsOnly ? "Gumps" : "Assets", SizeFlagsHorizontal = SizeFlags.ExpandFill });
+        bar.AddChild(new Label { Text = "Thumbnails" });
         _cells = new OptionButton { TooltipText = "Size of the icons in the grids" };
         foreach (string c in new[] { "S", "M", "L" })
         {
@@ -79,15 +80,9 @@ public partial class AssetsView : VBoxContainer
             ApplyCellSize();
         };
         bar.AddChild(_cells);
-        bar.AddChild(new Label
-        {
-            Text = GumpsOnly ? "UO Assets · Gumps — search by client gump name or ID; double-click to add" : "  Pick an asset; the UO Inspector on the left shows it. Search is at the top of each tab.",
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            ClipText = true,
-        });
-
-        _tabs = new TabContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
-        AddChild(_tabs);
+        _tabs = new TabContainer { SizeFlagsVertical = SizeFlags.ExpandFill, SizeFlagsHorizontal = SizeFlags.ExpandFill, TabsVisible = GumpsOnly };
+        if (GumpsOnly) AddChild(_tabs);
+        else BuildWorkspace(bar);
 
         if (!GumpsOnly) Add("Art", new ArtPanel());
         Add("Gumps", new GumpPanel { MinimumGridHeight = GumpsOnly ? 90 : 240 });
@@ -104,6 +99,7 @@ public partial class AssetsView : VBoxContainer
             Add("Parity", new ParityPanel());
         }
         ApplyCellSize();
+        if (!GumpsOnly) BuildLibrary();
 
         if (_data.IsLoaded || _data.Error != null)
         {
@@ -191,6 +187,7 @@ public partial class AssetsView : VBoxContainer
     public void ShowPanel(AssetPanel panel)
     {
         _tabs.CurrentTab = _panels.IndexOf(panel);
+        SyncLibrary();
     }
 
     public T Panel<T>() where T : AssetPanel => _panels.Find(p => p is T) as T;
@@ -212,6 +209,7 @@ public partial class AssetsView : VBoxContainer
         {
             _data.AssetsApplied -= OnAssetsApplied;
             _data.AssetsApplied += OnAssetsApplied;
+            if (_inspector != null) { _data.AssetsApplied -= UpdateChanges; _data.AssetsApplied += UpdateChanges; }
         }
         else if (_data.Error == null)
         {
@@ -226,6 +224,7 @@ public partial class AssetsView : VBoxContainer
         {
             _data.Loaded -= OnDataLoaded;
             _data.AssetsApplied -= OnAssetsApplied;
+            _data.AssetsApplied -= UpdateChanges;
         }
 
         foreach (AssetPanel panel in _panels)

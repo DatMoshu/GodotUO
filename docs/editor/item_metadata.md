@@ -1,11 +1,23 @@
 # Item metadata working documents (F06a)
 
-In the Art inspector, select a static and choose **Edit item metadata…**.
-Edit its name, 64-bit flags in hexadecimal and height. **Apply to document**
-creates one undoable edit; Undo, Redo and Revert to source operate on the working
-copy. **Save project document** also captures the current fields and saves
-`<world-project>/metadata/items/0xNNNN.json`. Reopen the item to reload it.
-Closing with unsaved changes asks before discarding them.
+In **Assets → Art → Statics**, select an item. Its name, height and named flags
+are editable in the docked **Properties** inspector. **Advanced flags** exposes
+the complete 64-bit hexadecimal value; named checkboxes preserve every other
+bit. The name has a live UTF-8 byte counter and invalid fields disable saving.
+
+Leaving a valid field commits one undoable document edit. Undo, Redo and the
+undoable Revert action operate on the selected item's working copy. **Save copy**
+(Ctrl+S while a metadata field has focus) persists only
+`<world-project>/metadata/items/0xNNNN.json`. There is no second Apply step.
+Text fields keep their native text undo; the document also has dedicated history
+buttons. Switching selection retains each item's valid or invalid draft.
+
+Unsaved drafts are backed up in Godot's editor-local project metadata on
+workspace teardown/reload. They restore when the same project/item is selected
+and the source hash matches; recovery is still unsaved and never auto-exports.
+Source mismatches refuse normal project-document save. Saved project documents,
+unsaved drafts and project image replacements appear in the **Project changes**
+menu. See [Assets workbench](assets_workbench.md) for navigation and export review.
 
 This is editor-only L3 authoring with no AI dependency or feature toggle. The
 loaded client metadata and native tiledata file stay unchanged. Binary staging,
@@ -28,6 +40,7 @@ the client installation, including directory-link aliases.
 
 Headless `EditorSmokeAssets` exercises unknown-byte preservation, 64-bit flags,
 undo/redo/revert, multibyte name and height refusals, save/reload, source identity,
-install protection and dialog construction/teardown. It does not certify native
+install protection, draft retention, invalid-save refusal, named-bit preservation,
+editor-local recovery and the shared icon toolbar. It does not certify native
 tiledata output, which this milestone does not produce. Windowed visual and
 interaction review remains separate.

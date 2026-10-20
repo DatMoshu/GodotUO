@@ -36,6 +36,16 @@ server/client bar stays inside the window and occupies one row at 1920, 1366
 and 1024 logical pixels wide, and saves `editor_header_*.png`. It runs no other
 editor checks and cannot be combined with `--reload`.
 
+For the Assets workbench, run
+`python tools/editor_smoke/run.py --windowed --assets-workbench --out FOLDER`.
+It captures Art/Statics and its docked metadata inspector at 1920, 1366 and
+1024 window widths, checks toolbar bounds, and captures the source/replacement
+export review. It uses a project under FOLDER, never prepares or applies a
+staged export, and cannot combine with reload, world-project or header-only.
+The normal full smoke also checks metadata drafts across selection, UTF-8
+validation, named-flag bit preservation, save/history, draft recovery and the
+source comparison's restoration of the overlay.
+
 ## What it does
 
 1. `dotnet build` of `godot/GUO/GUO.csproj`. The addon is C# in the game

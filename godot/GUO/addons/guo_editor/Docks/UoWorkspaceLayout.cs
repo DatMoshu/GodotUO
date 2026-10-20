@@ -2,6 +2,7 @@
 namespace GUO.Editor;
 
 using System.Collections.Generic;
+using System;
 using Godot;
 
 public partial class GuoEditorPlugin
@@ -31,8 +32,21 @@ public partial class GuoEditorPlugin
         shell.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         EditorInterface.Singleton.GetEditorMainScreen().AddChild(shell);
         var inspector = new VBoxContainer { CustomMinimumSize = new Vector2(270, 0) };
-        inspector.AddChild(new Label { Text = "UO Inspector" }); shell.AddChild(inspector);
+        bool assets = name == AssetsView.TabName;
+        if (!assets) { inspector.AddChild(new Label { Text = "UO Inspector" }); shell.AddChild(inspector); }
         view.Reparent(shell, false);
+        if (assets)
+        {
+            inspector.CustomMinimumSize = new Vector2(300, 0) * EditorInterface.Singleton.GetEditorScale();
+            shell.AddChild(inspector);
+            var preferences = EditorInterface.Singleton.GetEditorSettings();
+            float scale = EditorInterface.Singleton.GetEditorScale();
+            int width = preferences.GetProjectMetadata("guo_assets", "inspector_width", 330).AsInt32();
+            void Fit() => shell.SplitOffsets = new[] { Math.Max(120, (int)(shell.Size.X - Math.Max(300, width) * scale)) };
+            shell.Resized += Fit;
+            shell.Dragged += _ => { width = Math.Max(300, (int)(inspector.Size.X / scale)); preferences.SetProjectMetadata("guo_assets", "inspector_width", width); };
+            Callable.From(Fit).CallDeferred();
+        }
         view.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         view.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
         _uoShells[name] = (view, shell, inspector);
@@ -50,6 +64,7 @@ public partial class GuoEditorPlugin
         bool uo = name == WorldTabName || _uoShells.ContainsKey(name);
         if (uo)
         {
+            if (name == AssetsView.TabName) HideBottomPanel();
             if (!_uoLayoutActive) _previousDistraction = EditorInterface.Singleton.IsDistractionFreeModeEnabled();
             _uoLayoutActive = true;
             EditorInterface.Singleton.SetDistractionFreeMode(true);

@@ -93,6 +93,8 @@ public abstract partial class GridPanel : AssetPanel
     protected virtual bool Matches(int id, string query) =>
         Tooltip(id).Contains(query, StringComparison.OrdinalIgnoreCase);
 
+    protected virtual bool Include(int id) => true;
+
     protected abstract Inspection Describe(int id);
 
     /// <summary>Extra controls before the search box (a kind switch, a language).</summary>
@@ -211,7 +213,12 @@ public abstract partial class GridPanel : AssetPanel
         if (ids.Length == 1)
         {
             Inspection inspection = Describe(ids[0]);
-            foreach (var action in inspection.Actions) AddContext(action.Label, action.Run);
+            foreach (var action in inspection.Actions)
+            {
+                if (action.Children.Count > 0)
+                    foreach (var child in action.Children) AddContext(child.Label, child.Run);
+                else AddContext(action.Label, action.Run);
+            }
         }
         else if (this is ArtPanel || this is GumpPanel)
         {
@@ -289,7 +296,7 @@ public abstract partial class GridPanel : AssetPanel
         string q = SearchBox.Text.Trim();
         if (TryParseId(q, out int id))
         {
-            _results.AddRange(Ids());
+            _results.AddRange(Ids().Where(Include));
             int at = _results.BinarySearch(id);
             ShowPage(at >= 0 ? at / PageSize : Math.Max(0, ~at) / PageSize);
             if (at >= 0)
@@ -306,7 +313,7 @@ public abstract partial class GridPanel : AssetPanel
 
         foreach (int i in Ids())
         {
-            if (q.Length == 0 || Matches(i, q))
+            if (Include(i) && (q.Length == 0 || Matches(i, q)))
             {
                 _results.Add(i);
             }
@@ -344,6 +351,7 @@ public abstract partial class GridPanel : AssetPanel
             int item = _list.AddItem(Caption(id), icon);
             _list.SetItemMetadata(item, (long)id);
             _list.SetItemTooltip(item, Tooltip(id));
+            if (Selected == id) _list.Select(item);
         }
 
         _prev.Disabled = _page == 0;

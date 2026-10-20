@@ -236,6 +236,7 @@ public partial class EditorSmoke
                 _assetReport["item_metadata_action"] = metadataAction;
                 if (!metadataAction) AssetFail("static inspector is missing metadata document editing");
                 CheckItemMetadataDocument();
+                CheckAssetWorkbench(art, FixtureStatic);
             }
 
             foreach (var (name, when) in AssetStamp())
