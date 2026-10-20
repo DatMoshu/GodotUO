@@ -244,7 +244,14 @@ namespace GUO.Game.GameObjects
             //Engine.DebugInfo.EffectsRendered++;
 
 
-            if (data.IsLight && Source != null)
+            // PORT DEVIATION (GUO): ADR-0039 follows the projectile itself,
+            // including after MovingEffect replaces its entity Source with
+            // coordinates. The classic source-based offer is unchanged off.
+            if (data.IsLight && Client.Game.GetScene<GameScene>().UseRealtimeLights)
+            {
+                Client.Game.GetScene<GameScene>().AddLight(this, this, posX + 22, posY + 22);
+            }
+            else if (data.IsLight && Source != null)
             {
                 Client.Game.GetScene<GameScene>().AddLight(Source, Source, posX + 22, posY + 22);
             }

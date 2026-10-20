@@ -29,5 +29,10 @@
     <Compile Include="../../../godot/GUO/src/Store/StoreClient.cs" Link="StoreClient.cs" />
     <Compile Include="../../../godot/GUO/src/Store/StoreTrust.cs" Link="StoreTrust.cs" />
     <Compile Include="../../../godot/GUO/src/Store/StoreShardContent.cs" Link="StoreShardContent.cs" />
+    <Compile Include="../../../godot/GUO/src/Store/StoreMods.cs" Link="StoreMods.cs" />
+    <Compile Include="../../../godot/GUO/src/Network/Mods/PacketMods.cs" Link="PacketMods.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../godot/GUO.ModApi/GUO.ModApi.csproj" />
   </ItemGroup>
 </Project>

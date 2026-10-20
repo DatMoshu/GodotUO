@@ -1,6 +1,6 @@
 @echo off
-rem Exports a debug APK headless into build/android/GUO-debug.apk and prints the export log as it goes.
-rem args: --args "<client flags to bake in>"
+rem Exports an APK headless into build/android: GUO-debug.apk, or with --release GUO-release.apk signed with your own key.
+rem args: --args "<client flags to bake in>" --release
 REM ============================================================================
 REM  Exports a debug APK, headless, into build\android\GUO-debug.apk.
 REM  Renders the export preset from tools\android\export_presets.template.cfg

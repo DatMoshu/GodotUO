@@ -61,7 +61,7 @@ internal static class StorePack
     { "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
       "com\u00b9", "com\u00b2", "com\u00b3", "lpt\u00b9", "lpt\u00b2", "lpt\u00b3" };
     private static readonly HashSet<string> Extensions = new(StringComparer.OrdinalIgnoreCase)
-    { ".png", ".jpg", ".jpeg", ".webp", ".ogv", ".ogg", ".wav", ".json", ".txt", ".gdshader", ".razor", ".ply" };
+    { ".png", ".jpg", ".jpeg", ".webp", ".ogv", ".ogg", ".wav", ".json", ".txt", ".gdshader", ".razor", ".ply", ".dll" };
     private static readonly HashSet<string> Images = new(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".webp" };
     private static readonly HashSet<string> Licences = new(StringComparer.Ordinal)
     { "CC0-1.0", "CC-BY-4.0", "CC-BY-SA-4.0", "MIT", "BSD-2-Clause", "BSD-3-Clause", "Apache-2.0" };
@@ -197,6 +197,8 @@ internal static class StorePack
         {
             Require(!m.Files.Keys.Any(p => Path.GetExtension(p).Equals(".ply", StringComparison.OrdinalIgnoreCase)),
                 "PLY payload requires v2 splat component");
+            Require(!m.Files.Keys.Any(p => Path.GetExtension(p).Equals(".dll", StringComparison.OrdinalIgnoreCase)),
+                "A .dll is allowed only as a v2 mod component's assembly");
             Require(m.Kind == "razor-script" ? scripts : !scripts,
                 "Razor scripts require their own kind and at least one .razor file");
         }

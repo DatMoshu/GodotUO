@@ -16,6 +16,38 @@ community site mirrors the same catalogue.
 The files are immutable once published. The web server only reads them. A
 sync job writes them from the catalogue repository's release.
 
+## A catalogue of your own on GitHub Pages
+
+A shard or a group of pack authors can run its own signed catalogue next to
+the official one. Players add its address in the Store and approve its key
+once; the client lists every catalogue at once.
+
+1. `python tools/asset_store/run.py keygen my-catalogue.key`, kept out of
+   every repository, and `UO_STORE_SIGNING_KEY`, `UO_STORE_CATALOGUE_ID` and
+   `UO_STORE_CATALOGUE_TITLE` set in `config.local.bat`.
+2. `python tools/asset_store/run.py init-catalogue my-packs` writes the
+   repository: listings folder, README with the key's fingerprint, the pull
+   request check and the publish workflow. Push it to GitHub.
+3. Publish, one of two ways:
+   - **From CI.** Store the key file's one line as the repository secret
+     `CATALOGUE_SIGNING_KEY` and set Pages to deploy from GitHub Actions.
+     Every merge to `main` signs and deploys.
+   - **From your computer.** Set Pages to deploy from the `gh-pages` branch,
+     then `launchers\store\push_catalogue.bat --listing packs --remote <the
+     repository's git URL>`. Add `--pack my-pack.zip` to host a ZIP on the
+     site itself. `--dry-run --keep FOLDER` builds and signs without pushing.
+
+A push only adds a commit; it refuses when someone else pushed in between,
+and a published version can never be replaced with different bytes. GitHub
+Pages caps a site at 1 GB and a file at 100 MB, so large packs belong on a
+release asset or a mirror, named by a listing.
+
+`launchers\store\hosted_proof.bat` runs the whole path on this computer with
+a throwaway key: a bare git repository for GitHub, loopback HTTP for Pages
+and a pack author's host, and the client's own C# approving, listing and
+installing. With `--serve` it stays up for the client scenario
+`client.store.hosted_catalogue`.
+
 ## Reaching a home server from the internet
 
 A static IP from a residential ISP is uncommon. Most "static" home addresses

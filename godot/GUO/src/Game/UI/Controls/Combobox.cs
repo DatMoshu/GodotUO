@@ -164,6 +164,7 @@ namespace GUO.Game.UI.Controls
         private class ComboboxGump : Gump
         {
             private const int ELEMENT_HEIGHT = 15;
+            private const int TOUCH_ROW_HEIGHT = 26; // PORT DEVIATION (GUO): TouchRows; Modern Options' row height
 
 
             private readonly Combobox _combobox;
@@ -235,6 +236,15 @@ namespace GUO.Game.UI.Controls
                     labels[i] = label;
                 }
 
+                // PORT DEVIATION (GUO): on touch each row is a finger's height
+                // (TouchRows); with a mouse this is upstream's list unchanged.
+                if (GUO.Input.Touch.TouchInput.Enabled)
+                {
+                    TouchRows(labels, maxHeight, width);
+
+                    return;
+                }
+
                 int totalHeight = Math.Min(maxHeight, labels.Max(o => o.Y + o.Height));
                 int maxWidth = Math.Max(width, labels.Max(o => o.X + o.Width));
 
@@ -283,11 +293,46 @@ namespace GUO.Game.UI.Controls
                 return true;
             }
 
+            /// <summary>
+            /// PORT DEVIATION (GUO): the list on touch. Rows are TOUCH_ROW_HEIGHT
+            /// apart, each one a hit target as tall as the row, the text centred in
+            /// it, so a finger picks the row it lands on. Same items, same pick.
+            /// </summary>
+            private void TouchRows(HoveredLabel[] labels, int maxHeight, int width)
+            {
+                ResizePic background = (ResizePic) Children[0];
+                int maxWidth = Math.Max(width, labels.Max(o => o.X + o.Width));
+                int totalHeight = Math.Min(maxHeight, labels.Length * TOUCH_ROW_HEIGHT);
+
+                ScrollArea area = new ScrollArea(0, 0, maxWidth + 15, totalHeight, true);
+
+                foreach (HoveredLabel label in labels)
+                {
+                    int i = (int) label.Tag;
+                    Control row = new HitBox(0, 0, maxWidth, TOUCH_ROW_HEIGHT, null, 0f)
+                    {
+                        Y = i * TOUCH_ROW_HEIGHT,
+                        Tag = i,
+                        IsVisible = label.IsVisible
+                    };
+                    row.MouseUp += LabelOnMouseUp;
+                    label.Width = maxWidth;
+                    label.Y = (TOUCH_ROW_HEIGHT - label.Height) / 2;
+                    row.Add(label);
+                    area.Add(row);
+                }
+
+                Add(area);
+
+                background.Width = maxWidth;
+                background.Height = totalHeight;
+            }
+
             private void LabelOnMouseUp(object sender, MouseEventArgs e)
             {
                 if (e.Button == MouseButtonType.Left)
                 {
-                    _combobox.SelectedIndex = (int) ((Label) sender).Tag;
+                    _combobox.SelectedIndex = (int) ((Control) sender).Tag; // PORT DEVIATION (GUO): a touch row is a Control
 
                     Dispose();
                 }

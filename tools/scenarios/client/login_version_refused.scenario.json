@@ -1,0 +1,150 @@
+{
+  "id": "client.login.version_refused",
+  "title": "Report an older client version than the server takes and check the disconnect says so in plain words (NET-02)",
+  "surface": "client",
+  "requires": {
+    "shard": "dev",
+    "account": "$account",
+    "build": "debug"
+  },
+  "timeouts": {
+    "step_s": 90,
+    "run_s": 420
+  },
+  "steps": [
+    {
+      "id": "launch",
+      "do": {
+        "kind": "launch",
+        "args": [
+          "--scratch-profile",
+          "--client-version",
+          "7.0.106.0"
+        ],
+        "settings": {
+          "autologin": false
+        }
+      },
+      "say": "Start GUO reporting client 7.0.106.0, older than the server's 7.0.107.76.",
+      "timeout_s": 240,
+      "expect": {
+        "scene": "LoginScene",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "type_account",
+      "do": {
+        "kind": "ui.fill",
+        "control": {
+          "type": "StbTextBox"
+        },
+        "text": "$account"
+      },
+      "say": "Type the account name."
+    },
+    {
+      "id": "type_password",
+      "do": {
+        "kind": "ui.fill",
+        "control": {
+          "type": "PasswordStbTextBox"
+        },
+        "text": "$password"
+      },
+      "say": "Type the password."
+    },
+    {
+      "id": "log_in",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 2
+        }
+      },
+      "say": "Press Login.",
+      "expect": {
+        "ui.exists": "ServerSelectionGump",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "pick_server",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "ServerEntryGump",
+          "index": 0
+        }
+      },
+      "say": "Pick the first server."
+    },
+    {
+      "id": "server_next",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 1
+        }
+      },
+      "say": "Press Next.",
+      "expect": {
+        "ui.exists": "CharacterSelectionGump",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "pick_character",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "CharacterEntryGump",
+          "index": 0
+        }
+      },
+      "say": "Pick the first character."
+    },
+    {
+      "id": "character_next",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 3
+        }
+      },
+      "say": "Press Next.",
+      "expect": {
+        "scene": "GameScene",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "refused",
+      "do": {
+        "kind": "wait",
+        "seconds": 1
+      },
+      "say": "The server refuses the version and disconnects; the message says so and names the version GUO reported.",
+      "timeout_s": 90,
+      "expect": {
+        "log.contains": "disconnect explained (version refused), client 7.0.106.0",
+        "within_s": 75
+      }
+    },
+    {
+      "id": "message_shown",
+      "do": {
+        "kind": "wait",
+        "seconds": 2
+      },
+      "say": "The disconnect message is up.",
+      "shot": true
+    }
+  ]
+}

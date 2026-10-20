@@ -383,9 +383,12 @@ namespace GUO.Game.Scenes
                         _world,
                         200,
                         200,
-                        string.Format(
-                            ResGeneral.ConnectionLost0,
-                            StringHelper.AddSpaceBeforeCapital(e.ToString())
+                        // PORT DEVIATION (GUO): say so in plain words when the server refused the client version.
+                        GUO.Network.ServerIdentity.OnDisconnect(
+                            string.Format(
+                                ResGeneral.ConnectionLost0,
+                                StringHelper.AddSpaceBeforeCapital(e.ToString())
+                            )
                         ),
                         s =>
                         {
@@ -441,7 +444,7 @@ namespace GUO.Game.Scenes
         {
             if (
                 _lightCount >= LightsLoader.MAX_LIGHTS_DATA_INDEX_COUNT
-                || !UseLights && !UseAltLights
+                || !UseLights && !UseAltLights && !UseRealtimeLights // PORT DEVIATION (GUO): ADR-0039 lights by day too
                 || obj == null
             )
             {
@@ -579,6 +582,7 @@ namespace GUO.Game.Scenes
 
                 light.DrawX = x;
                 light.DrawY = y;
+                RecordRealtimeLight(obj, ref light); // PORT DEVIATION (GUO): ADR-0039 keeps the tile
                 _lightCount++;
             }
         }
@@ -671,6 +675,10 @@ namespace GUO.Game.Scenes
             (var minChunkX, var minChunkY) = (minX >> 3, minY >> 3);
             (var maxChunkX, var maxChunkY) = (maxX >> 3, maxY >> 3);
 
+            // PORT DEVIATION (GUO): stage timers for the perf probe (PERF-03);
+            // one branch each while it is not measuring.
+            long stageAt = PerfStages.Now();
+
             for (var chunkX = minChunkX; chunkX <= maxChunkX; chunkX++)
             {
                 for (var chunkY = minChunkY; chunkY <= maxChunkY; chunkY++)
@@ -682,7 +690,9 @@ namespace GUO.Game.Scenes
                     // Build chunk mesh if dirty
                     if (chunk.Mesh.IsDirty)
                     {
+                        stageAt = PerfStages.Add(PerfStages.Stage.Gather, stageAt);
                         chunk.Mesh.Build(chunk, _world);
+                        stageAt = PerfStages.Add(PerfStages.Stage.MeshBuild, stageAt);
                     }
 
                     // Reset visibility and alpha for this frame
@@ -712,6 +722,8 @@ namespace GUO.Game.Scenes
                 }
             }
 
+            stageAt = PerfStages.Add(PerfStages.Stage.Gather, stageAt);
+
             if (_alphaChanged)
             {
                 for (int i = 0; i < _foliageCount; i++)
@@ -731,6 +743,7 @@ namespace GUO.Game.Scenes
 
             UpdateTextServerEntities(_world.Mobiles.Values, true);
             UpdateTextServerEntities(_world.Items.Values, false);
+            PerfStages.Add(PerfStages.Stage.GatherTail, stageAt);
 
             UpdateDrawPosition = false;
         }
@@ -991,6 +1004,10 @@ namespace GUO.Game.Scenes
 
             DrawWorld(batcher, ref matrix, renderTargets);
 
+            // PORT DEVIATION (GUO): Realtime lights (ADR-0039) consume this
+            // frame's offers after the world draw; nothing when the option is off.
+            DrawRealtimeLights(renderTargets, ref matrix);
+
             return base.Draw(batcher, renderTargets);
         }
 
@@ -1154,6 +1171,13 @@ namespace GUO.Game.Scenes
         {
             InitializeRenderTargets(renderTargets);
 
+            // PORT DEVIATION (GUO): Realtime lights (ADR-0039) draw their own
+            // target after the world; the classic target is cleared here.
+            if (PrepareRealtimeLightTarget(batcher, renderTargets))
+            {
+                return false;
+            }
+
             if (
                 !UseLights && !UseAltLights
                 || _world.Player.IsDead && ProfileManager.CurrentProfile.EnableBlackWhiteEffect
@@ -1233,11 +1257,12 @@ namespace GUO.Game.Scenes
         private void InitializeRenderTargets(RenderTargets renderTargets)
         {
             renderTargets.SetLightsConfiguration(
-                UseAltLights ? _altLightsBlend : (UseLights ? _darknessBlend : () => null),
+                // PORT DEVIATION (GUO): Realtime lights (ADR-0039) always use the darkness blend.
+                UseRealtimeLights ? _darknessBlend : (UseAltLights ? _altLightsBlend : (UseLights ? _darknessBlend : () => null)),
                 () =>
                 {
                     Vector3 v = Vector3.Zero;
-                    v.Z = UseAltLights ? 0.5f : 1f;
+                    v.Z = UseAltLights && !UseRealtimeLights ? 0.5f : 1f;
                     return v;
                 }
             );

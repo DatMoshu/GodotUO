@@ -4,9 +4,11 @@ Where GUO is heading. This is a direction, not a schedule: items move as they
 are measured and proven. Decisions that bind are in the ADRs
 (`docs/architecture/`); open work is in GitHub Issues.
 
-## Now: the first public preview (v0.1.0)
+## Now: getting ready for a first public preview (v0.1.0)
 
 - Downloads for Windows, Steam Deck and Android from one release workflow.
+  Every change to main is built; the first release has not been cut yet,
+  and cutting it is the owner's call.
 - The [Known Issues](Known-Issues.md) list kept honest.
 - The wiki, the project site, and a welcome in Discussions.
 
@@ -14,7 +16,8 @@ are measured and proven. Decisions that bind are in the ADRs
 
 **Performance, the one parity gap.** Frame times on every platform are measured
 with one probe, scene by scene. Draw-call cuts land only at exact parity, and
-ADR-0007 (the sorted world in batched meshes) is decided with numbers. A fair
+ADR-0007 (the sorted world in batched meshes) was measured, recommends
+rejection, and waits for the owner's decision. A fair
 ClassicUO-vs-GUO table, with the same view on the same machine, is published
 before any comparison is claimed.
 
@@ -32,7 +35,12 @@ before any comparison is claimed.
 **Editor and Store.**
 - Shard content negotiation: a connecting client learns which packs the server
   requires; protocol and user consent remain future work.
-- Theme, sound and preset packs applied, not just installed.
+- Theme, sound, preset and screen effect packs applied, not just installed.
+  HD art, regional audio and recorded voices already are, behind options
+  that are off by default ([Content Packs](Content-Packs.md)).
+- The Admin tab for a server you run is in ([Admin Tab](Admin-Tab.md)).
+- Labs: experimental client features in an opt-in Debug build, never in a
+  download ([Feature Layers](Feature-Layers.md)). None ships yet.
 - A hosted Store catalogue on GitHub Pages.
 - The RunUO shard backend for the editor.
 
