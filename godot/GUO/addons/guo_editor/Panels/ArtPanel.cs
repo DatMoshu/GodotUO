@@ -27,6 +27,8 @@ public partial class ArtPanel : GridPanel
         _source.ItemSelected += _ => Refresh(); filters.AddChild(_source);
         _wall = new CheckBox { Text = "Wall", TooltipText = "Show statics whose source metadata has the Wall flag" };
         _wall.Toggled += _ => Refresh(); filters.AddChild(_wall);
+        var batch = AssetUi.Action("FileDialog", "Review batch static PNG replacements…", () => BatchStaticDialog.Open(Data));
+        filters.AddChild(batch);
         if (Autocomplete)
         {
             SearchBox.PlaceholderText = "Search land & statics…";

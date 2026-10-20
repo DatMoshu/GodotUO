@@ -36,6 +36,10 @@ name, 64-bit flags and height editing to the static-art inspector, with
 undo/redo/revert and project JSON save/reload. It preserves the original modern
 41-byte record and does not emit binary tiledata or mutate runtime metadata.
 F06b native staging and its independent tiledata oracle remain separate work.
+The subsequent F03a [batch static PNG replacement](batch_static_replacement.md)
+adds folder/ID collision review, per-image source comparison and a whole-batch
+candidate/verify/apply workflow. It shares F02a's recovery and rechecks every
+selected image before applying. Other domains and deletion remain separate.
 The headless asset report passes all 13 metadata checks, including the unsaved
 close/discard-cancel path. The editor rebuild/reload run also passed with an
 empty top-level failure list; neither result substitutes for windowed visual

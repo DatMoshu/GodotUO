@@ -127,3 +127,9 @@ by another tool after promotion; inspect any such changes before choosing it.
 
 The synthetic fixture specification is in
 `tools/scenarios/fiddler-f01a/README.md`.
+
+F03a adds a [batch static PNG review](../../docs/editor/batch_static_replacement.md)
+with filename-ID validation and one candidate/verify/promote transaction for
+all selected records. `batch.py scan` reports every PNG error without writing;
+`batch.py prepare` refuses stale scans and delegates to the same independently
+verified stage adapter. `proof_batch.py` covers the additional batch contracts.

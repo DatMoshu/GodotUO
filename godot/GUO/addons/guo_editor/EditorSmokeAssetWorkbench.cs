@@ -56,6 +56,7 @@ public partial class EditorSmoke
 
     private int _assetsProofStep, _assetsProofFrames;
     private StaticStageDialog _stageProof;
+    private BatchStaticDialog _batchProof;
 
     private void StepAssetWorkbenchProof()
     {
@@ -97,6 +98,8 @@ public partial class EditorSmoke
             }
             return;
         }
+        if (_assetsProofStep == 4)
+        {
         SaveAssetProof("static-export-review", _stageProof.GetTexture()?.GetImage());
         _assetReport["review_size"] = _stageProof.Size.ToString();
         _assetReport["review_layout"] = GodotUi.Walk(_stageProof).OfType<Control>().Where(c => c.GetCombinedMinimumSize().Y > 500)
@@ -105,6 +108,13 @@ public partial class EditorSmoke
         MetadataCheck("comparison_ready", _stageProof.Comparison.GetChildCount() == 2 && _stageProof.GetOkButton().Text == "Prepare verified copy");
         _stageProof.Free();
         _data.Assets.Revert(AssetKind.Static, 0x001A); _data.ReapplyAssets(AssetKind.Static, 0x001A);
+        _batchProof = BatchStaticDialog.Open(_data); _batchProof.ShowScan(BatchPreviewFixture());
+        _assetsProofStep = 5; return;
+        }
+        SaveAssetProof("batch-static-review", _batchProof.GetTexture()?.GetImage());
+        MetadataCheck("batch_review_fits_screen", _batchProof.Size.Y <= DisplayServer.ScreenGetUsableRect().Size.Y);
+        MetadataCheck("batch_review_ready", _batchProof.ReadyToPrepare && _batchProof.Rows.GetRoot().GetChildCount() == 2);
+        _batchProof.Free();
         Finish();
     }
 

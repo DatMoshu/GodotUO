@@ -69,6 +69,8 @@ public partial class BulkPanel : AssetPanel
         Button("Unpack", this, () => RunAsync("unpack", UnpackArgs(_ids.Text), _unpackOut.Text));
 
         AddChild(new HSeparator());
+        var replacements = new Button { Text = "Review batch static PNG replacements…", TooltipText = "Inspect filename IDs, collisions and PNGs; prepare and independently verify one candidate before applying the whole batch" };
+        replacements.Pressed += () => BatchStaticDialog.Open(Data); AddChild(replacements);
         AddChild(new Label { Text = "Pack: an edited folder into a staged data set (the install is never written)" });
         _packIn = Folder(Path.Combine(build, "uopack", "work"));
         AddChild(_packIn);

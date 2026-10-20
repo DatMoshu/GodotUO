@@ -66,3 +66,8 @@ The full project smoke remains required before commit.
 Saved searches, favorites, editable batch metadata and the proposed additional
 family-specific inspectors are follow-up stories. Existing multiselect/context
 export remains available; these future tools are not represented as working.
+
+[Batch static PNG replacement](batch_static_replacement.md) is available from
+Art and Bulk: scan filename IDs and errors, compare selected images, prepare
+one independently verified candidate, then explicitly apply or recover the
+whole stage. It leaves project image overlays and metadata documents unchanged.

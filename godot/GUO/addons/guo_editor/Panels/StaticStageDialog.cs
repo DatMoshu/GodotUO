@@ -83,7 +83,7 @@ public partial class StaticStageDialog : ConfirmationDialog
         UpdateRecovery();
     }
 
-    private static void AddPreview(Control parent, string label, Image image)
+    internal static void AddPreview(Control parent, string label, Image image)
     {
         var column = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         parent.AddChild(column); column.AddChild(AssetUi.Label(label));
@@ -209,7 +209,7 @@ public partial class StaticStageDialog : ConfirmationDialog
         UpdateRecovery();
     }
 
-    private static async Task<JsonNode> Run(string[] args, CancellationToken token)
+    internal static async Task<JsonNode> Run(string[] args, CancellationToken token, string tool = "replacement.py")
     {
         var start = new ProcessStartInfo(EditorData.Setting("UO_PYTHON", OperatingSystem.IsWindows() ? "python" : "python3"))
         {
@@ -217,7 +217,7 @@ public partial class StaticStageDialog : ConfirmationDialog
             RedirectStandardOutput = true, RedirectStandardError = true,
             WorkingDirectory = EditorData.RepoRoot,
         };
-        start.ArgumentList.Add(Path.Combine(EditorData.RepoRoot, "tools", "fiddler_parity", "replacement.py"));
+        start.ArgumentList.Add(Path.Combine(EditorData.RepoRoot, "tools", "fiddler_parity", tool));
         foreach (string arg in args) start.ArgumentList.Add(arg);
         using var process = new Process { StartInfo = start };
         process.Start();

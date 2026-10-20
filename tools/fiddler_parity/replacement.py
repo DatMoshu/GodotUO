@@ -82,11 +82,20 @@ def stage_lock(stage: Path):
 
 
 def prepare(source: Path, stage: Path, image: Path, ident: int, plan: Path, version: str, oracle: Path) -> dict:
-    source, stage, image, plan = (path.resolve() for path in (source, stage, image, plan))
-    disjoint(source, stage, image, plan)
+    return prepare_many(source, stage, [(ident, image)], plan, version, oracle)
+
+
+def prepare_many(source: Path, stage: Path, images: list[tuple[int, Path]], plan: Path,
+                 version: str, oracle: Path) -> dict:
+    """One verified candidate and one promotion for the entire selected batch."""
+    source, stage, plan = (path.resolve() for path in (source, stage, plan))
+    images = [(ident, image.resolve()) for ident, image in images]
+    disjoint(source, stage, plan, *(image for _, image in images))
     parity.protect_install(stage, plan)
-    if not 0 <= ident < 0x10000:
-        raise ValueError("Expected a static ID from 0x0000 to 0xFFFF")
+    if not 0 < len(images) <= parity.MAX_RECORDS or len({ident for ident, _ in images}) != len(images):
+        raise ValueError("Expected 1..256 distinct static IDs")
+    if any(not 0 <= ident < 0x10000 for ident, _ in images):
+        raise ValueError("Expected static IDs from 0x0000 to 0xFFFF")
     if plan.exists():
         raise ValueError("Plan folder must be new; existing plans are never overwritten")
     if (source / "verdata.mul").exists():
@@ -113,27 +122,34 @@ def prepare(source: Path, stage: Path, image: Path, ident: int, plan: Path, vers
         from PIL import Image
     except ImportError as e:
         raise RuntimeError("PNG support is missing. Run " + parity.DOCTOR) from e
-    with Image.open(image) as img:
-        if img.format != "PNG" or not (0 < img.width <= 1024 and 0 < img.height <= 1024):
-            raise ValueError("Choose a PNG no larger than 1024x1024")
-    width, height, pixels = uoart.png_pixels(image, land=False)
+    prepared = []
+    pixel_count = 0
+    for ident, image in images:
+        if image.is_symlink() or image.stat().st_nlink > 1:
+            raise ValueError("Aliased replacement image refused")
+        before = parity.digest(image)
+        with Image.open(image) as img:
+            if img.format != "PNG" or not (0 < img.width <= 1024 and 0 < img.height <= 1024):
+                raise ValueError("Choose PNGs no larger than 1024x1024")
+        width, height, pixels = uoart.png_pixels(image, land=False)
+        pixel_count += width * height
+        if len(images) > 1 and pixel_count > 1_000_000:
+            raise ValueError("Batch exceeds 1,000,000 pixels; split the folder")
+        if before != parity.digest(image):
+            raise ValueError("Image changed while preparing; scan again")
+        prepared.append((ident, image, before, width, height, pixels))
     # Quantized expected pixels derive from the intended PNG, not a decode of
     # our encoder. Expand 5-bit channels with the upstream lookup convention.
     def expand(c):
         return c * 255 // 31
-    rgba = [0 if value == 0 else (expand((value >> 10) & 31) | expand((value >> 5) & 31) << 8
-        | expand(value & 31) << 16 | 0xff000000) for value in pixels]
     plan.mkdir(parents=True)
     baseline = plan / "baseline"
     baseline.mkdir()
     for name, path in effective.items():
         shutil.copyfile(path, baseline / name)
     existing, _ = parity.records(baseline, packaging)
-    if ident + 0x4000 not in existing:
-        raise ValueError("Choose an occupied static record; adding IDs is a separate workflow")
-    header = existing[ident + 0x4000][:4]
-    encoded = header + uoart.encode_static(pixels, width, height)[4:]
-    parity.check_art(encoded)
+    if any(ident + 0x4000 not in existing for ident, _ in images):
+        raise ValueError("Choose occupied static records; adding IDs is a separate workflow")
     candidate = plan / "candidate"
     if prior:
         shutil.copytree(stage, candidate)
@@ -145,10 +161,18 @@ def prepare(source: Path, stage: Path, image: Path, ident: int, plan: Path, vers
         staged.meta["files"][name.lower()] = {"name": name,
             "source_sha1": writer.sha1(source / name), "source_size": (source / name).stat().st_size}
     staged.save()
-    writer.replace_static_record(staged, ident, encoded)
+    records, payloads = [], {}
+    for ident, image, image_hash, width, height, pixels in prepared:
+        encoded = existing[ident + 0x4000][:4] + uoart.encode_static(pixels, width, height)[4:]
+        parity.check_art(encoded)
+        payloads[ident] = encoded
+        rgba = [0 if value == 0 else (expand((value >> 10) & 31) | expand((value >> 5) & 31) << 8
+            | expand(value & 31) << 16 | 0xff000000) for value in pixels]
+        records.append({"id": ident, "width": width, "height": height, "rgba": rgba,
+            "raw_sha256": hashlib.sha256(encoded).hexdigest()})
+    writer.replace_static_records(staged, payloads)
     expected = {"schema": 1, "packaging": packaging, "client_version": version,
-        "records": [{"id": ident, "width": width, "height": height, "rgba": rgba,
-            "raw_sha256": hashlib.sha256(encoded).hexdigest()}]}
+        "records": records}
     json_write(plan / "expected.json", expected)
     report = parity.verify(candidate, baseline, plan / "expected.json", plan / "verification", oracle)
     if report["outcome"] != "pass":
@@ -158,7 +182,10 @@ def prepare(source: Path, stage: Path, image: Path, ident: int, plan: Path, vers
     result = {"schema": 1, "state": "prepared", "id": ident, "width": width, "height": height,
         "source": str(source), "stage": str(stage), "plan": str(plan), "packaging": packaging,
         "source_hashes": source_hashes, "prior_hashes": prior, "candidate_hashes": stage_hashes(candidate),
-        "image_sha256": parity.digest(image), "image": str(image), "client_version": version}
+        "image_sha256": image_hash, "image": str(image), "client_version": version,
+        "images": [{"id": ident, "image": str(image), "sha256": image_hash}
+            for ident, image, image_hash, _, _, _ in prepared],
+        "count": len(images)}
     json_write(plan / "plan.json", result)
     return result
 
@@ -179,8 +206,9 @@ def _apply(path: Path, oracle: Path) -> dict:
     candidate = plan / "candidate"
     if stage_hashes(stage) != spec["prior_hashes"] or stage_hashes(candidate) != spec["candidate_hashes"]:
         raise ValueError("Stage/candidate changed since preview; prepare again")
-    if parity.digest(Path(spec["image"])) != spec["image_sha256"]:
-        raise ValueError("Replacement image changed since preview; prepare again")
+    for image in spec.get("images", [{"image": spec["image"], "sha256": spec["image_sha256"]}]):
+        if parity.digest(Path(image["image"])) != image["sha256"]:
+            raise ValueError("Replacement image changed since preview; prepare again")
     for name, wanted in spec["source_hashes"].items():
         if parity.digest(source / name) != wanted:
             raise ValueError("Source changed since preview; prepare again")
