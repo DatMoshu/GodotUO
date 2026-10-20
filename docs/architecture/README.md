@@ -46,5 +46,7 @@ it is taken even if its file has not landed yet.
 | 0035 | The admin channel: token, access levels, audit log | work/AD0 (proposed) |
 | 0036 | Recorded audio packs | main |
 | 0037 | Water render modes | work/water-20261018 (proposed) |
+| 0038 | Packet mods and the mod ABI | work/modding-mod02-20261018 (proposed) |
+| 0040 | One Input page for keyboard and mouse, controller and touch | work/input-05-20261018 (proposed) |
 
-Next free: 0038.
+Next free: 0039.

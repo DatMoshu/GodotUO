@@ -18,8 +18,27 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - The UO+ water pack keeps the native water art with a gentle shimmer and
   shore lap. All water styles follow a continuous coast contour to avoid
   repeated tile-edge surf bars; high cliffs no longer produce surf.
+### Performance
+- Windows draws the land as one array and covering land in runs by default
+  (proposed; the owner decides). At 2560x1440 and zoom 2.5 the Britain bank
+  goes from 26 to 40 fps and a dungeon from 44 to 97, with the same pixels.
+  `--merged-land=off --merged-cover=off` brings back the old draw
+  (`docs/perf/2026-10-19_cover_regression.md`).
 
 ### Editor
+- The editor's automation (MCP) tools have per-user permissions in Editor
+  Settings: reading state, moving around and connecting start on; anything
+  that changes your server starts off until you turn it on. Every call is
+  checked against your saved choices, changes to them go in the Admin
+  audit log, a damaged permissions file denies access without touching your
+  manual tools, and switching AI off hides the settings and stops the work.
+  None of this is in an exported client.
+- StaticStudio now respects the editor AI switch: generation and workflow
+  discovery stop when disabled, pending or rebound jobs cannot publish stale
+  images, and saved-theme/staged-content authoring remains available.
+- ComfyUI setup now pins custom nodes to commits and verifies model SHA256
+  hashes. The new ComfyUI doctor checks an existing installation offline;
+  mismatched files stay untouched and first-use models are marked unverified.
 - The Admin tab's god view works with nobody logged in: **Go there**,
   **Bring here**, **Open paperdoll** and **Follow** use the server's hidden
   presence when no staff character of yours is online (or pick it in
@@ -84,6 +103,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   bridge when that shard loads it.
 
 ### Safety
+- The voice tool can no longer hang the voice worker: its output is read
+  while it runs, the time limit now works, and speech text and names from
+  the server reach it as whole arguments, so a stray quote or backslash
+  cannot shift them.
 - The editor bridge has an admin channel for the coming Admin tab: admin
   operations run only for an editor that sends the server's admin token
   (generated per user beside the shard passwords, never printed), each at a
@@ -136,6 +159,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   a patch that will not come off.
 
 ### Platforms
+- **Android emulator**: `launchers\android\smoke.bat --avd guo_phone`
+  boots GUO's own emulator, installs the app, waits for the login screen,
+  takes a screenshot and cleans up. It only ever touches the emulator it
+  started, and needs 10 GB of free memory.
 - **Android** (ARM64, debug): export, install, run and smoke from
   `launchers\android\`. Login screens are centred, the soft keyboard opens
   for text fields, chat sits above the keyboard, and Android Back closes the
@@ -150,10 +177,21 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - **Downloads**: every push to main builds Windows, Steam Deck and an
   Android debug APK in GitHub Actions (the `release` workflow); a `v*` tag
   makes a draft release with all three.
-- **Web**: still blocked upstream; `launchers\web\doctor.bat` reports why.
-  ADR-0008.
+- **Android release APK**: `launchers\android\export.bat --release` builds
+  an APK signed with your own key, kept outside the repository and named in
+  your local config. `doctor.bat --release` says what is missing. On a tag,
+  the `release` workflow also builds one when the repository holds the key as
+  secrets.
+- **Web**: plays on a local shard in Chrome, and reaches the login screen in
+  Firefox, on a community build of the engine; `launchers\web\doctor.bat`
+  says what it needs. ADR-0008.
 
 ### Playing
+- **Realtime lights** (Options > Video, off by default): torches and lamps
+  light the tiles around them and walls block them, so a lit room stays lit
+  and the one next door stays dark; day and night follow the shard's light
+  level (the Light level setting still overrides it), with interiors dimmer
+  by day. Off, the world lights exactly as before. ADR-0039.
 - Water can move: **Options > Video > Water > Realtime (UO colours)** draws
   the sea, rivers and lakes with a slow swell, light on the crests and surf
   at the shore, in the tiles' own colours, and ripples where something
@@ -164,6 +202,60 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   realistic. Install one, select its deployment, restart, and pick it under
   **Options > Video > Water**. A pack style is numbers for a look built into
   GUO, never code. ADR-0037.
+- Touch: a long press on someone in the world opens their context menu, a
+  swipe scrolls any list or text with a scroll bar (books, quest pages), and
+  a two-finger pan over a window scrolls it like the mouse wheel.
+- Modern Options includes canvas backgrounds, the command-bar arrow inset,
+  and fine second-screen scale. Classic drop-downs have taller touch targets;
+  mouse-only lists keep their classic spacing.
+- After Alt-Tab, Alt, Ctrl and Shift no longer stay held: the next click is
+  a plain click again, as in ClassicUO.
+- AltGr characters type on keyboards that need them (the `@`, `{` or `\` of
+  German, French, Polish and similar layouts), and Chinese, Japanese and
+  Korean input methods work in text fields.
+- When a server refuses GUO's client version, the disconnect message says
+  so in plain words, with the server's own words and the version GUO
+  reported, instead of a bare "connection lost"; a server that drops the
+  connection during the login gets the same hint. The Servers tab shows the
+  client version a shard needs, or the one you last played it as.
+- **Enhanced HD** (Options, off by default): world sprites can be drawn from
+  an installed, hash-checked HD art pack, with a choice of filter (Auto,
+  Point, Point with mipmaps, Smooth). Anything a pack does not cover stays
+  native art, and cursors, the backpack and clicking always use native art.
+  With it off, the game draws exactly as before. ADR-0027.
+- **Regional audio and recorded voices** (Options > Sound, off by default):
+  installed packs can play music and sounds by region and recorded voices
+  for NPCs, matched by name, then body. **Change:** ordinary NPC speech no
+  longer starts text-to-speech; an NPC is silent until a voice pack covers
+  it. ADR-0036.
+- **Screen effects**: 32 more looks, from MeesaJarJar, come as an optional
+  Store pack rather than as built-ins; the curated built-in looks stay.
+  Installing the pack does not switch a look on; Classic switches effects
+  off.
+- Screen effect sliders that take whole numbers stay whole and inside their
+  range, and resizing the window with an effect on no longer drops the
+  picture.
+- Clicking a replaced object (such as a 3D splat standing in for a statue)
+  now targets, uses or picks up the original, as it would without the
+  replacement.
+- Controller: a **Say** screen speaks the common commands with A (bank,
+  vendor buy and sell, guards, hail, all follow me and the other pet
+  commands). Find it at the top of the Macros screen or put it on the wheel.
+- Controller: with a target cursor up, the radar lists yourself, and the
+  pointer starts on the tile in front of you for spells aimed at the ground.
+- Controller: Set controls from the pad's own Options screen opens the list
+  of jobs too, as it does from Options.
+- Controller: **Set controls...** in Options is now a list of jobs. Pick one
+  with the D-pad and set only that one; a quick tap of B keeps it as it was,
+  **Reset to defaults** puts the shipped layout back, **Save** keeps your
+  changes and B leaves without changing anything. One wrong press no longer
+  means setting every button again.
+- Controller: mounting works from the radar. Choosing a horse that is a few
+  tiles away walks you up to it and mounts; while riding, choose yourself in
+  the radar to get off.
+- Controller: in war mode, A on a monster in the radar attacks it, as a
+  double click does with the mouse, and keeps it as your target, so X goes
+  on attacking it after the radar closes.
 - Canvas background behind the game: grey, wood, your own image or video,
   or one of ten built-in CC0 loops. ADR-0016.
 - Containers can open as a grid of finger-sized slots (mobile default), and
@@ -187,6 +279,75 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- Host a pack catalogue of your own on GitHub Pages: `run.py init-catalogue`
+  writes its repository, and `launchers/store/push_catalogue` signs the
+  index with your key and pushes it to the Pages branch. Players add the
+  address in the Store and approve its key once. `launchers/store/hosted_proof`
+  tries the whole path on your computer first.
+- `perf_gate` runs the real performance probe against a baseline kept on
+  your machine, outside the checkout. Draw calls may rise by at most 5% per
+  scene and batcher items may not rise; frame times remain advisory. Hosted
+  CI tests the gate with synthetic reports and makes no FPS claim.
+- CI keeps NuGet packages between runs, and the Android release build also
+  keeps its Gradle downloads. The CI health report for 2026-10-18 (times per
+  workflow, every failure of the last three weeks, no flaky steps) is in
+  `docs/release/ci_2026-10-18.md`.
+
+- Dev shard: exempt loopback from automatic behavioral ban contributions so a
+  silent readiness connection cannot reject all local clients for 15 minutes;
+  preserve explicit bans and LAN/public protection (NET-00c, MUO patch).
+- A Modding page on the wiki: how to write, test and ship a mod, and how to
+  measure one that slows the game down (`--load-mods` for a single run).
+- A shard can publish its client mod in the Store. A mod pack is signed by
+  its publisher and lists the packets it touches; installing it runs
+  nothing. The Store shows who signed it and what it changes, and it loads
+  only after you approve it and turn on **Load mods** (desktop only). An
+  updated or re-signed mod asks again.
+- Shards with their own packets can ship a mod instead of asking players for
+  a forked client: a mod declares the packets it adds, and GUO loads it from
+  `Data/Mods` when you tick **Load mods on the next start** in Options (off
+  by default; desktop only). A sample mod shows a shard announcement packet
+  (`docs/modding/samples/announce`).
+- A modding survey (`docs/modding/surface_2026-10-18.md`) lists what you can
+  change without forking the client (assistant plugins, scripts, packs, server
+  gumps) and what still needs a fork, such as a shard's custom packets.
+- The server lab has a ServUO row beside ModernUO (`server_lab.bat row
+  servuo`). Each result records which client version it ran as and which
+  evidence run it is filed under, and the compatibility page shows each
+  server's last run date. What a POL row needs is in `docs/server_lab.md`.
+  Readiness checks use the local listening table without opening a TCP
+  connection, and lab output follows `UO_BUILD_DIR`. The seed driver now
+  recognizes character creation on an account with no characters.
+- `docs/input_audit_2026-10-18.md`: every input in keyboard and mouse, gamepad
+  and touch compared with ClassicUO, with a severity each, the upstream line
+  it differs from, and the scripted runs behind it. It sets the order of the
+  input fixes that follow.
+- Readying a fresh git worktree (`launchers\dev\worktree_setup.bat`) also
+  copies your Claude Code approvals (`.claude/settings.local.json`), so a new
+  worktree no longer asks again to approve the project's MCP servers.
+- Generated output (screenshots, smoke runs, exports) can live outside the
+  checkout: set `UO_BUILD_DIR` in config.local.bat, one folder per checkout
+  with `%UO_CHECKOUT%`. Left unset, it stays `build\` as before.
+- `launchers\dev\build.bat` stops a headless build that runs longer than
+  `UO_BUILD_TIMEOUT` (180 seconds by default) and cleans up only the
+  processes it started.
+- GUO's features are sorted into layers, from the faithful port (L0) through
+  player options, content packs and editor packages to Labs (L4), with
+  review rules for each, in AGENTS.md and CONTRIBUTING.md. Labs features
+  build only in an opt-in Debug build and never ship in an export.
+- The Store knows three new pack kinds: HD art, 3D splats and recorded
+  voices. Installing one runs nothing; the publisher and the client check
+  the same rules.
+- The editor smoke's Roofs check judges only the roofs the World view
+  draws and waits for their fade to finish, so it no longer fails at
+  random.
+- `docs/data_formats.md` describes the Admin tab's backup folders and their
+  manifest.
+- Upstream drift report for 2026-10-18 (`docs/upstream/drift_2026-10-18.md`):
+  the eight ClassicUO commits since the reviewed pin, each marked take, skip
+  or later, and what the ClassicUO 2.0 beta means for GUO (its source is not
+  public, so it is a reference for the water, terrain and modding work, not
+  code to port).
 - World editor: the Layers menu (Land, Statics, Multis, Roofs, Objects and the
   live layers) now looks like a button beside the others, keeps its ticks for
   the whole editor session, and switching Roofs off takes effect at once.

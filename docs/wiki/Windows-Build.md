@@ -12,6 +12,12 @@ launchers\windows\export.bat    REM headless --export-debug "Windows Desktop" in
 
 Underneath: `python tools\windows\run.py <doctor|preset|export|icon>`.
 
+Output goes to `build\windows` (under `UO_BUILD_DIR` if you set it; see
+[Configuration](Configuration.md)). The `release` workflow also exports the
+Windows build on GitHub, and a `v*` tag makes a draft release with it: see
+[Download a build](Getting-Started.md#download-a-build). Labs features never
+ship in an export ([Feature Layers](Feature-Layers.md)).
+
 ## What an export does
 
 1. Generates `godot\GUO\GUO.sln` if the editor has not (the .NET export needs it).

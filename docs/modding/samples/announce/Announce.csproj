@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    A sample GUO mod (ADR-0038): one custom packet, 0xF9, that shows a
+    shard announcement in the journal. Build it, then copy bin/<config>/
+    net8.0/Announce.dll and mod.json into Data/Mods/announce/ beside the
+    client. GUO.ModApi is referenced but not copied: the client has it.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>Announce</AssemblyName>
+    <RootNamespace>GuoMods.Announce</RootNamespace>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\godot\GUO.ModApi\GUO.ModApi.csproj" Private="false" />
+  </ItemGroup>
+
+</Project>

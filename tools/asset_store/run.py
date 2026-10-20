@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from guo.config import load_config
 from asset_store.pack import INDEX_SCHEMA, require, sha256, verify, version
-from asset_store import catalogue, ed25519
+from asset_store import catalogue, ed25519, hosting
 
 
 def atomic_json(path, value):
@@ -216,11 +216,27 @@ def main():
     pl.add_argument("--url", action="append", required=True, help="where the ZIP is hosted (HTTPS); repeat for mirrors")
     pl.add_argument("--provenance", required=True, help="how the content was made, at most 500 characters")
     pl.add_argument("--out", type=Path, required=True, help="a folder to write packs/<id>/<version>.json and the pull request text into")
+    ic = sub.add_parser("init-catalogue", help="write a catalogue repository of your own (README, listings, check and publish workflows)")
+    ic.add_argument("folder", type=Path)
+    ic.add_argument("--id", dest="catalogue_id", default=config.store_catalogue_id)
+    ic.add_argument("--title", default=config.store_catalogue_title)
+    pc = sub.add_parser("push-catalogue", help="sign an index over a Pages branch and push it (fast-forward only)")
+    pc.add_argument("--remote", required=True, help="the catalogue repository's git URL")
+    pc.add_argument("--branch", default="gh-pages")
+    pc.add_argument("--listing", type=Path, help="a listing folder (packs/<id>/<version>.json)")
+    pc.add_argument("--pack", type=Path, action="append", default=[], help="a pack ZIP to host on the site itself; repeat")
+    pc.add_argument("--cache", type=Path, help="where downloaded ZIPs are kept between runs")
+    pc.add_argument("--mirror", action="append", default=[], help="a mirror's base URL, listed first for every pack")
+    pc.add_argument("--expires-days", type=int, default=30)
+    pc.add_argument("--homepage", default="")
+    pc.add_argument("--allow-local-http", action="store_true", help="listings may name loopback/LAN HTTP URLs (tests, a LAN catalogue)")
+    pc.add_argument("--dry-run", action="store_true", help="build, sign and commit in a scratch clone; push nothing")
+    pc.add_argument("--keep", type=Path, help="with --dry-run, keep the built site in this empty folder")
     c = sub.add_parser("check-index", help="verify a store folder's signed index")
     c.add_argument("--key", help="the trusted public key (ed25519:...); default: the key the index names")
     args = parser.parse_args()
     signer = None
-    if config.store_signing_key and args.command not in ("keygen", "check-index", "mirror"):
+    if config.store_signing_key and args.command not in ("keygen", "check-index", "mirror", "init-catalogue", "push-catalogue"):
         signer = (catalogue.read_secret(config.store_signing_key),
                   {"id": config.store_catalogue_id, "title": config.store_catalogue_title}, config.store_base_url)
     try:
@@ -239,6 +255,26 @@ def main():
             entries = catalogue.entries_from_listing(args.listing, args.cache, args.site, mirrors=args.mirror)
             index = catalogue.build(args.site, entries, signer[1], signer[0], args.expires_days)
             print(f"Catalogue {index['catalogue']['id']} sequence {index['sequence']}: {len(entries)} pack(s)")
+            return 0
+        if args.command == "init-catalogue":
+            public = ed25519.public_key(catalogue.read_secret(config.store_signing_key)) if config.store_signing_key else None
+            written = hosting.init_repo(args.folder, args.catalogue_id, args.title, public)
+            print(f"Catalogue repository {args.catalogue_id} written to {args.folder}: {len(written)} files. No key is in it.")
+            return 0
+        if args.command == "push-catalogue":
+            secret, meta = hosting.signer_from_env(config.store_signing_key, config.store_catalogue_id,
+                                                   config.store_catalogue_title, args.homepage)
+            require(not args.keep or args.dry_run, "--keep needs --dry-run")
+            result = hosting.push(args.remote, secret, meta, branch=args.branch, dry_run=args.dry_run, keep=args.keep,
+                                  listing=args.listing, packs=args.pack, cache=args.cache, mirrors=args.mirror,
+                                  expires_days=args.expires_days, base_url=config.store_base_url or None,
+                                  require_https=not args.allow_local_http)
+            index = result["index"]
+            verb = "Pushed" if result["pushed"] else "Built (dry run, nothing pushed)"
+            print(f'{verb} {index["catalogue"]["id"]} sequence {index["sequence"]}: {len(index["packs"])} pack(s) '
+                  f'to {args.branch}{"" if result["existed"] else " (new branch)"}, key {ed25519.fingerprint(ed25519.decode(index["key"], 32))}')
+            if result["work"]:
+                print(f'Site kept in {result["work"]}')
             return 0
         if args.command == "mirror":
             index = catalogue.mirror(args.source, ed25519.decode(args.key, 32), args.store_dir)

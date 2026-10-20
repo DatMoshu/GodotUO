@@ -127,6 +127,10 @@ internal sealed class WorldHost : IDisposable
     public GameScene Scene => _scene;
     public long BootMilliseconds { get; private set; }
 
+    // Editor smoke movie capture owns this clock while it records. Normal
+    // authoring keeps using wall time; drawing and mobile updates must agree.
+    internal uint? CaptureTicks { get; set; }
+
     public int Facet => World?.MapIndex ?? -1;
     public int X => World?.Player?.X ?? 0;
     public int Y => World?.Player?.Y ?? 0;
@@ -283,7 +287,7 @@ internal sealed class WorldHost : IDisposable
 
         // Keep bounds current before camera update and picking consume them.
         _game.SetEmbeddedClientBounds(new Rectangle(0, 0, size.X, size.Y));
-        GUO.Time.Ticks = (uint)Godot.Time.GetTicksMsec();
+        GUO.Time.Ticks = CaptureTicks ?? (uint)Godot.Time.GetTicksMsec();
         _scene.Camera.Bounds = new Rectangle(0, 0, size.X, size.Y);
 
         CPoint m = mouse.HasValue ? new CPoint(mouse.Value.X, mouse.Value.Y) : new CPoint(-1, -1);

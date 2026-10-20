@@ -80,3 +80,48 @@ widget (`minimax_music3_text_encoder…`) crashes `TextGenerate` (matmul
 1341×4096 vs 1024×4096); `qwen3.5_2b_bf16.safetensors` (as in WORKINGAUDIO)
 works, and the GUO variants bake that in. MultisMaker1's `SplatToFile3D` is
 convert-only; without a save node the PLY exists only as a preview temp file.
+
+## Pinned studio setup and doctor
+
+This is a **Tools** change supporting L3 editor packages. The exported client
+and its AI setting are unchanged. Nothing is generated or installed on import.
+Point `UO_COMFY_DIR` in the environment or local launcher configuration at an
+existing ComfyUI root, or use `--comfy-dir`. No central install is assumed.
+
+```
+launchers/comfy/doctor.bat
+launchers/comfy/setup_studio.bat
+launchers/comfy/doctor.bat --validate
+python -m pytest tools/comfy/test_setup_studio.py -q
+```
+
+Use the `.sh` twins on Unix. Python 3.12 and Git on PATH are required;
+no Hugging Face Python package is needed. The doctor is offline and read-only
+by default: it reads the full model files to verify their size and SHA256 and checks each
+custom node's exact git HEAD and clean working tree. This can take time for
+large models. `--validate` additionally asks the running server for node types;
+it never queues a prompt and does not prove model inference works.
+
+Setup fetches the manifest's exact node commits, but does not execute node
+code, install requirements or start ComfyUI. Install each node's requirements
+manually using **ComfyUI's Python**, following the printed path. Inspect those
+requirements before changing your environment. Start/restart ComfyUI afterward
+and run the doctor with `--validate`.
+
+All 12 installer-managed model files have immutable Hugging Face URLs, byte
+sizes and SHA256 hashes. Existing aliases must match the same bytes. Downloads
+resume in `.part` files; a server ignoring Range restarts the file. Final names
+appear only after verification. Existing mismatched files and node revisions
+are left untouched; move or repair them yourself before retrying. A corrupt
+completed `.part` must also be removed manually. Model access restrictions or
+licenses still apply; the installer does not bypass them.
+
+The voice node packs download whole model repositories on first use. Those
+folders and the external MoGe reference are labelled **UNVERIFIED**; the saved
+repository revision is metadata, not enforcement by those nodes. They are
+excluded from the installer's required-file result. Separate editor packages
+must verify these dependencies before claiming a reproducible voice/3D setup.
+
+Contract: [studio dependency manifest](../../docs/data_formats.md#comfyui-studio-dependency-manifest-toolscomfymodelsjson).
+Manual acceptance: [studio setup scenario](../scenarios/editor/comfy_setup.md).
+Smoke line (synthetic, offline): `python -m pytest tools/comfy/test_setup_studio.py -q`.

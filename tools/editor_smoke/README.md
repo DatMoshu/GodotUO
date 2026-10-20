@@ -30,6 +30,34 @@ chunk holding X,Y has exactly the statics of DIR's block there (that block
 must be one DIR edits). It runs headless like the rest; `--windowed` also
 saves `world_shot.png`. No other editor check runs.
 
+The editor itself takes the same frame without a world project:
+`godot-console --editor --path godot\GUO -- --guo-editor-smoke OUT
+--guo-editor-world-shot FACET,X,Y,W,H` saves `OUT\world_shot.png` of the World
+tab at that cell, drawn by the game's own scene (so a client render option
+in the editor's profile, `build\editor_world\profiles\default.json`, shows
+in it). Adding `--guo-editor-world-pan FRAMES,PX` saves one frame per editor
+frame into `OUT\world_panrame_NNNN.png` while the view slides east PX
+pixels a frame: a clip of the world as the game draws it, with no shard.
+`--guo-editor-lights-demo FRAMES` instead walks three light-bearers along the
+street there, the camera on the first, and saves FRAMES frames at 30 fps into
+the same folder: the Realtime lights demo clip (ADR-0039), with no shard;
+`FRAMES,fixed` keeps the camera still and the walkers cross the frame. The
+walkers step by a fixed clock, one thirtieth of a second per frame, so the
+clip plays at walking speed however slowly the editor drew it.
+`world_pan/times.txt` records frame index, simulation milliseconds, and wall
+milliseconds. Encode the numbered PNGs at `-framerate 30`; wall time measures
+render cost, not playback duration. The World viewer shares the capture clock
+so drawing cannot reset animation timing to wall time.
+Each unmounted walker receives one step at a time (400 ms per tile); a second
+queued remote step would activate ClassicUO's faster catch-up interpolation.
+The replacement is queued on the completion tick, including at path reversals.
+`world_pan/motion.csv` records each prepared simulation frame's actor, clock,
+tile, offset, projected foot anchor, queue length and animation index. The
+captured viewport may show the preceding prepared state; check the PNGs too.
+Pass Godot `--fixed-fps 30` before `--` as well. With a custom light level,
+the demo initializes the classic world's light override and logs its effective
+overall, personal and ambient values for a fair ON/OFF comparison at night.
+
 For a focused toolbar regression check, run
 `python tools/editor_smoke/run.py --windowed --header-only`. It checks that the
 server/client bar stays inside the window and occupies one row at 1920, 1366

@@ -39,6 +39,15 @@ public partial class EditorSmoke : Node
     /// tools/world_parity compares with a logged-in client's frame.
     /// </summary>
     public const string WorldShotFlag = "--guo-editor-world-shot";
+
+    /// <summary>
+    /// With the world shot: FRAMES,PX pans the view east across the screen,
+    /// PX pixels a frame, saving <c>world_pan/frame_NNNN.png</c> for each
+    /// frame (a clip of the world as the game draws it, without a shard).
+    /// </summary>
+    public const string WorldPanFlag = "--guo-editor-world-pan";
+    private int _panFrames, _panPx, _panTaken, _panX, _panY, _panFacet;
+    private float _panOffset;
     public const string MultiShotFlag = "--guo-editor-multi-shot";
 
     /// <summary>
@@ -518,7 +527,15 @@ public partial class EditorSmoke : Node
                 break;
 
             case 31:
-                if (_frames >= 90)
+                if (_demoFrames > 0)
+                {
+                    StepLightsDemo();
+                }
+                else if (_panFrames > 0)
+                {
+                    StepWorldPan();
+                }
+                else if (_frames >= 90)
                 {
                     SaveWorldShot();
                     Finish();
@@ -1047,6 +1064,66 @@ public partial class EditorSmoke : Node
         {
             ["facet"] = facet, ["x"] = x, ["y"] = y, ["size"] = new[] { size.X, size.Y }, ["season"] = _world.Season.ToString(),
         };
+
+        string pan = ArgValue(WorldPanFlag);
+        if (pan != null)
+        {
+            string[] q = pan.Split(',');
+            _panFrames = int.Parse(q[0]);
+            _panPx = q.Length > 1 ? int.Parse(q[1]) : 2;
+            _panFacet = facet; _panX = x; _panY = y;
+            _panTaken = 0;
+            _panOffset = 0f;
+        }
+
+        if (ArgValue(LightsDemoFlag) != null)
+        {
+            StartLightsDemo(facet, x, y);
+        }
+    }
+
+    /// <summary>
+    /// One pan frame after a settle: save the frame, then slide the stand-in
+    /// player's draw offset east; a whole tile of offset becomes a step to
+    /// the next tile (x+1, y-1 is one tile east on screen).
+    /// </summary>
+    private void StepWorldPan()
+    {
+        if (_frames < 60)
+        {
+            return;
+        }
+
+        Image frame = _world.Capture();
+        if (frame != null && !frame.IsEmpty())
+        {
+            string dir = Path.Combine(_out, "world_pan");
+            Directory.CreateDirectory(dir);
+            frame.SavePng(Path.Combine(dir, $"frame_{_panTaken:0000}.png"));
+        }
+
+        _panTaken++;
+        if (_panTaken >= _panFrames)
+        {
+            SaveWorldShot();
+            Finish();
+            return;
+        }
+
+        _panOffset += _panPx;
+        if (_panOffset >= 44f)
+        {
+            _panOffset -= 44f;
+            _panX++;
+            _panY--;
+            _world.GoTo(_panFacet, _panX, _panY);
+        }
+
+        var player = _world.Host.World?.Player;
+        if (player != null)
+        {
+            player.Offset = new Vector3(_panOffset, 0f, 0f);
+        }
     }
 
     private void SaveWorldShot()
