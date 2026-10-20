@@ -2885,18 +2885,19 @@ takes its own cell's light):
   only the dim ambient's share.
 - *Light mask*, transparent, overwritten (`blend_disabled`) by each light's
   shadows, up to the 24 strongest lights (`radius * max channel`, flicker
-  left out, ties by tile), weakest first. A caster between 0.75 tiles and the radius from a light, not
+  left out, ties by tile), weakest first; casters grouped by atlas page,
+  then by ground position. A caster between 0.75 tiles and the radius from a light, not
   more than 30 Z below it, with at least 0.02 of its light at its foot, lays
   its sprite on the ground away from the light: bottom row at the foot (10 px
   above the art's bottom for a static, the draw anchor for a mobile), top row
-  `h * clamp(0.35 + 0.65 d / r, 0.35, 1)` pixels along the ground direction, columns across it (widening 10 % at the
+  `h * clamp(0.25 + 0.45 d / r, 0.25, 0.6)` pixels along the ground direction, columns across it (widening 10 % at the
   tip; the sprite's left column stays on the screen's left). The quad is a 3x3 grid; each vertex carries the light left at its own
   ground point, `Scale(raw - share * source)`, share 1 at the foot easing
-  to 0.7 at the tip, then darkened at the foot by a further
-  `0.3 * strike` (strike: the light's luminance at the caster's foot over
-  0.3, at most 1), easing to none at the tip, as classic's shadow is a flat
-  40 % black at any hour. The land is capped per channel by it, so a shadow never
-  darkens below what is left nor shifts its hue.
+  to 0.7 at the tip, then darkened by a further
+  `0.45 * strike * (0.4 + 0.6 * row)` (strike: the light's luminance at the
+  caster's foot over 0.3, at most 1; row 1 at the foot, 0 at the tip), as
+  classic's shadow is a flat 40 % black at any hour. The land is capped per channel by it; the cap scales all
+  channels alike, so a shadow does not shift the hue of what is left.
 
 `RealtimeReplacesClassicShadows` (the live scene drew Realtime lights last
 frame, shadows on, classic not kept; false once the scene unloads) drops the

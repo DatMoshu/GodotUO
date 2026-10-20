@@ -75,8 +75,8 @@ namespace GUO.Game.Scenes
         /// <summary>Share of a light a shadow takes at its base; less toward the tip.</summary>
         private const float LightShadowShare = 1f, LightShadowTip = 0.7f;
 
-        /// <summary>The further share a light's shadow takes at its foot (see FillShadowGrid).</summary>
-        private const float ContactShadow = 0.3f;
+        /// <summary>The further share a light's shadow takes at its foot, easing to 40 % of it at the tip (see FillShadowGrid).</summary>
+        private const float ContactShadow = 0.45f;
 
         /// <summary>Lights that cast shadows in one frame, the strongest.</summary>
         private const int MaxShadowLights = 24;
@@ -198,6 +198,8 @@ namespace GUO.Game.Scenes
         private bool PrepareRealtimeLightTarget(UltimaBatcher2D batcher, RenderTargets renderTargets)
         {
             _rtScene = this;
+            // Runs before the world draw (GameScene.Draw: PrepareLightsRendering,
+            // then DrawWorld), which fills this list for DrawRealtimeLights.
             _rtMobileCasters.Clear();
             if (!UseRealtimeLights)
             {
@@ -255,7 +257,9 @@ namespace GUO.Game.Scenes
                 _rtTarget.EnsureSize(lightTarget.Parent, lightTarget.Width, lightTarget.Height);
                 if (!_rtTarget.IsBuilt)
                 {
+                    // Not drawn: the classic shadows come back next frame.
                     renderTargets.LightOverride = null;
+                    RealtimeLightTexture = null;
                     return;
                 }
 
@@ -571,7 +575,15 @@ namespace GUO.Game.Scenes
             if (ProfileManager.CurrentProfile.RealtimeShadows)
             {
                 // One draw per atlas page rather than per caster.
-                _rtCasters.Sort(static (a, b) => a.Page.CompareTo(b.Page));
+                // Stable within a page (by ground position), so overlapping
+                // shadows of one light keep their order from frame to frame.
+                _rtCasters.Sort(static (a, b) =>
+                {
+                    int c = a.Page.CompareTo(b.Page);
+                    if (c != 0) return c;
+                    c = a.WX.CompareTo(b.WX);
+                    return c != 0 ? c : a.WY.CompareTo(b.WY);
+                });
                 AddRealtimeShadows();
             }
 
@@ -622,10 +634,16 @@ namespace GUO.Game.Scenes
             for (int n = 0; n < _rtField.LitCount; n++)
             {
                 RealtimeLightField.Source ls = _rtField.LitSource(n);
-                _rtStrength[n] = ls.Radius * Math.Max(ls.Color.R, Math.Max(ls.Color.G, ls.Color.B)) * 1e6f + (ls.X & 1023) * 1024 + (ls.Y & 1023);
+                _rtStrength[n] = ls.Radius * Math.Max(ls.Color.R, Math.Max(ls.Color.G, ls.Color.B));
                 _rtShadowLights.Add(n);
             }
-            _rtShadowLights.Sort(_rtStrengthOrder ??= Comparer<int>.Create((a, b) => _rtStrength[a].CompareTo(_rtStrength[b])));
+            _rtShadowLights.Sort(_rtStrengthOrder ??= Comparer<int>.Create((a, b) =>
+            {
+                int c = _rtStrength[a].CompareTo(_rtStrength[b]);
+                if (c != 0) return c;
+                RealtimeLightField.Source la = _rtField.LitSource(a), lb = _rtField.LitSource(b);
+                return la.X != lb.X ? la.X.CompareTo(lb.X) : la.Y != lb.Y ? la.Y.CompareTo(lb.Y) : a.CompareTo(b);
+            }));
             if (_rtShadowLights.Count > MaxShadowLights) _rtShadowLights.RemoveRange(0, _rtShadowLights.Count - MaxShadowLights);
 
             foreach (int n in _rtShadowLights)
@@ -637,7 +655,7 @@ namespace GUO.Game.Scenes
                     float dx = c.WX - lx, dy = c.WY - ly;
                     float d = MathF.Sqrt(dx * dx + dy * dy);
                     // Its own lamp post, or past the light's reach.
-                    if (d < 0.75f || d >= s.Radius) continue;
+                    if (d < 0.75f || d >= s.Reach) continue;
                     // A light standing well above the caster's top throws no shadow on the ground beside it.
                     if (s.Z > c.Z + 30) continue;
                     Color blocked = _rtField.SourceAt(n, c.WX, c.WY);
@@ -653,8 +671,10 @@ namespace GUO.Game.Scenes
                     if (c.Flip) v = -v;
                     float w = c.Source.Size.X, h = c.Source.Size.Y;
                     // Short near the light, longer toward the pool's edge, and
-                    // kept inside the pool, where there is light to take away.
-                    float length = h * Math.Clamp(0.35f + 0.65f * d / s.Radius, 0.35f, 1f);
+                    // about classic's half height at most: a full-height canopy
+                    // laid down from a torch covers the whole lawn and reads
+                    // as dimness rather than as a shadow.
+                    float length = h * Math.Clamp(0.25f + 0.45f * d / s.Reach, 0.25f, 0.6f);
                     Vector2 foot = c.Foot;
                     Vector2 tip = foot + u * length;
                     Vector2 half = v * (w * 0.5f), spread = v * (w * 0.55f);
@@ -681,9 +701,10 @@ namespace GUO.Game.Scenes
             in RtCaster caster, int light, float share)
         {
             // Contact darkening: classic's shadow is 40 % black at any hour;
-            // a light's shadow takes its light and, near the foot, up to a
-            // further ContactShadow of what is left, as strongly as the light
-            // strikes the caster, so it reads within a dim pool too.
+            // a light's shadow takes its light and a further ContactShadow of
+            // what is left at the foot (40 % of that at the tip), as strongly
+            // as the light strikes the caster, so it still reads where it
+            // runs past the bright core of the pool.
             Color atFoot = _rtField.SourceAt(light, caster.WX, caster.WY);
             float strike = Math.Clamp((atFoot.R * 0.2126f + atFoot.G * 0.7152f + atFoot.B * 0.0722f) / 0.3f, 0f, 1f);
             Vector2 origin = RealtimeScreen(caster.WX, caster.WY, caster.Z) - new Vector2(0f, caster.Lift);
@@ -703,7 +724,7 @@ namespace GUO.Game.Scenes
                     float wx = caster.WX + (off.X + off.Y) / 44f, wy = caster.WY + (off.Y - off.X) / 44f;
                     Color blocked = Share(_rtField.SourceAt(light, wx, wy), k);
                     Color kept = RealtimeLightField.Without(_rtField.RawAt(wx, wy), blocked);
-                    _rtShadowShades[j * g + i] = Share(kept, 1f - ContactShadow * strike * fj);
+                    _rtShadowShades[j * g + i] = Share(kept, 1f - ContactShadow * strike * (0.4f + 0.6f * fj));
                 }
             }
         }
