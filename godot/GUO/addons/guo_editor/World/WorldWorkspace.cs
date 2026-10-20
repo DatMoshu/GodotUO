@@ -174,7 +174,7 @@ public partial class WorldView
         var advancedScroll = new ScrollContainer { Name = "Advanced", HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
         settingsTabs.AddChild(advancedScroll); _advancedTools = advancedScroll;
         _water = new WaterPanel { Name = "Water" };
-        _water.Attach(() => _host.World);
+        _water.Attach(() => _host, () => IsVisibleInTree(), UpdateStatus);
         settingsTabs.AddChild(_water);
         var advancedOptions = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill }; advancedScroll.AddChild(advancedOptions);
         var editors = new HBoxContainer(); advancedOptions.AddChild(editors);

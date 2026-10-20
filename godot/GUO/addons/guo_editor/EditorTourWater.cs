@@ -22,6 +22,7 @@ public partial class EditorTour
         var previous = panel.Style;
         var previousReference = panel.Preview.ReferenceStyle;
         bool previousCompare = panel.CompareToggle.ButtonPressed;
+        bool previousFreeze = panel.FreezeToggle.ButtonPressed;
         try
         {
             EditorInterface.Singleton.SetMainScreenEditor(GuoEditorPlugin.WorldTabName);
@@ -56,9 +57,41 @@ public partial class EditorTour
             Check(File.Exists(zip), "a data-only water pack was exported locally");
             Say("Save a local draft or export a validated Store water pack. A pack carries only style numbers and an original palette swatch; nothing is published or activated here.");
             await Shot(3);
+            panel.FreezeToggle.ButtonPressed = false;
+            panel.StartWorldTest(true);
+            Check(panel.NativeTest.Active && panel.NativeTest.Kind == "boat", "native boat test found a clear water route");
+            await Frames(6);
+            var boatState = System.Text.Json.JsonSerializer.SerializeToElement(WaterRender.Inspect(_world.Host.World));
+            Check(boatState.GetProperty("active").GetBoolean() && !boatState.GetProperty("playerDisturbs").GetBoolean(),
+                "native boat style is active and the camera does not disturb the water");
+            int stamps = boatState.GetProperty("rippleStamps").GetInt32();
+            await Frames(120);
+            Check(panel.NativeTest.TravelledCells > 0, $"native boat moved {panel.NativeTest.TravelledCells} world cells");
+            int boatStamps = System.Text.Json.JsonSerializer.SerializeToElement(WaterRender.Inspect(_world.Host.World)).GetProperty("rippleStamps").GetInt32() - stamps;
+            Check(boatStamps > 0, $"native boat preview added {boatStamps} ripple stamps with the invisible camera above water");
+            panel.FreezeToggle.ButtonPressed = true; panel.ScrollVertical = 300;
+            Say("Boat in World uses a native small boat on a temporary scripted route. Its movement drives the client's own wake field; Freeze pauses the test.");
+            await Shot(3);
+            panel.StopWorldTest(); panel.FreezeToggle.ButtonPressed = false;
+            panel.StartWorldTest(false);
+            Check(panel.NativeTest.Active && panel.NativeTest.Kind == "wader", "native wader test found a clear water route");
+            stamps = System.Text.Json.JsonSerializer.SerializeToElement(WaterRender.Inspect(_world.Host.World)).GetProperty("rippleStamps").GetInt32();
+            await Frames(120);
+            Check(panel.NativeTest.TravelledCells > 0, $"native wader completed {panel.NativeTest.TravelledCells} cells through the mobile step API");
+            Check(System.Text.Json.JsonSerializer.SerializeToElement(WaterRender.Inspect(_world.Host.World)).GetProperty("rippleStamps").GetInt32() > stamps,
+                "native wader preview adds ripple stamps");
+            panel.FreezeToggle.ButtonPressed = true;
+            Say("Wader in World uses native mobile steps and artwork. This is a rendering fixture; it does not prove gameplay collision, pathfinding or network movement.");
+            await Shot(3);
+            uint actor = panel.NativeTest.Serial;
+            panel.StopWorldTest();
+            Check(_world.Host.World.Get(actor) == null, "stopping the native test removes its actor");
+            Say("Stop test removes temporary actors. The map, player profile and shard are unchanged by these test actions.");
+            await Shot(3);
         }
         finally
         {
+            panel.StopWorldTest(); panel.FreezeToggle.ButtonPressed = previousFreeze;
             panel.WorldToggle.ButtonPressed = false; panel.ClassicToggle.ButtonPressed = false;
             panel.SetReference(previousReference);
             panel.CompareToggle.ButtonPressed = previousCompare;

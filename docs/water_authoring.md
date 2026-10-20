@@ -55,6 +55,30 @@ water selection. No player profile, map, client install or shard setting is
 saved by previewing. This preview does not change the World view's lighting;
 the daylight/dusk/night selector belongs to the synthetic test surface.
 
+## Native interaction tests
+
+With **Preview in World** enabled, **Boat in World** and **Wader in World**
+place a temporary native actor on a clear water route near the current view.
+They need the configured client artwork and an initialized World view, but
+no shard, server account or AI service. The camera focuses the route; the
+invisible camera stand-in is raised above the surface. On normal sea-height
+routes it adds no water stamps; extreme heights near the map height limit
+are outside that guarantee.
+The small boat uses the existing multi placement path, and the wader uses
+the client's mobile step and animation APIs, with fixture footsteps silent
+in the embedded editor. Both feed the real ripple system.
+**Freeze** pauses the test's motion and the styled water.
+
+These are scripted rendering fixtures. They do not test player collision,
+pathfinding, swimming rules or server movement. The route is checked when the
+test starts. If there is no suitable route within 32 cells, move the view to
+open water and try again. **Stop test**, disabling World preview, changing
+facet, moving the view far away or leaving/closing/reloading the World view removes
+the actor. Stop returns to the previous camera position if you have not moved
+the camera yourself. The test actions write no project, map, profile or shard
+data. Visible actors can appear in screenshots or scene captures; stop the
+test before exporting a capture that should exclude them.
+
 ## Save and share
 
 **Save draft** stores validated JSON under `<UO_WORKSPACE_DIR>/editor/water/drafts/`.

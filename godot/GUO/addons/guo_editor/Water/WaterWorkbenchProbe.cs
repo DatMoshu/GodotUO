@@ -63,6 +63,13 @@ public partial class WaterWorkbenchProbe : Node
             previewColumn.AddChild(large);
             previewColumn.AddChild(new Label { Text = "Synthetic surface • same water shader as the client\nNo client data or shard connection", AutowrapMode = TextServer.AutowrapMode.WordSmart });
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            Require(Descendants(panel).OfType<Button>().Single(b => b.Text == "Boat in World").Disabled
+                && Descendants(panel).OfType<Button>().Single(b => b.Text == "Wader in World").Disabled,
+                "native actors are unavailable without an embedded World while synthetic authoring remains usable");
+            panel.StartWorldTest(true);
+            Require(!panel.NativeTest.Active && panel.NativeStatusText.Contains("Open the World view"),
+                "native test without a World reports recovery and creates no actor");
+            panel.WorldToggle.ButtonPressed = false;
             foreach (StoreWater preset in WaterAuthoring.Presets)
             {
                 byte[] raw = WaterAuthoring.Serialize(preset);

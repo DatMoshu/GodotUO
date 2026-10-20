@@ -30,12 +30,17 @@ internal partial class WaterPanel : ScrollContainer
     private LineEdit _name, _packId, _version, _author;
     private OptionButton _presets, _model, _licence;
     private ColorPickerButton _tint;
-    private Label _status, _dirty, _modelInfo, _comparisonInfo;
+    private Label _status, _dirty, _modelInfo, _comparisonInfo, _nativeStatus;
     private Button _undo, _redo, _clearReference;
     private CheckBox _apply, _classic, _freeze, _compare;
     private WaterPreview _preview;
     private bool _sync;
-    private Func<GUO.Game.World> _world;
+    private Func<WorldHost> _host;
+    private Func<bool> _worldVisible;
+    private Action _worldStatus;
+    private readonly WaterWorldTest _native = new();
+    private Button _nativeBoat, _nativeWader, _nativeStop;
+    private VBoxContainer _nativeSection;
     private GUO.Game.World _ownedWorld;
     private IWaterStyle _liveStyle;
     private readonly List<(string Name, string Path)> _drafts = new();
@@ -50,7 +55,10 @@ internal partial class WaterPanel : ScrollContainer
     internal string DraftPath => _draft;
     internal string StatusText => _status.Text;
     internal bool Dirty => !WaterAuthoring.Serialize(_style).AsSpan().SequenceEqual(WaterAuthoring.Serialize(_baseline));
-    internal void Attach(Func<GUO.Game.World> world) => _world = world;
+    internal void Attach(Func<WorldHost> host, Func<bool> visible = null, Action status = null)
+    { _host = host; _worldVisible = visible; _worldStatus = status; }
+    internal WaterWorldTest NativeTest => _native;
+    internal string NativeStatusText => _nativeStatus.Text;
 
     public override void _Ready()
     {
@@ -92,6 +100,15 @@ internal partial class WaterPanel : ScrollContainer
         lighting.ItemSelected += i => _preview.SetBrightness(i == 0 ? 1 : i == 1 ? .55f : .2f); sceneRow.AddChild(lighting);
         _apply = Toggle(body, "Preview in World", false, _ => UpdateWorld());
         _apply.TooltipText = "Uses the World view's wet tiles. No player setting or install data is saved.";
+        _nativeSection = new VBoxContainer(); body.AddChild(_nativeSection);
+        var nativeTests = new HFlowContainer(); _nativeSection.AddChild(nativeTests);
+        _nativeBoat = AddButton(nativeTests, "Boat in World", () => Try(() => StartWorldTest(true)));
+        _nativeWader = AddButton(nativeTests, "Wader in World", () => Try(() => StartWorldTest(false)));
+        _nativeStop = AddButton(nativeTests, "Stop test", StopWorldTest);
+        _nativeBoat.TooltipText = _nativeWader.TooltipText = "Find a clear water route near the current World view and focus a temporary native test actor. Uses the draft; no shard or project edits. Freeze pauses the test.";
+        _nativeStatus = new Label { Text = "Native tests need the World view and client art.", AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        _nativeSection.AddChild(_nativeStatus);
+        UpdateNativeControls();
 
         var history = new HBoxContainer(); body.AddChild(history);
         _undo = AddButton(history, "Undo", Undo);
@@ -329,7 +346,8 @@ internal partial class WaterPanel : ScrollContainer
 
     private void UpdateWorld()
     {
-        var world = _apply?.ButtonPressed == true ? _world?.Invoke() : null;
+        var world = _apply?.ButtonPressed == true ? _host?.Invoke()?.World : null;
+        if (world == null && _native.Active) StopWorldTest();
         if (_preview != null) _preview.LiveWorld = world != null;
         if (_ownedWorld != null && world != _ownedWorld && WaterRender.EditorWorld == _ownedWorld)
         { WaterRender.EditorWorld = null; WaterRender.EditorStyle = null; }
@@ -340,10 +358,44 @@ internal partial class WaterPanel : ScrollContainer
         WaterRender.EditorSeconds = _preview.Seconds;
         WaterRender.EditorPaused = _freeze.ButtonPressed;
     }
-    public override void _Process(double delta) => UpdateWorld();
+    internal void StartWorldTest(bool boat)
+    {
+        _apply.ButtonPressed = true; UpdateWorld();
+        _nativeStatus.Text = _native.Start(_host?.Invoke(), boat);
+        _worldStatus?.Invoke();
+        UpdateNativeControls();
+    }
+    internal void StopWorldTest()
+    {
+        _native.Stop();
+        _worldStatus?.Invoke();
+        if (_nativeStatus != null) _nativeStatus.Text = "Test actor removed.";
+        UpdateNativeControls();
+    }
+    private void UpdateNativeControls()
+    {
+        if (_nativeBoat == null) return;
+        bool ready = _host?.Invoke()?.IsBooted == true;
+        _nativeSection.Visible = _apply.ButtonPressed;
+        _nativeBoat.Disabled = _nativeWader.Disabled = !ready;
+        _nativeStop.Disabled = !_native.Active;
+        if (ready && _nativeStatus.Text == "Native tests need the World view and client art.")
+            _nativeStatus.Text = "Temporary native actors; scripted paths, no gameplay collision test.";
+    }
+    public override void _Process(double delta)
+    {
+        if (_native.Active && _worldVisible?.Invoke() == false) StopWorldTest();
+        UpdateWorld();
+        bool active = _native.Active;
+        _native.Advance((float)delta, _freeze.ButtonPressed);
+        if (active && !_native.Active) _worldStatus?.Invoke();
+        if (active && !_native.Active) _nativeStatus.Text = "Native test stopped because the World view changed. Start another test here when ready.";
+        UpdateNativeControls();
+    }
     internal void Shutdown()
     {
         SetProcess(false);
+        StopWorldTest();
         if (_ownedWorld != null && WaterRender.EditorWorld == _ownedWorld) { WaterRender.EditorWorld = null; WaterRender.EditorStyle = null; }
         _ownedWorld = null; _preview?.Shutdown();
     }

@@ -6,6 +6,8 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Water
+- The water editor can run temporary native boat and wader tests in World,
+  using the client's own wake and mobile animation paths without a shard.
 - Keep a reference in the water editor to compare a preset with your tuned
   draft using synchronized lighting, waves and test splashes.
 - The editor has a Water workspace with editable starter presets, synthetic
