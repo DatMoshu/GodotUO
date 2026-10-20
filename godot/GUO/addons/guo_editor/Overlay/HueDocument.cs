@@ -121,6 +121,15 @@ public sealed class HueDocument
         if (!CommitDraft()) throw new IOException(RecoveryError ?? (SourceError.Length > 0 ? SourceError : Validation));
         Push(new(Name, Start, End, (ushort[])colors.Clone())); ResetDraft();
     }
+    internal void TransformPalette(Func<ushort[], ushort[]> transform)
+    {
+        CheckSource();
+        if (RecoveryError != null) throw new IOException(RecoveryError);
+        State pending = ParsedDraft();
+        ushort[] colors = transform((ushort[])pending.Colors.Clone());
+        if (colors == null || colors.Length != 32) throw new ArgumentException("A hue operation must return exactly 32 colors.");
+        Push(new(pending.Name, pending.Start, pending.End, (ushort[])colors.Clone())); ResetDraft();
+    }
     public void Undo() { if (RecoveryError != null) return; if (!Pending && CanUndo) _cursor--; ResetDraft(); }
     public void Redo() { if (RecoveryError != null || Pending) return; if (CanRedo) _cursor++; ResetDraft(); }
     public void Revert() { if (RecoveryError != null) return; CheckSource(); Push(_native); ResetDraft(); }

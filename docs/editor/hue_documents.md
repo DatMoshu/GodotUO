@@ -56,7 +56,41 @@ runs these checks before and after assembly reload. The windowed Assets proof
 captures the working hue inspector at 1024, 1366 and 1920 widths.
 See `tools/scenarios/fiddler-f08a/README.md`.
 
-Gradient, inverse/range operations, Fiddler text exchange and reviewed native
-staging remain F08b–f. This slice adds no native writer or native insertion,
+Fiddler text exchange and reviewed native staging remain F08d–f. These slices
+add no native writer or native insertion,
 deletion, or replacement authorization. The existing world-project export path
 is unchanged; its presence is not proof of F08f stage certification.
+
+## Palette operations (F08b/c)
+
+Expand **Palette operations**, choose inclusive indices 0–31, select an operation,
+then use its apply icon. Bounds can be entered in either order. Spread and
+exponential gradients affect only the interior; adjacent or identical indices
+have no interior to change. Reverse includes both endpoints. Shift RGB accepts
+integer deltas from -255 to 255 in eight-bit channel units, clamps each channel,
+and includes the endpoints. The working name and raw table bounds stay intact.
+These tool settings are editor controls, not part of the saved palette or its
+undo history. Each applied palette operation is one undo step. Invalid pending
+fields, changed source bindings, or failed calculations refuse the entire edit.
+
+The operations follow the pinned UOFiddler `HueEditForm.cs` and
+`Ultima/Helpers/HueHelpers.cs` at commit
+`610c930833dac8d158f08a0af36da43dd90d08b4`. Spread divides endpoint-channel
+differences by the interior count, so its last interior color repeats the end
+color. Exponential uses the reference logarithmic exponent and retains its
+equal-channel behavior. A reference overflow (notably an equal 255 channel)
+is refused atomically with a recovery suggestion instead of leaving a partially
+modified palette. No source implementation is copied into production.
+
+RGB conversion expands five-bit components by bit replication, then packs with
+right shifts; nonzero RGB that collapses to zero becomes raw color 1. Like the
+reference, gradient interiors and RGB shifts write 15-bit colors, clearing bit
+15 only in rewritten entries. Reverse preserves every bit. Colors outside the
+range and gradient endpoints remain byte-for-byte unchanged.
+
+`EditorSmokeHueRange` uses fixed spread/exponential goldens, equal-channel and
+overflow cases, reversed bounds, exact raw reversal, dark/zero packing, RGB
+clamping, immutable input, document validation and one-step undo, source conflicts,
+save/reopen, and native editor controls. Windowed proof captures expanded RGB
+range controls at 1024, 1366 and 1920 widths. See
+`tools/scenarios/fiddler-f08bc/README.md`.

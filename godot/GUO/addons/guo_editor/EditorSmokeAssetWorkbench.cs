@@ -8,6 +8,7 @@ using Godot;
 
 public partial class EditorSmoke
 {
+    private bool _hueRangeScrolled;
     private void CheckAssetWorkbench(ArtPanel art, int id)
     {
         art.SelectKind(false); art.Search($"0x{id:X4}");
@@ -297,6 +298,8 @@ public partial class EditorSmoke
         _inspector.Hues.ColorInput.Text = "0x83E0"; _inspector.Hues.ColorInput.EmitSignal(LineEdit.SignalName.TextChanged, "0x83E0");
         _inspector.Hues.CommitPending(); GetWindow().Size = AssetProofSize(1366, 900); _assetsProofStep = 24; return;
         }
+        if (_assetsProofStep <= 26)
+        {
         int hueWidth = new[] { 1366, 1024, 1920 }[_assetsProofStep - 24];
         SaveAssetProof($"hue-working-palette-{hueWidth}", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
         MetadataCheck($"hue_palette_fits_{hueWidth}", _inspector.Hues.Palette.GetChildren().OfType<Control>().All(c => c.GetGlobalRect().End.X <= _inspector.Hues.GetGlobalRect().End.X + 2)
@@ -306,6 +309,25 @@ public partial class EditorSmoke
         if (_assetsProofStep == 25) { GetWindow().Size = AssetProofSize(1024, 768); return; }
         if (_assetsProofStep == 26) { GetWindow().Size = AssetProofSize(1920, 1080); return; }
         _inspector.Hues.Undo();
+        _inspector.Hues.ChooseRange(0, 31, HueRangeOperation.ShiftRgb, 8, -8, 16); _inspector.Hues.ApplyRange();
+        GetWindow().Size = AssetProofSize(1366, 900); return;
+        }
+        HueEditor hueEditor = _inspector.Hues;
+        if (!_hueRangeScrolled)
+        {
+            hueEditor.GetParent().GetParent().GetParent<ScrollContainer>().EnsureControlVisible(hueEditor.Operations);
+            _hueRangeScrolled = true; return;
+        }
+        int rangeWidth = new[] { 1366, 1024, 1920 }[_assetsProofStep - 27];
+        SaveAssetProof($"hue-range-operations-{rangeWidth}", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
+        MetadataCheck($"hue_range_tools_fit_{rangeWidth}", GodotUi.Walk(hueEditor.Operations).OfType<Control>().Where(c => c.IsVisibleInTree())
+            .All(c => c.GetGlobalRect().End.X <= hueEditor.GetGlobalRect().End.X + 2)
+            && hueEditor.RangeApply.GetGlobalRect().Position.Y >= hueEditor.GetParent().GetParent().GetParent<Control>().GetGlobalRect().Position.Y - 2
+            && !hueEditor.RangeApply.Disabled && !hueEditor.SaveButton.Disabled);
+        _assetsProofStep++; _hueRangeScrolled = false;
+        if (_assetsProofStep == 28) { GetWindow().Size = AssetProofSize(1024, 768); return; }
+        if (_assetsProofStep == 29) { GetWindow().Size = AssetProofSize(1920, 1080); return; }
+        hueEditor.Undo();
         Finish();
     }
 

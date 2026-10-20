@@ -21,6 +21,12 @@ public partial class HueEditor : VBoxContainer
     private Button _undo, _redo, _save, _apply;
     private bool _reading;
     private Action _changed;
+    private SpinBox _rangeStart, _rangeEnd, _red, _green, _blue;
+    private OptionButton _operation;
+    private HBoxContainer _shifts;
+    internal VBoxContainer Operations { get; private set; }
+    internal CheckButton OperationsToggle { get; private set; }
+    internal Button RangeApply { get; private set; }
     internal HueDocument Document => _document;
     internal LineEdit NameInput => _name;
     internal LineEdit ColorInput => _hex;
@@ -52,6 +58,21 @@ public partial class HueEditor : VBoxContainer
         _picker = new ColorPickerButton { EditAlpha = false, AccessibilityName = "Pick RGB for the selected hue color", TooltipText = "Pick RGB; commit once when the picker closes. Untouched bit 15 is preserved.",
             CustomMinimumSize = new Vector2(0, 30) * EditorInterface.Singleton.GetEditorScale(), SizeFlagsHorizontal = SizeFlags.ExpandFill }; AddChild(_picker);
         _picker.PopupClosed += ApplyPickedColor;
+        OperationsToggle = new CheckButton { Text = "Palette operations", TooltipText = "Gradients, reverse and RGB shift on an inclusive palette range" }; AddChild(OperationsToggle);
+        Operations = new VBoxContainer { Visible = false }; AddChild(Operations);
+        OperationsToggle.Toggled += value => Operations.Visible = value;
+        var range = new HBoxContainer(); Operations.AddChild(range);
+        range.AddChild(new Label { Text = "From" }); _rangeStart = RangeNumber("First palette index", 0, 31, 0); range.AddChild(_rangeStart);
+        range.AddChild(new Label { Text = "To" }); _rangeEnd = RangeNumber("Last palette index", 0, 31, 31); range.AddChild(_rangeEnd);
+        var command = new HBoxContainer(); Operations.AddChild(command);
+        _operation = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill, AccessibilityName = "Palette range operation" };
+        foreach (string text in new[] { "Spread gradient", "Exponential gradient", "Reverse range", "Shift RGB" }) _operation.AddItem(text);
+        command.AddChild(_operation); RangeApply = AssetUi.Action("GuiChecked", "Apply selected operation to the inclusive palette range as one undo step", () => ApplyRange()); command.AddChild(RangeApply);
+        _shifts = new HBoxContainer { Visible = false }; Operations.AddChild(_shifts);
+        SpinBox Shift(string label) { var column = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill }; _shifts.AddChild(column); column.AddChild(new Label { Text = label }); var input = RangeNumber(label + " channel shift in 8-bit units", -255, 255, 0); column.AddChild(input); return input; }
+        _red = Shift("R"); _green = Shift("G"); _blue = Shift("B");
+        _operation.ItemSelected += value => _shifts.Visible = value == (int)HueRangeOperation.ShiftRgb;
+        Operations.AddChild(AssetUi.Label("RGB operations write 15-bit colors. Reverse preserves all 16 bits. Gradients need two indices with at least one color between them."));
         var advanced = new VBoxContainer { Visible = false };
         var show = new CheckButton { Text = "Advanced · raw table bounds" }; AddChild(show); AddChild(advanced); show.Toggled += value => advanced.Visible = value;
         advanced.AddChild(new Label { Text = "Table start (hex)" }); _start = Field("Hue table start", value => _document.DraftStart = value, advanced);
@@ -73,6 +94,20 @@ public partial class HueEditor : VBoxContainer
         input.TextSubmitted += _ => CommitPending(); input.FocusExited += () => CommitPending();
         input.GuiInput += e => { if (e is InputEventKey { Pressed: true, Echo: false, CtrlPressed: true, Keycode: Key.S }) { Save(); GetViewport().SetInputAsHandled(); } };
         return input;
+    }
+    private static SpinBox RangeNumber(string label, int min, int max, int value) => new()
+    { MinValue = min, MaxValue = max, Step = 1, Value = value, SizeFlagsHorizontal = SizeFlags.ExpandFill, AccessibilityName = label, TooltipText = label };
+    internal void ChooseRange(int first, int last, HueRangeOperation operation, int red = 0, int green = 0, int blue = 0)
+    {
+        OperationsToggle.SetPressedNoSignal(true); Operations.Visible = true;
+        _rangeStart.Value = first; _rangeEnd.Value = last; _operation.Selected = (int)operation;
+        _shifts.Visible = operation == HueRangeOperation.ShiftRgb; _red.Value = red; _green.Value = green; _blue.Value = blue;
+    }
+    internal bool ApplyRange()
+    {
+        if (_document == null) return false;
+        try { HueRange.Apply(_document, (int)_rangeStart.Value, (int)_rangeEnd.Value, (HueRangeOperation)_operation.Selected, (int)_red.Value, (int)_green.Value, (int)_blue.Value); Read(); Notify(); return true; }
+        catch (Exception e) { Error(e.Message); return false; }
     }
     internal void Bind(HueDocument document, Action changed)
     {
@@ -135,6 +170,7 @@ public partial class HueEditor : VBoxContainer
         _undo.Disabled = _document.RecoveryError != null || (!_document.CanUndo && !_document.Pending);
         _redo.Disabled = _document.RecoveryError != null || !_document.CanRedo || _document.Pending;
         _apply.Disabled = _picker.Disabled = error.Length > 0;
+        RangeApply.Disabled = error.Length > 0;
         _name.Editable = _start.Editable = _end.Editable = _hex.Editable = _document.RecoveryError == null;
     }
     private void Error(string message) { _status.Text = message; _status.Visible = true; }
