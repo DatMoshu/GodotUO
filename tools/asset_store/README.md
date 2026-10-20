@@ -98,6 +98,12 @@ python tools/asset_store/run.py mirror --from URL --key ed25519:... --store-dir 
   and its signature are copied byte for byte, last. Run it on a timer;
   `docs/store/hosting.md` covers serving it.
 
+- **A catalogue of your own on Pages.** `init-catalogue FOLDER` writes its
+  repository; `push-catalogue --remote GIT_URL [--listing packs] [--pack ZIP]`
+  signs an index over the `gh-pages` branch and pushes it, fast-forward only
+  (`hosting.py`, `test_hosting.py`). `hosted_proof.py` runs the whole path
+  locally against the client's C#; `docs/store/hosting.md` has the steps.
+
 The client lists every catalogue at once, asks the player to approve a new
 catalogue's key, and refuses a tampered, rolled-back, expired or re-keyed
 index (`test_catalogue.py`).
@@ -193,6 +199,18 @@ over the network.
 Use `--collision-world` instead of `--shared-world` for the barrier example.
 It also exports shared tiledata, and the isolated server probe verifies
 static height and `CanFit` rejection using the installed impassable flag.
+
+## Water style packs (ADR-0037)
+
+```
+python tools/asset_store/water_packs.py                    build guo-water-pixel, -cel, -realistic
+python tools/asset_store/water_packs.py --store-dir DIR    and publish them (signed with UO_STORE_SIGNING_KEY)
+python tools/asset_store/water_packs.py --deploy DIR       and install each with a content lock, for the scenario
+```
+
+Sources are `design/packs/water/<id>/` (pack.json + a `guo/water@1` style
+file). `water_style.py` is the style file's validator, mirrored by
+`Store/StoreWater.cs`; `corpus/water.py` holds the two to the same verdicts.
 
 ## Screenshots
 

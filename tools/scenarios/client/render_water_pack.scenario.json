@@ -1,0 +1,270 @@
+{
+  "id": "client.render.water_pack",
+  "title": "A Store water pack's style at the docks, the bay and around a wading player",
+  "surface": "client",
+  "requires": {
+    "shard": "dev",
+    "account": "$account",
+    "build": "debug"
+  },
+  "timeouts": {
+    "step_s": 60,
+    "run_s": 600
+  },
+  "steps": [
+    {
+      "id": "launch",
+      "do": {
+        "kind": "launch",
+        "args": [
+          "--scratch-profile",
+          "--water-style",
+          "$style"
+        ],
+        "settings": {
+          "autologin": true
+        }
+      },
+      "say": "Start GUO with the pack's water style for this session only; the deployment comes from UO_CONTENT_STORE and UO_CONTENT_LOCK.",
+      "timeout_s": 240,
+      "expect": {
+        "scene": "LoginScene",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "login_screen",
+      "do": {
+        "kind": "wait",
+        "seconds": 2
+      },
+      "say": "The login screen is up.",
+      "shot": true
+    },
+    {
+      "id": "type_account",
+      "do": {
+        "kind": "ui.fill",
+        "control": {
+          "type": "StbTextBox"
+        },
+        "text": "$account"
+      },
+      "say": "Type the account name."
+    },
+    {
+      "id": "type_password",
+      "do": {
+        "kind": "ui.fill",
+        "control": {
+          "type": "PasswordStbTextBox"
+        },
+        "text": "$password"
+      },
+      "say": "Type the password."
+    },
+    {
+      "id": "log_in",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 2
+        }
+      },
+      "say": "Press Login.",
+      "expect": {
+        "scene": "GameScene",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "in_world",
+      "do": {
+        "kind": "wait",
+        "seconds": 4
+      },
+      "say": "We are in the world.",
+      "shot": true,
+      "expect": {
+        "ui.exists": "WorldViewportGump"
+      }
+    },
+    {
+      "id": "go_docks",
+      "do": {
+        "kind": "chat",
+        "text": "[go 1499 1761 -3"
+      },
+      "say": "Say a GM command to go to the Britain docks.",
+      "expect": {
+        "world.position": {
+          "x": 1499,
+          "y": 1761,
+          "map": 0,
+          "tolerance": 3
+        },
+        "within_s": 20
+      }
+    },
+    {
+      "id": "settle_docks",
+      "do": {
+        "kind": "wait",
+        "seconds": 8
+      },
+      "say": "Wait for the map to settle and the water mask to build."
+    },
+    {
+      "id": "shot_docks",
+      "do": {
+        "kind": "wait",
+        "seconds": 1
+      },
+      "say": "The pack's water style at the Britain docks.",
+      "shot": true
+    },
+    {
+      "id": "shot_docks_later",
+      "do": {
+        "kind": "wait",
+        "seconds": 2
+      },
+      "say": "Two seconds on: the swell has moved.",
+      "shot": true
+    },
+    {
+      "id": "go_east_shore",
+      "do": { "kind": "chat", "text": "[go 1515 1755 -3" },
+      "say": "Move closer to the east docks coast to inspect repeated tile-edge surf.",
+      "expect": {
+        "world.position": { "x": 1515, "y": 1755, "map": 0, "tolerance": 1 },
+        "within_s": 20
+      }
+    },
+    {
+      "id": "settle_east_shore",
+      "do": { "kind": "wait", "seconds": 8 },
+      "say": "Let the east shoreline finish loading."
+    },
+    {
+      "id": "shot_east_shore",
+      "do": { "kind": "wait", "seconds": 20 },
+      "say": "Hold the east-shore camera for a motion clip: look for ladder bars and foam beneath cliffs.",
+      "shot": true
+    },
+    {
+      "id": "go_beach",
+      "do": { "kind": "chat", "text": "[go 3708 1398 0" },
+      "say": "Inspect the low sandy shore west of Nujelm.",
+      "expect": {
+        "world.position": { "x": 3708, "y": 1398, "map": 0, "tolerance": 1 },
+        "within_s": 20
+      }
+    },
+    {
+      "id": "settle_beach",
+      "do": { "kind": "wait", "seconds": 8 },
+      "say": "Let the sandy shoreline finish loading."
+    },
+    {
+      "id": "shot_beach",
+      "do": { "kind": "wait", "seconds": 3 },
+      "say": "The surf should follow the low beach without outlining tile diamonds.",
+      "shot": true
+    },
+    {
+      "id": "go_bay",
+      "do": {
+        "kind": "chat",
+        "text": "[go 2087 2861 -3"
+      },
+      "say": "Say a GM command to go to the Trinsic bay.",
+      "expect": {
+        "world.position": {
+          "x": 2087,
+          "y": 2861,
+          "map": 0,
+          "tolerance": 3
+        },
+        "within_s": 20
+      }
+    },
+    {
+      "id": "settle_bay",
+      "do": {
+        "kind": "wait",
+        "seconds": 8
+      },
+      "say": "Wait for the map to settle and the water mask to build."
+    },
+    {
+      "id": "shot_bay",
+      "do": {
+        "kind": "wait",
+        "seconds": 20
+      },
+      "say": "The pack's water style at the Trinsic bay.",
+      "shot": true
+    },
+    {
+      "id": "go_swim",
+      "do": {
+        "kind": "chat",
+        "text": "[go 1504 1762 -5"
+      },
+      "say": "Stand in the water beside the Britain docks pier.",
+      "expect": {
+        "world.position": {
+          "x": 1504,
+          "y": 1762,
+          "map": 0,
+          "tolerance": 1
+        },
+        "within_s": 20
+      }
+    },
+    {
+      "id": "lap",
+      "do": {
+        "kind": "wait",
+        "seconds": 3
+      },
+      "say": "Standing in the water: rings in the pack's style around the player.",
+      "shot": true
+    },
+    {
+      "id": "swim_1",
+      "do": {
+        "kind": "ui.key",
+        "key": "Down"
+      },
+      "say": "Wade a step."
+    },
+    {
+      "id": "swim_2",
+      "do": {
+        "kind": "ui.key",
+        "key": "Down"
+      },
+      "say": "And another."
+    },
+    {
+      "id": "wake",
+      "do": {
+        "kind": "wait",
+        "seconds": 1
+      },
+      "say": "The water behind the player is still rippling.",
+      "shot": true
+    },
+    {
+      "id": "summary",
+      "do": {
+        "kind": "note",
+        "text": "A Store water pack (ADR-0037 decision 6, WATER-04): data for one of the client's built-in water models. Run once per style: python tools/asset_store/water_packs.py --deploy DIR prints the UO_CONTENT_STORE, UO_CONTENT_LOCK and --var style= for each. These are not parity frames."
+      }
+    }
+  ]
+}

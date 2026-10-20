@@ -29,11 +29,18 @@ internal sealed class StoreComponent
     [JsonPropertyName("body")] public int? Body { get; set; }
     [JsonPropertyName("name")] public string Name { get; set; }
     [JsonPropertyName("wav")] public List<string> Wav { get; set; }
+    // A mod component's fields (ADR-0038 amendment); null on every other type.
+    [JsonPropertyName("assembly")] public string Assembly { get; set; }
+    [JsonPropertyName("abi")] public int? Abi { get; set; }
+    [JsonPropertyName("packets")] public List<JsonElement> Packets { get; set; }
+    [JsonPropertyName("gumps")] public List<int> Gumps { get; set; }
+    [JsonPropertyName("key")] public string Key { get; set; }
+    [JsonPropertyName("signature")] public string Signature { get; set; }
 }
 
 internal static class StoreContent
 {
-    public static readonly HashSet<string> Types = new("static land texmap tiledata gump animation wearable hue sound music effect light translation font map region multi decoration item crafting loot vendor creature spawner encounter quest dialogue presentation authoring script hd-art splat voice".Split(' '), StringComparer.Ordinal);
+    public static readonly HashSet<string> Types = new("static land texmap tiledata gump animation wearable hue sound music effect light translation font map region multi decoration item crafting loot vendor creature spawner encounter quest dialogue presentation authoring script hd-art splat voice mod water".Split(' '), StringComparer.Ordinal);
 
     private static void ValidateMedia(StoreComponent c, StoreManifest m)
     {
@@ -93,6 +100,13 @@ internal static class StoreContent
             StorePack.Require(c.Entry != null && m.Files.ContainsKey(c.Entry), "Undeclared component entry");
             StorePack.Require(Path.GetExtension(c.Entry).ToLowerInvariant() is ".json" or ".png" or ".wav" or ".ogg" or ".razor" or ".ply", "Invalid content entry type");
             ValidateMedia(c, m);
+            if (c.Type == "water")
+            {
+                // A style (ADR-0037 decision 6): data for a built-in model, read by the client only.
+                StorePack.Require(c.Target == "client", "Water component must target client");
+                StorePack.Require(Path.GetExtension(c.Entry).Equals(".json", StringComparison.OrdinalIgnoreCase), "Water entry must be JSON");
+            }
+            StoreMods.Validate(c, m);
             StorePack.Require(c.References == null || c.References.Count <= 512, "Invalid references");
             foreach (string reference in c.References ?? new())
             {
@@ -111,6 +125,7 @@ internal static class StoreContent
                 StorePack.Require(c.Capabilities.Distinct(StringComparer.Ordinal).Count() == c.Capabilities.Count, "Duplicate script capability");
             }
         }
+        StoreMods.ValidateAssemblies(m);
         StorePack.Require(m.Target != "combined" || targets.Contains("shared") || targets.Contains("client") && targets.Contains("server"), "Combined pack missing target");
         var ply = m.Components.Where(c => c.Type == "splat").Select(c => c.Entry).ToHashSet(StringComparer.Ordinal);
         StorePack.Require(m.Files.Keys.All(path => !Path.GetExtension(path).Equals(".ply", StringComparison.OrdinalIgnoreCase) || ply.Contains(path)), "PLY payload requires splat component");

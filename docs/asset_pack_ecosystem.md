@@ -27,7 +27,8 @@ contain their own target and shared components only.
 Content types: static, land, texmap, tiledata, gump, animation, wearable,
 hue, sound, music, effect, light, translation, font, map, region, multi,
 decoration, item, crafting, loot, vendor, creature, spawner, encounter,
-quest, dialogue, presentation, authoring, script, hd-art, splat, voice.
+quest, dialogue, presentation, authoring, script, hd-art, splat, voice, water.
+quest, dialogue, presentation, authoring, script, hd-art, splat, voice, mod.
 
 ### Media component contracts (installation only)
 
@@ -113,6 +114,41 @@ All existing archive traversal, link, size, hash, licence, and proprietary
 data exclusions remain. V2 carries authored source assets, never merged UO
 archives. Typed JSON entry files describe complex content and reference
 payloads. Existing UO data is read locally when producing runtime exports.
+
+### Water styles
+
+A `water` component is a look for the sea under the client's **Water** option
+([ADR-0037](architecture/ADR-0037-water-render-modes.md), decision 6). It
+targets `client` only, takes no media metadata, and its `entry` is a declared
+JSON file with schema `guo/water@1`: a display `name`, one of the shading
+`model`s built into the client (`uo`, `pixel`, `cel`, `realistic`), a `tint`
+and the numbers that model reads. The full field table is in
+`docs/data_formats.md` section 44. A style is data only: it carries no shader
+code, texture or script, and a `.gdshader` stays refused outside postfx packs.
+A pack-supplied water shader would run inside the world material, so it needs
+a later amendment to the ADR.
+
+Unlike other media, the style file is checked whole at verification and
+installation, by `pack.py verify` and `StorePack.Extract` alike. The corpus
+cases in `tools/asset_store/corpus/water.py` cover an accepted pack per model
+and each refusal: wrong target or entry type, unknown or missing fields, values
+out of range, a non-integer level, a bad name, duplicate keys, NaN, a byte
+order mark, invalid UTF-8 and an oversized file. `test_corpus.py` requires
+Python and C# to agree on every one.
+
+Water components take no numeric lock binding. Activate a deployment that
+contains one, restart, then choose its name under Options > **Water** (or pass
+`--water-style pack-id:component-id` for one session). Each deployment has one
+root pack, so a player picks one water pack, or a pack that depends on it.
+
+`python tools/asset_store/water_packs.py` builds the three GUO styles from
+`design/packs/water/`: `guo-water-pixel`, `guo-water-cel` and
+`guo-water-realistic`, CC0, byte-reproducible, each file hashed in its
+manifest. `--store-dir` publishes them into a catalogue, which is signed when
+`UO_STORE_SIGNING_KEY` is set. `--deploy DIR` installs them through the C#
+installer and writes one content lock per style for the
+`client.render.water_pack` scenario. `test_water_packs.py` publishes them into
+a store signed with a throwaway key and checks the signed index.
 
 ## Activation foundations
 
@@ -200,6 +236,81 @@ definitions with the matching client lock; network negotiation is still pending.
 
 Script components are left inert by the asset mount. Their separate managed
 session owns review, approval, enablement, execution, revocation and logout.
+
+## Mod components (`type: mod`, ADR-0038)
+
+This is the one pack component that carries code, an exception to the L2
+no-code rule that needs the owner's decision: see [ADR-0038's amendment](architecture/ADR-0038-packet-mod-abi.md#amendment-mod-packs-an-exception-to-the-l2-no-code-rule).
+
+A `mod` component carries one packet mod (`docs/data_formats.md` section 42)
+in a v2 pack, so a shard can publish its client mod through a catalogue. The
+Store installs it; installing loads nothing. The client never downloads a mod
+by itself: not on login, not from a shard's content descriptor, not as a
+dependency it was not asked for. A mod reaches the client only when the user
+installs it, approves it and has **Load mods** on.
+
+Component fields, all required; any other field refuses the pack:
+
+| Field | Rule |
+|---|---|
+| `id`, `type`, `target`, `entry` | as every component; `type` is `mod`, `target` is `client` (a mod is never `server` or `shared`), `entry` is the mod's `mod.json`, a declared `.json` payload |
+| `assembly` | the mod's `.dll`, a declared payload; must equal `mod.json`'s `assembly` and sit in the same folder of the pack as the entry |
+| `abi` | integer; must equal `mod.json`'s `abi` |
+| `packets` | exactly `mod.json`'s `packets` array, same order and values |
+| `gumps` | array of gump ids the mod opens or replaces; must be empty for ABI 1, which has no gump call |
+| `key` | the publisher's Ed25519 public key: `ed25519:` and standard base64 of its 32 bytes, as catalogue keys are written |
+| `signature` | `ed25519:` and base64 of the 64-byte signature over the message below |
+
+The declarations sit on the component as well as in `mod.json` so a
+catalogue, the Store window and a reviewer can read what a mod touches
+without opening its payload. The installer refuses a component whose
+declarations differ from its `mod.json`, and the client's loader then refuses
+anything the mod registers that `mod.json` did not declare.
+
+A `.dll` payload is allowed only as a `mod` component's `assembly`; one in any
+other pack, or one no component names, refuses the pack. A pack may hold
+several `mod` components, each in its own folder. A mod is one assembly: this
+version carries no dependency DLLs, so a mod that needs a library compiles it
+in.
+
+**Signature.** The message is UTF-8, each line ending in `\n`:
+
+```text
+guo/mod-signature@1
+<pack id>
+<pack version>
+<component id>
+<sha256 of the entry, lower-case hex, as listed in files>
+<sha256 of the assembly, lower-case hex, as listed in files>
+```
+
+The client verifies it with the managed verifier (`src/Store/Ed25519.cs`)
+before a mod can be approved. An unsigned mod component, a bad signature or a
+malformed key refuses the pack at install. The key is the publisher's, not the
+catalogue's: a catalogue vouches for the ZIP's hash, the publisher for the
+code. `tools/asset_store` signs with the publisher's private key, which never
+goes into a pack.
+
+**Approval.** The Store's mod review shows the title, author, key
+fingerprint, the shards from `mod.json`, every declared packet (id or 0xBF
+subcommand, length, override) and the plain warning that a mod is code with
+the user's rights. Approval is stored in `user://store/.approved-mods.json`
+as `{identity, content, key}`: the `pack-id:component-id`, the content hash of
+the pack's verified dependency closure, and the key. At start, with **Load
+mods** on, the client loads an installed mod component only when its current
+content hash and key match an approval. An update is a new content hash and
+asks again; a different key is refused until the user approves the new one.
+Revoking removes the approval and takes effect on the next start. Removing
+the pack removes its approval.
+
+**Precedence.** Store mods and folder mods (`Data/Mods`, the user's own
+unsigned files) load into the same registry, folder mods first; the usual
+rules apply across both, so two mods claiming one packet refuse the second.
+A Store mod whose `mod.json` id equals a folder mod's is refused.
+
+**Platforms.** The Store refuses to install a `mod` component on Android and
+web builds, which load no mods, with the text "Mods are not available on this
+device."
 
 ## Server regions
 

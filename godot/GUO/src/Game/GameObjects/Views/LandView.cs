@@ -57,6 +57,8 @@ namespace GUO.Game.GameObjects
                     : ShaderHueTranslator.SHADER_NONE;
             }
             hueVec.Z = 1f;
+            // PORT DEVIATION (GUO): Wet land under a water style (ADR-0037).
+            hueVec.Y += GUO.Renderer.Water.WaterRender.Flag(TileData.IsWet);
 
             if (IsStretched)
             {
@@ -96,7 +98,7 @@ namespace GUO.Game.GameObjects
                         posY,
                         hueVec,
                         depth,
-                        ProfileManager.CurrentProfile.AnimatedWaterEffect && TileData.IsWet,
+                        GUO.Renderer.Water.WaterRender.UpstreamWobble(ProfileManager.CurrentProfile) && TileData.IsWet,
                         ThemedVariant
                     );
                 }
@@ -132,7 +134,7 @@ namespace GUO.Game.GameObjects
                     {
                         var pos = new Vector2(posX, posY);
                         var hdScale = new Vector2((float)uv.Width / hdUv.Width, (float)uv.Height / hdUv.Height);
-                        if (ProfileManager.CurrentProfile.AnimatedWaterEffect && TileData.IsWet)
+                        if (GUO.Renderer.Water.WaterRender.UpstreamWobble(ProfileManager.CurrentProfile) && TileData.IsWet)
                         {
                             batcher.Draw(hdTex, pos, hdUv, hueVec, 0f, Vector2.Zero, hdScale, SpriteEffects.None, depth + 0.5f);
                             var sin = (float)Math.Sin(Time.Ticks / 1000f);
@@ -151,7 +153,7 @@ namespace GUO.Game.GameObjects
                     var pos2 = new Vector2(posX, posY);
                     var scale = Vector2.One;
 
-                    if (ProfileManager.CurrentProfile.AnimatedWaterEffect && TileData.IsWet)
+                    if (GUO.Renderer.Water.WaterRender.UpstreamWobble(ProfileManager.CurrentProfile) && TileData.IsWet)
                     {
                         batcher.Draw(
                             texture,

@@ -10,8 +10,9 @@ the device.
 ## Per-platform defaults
 
 One table in `Configuration\PlatformDefaults.cs` holds every profile default
-that differs by platform. Desktop has one set (version 5: a full-size world and wheel zoom); everything
-else on the desktop is exactly upstream's. Mobile gets a full-size borderless world, pinch zoom kept, large
+that differs by platform. Desktop has one set (a full-size world and wheel zoom from version 5, and
+`EnhancedHD`, off, from version 12); everything else on the desktop is
+exactly upstream's. Mobile gets a full-size borderless world, pinch zoom kept, large
 and scaled containers, grid containers, fitted container placement and the
 low-power background. Web gets a full-size world and wheel zoom. The platform
 comes from `OS.HasFeature` (`mobile`, `web`); `UO_PROFILE_PLATFORM` overrides
@@ -34,9 +35,15 @@ choice overwritten.
 | 4 | The canvas background entry, taken by the background branch (see ADR-0016). |
 | 5 | Desktop: the world fills the window and the wheel zooms, as on Mobile and Web, instead of upstream's 600x480 world in the corner of a large window. Unticking "Game window full size" under Options gives the smaller, movable world back. |
 | 6 | `CanvasBackgroundLowPower` on Mobile and Web (ADR-0016). |
+| 7 | The dual-screen shelf kinds (paperdoll, backpack, status, journal) on, where a second display exists. |
+| 9 | `TouchMacroRow` on Mobile. |
+| 10 | `ScreenSaver` on Mobile (the OLED screen saver). |
+| 12 | `EnhancedHD`, off, on every platform. |
 
-Migration from 2 to 3 was verified on the device (commit "GridContainerGump:
-containers as a grid"), and to 6 by the canvas background work.
+The current version is 12 (`PlatformDefaults.CurrentVersion`); versions 8 and
+11 are not listed here. Migration from 2 to 3 was verified on the device
+(commit "GridContainerGump: containers as a grid"), and to 6 by the canvas
+background work.
 
 ## The touch layer
 
@@ -52,6 +59,9 @@ unchanged; every hook into ported code is marked `PORT DEVIATION (GUO)`.
 | Hold on the world | Held right button: walk, then run |
 | Hold on an item | Held left button: pick up, then drag |
 | Long press | Right click |
+| Long press on someone in the world | Their context menu (vendor, banker, pet); a finger that moves first walks |
+| Swipe over a list | Scrolls it: Options pages, books, any text with its own scroll bar |
+| Two-finger pan over a gump | Mouse wheel steps over it, one per 40 pixels |
 | Pinch | Ctrl + wheel steps (zoom); accumulated from magnify gestures |
 | Tap on the gump bar | The top-bar action |
 
@@ -59,8 +69,21 @@ Verified on the device: login by touch alone, hold-to-walk, pinch in and
 out, drag, split and drop into the bank, double-tap use (commits "Android:
 fullscreen, soft keyboard..." and "GridContainerGump..."). On the desktop,
 `launchers\dev\touch_probe.bat` drives synthetic fingers through the layer
-and checks 18 gestures against the shard; `--touch` enables the layer on the
+and checks 18 gestures against the shard; `--touch-gesture-probe` checks
+swipe and two-finger scrolling without one (scenario `client.input.touch`); `--touch` enables the layer on the
 desktop and `--touch-trace` logs each gesture decision.
+
+### Options
+
+Modern Options keeps the classic dark panel and jewelled buttons, with rows
+that scroll by dragging. Video includes the canvas background picker;
+Touch includes the command-bar arrow inset and, when a second display is
+present, fine second-screen scale. Apply and Okay use the same profile
+fields as Classic view. A custom background path stays available through
+Classic view and is preserved when changing other settings.
+
+In Classic view, drop-down rows have taller, full-row targets while the
+touch layer is enabled. Mouse-only desktop lists keep their classic spacing.
 
 ### The touch bar
 
@@ -69,6 +92,15 @@ top bar's own button art and clilocs: six finger-sized actions. While a
 target cursor is up it shows **Self** and **Cancel** so a spell or a bandage
 can be aimed and a target can be abandoned without a keyboard (commit
 "Touch bar: Self and Cancel while a target cursor is up").
+
+Also on touch screens: a combat macro row behind a chevron on the bar (it
+shows itself on entering War mode unless you hid it this session), an OLED
+screen saver that blacks out both screens after an idle time (on by default
+on Android; the waking tap never reaches the game), and Android Back, which
+closes the top gump, then the keyboard, then asks before quitting. Sizing,
+locking and moving windows between screens is on
+[Gump size and screen controls](Gump-Size-and-Screen.md). How client features are
+sorted into layers is on [Feature Layers](Feature-Layers.md).
 
 ### The soft keyboard
 

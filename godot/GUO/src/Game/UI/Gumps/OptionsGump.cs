@@ -64,6 +64,7 @@ namespace GUO.Game.UI.Gumps
         private Combobox _screenSaverChoice;
         private List<string> _screenSaverChoices;
         private Checkbox _splashIntro; // PORT DEVIATION (GUO): the boot splash (SplashIntro), device-wide
+        private Checkbox _loadMods; // PORT DEVIATION (GUO): packet mods (ADR-0038), device-wide
 
         // PORT DEVIATION (GUO): the gamepad's face-button layout (Input.Gamepad).
         private Combobox _gamepadLayout;
@@ -195,8 +196,10 @@ namespace GUO.Game.UI.Gumps
         // video
         private Checkbox _use_old_status_gump, _statusGumpBarMutuallyExclusive, _windowBorderless, _enableDeathScreen, _enableBlackWhiteEffect, _altLights, _enableLight, _enableShadows, _enableShadowsStatics, _auraMouse, _runMouseInSeparateThread, _useColoredLights, _darkNights, _partyAura, _hideChatGradient, _animatedWaterEffect;
         private Checkbox _enhancedHD; // PORT DEVIATION (GUO): Enhanced HD repaint detail
+        private Checkbox _realtimeLights; // PORT DEVIATION (GUO): Realtime lights (ADR-0039)
         private Combobox _lightLevelType;
         private Combobox _hdFilter; // PORT DEVIATION (GUO): optional HD pack sampling.
+        private Combobox _waterStyle; // PORT DEVIATION (GUO): water render style (ADR-0037).
         private Checkbox _use_smooth_boat_movement;
         private HSliderBar _terrainShadowLevel;
 
@@ -2125,10 +2128,31 @@ namespace GUO.Game.UI.Gumps
             );
 
 
+            // PORT DEVIATION (GUO): Realtime lights (ADR-0039): a tile-grid
+            // light field walls block, coloured by the shard's light level.
+            section4.Add
+            (
+                _realtimeLights = AddCheckBox
+                (
+                    null,
+                    "Realtime lights",
+                    _currentProfile.RealtimeLights,
+                    startX,
+                    startY
+                )
+            );
+
             section4.Add(AddLabel(null, "HD filtering", startX, startY));
             section4.AddRight(_hdFilter = AddCombobox(null,
                 new[] { "Auto", "Point", "Point mipmaps", "Smooth" },
                 Math.Clamp((int)_currentProfile.HdFilter, 0, 3), startX, startY, 180));
+
+            // PORT DEVIATION (GUO): water render style (ADR-0037); Classic
+            // draws the tiles as upstream does and replaces nothing.
+            section4.Add(AddLabel(null, "Water", startX, startY));
+            section4.AddRight(_waterStyle = AddCombobox(null,
+                GUO.Renderer.Water.WaterRender.ChoiceLists().Names,
+                GUO.Renderer.Water.WaterRender.ChoiceIndex(_currentProfile.WaterStyle), startX, startY, 180));
 
             SettingsSection section5 = AddSettingsSection(box, "Shadows");
             section5.Y = section4.Bounds.Bottom + 40;
@@ -2385,7 +2409,7 @@ namespace GUO.Game.UI.Gumps
             {
                 IsSelectable = false, ButtonParameter = (int) Buttons.Disabled
             };
-            setControls.MouseUp += (s, e) => GUO.Input.Gamepad.PadWizard.Open();
+            setControls.MouseUp += (s, e) => GUO.Input.Gamepad.PadWizard.OpenList();
             sectionPad.Add(setControls);
 
             // PORT DEVIATION (GUO): what each pad button does, in the glyphs of
@@ -2395,6 +2419,15 @@ namespace GUO.Game.UI.Gumps
                 sectionPad.Add(new GUO.Input.Glyphs.GlyphPic(action));
                 sectionPad.AddRight(AddLabel(null, words, startX, startY), 6);
             }
+
+            // PORT DEVIATION (GUO): packet mods from Data/Mods (ADR-0038). Kept
+            // in settings.json like the plugins list, since packets arrive before
+            // a profile exists; read on the next start. Hidden where mods cannot load.
+            SettingsSection sectionMods = GUO.Network.Mods.ClientMods.Supported ? AddSettingsSection(box, "Mods") : new SettingsSection("Mods", box.Width);
+            sectionMods.Y = sectionPad.Bounds.Bottom + 40;
+            sectionMods.Add(_loadMods = AddCheckBox(null, "Load mods on the next start", Settings.GlobalSettings.LoadMods, startX, startY));
+            sectionMods.Add(AddLabel(null, GUO.Network.Mods.ClientMods.Status, startX, startY));
+            // END PORT DEVIATION (GUO)
 
             Add(rightArea, PAGE);
         }
@@ -4152,6 +4185,7 @@ namespace GUO.Game.UI.Gumps
                     _screenSaverSleepMinutes.Value = 0; // PORT DEVIATION (GUO)
                     _screenSaverChoice.SelectedIndex = 0; // PORT DEVIATION (GUO)
                     _splashIntro.IsChecked = true; // PORT DEVIATION (GUO)
+                    _loadMods.IsChecked = false; // PORT DEVIATION (GUO)
                     _gamepadLayout.SelectedIndex = 0; // PORT DEVIATION (GUO)
                     _gamepad.IsChecked = true; // PORT DEVIATION (GUO)
                     _sliderScreenZoom.Value = 0;
@@ -4169,6 +4203,8 @@ namespace GUO.Game.UI.Gumps
                     _animatedWaterEffect.IsChecked = false;
                     _enhancedHD.IsChecked = videoDefaults.EnhancedHD; // PORT DEVIATION (GUO)
                     _hdFilter.SelectedIndex = (int)videoDefaults.HdFilter;
+                    _realtimeLights.IsChecked = videoDefaults.RealtimeLights; // PORT DEVIATION (GUO)
+                    _waterStyle.SelectedIndex = 0; // PORT DEVIATION (GUO): Classic
                     _partyAuraColorPickerBox.Hue = 0x0044;
 
                     break;
@@ -4702,6 +4738,12 @@ namespace GUO.Game.UI.Gumps
                 GUO.Host.SplashIntro.Enabled = _splashIntro.IsChecked; // PORT DEVIATION (GUO)
             }
 
+            if (_loadMods.IsChecked != Settings.GlobalSettings.LoadMods) // PORT DEVIATION (GUO): ADR-0038
+            {
+                Settings.GlobalSettings.LoadMods = _loadMods.IsChecked;
+                Settings.GlobalSettings.Save();
+            }
+
             // PORT DEVIATION (GUO): a new layout choice applies to connected pads at once.
             string gamepadLayout = GamepadLayouts[Math.Max(0, _gamepadLayout.SelectedIndex)];
             _currentProfile.Gamepad = _gamepad.IsChecked; // PORT DEVIATION (GUO)
@@ -4745,6 +4787,10 @@ namespace GUO.Game.UI.Gumps
             }
 
             _currentProfile.HdFilter = (HdFilterMode)Math.Clamp(_hdFilter.SelectedIndex, 0, 3);
+            _currentProfile.RealtimeLights = _realtimeLights.IsChecked; // PORT DEVIATION (GUO): ADR-0039
+
+            // PORT DEVIATION (GUO): the renderer rebuilds the meshes when it sees the change.
+            _currentProfile.WaterStyle = GUO.Renderer.Water.WaterRender.ChoiceId(_waterStyle.SelectedIndex);
 
             _currentProfile.PartyAura = _partyAura.IsChecked;
             _currentProfile.PartyAuraHue = _partyAuraColorPickerBox.Hue;

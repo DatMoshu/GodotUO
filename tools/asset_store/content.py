@@ -2,7 +2,12 @@
 from pathlib import PurePosixPath
 import re
 
-CONTENT_TYPES = frozenset("static land texmap tiledata gump animation wearable hue sound music effect light translation font map region multi decoration item crafting loot vendor creature spawner encounter quest dialogue presentation authoring script hd-art splat voice".split())
+try:
+    from . import mods
+except ImportError:
+    import mods
+
+CONTENT_TYPES = frozenset("static land texmap tiledata gump animation wearable hue sound music effect light translation font map region multi decoration item crafting loot vendor creature spawner encounter quest dialogue presentation authoring script hd-art splat voice mod water".split())
 
 PACK_FIELDS = {"scale", "native_w", "native_h", "asset", "graphic", "body", "name", "wav"}
 
@@ -61,7 +66,7 @@ def validate_content(m, require, identifier, version):
     targets = set()
     for c in components:
         require(isinstance(c, dict), "invalid component")
-        require(not (set(c) - ({"id", "type", "target", "entry", "references", "language", "runtime", "runtime_version", "capabilities"} | PACK_FIELDS)), "unknown component field")
+        require(not (set(c) - ({"id", "type", "target", "entry", "references", "language", "runtime", "runtime_version", "capabilities"} | PACK_FIELDS | mods.MOD_FIELDS)), "unknown component field")
         identifier(c.get("id"))
         require(c["id"] not in identities, "duplicate component id")
         identities.add(c["id"])
@@ -72,6 +77,11 @@ def validate_content(m, require, identifier, version):
         require(isinstance(c.get("entry"), str) and c["entry"] in m["files"], "undeclared component entry")
         require(PurePosixPath(c["entry"]).suffix.lower() in (".json", ".png", ".wav", ".ogg", ".razor", ".ply"), "invalid content entry type")
         validate_media(c, m["files"], require)
+        if c["type"] == "water":
+            # A style (ADR-0037 decision 6): data for a built-in model, read by the client only.
+            require(c["target"] == "client", "water component must target client")
+            require(PurePosixPath(c["entry"]).suffix.lower() == ".json", "water entry must be JSON")
+        mods.validate_component(c, m, require)
         refs = c.get("references") if c.get("references") is not None else []
         require(isinstance(refs, list) and len(refs) <= 512, "invalid references")
         for ref in refs:
@@ -88,6 +98,7 @@ def validate_content(m, require, identifier, version):
             for cap in caps:
                 require(isinstance(cap, str) and re.fullmatch(r"[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)*", cap) and len(cap) <= 100, "invalid script capability")
             require(len(set(caps)) == len(caps), "duplicate script capability")
+    mods.validate_assemblies(m, require)
     require(target != "combined" or "shared" in targets or {"client", "server"} <= targets, "combined pack missing target")
     ply = {c["entry"] for c in components if c["type"] == "splat"}
     require(all(PurePosixPath(path).suffix.lower() != ".ply" or path in ply for path in m["files"]), "PLY payload requires splat component")

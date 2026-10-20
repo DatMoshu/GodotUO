@@ -17,6 +17,9 @@
 | **Multi** | A group of components placed as one object: houses, boats, castles. See [Building Multis](Building-Multis.md). |
 | **Parity** | Behaving and looking identical to ClassicUO. Parity first, improvements after, and proposed separately. |
 | **Plugin / assistant** | A third-party helper such as Razor, loaded through the plugin host (Windows). |
+| **Layers (L0 to L4)** | How GUO sorts its features: L0 the ported ClassicUO code, L1 player options (off by default), L2 content packs, L3 the editor, L4 Labs (an opt-in Debug build, never in an export). See [Feature Layers](Feature-Layers.md). |
+| **Pack** | Content installed from the Store: backgrounds, themes, sounds, screen effects, HD art, voices and more. Installing one runs no code. See [Content Packs](Content-Packs.md). |
+| **Admin tab** | The editor tab that manages a server on your own computer. See [Admin Tab](Admin-Tab.md). |
 | **Probe** | A scripted client run that checks one thing and exits: `--touch-probe`, `--gamepad-probe` and so on ([Scripted Runs and Probes](Scripted-Runs-and-Probes.md)). |
 | **`PORT DEVIATION (GUO)`** | The comment marking every place GUO's code intentionally differs from upstream's. |
 | **Shard** | A UO server. ModernUO, ServUO and RunUO are server emulators. |
