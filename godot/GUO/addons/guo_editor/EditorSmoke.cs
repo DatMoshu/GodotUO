@@ -1677,6 +1677,7 @@ public partial class EditorSmoke : Node
 
         _steps.Add((1, VerifyBrushWorkspace));
         AddSettingsChecks();
+        AddWaterChecks();
         AddWordsChecks();
         AddWorldCentreSteps("default");
         if (!Headless)

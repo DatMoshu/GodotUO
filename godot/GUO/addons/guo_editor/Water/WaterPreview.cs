@@ -1,0 +1,160 @@
+// SPDX-License-Identifier: BSD-2-Clause
+#if TOOLS
+namespace GUO.Editor;
+
+using System;
+using Godot;
+using GUO.Renderer.Water;
+using GUO.Store;
+
+/// <summary>The real water shader on synthetic water, usable without client data or a shard.</summary>
+[Tool]
+internal partial class WaterPreview : SubViewportContainer
+{
+    private SubViewport _viewport;
+    private Shader _shader;
+    private ShaderMaterial _material;
+    private ImageTexture _mask;
+    private ColorRect _rect;
+    private readonly WaterRipples _ripples = new();
+    private float _step, _seconds, _boat;
+    internal bool Paused;
+    internal bool Boat;
+    internal bool Compare;
+    internal bool Classic;
+    internal bool LiveWorld;
+    internal float Seconds => _seconds;
+    internal int Scene { get; private set; }
+    internal Image Capture() => _viewport?.GetTexture().GetImage();
+
+    public override void _Ready()
+    {
+        TextureFilter = TextureFilterEnum.Nearest;
+        Stretch = true;
+        CustomMinimumSize = new Vector2(240, 150);
+        _viewport = new SubViewport { Size = new Vector2I(512, 256),
+            CanvasItemDefaultTextureFilter = Viewport.DefaultCanvasItemTextureFilter.Nearest,
+            RenderTargetUpdateMode = SubViewport.UpdateMode.Always };
+        AddChild(_viewport);
+        // Keep the shader directive inside an ordinary C# string: when TOOLS
+        // is undefined the C# preprocessor still scans skipped source lines.
+        _shader = new Shader { Code = "shader_type canvas_item;\nrender_mode unshaded;\n#include \"res://src/Render/shaders/uo_water.gdshaderinc\"\n" + """
+            uniform bool compare = false;
+            uniform bool classic = false;
+            uniform float brightness = 1.0;
+            void fragment() {
+                // Original synthetic texels; never samples client artwork.
+                vec2 pixel = FRAGCOORD.xy * water_target_to_world.xy;
+                float check = mod(floor(pixel.x / 2.0) + floor(pixel.y / 2.0), 2.0);
+                vec3 base = mix(vec3(0.07, 0.13, 0.21), vec3(0.09, 0.16, 0.25), check) * brightness;
+                vec2 f;
+                vec2 world = pixel + vec2(-256.0, -148.0);
+                vec2 cell = water_cell(world, f);
+                bool dry = water_mask_at(cell).r < 0.5;
+                vec3 native = dry ? vec3(0.35, 0.30, 0.20) * brightness : base;
+                vec3 styled = dry ? native : water_shade(base, FRAGCOORD.xy);
+                COLOR = vec4(classic || (compare && pixel.x < 256.0) ? native : styled, 1.0);
+                if (compare && abs(pixel.x - 256.0) < 1.0) COLOR.rgb = vec3(0.65);
+            }
+            """ };
+        _material = new ShaderMaterial { Shader = _shader };
+        _rect = new ColorRect { Size = new Vector2(512, 256), Material = _material, MouseFilter = MouseFilterEnum.Ignore };
+        _viewport.AddChild(_rect);
+        _material.SetShaderParameter("water_mask_origin", new Vector2(-64, -64));
+        _material.SetShaderParameter("water_target_to_world", new Vector4(1, 1, -256, -148));
+        _material.SetShaderParameter("water_ripples_origin", new Vector2(-64, -64));
+        SetScene(0);
+        SetStyle(WaterAuthoring.Presets[0]);
+        ResetWaves();
+        SetProcess(true);
+    }
+
+    internal void SetStyle(StoreWater style)
+    {
+        if (_material == null) return;
+        Vector2I size = _viewport.Size;
+        _rect.Size = size;
+        _material.SetShaderParameter("water_target_to_world", new Vector4(512f / Math.Max(1, size.X), 256f / Math.Max(1, size.Y), -256, -148));
+        new PackWaterStyle("editor-preview", style).Bind((name, value) => _material.SetShaderParameter(name, value));
+        _ripples.Strength = style.RippleStrength;
+        _ripples.Damping = style.RippleDamping;
+    }
+
+    internal void SetScene(int scene)
+    {
+        Scene = scene;
+        if (_material == null) return;
+        using var image = Image.CreateEmpty(128, 128, false, Image.Format.Rgba8);
+        for (int y = 0; y < 128; y++)
+            for (int x = 0; x < 128; x++)
+            {
+                int cx = x < 64 ? x : x - 128, cy = y < 64 ? y : y - 128;
+                bool dry = scene != 0 && cx + cy >= 2;
+                image.SetPixel(x, y, new Color(dry ? 0 : 1, (dry && scene == 2 ? 148f : 123f) / 255f, 0, 1));
+            }
+        _mask?.Dispose();
+        _mask = ImageTexture.CreateFromImage(image);
+        _material.SetShaderParameter("water_mask", _mask);
+        ResetWaves();
+    }
+
+    internal void SetBrightness(float value) => _material?.SetShaderParameter("brightness", value);
+    internal void Splash()
+    {
+        _ripples.Stamp(0, 0, .7f, .8f);
+        _ripples.StepForProbe(0);
+        BindWaves();
+    }
+
+    internal void ResetWaves()
+    {
+        _ripples.Reset(); _ripples.CentreOnForProbe(0, 0); _ripples.StepForProbe(0);
+        _boat = -3; _step = 0;
+        BindWaves();
+    }
+
+    private void BindWaves() => _material?.SetShaderParameter("water_ripples", _ripples.Texture);
+
+    internal void Advance(float delta)
+    {
+        if (_material == null) return;
+        Vector2I size = _viewport.Size;
+        _rect.Size = size;
+        _material.SetShaderParameter("water_target_to_world", new Vector4(512f / Math.Max(1, size.X), 256f / Math.Max(1, size.Y), -256, -148));
+        _material.SetShaderParameter("compare", Compare);
+        _material.SetShaderParameter("classic", Classic);
+        if (Paused) return;
+        _seconds += delta;
+        _material.SetShaderParameter("water_time", _seconds);
+        _step += Math.Min(delta, .2f);
+        int steps = 0;
+        while (_step >= .05f)
+        {
+            if (Boat)
+            {
+                _boat += .08f; if (_boat > 3) _boat = -3;
+                // A moving synthetic hull: two sides and a bow; the field leaves the trail.
+                _ripples.Stamp(_boat, -1, .45f, .18f);
+                _ripples.Stamp(_boat, 1, .45f, .18f);
+                _ripples.Stamp(_boat + 1, 0, .5f, .25f);
+            }
+            _step -= .05f; steps++;
+        }
+        if (steps > 0) { _ripples.StepForProbe(steps); BindWaves(); }
+    }
+
+    public override void _Process(double delta) { if (IsVisibleInTree() || LiveWorld) Advance((float)delta); }
+
+    internal void Shutdown()
+    {
+        SetProcess(false);
+        if (_material != null) _material.SetShaderParameter("water_ripples", default(Variant));
+        _mask?.Dispose(); _mask = null;
+        _material?.Dispose(); _material = null;
+        _shader?.Dispose(); _shader = null;
+        _ripples.DisposeForEditor();
+    }
+
+    public override void _ExitTree() => Shutdown();
+}
+#endif

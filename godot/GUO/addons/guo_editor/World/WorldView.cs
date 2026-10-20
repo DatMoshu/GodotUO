@@ -1314,6 +1314,7 @@ public partial class WorldView : VBoxContainer
 
     public void Shutdown()
     {
+        _water?.Shutdown();
         _brushArt?.Shutdown();
         if (_data != null) _data.Loaded -= OnBrushDataLoaded;
         SetProcess(false);

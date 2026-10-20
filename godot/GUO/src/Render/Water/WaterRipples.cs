@@ -269,6 +269,15 @@ internal sealed class WaterRipples
 
     internal void CentreOnForProbe(int x, int y) => Follow(x, y);
 
+#if TOOLS
+    // The editor owns short-lived synthetic previews across assembly reloads.
+    internal void DisposeForEditor()
+    {
+        _texture?.Dispose(); _texture = null;
+        _image?.Dispose(); _image = null;
+    }
+#endif
+
     internal void StepForProbe(int steps)
     {
         for (int i = 0; i < steps; i++)

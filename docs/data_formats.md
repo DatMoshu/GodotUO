@@ -2857,3 +2857,10 @@ save calm/ripple PNGs named with the renderer and current UTC capture time.
 `GUO_WATER_DEBUG=1` in the client's environment paints every fragment that takes
 the water branch magenta, to see which tiles a style reaches; `2` paints the
 ripple field in grey (mid grey is flat).
+
+The editor's [Water workspace](water_authoring.md) reads and writes this same
+style schema, with drafts under `<UO_BUILD_DIR>/water/drafts/*.json`. Its
+export is a v2 `content` pack targeting `client`, with one `water` component
+named `sea`, `water.json`, an original `preview.png` and licence attribution
+when required. Authoring and world-preview state are `TOOLS`-only; no new
+profile fields or exported client settings are added.

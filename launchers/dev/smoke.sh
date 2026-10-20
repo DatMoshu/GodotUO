@@ -39,6 +39,9 @@ echo "[smoke] optional HD pack contracts (synthetic)"
 echo "[smoke] water render modes contract (synthetic; ADR-0037)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/Water/WaterProbe.tscn || FAIL=1
 
+echo "[smoke] water authoring contracts (synthetic; editor only)"
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://addons/guo_editor/Water/WaterWorkbenchProbe.tscn || FAIL=1
+
 echo "[smoke] PostFX engine regressions (synthetic)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Bootstrap/PostFxEngineProbe.tscn || FAIL=1
 
