@@ -21,6 +21,9 @@ public partial class SoundPanel : GridPanel
     private const int MaxMusic = 0x100;
 
     private OptionButton _kind;
+    private OptionButton _sort;
+    internal Button ExportButton { get; private set; }
+    internal bool CanExportEffects => !Music;
     private readonly List<int>[] _ids = new List<int>[2];
     private readonly Dictionary<int, (string Name, int Bytes)> _effects = new();
     private readonly Dictionary<int, (string Name, bool Loop)> _music = new();
@@ -49,6 +52,7 @@ public partial class SoundPanel : GridPanel
     {
         EnsureUi();
         _kind.Selected = music ? 1 : 0;
+        UpdateSoundTools();
     }
 
     private bool Music => _kind != null && _kind.Selected == 1;
@@ -60,13 +64,57 @@ public partial class SoundPanel : GridPanel
         _kind = new OptionButton();
         _kind.AddItem("Effects");
         _kind.AddItem("Music");
-        _kind.ItemSelected += _ => Refresh();
+        _kind.ItemSelected += _ => { UpdateSoundTools(); Refresh(); };
         bar.AddChild(_kind);
 
         var stop = AssetUi.Action("Stop", "Stop sound or music playback", Stop);
         bar.AddChild(stop);
         ReopenButton = AssetUi.Action("Reload", "Reopen selected sound and saved working document…", ReopenSound); bar.AddChild(ReopenButton);
     }
+
+    protected override void SearchUiReady()
+    {
+        var bar = (HBoxContainer)SearchBox.GetParent();
+        _sort = new OptionButton { TooltipText = "Sort sound browser", AccessibilityName = "Sound sort order" };
+        foreach (string label in new[] { "ID", "Name", "Shortest", "Longest" }) _sort.AddItem(label);
+        _sort.ItemSelected += _ => Refresh(); bar.AddChild(_sort);
+        ExportButton = AssetUi.Action("Save", "Export sound list or WAV batch…", () => OpenExportDialog()); bar.AddChild(ExportButton);
+        UpdateSoundTools();
+    }
+    private void UpdateSoundTools()
+    {
+        if (_sort == null) return;
+        _sort.SetItemDisabled(2, Music); _sort.SetItemDisabled(3, Music);
+        if (Music && _sort.Selected >= 2) _sort.Selected = 0;
+        ExportButton.Disabled = Music;
+        ExportButton.TooltipText = Music ? "Batch export supports sound effects; music uses its existing playback controls." : "Export sound list or WAV batch…";
+    }
+    internal void SortSounds(int order) { EnsureUi(); _sort.Selected = order; Refresh(); }
+    protected override void SortResults(List<int> results)
+    {
+        int order = _sort?.Selected ?? 0;
+        if (order == 0) return;
+        results.Sort((a, b) =>
+        {
+            int compared = order == 1 ? StringComparer.OrdinalIgnoreCase.Compare(NameOf(a), NameOf(b)) : SamplesOf(a).CompareTo(SamplesOf(b)) * (order == 3 ? -1 : 1);
+            return compared == 0 ? a.CompareTo(b) : compared;
+        });
+    }
+    private int SamplesOf(int id) => _documents.TryGetValue(Key(id), out var document) ? document.Samples : _effects.GetValueOrDefault(id).Bytes / 2;
+    internal SoundExportDialog OpenExportDialog(int[] selected = null, bool wave = false)
+    {
+        if (Music) throw new IOException("Choose Effects before exporting a sound list or WAV batch.");
+        return SoundExportDialog.Open(this, Ids().ToArray(), ResultAssetIds(), selected ?? SelectedAssetIds(), wave);
+    }
+    internal SoundExportPlan ExportPlan(IEnumerable<int> ids) => new(ids, id =>
+    {
+        string key = Key(id);
+        if (_documents.TryGetValue(key, out var document)) return document.ExportState();
+        if (_documentErrors.TryGetValue(key, out string error)) throw new IOException($"Sound 0x{id:X4}: {error}");
+        if (!Data.Files.Sounds.TryGetSound(id, out byte[] pcm, out string rawName)) throw new IOException($"Sound 0x{id:X4} is no longer readable.");
+        return new(DisplaySoundName(rawName), pcm, SoundDocument.Fingerprint((pcm, rawName)));
+    });
+    private static string DisplaySoundName(string name) => (name ?? "").Split('\0')[0].TrimEnd(' ');
 
     protected override IEnumerable<int> Ids()
     {
@@ -95,7 +143,7 @@ public partial class SoundPanel : GridPanel
             {
                 if (Data.Files.Sounds.TryGetSound(i, out byte[] data, out string name) && data?.Length > 0)
                 {
-                    _effects[i] = (name.TrimEnd('\0', ' '), data.Length);
+                    _effects[i] = (DisplaySoundName(name), data.Length);
                     list.Add(i);
                 }
             }

@@ -553,6 +553,14 @@ even data chunk (at most 64 MiB; file at most 65 MiB), validating RIFF and padde
 chunk bounds. No native sound header is emitted and no runtime sound is changed.
 See [naming](editor/sound_documents.md) and [WAV import](editor/sound_wav_import.md).
 
+F14e standard [sound-list exports](editor/sound_list_export.md) use semicolon
+`ID;Name;Length` CSV: hexadecimal ID (minimum three digits), quoted name and
+two-decimal seconds. UTF-8 without BOM uses invariant decimals; strict CP1252
+uses locale decimals for the Fiddler profile. Optional POL (+1) shifts CSV IDs
+only. WAV folders contain exact reviewed PCM plus UTF-8 `SoundList.csv` with
+native IDs. Filename normalization/collision checks and whole-folder publication
+are editor export behavior, not a new pack or native sound archive format.
+
 ## 12. GUO Asset Store packs (ADR-0019)
 
 Version 2 content envelopes, deployment targets, dependencies, component

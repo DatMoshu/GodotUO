@@ -58,6 +58,7 @@ public partial class EditorSmoke
     private StaticStageDialog _stageProof;
     private BatchStaticDialog _batchProof;
     private SoundImportDialog _soundImportProof;
+    private SoundExportDialog _soundExportProof;
 
     private void StepAssetWorkbenchProof()
     {
@@ -167,10 +168,27 @@ public partial class EditorSmoke
             _soundImportProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed);
             _assetsProofStep = 11; return;
         }
+        if (_assetsProofStep == 11)
+        {
         SaveAssetProof("sound-project-pcm", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
         MetadataCheck("sound_project_pcm_ready", _inspector.Sound.Document.HasPcmChange && _inspector.Sound.Document.Samples == 2205
             && _inspector.Current.Origin.Contains("Project PCM") && !_inspector.Sound.SaveButton.Disabled);
-        _inspector.Sound.Undo(); _inspector.Sound.Undo();
+        var sounds = _assets.Panel<SoundPanel>();
+        _soundExportProof = sounds.OpenExportDialog(sounds.ResultAssetIds().Take(2).ToArray(), true);
+        _assetsProofStep = 12; return;
+        }
+        if (_assetsProofStep == 12)
+        {
+            SaveAssetProof("sound-batch-export-review", _soundExportProof.GetTexture()?.GetImage());
+            MetadataCheck("sound_batch_review_ready", _soundExportProof.Plan.Rows.Count == 2 && _soundExportProof.Size.Y <= DisplayServer.ScreenGetUsableRect().Size.Y);
+            _soundExportProof.Free(); var sounds = _assets.Panel<SoundPanel>();
+            _soundExportProof = sounds.OpenExportDialog(sounds.ResultAssetIds().Take(2).ToArray());
+            _soundExportProof.Choose(2, SoundExportFormat.FiddlerCsv, true, true);
+            _assetsProofStep = 13; return;
+        }
+        SaveAssetProof("sound-list-csv-review", _soundExportProof.GetTexture()?.GetImage());
+        MetadataCheck("sound_csv_review_ready", _soundExportProof.Plan.Rows.Count == 2 && _soundExportProof.Rows.GetRoot().GetChildCount() == 2);
+        _soundExportProof.Free(); _inspector.Sound.Undo(); _inspector.Sound.Undo();
         Finish();
     }
 

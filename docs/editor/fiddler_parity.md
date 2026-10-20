@@ -72,6 +72,12 @@ preview/export, schema 2 WAV-blob documents and source-bound draft recovery.
 The legacy naming schema remains readable. Native sound staging, names/list
 exchange, slot controls and music editing are still separate milestones.
 
+F14e [sound lists and WAV batches](sound_list_export.md) adds explicit scope
+review, UTF-8/Fiddler CP1252 CSV, optional POL CSV IDs, reviewed filenames,
+cancellable new-folder WAV output, working-PCM validation and name/duration
+sorting. Native sound staging, CSV name import, free slots and deletion remain
+outside these standard-file exports.
+
 Phase 1 proposal, 2026-10-19. guo-director first-pass review received;
 catalogue and survey await guo-director and exec-fable sign-off.
 F01a has separate director authorization for assignment (inbox #11093);

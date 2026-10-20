@@ -94,6 +94,9 @@ public abstract partial class GridPanel : AssetPanel
         Tooltip(id).Contains(query, StringComparison.OrdinalIgnoreCase);
 
     protected virtual bool Include(int id) => true;
+    protected virtual void SortResults(List<int> results) { }
+    internal int[] ResultAssetIds() => _results.ToArray();
+    internal int[] SelectedAssetIds() => _list?.GetSelectedItems().Select(i => (int)(long)_list.GetItemMetadata(i)).ToArray() ?? Array.Empty<int>();
 
     protected abstract Inspection Describe(int id);
 
@@ -220,6 +223,8 @@ public abstract partial class GridPanel : AssetPanel
                 else AddContext(action.Label, action.Run);
             }
         }
+        else if (this is SoundPanel sounds && sounds.CanExportEffects)
+            AddContext("Export selected sound WAVs…", () => sounds.OpenExportDialog(ids, true));
         else if (this is ArtPanel || this is GumpPanel)
         {
             // Batch export uses one destination; editing/replacement remains explicit per asset.
@@ -298,6 +303,8 @@ public abstract partial class GridPanel : AssetPanel
         {
             _results.AddRange(Ids().Where(Include));
             int at = _results.BinarySearch(id);
+            SortResults(_results);
+            if (at >= 0) at = _results.IndexOf(id);
             ShowPage(at >= 0 ? at / PageSize : Math.Max(0, ~at) / PageSize);
             if (at >= 0)
             {
@@ -319,6 +326,7 @@ public abstract partial class GridPanel : AssetPanel
             }
         }
 
+        SortResults(_results);
         ShowPage(0);
         if (q.Length > 0 && _results.Count > 0)
         {

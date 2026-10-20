@@ -53,7 +53,7 @@ public sealed class SoundDocument
 
     private static string Hash(byte[] pcm) => Convert.ToHexString(SHA256.HashData(pcm)).ToLowerInvariant();
 
-    private static string Fingerprint((byte[] Pcm, string Name) source)
+    internal static string Fingerprint((byte[] Pcm, string Name) source)
     {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         byte[] name = Encoding.UTF8.GetBytes(source.Name ?? "");
@@ -66,6 +66,12 @@ public sealed class SoundDocument
     { if (Fingerprint(_readSource()) != SourceHash) throw new IOException("Active source sound changed. Reopen the document before editing or saving."); }
     public byte[] Pcm() => (byte[])Current.Pcm.Clone();
     public byte[] SourcePcm() => (byte[])_original.Pcm.Clone();
+    internal SoundExportRead ExportState()
+    {
+        CheckSource();
+        if (!CommitDraft()) throw new IOException(RecoveryError ?? Validation);
+        return new(CurrentName, Pcm(), SourceHash);
+    }
     internal void ExportWave(string path) { CheckSource(); SoundWave.Export(Current.Pcm, path); }
     private bool ValidName(string name) => name != null && !name.Contains('\0') && (name == SourceName || Encoding.UTF8.GetByteCount(name) <= MaximumNameBytes);
     public string Validation => ValidName(DraftName) ? "" : "Name must fit 32 UTF-8 bytes and contain no NUL. The draft is retained.";

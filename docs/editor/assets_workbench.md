@@ -88,3 +88,7 @@ changes; project saves and editor-local draft recovery leave source PCM unchange
 undoable project PCM, project preview/export and checksum-bound project WAV blobs.
 Reopen confirms discarding both unsaved names and PCM. Native sound archives
 remain outside this workflow.
+[Sound lists and batch WAV export](sound_list_export.md) add reviewed
+all/browser/selected scopes, UTF-8 and Fiddler CP1252 CSV, optional POL CSV IDs,
+filename collision checks, cancellable whole-folder publication and sound
+name/duration sorting. These standard-file exports leave native archives unchanged.
