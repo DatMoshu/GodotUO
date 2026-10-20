@@ -30,7 +30,7 @@ internal partial class WaterPanel : ScrollContainer
     private LineEdit _name, _packId, _version, _author;
     private OptionButton _presets, _model, _licence;
     private ColorPickerButton _tint;
-    private Label _status, _dirty;
+    private Label _status, _dirty, _modelInfo;
     private Button _undo, _redo;
     private CheckBox _apply, _classic, _freeze;
     private WaterPreview _preview;
@@ -100,6 +100,8 @@ internal partial class WaterPanel : ScrollContainer
         foreach (string name in new[] { "UO realtime", "Pixel", "Cel", "Realistic", "UO+" }) _model.AddItem(name);
         modelRow.AddChild(_model);
         _model.ItemSelected += i => { if (!_sync) Change(_style with { Model = StoreWater.Models[(int)i] }); };
+        _modelInfo = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        body.AddChild(_modelInfo);
         var tintRow = new HBoxContainer(); body.AddChild(tintRow);
         tintRow.AddChild(new Label { Text = "Deep water tint", SizeFlagsHorizontal = SizeFlags.ExpandFill });
         _tint = new ColorPickerButton { EditAlpha = false, CustomMinimumSize = new Vector2(100, 28) }; tintRow.AddChild(_tint);
@@ -161,7 +163,7 @@ internal partial class WaterPanel : ScrollContainer
         var label = new Label { Text = title, SizeFlagsHorizontal = SizeFlags.ExpandFill }; row.AddChild(label);
         var input = new SpinBox { MinValue = min, MaxValue = max, Step = step, CustomMinimumSize = new Vector2(105, 0) };
         row.AddChild(input); _numbers[title] = input; _read[title] = read;
-        input.ValueChanged += v => { if (!_sync) Change(write(_style, (float)v)); };
+        input.ValueChanged += v => { if (!_sync && input.Editable) Change(write(_style, (float)v)); };
         NumericScrub.Attach(label, input);
     }
     private void CommitName() { if (!_sync) Change(_style with { Name = _name.Text.Trim() }); }
@@ -199,11 +201,34 @@ internal partial class WaterPanel : ScrollContainer
         _name.Text = _style.Name; _model.Select(Array.IndexOf(StoreWater.Models, _style.Model));
         _tint.Color = new Color(_style.Tint[0], _style.Tint[1], _style.Tint[2]);
         foreach (var (key, spin) in _numbers) spin.SetValueNoSignal(_read[key](_style));
+        bool native = _style.Model == "classicplus";
+        _tint.Disabled = native;
+        SetNumberEnabled("Wave scale", !native);
+        SetNumberEnabled("Glints", !native);
+        SetNumberEnabled("Palette levels", !native && _style.Model != "realistic");
+        _modelInfo.Text = _style.Model switch
+        {
+            "classicplus" => "UO+ keeps native texels and colours. Tint, wave scale, glints and palette levels are unused; their values are retained when you switch models.",
+            "realistic" => "Smooth lighting and soft surf. Palette levels are unused. Compatibility omits fine chop and glitter.",
+            "cel" => "Tinted colour bands and crisp ripple rings. Shore foam of 0.01 or higher enables outlined surf. At least two colour bands remain.",
+            "pixel" => "Dithered light and whole-pixel glints. Palette levels adjust the light bands; the short colour ramp remains.",
+            _ => "Native tile colour with animated swell and ripple highlights. Palette levels at zero gives smooth light."
+        };
         _undo.Disabled = _position <= 0; _redo.Disabled = _position + 1 >= _history.Count;
         _dirty.Text = Dirty ? "Modified" : "Unmodified";
         _preview.SetStyle(_style);
         _liveStyle = new PackWaterStyle("editor-draft", _style);
         _sync = false; UpdateWorld();
+    }
+    private void SetNumberEnabled(string key, bool enabled)
+    {
+        SpinBox input = _numbers[key];
+        input.Editable = enabled;
+        var row = (Control)input.GetParent();
+        var label = row.GetChild<Label>(0);
+        label.MouseFilter = enabled ? MouseFilterEnum.Stop : MouseFilterEnum.Ignore;
+        label.MouseDefaultCursorShape = enabled ? CursorShape.Hsize : CursorShape.Arrow;
+        row.Modulate = new Color(1, 1, 1, enabled ? 1 : .45f);
     }
     private void Try(Action action)
     {

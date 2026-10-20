@@ -78,6 +78,19 @@ public partial class WaterWorkbenchProbe : Node
             panel.Undo(); panel.NumberInput("Glints").Value = 0;
             int history = panel.HistoryPosition;
             panel.Redo(); Require(panel.HistoryPosition == history && panel.Style.Glint == 0, "new edit discards redo branch");
+            panel.LoadStyle(WaterAuthoring.Presets[0]);
+            Require(!panel.NumberInput("Glints").Editable && !panel.NumberInput("Wave scale").Editable
+                && !panel.NumberInput("Palette levels").Editable && panel.NumberInput("Pixel size").Editable,
+                "UO+ exposes only the numeric controls its shader uses");
+            var modelInput = Descendants(panel).OfType<OptionButton>().Single(o => o.ItemCount == 5 && o.GetItemText(0) == "UO realtime");
+            var nativeStyle = panel.Style;
+            modelInput.Select(3); modelInput.EmitSignal(OptionButton.SignalName.ItemSelected, 3L);
+            Require(panel.Style.Model == "realistic" && panel.NumberInput("Glints").Editable
+                && !panel.NumberInput("Palette levels").Editable && panel.Style.Glint == nativeStyle.Glint,
+                "switching models restores applicable controls and preserves their values");
+            modelInput.Select(0); modelInput.EmitSignal(OptionButton.SignalName.ItemSelected, 0L);
+            Require(panel.Style.Model == "uo" && panel.NumberInput("Palette levels").Editable,
+                "UO realtime enables palette authoring");
             panel.DraftFolderOverride = Path.Combine(data, "draft-library");
             Directory.CreateDirectory(panel.DraftFolderOverride);
             string draftA = Path.Combine(panel.DraftFolderOverride, "a.json"), draftB = Path.Combine(panel.DraftFolderOverride, "b.json");
@@ -97,7 +110,7 @@ public partial class WaterWorkbenchProbe : Node
             byte[] duplicateBytes = File.ReadAllBytes(duplicatePath);
             panel.Undo();
             Require(panel.DraftPath == draftA && !panel.Dirty, "undo duplicate restores original saved document");
-            panel.NumberInput("Glints").Value = .27;
+            panel.NumberInput("Wave strength").Value = .61;
             Press(panel, "Save draft");
             Require(File.ReadAllBytes(duplicatePath).AsSpan().SequenceEqual(duplicateBytes), "saving original preserves saved duplicate");
             panel.Undo(); Require(panel.Dirty, "undo saved edit compares with the current saved baseline");

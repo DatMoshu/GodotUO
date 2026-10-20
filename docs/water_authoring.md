@@ -32,6 +32,10 @@ Higher wave retention makes disturbances last longer. Zero glint suppresses
 highlights. UO+ preserves native texels and uses shore foam as a subtle lap;
 its model does not use a replacement tint or glints. Pixel and Cel retain
 their characteristic bands even when palette levels is zero.
+The model description explains these differences in the panel. Controls unused
+by the selected model are dimmed and read-only; switching models preserves
+their values. Realistic does not use palette levels, while UO+ also leaves
+tint, glints and wave scale unused. Cel uses shore foam as an on/off surf switch.
 
 Enable **Preview in World** to use the draft on the World view's wet tiles.
 It applies only to that embedded world instance. Classic comparison temporarily
