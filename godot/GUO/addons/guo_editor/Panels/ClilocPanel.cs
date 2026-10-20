@@ -25,6 +25,9 @@ public partial class ClilocPanel : GridPanel
     private readonly Dictionary<string, string> _errors = new();
     private readonly Dictionary<string, string> _files = new();
     internal event Action<ClilocDocument> DocumentReopening;
+    internal Func<ClilocDocument, bool> PreparingExchange;
+    internal Button ImportCsvButton { get; private set; }
+    internal Button ExportCsvButton { get; private set; }
     internal Button AddButton => _add;
     internal Button ReloadButton => _reload;
     private readonly Dictionary<int, SpeechEntry> _speech = new();
@@ -58,7 +61,22 @@ public partial class ClilocPanel : GridPanel
     }
 
     protected override void SearchUiReady()
-    { _scope = AssetUi.Label("Exact file records; runtime fallback and Clilocs.txt are separate."); AddChild(_scope); }
+    {
+        var tools = new HBoxContainer(); AddChild(tools);
+        ImportCsvButton = AssetUi.Action("Load", "Import Cliloc CSV into this language's working document…", () => ClilocCsvDialog.Choose(this, true)); tools.AddChild(ImportCsvButton);
+        ExportCsvButton = AssetUi.Action("Save", "Export Cliloc CSV from the working language…", () => ClilocCsvDialog.Choose(this, false)); tools.AddChild(ExportCsvButton);
+        _scope = AssetUi.Label("Exact file records; runtime fallback and Clilocs.txt are separate."); tools.AddChild(_scope);
+    }
+    internal void PrepareExchange(ClilocDocument document)
+    {
+        if (document == null || Speech || WorkingDocument != document) throw new IOException("Choose the target Cliloc language before exchanging CSV.");
+        if (PreparingExchange?.Invoke(document) != true) throw new IOException("Resolve invalid text drafts or failed recovery in this language before exchanging CSV. Reopen discards failed recovery.");
+    }
+    internal ClilocCsvDialog OpenImportReview(string path, ClilocCsvFormat format)
+    {
+        ClilocDocument document = WorkingDocument; PrepareExchange(document);
+        return ClilocCsvDialog.Review(this, document, new ClilocCsvPlan(document, ClilocCsv.ReadFile(path), format), path);
+    }
 
     public override void OnDataLoaded()
     {
@@ -84,6 +102,7 @@ public partial class ClilocPanel : GridPanel
     {
         _lang.Disabled = Speech; _changedOnly.Disabled = Speech;
         _add.Disabled = Speech || _lang.ItemCount == 0; _reload.Disabled = _add.Disabled;
+        ImportCsvButton.Disabled = ExportCsvButton.Disabled = _add.Disabled;
         _scope.Text = Speech ? "Speech keyword matching uses the installed speech table."
             : "Exact file records; runtime fallback and Clilocs.txt are separate.";
         Refresh(); Reinspect();

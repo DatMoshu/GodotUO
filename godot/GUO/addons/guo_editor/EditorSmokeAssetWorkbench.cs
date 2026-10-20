@@ -59,6 +59,7 @@ public partial class EditorSmoke
     private BatchStaticDialog _batchProof;
     private SoundImportDialog _soundImportProof;
     private SoundExportDialog _soundExportProof;
+    private ClilocCsvDialog _clilocCsvProof;
 
     private void StepAssetWorkbenchProof()
     {
@@ -186,9 +187,28 @@ public partial class EditorSmoke
             _soundExportProof.Choose(2, SoundExportFormat.FiddlerCsv, true, true);
             _assetsProofStep = 13; return;
         }
+        if (_assetsProofStep == 13)
+        {
         SaveAssetProof("sound-list-csv-review", _soundExportProof.GetTexture()?.GetImage());
         MetadataCheck("sound_csv_review_ready", _soundExportProof.Plan.Rows.Count == 2 && _soundExportProof.Rows.GetRoot().GetChildCount() == 2);
         _soundExportProof.Free(); _inspector.Sound.Undo(); _inspector.Sound.Undo();
+        var cliloc = _assets.Panel<ClilocPanel>(); _assets.ShowPanel(cliloc); cliloc.ChooseLanguage("enu"); cliloc.Search("500207");
+        string csv = Path.Combine(_out, "visual-cliloc.csv");
+        File.WriteAllBytes(csv, ClilocCsv.Encode(new[] { new ClilocCsvRow(500207, "Project backpack ~1_NAME~", 2),
+            new ClilocCsvRow(9999901, "New project label", 1) }, ClilocCsvFormat.Fiddler));
+        _clilocCsvProof = cliloc.OpenImportReview(csv, ClilocCsvFormat.Fiddler);
+        _assetsProofStep = 14; return;
+        }
+        if (_assetsProofStep == 14)
+        {
+            SaveAssetProof("cliloc-csv-import-review", _clilocCsvProof.GetTexture()?.GetImage());
+            MetadataCheck("cliloc_csv_review_ready", _clilocCsvProof.Plan.Changes.Count == 2 && _clilocCsvProof.Size.Y <= DisplayServer.ScreenGetUsableRect().Size.Y);
+            _clilocCsvProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed);
+            _assetsProofStep = 15; return;
+        }
+        SaveAssetProof("cliloc-csv-working-document", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
+        MetadataCheck("cliloc_csv_working_document_ready", _inspector.Strings.Document.Get(500207).Text == "Project backpack ~1_NAME~" && !_inspector.Strings.SaveButton.Disabled);
+        _inspector.Strings.Undo();
         Finish();
     }
 

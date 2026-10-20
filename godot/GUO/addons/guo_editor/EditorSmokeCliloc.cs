@@ -29,6 +29,7 @@ public partial class EditorSmoke
 
     private void CheckClilocDocuments()
     {
+        CheckClilocCsv();
         string root = Path.Combine(_out, "cliloc-fixture" + Suffix + "-" + Guid.NewGuid().ToString("N")), install = Path.Combine(root, "install"), project = Path.Combine(root, "project");
         Directory.CreateDirectory(install); string source = Path.Combine(install, "Cliloc.enu");
         byte[] bytes = ClilocFixture((2001, 0xF3, "original ~1_NAME~ #100"), (2002, 7, "older"), (2002, 0x82, "é 日本語"));
@@ -81,12 +82,13 @@ public partial class EditorSmoke
             ClilocCheck("installed_" + language, installed.Compressed && installed.SourceRecords > 1000 && installed.Get(500207) != null
                 && Hash() == before && File.GetLastWriteTimeUtc(actual) == stamp);
             _assetReport["cliloc_" + language + "_records"] = installed.SourceRecords;
+            CheckInstalledClilocCsv(installed, root);
         }
         var panel = _assets.Panel<ClilocPanel>(); _assets.ShowPanel(panel); panel.ChooseLanguage("enu"); panel.Search("500207");
         ClilocCheck("panel_inspector_binding", _inspector.Current?.Strings != null && _inspector.Strings.Visible
             && _inspector.Strings.Id == 500207 && _inspector.Strings.Footer.Visible && _inspector.Current.Image == null);
         panel.AddButton.EmitSignal(Button.SignalName.Pressed);
-        var add = panel.GetChildren().OfType<ConfirmationDialog>().Single();
+        var add = panel.GetChildren().OfType<ConfirmationDialog>().Single(dialog => dialog.Title == "Add localized string");
         GodotUi.Walk(add).OfType<LineEdit>().Single().Text = "9999999";
         add.EmitSignal(ConfirmationDialog.SignalName.Confirmed);
         ClilocCheck("panel_add_selects_new_id", panel.Selected == 9_999_999 && panel.WorkingDocument.Get(9_999_999)?.Flag == 0);
@@ -116,6 +118,7 @@ public partial class EditorSmoke
             editor.Bind(document, 2001, null); editor.TextInput.Text = new string('x', 32768); editor.TextInput.EmitSignal(TextEdit.SignalName.TextChanged);
             editor.Bind(document, 2002, null);
             ClilocCheck("other_invalid_record_blocks_language_save", editor.SaveButton.Disabled && !editor.Save());
+            ClilocCheck("invalid_draft_blocks_csv_exchange", !editor.PrepareExchange(document));
             editor.Bind(document, 2001, null);
             ClilocCheck("invalid_draft_retained", editor.TextInput.Text.Length == 32768);
             editor.Undo(); ClilocCheck("undo_discards_invalid_draft", editor.TextInput.Text == document.Get(2001).Text);
@@ -137,6 +140,7 @@ public partial class EditorSmoke
             recovered.StashDrafts(); recovered.StashDrafts();
             ClilocCheck("malformed_recovery_atomic_and_not_duplicated", !intact.IsDirty && !recovered.TextInput.Editable
                 && recovered.TextInput.Text == intact.Get(2002).Text && JsonNode.Parse(settings.GetProjectMetadata("guo_cliloc", "drafts", "[]").AsString()).AsArray().Count == 1);
+            ClilocCheck("failed_recovery_blocks_csv_exchange", !recovered.PrepareExchange(intact));
             recovered.Discard(intact);
         }
         finally { recovered?.Free(); editor.Free(); settings.SetProjectMetadata("guo_cliloc", "drafts", previous); }

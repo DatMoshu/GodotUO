@@ -54,6 +54,7 @@ The same suite checks project-directory link refusal and PNG export through an
 external hardlink: export replaces the output entry instead of truncating its
 backing file. These aliases use synthetic fixtures, never the actual install.
 
-F15b native binary staging, independent binary read-back, custom-language file
-opening and Fiddler CSV compatibility remain separate stories. This document
+F15c/d adds [reviewed CSV exchange](cliloc_csv_exchange.md), including atomic
+batch undo and separate Fiddler/quoted UTF-8 dialects. F15b native binary staging,
+independent binary read-back and custom-language file opening remain separate stories. This document
 does not claim a runtime localization pipeline or language/font certification.

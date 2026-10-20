@@ -81,16 +81,23 @@ public partial class ClilocEditor : VBoxContainer
     }
     internal bool Save()
     {
-        if (_document == null || _recoveryFailed.Contains(KeyOf(_document))) return false;
-        var fields = _raw.Where(field => field.Key.Document == _document).ToArray();
-        if (fields.Any(field => Error(field.Value).Length > 0)) { UpdateState(); return false; }
-        try
-        {
-            foreach (var field in fields) { _document.Edit(field.Key.Id, field.Value); _raw.Remove(field.Key); }
-        }
-        catch (Exception e) { _status.Text = _state.Text = e.Message; return false; }
+        if (_document == null || !PrepareExchange(_document)) return false;
         try { _document.Save(); StashDrafts(); Read(); _state.Text = "Saved project document. Native cliloc is unchanged."; Notify(); return true; }
         catch (Exception e) { _status.Text = _state.Text = e.Message; return false; }
+    }
+    internal bool PrepareExchange(ClilocDocument document)
+    {
+        if (_documents.Add(document)) RestoreDraft(document);
+        if (_recoveryFailed.Contains(KeyOf(document))) return false;
+        var fields = _raw.Where(field => field.Key.Document == document).ToArray();
+        try
+        {
+            document.ApplyTextBatch(fields.ToDictionary(field => field.Key.Id, field => field.Value));
+            foreach (var field in fields) _raw.Remove(field.Key);
+            if (_document == document) { Read(); Notify(); }
+            return true;
+        }
+        catch (Exception e) { if (_document == document) _status.Text = _state.Text = e.Message; return false; }
     }
     internal void Undo()
     {

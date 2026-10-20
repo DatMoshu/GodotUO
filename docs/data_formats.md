@@ -528,6 +528,26 @@ Writes remain in the project and refuse resolved installation/escaping paths.
 See [item metadata workflow](editor/item_metadata.md) and
 [synthetic recipe](../tools/scenarios/fiddler-f06a/README.md).
 
+### Cliloc working documents and CSV (F15a/F15c/F15d)
+
+`<world-project>/metadata/cliloc/<language>.json` is inert editor-only schema 1
+`guo/cliloc-document`, containing three-letter `language`, `encoding: UTF-8`,
+source SHA-256, compression state, base64 six-byte header and changed rows
+(`id`, `deleted`, preserved byte `flag`, `text`). Tombstones omit active text;
+new IDs use flag zero. The source-bound patch is limited to 10,000 changes and
+2 MiB of text; edited strings fit 32,767 UTF-8 bytes without NUL.
+
+Standard CSV exchange uses UTF-8 `Number;Text;Flag`, decimal IDs, Fiddler flag
+names (or unknown decimal bytes) and CRLF output. The explicit Fiddler dialect
+has line-based unquoted records and trims imported text. Quoted UTF-8 supports
+multiline fields, semicolons and doubled quotes as a separate lossless dialect.
+Imports merge text only, preserve source flags, leave omitted IDs untouched and
+apply atomically as one undo step after review. A blank string is not deletion.
+CSV files are bounded to 64 MiB/500,000 records; malformed or duplicate rows
+refuse the whole import. Export omits tombstones and uses atomic standard-file
+replacement outside the installation. See [working documents](editor/cliloc_documents.md)
+and [CSV exchange](editor/cliloc_csv_exchange.md). Neither emits native cliloc data.
+
 ### Sound working documents (F14b/F14c)
 
 `<world-project>/metadata/sounds/0xNNNN.json` is editor-only inert JSON, schema 2:

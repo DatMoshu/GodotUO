@@ -54,7 +54,12 @@ F15a [localized-string working documents](cliloc_documents.md) follow batch
 replacement. They support installed plain/BWT language files, edit/add/remove,
 preserved header/flags/IDs, undo, source-bound project JSON and editor-local
 draft recovery. They do not modify runtime strings or emit native cliloc files;
-F15b binary staging and F15c/d CSV compatibility remain separate work.
+F15b binary staging remains separate work.
+
+F15c/d [Cliloc CSV exchange](cliloc_csv_exchange.md) adds explicit Fiddler and
+quoted UTF-8 dialects, language-scoped merge review, atomic batch undo, preserved
+source flags, source/revision checks and all/browser/selected standard CSV export.
+It does not write native cliloc files or merge runtime fallback strings.
 
 F14a [sound-effect WAV export](sound_wav_export.md) adds standard RIFF output
 from the active effect's PCM, typed Play/Stop/Export actions and audio-specific

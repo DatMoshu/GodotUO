@@ -20,7 +20,7 @@ public sealed class ClilocDocument
     private static readonly UTF8Encoding Utf8 = new(false, true);
     private readonly Dictionary<int, Entry> _source = new(), _changes = new();
     private Dictionary<int, Entry> _saved = new();
-    private readonly List<EditStep> _history = new();
+    private readonly List<EditStep[]> _history = new();
     private int _cursor;
     public string Language { get; }
     public string Project { get; }
@@ -40,6 +40,7 @@ public sealed class ClilocDocument
     public IEnumerable<int> ChangedIds => _changes.Keys.OrderBy(id => id);
     public IEnumerable<int> ReviewIds => _source.Keys.Concat(_changes.Keys).Distinct().OrderBy(id => id);
     public bool Recovered { get; private set; }
+    internal long Revision { get; private set; }
 
     private ClilocDocument(string project, string install, string language, string source, byte[] raw)
     {
@@ -98,9 +99,22 @@ public sealed class ClilocDocument
 
     public void Edit(int id, string text)
     {
-        if (text == null || text.Contains('\0') || Utf8.GetByteCount(text) > 32767)
-            throw new ArgumentException("Text must fit 32,767 UTF-8 bytes and contain no NUL.");
-        Set(id, new Entry(Get(id)?.Flag ?? Original(id)?.Flag ?? 0, text));
+        ApplyTextBatch(new Dictionary<int, string> { [id] = text });
+    }
+    internal void ApplyTextBatch(IReadOnlyDictionary<int, string> rows, bool validateOnly = false)
+    {
+        var edits = new List<EditStep>();
+        foreach (var row in rows)
+        {
+            if (row.Key < 0) throw new ArgumentException("Cliloc IDs must be non-negative whole numbers.");
+            Entry before = Get(row.Key);
+            // Untouched long source records are legal and must survive a whole-language roundtrip.
+            if (before != null && before.Text == row.Value) continue;
+            if (row.Value == null || row.Value.Contains('\0') || Utf8.GetByteCount(row.Value) > 32767)
+                throw new ArgumentException($"String {row.Key}: text must fit 32,767 UTF-8 bytes and contain no NUL.");
+            edits.Add(new(row.Key, before, new Entry(before?.Flag ?? Original(row.Key)?.Flag ?? 0, row.Value)));
+        }
+        Apply(edits.ToArray(), validateOnly);
     }
     public void Delete(int id) => Set(id, null);
     public void Revert(int id) => Set(id, Original(id));
@@ -108,17 +122,26 @@ public sealed class ClilocDocument
     {
         if (id < 0) throw new ArgumentException("Cliloc IDs must be non-negative whole numbers.");
         Entry before = Get(id); if (before == next) return;
-        int bytes = _changes.Where(row => row.Key != id && row.Value != null).Sum(row => Utf8.GetByteCount(row.Value.Text));
-        if (bytes + (next == null ? 0 : Utf8.GetByteCount(next.Text)) > 2 * 1024 * 1024 || (_changes.Count >= 10_000 && !_changes.ContainsKey(id)))
+        Apply(new[] { new EditStep(id, before, next) });
+    }
+    private void Apply(EditStep[] edits, bool validateOnly = false)
+    {
+        if (edits.Length == 0) return;
+        var candidate = new Dictionary<int, Entry>(_changes);
+        foreach (var edit in edits)
+            if (edit.After == Original(edit.Id)) candidate.Remove(edit.Id); else candidate[edit.Id] = edit.After;
+        if (candidate.Count > 10_000 || candidate.Values.Where(entry => entry != null).Sum(entry => (long)Utf8.GetByteCount(entry.Text)) > 2 * 1024 * 1024)
             throw new ArgumentException("Working patch exceeds 10,000 changes or 2 MiB of text.");
-        _history.RemoveRange(_cursor, _history.Count - _cursor); _history.Add(new(id, before, next)); _cursor++;
-        Assign(id, next);
+        if (validateOnly) return;
+        _history.RemoveRange(_cursor, _history.Count - _cursor); _history.Add(edits); _cursor++;
+        foreach (var edit in edits) Assign(edit.Id, edit.After);
+        Revision++;
         if (_history.Count > 100) { _history.RemoveAt(0); _cursor--; }
     }
     private void Assign(int id, Entry entry)
     { if (entry == Original(id)) _changes.Remove(id); else _changes[id] = entry; }
-    public void Undo() { if (CanUndo) { EditStep edit = _history[--_cursor]; Assign(edit.Id, edit.Before); } }
-    public void Redo() { if (CanRedo) { EditStep edit = _history[_cursor++]; Assign(edit.Id, edit.After); } }
+    public void Undo() { if (CanUndo) { foreach (EditStep edit in _history[--_cursor]) Assign(edit.Id, edit.Before); Revision++; } }
+    public void Redo() { if (CanRedo) { foreach (EditStep edit in _history[_cursor++]) Assign(edit.Id, edit.After); Revision++; } }
     private static bool Same(Dictionary<int, Entry> a, Dictionary<int, Entry> b) => a.Count == b.Count && a.All(row => b.TryGetValue(row.Key, out Entry value) && value == row.Value);
 
     public string TokenWarning(int id, string text)
@@ -161,16 +184,14 @@ public sealed class ClilocDocument
             if (entry != Original(id)) replacement[id] = entry;
         }
         _changes.Clear(); foreach (var row in replacement) _changes.Add(row.Key, row.Value);
-        _history.Clear(); _cursor = 0;
+        _history.Clear(); _cursor = 0; Revision++;
         if (saved) _saved = new(_changes); else Recovered = true;
     }
 
     public string DocumentPath => EditorPaths.ProjectFile(Project, Install, "metadata", "cliloc", Language + ".json");
     public void Save()
     {
-        using var source = File.OpenRead(SourceFile);
-        if (source.Length > 64 * 1024 * 1024 || Convert.ToHexString(SHA256.HashData(source)).ToLowerInvariant() != SourceHash)
-            throw new IOException("Source cliloc changed; reopen before saving.");
+        CheckSource();
         string path = DocumentPath, json = Snapshot().ToJsonString(new() { WriteIndented = true });
         if (Encoding.UTF8.GetByteCount(json) > 16 * 1024 * 1024) throw new IOException("Cliloc document exceeds 16 MiB.");
         Directory.CreateDirectory(Path.GetDirectoryName(path));
@@ -178,6 +199,12 @@ public sealed class ClilocDocument
         try { File.WriteAllText(temporary, json + "\n"); File.Move(temporary, path, true); }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
         _saved = new(_changes); Recovered = false;
+    }
+    internal void CheckSource()
+    {
+        using var source = File.OpenRead(SourceFile);
+        if (source.Length > 64 * 1024 * 1024 || Convert.ToHexString(SHA256.HashData(source)).ToLowerInvariant() != SourceHash)
+            throw new IOException("Source cliloc changed; reopen the language before saving or exchanging CSV.");
     }
 
     public static ClilocDocument Open(string project, string install, string language, string source)
