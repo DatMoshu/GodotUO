@@ -466,9 +466,15 @@ texture; export warns about it.
 |---|---|
 | `format` | `1` |
 | `hue` | Hue number, 1-based: group `(hue-1)/8`, entry `(hue-1)%8` of `hues.mul` |
-| `name` | Up to 20 ASCII characters |
+| `name` | Project hue name, up to 4,096 UTF-8 bytes with no NUL or line breaks; native output uses the first 20 ASCII bytes |
 | `table_start`, `table_end` | Hex strings, as `hues.mul` stores them |
 | `colors` | 32 hex strings, the 16-bit colours as stored (four rows of eight) |
+| `source_sha256`, `source_record_base64` | Optional paired F08a binding to the active loader's complete original 88-byte hue record; saved documents check both, legacy unbound copies remain readable |
+
+[Hue working documents](editor/hue_documents.md) retain invalid drafts locally,
+check source and saved-copy conflicts, and save format 1 atomically. Editing or
+importing PNG changes the working document first; **Save copy** reapplies the
+existing overlay. This binding does not certify the separate native export path.
 
 **`animations/0xNNNN.json`** (editor preview only; not yet exported to anim.mul/UOP):
 `{"format":1,"body":int,"clips":[{"action":int,"direction":int,"fps":number,"frames":[{"image":str,"center":[x,y]}]}]}`.

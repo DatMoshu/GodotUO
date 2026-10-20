@@ -408,6 +408,17 @@ public sealed class EditorData : IDisposable
         finally { _files.Arts.File.Entries[index] = replacement; }
     }
 
+    /// <summary>Loaded base palette, before the project overlay; main thread only.</summary>
+    internal byte[] SourceHueRecord(int hue)
+    {
+        int h = hue - 1;
+        if (!IsLoaded || h < 0 || h >= _files.Hues.HuesCount || (h >> 3) >= _files.Hues.HuesRange.Length)
+            throw new ArgumentException("Hue is outside the loaded library.");
+        HuesBlock block = _files.Hues.HuesRange[h >> 3].Entries[h & 7];
+        if (_assetsApplied != null && _assetsApplied.Hues.TryGetValue(hue, out HuesBlock original)) block = original;
+        return System.Runtime.InteropServices.MemoryMarshal.AsBytes(System.Runtime.InteropServices.MemoryMarshal.CreateReadOnlySpan(ref block, 1)).ToArray();
+    }
+
     /// <summary>Decodes a gump through <see cref="GumpsLoader.GetGump"/>. Null when empty.</summary>
     public Image GumpImage(int index)
     {

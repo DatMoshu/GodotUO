@@ -168,6 +168,7 @@ public abstract partial class GridPanel : AssetPanel
         _list.ItemActivated += item => Activated?.Invoke((int)(long)_list.GetItemMetadata((int)item));
         _list.SetDragForwarding(Callable.From<Vector2, Variant>(DragData), default, default);
         AddChild(_list);
+        _list.Resized += KeepSelectionVisible;
         _context = new PopupMenu();
         _context.IdPressed += id =>
         {
@@ -365,6 +366,13 @@ public abstract partial class GridPanel : AssetPanel
         _prev.Disabled = _page == 0;
         _next.Disabled = _page >= pages - 1;
         _status.Text = $"{_results.Count} found, page {_page + 1}/{pages}";
+        KeepSelectionVisible();
+    }
+
+    private void KeepSelectionVisible()
+    {
+        if (_list?.GetSelectedItems().Length > 0)
+            _list.CallDeferred(ItemList.MethodName.EnsureCurrentIsVisible);
     }
 
     private void Pick(int id)

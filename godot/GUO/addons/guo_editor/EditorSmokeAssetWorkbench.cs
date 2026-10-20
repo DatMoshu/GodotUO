@@ -287,9 +287,25 @@ public partial class EditorSmoke
             }
             return;
         }
+        if (_assetsProofStep == 23)
+        {
         SaveAssetProof("sound-empty-slot", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
         MetadataCheck("sound_empty_slot_ready", _inspector.Current.Title == "Empty sound slot" && !_inspector.Sound.Visible && _inspector.Current.Actions.Count == 0 && soundsProof.LoopButton.Disabled);
         soundsProof.ViewSlots(0); soundsProof.Search(_auditionProofDocument.Id.ToString());
+        var hues = _assets.Panel<HuePanel>(); _assets.ShowPanel(hues); hues.Search("0x0021");
+        _inspector.Hues.NameInput.Text = "Project moss"; _inspector.Hues.NameInput.EmitSignal(LineEdit.SignalName.TextChanged, "Project moss");
+        _inspector.Hues.ColorInput.Text = "0x83E0"; _inspector.Hues.ColorInput.EmitSignal(LineEdit.SignalName.TextChanged, "0x83E0");
+        _inspector.Hues.CommitPending(); GetWindow().Size = AssetProofSize(1366, 900); _assetsProofStep = 24; return;
+        }
+        int hueWidth = new[] { 1366, 1024, 1920 }[_assetsProofStep - 24];
+        SaveAssetProof($"hue-working-palette-{hueWidth}", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
+        MetadataCheck($"hue_palette_fits_{hueWidth}", _inspector.Hues.Palette.GetChildren().OfType<Control>().All(c => c.GetGlobalRect().End.X <= _inspector.Hues.GetGlobalRect().End.X + 2)
+            && _inspector.Hues.SaveButton.GetGlobalRect().End.Y <= EditorInterface.Singleton.GetBaseControl().GetGlobalRect().End.Y + 2
+            && !_inspector.Hues.SaveButton.Disabled);
+        _assetsProofStep++;
+        if (_assetsProofStep == 25) { GetWindow().Size = AssetProofSize(1024, 768); return; }
+        if (_assetsProofStep == 26) { GetWindow().Size = AssetProofSize(1920, 1080); return; }
+        _inspector.Hues.Undo();
         Finish();
     }
 

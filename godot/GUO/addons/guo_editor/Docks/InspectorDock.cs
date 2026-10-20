@@ -28,6 +28,7 @@ public partial class InspectorDock : EditorDock
     public ItemMetadataEditor Metadata { get; private set; }
     public ClilocEditor Strings { get; private set; }
     public SoundEditor Sound { get; private set; }
+    public HueEditor Hues { get; private set; }
     internal Control TourFields => _fields;
     internal HBoxContainer ActionToolbar => _actions;
 
@@ -82,6 +83,8 @@ public partial class InspectorDock : EditorDock
         Metadata = new ItemMetadataEditor { Visible = false }; _properties.AddChild(Metadata);
         Strings = new ClilocEditor { Visible = false }; _properties.AddChild(Strings);
         Sound = new SoundEditor { Visible = false }; _properties.AddChild(Sound);
+        Hues = new HueEditor { Visible = false }; _properties.AddChild(Hues);
+        Hues.Changed += () => { if (Current?.Hue != null) _history.Text = Hues.Summary; };
         Sound.Changed += () => { if (Current?.Sound != null) _history.Text = Sound.Summary; };
         Strings.Changed += () => { if (Current?.Strings != null) _history.Text = Strings.Summary; };
         Metadata.Changed += () =>
@@ -99,6 +102,7 @@ public partial class InspectorDock : EditorDock
         Metadata._Ready(); Metadata.Footer.Reparent(_content, false); Metadata.Footer.Visible = false;
         Strings._Ready(); Strings.Footer.Reparent(_content, false); Strings.Footer.Visible = false;
         Sound._Ready(); Sound.Footer.Reparent(_content, false); Sound.Footer.Visible = false;
+        Hues._Ready(); Hues.Footer.Reparent(_content, false); Hues.Footer.Visible = false;
     }
 
     public void ShowInspection(Inspection inspection)
@@ -106,12 +110,13 @@ public partial class InspectorDock : EditorDock
         if (_preview == null) _Ready();
         Strings.CommitPending();
         Sound.CommitPending();
+        Hues.CommitPending();
         Current = inspection;
         _title.Text = inspection.Title != null ? $"{inspection.Title} · {inspection.Id}" : $"{inspection.Source} · {inspection.Id}";
         _title.TooltipText = _title.Text;
         _origin.Text = inspection.Origin ?? "Source details below";
         _fields.Text = inspection.Text;
-        _fields.Visible = inspection.Fields.Count == 0 && inspection.Strings == null;
+        _fields.Visible = inspection.Fields.Count == 0 && inspection.Strings == null && inspection.Hue == null;
         _sourceFields.Visible = inspection.Strings == null;
         foreach (Node child in _sourceFields.GetChildren()) { _sourceFields.RemoveChild(child); child.QueueFree(); }
         foreach (var (name, value) in inspection.Fields)
@@ -127,7 +132,9 @@ public partial class InspectorDock : EditorDock
         if (Strings.Visible) Strings.Bind(inspection.Strings, inspection.StringId, inspection.StringsChanged);
         Sound.Visible = inspection.Sound != null; Sound.Footer.Visible = Sound.Visible;
         if (Sound.Visible) Sound.Bind(inspection.Sound, inspection.SoundChanged);
-        _history.Text = Sound.Visible ? Sound.Summary : Strings.Visible ? Strings.Summary : Metadata.Visible ? Metadata.Summary : "No project document for this asset.";
+        Hues.Visible = inspection.Hue != null; Hues.Footer.Visible = Hues.Visible;
+        if (Hues.Visible) Hues.Bind(inspection.Hue, inspection.HueChanged);
+        _history.Text = Hues.Visible ? Hues.Summary : Sound.Visible ? Sound.Summary : Strings.Visible ? Strings.Summary : Metadata.Visible ? Metadata.Summary : "No project document for this asset.";
         _previewArea.Visible = _previewControls.Visible = inspection.Image != null;
         _pages.SetTabHidden(1, inspection.Image == null);
         if (inspection.Image == null && _pages.CurrentTab == 1) _pages.CurrentTab = 0;
