@@ -5,6 +5,12 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 
 ## Unreleased
 
+### Store
+- Shards with the GUO bridge can advertise their pack descriptor at login.
+  Players see the packs and catalogue key fingerprints before choosing
+  **Install and restart** or **Not now**. Declines are remembered per shard
+  until its content changes; no pack is downloaded before consent.
+
 ### Editor
 - The Admin tab's god view works with nobody logged in: **Go there**,
   **Bring here**, **Open paperdoll** and **Follow** use the server's hidden

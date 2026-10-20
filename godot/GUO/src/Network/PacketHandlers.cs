@@ -4748,6 +4748,14 @@ namespace GUO.Network
 
                     break;
 
+                // PORT DEVIATION (GUO): a shard's pack offer, guo/shard-offer@1 (ADR-0026 section 4a). A bad
+                // offer is a log line; a shard that sends none behaves as upstream.
+                case GUO.Store.StoreShardOffer.Subcommand:
+                    GUO.Store.StoreShardOfferPrompt.Receive(world, p.Buffer.Slice(p.Position, p.Remaining).ToArray());
+
+                    break;
+                // END PORT DEVIATION (GUO)
+
                 case 0xBEEF: // ClassicUO commands
 
                     type = p.ReadUInt16BE();

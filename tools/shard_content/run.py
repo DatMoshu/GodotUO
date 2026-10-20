@@ -5,6 +5,8 @@
                                               --pack ID --version V --bind REF=TYPE:ID [--bind ...]
                                               [--shard-dir DIR] [--scripts allowed|forbidden]
     python tools/shard_content/run.py check   [DESCRIPTOR]
+    python tools/shard_content/run.py offer --name NAME [--descriptor FILE | --features-only]
+                                             [--feature NAME=FILE] [--shard-dir DIR]
     python tools/shard_content/run.py status  [--shard-dir DIR] [--json]
     python tools/shard_content/run.py rollback [--shard-dir DIR]
     python tools/shard_content/run.py serve   [--host 127.0.0.1] [--port 18870]
@@ -258,6 +260,26 @@ def cmd_check(cfg, a) -> int:
     return 0
 
 
+def cmd_offer(cfg, a) -> int:
+    from shard_content import offer
+    shard = Path(a.shard_dir) if a.shard_dir else default_shard(cfg)
+    descriptor_path = Path(a.descriptor) if a.descriptor else guo_files(shard)[1]
+    try:
+        descriptor = None
+        if not a.features_only:
+            build_headless()
+            print(headless("shard-content", "check", descriptor_path).strip())
+            descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
+        raw = offer.encode(offer.build(a.name, descriptor, features=offer.read_features(a.feature)))
+        out = shard / "Data" / "GUO" / "shard-offer.json"
+        replace(out, raw)
+    except (ValueError, KeyError, TypeError, OSError) as ex:
+        print(f"[shard_content] cannot write offer: {ex}")
+        return 2
+    print(f"[shard_content] offer: {len(raw)} bytes in {out}; restart the shard with the GUO bridge to advertise it")
+    return 0
+
+
 class Quiet(SimpleHTTPRequestHandler):
     def log_message(self, *args):
         pass
@@ -304,6 +326,13 @@ def main() -> int:
     rb.add_argument("--shard-dir")
     c = sub.add_parser("check", help="parse a descriptor as the client does")
     c.add_argument("descriptor", nargs="?")
+    o = sub.add_parser("offer", help="write the login offer for the ModernUO GUO bridge")
+    o.add_argument("--name", required=True)
+    o.add_argument("--shard-dir")
+    source = o.add_mutually_exclusive_group()
+    source.add_argument("--descriptor", help="default: the shard's deployed public descriptor")
+    source.add_argument("--features-only", action="store_true", help="advertise feature blocks without requesting packs")
+    o.add_argument("--feature", action="append", default=[], help="NAME=FILE, a feature's JSON object; repeat for several")
     s = sub.add_parser("serve", help="serve the public folder over HTTP, for testing")
     s.add_argument("--dir")
     s.add_argument("--host", default="127.0.0.1")
@@ -316,7 +345,7 @@ def main() -> int:
     if a.cmd == "prove":
         import prove
         return prove.prove(cfg, a, cmd_deploy)
-    return {"deploy": cmd_deploy, "check": cmd_check, "serve": cmd_serve, "status": cmd_status, "rollback": cmd_rollback}[a.cmd](cfg, a)
+    return {"deploy": cmd_deploy, "check": cmd_check, "offer": cmd_offer, "serve": cmd_serve, "status": cmd_status, "rollback": cmd_rollback}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":

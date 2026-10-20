@@ -50,6 +50,9 @@ echo [smoke] PostFX engine regressions (synthetic)
 echo [smoke] hosted catalogue (a local Pages branch and loopback HTTP; no network)
 "%UO_PYTHON%" "%UO_TOOLS%\asset_store\hosted_proof.py" || set "FAIL=1"
 
+echo [smoke] shard offer contract (synthetic; no shard or downloads)
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Store/StoreShardOfferProbe.tscn || set "FAIL=1"
+
 echo.
 if "%FAIL%"=="1" ( echo [smoke] FAILED & exit /b 1 )
 echo [smoke] OK

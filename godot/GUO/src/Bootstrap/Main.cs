@@ -99,6 +99,9 @@ public partial class Main : Node
             Store.StoreAudioProbe.Run();
         }
 
+        // Shard pack offers read, decided and remembered, for client.store.shard_offer_contract.
+        if (Array.IndexOf(OS.GetCmdlineUserArgs(), Store.StoreShardOfferProbe.Flag) >= 0) Store.StoreShardOfferProbe.Run();
+
         // A hosted catalogue approved, listed and installed from, for client.store.hosted_catalogue.
         int catalogueProbe = Array.IndexOf(OS.GetCmdlineUserArgs(), Store.StoreCatalogueProbe.Flag);
         if (catalogueProbe >= 0 && catalogueProbe + 1 < OS.GetCmdlineUserArgs().Length)
@@ -2307,6 +2310,12 @@ public partial class Main : Node
                     case Store.StoreCatalogueProbe.Flag:
                         Next(); // the catalogue URL; the probe already ran in _Ready
                         break;
+                    case Store.StoreShardOfferPrompt.AnswerFlag:
+                        // A scripted run answers a shard's pack offer (client.store.shard_offer).
+                        Store.StoreShardOfferPrompt.Scripted = Next() == "yes";
+                        break;
+                    case Store.StoreShardOfferProbe.Flag:
+                        break; // ran in _Ready
                     default:
                         GD.Print($"[GUO] ignoring unknown argument: {arg}");
                         break;

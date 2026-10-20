@@ -751,6 +751,65 @@ as `content` (`servers.json`).
 - `scripts` is `allowed` (the default) or `forbidden`. When forbidden, the
   client's script packs do not run while it plays on that shard.
 
+### Shard pack offer, `guo/shard-offer@1` (ADR-0026 section 4a, STORE-02)
+
+What a shard advertises to every client that logs in, so a player does not
+have to type a descriptor address into the server entry. The GUO bridge
+(`tools/editor_shard/bridge/ShardOffer.cs`) sends it once per login, two
+seconds after the character enters the world, and only when the shard has
+`<shard>/Data/GUO/shard-offer.json` (`tools/shard_content/run.py offer`
+writes it). A shard without the bridge or without the file sends nothing.
+
+**Wire:** the extended command `0xBF`, subcommand `0x4755` (reserved by GUO),
+then one byte, the offer format (1), then the offer as UTF-8 JSON to the end
+of the packet. The JSON is at most 16384 bytes. The shard speaks first:
+ModernUO accepts no `0xBF` from a client before it has a character, so the
+client never asks. ClassicUO and other clients log the unknown subcommand and
+carry on.
+
+```json
+{
+  "schema": "guo/shard-offer@1",
+  "shard": {"name": "Example Shard"},
+  "content": { "schema": "guo/shard-content@1", "...": "a whole descriptor, as above" },
+  "packs": [{"id": "example-pack", "version": "1.0.0", "title": "Example pack"}],
+  "features": {"water": {"allowed": ["classic", "realtime"], "default": "classic", "lock": false}}
+}
+```
+
+- `shard.name`: 1 to 200 characters, no control characters. Shown only; the
+  client keys what it remembers on the server it connected to (below).
+- `content`: optional. A `guo/shard-content@1` descriptor, read with every
+  rule of the section above. Without it the offer asks for no packs.
+- `packs`: optional, at most 64 `{id, version, title}` rows, for the question
+  the player is shown (pack id and version syntax as section 12, `title` 1 to
+  200 characters). What installs is decided by `content.lock` alone.
+  IDs must be unique; when present with `content`, the list must include
+  the deployment root and its exact version.
+- `features`: optional, at most 32 entries. Each key has the pack id syntax
+  and each value is a JSON object of at most 4096 bytes. The feature that owns
+  the name reads its own block (water: ADR-0037); the client ignores a name it
+  does not know. Nothing in `features` installs anything.
+- Unknown top-level fields are refused. A refused or unreadable offer is one
+  log line (`[GUO] shard offer: ignored: <why>`) and nothing else: no question,
+  no disconnect.
+
+**What the client does.** When `content` is present, the run does not
+already mount that `identity_hash` for this server, and the player has not
+said no to it here, the client asks: the shard's name, the packs, the
+catalogues and their key fingerprints, and *Install and restart* or *Not
+now*. Nothing is fetched before yes. Yes installs and verifies as the
+Servers screen does and restarts into a shard session (section 19) whose
+`content_url` is `offer:<identity_hash>`. *Not now* is remembered until the
+shard's packs change.
+
+**The player's answers** are `<store>/.shard-offers.json` (the Store's
+folder, never the UO install or the shard), an array of at most 256
+`{"server", "identity_hash", "answer": "declined", "at"}` rows, newest last.
+`server` is `host:port|shard name` as the client saw them at login; it moves
+to `GUO.Network.ServerIdentity` when that lands. Delete a row,
+or the file, to be asked again.
+
 The player's yes to the shard's question approves the keys the descriptor
 names. The client writes the lock to `<store>/.shard-content/<first 16 hex of
 identity_hash>.json` and restarts. The shard session (`shard_session.json`)

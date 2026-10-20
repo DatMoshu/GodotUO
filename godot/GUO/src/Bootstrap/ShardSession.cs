@@ -191,7 +191,8 @@ internal static class ShardSession
             // Going from one shard's files to another's keeps the player's own.
             OwnEncryption = Current != null ? Current.OwnEncryption : s.Encryption,
             Started = DateTime.UtcNow,
-            ContentUrl = content != null ? e.Content?.Trim() : null,
+            // A shard's in-game offer has no address; its descriptor's Url is "offer:<identity_hash>".
+            ContentUrl = content == null ? null : content.Url?.StartsWith("offer:", StringComparison.Ordinal) == true ? content.Url : e.Content?.Trim(),
             ContentLock = content != null ? contentLock : null,
             ContentIdentity = content?.IdentityHash,
             ScriptsAllowed = content?.ScriptsAllowed,

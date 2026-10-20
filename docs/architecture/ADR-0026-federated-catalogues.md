@@ -109,6 +109,26 @@ mounted content still needs a client restart (ADR-0019 Amendment 4's mount
 happens at archive load). Per-shard selection replaces the installation-wide
 selection.
 
+### 4a. Login offers (STORE-02 implementation proposal, pending owner review)
+
+The existing explicit pack consent and verification also apply when a shard
+advertises its descriptor after login. A ModernUO GUO bridge with an opt-in
+`Data/GUO/shard-offer.json` sends extended command `0xBF/0x4755`, format byte
+1 and bounded UTF-8 `guo/shard-offer@1` JSON. No client request is added to
+the handshake. Without the file, the wire behavior stays unchanged.
+
+The client asks before downloading, shows the deployment root, advertised
+packs and catalogue key fingerprints, and offers **Install and restart** or
+**Not now**. Installation reuses the existing descriptor verification and
+per-shard session. Declines are remembered by connected endpoint, shard name
+and content identity; a changed deployment asks again. Optional feature blocks
+are passed to their owning consumers and grant no installation permission.
+
+This subsection records the proposed protocol for review; the accepted date
+above does not imply owner approval of this addition. Wire and storage limits
+are in `docs/data_formats.md` section 12. Contract tests cover malformed data
+and decisions; live login and visual acceptance remain separate checks.
+
 ### 5. Server adapters, and why packs avoid the GPL
 
 Packs never contain server code. The store's server export writes one neutral

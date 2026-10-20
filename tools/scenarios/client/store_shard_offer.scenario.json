@@ -1,0 +1,12 @@
+{
+  "id": "client.store.shard_offer_contract",
+  "title": "Shard offer parsing, consent decisions and remembered declines without downloads",
+  "surface": "client",
+  "requires": {"build": "debug"},
+  "timeouts": {"step_s": 60, "run_s": 90},
+  "steps": [
+    {"id": "launch", "do": {"kind": "launch", "args": ["--shard-offer-probe"], "settings": {"autologin": false, "username": "", "password": ""}},
+     "expect": {"log.contains": "[shard offer] PASS", "within_s": 45}},
+    {"id": "scope", "do": {"kind": "note", "text": "Synthetic contract only: decode and refuse malformed offers, route feature blocks, show catalogue fingerprints, decide ask/mounted/declined/changed/features-only, persist declines. Live ModernUO delivery and install/restart require the separate shard procedure in tools/shard_content/README.md."}}
+  ]
+}
