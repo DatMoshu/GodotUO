@@ -56,7 +56,7 @@ runs these checks before and after assembly reload. The windowed Assets proof
 captures the working hue inspector at 1024, 1366 and 1920 widths.
 See `tools/scenarios/fiddler-f08a/README.md`.
 
-Fiddler text exchange and reviewed native staging remain F08d–f. These slices
+Reviewed native staging remains F08f. These slices
 add no native writer or native insertion,
 deletion, or replacement authorization. The existing world-project export path
 is unchanged; its presence is not proof of F08f stage certification.
@@ -94,3 +94,41 @@ clamping, immutable input, document validation and one-step undo, source conflic
 save/reopen, and native editor controls. Windowed proof captures expanded RGB
 range controls at 1024, 1366 and 1920 widths. See
 `tools/scenarios/fiddler-f08bc/README.md`.
+
+## Palette text and names (F08d/e)
+
+The inspector's More actions imports a palette text file or exports the working
+palette as Fiddler Windows-1252 or UTF-8. Import captures at most 64 KiB, previews
+the name, bounds and two 32-color strips, and requires confirmation. Encoding
+is explicit and can be changed in the review. A UTF-8 BOM requires the UTF-8
+choice; UTF-16 and malformed UTF-8 are refused. Cancel leaves the document intact.
+Confirmation checks the complete working state, raw drafts, selected project,
+source binding and saved-copy hash, then replaces all fields in one undo step.
+The captured file is not reread after review. Import does not save automatically.
+
+Palette text has exactly 35 logical lines: name, decimal unsigned table start,
+decimal unsigned table end, then 32 decimal unsigned 16-bit colors. CRLF, LF
+and CR are accepted. Missing/extra lines, invalid values and invalid names refuse
+the entire import. Export writes CRLF with a final newline and no BOM. Complete
+project names are retained; Windows-1252 export refuses unrepresentable names
+instead of replacing them. Pending raw fields must be committed or undone before
+exchange. Writes validate first, use a temporary sibling and atomically replace
+the destination, with the install/source boundary checked again before commit.
+Name whitespace is retained instead of the reference importer's trimming.
+
+The Hues toolbar also exports the Fiddler name list as UTF-8 without BOM, CRLF:
+`0x<zero-based-uppercase-hex-index> <complete-name>`. GUO displays one-based hue
+numbers: displayed `0x0021` therefore exports index `0x20`. All loaded palette
+names are exported in ID order; saved and committed working names participate.
+Pending fields, stale/refused project documents and invalid multi-line names
+refuse the export. Source names retain their original spacing. This list is an
+export format, not an ID remapping or native palette writer.
+
+The pinned Fiddler exporter writes Windows-1252 palette text, while its importer
+uses the default StreamReader encoding and mutates fields incrementally. GUO
+offers explicit encodings and validates the complete candidate before mutation.
+Tests cover exact independent legacy bytes, all 16 bits, Unicode/BOM/encoding
+failures, record lengths, number limits, immutable review snapshots, stale state,
+source/install protection, atomic destination retention, full-name guards,
+native review cancel/confirm/undo and zero-based name-list output. See
+`tools/scenarios/fiddler-f08de/README.md`.

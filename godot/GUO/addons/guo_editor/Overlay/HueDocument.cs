@@ -186,6 +186,13 @@ public sealed class HueDocument
         ["key"] = RecoveryKey, ["saved_file_sha256"] = _fileHash, ["snapshot"] = Snapshot(), ["index"] = Index,
         ["raw_name"] = DraftName, ["raw_start"] = DraftStart, ["raw_end"] = DraftEnd, ["raw_color"] = DraftColor,
     };
+    internal string ReviewToken => Hash(Encoding.UTF8.GetBytes(Recovery().ToJsonString()));
+    internal void ImportText(HueTextEntry entry, string expectedToken)
+    {
+        if (ReviewToken != expectedToken || Pending) throw new IOException("The working hue changed. Reopen the text import review.");
+        CheckSource(); if (RecoveryError != null) throw new IOException(RecoveryError); HueText.Validate(entry);
+        Push(new(entry.Name, entry.Start, entry.End, (ushort[])entry.Colors.Clone())); ResetDraft();
+    }
     internal void Restore(JsonNode row)
     {
         if ((string)row?["key"] != RecoveryKey || (string)row["saved_file_sha256"] != _fileHash || (int?)row["index"] is not int index || index < 0 || index >= 32)

@@ -4,6 +4,7 @@ namespace GUO.Editor;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using Godot;
 using GUO.Assets;
@@ -43,6 +44,8 @@ public partial class HuePanel : GridPanel
             AddChild(dialog); dialog.PopupCentered();
         });
         bar.AddChild(ReopenButton);
+        bar.AddChild(AssetUi.Action("Save", "Export Fiddler hue names list · UTF-8, zero-based hex IDs…", () => AssetActions.Pick(EditorFileDialog.FileModeEnum.SaveFile, "Hue names list.txt",
+            ExportNames, new[] { "*.txt ; Hue names text" }, this, "Export hue names · zero-based IDs")));
     }
 
     internal HueDocument WorkingDocument(int id)
@@ -88,7 +91,7 @@ public partial class HuePanel : GridPanel
         return _ids;
     }
 
-    private unsafe string Name(int hue)
+    private unsafe string Name(int hue, bool trim = true)
     {
         if (_documents.TryGetValue(Key(hue), out var document)) return document.Name;
         ref HuesBlock b = ref Block(hue);
@@ -100,7 +103,7 @@ public partial class HuePanel : GridPanel
                 n++;
             }
 
-            return Encoding.ASCII.GetString(p, n).Trim();
+            string name = Encoding.ASCII.GetString(p, n); return trim ? name.Trim() : name;
         }
     }
 
@@ -189,7 +192,39 @@ public partial class HuePanel : GridPanel
             try { ImportPalette(id, path); OnAssetsChanged(); }
             catch (Exception e) { AssetActions.ReportEdit(e.Message, "Import hue palette", this); }
         }, owner: this)));
+        ins.Actions.Add(new("import-hue-text", "Import palette text…", "Load", () => AssetActions.Pick(EditorFileDialog.FileModeEnum.OpenFile, null, path =>
+        {
+            byte[] bytes = HueText.Read(path);
+            Callable.From(() => { if (IsInstanceValid(this) && IsInsideTree()) { try { OpenTextReview(document, bytes, path); } catch (Exception e) { AssetActions.ReportEdit(e.Message, "Import palette text", this); } } }).CallDeferred();
+        }, new[] { "*.txt ; Hue palette text" }, this, "Choose hue palette text"), false));
+        ins.Actions.Add(new("export-hue-text-1252", "Export palette text · Fiddler Windows-1252…", "Save", () => AssetActions.Pick(EditorFileDialog.FileModeEnum.SaveFile, $"hue_0x{id:X4}.txt",
+            path => HueText.Export(document, path, HueTextFormat.Fiddler1252), new[] { "*.txt ; Hue palette text" }, this, "Export palette · Windows-1252"), false));
+        ins.Actions.Add(new("export-hue-text-utf8", "Export palette text · UTF-8…", "Save", () => AssetActions.Pick(EditorFileDialog.FileModeEnum.SaveFile, $"hue_0x{id:X4}.txt",
+            path => HueText.Export(document, path, HueTextFormat.Utf8), new[] { "*.txt ; Hue palette text" }, this, "Export palette · UTF-8"), false));
         return ins;
+    }
+
+    internal bool IsCurrentProject(HueDocument document) => string.Equals(document.Project, EditorPaths.Real(Project), OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+    internal HueTextDialog OpenTextReview(HueDocument document, byte[] bytes, string filename, HueTextFormat format = HueTextFormat.Fiddler1252)
+    {
+        if (!IsCurrentProject(document)) throw new IOException("The selected world project changed. Reopen import from the current hue.");
+        return HueTextDialog.Open(this, document, bytes, filename, format);
+    }
+    internal void ExportNames(string path)
+    {
+        if (Data?.IsLoaded != true) throw new IOException("Wait for the client library to finish loading before exporting hue names.");
+        int[] ids = Ids().ToArray(); string project = Project;
+        var opened = ids.Where(id => _documents.ContainsKey(Key(id))).Select(id => _documents[Key(id)]).ToArray();
+        var tokens = opened.ToDictionary(document => document, document => document.ReviewToken);
+        void Guard()
+        {
+            if (Project != project) throw new IOException("The world project changed. Export the names again.");
+            foreach (int id in ids) if (_errors.TryGetValue(Key(id), out string error)) throw new IOException($"Hue 0x{id:X4}: {error}");
+            foreach (var row in tokens)
+                if (row.Key.Pending || row.Key.RecoveryError != null || row.Key.SourceError.Length > 0 || row.Key.ReviewToken != row.Value)
+                    throw new IOException($"Hue 0x{row.Key.Id:X4} has pending fields, changed source or recovery. Commit, undo or reopen it before exporting names.");
+        }
+        Guard(); byte[] bytes = HueText.EncodeNames(ids.Select(id => (id, Name(id, trim: false)))); HueText.Write(path, Data.ClientData, bytes, Guard);
     }
 
     internal void ImportPalette(int id, string path)

@@ -9,6 +9,7 @@ using Godot;
 public partial class EditorSmoke
 {
     private bool _hueRangeScrolled;
+    private HueTextDialog _hueTextProof;
     private void CheckAssetWorkbench(ArtPanel art, int id)
     {
         art.SelectKind(false); art.Search($"0x{id:X4}");
@@ -313,6 +314,8 @@ public partial class EditorSmoke
         GetWindow().Size = AssetProofSize(1366, 900); return;
         }
         HueEditor hueEditor = _inspector.Hues;
+        if (_assetsProofStep <= 29)
+        {
         if (!_hueRangeScrolled)
         {
             hueEditor.GetParent().GetParent().GetParent<ScrollContainer>().EnsureControlVisible(hueEditor.Operations);
@@ -327,6 +330,21 @@ public partial class EditorSmoke
         _assetsProofStep++; _hueRangeScrolled = false;
         if (_assetsProofStep == 28) { GetWindow().Size = AssetProofSize(1024, 768); return; }
         if (_assetsProofStep == 29) { GetWindow().Size = AssetProofSize(1920, 1080); return; }
+        hueEditor.Undo();
+        hueEditor.OperationsToggle.ButtonPressed = false; hueEditor.GetParent().GetParent().GetParent<ScrollContainer>().ScrollVertical = 0;
+        GetWindow().Size = AssetProofSize(1366, 900);
+        var entry = new HueTextEntry("Project moss exchange", 0, 31, Enumerable.Range(0, 32).Select(i => (ushort)(0x8000 | (i << 5))).ToArray());
+        _hueTextProof = _assets.Panel<HuePanel>().OpenTextReview(hueEditor.Document, HueText.Encode(entry, HueTextFormat.Fiddler1252), "hue-palette-fiddler.txt");
+        return;
+        }
+        if (_assetsProofStep == 30)
+        {
+            SaveAssetProof("hue-text-import-review", _hueTextProof.GetTexture()?.GetImage());
+            MetadataCheck("hue_text_review_ready", _hueTextProof.Plan.CanApply && !_hueTextProof.GetOkButton().Disabled && _hueTextProof.Size.Y <= DisplayServer.ScreenGetUsableRect().Size.Y);
+            _hueTextProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); _assetsProofStep = 31; return;
+        }
+        SaveAssetProof("hue-text-working-document", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
+        MetadataCheck("hue_text_working_document_ready", hueEditor.Document.Name == "Project moss exchange" && hueEditor.Document.ColorAt(31) == 0x83E0 && !hueEditor.SaveButton.Disabled);
         hueEditor.Undo();
         Finish();
     }
