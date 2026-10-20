@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import sys
 
+import jsonschema
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -32,7 +33,6 @@ def replace(path, value):
 @pytest.fixture(scope="module")
 def validator():
     # Already supplied by the repo's pooled pytest CI, like the scenario schema tests.
-    jsonschema = pytest.importorskip("jsonschema")
     jsonschema.Draft202012Validator.check_schema(SCHEMA)
     return jsonschema.Draft202012Validator(SCHEMA)
 
@@ -67,16 +67,19 @@ def test_missing_unknown_and_wrong_group_shapes(validator, path):
     for bad in (None, [], "water", {}):
         doc = replace(path, bad) if path else bad
         assert not validator.is_valid(doc)
-    for removed in (None, "unknown"):
+    group_schema = SCHEMA
+    for key in path:
+        group_schema = group_schema["properties"][key]
+    for removed in (*group_schema["required"], None):
         doc = deepcopy(DEFAULTS)
         group = doc
         for key in path:
             group = group[key]
-        if removed:
-            group[removed] = 1
+        if removed is None:
+            group["unknown"] = 1
         else:
-            del group[next(iter(group))]
-        assert not validator.is_valid(doc)
+            del group[removed]
+        assert not validator.is_valid(doc), (path, removed)
 
 
 @pytest.mark.parametrize("path,size,low,high", [

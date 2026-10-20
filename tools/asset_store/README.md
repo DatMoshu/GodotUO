@@ -243,6 +243,8 @@ normals, flow, per-source wakes, reflection/glint, clock and pixel controls.
 section 44 for units and semantics. Run
 `python -m pytest tools/asset_store/test_water_schema.py` for its contract checks
 (uses the `jsonschema` test dependency already installed by CI).
+The gate requires that dependency and checks omission of every required field;
+it must not silently skip schema validation when the dependency is missing.
 
 This is an authoring contract for W-02. Both shipping Store validators continue
 to refuse v2 documents, including the complete defaults in the shared corpus,
