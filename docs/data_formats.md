@@ -2901,11 +2901,13 @@ takes its own cell's light):
   itself darkens all channels alike. `r` is the light's steady radius, so the flame's flicker does not
   stretch the shadow.
 
-`RealtimeReplacesClassicShadows` (the live scene drew Realtime lights last
-frame, shadows on, classic not kept; false once the scene unloads) drops the
+`RealtimeReplacesClassicShadows` (the live scene draws this frame with Realtime
+lights, decided before the world draw when its target is built, shadows on,
+classic not kept; false once the scene unloads) drops the
 classic tree, foliage and rock shadows from the world draw (`StaticView`, the
 sort's shadow pass) and the classic mobile shadows (cast in the realtime
-masks instead). `RealtimeClassicShadows` keeps both.
+masks instead). `RealtimeClassicShadows` keeps both. A frame whose light target cannot
+be built is drawn wholly classic: its lamps, its shadows.
 
 Log line every 5 s at trace level (every 30 frames in the editor):
 `[realtime-lights] grid=WxH lights=N computed=N cached=N quads=N sprites=N

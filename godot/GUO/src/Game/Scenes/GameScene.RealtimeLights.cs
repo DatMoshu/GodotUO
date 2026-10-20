@@ -61,13 +61,19 @@ namespace GUO.Game.Scenes
             {
                 GameScene scene = _rtScene;
                 var profile = ProfileManager.CurrentProfile;
-                return scene != null && !scene.IsDestroyed && profile != null && scene.RealtimeLightTexture != null
+                return scene != null && !scene.IsDestroyed && profile != null && scene._rtFrameActive
                     && profile.RealtimeShadows && !profile.RealtimeClassicShadows && scene.UseRealtimeLights;
             }
         }
 
         /// <summary>The scene drawing Realtime lights; cleared when it unloads (a new scene starts classic).</summary>
         private static GameScene _rtScene;
+
+        /// <summary>
+        /// This frame is drawn by Realtime lights: set before the world draw,
+        /// when the classic light pass is skipped, and held until the next.
+        /// </summary>
+        private bool _rtFrameActive;
 
         /// <summary>A classic shadow is black at 40% (the hue shader's SHADOW): the ambient shadow takes the same share.</summary>
         private const float AmbientShadowShare = 0.4f;
@@ -201,6 +207,7 @@ namespace GUO.Game.Scenes
             // Runs before the world draw (GameScene.Draw: PrepareLightsRendering,
             // then DrawWorld), which fills this list for DrawRealtimeLights.
             _rtMobileCasters.Clear();
+            _rtFrameActive = false;
             if (!UseRealtimeLights)
             {
                 if (_rtTarget != null) ResetRealtimeLights(renderTargets);
@@ -208,23 +215,23 @@ namespace GUO.Game.Scenes
             }
 
             // Built here, before the classic pass is skipped: a target that
-            // cannot be built leaves this frame classic (its ambient), not unlit.
+            // cannot be built leaves the whole frame classic, lamps included
+            // (DrawRealtimeLights then leaves the classic offers alone).
             var lightTarget = renderTargets.LightRenderTarget;
-            if (lightTarget != null)
+            if (lightTarget == null) return false;
+            _rtTarget ??= new RealtimeLightTarget();
+            _rtTarget.EnsureSize(lightTarget.Parent, lightTarget.Width, lightTarget.Height);
+            if (!_rtTarget.IsBuilt)
             {
-                _rtTarget ??= new RealtimeLightTarget();
-                _rtTarget.EnsureSize(lightTarget.Parent, lightTarget.Width, lightTarget.Height);
-                if (!_rtTarget.IsBuilt)
-                {
-                    renderTargets.LightOverride = null;
-                    RealtimeLightTexture = null;
-                    return false;
-                }
+                renderTargets.LightOverride = null;
+                RealtimeLightTexture = null;
+                return false;
             }
 
-            batcher.SetRenderTarget(renderTargets.LightRenderTarget);
+            batcher.SetRenderTarget(lightTarget);
             batcher.Clear(new Godot.Color(0, 0, 0, 0));
             batcher.SetRenderTarget(null);
+            _rtFrameActive = true;
             return true;
         }
 
@@ -254,6 +261,15 @@ namespace GUO.Game.Scenes
                 return;
             }
 
+            if (!_rtFrameActive)
+            {
+                // A classic frame (the target would not build): its light
+                // offers stay for the classic pass; only ours are dropped.
+                _rtSourceCount = 0;
+                _rtMobileCasters.Clear();
+                return;
+            }
+
             var lightTarget = renderTargets.LightRenderTarget;
             if (lightTarget == null || _visibleChunks.Count == 0)
             {
@@ -267,17 +283,8 @@ namespace GUO.Game.Scenes
             long started = System.Diagnostics.Stopwatch.GetTimestamp();
             try
             {
+                // Built and sized by PrepareRealtimeLightTarget this frame.
                 _rtField ??= new RealtimeLightField();
-                _rtTarget ??= new RealtimeLightTarget();
-                _rtTarget.EnsureSize(lightTarget.Parent, lightTarget.Width, lightTarget.Height);
-                if (!_rtTarget.IsBuilt)
-                {
-                    // Not drawn: PrepareRealtimeLightTarget already left this
-                    // frame to the classic pass; classic shadows come back next frame.
-                    renderTargets.LightOverride = null;
-                    RealtimeLightTexture = null;
-                    return;
-                }
 
                 BuildRealtimeGrid();
                 long tGrid = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -611,7 +618,15 @@ namespace GUO.Game.Scenes
                     c = a.Source.Position.Y.CompareTo(b.Source.Position.Y);
                     if (c != 0) return c;
                     c = a.Px.CompareTo(b.Px);
-                    return c != 0 ? c : a.Py.CompareTo(b.Py);
+                    if (c != 0) return c;
+                    c = a.Py.CompareTo(b.Py);
+                    if (c != 0) return c;
+                    c = a.Flip.CompareTo(b.Flip);
+                    if (c != 0) return c;
+                    c = a.Lift.CompareTo(b.Lift);
+                    if (c != 0) return c;
+                    c = a.Foot.X.CompareTo(b.Foot.X);
+                    return c != 0 ? c : a.Foot.Y.CompareTo(b.Foot.Y);
                 });
                 AddRealtimeShadows();
             }
@@ -684,7 +699,7 @@ namespace GUO.Game.Scenes
                     float dx = c.WX - lx, dy = c.WY - ly;
                     float d = MathF.Sqrt(dx * dx + dy * dy);
                     // Its own lamp post, or past the light's reach.
-                    if (d < 0.75f || d >= s.Reach) continue;
+                    if (d < 0.75f || d >= s.Radius) continue;
                     // A light standing well above the caster's top throws no shadow on the ground beside it.
                     if (s.Z > c.Z + 30) continue;
                     Color blocked = _rtField.SourceAt(n, c.WX, c.WY);
