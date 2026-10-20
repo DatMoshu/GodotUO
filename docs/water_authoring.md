@@ -46,11 +46,18 @@ the daylight/dusk/night selector belongs to the synthetic test surface.
 
 ## Save and share
 
-**Save draft** stores validated JSON under `<UO_BUILD_DIR>/water/drafts/`.
+**Save draft** stores validated JSON under `<UO_WORKSPACE_DIR>/editor/water/drafts/`.
+The existing per-user workspace setting and platform default apply (ADR-0032),
+so saved presets are shared across checkouts and survive build-output cleanup.
 Subsequent saves update that working copy atomically. **Refresh** discovers
 saved drafts. **Import JSON** reads an existing style as a new draft, with
 malformed or oversized files reported in the panel. A draft is local working
 data; it is not automatically installed or activated in a client.
+Before saving, the editor compares the current file with the version you loaded
+or last saved. If another session changed or removed it, the save is refused
+and your edits stay in the panel. Load the disk version to review it, or use
+**Duplicate** to keep both versions. Earlier workbench drafts under
+`<UO_BUILD_DIR>/water/drafts/` can be brought into the library with **Import JSON**.
 
 To export, provide a lowercase pack ID, three-part version, author and licence.
 **Export water pack** writes a v2 Store ZIP with one `water` component named

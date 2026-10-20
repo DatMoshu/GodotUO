@@ -141,6 +141,38 @@ public partial class WaterWorkbenchProbe : Node
             panel.LoadStyle(panel.Style, forbidden); Press(panel, "Save draft");
             Require(panel.StatusText.StartsWith("Could not complete water action:") && !File.Exists(forbidden),
                 "forbidden destination reports UI feedback without writing");
+            string oldWorkspace = GUO.Workspace.Workspace.RootOverride;
+            string oldBuild = System.Environment.GetEnvironmentVariable("UO_BUILD_DIR");
+            string libraryOverride = panel.DraftFolderOverride;
+            try
+            {
+                string workspace = Path.Combine(data, "user-workspace");
+                GUO.Workspace.Workspace.RootOverride = workspace; panel.DraftFolderOverride = null;
+                panel.LoadStyle(WaterAuthoring.Presets[1]); Press(panel, "Save draft");
+                string durable = panel.DraftPath;
+                Require(Path.GetDirectoryName(durable) == Path.Combine(workspace, "editor", "water", "drafts"),
+                    "saved drafts belong to the configured user workspace");
+                System.Environment.SetEnvironmentVariable("UO_BUILD_DIR", Path.Combine(data, "new-build-output"));
+                panel.RefreshPresets();
+                Require(panel.DraftCount == 1 && File.Exists(durable), "changing build output preserves and discovers saved drafts");
+                byte[] external = WaterAuthoring.Serialize(panel.Style with { Wave = .72f });
+                File.WriteAllBytes(durable, external);
+                panel.NumberInput("Wave strength").Value = .29;
+                Press(panel, "Save draft");
+                Require(panel.StatusText.Contains("changed or was removed") && panel.Dirty
+                    && File.ReadAllBytes(durable).AsSpan().SequenceEqual(external),
+                    "save refuses an externally changed draft and retains local edits");
+                panel.Duplicate(); Press(panel, "Save draft");
+                Require(panel.DraftPath != durable && WaterAuthoring.Read(panel.DraftPath).Wave == .29f
+                    && File.ReadAllBytes(durable).AsSpan().SequenceEqual(external),
+                    "duplicate resolves a save conflict without replacing external edits");
+            }
+            finally
+            {
+                GUO.Workspace.Workspace.RootOverride = oldWorkspace;
+                System.Environment.SetEnvironmentVariable("UO_BUILD_DIR", oldBuild);
+                panel.DraftFolderOverride = libraryOverride;
+            }
             bool bad = false;
             try { WaterAuthoring.Serialize(panel.Style with { Speed = 5 }); } catch (InvalidDataException) { bad = true; }
             Require(bad, "out-of-range style refused");

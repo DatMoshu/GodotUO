@@ -237,7 +237,7 @@ internal partial class WaterPanel : ScrollContainer
         { _status.Text = "Could not complete water action: " + ex.Message; }
     }
     internal string DraftFolderOverride;
-    private string DraftFolder => DraftFolderOverride ?? Path.Combine(EditorData.BuildDirectory, "water", "drafts");
+    private string DraftFolder => DraftFolderOverride ?? WaterAuthoring.DraftDirectory;
     internal int DraftCount => _drafts.Count;
     internal void RefreshPresets() => Try(() =>
     {
@@ -264,6 +264,9 @@ internal partial class WaterPanel : ScrollContainer
     internal void SaveWorkingDraft()
     {
         CommitName();
+        if (_draft != null && (!File.Exists(_draft)
+            || !WaterAuthoring.Serialize(WaterAuthoring.Read(_draft)).AsSpan().SequenceEqual(WaterAuthoring.Serialize(_baseline))))
+            throw new IOException("This draft changed or was removed on disk. Load the saved draft to review it, or Duplicate to save your edits separately.");
         string path = _draft ?? Path.Combine(DraftFolder, Guid.NewGuid().ToString("N") + ".json");
         WaterAuthoring.Save(_style, path); _draft = path; _baseline = _style; Sync(); RefreshPresets();
         _status.Text = "Draft saved: " + _draft;

@@ -14,6 +14,11 @@ using Godot;
 /// <summary>Manual, data-only water authoring. Uses the same validator as installed packs.</summary>
 internal static class WaterAuthoring
 {
+    internal static string DraftDirectory
+    {
+        get { EditorWorkspace.Ensure(); return Path.Combine(GUO.Workspace.Workspace.Root, "editor", "water", "drafts"); }
+    }
+
     internal static readonly StoreWater[] Presets =
     {
         new("UO+", "classicplus", new[] { .12f, .24f, .42f }, .55f, .035f, .09f, .12f, .18f, 0, 0, 1, .8f, .98f),

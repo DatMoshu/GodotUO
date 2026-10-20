@@ -1783,6 +1783,7 @@ a person shares it. Nothing in it is a client install: installs are referenced i
 <workspace>/
   profiles/servers.json        server instances
   profiles/clients.json        client profiles
+  editor/water/drafts/*.json   manually authored water presets (section 44), independent of build output
   servers/<server-id>/         a server instance's install, Config, Saves, logs, process.json, store/
     server.console.log        managed server stdout and stderr (append-only per start)
   clients/<client-id>/client.json     descriptor of one client (below)
@@ -2859,7 +2860,7 @@ the water branch magenta, to see which tiles a style reaches; `2` paints the
 ripple field in grey (mid grey is flat).
 
 The editor's [Water workspace](water_authoring.md) reads and writes this same
-style schema, with drafts under `<UO_BUILD_DIR>/water/drafts/*.json`. Its
+style schema, with drafts under `<UO_WORKSPACE_DIR>/editor/water/drafts/*.json`. Its
 export is a v2 `content` pack targeting `client`, with one `water` component
 named `sea`, `water.json`, an original `preview.png` and licence attribution
 when required. Authoring and world-preview state are `TOOLS`-only; no new

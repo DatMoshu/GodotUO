@@ -9,6 +9,8 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - The editor has a Water workspace with editable starter presets, synthetic
   splash and hull previews, reversible tuning, Classic comparison, local
   drafts and data-only Store pack export.
+- Water drafts live in the per-user workspace, survive build cleanup and
+  check for edits from another session before saving over an existing draft.
 - Pixel-water ripples keep their own brightness steps so they remain visible
   against the dark animated tiles.
 - Pixel water respects a pack's zero glint setting, keeping white sparkles
