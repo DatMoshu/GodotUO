@@ -71,6 +71,23 @@ internal static class WaterAuthoring
         WriteAtomic(path, Serialize(style));
     }
 
+    internal static void CheckPreviewDestination(string path)
+    {
+        CheckDestination(path);
+        if (!string.Equals(Path.GetExtension(path), ".png", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Choose a .png file for the synthetic preview.");
+    }
+
+    internal static void SavePreview(Image image, string path)
+    {
+        CheckPreviewDestination(path);
+        if (image == null || image.IsEmpty())
+            throw new InvalidDataException("The synthetic preview has not rendered yet. Wait for it to draw, then try again.");
+        byte[] bytes = image.SavePngToBuffer();
+        if (bytes.Length == 0) throw new InvalidDataException("Could not encode the synthetic preview. Try saving it again.");
+        WriteAtomic(path, bytes);
+    }
+
     private static void WriteAtomic(string path, byte[] bytes)
     {
         string full = Path.GetFullPath(path);

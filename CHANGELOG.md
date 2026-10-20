@@ -6,6 +6,8 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Water
+- Save the water editor's synthetic preview as a PNG, including its frozen
+  comparison view, without changing the preset or capturing client artwork.
 - Replay synthetic splash and hull tests at a fixed time, or step by 0.05 s,
   to compare water presets independently of earlier preview inputs.
 - Browse starter presets and saved water drafts by name, model or source,

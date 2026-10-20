@@ -116,6 +116,15 @@ test before exporting a capture that should exclude them.
 
 ## Save and share
 
+**Save preview PNG** saves the most recently rendered synthetic preview at its
+original resolution, including Compare or Classic. Use **Freeze** or a repeatable
+test first to hold a particular pose. The PNG contains only the synthetic
+surface: no editor controls, labels, World artwork or preset metadata. Save a
+draft or export a water pack separately to retain the settings. PNG export does
+not change the draft, history, reference or simulation time. It needs a renderer;
+headless runs cannot capture a preview. Existing PNG files are replaced
+atomically, and other extensions, the client install and Godot project are refused.
+
 **Save draft** stores validated JSON under `<UO_WORKSPACE_DIR>/editor/water/drafts/`.
 The existing per-user workspace setting and platform default apply (ADR-0032),
 so saved presets are shared across checkouts and survive build-output cleanup.

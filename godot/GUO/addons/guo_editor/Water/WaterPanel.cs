@@ -83,6 +83,7 @@ internal partial class WaterPanel : ScrollContainer
         AddButton(tests, "Test splash", () => _preview.Splash());
         Toggle(tests, "Moving hull", false, on => _preview.Boat = on);
         AddButton(tests, "Clear waves", () => _preview.ResetWaves());
+        BuildPreviewExport(body);
         var viewing = new HFlowContainer(); body.AddChild(viewing);
         _compare = Toggle(viewing, "Compare", false, on => { _preview.Compare = on; UpdateReference(); });
         _classic = Toggle(viewing, "Classic", false, on => { _preview.Classic = on; UpdateReference(); UpdateWorld(); });

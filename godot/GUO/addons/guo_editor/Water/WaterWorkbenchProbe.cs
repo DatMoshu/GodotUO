@@ -159,6 +159,7 @@ public partial class WaterWorkbenchProbe : Node
             Require(panel.DraftCount == 3 && panel.StatusText.StartsWith("Skipped 1"), "corrupt library item does not hide valid drafts");
             CheckPresetBrowser(panel, draftB);
             CheckReplayControls(panel);
+            CheckPreviewFiles(panel, data);
             var nameInput = Descendants(panel).OfType<LineEdit>().Single(e => e.PlaceholderText == "Preset name");
             nameInput.Text = ""; nameInput.EmitSignal(LineEdit.SignalName.TextSubmitted, "");
             Require(panel.StatusText.StartsWith("Could not complete water action:")
@@ -221,6 +222,7 @@ public partial class WaterWorkbenchProbe : Node
 
             if (DisplayServer.GetName() != "headless")
             {
+                await CheckPreviewExport(panel, data);
                 string stills = Path.Combine(output, "stills"); Directory.CreateDirectory(stills);
                 string renderer = RenderingServer.GetCurrentRenderingMethod().ToString().Replace('_', '-');
                 panel.ShowLibrary();

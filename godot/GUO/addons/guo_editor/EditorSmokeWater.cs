@@ -21,6 +21,11 @@ public partial class EditorSmoke
             panel.ReplayTime.Value = 1.5; panel.ReplayPreview();
             Expect(panel.Preview.Paused && panel.Preview.Seconds == 1.5f && panel.Style.Name == "Pixel water",
                 "water_replay_pauses_synthetic_pose_without_editing_style");
+            int exportHistory = panel.HistoryPosition;
+            Expect(!panel.SavePreviewPath(Godot.ProjectSettings.GlobalizePath("res://water-preview-test.png"))
+                && panel.PreviewExportStatus.Contains("outside") && panel.HistoryPosition == exportHistory
+                && panel.Preview.Paused && panel.Preview.Seconds == 1.5f,
+                "water_png_destination_error_preserves_draft_and_pose");
             panel.FreezeToggle.ButtonPressed = previousFreeze;
             panel.WorldToggle.ButtonPressed = true;
             panel.ReplayPreview();

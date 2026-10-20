@@ -80,6 +80,15 @@ public partial class EditorTour
                 "repeatable test controls keep the synthetic preview visible in the native scroll area");
             Say("Repeatable synthetic tests rebuild splash and hull inputs from time zero, then pause at the chosen time. Step 0.05 s compares the next fixed pose; this does not replay native World actors.");
             await Shot(3);
+            string png = Path.Combine(_out, "water-synthetic-preview.png");
+            Check(panel.SavePreviewPath(png) && File.Exists(png), "the synthetic comparison was exported locally as PNG");
+            Check(panel.Preview.Paused && panel.Preview.Seconds == 1.5f && panel.HistoryPosition == replayHistory,
+                "PNG export preserves the repeatable pose and draft history");
+            panel.ShowReplayControls(false);
+            await Frames(3);
+            panel.ScrollVertical = (int)panel.Preview.Position.Y;
+            Say("Save preview PNG keeps the rendered synthetic comparison at its original resolution. The saved image excludes World artwork, controls and preset metadata; save a draft separately to keep settings.");
+            await Shot(3);
             panel.WorldToggle.ButtonPressed = true;
             panel.FreezeToggle.ButtonPressed = false;
             string zip = Path.Combine(_out, "water-authoring.zip");
