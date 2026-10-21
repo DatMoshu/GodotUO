@@ -296,6 +296,7 @@ namespace GUO.Game.Scenes
 
         public override void Unload()
         {
+            ResetAmbientParticles(); // PORT DEVIATION (GUO): ADR-0042 resource lifetime
             IO.Audio.ZoneAudio.Music.Reset();
             IO.Audio.ZoneAudio.Sfx.Reset();
             IO.Audio.PackVoice.Update(null);
@@ -1146,6 +1147,7 @@ namespace GUO.Game.Scenes
             }
 
             // draw weather
+            DrawAmbientParticles(batcher); // PORT DEVIATION (GUO): UO+ opt-in, ADR-0042
             _world.Weather.Draw(batcher, 0, 0, MAX_LAYER_DEPTH - 1);
 
             DrawSelection(batcher, MAX_LAYER_DEPTH);
