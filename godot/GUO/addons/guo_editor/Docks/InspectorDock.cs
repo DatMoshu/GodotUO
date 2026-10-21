@@ -29,6 +29,7 @@ public partial class InspectorDock : EditorDock
     public ClilocEditor Strings { get; private set; }
     public SoundEditor Sound { get; private set; }
     public HueEditor Hues { get; private set; }
+    public TextureEditor Textures { get; private set; }
     internal Control TourFields => _fields;
     internal HBoxContainer ActionToolbar => _actions;
 
@@ -84,6 +85,8 @@ public partial class InspectorDock : EditorDock
         Strings = new ClilocEditor { Visible = false }; _properties.AddChild(Strings);
         Sound = new SoundEditor { Visible = false }; _properties.AddChild(Sound);
         Hues = new HueEditor { Visible = false }; _properties.AddChild(Hues);
+        Textures = new TextureEditor { Visible = false }; _properties.AddChild(Textures);
+        Textures.Changed += () => { if (Current?.Texture != null) _history.Text = Textures.Summary; };
         Hues.Changed += () => { if (Current?.Hue != null) _history.Text = Hues.Summary; };
         Sound.Changed += () => { if (Current?.Sound != null) _history.Text = Sound.Summary; };
         Strings.Changed += () => { if (Current?.Strings != null) _history.Text = Strings.Summary; };
@@ -103,6 +106,7 @@ public partial class InspectorDock : EditorDock
         Strings._Ready(); Strings.Footer.Reparent(_content, false); Strings.Footer.Visible = false;
         Sound._Ready(); Sound.Footer.Reparent(_content, false); Sound.Footer.Visible = false;
         Hues._Ready(); Hues.Footer.Reparent(_content, false); Hues.Footer.Visible = false;
+        Textures._Ready(); Textures.Footer.Reparent(_content, false); Textures.Footer.Visible = false;
     }
 
     public void ShowInspection(Inspection inspection)
@@ -134,7 +138,9 @@ public partial class InspectorDock : EditorDock
         if (Sound.Visible) Sound.Bind(inspection.Sound, inspection.SoundChanged);
         Hues.Visible = inspection.Hue != null; Hues.Footer.Visible = Hues.Visible;
         if (Hues.Visible) Hues.Bind(inspection.Hue, inspection.HueChanged);
-        _history.Text = Hues.Visible ? Hues.Summary : Sound.Visible ? Sound.Summary : Strings.Visible ? Strings.Summary : Metadata.Visible ? Metadata.Summary : "No project document for this asset.";
+        Textures.Visible = inspection.Texture != null; Textures.Footer.Visible = Textures.Visible;
+        if (Textures.Visible) Textures.Bind(inspection.Texture, inspection.TextureChanged);
+        _history.Text = Textures.Visible ? Textures.Summary : Hues.Visible ? Hues.Summary : Sound.Visible ? Sound.Summary : Strings.Visible ? Strings.Summary : Metadata.Visible ? Metadata.Summary : "No project document for this asset.";
         _previewArea.Visible = _previewControls.Visible = inspection.Image != null;
         _pages.SetTabHidden(1, inspection.Image == null);
         if (inspection.Image == null && _pages.CurrentTab == 1) _pages.CurrentTab = 0;

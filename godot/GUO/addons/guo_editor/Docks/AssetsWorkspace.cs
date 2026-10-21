@@ -147,8 +147,14 @@ public partial class AssetsView
         if (metadata.Count > 0) menu.AddSeparator("Metadata · project documents only");
         foreach (var entry in metadata)
         { int id = entry.Key; AddChange($"0x{id:X4} · {entry.Value}", () => FocusMetadata(id)); }
-        _changes.Disabled = images + metadata.Count == 0;
-        _changeStatus.Text = $"{images} image replacement(s) · {metadata.Count} metadata document(s)";
+        TexturePanel texturePanel = Panel<TexturePanel>(); var textures = texturePanel?.Changes() ?? new();
+        if (textures.Count > 0) menu.AddSeparator("Textures · project documents");
+        foreach (var entry in textures)
+        {
+            int id = entry.Key; AddChange($"Texture 0x{id:X4} · {entry.Value}", () => { ShowPanel(texturePanel); texturePanel.Search($"0x{id:X4}"); });
+        }
+        _changes.Disabled = images + metadata.Count + textures.Count == 0;
+        _changeStatus.Text = (textures.Count > 0 ? $"{textures.Count} texture document(s) · " : "") + $"{images} image replacement(s) · {metadata.Count} metadata document(s)";
         Inspection selected = _inspector?.Current;
         _review.Disabled = selected?.ArtKind != AssetKind.Static || !_data.Assets.Has(AssetKind.Static, selected.ArtId);
         _review.TooltipText = _review.Disabled ? "Select a project static image replacement. Metadata documents are not included in static export." : "Compare the selected static and prepare its verified staged export";

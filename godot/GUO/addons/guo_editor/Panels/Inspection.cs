@@ -41,6 +41,8 @@ public sealed class Inspection
     public Action SoundChanged;
     public HueDocument Hue;
     public Action HueChanged;
+    public TextureDocument Texture;
+    public Action TextureChanged;
 
     /// <summary>The overlay asset this shows, when it is one the art pipeline can edit (ADR-0029); else null.</summary>
     public AssetKind? ArtKind;

@@ -135,6 +135,7 @@ public partial class AssetsView : VBoxContainer
         }
         if (panel is SoundPanel sounds) sounds.DocumentReopening += document => _inspector?.Sound?.Discard(document);
         if (panel is HuePanel hues) hues.DocumentReopening += document => _inspector?.Hues?.Discard(document);
+        if (panel is TexturePanel textures) textures.DocumentReopening += document => _inspector?.Textures?.Discard(document);
         _tabs.AddChild(panel);
         _panels.Add(panel);
     }

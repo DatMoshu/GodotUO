@@ -11,6 +11,7 @@ public partial class EditorSmoke
     private bool _hueRangeScrolled;
     private HueTextDialog _hueTextProof;
     private HueStageDialog _hueStageProof;
+    private TextureImportDialog _textureImportProof;
     private System.Threading.Tasks.Task _hueStageTask;
     private void CheckAssetWorkbench(ArtPanel art, int id)
     {
@@ -396,6 +397,8 @@ public partial class EditorSmoke
             var textures = _assets.Panel<TexturePanel>(); _assets.ShowPanel(textures); textures.FilterSize(0); textures.Search(textures.SmokeQuery);
             GetWindow().Size = AssetProofSize(1366, 900); _assetsProofStep = 38; return;
         }
+        if (_assetsProofStep <= 40)
+        {
         int textureWidth = new[] { 1366, 1024, 1920 }[_assetsProofStep - 38];
         MetadataCheck($"texture_browser_fits_{textureWidth}", _inspector.Current.Source == "Textures"
             && _inspector.Texture != null && _inspector.ActionToolbar.GetChildren().OfType<Control>()
@@ -404,6 +407,52 @@ public partial class EditorSmoke
         _assetsProofStep++;
         if (_assetsProofStep == 39) { GetWindow().Size = AssetProofSize(1024, 768); return; }
         if (_assetsProofStep == 40) { GetWindow().Size = AssetProofSize(1920, 1080); return; }
+        GetWindow().Size = AssetProofSize(1366, 900);
+        var textures = _assets.Panel<TexturePanel>();
+        using Image fixture = TextureFixture(128);
+        _textureImportProof = textures.OpenImportReview(textures.WorkingDocument(3), fixture.SavePngToBuffer(), "texture-128-fixture.png");
+        return;
+        }
+        TexturePanel texturePanel = _assets.Panel<TexturePanel>(); TextureDocument textureDocument = texturePanel.WorkingDocument(3);
+        if (_assetsProofStep <= 43)
+        {
+            int width = new[] { 1366, 1024, 1920 }[_assetsProofStep - 41];
+            MetadataCheck($"texture_review_ready_{width}", !textureDocument.IsDirty && _textureImportProof.Visible
+                && _textureImportProof.Size.Y <= GetWindow().Size.Y && !_textureImportProof.GetOkButton().Disabled);
+            SaveAssetProof($"texture-replacement-review-{width}", _textureImportProof.GetTexture()?.GetImage());
+            _assetsProofStep++;
+            if (_assetsProofStep == 42) { GetWindow().Size = AssetProofSize(1024, 768); return; }
+            if (_assetsProofStep == 43) { GetWindow().Size = AssetProofSize(1920, 1080); return; }
+            _textureImportProof.EmitSignal(ConfirmationDialog.SignalName.Canceled);
+            MetadataCheck("texture_review_cancel_preserves_document", !textureDocument.IsDirty && textureDocument.Size == textureDocument.SourceSize);
+            using Image fixture = TextureFixture(128);
+            _textureImportProof = texturePanel.OpenImportReview(textureDocument, fixture.SavePngToBuffer(), "texture-128-fixture.png");
+            _textureImportProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed);
+            GetWindow().Size = AssetProofSize(1366, 900); return;
+        }
+        if (_assetsProofStep <= 46)
+        {
+            int width = new[] { 1366, 1024, 1920 }[_assetsProofStep - 44];
+            MetadataCheck($"texture_working_copy_fits_{width}", textureDocument.IsDirty && textureDocument.Size == 128
+                && !_inspector.Textures.SaveButton.Disabled && _inspector.Textures.SaveButton.GetGlobalRect().End.Y <= EditorInterface.Singleton.GetBaseControl().GetGlobalRect().End.Y + 2);
+            SaveAssetProof($"texture-working-copy-{width}", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
+            _assetsProofStep++;
+            if (_assetsProofStep == 45) { GetWindow().Size = AssetProofSize(1024, 768); return; }
+            if (_assetsProofStep == 46) { GetWindow().Size = AssetProofSize(1920, 1080); return; }
+            _inspector.Textures.Undo(); MetadataCheck("texture_native_undo_exact_source", textureDocument.Record().AsSpan().SequenceEqual(textureDocument.SourceRecord()));
+            textureDocument.Redo(); texturePanel.OnAssetsChanged();
+            MetadataCheck("texture_native_save_copy", _inspector.Textures.Save() && !textureDocument.IsDirty && File.Exists(textureDocument.DocumentPath));
+            return;
+        }
+        if (_assetsProofStep == 47)
+        {
+            SaveAssetProof("texture-saved-copy", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
+            GodotUi.Walk(texturePanel).OfType<CheckButton>().Single(c => c.AccessibilityName == "Show source texture").ButtonPressed = true;
+            _assetsProofStep = 48; return;
+        }
+        MetadataCheck("texture_source_comparison_keeps_document", _inspector.Current.Image.GetWidth() == textureDocument.SourceSize && textureDocument.Size == 128 && !textureDocument.IsDirty);
+        SaveAssetProof("texture-source-comparison", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
+        GodotUi.Walk(texturePanel).OfType<CheckButton>().Single(c => c.AccessibilityName == "Show source texture").ButtonPressed = false;
         Finish();
     }
 

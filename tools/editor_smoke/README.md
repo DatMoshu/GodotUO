@@ -45,6 +45,9 @@ explicitly confirms Apply, independently reads the disposable stage and recovers
 the prior absence; it also closes an owned preparation and checks cancellation.
 The source installation stays read-only. The proof cannot combine with reload,
 world-project or header-only.
+It also reviews/cancels/applies a synthetic texture PNG replacement, captures
+the working document at three widths, checks undo and project save, and compares
+the source without changing the saved working texture.
 The normal full smoke also checks metadata drafts across selection, UTF-8
 validation, named-flag bit preservation, save/history, draft recovery and the
 source comparison's restoration of the overlay.

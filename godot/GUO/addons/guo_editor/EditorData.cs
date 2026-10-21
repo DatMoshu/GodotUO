@@ -446,6 +446,21 @@ public sealed class EditorData : IDisposable
         }
     }
 
+    internal TextureSource SourceTexture(int id)
+    {
+        if (TextureSize(id) == 0) throw new IOException("The selected texture has no complete native source record.");
+        UOFile file = _files.Texmaps.File; UOFileIndex entry = file.Entries[id];
+        byte[] bytes = new byte[entry.Length];
+        using var stream = new FileStream(file.FilePath, FileMode.Open, System.IO.FileAccess.Read, FileShare.ReadWrite);
+        stream.Position = entry.Offset; stream.ReadExactly(bytes);
+        using var index = File.OpenRead(((UOFileMul)file).IdxFile.FilePath);
+        if (index.Length > 0x4000 * 12) throw new IOException("Texture index exceeds the supported 0x4000 slots.");
+        string indexHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(index));
+        string def = _files.GetUOFilePath("TexTerr.def");
+        string remapHash = File.Exists(def) ? Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(TextureDocument.Read(def, 2 * 1024 * 1024))) : "missing";
+        return new(bytes, $"{EditorPaths.Real(file.FilePath)}|{entry.Offset}|{entry.Length}|{indexHash}|{remapHash}");
+    }
+
     /// <summary>Decodes a gump through <see cref="GumpsLoader.GetGump"/>. Null when empty.</summary>
     public Image GumpImage(int index)
     {
