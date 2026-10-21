@@ -74,6 +74,11 @@ echo [smoke] keyboard: key-ups on focus loss, AltGr text (synthetic; no shard)
 echo [smoke] controller regressions and Set controls (synthetic pad; no shard)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" -- --pad-regression-probe --pregame-classic --silent || set "FAIL=1"
 
+if "%GuoLabs%"=="true" (
+    echo [smoke] UO+ weather Labs contract
+    "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" --quit-after 60 res://src/Labs/Weather/WeatherProbe.tscn || set "FAIL=1"
+)
+
 echo.
 if "%FAIL%"=="1" ( echo [smoke] FAILED & exit /b 1 )
 echo [smoke] OK

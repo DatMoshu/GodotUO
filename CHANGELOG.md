@@ -5,6 +5,11 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 
 ## Unreleased
 
+### Labs
+- An opt-in Debug build offers UO+ rain rings, tile puddles and a fading wet-player
+  silhouette. Each experiment starts off; the session controls include a drop
+  budget and puddle tile list. Labs are excluded from exported clients.
+
 ### Water
 - The synthetic shore regression now covers coast directions, wrapped mask
   coordinates, the beach/cliff height cutoff, and Classic output with every
