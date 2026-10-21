@@ -63,7 +63,8 @@ internal static class MultiStore
         for (int i = 0; i < parts.Count; i++)
         {
             MultiPart p = parts[i];
-            sb.Append($"    [{p.Id}, {p.X}, {p.Y}, {p.Z}, {(p.Shown ? 1 : 0)}, {p.Hue}]{(i + 1 < parts.Count ? "," : "")}\n");
+            string raw = p.TextFlags.HasValue ? ", " + p.TextFlags.Value.ToString(CultureInfo.InvariantCulture) : "";
+            sb.Append($"    [{p.Id}, {p.X}, {p.Y}, {p.Z}, {(p.Shown ? 1 : 0)}, {p.Hue}{raw}]{(i + 1 < parts.Count ? "," : "")}\n");
         }
 
         sb.Append("  ]\n}\n");
@@ -90,6 +91,7 @@ internal static class MultiStore
                 Z = (short)c[3].GetInt32(),
                 Shown = c.GetArrayLength() < 5 || c[4].GetInt32() != 0,
                 Hue = c.GetArrayLength() > 5 ? (ushort)c[5].GetInt32() : (ushort)0,
+                TextFlags = c.GetArrayLength() > 6 && c[6].ValueKind != JsonValueKind.Null ? c[6].GetInt32() : null,
             });
         }
 
@@ -200,6 +202,8 @@ internal static class MultiStore
             try
             {
                 ct.ThrowIfCancellationRequested();
+                if (snapshot.Any(p => p.ExportTextFlags is not (0 or 1)))
+                    throw new IOException("This multi contains opaque Fiddler TXT flags. Export Fiddler TXT to preserve them; native staging cannot preserve that flag contract yet.");
                 stageDir = Path.GetFullPath(stageDir);
                 string client = EditorData.Setting("UO_CLIENT_DATA", "");
                 if (client.Length > 0 && IsInside(Path.GetFullPath(client), stageDir))

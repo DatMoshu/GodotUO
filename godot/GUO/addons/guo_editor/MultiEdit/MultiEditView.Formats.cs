@@ -19,7 +19,8 @@ public partial class MultiEditView
     /// <summary>The formats tools/multi reads and writes, with a file extension and a label for each.</summary>
     public static readonly (string Format, string Ext, string Label)[] LegacyFormats =
     {
-        ("txt", "txt", "Text (UOFiddler, Ultima SDK)"),
+        ("txt-fiddler", "txt", "Fiddler TXT (hexadecimal IDs)"),
+        ("txt", "txt", "GUO legacy TXT (decimal IDs unless 0x-prefixed)"),
         ("uoa", "uoa", "UO Architect text"),
         ("uoab", "uoab", "UO Architect binary"),
         ("wsc", "wsc", "WSC world items"),
@@ -69,7 +70,12 @@ public partial class MultiEditView
 
         dialog.FileSelected += p =>
         {
-            if (export)
+            if (f.Format == "txt-fiddler")
+            {
+                if (export) _ = ReviewFiddlerTextAsync(p, true);
+                else GuardUnsaved(() => _ = ReviewFiddlerTextAsync(p, false));
+            }
+            else if (export)
             {
                 _ = ExportFileAsync(p, f.Format);
             }
@@ -88,6 +94,29 @@ public partial class MultiEditView
     /// <summary>Writes the whole multi to a file in <paramref name="format"/>. Returns an error text, or null.</summary>
     public async Task<string> ExportFileAsync(string path, string format)
     {
+        try { AssetActions.EnsureExportDestination(path); }
+        catch (Exception e) { _status.Text = e.Message; return e.Message; }
+        if (format != "txt-fiddler" && _doc.Parts.Any(p => p.ExportTextFlags is not (0 or 1)))
+        {
+            const string message = "This format cannot preserve opaque Fiddler TXT flags. Choose Fiddler TXT to keep them.";
+            _status.Text = message; return message;
+        }
+        if (format == "txt-fiddler")
+        {
+            try
+            {
+                if (_doc.Parts.Any(p => p.Hue != 0)) throw new IOException("Fiddler TXT cannot carry hue. Use the reviewed export menu to confirm the loss, or choose a hue-capable format.");
+                MultiTextSnapshot snapshot = new(_doc);
+                var lifetime = _writeLifetime.Token;
+                byte[] bytes = await FiddlerTextBytesAsync(snapshot.Parts);
+                lifetime.ThrowIfCancellationRequested();
+                snapshot.Check(_doc);
+                MultiTextDestination destination = new(path);
+                destination.Write(bytes);
+                return null;
+            }
+            catch (Exception e) { _status.Text = e.Message; return e.Message; }
+        }
         var comps = new JsonArray();
         var hues = new JsonArray();
         foreach (MultiPart p in _doc.Parts)
@@ -112,6 +141,21 @@ public partial class MultiEditView
     /// <summary>Opens a file of another tool's format (detected from its name and head when <paramref name="format"/> is null).</summary>
     public async Task<string> ImportFileAsync(string path, string format = null)
     {
+        if (format == "txt-fiddler")
+        {
+            try
+            {
+                MultiTextSnapshot snapshot = new(_doc);
+                var lifetime = _writeLifetime.Token;
+                MultiTextInput input = new(path);
+                MultiPart[] importedParts = await ReadFiddlerTextAsync(input.Bytes);
+                lifetime.ThrowIfCancellationRequested();
+                input.Check(); snapshot.Check(_doc);
+                OpenParts(MultiStore.SafeName(Path.GetFileNameWithoutExtension(path)), importedParts);
+                return null;
+            }
+            catch (Exception e) { _status.Text = e.Message; return e.Message; }
+        }
         var args = new JsonObject { ["path"] = path, ["recentre"] = true };
         if (format != null)
         {

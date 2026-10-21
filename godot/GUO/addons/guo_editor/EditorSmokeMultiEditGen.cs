@@ -220,7 +220,7 @@ public partial class EditorSmoke
         _meReport["format_components"] = count;
         _meReport["format_hidden"] = hiddenCount;
         var kept = new List<string>();
-        foreach ((string format, string ext, _) in MultiEditView.LegacyFormats)
+        foreach ((string format, string ext, _) in MultiEditView.LegacyFormats.Where(f => f.Format != "txt-fiddler"))
         {
             string file = Path.Combine(dir, $"smoke_{format}.{ext}");
             string err = await view.ExportFileAsync(file, format);
@@ -256,6 +256,7 @@ public partial class EditorSmoke
         MeCheck("import_detects_format", File.Exists(detect) && await view.ImportFileAsync(detect) == null && doc.Parts.Count == count);
         MeCheck("import_missing_file_reports", await view.ImportFileAsync(Path.Combine(dir, "nope.txt")) != null);
         MeCheck("formats_outside_install", Path.GetFullPath(dir).StartsWith(Path.GetFullPath(_out), StringComparison.OrdinalIgnoreCase));
+        await MeFiddlerTextAsync(view, dir);
         _ = hidden;
         _ = hued;
     }

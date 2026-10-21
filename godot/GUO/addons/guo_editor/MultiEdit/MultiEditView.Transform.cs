@@ -46,6 +46,7 @@ public partial class MultiEditView
         }
 
         var args = new JsonObject { ["components"] = comps, ["keep_centre"] = !whole };
+        if (targets.Any(p => p.TextFlags.HasValue)) args["preserve_entries"] = true;
         if (op == "rotate")
         {
             args["turns"] = ((turns % 4) + 4) % 4;
@@ -68,11 +69,17 @@ public partial class MultiEditView
         }
 
         bool sameCount = r.Components.Count == targets.Count;
+        if (targets.Any(p => p.TextFlags.HasValue) && (!sameCount || r.Components.Any(c => c.X < short.MinValue || c.X > short.MaxValue || c.Y < short.MinValue || c.Y > short.MaxValue || c.Z < short.MinValue || c.Z > short.MaxValue)))
+        {
+            _status.Text = "Transform refused: imported TXT flags need one-to-one components and coordinates within signed 16-bit bounds.";
+            return false;
+        }
         var made = new List<MultiPart>();
         for (int i = 0; i < r.Components.Count; i++)
         {
             GenComponent c = r.Components[i];
-            made.Add(_doc.Make((ushort)c.Item, c.X, c.Y, c.Z, c.Visible, sameCount ? targets[i].Hue : (ushort)0));
+            made.Add(_doc.Make((ushort)c.Item, c.X, c.Y, c.Z, c.Visible, sameCount ? targets[i].Hue : (ushort)0,
+                sameCount ? targets[i].TextFlags : null));
         }
 
         var gone = new HashSet<int>(targets.Select(t => t.Uid));

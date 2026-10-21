@@ -12,6 +12,7 @@ import base64
 import json
 import sys
 import time
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -92,6 +93,7 @@ def op_rotate(ctx: Context, p: dict) -> dict:
     turns = int(p.get("turns", 1)) % 4
     op = ("rot90", "rot180", "rot270")[turns - 1] if turns else None
     table = ctx.table()
+    if op and p.get("preserve_entries"): assert_entry_order(comps, op, table)
     out = orient.transform(comps, op, table, p.get("recentre", False), p.get("keep_centre", False)) if op else comps
     return {"components": kit.comps_out(out), "notes": [] if table["wall"] else ["no remap table: ids unchanged"],
             "ms": kit.ms_since(t0)}
@@ -101,13 +103,31 @@ def op_mirror(ctx: Context, p: dict) -> dict:
     t0 = time.perf_counter()
     axis = p.get("axis", "x")
     comps = comps_in(p["components"])
+    if p.get("preserve_entries"): assert_entry_order(comps, "mirror_x" if axis == "x" else "mirror_y", ctx.table())
     out = orient.transform(comps, "mirror_x" if axis == "x" else "mirror_y", ctx.table(), p.get("recentre", False), p.get("keep_centre", False))
     return {"components": kit.comps_out(out), "notes": [], "ms": kit.ms_since(t0)}
+
+
+def assert_entry_order(comps: list[Component], op: str, table: dict) -> None:
+    """Opaque per-entry metadata needs a proven one-to-one transform, not equal counts alone."""
+    expected = list(comps)
+    for base in orient.base_ops(op):
+        next_parts = []
+        for component in expected:
+            pieces = orient.step(base, component, table)
+            if len(pieces) != 1:
+                raise formats.FormatError('Transform would split imported TXT entries; raw flags need a one-to-one transform')
+            next_parts.extend(pieces)
+        expected = next_parts
+    if expected != orient.transform(comps, op, table):
+        raise formats.FormatError('Transform would reorder or join imported TXT entries; raw flags need a one-to-one transform')
 
 
 def op_import(ctx: Context, p: dict) -> dict:
     t0 = time.perf_counter()
     if "path" in p:
+        if p.get("format") == "txt-fiddler" and Path(p["path"]).stat().st_size > 4 * 1024 * 1024:
+            raise formats.FormatError("Fiddler TXT exceeds 4 MiB")
         data = Path(p["path"]).read_bytes()
         name = Path(p["path"]).name
     else:
@@ -115,11 +135,13 @@ def op_import(ctx: Context, p: dict) -> dict:
         name = p.get("name", "")
     fmt = p.get("format") or formats.detect(name, data[:512])
     tiles = formats.read(fmt, data)
-    if p.get("recentre", True):
+    if p.get("recentre", fmt != "txt-fiddler"):
         tiles = formats.recentre(tiles)
+    if fmt == "txt-fiddler": formats.write_fiddler_txt(tiles)  # validates centered int16 bounds too
     out = {"components": kit.comps_out(formats.comps_of(tiles)), "format": fmt, "notes": [], "ms": kit.ms_since(t0)}
     if any(t.hue for t in tiles):
         out["hues"] = [t.hue for t in tiles]
+    if fmt == "txt-fiddler": out["text_flags"] = [t.text_flags for t in tiles]
     return out
 
 
@@ -127,13 +149,39 @@ def op_export(ctx: Context, p: dict) -> dict:
     t0 = time.perf_counter()
     fmt = p["format"]
     hues = p.get("hues") or []
-    tiles = [formats.Tile(c.item, c.x, c.y, c.z, c.visible, hues[i] if i < len(hues) else 0)
+    flags = p.get("text_flags") or []
+    if fmt == "txt-fiddler":
+        rows = p["components"]
+        if not isinstance(rows, list) or not 1 <= len(rows) <= 65535:
+            raise formats.FormatError("Fiddler TXT requires 1 to 65535 components")
+        if any(not isinstance(row, list) or len(row) not in (4, 5) or any(type(value) is not int for value in row[:4])
+               or (len(row) == 5 and row[4] not in (0, 1)) for row in rows):
+            raise formats.FormatError("Fiddler TXT components require integer ID/X/Y/Z and optional 0/1 visibility; use text_flags for raw flags")
+        if "text_flags" in p and (not isinstance(p["text_flags"], list) or len(p["text_flags"]) != len(rows)):
+            raise formats.FormatError("Fiddler TXT text_flags must match the component count")
+    tiles = [formats.Tile(c.item, c.x, c.y, c.z, c.visible, hues[i] if i < len(hues) else 0,
+                         text_flags=flags[i] if i < len(flags) else None)
              for i, c in enumerate(comps_in(p["components"]))]
     data = formats.write(fmt, tiles, p.get("name", "multi"))
     out = {"format": fmt, "bytes": len(data), "ms": kit.ms_since(t0)}
     if "path" in p:
-        Path(p["path"]).parent.mkdir(parents=True, exist_ok=True)
-        Path(p["path"]).write_bytes(data)
+        target = Path(p["path"])
+        if fmt == "txt-fiddler":
+            from guo import load_config
+            cfg = load_config()
+            roots = [Path(value).resolve() for value in (cfg.client_data, cfg.client_data_env, cfg.client_data_setting) if str(value).strip() not in ('', '.')]
+            def guard():
+                if not roots: raise formats.FormatError('Configure UO_CLIENT_DATA before writing; the read-only installation boundary must be known')
+                if target.is_symlink() or any(target.resolve().is_relative_to(root) for root in roots):
+                    raise formats.FormatError('Fiddler TXT output cannot write into the read-only installation or through a file link')
+            guard(); target.parent.mkdir(parents=True, exist_ok=True)
+            temporary = target.with_name(target.name + '.tmp-' + uuid.uuid4().hex)
+            try:
+                temporary.write_bytes(data); guard(); temporary.replace(target)
+            finally: temporary.unlink(missing_ok=True)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
         out["path"] = p["path"]
     elif fmt == "uoab":
         out["data"] = base64.b64encode(data).decode("ascii")
@@ -158,7 +206,7 @@ def run_op(ctx: Context, op: str, p: dict) -> dict:
         if fn is None:
             return {"error": f"unknown op '{op}' (have {', '.join(OPS)})"}
         return fn(ctx, p)
-    except (DescriptionError, formats.FormatError, KeyError, ValueError) as e:
+    except (DescriptionError, formats.FormatError, KeyError, ValueError, OSError) as e:
         return {"error": f"{type(e).__name__}: {e}"}
 
 

@@ -4,7 +4,8 @@ Written from the format descriptions in the research notes (layouts only; no cod
 A tile is `Tile(item, x, y, z, visible, hue, level)`: hue and level are carried where a format has them
 (UOA binary: both; WSC, CentrED# CSV: hue) and are 0 elsewhere.
 
-  txt       one `0xID x y z flags` per line: UOFiddler's text export, the Ultima SDK text (decimal ids read too)
+  txt       GUO legacy text: decimal IDs unless explicitly prefixed with 0x
+  txt-fiddler Fiddler 4.24 text: hexadecimal IDs, int16 offsets, preserved int32 flags
   uoa       UO Architect's text: 4 header lines, then `id x y z flags` (also the Sphere multi text)
   uoab      UO Architect's binary designs: version 1 (one design) or 2 (a count of them)
   wsc       `SECTION WORLDITEM i { ID X Y Z Color }` blocks
@@ -14,7 +15,7 @@ A tile is `Tile(item, x, y, z, visible, hue, level)`: hue and level are carried 
   uox3      `[HOUSE ITEM i]` blocks of `ITEM=0x.. X= Y= Z=`
 
 `detect` picks a format from a file's name and head; `read`/`write` take a format name. Multi components
-use flags 1 visible / 0 hidden in every text format.
+use boolean visibility; txt-fiddler additionally retains the original signed flags.
 """
 from __future__ import annotations
 
@@ -38,6 +39,7 @@ class Tile:
     visible: bool = True
     hue: int = 0
     level: int = 0
+    text_flags: int | None = None
 
     def component(self) -> Component:
         return Component(self.item, self.x, self.y, self.z, self.visible)
@@ -84,6 +86,53 @@ def read_txt(text: str) -> list[Tile]:
 
 def write_txt(tiles: list[Tile]) -> str:
     return "".join(f"0x{t.item:04X} {t.x} {t.y} {t.z} {1 if t.visible else 0}\n" for t in tiles)
+
+
+def read_fiddler_txt(text: str) -> list[Tile]:
+    """Fiddler 4.24: hexadecimal item IDs, signed decimal offsets and int32 flags."""
+    if len(text.encode('utf-8')) > 4 * 1024 * 1024:
+        raise FormatError('Fiddler TXT exceeds 4 MiB')
+    out = []
+    for number, line in enumerate(text.splitlines(), 1):
+        if not line.strip(): continue
+        fields = line.split()
+        if len(fields) != 5:
+            raise FormatError(f'Fiddler TXT line {number}: expected hexadecimal ID, X, Y, Z and flags')
+        try:
+            ident = fields[0].removeprefix('0x').removeprefix('0X')
+            if not re.fullmatch('[0-9a-fA-F]+', ident): raise ValueError('ID must be hexadecimal')
+            ident = ident.lstrip('0') or '0'
+            if len(ident) > 4: raise ValueError('ID must fit uint16')
+            item = int(ident, 16)
+            if any(not re.fullmatch('[+-]?[0-9]+', field) for field in fields[1:]): raise ValueError('offsets/flags must be decimal')
+            values = []
+            for field in fields[1:]:
+                digits = field.lstrip('+-').lstrip('0') or '0'
+                if len(digits) > 10: raise ValueError('offsets/flags are outside signed bounds')
+                values.append(int(digits) * (-1 if field.startswith('-') else 1))
+            x, y, z, flags = values
+            if any(not -32768 <= value <= 32767 for value in (x, y, z)) or not -(2**31) <= flags < 2**31:
+                raise ValueError('offsets must fit int16 and flags int32')
+            out.append(Tile(item, x, y, z, flags != 0, text_flags=flags))
+            if len(out) > 65535: raise ValueError('at most 65535 components')
+        except ValueError as error:
+            raise FormatError(f'Fiddler TXT line {number}: {error}') from error
+    if not out: raise FormatError('Fiddler TXT contains no components')
+    return out
+
+
+def write_fiddler_txt(tiles: list[Tile]) -> str:
+    out = []
+    if not tiles or len(tiles) > 65535: raise FormatError('Fiddler TXT requires 1 to 65535 components')
+    for tile in tiles:
+        flags = tile.text_flags if tile.text_flags is not None and (tile.text_flags != 0) == tile.visible else int(tile.visible)
+        values = (tile.item, tile.x, tile.y, tile.z, flags)
+        if any(type(value) is not int for value in values) or not 0 <= tile.item <= 65535 or any(not -32768 <= value <= 32767 for value in values[1:4]) or not -(2**31) <= flags < 2**31:
+            raise FormatError('Fiddler TXT requires uint16 IDs, int16 offsets and int32 flags')
+        out.append(f'0x{tile.item:X} {tile.x} {tile.y} {tile.z} {flags}\r\n')
+    result = ''.join(out)
+    if len(result) > 4 * 1024 * 1024: raise FormatError('Fiddler TXT exceeds 4 MiB')
+    return result
 
 
 # --- UOA text ----------------------------------------------------------------------------------
@@ -296,7 +345,8 @@ def write_uox3(tiles: list[Tile]) -> str:
 # --- dispatch ----------------------------------------------------------------------------------
 
 FORMATS = {
-    "txt": "UOFiddler / Ultima SDK text", "uoa": "UO Architect text", "uoab": "UO Architect binary",
+    "txt-fiddler": "Fiddler TXT (hexadecimal IDs)",
+    "txt": "GUO legacy text (decimal IDs unless 0x-prefixed)", "uoa": "UO Architect text", "uoab": "UO Architect binary",
     "wsc": "WSC worldfile", "csv-punt": "CSV (Punt)", "csv-swerv": "CSV (SwervUO)",
     "centred": "CentrED# blueprint / selection CSV", "uox3": "UOX3 house items",
 }
@@ -327,7 +377,7 @@ def read(fmt: str, data: bytes) -> list[Tile]:
         ds = read_uoab(data)
         return [t for d in ds for t in d.tiles]
     text = data.decode("utf-8-sig", "replace")
-    readers = {"txt": read_txt, "uoa": read_uoa, "wsc": read_wsc, "csv-punt": read_csv, "csv-swerv": read_csv,
+    readers = {"txt": read_txt, "txt-fiddler": read_fiddler_txt, "uoa": read_uoa, "wsc": read_wsc, "csv-punt": read_csv, "csv-swerv": read_csv,
                "centred": read_csv, "uox3": read_uox3}
     if fmt not in readers:
         raise FormatError(f"format '{fmt}': {', '.join(FORMATS)}")
@@ -341,7 +391,7 @@ def write(fmt: str, tiles: list[Tile], name: str = "multi") -> bytes:
         return write_csv(tiles, fmt[4:]).encode("utf-8")
     if fmt == "centred":
         return write_csv(tiles, "centred").encode("utf-8")
-    writers = {"txt": write_txt, "uoa": write_uoa, "wsc": write_wsc, "uox3": write_uox3}
+    writers = {"txt": write_txt, "txt-fiddler": write_fiddler_txt, "uoa": write_uoa, "wsc": write_wsc, "uox3": write_uox3}
     if fmt not in writers:
         raise FormatError(f"format '{fmt}': {', '.join(FORMATS)}")
     return writers[fmt](tiles).encode("utf-8")
@@ -353,4 +403,4 @@ def recentre(tiles: list[Tile]) -> list[Tile]:
         return tiles
     cx = (min(t.x for t in tiles) + max(t.x for t in tiles)) // 2
     cy = (min(t.y for t in tiles) + max(t.y for t in tiles)) // 2
-    return [Tile(t.item, t.x - cx, t.y - cy, t.z, t.visible, t.hue, t.level) for t in tiles]
+    return [Tile(t.item, t.x - cx, t.y - cy, t.z, t.visible, t.hue, t.level, t.text_flags) for t in tiles]

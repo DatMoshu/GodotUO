@@ -166,3 +166,16 @@ checks the full old MUL prefix, exact appended bytes, unchanged index rows and
 opaque extras, plus independent decoded pixel/raw hashes. The typed writer's
 append helper is shared with world texture export. `proof_texmaps.py` covers
 native sizes, remaps, no-op identity, corruption, stale reviews and recovery.
+
+F24a's [Fiddler TXT multi profile](../../docs/editor/multi_fiddler_txt.md) uses a
+separate development reference. Build it with
+`python tools/fiddler_parity/multi_text_reference.py --source <pinned-MultiComponentList.cs>`.
+The source file must match POL UOFiddler commit
+`610c930833dac8d158f08a0af36da43dd90d08b4` and SHA256
+`5204fce496bb316f7d3689a3b296b204e14e4695f42e6423961997c82d2ae767`.
+No third-party source is downloaded implicitly. Generated source/binaries stay
+under the configured build directory and retain the file's licence notice.
+Run `proof_multi_text.py --reference <Reference.dll> --out <new-folder>` to
+compare both directions and exact Windows export bytes against the unchanged
+TXT reader/exporter. This proves scalar TXT interchange only; it does not
+certify Fiddler's spatial conversion, native multi archives or other formats.

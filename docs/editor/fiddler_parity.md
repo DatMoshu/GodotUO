@@ -135,6 +135,14 @@ untouched records and opaque headers, pinned ClassicUO name/PCM read-back and
 recoverable staged promotion. MUL/IDX and uncompressed UOP are separate proofs;
 compressed sound archives, insertion/removal and music editing remain separate.
 
+F24a adds [explicit Fiddler TXT multi interchange](multi_fiddler_txt.md) in the
+existing Multi Editor: hexadecimal IDs, preserved signed flags/order/duplicates,
+coordinate review and optional centering, project/history retention and explicit
+hue-loss confirmation. The existing decimal-ID TXT profile remains separate.
+The independent pinned Fiddler probe checks scalar TXT contracts in both
+directions; native multi flag translation, spatial rendering and other external
+multi formats remain separate certification work.
+
 Phase 1 proposal, 2026-10-19. guo-director first-pass review received;
 catalogue and survey await guo-director and exec-fable sign-off.
 F01a has separate director authorization for assignment (inbox #11093);

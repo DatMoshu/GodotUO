@@ -13,9 +13,12 @@ public struct MultiPart
     public short X, Y, Z;
     public bool Shown;
     public ushort Hue;
+    /// <summary>Original signed Fiddler TXT flags. Native flags have a separate contract.</summary>
+    public int? TextFlags;
+    public readonly int ExportTextFlags => TextFlags is int raw && (raw != 0) == Shown ? raw : (Shown ? 1 : 0);
 
     public readonly bool SameAs(in MultiPart o) =>
-        Id == o.Id && X == o.X && Y == o.Y && Z == o.Z && Shown == o.Shown && Hue == o.Hue;
+        Id == o.Id && X == o.X && Y == o.Y && Z == o.Z && Shown == o.Shown && Hue == o.Hue && TextFlags == o.TextFlags;
 }
 
 /// <summary>The client's story heights: floor n is at z 7 + 20 n, the foundation below 7.</summary>
@@ -61,6 +64,7 @@ public sealed class MultiDocument
 
     public int Cursor => _cursor;
     public int HistoryCount => _history.Count;
+    public long Revision { get; private set; }
     public IReadOnlyList<string> HistoryNames => _history.Select(h => h.Name).ToList();
     public bool CanUndo => _cursor > 0;
     public bool CanRedo => _cursor < _history.Count - 1;
@@ -80,11 +84,12 @@ public sealed class MultiDocument
         _history.Clear();
         _history.Add(new Snap(what, Parts.ToArray()));
         _cursor = 0;
+        Revision++;
         Changed?.Invoke();
     }
 
-    public MultiPart Make(ushort id, int x, int y, int z, bool shown = true, ushort hue = 0) =>
-        new() { Uid = _nextUid++, Id = id, X = (short)x, Y = (short)y, Z = (short)z, Shown = shown, Hue = hue };
+    public MultiPart Make(ushort id, int x, int y, int z, bool shown = true, ushort hue = 0, int? textFlags = null) =>
+        new() { Uid = _nextUid++, Id = id, X = (short)x, Y = (short)y, Z = (short)z, Shown = shown, Hue = hue, TextFlags = textFlags };
 
     /// <summary>
     /// One named transaction. <paramref name="change"/> edits <see cref="Parts"/>; nothing is recorded when
@@ -112,6 +117,7 @@ public sealed class MultiDocument
 
         _cursor = _history.Count - 1;
         PruneSelection();
+        Revision++;
         Changed?.Invoke();
         return true;
     }
@@ -131,6 +137,7 @@ public sealed class MultiDocument
         _cursor = index;
         Parts = _history[index].Parts.ToList();
         PruneSelection();
+        Revision++;
         Changed?.Invoke();
         return true;
     }

@@ -1819,9 +1819,15 @@ Same parameters and seed, same bytes.
   `guo.multi.orient/1` (`wall` `{id: {axis, ew, ns}}`, `map` `{rot90, mirror_x, mirror_y: {id: id}}`, `door_bases`, and
   `lossy` `{id: id}` for window sets that share one art on the other axis, which come back as the first set), built from
   the styles, and with `run.py orient-table` from the mined catalogue and tiledata names.
-- `import` / `export`: `format` is one of `txt` (UOFiddler and Ultima SDK text, `0xID x y z flags`), `uoa` (UO Architect
+- `import` / `export`: `format` is one of `txt` (GUO legacy TXT: decimal IDs unless `0x`-prefixed), `txt-fiddler`
+  (Fiddler TXT: hexadecimal uint16 IDs, decimal int16 X/Y/Z, signed int32 flags), `uoa` (UO Architect
   text, 4 header lines), `uoab` (UO Architect binary designs, version 1 or 2), `wsc`, `csv-punt`, `csv-swerv`,
-  `centred` (CentrED# `id,x,y,z,hue,flags`) and `uox3`. Import detects the format from the name and head and recentres.
+  `centred` (CentrED# `id,x,y,z,hue,flags`) and `uox3`. Import detects legacy formats from the name/head and recentres.
+  `txt-fiddler` must be selected explicitly and preserves coordinates by default (`recentre: true` opts in).
+  Its `text_flags` result/parameter parallels `components`; export writes canonical `0xID X Y Z Flags` CRLF lines.
+  It accepts 1–65,535 entries and at most 4 MiB. Editor TXT review covers hue loss and stale source/document/output.
+  Rotate/mirror `preserve_entries: true` refuses splitting, recombination or order changes so opaque per-entry
+  metadata cannot be assigned to a different part merely because aggregate counts match.
 
 The validator (section 16) also refuses a roof with floor open to the sky, a door with nowhere to stand on a side, and
 a stair whose foot is unreachable, whose arrival is not floor above, whose hole is not cut, or that does not climb the
@@ -1839,7 +1845,7 @@ diffable (one component per line) and keeps the hue, which a multi record cannot
 | `name` | The multi's name in a stage |
 | `source` | The client multi id it was opened from, or `null` |
 | `floor_z`, `storey_height` | `7` and `20`, the client's story heights |
-| `components` | `[item, x, y, z, shown, hue]` per component, in list order (the order breaks ties in painting): `item` and `hue` numbers, `shown` `1` or `0`, x/y from the centre |
+| `components` | `[item, x, y, z, shown, hue, text_flags?]` per component, in list order (the order breaks ties in painting): `item` and `hue` numbers, `shown` `1` or `0`, x/y from the centre. Optional seventh column retains original signed int32 Fiddler TXT flags; omitted for existing six-column documents. TXT export retains these flags while visibility matches, otherwise emits the edited visibility as 0/1. Native flag translation is separate and refuses opaque effective TXT flags. |
 
 Writing it to a stage goes through the built form of §16 (`components.json`: `[item, x, y, z]` with a
 fifth element `0` when hidden, plus a `multi.json` with `valid`, `problems`, `doors`, `size`,
