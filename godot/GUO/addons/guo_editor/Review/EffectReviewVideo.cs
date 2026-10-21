@@ -41,15 +41,13 @@ public partial class EffectReviewVideo : Node2D
             using var mask = Image.CreateEmpty(128, 128, false, Image.Format.Rgba8);
             mask.Fill(new Color(1, 123f / 255, 0, 1));
             using var maskTexture = ImageTexture.CreateFromImage(mask);
-            using var shader = new Shader { Code = """
-                shader_type canvas_item;
-                render_mode unshaded;
-                #include "res://src/Render/shaders/uo_water.gdshaderinc"
-                void fragment() {
-                    vec2 world = vec2((UV.x - 0.5) * 1100.0, (UV.y - 0.5) * 550.0 + 44020.0);
-                    COLOR = vec4(water_shade(vec3(0.16, 0.28, 0.4), world), 1.0);
-                }
-                """ };
+            // Keep the shader include inside a quoted source line: the C#
+            // preprocessor still scans disabled #if blocks in normal builds.
+            using var shader = new Shader { Code = "shader_type canvas_item;\nrender_mode unshaded;\n"
+                + "#include \"res://src/Render/shaders/uo_water.gdshaderinc\"\n"
+                + "void fragment() {\n"
+                + "vec2 world = vec2((UV.x - 0.5) * 1100.0, (UV.y - 0.5) * 550.0 + 44020.0);\n"
+                + "COLOR = vec4(water_shade(vec3(0.16, 0.28, 0.4), world), 1.0);\n}" };
             using var material = new ShaderMaterial { Shader = shader };
             material.SetShaderParameter("water_target_to_world", new Vector4(1, 1, 0, 0));
             material.SetShaderParameter("water_mask", maskTexture);
