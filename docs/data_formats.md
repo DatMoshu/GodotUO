@@ -2950,6 +2950,17 @@ bit 6, circle-of-transparency in bit 7). Classic never sets it.
 The mask is rebuilt on the CPU when the player moves 8 cells or the loaded
 chunks change.
 
+**Labs rain input** (L4, UO+, default off; 2026-10-21):
+`WeatherLab.RainIntensity(World)` supplies 0..1 (rain/brewing count / 70;
+zero for dry, snow or missing weather). The existing session-local
+`WaterDrops` checkbox gates its consumer. Styled water injects bounded
+raindrop stamps after following the player and before the normal wave update;
+only loaded, exposed Wet land/statics at the mask's height qualify. The current
+styled-world/frame predicate suppresses duplicate primitive water rings;
+Classic retains the opted-in primitive fallback. No profile/packet/pack schema
+changes. See [rain limits and doctor](../godot/GUO/src/Labs/WaterRain/README.md)
+and [scenario](../tools/scenarios/client/water_rain.md).
+
 **Ripples** (`WaterRipples`, WATER-03) are a two-buffer wave equation stepped
 at 20 Hz on the CPU (a front moves about three cells a second) over the ripple window, which follows the player (it
 shifts by whole cells when the player is 16 cells from its centre, keeping

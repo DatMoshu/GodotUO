@@ -14,6 +14,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   budget and puddle tile list. Labs are excluded from exported clients.
 
 ### Water
+- Opt-in Labs water rain can disturb the styled-water wave field, driven by
+  weather intensity and the existing default-off water-ring toggle. Primitive
+  rings are suppressed while that simulation is active; Classic keeps its fallback.
 - The synthetic shore regression now covers coast directions, wrapped mask
   coordinates, the beach/cliff height cutoff, and Classic output with every
   water model bound. It rejects headless runs that cannot render pixels.
