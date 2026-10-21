@@ -582,7 +582,7 @@ namespace GUO.Game.Scenes
 
                 light.DrawX = x;
                 light.DrawY = y;
-                RecordRealtimeLight(obj, ref light); // PORT DEVIATION (GUO): ADR-0039 keeps the tile
+                RecordRealtimeLight(obj, graphic, ref light); // PORT DEVIATION (GUO): ADR-0039 keeps the tile
                 _lightCount++;
             }
         }

@@ -87,6 +87,18 @@ The ambient colour ramp is normalized to the classic grey's luminance, keeping
 the same night level equally dark in the ON/OFF comparison. Untinted lamps use
 a warm flame tint. These adjustments affect only the enabled option.
 
+Amendment (2026-10-20, lighting lane): the option gains three inputs, none
+of which changes the frame unless used. A light profile file (item graphic
+and light id to radius, tint, energy and one of five falloff curves A..E or
+a sampled custom curve) is read from the workspace; missing or broken, the
+built-in default overrides nothing. A spell-effect hook
+(`RealtimeLightEffects.Add`) adds a temporary coloured light at a tile for a
+duration; it joins the sources after the light offers. A per-frame cost log
+and an ASCII dump of the grid (with a pixel-to-tile readout) are behind
+environment variables. Curves and energy act in the per-frame accumulation,
+not the cached visibility. Classic lighting reads none of it. The file format
+is data_formats section 45; a Store pack kind for profiles is later work.
+
 ## Validation
 
 `client.realtime.lights` runs `RealtimeLightsProbe.tscn` headless: default

@@ -20,7 +20,8 @@ public partial class EditorSmoke
     /// the camera on them, a second torch-bearer the other way and a lantern
     /// carrier across, saving <c>world_pan/frame_NNNN.png</c> each frame;
     /// <c>FRAMES,fixed</c> keeps the camera on the shot cell and the walkers
-    /// cross the frame. The
+    /// cross the frame; <c>,spell</c> also casts a spell-effect light
+    /// (<c>RealtimeLightEffects</c>) beside the first walker every second. The
     /// walkers take real steps (walk animation, facing) through the mobile's
     /// own step queue; their lit hand-held light feeds the scene's lights.
     /// </summary>
@@ -37,7 +38,7 @@ public partial class EditorSmoke
     private readonly List<DemoActor> _demoActors = new();
     private int _demoFrames, _demoTaken;
     private int _demoFacet;
-    private bool _demoFixed;
+    private bool _demoFixed, _demoSpell;
     private ulong _demoStartMs, _demoLastMs;
     private uint _demoClockStart;
     private const int DemoFps = 30;
@@ -49,7 +50,9 @@ public partial class EditorSmoke
     {
         string[] demo = ArgValue(LightsDemoFlag).Split(',');
         _demoFrames = int.Parse(demo[0]);
-        _demoFixed = demo.Length > 1 && demo[1] == "fixed";
+        _demoFixed = Array.IndexOf(demo, "fixed", 1) > 0;
+        _demoSpell = Array.IndexOf(demo, "spell", 1) > 0;
+        GUO.Renderer.Lights.RealtimeLightEffects.Clear();
         _demoTaken = 0;
         _demoFacet = facet;
         _demoClockStart = GUO.Time.Ticks;
@@ -236,6 +239,16 @@ public partial class EditorSmoke
         // The camera rides the first walker: same tile, same step offset.
         PlayerMobile player = world.Player;
         Mobile lead = _demoActors[0].Mobile;
+
+        // The spell-light hook: a 1.5 s light two tiles ahead of the lead, a
+        // new colour each second (blue, green, red), fading over its end.
+        if (_demoSpell && lead != null && _demoTaken % DemoFps == 0)
+        {
+            Color[] colours = { new Color(0.35f, 0.55f, 1f), new Color(0.4f, 1f, 0.45f), new Color(1f, 0.3f, 0.25f) };
+            Color c = colours[_demoTaken / DemoFps % colours.Length];
+            int handle = GUO.Renderer.Lights.RealtimeLightEffects.Add(GUO.Time.Ticks, lead.X + 2, lead.Y, lead.Z, 4, c, 1500);
+            GD.Print($"[lights-demo] spell light {handle} at {lead.X + 2},{lead.Y},{lead.Z} colour {c.ToHtml(false)}");
+        }
         if (!_demoFixed && player != null && lead != null)
         {
             if (player.X != lead.X || player.Y != lead.Y || player.Z != lead.Z)

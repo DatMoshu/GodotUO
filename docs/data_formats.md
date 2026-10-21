@@ -2797,9 +2797,10 @@ thread with distance attenuation (full to 2 tiles, silent past 20).
 ## 45. Realtime lights (`Profile.RealtimeLights`, ADR-0039)
 
 An L1 client option, default off, in Options > Video on both interfaces.
-Profile field `RealtimeLights` (bool). No other file, pack or setting; the
-existing **Light level** override (`UseCustomLightLevel`, `LightLevel`,
-`LightLevelType`) is the override slider for the shard's light level.
+Profile field `RealtimeLights` (bool). The only other input is the optional
+light profile file below; the existing **Light level** override
+(`UseCustomLightLevel`, `LightLevel`, `LightLevelType`) is the override slider
+for the shard's light level.
 
 On, each frame the scene builds a tile grid over the visible chunks plus an
 8-tile margin (side capped at 192): per cell the ground Z (`Land.AverageZ`),
@@ -2836,6 +2837,81 @@ Log line every 5 s at trace level: `[realtime-lights] grid=WxH lights=N
 computed=N cached=N quads=N sprites=N`. Scenario `client.realtime.lights`
 (`--realtime-lights-probe`, `RealtimeLightsProbe.tscn`) checks the contract
 headless and prints `[Realtime lights] PASS`.
+
+**Light profile file** (`RealtimeLightProfiles`). Read once, on the first
+light offer, from the path in `GUO_LIGHT_PROFILES`, else
+`<UO_WORKSPACE_DIR>/lights/light_profiles.json`. Missing is the built-in
+default, which overrides nothing (the behaviour above). A file that does not
+parse is logged once as a warning (`light profiles not used (...)`) and the
+built-in default is used; one bad entry rejects the whole file. Only the
+Realtime lights path reads it; the classic light path never does.
+
+```json
+{
+  "version": 1,
+  "curves": { "ember": [1.0, 0.45, 0.15, 0.0] },
+  "default": { "curve": "B" },
+  "lights": { "2": { "radius": 4 } },
+  "items": {
+    "0x0A0F": { "curve": "C", "color": "#FFB060", "note": "lit candle" },
+    "0x0E31": { "curve": "ember", "radiusScale": 1.25, "energy": 2.6, "note": "brazier" }
+  }
+}
+```
+
+- `version`: 1 (anything else rejects the file).
+- `items`: keyed by the lit item's graphic (`AddLight`'s light object graphic;
+  hex `0x...` or decimal). `lights`: keyed by the light id (0..255, the
+  `light.mul` sprite the offer resolved). `default`: under both.
+- An entry's fields, all optional: `radius` (tiles, 1..8, replaces the
+  sprite-derived radius), `radiusScale` (0.1..4, applied after `radius`),
+  `color` (`#RRGGBB`, replaces the tint), `energy` (0.05..8, replaces 2.2),
+  `curve`, `note` (ignored). Unknown fields reject the file. Resolution is
+  item over light id over default, field by field; a field no level sets keeps
+  the offer's value.
+- `curve`: the falloff over `t = distance / radius`, each 1 at the source and
+  0 at the radius: **A** linear `1 - t`; **B** smoothstep (the default above);
+  **C** windowed inverse square `(1 - t²)² / (1 + 8t²)`, a hot core;
+  **D** quadratic `1 - t²`, broad; **E** a plateau to `t = 0.6`, then a
+  smoothstep edge. Or the name of a `curves` entry: 2 or more samples
+  (0..4), evenly spaced over `t`, resampled to 33 and forced to 0 at the radius.
+- Curves and energy shape each frame's falloff only; the cached visibility
+  (walls, roofs) is unchanged, so editing them never invalidates a reach.
+
+**Spell-effect lights** (`RealtimeLightEffects`, game-loop thread only).
+`Add(x, y, z, radius, color, durationMs, curve = E, energy = 2.2, fadeOut = true)`
+returns a handle (0 for a zero duration); `Remove(handle)`, `Clear()`. Each
+live light joins the frame's sources after the light offers, through the same
+blockers and roofs. Duration is capped at 60 s; with `fadeOut` the energy falls
+linearly to 0 over the last 30 % of it. At most 64 live; a full table drops the
+oldest. Time is `Time.Ticks`. With the option off nothing reads them and they
+expire on their own.
+
+**Debug output**, off unless its environment variable is set:
+
+- `GUO_LIGHTS_BUDGET=1`: per frame, at trace level and on stdout,
+  `[realtime-lights-budget] frame=N lights=N temp=N computed=N grid=Xms
+  field=Xms draw=Xms total=Xms` (grid: blocker grid build; field: temporary
+  light collection and the field sum; draw: geometry into the light target),
+  and every 60 frames `[realtime-lights-budget] summary frames=60 lights avg=..
+  max=.. total avg=..ms max=..ms`.
+- `GUO_LIGHTS_DUMP=DIR[;FRAMES[;EVERY]]`: every EVERY-th frame (default 30)
+  until FRAMES files (default 10), `DIR/lights_NNNNNN.txt` (N = the lit frame
+  count). Header lines start `#`: the ambient level, scene offset and `_maxZ`;
+  the readout under the mouse (`pixel=X,Y tile=X,Y,Z light=R,G,B block=Z|-
+  cover=Z|- roofed=bool`, the pixel in `TranslatedMousePositionByViewport`
+  space, read at the tile's ground Z); the player's tile and light; the
+  profile source. Then the grid, one text row per tile row, north at the top:
+  `*` a light source, `@` the player, `#` a blocker above ground + 3, `^`
+  covered, `0`-`9` the brightest channel in tenths, `X` white; outside the
+  visible chunks `+` a blocker, `.` anything else. Then one `# light X,Y,Z r=R
+  curve=C energy=E color=#RRGGBB` per source. The pixel-to-tile inverse is
+  `RealtimeLightField.ScreenToTile`: with `u = px + offset.X`,
+  `v = py + offset.Y + 4z`, the tile is `(floor((u+v)/44 + 0.5),
+  floor((v-u)/44 + 0.5))`.
+
+The editor's lights demo (`tools/editor_smoke/README.md`) takes `,spell` to
+cast a spell-effect light beside its first walker every second.
 ## 44. Water render modes (`Profile.WaterStyle`, `Render/Water`, ADR-0037)
 
 `Profile.WaterStyle` is a string, default `"classic"`, saved in the profile

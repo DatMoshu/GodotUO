@@ -183,6 +183,11 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   and the one next door stays dark; day and night follow the shard's light
   level (the Light level setting still overrides it), with interiors dimmer
   by day. Off, the world lights exactly as before. ADR-0039.
+  A light profile file (`lights/light_profiles.json` in your workspace) can
+  change any light's reach, colour, strength and falloff shape (curves A to
+  E, or your own); without one nothing changes. Spells can add short coloured
+  lights, and `GUO_LIGHTS_BUDGET` / `GUO_LIGHTS_DUMP` log each frame's light
+  cost and dump the light grid as text (data_formats section 45).
 - Water can move: **Options > Video > Water > Realtime (UO colours)** draws
   the sea, rivers and lakes with a slow swell, light on the crests and surf
   at the shore, in the tiles' own colours, and ripples where something

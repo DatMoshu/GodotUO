@@ -53,8 +53,12 @@ namespace GUO.Renderer.Lights
             public readonly int Radius;
             public readonly Color Color;
             public readonly float OffsetX, OffsetY;
+            public readonly LightCurve Curve;
+            public readonly float Energy;
+            public readonly float[] CustomCurve;
 
-            public Source(int x, int y, int z, int radius, Color color, float offsetX = 0f, float offsetY = 0f)
+            public Source(int x, int y, int z, int radius, Color color, float offsetX = 0f, float offsetY = 0f,
+                LightCurve curve = LightCurve.B, float energy = RealtimeLightField.Energy, float[] customCurve = null)
             {
                 X = x;
                 Y = y;
@@ -63,6 +67,9 @@ namespace GUO.Renderer.Lights
                 Color = color;
                 OffsetX = offsetX;
                 OffsetY = offsetY;
+                Curve = curve;
+                Energy = energy;
+                CustomCurve = customCurve;
             }
         }
 
@@ -349,12 +356,16 @@ namespace GUO.Renderer.Lights
                 (a.B + b.B + c.B + d.B) * 0.25f);
         }
 
-        /// <summary>Radial falloff: 1 at the source, 0 at the radius, soft in between.</summary>
+        /// <summary>Radial falloff: 1 at the source, 0 at the radius, soft in between (curve B).</summary>
         public static float Falloff(float distance, float radius)
         {
             float t = Math.Clamp(1f - distance / radius, 0f, 1f);
             return t * t * (3f - 2f * t);
         }
+
+        /// <summary>Radial falloff along a profile curve (<see cref="RealtimeLightProfiles.Evaluate"/>).</summary>
+        public static float Falloff(float distance, float radius, LightCurve curve, float[] custom = null)
+            => curve == LightCurve.B ? Falloff(distance, radius) : RealtimeLightProfiles.Evaluate(curve, distance / radius, custom);
 
         private float[] ComputeReach(in Source s, float[] map)
         {
@@ -466,17 +477,90 @@ namespace GUO.Renderer.Lights
                     if (tx < _originX || tx >= _originX + _width) continue;
                     float v = map[(dy + r) * side + (dx + r)];
                     float fx = dx - s.OffsetX, fy = dy - s.OffsetY;
-                    v *= Falloff(MathF.Sqrt(fx * fx + fy * fy), s.Radius);
+                    v *= Falloff(MathF.Sqrt(fx * fx + fy * fy), s.Radius, s.Curve, s.CustomCurve);
                     if (v <= 0f) continue;
                     int cell = Index(tx, ty);
                     if (s.Z > _lightTop[cell]) _lightTop[cell] = (short)s.Z;
                     int i = cell * 3;
-                    v *= Energy;
+                    v *= s.Energy;
                     _field[i] += s.Color.R * v;
                     _field[i + 1] += s.Color.G * v;
                     _field[i + 2] += s.Color.B * v;
                 }
             }
+        }
+
+        /// <summary>
+        /// The tile under a world-target pixel: the inverse of the world's iso
+        /// projection, <c>u = (x - y) * 22</c>, <c>v = (x + y) * 22 - 4z</c>, where
+        /// (u, v) is the pixel plus the scene's offset (a tile's diamond centre
+        /// maps to its own tile). Z is the height the pixel is read at.
+        /// </summary>
+        public static (int X, int Y) ScreenToTile(float u, float v, int z)
+        {
+            v += z * 4;
+            float a = (u + v) / 44f, b = (v - u) / 44f;
+            return ((int)MathF.Floor(a + 0.5f), (int)MathF.Floor(b + 0.5f));
+        }
+
+        /// <summary>The brightness glyph of a cell: its brightest channel in tenths, '0'..'9', 'X' at white.</summary>
+        public char Glyph(int x, int y)
+        {
+            Color c = Cell(x, y);
+            float m = Math.Max(c.R, Math.Max(c.G, c.B));
+            int g = (int)(m * 10f);
+            return g >= 10 ? 'X' : (char)('0' + Math.Max(0, g));
+        }
+
+        /// <summary>
+        /// The grid as text, one row per tile row (north at the top, west at the
+        /// left): '*' a light source, '@' the marked tile, '#' a blocker standing
+        /// above ground + <see cref="BlockClearance"/>, '^' covered (roof or upper
+        /// floor), else the brightness digit. A cell outside <paramref name="visible"/>
+        /// is lower case: '+' blocker, '.' anything else. A legend and the source
+        /// list follow the grid.
+        /// </summary>
+        public string DumpAscii(ReadOnlySpan<Source> sources, Func<int, int, bool> visible = null, int markX = int.MinValue, int markY = int.MinValue)
+        {
+            var sb = new System.Text.StringBuilder((_width + 1) * (_height + 8));
+            sb.Append("# grid origin=").Append(_originX).Append(',').Append(_originY)
+              .Append(" size=").Append(_width).Append('x').Append(_height)
+              .Append(" ambient=").Append(Ambient.R.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture)).Append(',')
+              .Append(Ambient.G.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture)).Append(',')
+              .Append(Ambient.B.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture))
+              .Append(" lights=").Append(sources.Length).Append('\n');
+            sb.Append("# legend: * light  @ mark  # wall  ^ covered  0-9 brightness/10  X white  (outside view: + wall  . other)\n");
+
+            var lit = new HashSet<long>();
+            foreach (ref readonly Source s in sources) lit.Add(((long)s.X << 32) | (uint)s.Y);
+
+            for (int y = _originY; y < _originY + _height; y++)
+            {
+                for (int x = _originX; x < _originX + _width; x++)
+                {
+                    int i = Index(x, y);
+                    bool wall = _blockTop[i] != NoBlock && _blockTop[i] > _groundZ[i] + BlockClearance;
+                    char ch;
+                    if (visible != null && !visible(x, y)) ch = wall ? '+' : '.';
+                    else if (x == markX && y == markY) ch = '@';
+                    else if (lit.Contains(((long)x << 32) | (uint)y)) ch = '*';
+                    else if (wall) ch = '#';
+                    else if (_roofZ[i] != NoBlock) ch = '^';
+                    else ch = Glyph(x, y);
+                    sb.Append(ch);
+                }
+                sb.Append('\n');
+            }
+
+            foreach (ref readonly Source s in sources)
+            {
+                sb.Append("# light ").Append(s.X).Append(',').Append(s.Y).Append(',').Append(s.Z)
+                  .Append(" r=").Append(s.Radius).Append(" curve=").Append(s.Curve)
+                  .Append(" energy=").Append(s.Energy.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture))
+                  .Append(" color=#").Append(s.Color.ToHtml(false)).Append('\n');
+            }
+
+            return sb.ToString();
         }
 
         private ulong HashBlockers()
