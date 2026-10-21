@@ -132,6 +132,8 @@ production/*
 !production/session-state/
 production/session-state/*
 !production/session-state/.gitkeep
+# Hooks may run from the C# source directory; their session logs stay local too.
+/godot/GUO/src/production/session-logs/
 # Browser-automation snapshots.
 .playwright-mcp/
 
