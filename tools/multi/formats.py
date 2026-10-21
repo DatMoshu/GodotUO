@@ -356,7 +356,7 @@ def write_fiddler_wsc(tiles: list[Tile]) -> str:
 # --- CSV ---------------------------------------------------------------------------------------
 
 def _fiddler_hex32(token: str) -> int:
-    digits=token.removeprefix('0x').removeprefix('0X')
+    digits=token[2:] if token[:2].lower()=='0x' else token
     if not re.fullmatch('[0-9a-fA-F]+',digits): raise FormatError('expected hexadecimal int32')
     digits=digits.lstrip('0') or '0'
     if len(digits)>8: raise FormatError('hexadecimal value exceeds int32 bits')

@@ -35,7 +35,8 @@ class FiddlerCsvTests(unittest.TestCase):
 
     def test_invalid_records_and_extra_alignment_are_refused(self):
         for row in ('','1,0,0,0','1,0,0,0,1,bad','1,0,0,0,100000000,0','10000,0,0,0,1,0',
-                    '1,32768,0,0,1,0','1,0,0,0,1,2147483648','1,0,0,0,1,0,ignored'):
+                    '1,32768,0,0,1,0','1,0,0,0,1,2147483648','1,0,0,0,1,0,ignored',
+                    '1,0,0,0,0x0X100,0','1,0,0,0,1,0x0X100'):
             with self.subTest(row=row),self.assertRaises(formats.FormatError): formats.read_fiddler_csv(row)
         ctx=gen_cli.Context(user=False)
         for extra in ([],[2**31],[1.5],['1']):
