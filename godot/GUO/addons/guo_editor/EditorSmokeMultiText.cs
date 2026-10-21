@@ -155,6 +155,7 @@ public partial class EditorSmoke
         review.EmitSignal(ConfirmationDialog.SignalName.Confirmed); await Frames(2);
         MeCheck("fiddler_uoa_reviewed_export_keeps_document",File.Exists(hued) && File.ReadAllText(hued).EndsWith("1650 1 1 -2 -2147483648\r\n") && doc.Parts[0].Hue==21);
         view.NewMulti();
+        await MeFiddlerWscAsync(view,dir);
     }
 }
 #endif

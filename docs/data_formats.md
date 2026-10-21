@@ -1831,6 +1831,12 @@ Same parameters and seed, same bytes.
   metadata cannot be assigned to a different part merely because aggregate counts match.
   UOA's first three header values are ignored as in Fiddler; output normalizes them to version 6/template 1/item −1,
   with the current count in the fourth line. Both profiles retain signed raw `text_flags` and review hue loss.
+  `wsc-fiddler` is separately explicit: complete decimal ID/X/Y/Z sections, pinned Fiddler world-coordinate
+  normalization and optional `dynamic_ids` uint16 list (listed IDs import hidden). It ignores Color and exports
+  canonical tab-separated CRLF with Color 0 and no stored flags. Editor export requires hue/flag-loss consent.
+  ID 65535, incomplete/duplicate fields and overflow are refused; input/output are bounded to 4 MiB and 65,535
+  components. Automatic detection keeps the existing color-retaining `wsc` profile. See
+  `docs/editor/multi_fiddler_wsc.md` for the seeded-minimum heuristic and explicit sentinel refusal.
 
 The validator (section 16) also refuses a roof with floor open to the sky, a door with nowhere to stand on a side, and
 a stair whose foot is unreachable, whose arrival is not floor above, whose hole is not cut, or that does not climb the

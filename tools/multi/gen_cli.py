@@ -26,6 +26,7 @@ from generate import DescriptionError  # noqa: E402
 from multifile import Component  # noqa: E402
 
 OPS = ("styles", "house", "autowall", "roof", "stairs", "rotate", "mirror", "import", "export", "validate-style")
+REVIEWED_TEXT = ("txt-fiddler", "uoa-fiddler", "wsc-fiddler")
 
 
 class Context:
@@ -126,8 +127,8 @@ def assert_entry_order(comps: list[Component], op: str, table: dict) -> None:
 def op_import(ctx: Context, p: dict) -> dict:
     t0 = time.perf_counter()
     if "path" in p:
-        if p.get("format") in ("txt-fiddler", "uoa-fiddler") and Path(p["path"]).stat().st_size > 4 * 1024 * 1024:
-            raise formats.FormatError("Fiddler TXT exceeds 4 MiB")
+        if p.get("format") in REVIEWED_TEXT and Path(p["path"]).stat().st_size > 4 * 1024 * 1024:
+            raise formats.FormatError("Fiddler text exceeds 4 MiB")
         data = Path(p["path"]).read_bytes()
         name = Path(p["path"]).name
     else:
@@ -135,13 +136,18 @@ def op_import(ctx: Context, p: dict) -> dict:
         name = p.get("name", "")
     fmt = p.get("format") or formats.detect(name, data[:512])
     tiles = formats.read(fmt, data)
-    if p.get("recentre", fmt not in ("txt-fiddler", "uoa-fiddler")):
+    if fmt == "wsc-fiddler" and "dynamic_ids" in p:
+        dynamic_ids = p["dynamic_ids"]
+        if not isinstance(dynamic_ids,list) or len(dynamic_ids)>65535 or any(type(i) is not int or not 0<=i<=65535 for i in dynamic_ids):
+            raise formats.FormatError("WSC dynamic_ids must be a bounded list of uint16 decimal IDs")
+        tiles = formats.read_fiddler_wsc(data.decode("utf-8-sig","replace"),set(dynamic_ids))
+    if p.get("recentre", fmt not in REVIEWED_TEXT):
         tiles = formats.recentre(tiles)
-    if fmt in ("txt-fiddler", "uoa-fiddler"): formats.write_fiddler_txt(tiles)  # validates centered int16 bounds too
+    if fmt in REVIEWED_TEXT: formats.write_fiddler_txt(tiles)  # validates centered int16 bounds too
     out = {"components": kit.comps_out(formats.comps_of(tiles)), "format": fmt, "notes": [], "ms": kit.ms_since(t0)}
     if any(t.hue for t in tiles):
         out["hues"] = [t.hue for t in tiles]
-    if fmt in ("txt-fiddler", "uoa-fiddler"): out["text_flags"] = [t.text_flags for t in tiles]
+    if fmt in REVIEWED_TEXT: out["text_flags"] = [t.text_flags for t in tiles]
     return out
 
 
@@ -150,15 +156,15 @@ def op_export(ctx: Context, p: dict) -> dict:
     fmt = p["format"]
     hues = p.get("hues") or []
     flags = p.get("text_flags") or []
-    if fmt in ("txt-fiddler", "uoa-fiddler"):
+    if fmt in REVIEWED_TEXT:
         rows = p["components"]
         if not isinstance(rows, list) or not 1 <= len(rows) <= 65535:
-            raise formats.FormatError("Fiddler TXT requires 1 to 65535 components")
+            raise formats.FormatError("Fiddler text requires 1 to 65535 components")
         if any(not isinstance(row, list) or len(row) not in (4, 5) or any(type(value) is not int for value in row[:4])
                or (len(row) == 5 and row[4] not in (0, 1)) for row in rows):
-            raise formats.FormatError("Fiddler TXT components require integer ID/X/Y/Z and optional 0/1 visibility; use text_flags for raw flags")
+            raise formats.FormatError("Fiddler text components require integer ID/X/Y/Z and optional 0/1 visibility; use text_flags for raw flags")
         if "text_flags" in p and (not isinstance(p["text_flags"], list) or len(p["text_flags"]) != len(rows)):
-            raise formats.FormatError("Fiddler TXT text_flags must match the component count")
+            raise formats.FormatError("Fiddler text text_flags must match the component count")
     tiles = [formats.Tile(c.item, c.x, c.y, c.z, c.visible, hues[i] if i < len(hues) else 0,
                          text_flags=flags[i] if i < len(flags) else None)
              for i, c in enumerate(comps_in(p["components"]))]
@@ -166,14 +172,14 @@ def op_export(ctx: Context, p: dict) -> dict:
     out = {"format": fmt, "bytes": len(data), "ms": kit.ms_since(t0)}
     if "path" in p:
         target = Path(p["path"])
-        if fmt in ("txt-fiddler", "uoa-fiddler"):
+        if fmt in REVIEWED_TEXT:
             from guo import load_config
             cfg = load_config()
             roots = [Path(value).resolve() for value in (cfg.client_data, cfg.client_data_env, cfg.client_data_setting) if str(value).strip() not in ('', '.')]
             def guard():
                 if not roots: raise formats.FormatError('Configure UO_CLIENT_DATA before writing; the read-only installation boundary must be known')
                 if target.is_symlink() or any(target.resolve().is_relative_to(root) for root in roots):
-                    raise formats.FormatError('Fiddler TXT output cannot write into the read-only installation or through a file link')
+                    raise formats.FormatError('Fiddler text output cannot write into the read-only installation or through a file link')
             guard(); target.parent.mkdir(parents=True, exist_ok=True)
             temporary = target.with_name(target.name + '.tmp-' + uuid.uuid4().hex)
             try:

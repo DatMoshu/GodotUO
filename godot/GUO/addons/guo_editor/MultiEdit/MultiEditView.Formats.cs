@@ -24,7 +24,8 @@ public partial class MultiEditView
         ("uoa-fiddler", "uoa", "UO Architect text (Fiddler, decimal IDs)"),
         ("uoa", "uoa", "GUO legacy UOA text"),
         ("uoab", "uoab", "UO Architect binary"),
-        ("wsc", "wsc", "WSC world items"),
+        ("wsc-fiddler", "wsc", "Fiddler WSC (reviewed world items)"),
+        ("wsc", "wsc", "GUO legacy WSC (keeps Color)"),
         ("csv-punt", "csv", "CSV (PUNT)"),
         ("csv-swerv", "csv", "CSV (SWERV)"),
         ("centred", "csv", "CentrED# blueprint"),
@@ -106,7 +107,8 @@ public partial class MultiEditView
         {
             try
             {
-                if (_doc.Parts.Any(p => p.Hue != 0)) throw new IOException("This Fiddler text format cannot carry hue. Use the reviewed export menu to confirm the loss, or choose a hue-capable format.");
+                if (_doc.Parts.Any(p => p.Hue != 0) || (format == "wsc-fiddler" && _doc.Parts.Any(p => p.ExportTextFlags != 1)))
+                    throw new IOException("This format would lose hue or visibility/flags. Use the reviewed export menu to confirm the loss, or choose a preserving format.");
                 MultiTextSnapshot snapshot = new(_doc);
                 var lifetime = _writeLifetime.Token;
                 byte[] bytes = await FiddlerTextBytesAsync(snapshot.Parts, format);

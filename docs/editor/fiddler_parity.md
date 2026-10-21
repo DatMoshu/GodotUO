@@ -147,6 +147,12 @@ IDs, matching header normalization, retained signed flags and the shared
 coordinate/hue-loss review. It has its own pinned reader/exporter comparison;
 UO Architect binary and other multi formats remain separate.
 
+F24a's [reviewed Fiddler WSC](multi_fiddler_wsc.md) adds explicit coordinate-heuristic
+review, optional dynamic-ID classification, canonical text output and hue/flag-loss
+consent. It preserves the legacy color-retaining WSC profile and refuses Fiddler's
+65535 sentinel defect. Its independent probe records the legacy differences;
+spatial rendering, settings migration and other formats remain separate.
+
 Phase 1 proposal, 2026-10-19. guo-director first-pass review received;
 catalogue and survey await guo-director and exec-fable sign-off.
 F01a has separate director authorization for assignment (inbox #11093);

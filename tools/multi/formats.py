@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import re
 import struct
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import sys
@@ -303,6 +303,53 @@ def write_wsc(tiles: list[Tile]) -> str:
                    for i, t in enumerate(tiles))
 
 
+def read_fiddler_wsc(text: str, dynamic_ids=()) -> list[Tile]:
+    """Bounded complete WSC records with Fiddler's coordinate/dynamic-ID semantics.
+
+    Refuse its 0xFFFF sentinel defect and incomplete/duplicate fields instead of
+    returning zero-filled or inherited components. Unknown world fields are inert.
+    """
+    if len(text.encode('utf-8')) > 4 * 1024 * 1024: raise FormatError('Fiddler WSC exceeds 4 MiB')
+    out, fields = [], None
+    def finish():
+        if fields is None: return
+        if not {'ID','X','Y','Z'} <= fields.keys(): raise FormatError('Fiddler WSC requires ID, X, Y and Z in every section')
+        ident = fields['ID']
+        if not 0 <= ident < 65535: raise FormatError('Fiddler WSC ID must be 0..65534; 65535 is the reader sentinel')
+        if any(not -32768 <= fields[k] <= 32767 for k in ('X','Y','Z')): raise FormatError('Fiddler WSC offsets must fit int16')
+        out.append(Tile(ident, fields['X'], fields['Y'], fields['Z'], ident not in dynamic_ids,
+                        text_flags=0 if ident in dynamic_ids else 1))
+        if len(out) > 65535: raise FormatError('Fiddler WSC exceeds 65535 components')
+    for number, line in enumerate(text.splitlines(),1):
+        line = line.strip()
+        if line.startswith('SECTION WORLDITEM'):
+            finish(); fields = {}
+        elif line and line not in ('{','}'):
+            words = line.split()
+            if words[0] in ('ID','X','Y','Z'):
+                if fields is None or len(words) != 2 or words[0] in fields or not re.fullmatch('[+-]?[0-9]+',words[1]):
+                    raise FormatError(f'Fiddler WSC line {number}: expected one decimal {words[0]} field per section')
+                digits = words[1].lstrip('+-0') or '0'
+                if len(digits)>5: raise FormatError(f'Fiddler WSC line {number}: numeric overflow')
+                fields[words[0]] = int(digits) * (-1 if words[1].startswith('-') else 1)
+    finish()
+    if not out: raise FormatError('Fiddler WSC requires 1 to 65535 components')
+    # Preserve the pinned reader's initial 10000 minimum and zero maximum.
+    min_x, min_y = min(10000,min(t.x for t in out)), min(10000,min(t.y for t in out))
+    max_x, max_y = max(0,max(t.x for t in out)), max(0,max(t.y for t in out))
+    if min_x>0 and min_y>0 and min_x>max_x-min_x and min_y>max_y-min_y:
+        out = [replace(t,x=t.x-min_x,y=t.y-min_y) for t in out]
+    return out
+
+
+def write_fiddler_wsc(tiles: list[Tile]) -> str:
+    write_fiddler_txt(tiles)  # shared strict ID, coordinate, flag and count validation
+    if any(t.item == 65535 for t in tiles): raise FormatError('Fiddler WSC cannot export sentinel ID 65535')
+    result = ''.join(f'SECTION WORLDITEM {i}\r\n{{\r\n\tID\t{t.item}\r\n\tX\t{t.x}\r\n\tY\t{t.y}\r\n\tZ\t{t.z}\r\n\tColor\t0\r\n}}\r\n' for i,t in enumerate(tiles))
+    if len(result) > 4 * 1024 * 1024: raise FormatError('Fiddler WSC output exceeds 4 MiB')
+    return result
+
+
 # --- CSV ---------------------------------------------------------------------------------------
 
 def _csv_rows(text: str) -> list[list[str]]:
@@ -375,6 +422,7 @@ def write_uox3(tiles: list[Tile]) -> str:
 # --- dispatch ----------------------------------------------------------------------------------
 
 FORMATS = {
+    "wsc-fiddler": "Fiddler WSC (reviewed world items)",
     "uoa-fiddler": "UO Architect text (Fiddler)",
     "txt-fiddler": "Fiddler TXT (hexadecimal IDs)",
     "txt": "GUO legacy text (decimal IDs unless 0x-prefixed)", "uoa": "UO Architect text", "uoab": "UO Architect binary",
@@ -408,7 +456,7 @@ def read(fmt: str, data: bytes) -> list[Tile]:
         ds = read_uoab(data)
         return [t for d in ds for t in d.tiles]
     text = data.decode("utf-8-sig", "replace")
-    readers = {"txt": read_txt, "txt-fiddler": read_fiddler_txt, "uoa-fiddler": read_fiddler_uoa, "uoa": read_uoa, "wsc": read_wsc, "csv-punt": read_csv, "csv-swerv": read_csv,
+    readers = {"txt": read_txt, "txt-fiddler": read_fiddler_txt, "uoa-fiddler": read_fiddler_uoa, "wsc-fiddler": read_fiddler_wsc, "uoa": read_uoa, "wsc": read_wsc, "csv-punt": read_csv, "csv-swerv": read_csv,
                "centred": read_csv, "uox3": read_uox3}
     if fmt not in readers:
         raise FormatError(f"format '{fmt}': {', '.join(FORMATS)}")
@@ -422,7 +470,7 @@ def write(fmt: str, tiles: list[Tile], name: str = "multi") -> bytes:
         return write_csv(tiles, fmt[4:]).encode("utf-8")
     if fmt == "centred":
         return write_csv(tiles, "centred").encode("utf-8")
-    writers = {"txt": write_txt, "txt-fiddler": write_fiddler_txt, "uoa-fiddler": write_fiddler_uoa, "uoa": write_uoa, "wsc": write_wsc, "uox3": write_uox3}
+    writers = {"txt": write_txt, "txt-fiddler": write_fiddler_txt, "uoa-fiddler": write_fiddler_uoa, "wsc-fiddler": write_fiddler_wsc, "uoa": write_uoa, "wsc": write_wsc, "uox3": write_uox3}
     if fmt not in writers:
         raise FormatError(f"format '{fmt}': {', '.join(FORMATS)}")
     return writers[fmt](tiles).encode("utf-8")
