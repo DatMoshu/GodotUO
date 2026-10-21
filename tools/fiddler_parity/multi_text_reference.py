@@ -38,6 +38,7 @@ def build(source: Path, out: Path | None = None) -> Path:
     csv_reader = csv_tail[:csv_tail.rfind('            }')]
     csv_extra = 'private static int ParseCsvUnk1'+original.split('private static int ParseCsvUnk1',1)[1].split('public void ExportToCsvFile',1)[0]
     csv_export = 'public void ExportToCsvFile'+original.split('public void ExportToCsvFile',1)[1].split('public void ExportToXmlFile',1)[0]
+    uox_export = 'public void ExportToUox3File'+original.split('public void ExportToUox3File',1)[1].split('public void ExportToUOAFile',1)[0]
     declaration = original.split('public struct MultiTileEntry', 1)[1].split('/// <summary>', 1)[0]
     entry = 'public struct MultiTileEntry' + declaration
     # Only the surrounding fields/CLI are ours. The reader case and writer method
@@ -55,14 +56,15 @@ try {
         throw new InvalidDataException("Expected read/write and a bounded input file");
     Reference value;
     if (args[0] == "read" || args[0] == "read-uoa" || args[0] == "read-csv") value = new Reference(args[1], args[0]);
-    else if (args[0] == "write" || args[0] == "write-uoa" || args[0] == "write-csv") {
+    else if (args[0] == "write" || args[0] == "write-uoa" || args[0] == "write-csv" || args[0] == "write-uox3") {
         using var json = JsonDocument.Parse(File.ReadAllBytes(args[1]));
         var rows = json.RootElement.GetProperty("records").EnumerateArray().Select(r => new Reference.MultiTileEntry {
             ItemId = r.GetProperty("id").GetUInt16(), OffsetX = r.GetProperty("x").GetInt16(),
             OffsetY = r.GetProperty("y").GetInt16(), OffsetZ = r.GetProperty("z").GetInt16(),
             Flags = r.GetProperty("flags").GetInt32(), Unk1 = r.TryGetProperty("unknown",out var extra) ? extra.GetInt32() : 0 }).ToArray();
         value = new Reference(rows);
-        if (args[0] == "write-csv") value.ExportToCsvFile(json.RootElement.GetProperty("output").GetString()!);
+        if (args[0] == "write-uox3") value.ExportToUox3File(json.RootElement.GetProperty("output").GetString()!);
+        else if (args[0] == "write-csv") value.ExportToCsvFile(json.RootElement.GetProperty("output").GetString()!);
         else if (args[0] == "write-uoa") value.ExportToUOAFile(json.RootElement.GetProperty("output").GetString()!);
         else value.ExportToTextFile(json.RootElement.GetProperty("output").GetString()!);
     } else throw new InvalidDataException("Expected read or write");
@@ -76,7 +78,7 @@ sealed class Reference {
     public MultiTileEntry[] SortedTiles;
     public Reference(MultiTileEntry[] rows) { SortedTiles = rows; }
     public Reference(string fileName, string format) { _min = _max = Point.Empty; int itemCount; switch (format == "read-csv" ? 2 : format == "read-uoa" ? 1 : 0) { case 0:
-''' + reader + '\ncase 1:\n' + uoa_reader + '\ncase 2:\n' + csv_reader + '\n} }\n' + entry + '\n' + export + '\n' + uoa_export + '\n' + csv_extra + '\n' + csv_export + '\n}\n'
+''' + reader + '\ncase 1:\n' + uoa_reader + '\ncase 2:\n' + csv_reader + '\n} }\n' + entry + '\n' + export + '\n' + uoa_export + '\n' + csv_extra + '\n' + csv_export + '\n' + uox_export + '\n}\n'
     out = (out or location()).resolve(); parity.protect_install(out)
     out.mkdir(parents=True, exist_ok=True)
     (out/'Program.cs').write_text(code, encoding='utf-8')
@@ -86,7 +88,7 @@ sealed class Reference {
     if result.returncode: raise RuntimeError('Fiddler text reference build failed: ' + (result.stdout + result.stderr)[-12000:])
     binary = out/'bin'/'Release'/'net10.0'/'Reference.dll'
     manifest = {'commit': COMMIT, 'source_sha256': SOURCE_SHA256, 'generated_sha256': hashlib.sha256(code.encode()).hexdigest(),
-                'binary_sha256': parity.digest(binary), 'scope': 'unchanged TXT/UOA/CSV cases, CSV extra parser and export methods; no ConvertList or image rendering'}
+                'binary_sha256': parity.digest(binary), 'scope': 'unchanged TXT/UOA/CSV cases, CSV extra parser and TXT/UOA/CSV/UOX3 exporters; UOX3 export only; no ConvertList or image rendering'}
     (out/'identity.json').write_text(json.dumps(manifest, indent=2)+'\n', encoding='utf-8')
     return binary
 

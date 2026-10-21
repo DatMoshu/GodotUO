@@ -26,7 +26,7 @@ from generate import DescriptionError  # noqa: E402
 from multifile import Component  # noqa: E402
 
 OPS = ("styles", "house", "autowall", "roof", "stairs", "rotate", "mirror", "import", "export", "validate-style")
-REVIEWED_TEXT = ("txt-fiddler", "uoa-fiddler", "wsc-fiddler", "csv-fiddler")
+REVIEWED_TEXT = ("txt-fiddler", "uoa-fiddler", "wsc-fiddler", "csv-fiddler", "uox3-fiddler")
 
 
 class Context:

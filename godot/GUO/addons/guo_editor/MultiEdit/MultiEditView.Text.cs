@@ -15,7 +15,7 @@ public partial class MultiEditView
 {
     internal ConfirmationDialog TextReview { get; private set; }
     private int _textReviewRequest;
-    internal static bool IsReviewedText(string format) => format is "txt-fiddler" or "uoa-fiddler" or "wsc-fiddler" or "csv-fiddler";
+    internal static bool IsReviewedText(string format) => format is "txt-fiddler" or "uoa-fiddler" or "wsc-fiddler" or "csv-fiddler" or "uox3-fiddler";
 
     private async Task<MultiPart[]> ReadFiddlerTextAsync(byte[] bytes, string format = "txt-fiddler")
     {
@@ -47,8 +47,10 @@ public partial class MultiEditView
         {
             int request = ++_textReviewRequest;
             if (!IsReviewedText(format)) throw new IOException("Choose a supported reviewed text format.");
+            if (!export && IsExportOnly(format)) throw new IOException("Fiddler UOX3 is export-only. Choose legacy UOX3 to import.");
             bool uoa = format == "uoa-fiddler", wsc = format == "wsc-fiddler", csv=format=="csv-fiddler";
-            string extension = csv ? "CSV" : wsc ? "WSC" : uoa ? "UOA" : "TXT";
+            bool uox = IsExportOnly(format);
+            string extension = uox ? "UOX3" : csv ? "CSV" : wsc ? "WSC" : uoa ? "UOA" : "TXT";
             string label = $"Fiddler {extension}";
             var lifetime = _writeLifetime.Token;
             TextReview?.QueueFree(); TextReview = null;
@@ -69,7 +71,7 @@ public partial class MultiEditView
             if (uoa) body.AddChild(AssetUi.Label("Fiddler ignores the first three input header values. Export writes version 6, template 1, item version −1 and the current component count."));
             if (csv) body.AddChild(AssetUi.Label("CSV retains signed 32-bit flags and Unk1. IDs/flags export as hexadecimal; offsets stay decimal. Other formats refuse nonzero Unk1 loss."));
             int opaque = original.Count(p => p.ExportTextFlags is not (0 or 1));
-            body.AddChild(AssetUi.Label(wsc
+            body.AddChild(AssetUi.Label(uox ? "UOX3 exports item IDs and offsets only. Flags and visibility are omitted; every record becomes a house item. Order and duplicates stay unchanged." : wsc
                 ? (export ? "WSC writes Color 0 and no flags. Fiddler may shift positive coordinates when reopening it. ID 65535 is refused to avoid its sentinel defect."
                     : "Color is ignored. The table shows Fiddler's imported offsets after its world-coordinate heuristic. ID 65535 is refused to avoid its sentinel defect.")
                 : $"{opaque:N0} components have flags beyond 0/1. Project copies and {label} retain them; native staging requires a separate flag translation."));
@@ -88,17 +90,17 @@ public partial class MultiEditView
                 body.AddChild(centre);
             }
             int hued = original.Count(p => p.Hue != 0);
-            int flagLoss = wsc ? original.Count(p => p.ExportTextFlags != 1) : 0;
+            int flagLoss = wsc || uox ? original.Count(p => p.ExportTextFlags != 1) : 0;
             if (export && (hued > 0 || flagLoss > 0))
             {
-                loss = new CheckBox { Text = wsc ? $"Export with Color 0 and no flags ({hued:N0} hued · {flagLoss:N0} changed flags)" : $"Export without hue ({hued:N0} components)",
+                loss = new CheckBox { Text = uox ? $"Export without hue or flags ({hued:N0} hued · {flagLoss:N0} changed flags)" : wsc ? $"Export with Color 0 and no flags ({hued:N0} hued · {flagLoss:N0} changed flags)" : $"Export without hue ({hued:N0} components)",
                     TooltipText = $"{label} cannot preserve these fields. The working document keeps them.", AccessibilityName = "Confirm field loss in text export" };
                 body.AddChild(loss); dialog.GetOkButton().Disabled = true;
                 loss.Toggled += value => dialog.GetOkButton().Disabled = !value;
             }
             var bounds = AssetUi.Label(""); body.AddChild(bounds);
             var rows = new Tree { Columns = csv ? 6 : 5, HideRoot = true, ColumnTitlesVisible = true, AccessibilityName = "Reviewed multi components",
-                CustomMinimumSize = new Vector2(0, wsc ? 160 : csv ? 180 : 200) * EditorInterface.Singleton.GetEditorScale() }; body.AddChild(rows);
+                CustomMinimumSize = new Vector2(0, wsc || uox ? 160 : csv ? 180 : 200) * EditorInterface.Singleton.GetEditorScale() }; body.AddChild(rows);
             foreach (var c in new[] { (0,"Item ID"), (1,"X"), (2,"Y"), (3,"Z"), (4,"Flags") }) rows.SetColumnTitle(c.Item1,c.Item2);
             if(csv) rows.SetColumnTitle(5,"Unk1");
             var status = AssetUi.Label(""); status.Visible = false; body.AddChild(status);
@@ -133,7 +135,7 @@ public partial class MultiEditView
             if (centre != null) centre.Toggled += _ => Show();
             if (dynamic != null) dynamic.TextChanged += _ => Show();
             if (original.Length > 200) body.AddChild(AssetUi.Label("First 200 components shown; the operation includes every reviewed component."));
-            body.AddChild(AssetUi.Label(export ? $"Windows-compatible {extension} · {(wsc ? "Color 0, no flags or level" : "no hue or level fields")} · working document unchanged" : "Opens a new working copy · installed data unchanged"));
+            body.AddChild(AssetUi.Label(export ? $"Windows-compatible {extension} · {(uox ? "no hue, flags or level" : wsc ? "Color 0, no flags or level" : "no hue or level fields")} · working document unchanged" : "Opens a new working copy · installed data unchanged"));
             dialog.Confirmed += () =>
             {
                 try

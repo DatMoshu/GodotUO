@@ -31,6 +31,7 @@ public partial class MultiEditView
         ("csv-swerv", "csv", "CSV (SWERV)"),
         ("centred", "csv", "CentrED# blueprint"),
         ("uox3", "dfn", "UOX3 house items"),
+        ("uox3-fiddler", "dfn", "Fiddler UOX3 (reviewed export only)"),
     };
 
     private void BuildFormatMenus(Control bar)
@@ -41,6 +42,7 @@ public partial class MultiEditView
             PopupMenu pop = menu.GetPopup();
             for (int i = 0; i < LegacyFormats.Length; i++)
             {
+                if (!export && IsExportOnly(LegacyFormats[i].Format)) continue;
                 pop.AddItem(LegacyFormats[i].Label, i);
             }
 
@@ -51,7 +53,13 @@ public partial class MultiEditView
     }
 
     /// <summary>Opens the import dialog for one format (F3).</summary>
-    public void ImportDialog(string format) => OpenFormatDialog(LegacyFormats.First(f => f.Format == format), false);
+    public void ImportDialog(string format)
+    {
+        if (IsExportOnly(format)) { _status.Text="Fiddler UOX3 is export-only. Choose UOX3 house items to import."; return; }
+        OpenFormatDialog(LegacyFormats.First(f => f.Format == format), false);
+    }
+
+    internal static bool IsExportOnly(string format) => format == "uox3-fiddler";
 
     /// <summary>Opens the export dialog for one format (F3).</summary>
     public void ExportDialog(string format) => OpenFormatDialog(LegacyFormats.First(f => f.Format == format), true);
@@ -113,7 +121,7 @@ public partial class MultiEditView
         {
             try
             {
-                if (_doc.Parts.Any(p => p.Hue != 0) || (format == "wsc-fiddler" && _doc.Parts.Any(p => p.ExportTextFlags != 1)))
+                if (_doc.Parts.Any(p => p.Hue != 0) || (format is "wsc-fiddler" or "uox3-fiddler" && _doc.Parts.Any(p => p.ExportTextFlags != 1)))
                     throw new IOException("This format would lose hue or visibility/flags. Use the reviewed export menu to confirm the loss, or choose a preserving format.");
                 MultiTextSnapshot snapshot = new(_doc);
                 var lifetime = _writeLifetime.Token;
@@ -150,6 +158,7 @@ public partial class MultiEditView
     /// <summary>Opens a file of another tool's format (detected from its name and head when <paramref name="format"/> is null).</summary>
     public async Task<string> ImportFileAsync(string path, string format = null)
     {
+        if (IsExportOnly(format)) return "Fiddler UOX3 is export-only. Choose legacy UOX3 to read house-item blocks.";
         if (IsReviewedText(format))
         {
             try

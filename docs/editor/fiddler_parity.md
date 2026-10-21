@@ -159,6 +159,12 @@ one-to-one transforms. It adds an extra review column and refuses nonzero
 extra-field loss to other formats/native staging. Legacy CSV dialects remain
 separate; native translation and spatial rendering are not certified here.
 
+F24a's [reviewed Fiddler UOX3 export](multi_fiddler_uox3.md) adds canonical
+HOUSE ITEM output with explicit hue/flag-loss consent and protected atomic
+writing. It is export-only; the legacy GUO UOX3 reader remains separate.
+Independent verification compares bytes with Fiddler's unchanged exporter;
+no Fiddler import or UOX3 server-behavior certification is implied.
+
 Phase 1 proposal, 2026-10-19. guo-director first-pass review received;
 catalogue and survey await guo-director and exec-fable sign-off.
 F01a has separate director authorization for assignment (inbox #11093);

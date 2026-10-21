@@ -69,6 +69,7 @@ public partial class EditorSmoke
         review.FindChildren("*","CheckBox",true,false).OfType<CheckBox>().Single().ButtonPressed=true; review.EmitSignal(ConfirmationDialog.SignalName.Confirmed); await Frames(2);
         MeCheck("fiddler_csv_reviewed_export_keeps_extra_and_working_hue",File.Exists(hued) && File.ReadAllText(hued).Contains("0x100,0x100") && doc.Parts[0].Hue==21 && doc.Parts[1].TextExtra==int.MinValue);
         view.NewMulti();
+        await MeFiddlerUox3Async(view,dir);
     }
 }
 #endif

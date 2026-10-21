@@ -1837,6 +1837,12 @@ Same parameters and seed, same bytes.
   ID 65535, incomplete/duplicate fields and overflow are refused; input/output are bounded to 4 MiB and 65,535
   components. Automatic detection keeps the existing color-retaining `wsc` profile. See
   `docs/editor/multi_fiddler_wsc.md` for the seeded-minimum heuristic and explicit sentinel refusal.
+  `uox3-fiddler` is an explicit export-only profile: numbered HOUSE ITEM blocks,
+  uppercase four-digit hexadecimal IDs, decimal int16 offsets, no indentation,
+  Windows CRLF and a blank line after each block. It retains order/duplicates but
+  omits flags, hue and level. The editor reviews hue/flag loss; nonzero CSV Unk1
+  is refused. Legacy `uox3` import/export and detection stay separate. The pinned
+  Fiddler source supplies an exporter only; no independent importer is claimed.
   `csv-fiddler` is also explicit: hexadecimal uint16 IDs/int32 flag bit patterns, decimal int16 offsets and
   trailing signed int32 Unk1 (decimal or 0x hex on input, empty/absent means zero). Its parallel `text_extra`
   array preserves Unk1 alongside `text_flags`; both arrays must match component count and int32 bounds.

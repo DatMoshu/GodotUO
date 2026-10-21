@@ -197,6 +197,7 @@ def run(check) -> None:
     # --- formats
     tiles =[formats.Tile(0x203, -3, -3, 7, True, 0x44), formats.Tile(0x6A5, 0, 3, 7, False, 0), formats.Tile(0x1, 5, -2, -1, True, 0)]
     for fmt in formats.FORMATS:
+        if fmt=='uox3-fiddler': continue  # export-only, covered by test_fiddler_uox3
         data = formats.write(fmt, tiles)
         back = formats.read(fmt, data)
         hue_ok = fmt in ("wsc", "centred", "uoab")

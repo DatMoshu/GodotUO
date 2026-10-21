@@ -138,10 +138,13 @@ public partial class EditorSmoke
             string[] missing = want.Where(w => !titles.Contains(w)).ToArray();
             foreach ((string format, _, string label) in MultiEditView.LegacyFormats)
             {
-                missing = missing.Concat(new[] { $"Multi Editor: import {label}", $"Multi Editor: export {label}" }.Where(w => !titles.Contains(w))).ToArray();
+                string[] expected = MultiEditView.IsExportOnly(format) ? new[] { $"Multi Editor: export {label}" } : new[] { $"Multi Editor: import {label}", $"Multi Editor: export {label}" };
+                missing = missing.Concat(expected.Where(w => !titles.Contains(w))).ToArray();
             }
 
             MeCheck("f3_has_every_new_action", missing.Length == 0, string.Join(", ", missing));
+            MeCheck("f3_export_only_has_no_import", MultiEditView.LegacyFormats.Where(f => MultiEditView.IsExportOnly(f.Format))
+                .All(f => !titles.Contains($"Multi Editor: import {f.Label}")));
             _meReport["f3_multi_entries"] = guo.Entries.Count(e => e.Kind == "Multi");
         }
     }

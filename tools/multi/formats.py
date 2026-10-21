@@ -468,9 +468,18 @@ def write_uox3(tiles: list[Tile]) -> str:
                    for i, t in enumerate(tiles))
 
 
+def write_fiddler_uox3(tiles: list[Tile]) -> str:
+    write_fiddler_txt(tiles)  # shared scalar/count validation and nonzero Unk1 guard
+    result = ''.join(f'[HOUSE ITEM {i}]\r\n{{\r\nITEM=0x{t.item:04X}\r\nX={t.x}\r\nY={t.y}\r\nZ={t.z}\r\n}}\r\n\r\n'
+                     for i,t in enumerate(tiles))
+    if len(result)>4*1024*1024: raise FormatError('Fiddler UOX3 output exceeds 4 MiB')
+    return result
+
+
 # --- dispatch ----------------------------------------------------------------------------------
 
 FORMATS = {
+    "uox3-fiddler": "Fiddler UOX3 (reviewed export only)",
     "csv-fiddler": "Fiddler CSV (hex IDs/flags, retained Unk1)",
     "wsc-fiddler": "Fiddler WSC (reviewed world items)",
     "uoa-fiddler": "UO Architect text (Fiddler)",
@@ -502,6 +511,7 @@ def detect(name: str, head: bytes) -> str:
 
 
 def read(fmt: str, data: bytes) -> list[Tile]:
+    if fmt=='uox3-fiddler': raise FormatError('Fiddler UOX3 is export-only; use legacy uox3 to read house-item blocks')
     if fmt == "uoab":
         ds = read_uoab(data)
         return [t for d in ds for t in d.tiles]
@@ -514,6 +524,7 @@ def read(fmt: str, data: bytes) -> list[Tile]:
 
 
 def write(fmt: str, tiles: list[Tile], name: str = "multi") -> bytes:
+    if fmt=='uox3-fiddler': return write_fiddler_uox3(tiles).encode('ascii')
     if fmt!='csv-fiddler' and any(t.text_extra not in (None,0) for t in tiles):
         raise FormatError('This format cannot preserve nonzero CSV Unk1; choose csv-fiddler')
     if fmt=='csv-fiddler': return write_fiddler_csv(tiles).encode('ascii')
