@@ -9,6 +9,7 @@
   kind "anim"              id = body; meta {"action", "direction"}; data = the raw MUL payload for that
                            body/action/direction (palette, frame count, lookup table, frames)
   kind "tiledata-item"     id = item id; data = b""; meta = the fields to set (see uodata_write.TILE_FIELDS)
+                           or data = exact modern 41-byte record, meta = {}, explicit replace required
   kind "hue"               id = hue number (1-based); data = the 88-byte hues.mul block
   kind "texmap"            id = physical texidx row (resolve TexTerr.def before writing);
                            data = 8,192 or 32,768 raw bytes, including every original 16-bit color

@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Nodes;
 using Godot;
 
 public partial class EditorSmoke
@@ -45,10 +46,25 @@ public partial class EditorSmoke
         var reopened = ItemMetadataDocument.Open(_assetRoot, input, 7, ItemMetadataDocument.ReadRecord(source, 7));
         MetadataCheck("save_reload", reopened.Current == document.Current && !reopened.IsDirty && !document.IsDirty);
         MetadataCheck("native_file_unchanged", File.ReadAllBytes(source).AsSpan().SequenceEqual(file));
+        string nativeToken = document.ReviewToken;
+        JsonNode native = JsonNode.Parse(document.NativeStageInput(_assetRoot, input, source, nativeToken));
+        MetadataCheck("native_export_full_record", (string)native["domain"] == "item-metadata"
+            && Convert.FromBase64String((string)native["records"][0]["source_record_base64"]).AsSpan().SequenceEqual(raw)
+            && Convert.FromBase64String((string)native["records"][0]["record_base64"]).AsSpan().SequenceEqual(document.PreviewRecord()));
+        bool Refused(Action action) { try { action(); return false; } catch (IOException) { return true; } }
+        document.Edit("native changed", 0, 0);
+        MetadataCheck("native_stale_document_refused", Refused(() => document.NativeStageInput(_assetRoot, input, source, nativeToken)));
+        document.Undo();
+        string savedPath = ItemMetadataDocument.DocumentPath(_assetRoot, input, 7); byte[] savedBytes = File.ReadAllBytes(savedPath);
+        File.AppendAllText(savedPath, " ");
+        MetadataCheck("native_external_saved_copy_refused", Refused(() => document.NativeStageInput(_assetRoot, input, source, document.ReviewToken)));
+        MetadataCheck("external_saved_copy_save_refused", Refused(() => document.Save(_assetRoot, input, source)));
+        File.WriteAllBytes(savedPath, savedBytes);
         bool sourceRefusal = false, installRefusal = false, loadRefusal = false;
         file[landBytes + 4 + 7 * 41 + 8] ^= 1;
         File.WriteAllBytes(source, file);
         try { document.Save(_assetRoot, input, source); } catch (IOException) { sourceRefusal = true; }
+        MetadataCheck("native_source_change_refused", Refused(() => document.NativeStageInput(_assetRoot, input, source, document.ReviewToken)));
         try { ItemMetadataDocument.Open(_assetRoot, input, 7, ItemMetadataDocument.ReadRecord(source, 7)); }
         catch (IOException) { loadRefusal = true; }
         try { ItemMetadataDocument.DocumentPath(input, input, 7); } catch (IOException) { installRefusal = true; }
@@ -64,6 +80,41 @@ public partial class EditorSmoke
         discard?.EmitSignal(AcceptDialog.SignalName.Canceled);
         MetadataCheck("cancel_retains_work", reopened.IsDirty && dialog.Visible);
         dialog.Free();
+    }
+
+    private void CheckMetadataNativeRecovery()
+    {
+        var settings = EditorInterface.Singleton.GetEditorSettings();
+        Variant previous = settings.GetProjectMetadata("guo_assets", "metadata_drafts", new Godot.Collections.Array());
+        var editor = new ItemMetadataEditor(); AddChild(editor);
+        try
+        {
+            int id = 26; string root = _data.Assets.Root;
+            var rows = new Godot.Collections.Array<Godot.Collections.Dictionary>
+            {
+                new() { ["root"] = root, ["id"] = id, ["hash"] = "stale-source", ["name"] = "retained stale name", ["flags"] = "0x0", ["height"] = "1" },
+                new() { ["root"] = root, ["id"] = 27, ["hash"] = "other-draft", ["name"] = "keep other draft", ["flags"] = "0x0", ["height"] = "2" },
+            };
+            settings.SetProjectMetadata("guo_assets", "metadata_drafts", rows); editor.Bind(_data, id);
+            bool refused = false;
+            try { editor.CaptureNativeReview(_data, id); } catch (IOException) { refused = true; }
+            MetadataCheck("native_stale_recovery_refused", refused && editor.SaveButton.Disabled);
+            editor.StashDrafts();
+            var retained = settings.GetProjectMetadata("guo_assets", "metadata_drafts").AsGodotArray();
+            MetadataCheck("native_stale_recovery_retained", retained.Any(v => v.AsGodotDictionary().TryGetValue("native_error", out _)
+                && v.AsGodotDictionary()["name"].AsString() == "retained stale name"));
+            ItemMetadataDocument before = editor.CurrentDocument;
+            editor.Reopen(_data, id); editor.GetChildren().OfType<ConfirmationDialog>().Last().EmitSignal(ConfirmationDialog.SignalName.Canceled);
+            MetadataCheck("native_reopen_cancel_preserves_draft", ReferenceEquals(before, editor.CurrentDocument));
+            editor.Reopen(_data, id); editor.GetChildren().OfType<ConfirmationDialog>().Last().EmitSignal(ConfirmationDialog.SignalName.Confirmed);
+            ItemMetadataNativeReview review = editor.CaptureNativeReview(_data, id);
+            MetadataCheck("native_reopen_discards_only_selected_recovery", !ReferenceEquals(before, editor.CurrentDocument)
+                && settings.GetProjectMetadata("guo_assets", "metadata_drafts").AsGodotArray().All(v => v.AsGodotDictionary()["id"].AsInt32() == 27));
+            bool projectRefused = false;
+            try { editor.RequireNativeReview(_data, review with { Root = Path.Combine(root, "other-project") }); } catch (IOException) { projectRefused = true; }
+            MetadataCheck("native_project_change_refused", projectRefused);
+        }
+        finally { editor.Free(); settings.SetProjectMetadata("guo_assets", "metadata_drafts", previous); }
     }
 
     private void MetadataCheck(string name, bool ok)

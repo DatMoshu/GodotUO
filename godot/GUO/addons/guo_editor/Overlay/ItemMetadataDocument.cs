@@ -10,7 +10,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
 
-/// <summary>F06a working document; no native tiledata writer or runtime mutation.</summary>
+/// <summary>Source-bound item document; native output is a separately reviewed staged copy.</summary>
 public sealed class ItemMetadataDocument
 {
     public readonly record struct Fields(string Name, ulong Flags, byte Height);
@@ -18,6 +18,7 @@ public sealed class ItemMetadataDocument
     private int _cursor;
     private readonly byte[] _original;
     private Fields _saved;
+    private string _documentPath, _fileHash;
     public int Id { get; }
     public Fields Current => _history[_cursor];
     public Fields Original { get; }
@@ -25,6 +26,8 @@ public sealed class ItemMetadataDocument
     public bool CanRedo => _cursor + 1 < _history.Count;
     public bool IsDirty => Current != _saved;
     public string SourceHash => Convert.ToHexString(SHA256.HashData(_original)).ToLowerInvariant();
+    internal string ReviewToken => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+        Id + "|" + SourceHash + "|" + _documentPath + "|" + _fileHash + "|" + Convert.ToBase64String(PreviewRecord())))).ToLowerInvariant();
 
     public ItemMetadataDocument(int id, byte[] record)
     {
@@ -55,7 +58,7 @@ public sealed class ItemMetadataDocument
     public void Redo() { if (CanRedo) _cursor++; }
     public void Revert() => Edit(Original.Name, Original.Flags, Original.Height);
 
-    /// <summary>Preview bytes for preservation checks only; never written to a MUL.</summary>
+    /// <summary>Exact working bytes; native staging separately preserves unexposed staged fields.</summary>
     public byte[] PreviewRecord()
     {
         byte[] record = (byte[])_original.Clone();
@@ -98,6 +101,7 @@ public sealed class ItemMetadataDocument
         if (!ReadRecord(source, Id).AsSpan().SequenceEqual(_original))
             throw new IOException("Source item metadata changed. Reopen the document before saving.");
         string path = DocumentPath(project, install, Id);
+        CheckSavedCopy(path);
         var json = new JsonObject
         {
             ["schema"] = 1, ["kind"] = "guo/item-metadata", ["id"] = Id,
@@ -107,26 +111,60 @@ public sealed class ItemMetadataDocument
         };
         Directory.CreateDirectory(Path.GetDirectoryName(path));
         string temporary = path + ".tmp-" + Guid.NewGuid().ToString("N");
-        File.WriteAllText(temporary, json.ToJsonString(new() { WriteIndented = true }) + "\n");
-        File.Move(temporary, path, overwrite: true);
+        try
+        {
+            File.WriteAllText(temporary, json.ToJsonString(new() { WriteIndented = true }) + "\n");
+            CheckSavedCopy(path);
+            if (!ReadRecord(source, Id).AsSpan().SequenceEqual(_original)) throw new IOException("Source item metadata changed during save.");
+            File.Move(temporary, path, overwrite: true);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        _documentPath = path; _fileHash = SavedHash(path);
         _saved = Current;
+    }
+
+    private static string SavedHash(string path)
+        => File.Exists(path) ? Convert.ToHexString(SHA256.HashData(TextureDocument.Read(path, 16 * 1024))).ToLowerInvariant() : "missing";
+    private void CheckSavedCopy(string path)
+    {
+        if (_documentPath == null)
+        {
+            if (File.Exists(path)) throw new IOException("A saved metadata copy already exists. Reopen it before saving or exporting.");
+        }
+        else if (path != _documentPath || SavedHash(path) != _fileHash)
+            throw new IOException("Saved metadata copy changed outside this document. Reopen it before saving or exporting.");
+    }
+    internal void RequireNativeReview(string project, string install, string source, string token)
+    {
+        if (!ReadRecord(source, Id).AsSpan().SequenceEqual(_original)) throw new IOException("Source item metadata changed. Reopen native export against the current source.");
+        CheckSavedCopy(DocumentPath(project, install, Id));
+        if (ReviewToken != token) throw new IOException("Working item metadata changed. Reopen native export for a fresh review.");
+    }
+    internal byte[] NativeStageInput(string project, string install, string source, string token)
+    {
+        RequireNativeReview(project, install, source, token);
+        return Encoding.UTF8.GetBytes(new JsonObject { ["schema"] = 1, ["domain"] = "item-metadata",
+            ["records"] = new JsonArray(new JsonObject { ["id"] = Id, ["source_record_base64"] = Convert.ToBase64String(_original),
+                ["record_base64"] = Convert.ToBase64String(PreviewRecord()) }) }.ToJsonString());
     }
 
     public static ItemMetadataDocument Open(string project, string install, int id, byte[] source)
     {
         string path = DocumentPath(project, install, id);
-        if (!File.Exists(path)) return new ItemMetadataDocument(id, source);
-        if (new FileInfo(path).Length > 16 * 1024) throw new IOException("Item document is too large.");
-        JsonNode json = JsonNode.Parse(File.ReadAllText(path)) ?? throw new IOException("Empty item document.");
+        if (!File.Exists(path)) return new ItemMetadataDocument(id, source) { _documentPath = path, _fileHash = "missing" };
+        byte[] savedBytes = TextureDocument.Read(path, 16 * 1024);
+        JsonNode json = JsonNode.Parse(savedBytes) ?? throw new IOException("Empty item document.");
         if ((int?)json["schema"] != 1 || (string)json["kind"] != "guo/item-metadata"
             || (string)json["layout"] != "modern-41" || (int?)json["id"] != id)
             throw new IOException("Unsupported or mismatched item document.");
         byte[] original = Convert.FromBase64String((string)json["original"] ?? "");
         if (!source.AsSpan().SequenceEqual(original)) throw new IOException("Item document belongs to a different source record.");
-        var result = new ItemMetadataDocument(id, original);
+        var result = new ItemMetadataDocument(id, original) { _documentPath = path,
+            _fileHash = Convert.ToHexString(SHA256.HashData(savedBytes)).ToLowerInvariant() };
         if ((string)json["source_sha256"] != result.SourceHash) throw new IOException("Item document baseline hash differs.");
         result.Edit((string)json["name"], ParseFlags((string)json["flags"] ?? ""), (int?)json["height"] ?? -1);
         result._saved = result.Current;
+        result.CheckSavedCopy(path);
         return result;
     }
 

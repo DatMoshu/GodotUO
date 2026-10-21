@@ -398,10 +398,7 @@ def tile_offset(item: int) -> int:
 
 
 def read_tile(tiledata: Path, item: int) -> dict:
-    check_tiledata(tiledata)
-    with tiledata.open("rb") as f:
-        f.seek(tile_offset(item))
-        raw = f.read(TILE_STATIC_RECORD)
+    raw = read_tile_record(tiledata, item)
     flags, weight, layer, count, anim, hue, light, height = struct.unpack("<QBBiHHHB", raw[:21])
     return {"flags": flags, "weight": weight, "layer": layer, "count": count, "anim": anim, "hue": hue,
             "light": light, "height": height, "name": raw[21:41].split(b"\0")[0].decode("latin-1")}
@@ -411,9 +408,26 @@ def write_tile(tiledata: Path, item: int, fields: dict) -> None:
     t = {**read_tile(tiledata, item), **fields}
     raw = struct.pack("<QBBiHHHB", t["flags"], t["weight"], t["layer"], t["count"], t["anim"], t["hue"], t["light"],
                       t["height"]) + t["name"].encode("latin-1")[:20].ljust(20, b"\0")
-    with tiledata.open("r+b") as f:
-        f.seek(tile_offset(item))
-        f.write(raw)
+    write_tile_record(tiledata, item, raw)
+
+
+def read_tile_record(tiledata: Path, item: int) -> bytes:
+    check_tiledata(tiledata)
+    if type(item) is not int or not 0 <= item < min(0x10000, static_count(tiledata)):
+        raise ValueError("Item metadata ID must be inside the existing modern tiledata")
+    with tiledata.open("rb") as stream:
+        stream.seek(tile_offset(item))
+        return stream.read(TILE_STATIC_RECORD)
+
+
+def write_tile_record(tiledata: Path, item: int, raw: bytes) -> None:
+    """Write one reviewed native record without transcoding names or padding."""
+    if not isinstance(raw, bytes) or len(raw) != TILE_STATIC_RECORD:
+        raise ValueError("Native item metadata must retain exactly 41 bytes")
+    read_tile_record(tiledata, item)
+    with tiledata.open("r+b") as stream:
+        stream.seek(tile_offset(item))
+        stream.write(raw)
 
 
 def static_count(tiledata: Path) -> int:
@@ -650,6 +664,10 @@ def check_records(stage: Stage, records: list[AssetRecord], replace: bool = Fals
             slot("MultiCollection.uop", MULTI_PATTERN, "multi.idx", r.id)
         elif r.kind == "tiledata-item":
             check_tiledata(stage.read_path("tiledata.mul"))
+            if r.data:
+                if not replace or r.meta or not isinstance(r.data, bytes) or len(r.data) != TILE_STATIC_RECORD:
+                    raise ValueError("Raw item metadata requires one 41-byte record, empty meta and explicit replacement")
+                read_tile_record(stage.read_path("tiledata.mul"), r.id)
         elif r.kind == "hue":
             size = stage.read_path("hues.mul").stat().st_size
             h = r.id - 1
@@ -759,7 +777,10 @@ def write_records(stage: Stage, records: list[AssetRecord], replace: bool = Fals
         done += [f"multi {r.id:#x} ({struct.unpack_from('<i', r.data, 4)[0]} components)" for r in multis]
     for r in records:
         if r.kind == "tiledata-item":
-            write_tile(stage.path("tiledata.mul"), r.id, {k: v for k, v in r.meta.items() if k in TILE_FIELDS})
+            if r.data:
+                write_tile_record(stage.path("tiledata.mul"), r.id, r.data)
+            else:
+                write_tile(stage.path("tiledata.mul"), r.id, {k: v for k, v in r.meta.items() if k in TILE_FIELDS})
             done.append(f"tiledata item {r.id:#x}: {r.meta}")
         elif r.kind == "hue":
             h = r.id - 1
@@ -805,6 +826,8 @@ def read_back(stage: Stage, r: AssetRecord) -> bytes | dict | None:
             f.seek(o)
             return f.read(n)
     if r.kind == "tiledata-item":
+        if r.data:
+            return read_tile_record(stage.read_path("tiledata.mul"), r.id)
         return read_tile(stage.read_path("tiledata.mul"), r.id)
     if r.kind == "multi":
         try:

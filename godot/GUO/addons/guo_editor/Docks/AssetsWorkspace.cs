@@ -110,6 +110,12 @@ public partial class AssetsView
         ShowPanel(art); art.SelectKind(false); art.Search($"0x{id:X4}");
         _inspector.Metadata.NameInput?.GrabFocus();
     }
+    internal MetadataStageDialog OpenMetadataStage(int id)
+    {
+        if (_inspector.Metadata.CurrentDocument?.Id != id) FocusMetadata(id);
+        return MetadataStageDialog.Open(_inspector.Metadata, _data, id);
+    }
+    internal void ReopenMetadata(int id) => _inspector.Metadata.Reopen(_data, id);
 
     private void ReviewSelected()
     {

@@ -58,7 +58,9 @@ The follow-on F06a [item metadata working document](item_metadata.md) adds
 name, 64-bit flags and height editing to the static-art inspector, with
 undo/redo/revert and project JSON save/reload. It preserves the original modern
 41-byte record and does not emit binary tiledata or mutate runtime metadata.
-F06b native staging and its independent tiledata oracle remain separate work.
+F06b adds [verified native item metadata staging](item_metadata_native_staging.md),
+with current/export review, preserved unexposed staged fields, pinned ClassicUO
+read-back, exact untouched-byte checks and recoverable promotion.
 The subsequent F03a [batch static PNG replacement](batch_static_replacement.md)
 adds folder/ID collision review, per-image source comparison and a whole-batch
 candidate/verify/apply workflow. It shares F02a's recovery and rechecks every

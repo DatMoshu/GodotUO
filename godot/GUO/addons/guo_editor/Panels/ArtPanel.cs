@@ -179,6 +179,8 @@ public partial class ArtPanel : GridPanel
         {
             ins.MetadataData = Data;
             ins.Actions.Add(new("edit-metadata", "Edit item metadata…", "Edit", () => GuoEditorPlugin.AssetsMain.FocusMetadata(id), false));
+            ins.Actions.Add(new("export-metadata-stage", "Export verified item metadata stage…", "Save", () => GuoEditorPlugin.AssetsMain.OpenMetadataStage(id)));
+            ins.Actions.Add(new("reopen-item-metadata", "Reopen item metadata and discard its draft…", "Reload", () => GuoEditorPlugin.AssetsMain.ReopenMetadata(id)));
         }
         return ins;
     }

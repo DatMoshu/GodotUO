@@ -191,7 +191,7 @@ public partial class InspectorDock : EditorDock
             }
         }
         if (menuIndex > 0) _actions.AddChild(more); else more.QueueFree();
-        _imagePage.AddChild(AssetUi.Label("Image changes live in the project overlay. Static export is reviewed separately; metadata documents are not binary tiledata exports."));
+        _imagePage.AddChild(AssetUi.Label("Image and metadata working copies stay in the project. Native exports require a separate reviewed stage."));
     }
 
     private void UpdatePlayButton()

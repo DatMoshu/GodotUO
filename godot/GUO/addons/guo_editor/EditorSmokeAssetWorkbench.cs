@@ -14,6 +14,8 @@ public partial class EditorSmoke
     private TextureImportDialog _textureImportProof;
     private TextureStageDialog _textureStageProof;
     private System.Threading.Tasks.Task _textureStageTask;
+    private MetadataStageDialog _metadataStageProof;
+    private System.Threading.Tasks.Task _metadataStageTask;
     private System.Threading.Tasks.Task _hueStageTask;
     private void CheckAssetWorkbench(ArtPanel art, int id)
     {
@@ -32,6 +34,17 @@ public partial class EditorSmoke
         art.Search("0x001A"); art.Search($"0x{id:X4}");
         MetadataCheck("invalid_draft_survives_selection", editor.NameInput.Text == new string('é', 11) && editor.SaveButton.Disabled);
         editor.Undo();
+        ItemMetadataNativeReview native = editor.CaptureNativeReview(_data, id);
+        editor.NameInput.Text = new string('é', 11); editor.NameInput.EmitSignal(LineEdit.SignalName.TextChanged, editor.NameInput.Text);
+        bool pendingRefused = false;
+        try { editor.RequireNativeReview(_data, native); } catch (IOException) { pendingRefused = true; }
+        MetadataCheck("native_pending_draft_refused", pendingRefused);
+        bool invalidRefused = false;
+        try { editor.CaptureNativeReview(_data, id); } catch (IOException) { invalidRefused = true; }
+        MetadataCheck("native_invalid_draft_refused", invalidRefused); editor.Undo();
+        var nativeDialog = MetadataStageDialog.Open(editor, _data, id);
+        MetadataCheck("native_dialog_initial_state", !nativeDialog.Prepared && !nativeDialog.Applied && !nativeDialog.Busy && nativeDialog.GetOkButton().Text == "Prepare verified copy");
+        nativeDialog.Free();
         editor.FlagsInput.Text = "0x8000000004006050";
         editor.FlagsInput.EmitSignal(LineEdit.SignalName.TextChanged, editor.FlagsInput.Text);
         editor.CommitPending();
@@ -500,7 +513,57 @@ public partial class EditorSmoke
             _textureStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); _textureStageTask = _textureStageProof.Operation;
             _textureStageProof.Free(); _assetsProofStep = 55; return;
         }
-        MetadataCheck("texture_native_close_waits_for_owned_job", _textureStageTask.IsCompletedSuccessfully && !Directory.Exists(Path.Combine(_out, "canceled-native-texture-stage")));
+        if (_assetsProofStep == 55)
+        {
+            MetadataCheck("texture_native_close_waits_for_owned_job", _textureStageTask.IsCompletedSuccessfully && !Directory.Exists(Path.Combine(_out, "canceled-native-texture-stage")));
+            var art = _assets.Panel<ArtPanel>(); _assets.ShowPanel(art); art.SelectKind(false); art.Search("0x001A");
+            var editor = _inspector.Metadata;
+            editor.NameInput.Text = "Native stone wall"; editor.NameInput.EmitSignal(LineEdit.SignalName.TextChanged, editor.NameInput.Text);
+            editor.FlagsInput.Text = "0x8000000004006050"; editor.FlagsInput.EmitSignal(LineEdit.SignalName.TextChanged, editor.FlagsInput.Text);
+            editor.HeightInput.Text = "22"; editor.HeightInput.EmitSignal(LineEdit.SignalName.TextChanged, editor.HeightInput.Text); editor.CommitPending();
+            GetWindow().Size = AssetProofSize(1366, 900);
+            _metadataStageProof = MetadataStageDialog.Open(editor, _data, 26); _metadataStageProof.Destination.Text = Path.Combine(_out, "native-metadata-stage");
+            _metadataStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); _metadataStageTask = _metadataStageProof.Operation; _assetsProofStep = 56; return;
+        }
+        if (_metadataStageTask?.IsCompleted == false) return;
+        if (_assetsProofStep <= 58)
+        {
+            int width = new[] { 1366, 1024, 1920 }[_assetsProofStep - 56];
+            MetadataCheck($"metadata_native_prepared_{width}", _metadataStageProof.Prepared && !_metadataStageProof.Applied && !_metadataStageProof.GetOkButton().Disabled
+                && !Directory.Exists(_metadataStageProof.Destination.Text) && _metadataStageProof.Size.Y <= GetWindow().Size.Y);
+            SaveAssetProof($"metadata-native-prepared-{width}", _metadataStageProof.GetTexture()?.GetImage());
+            if (!_metadataStageProof.Prepared) { _failures.Add("Native metadata preparation failed: " + _metadataStageProof.Status); _metadataStageProof.Free(); Finish(); return; }
+            _assetsProofStep++;
+            if (_assetsProofStep == 57) { GetWindow().Size = AssetProofSize(1024, 768); return; }
+            if (_assetsProofStep == 58) { GetWindow().Size = AssetProofSize(1920, 1080); return; }
+            _metadataStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed);
+            var confirm = _metadataStageProof.GetChildren().OfType<ConfirmationDialog>().Last();
+            MetadataCheck("metadata_native_apply_requires_confirmation", !_metadataStageProof.Applied && !Directory.Exists(_metadataStageProof.Destination.Text));
+            confirm.EmitSignal(ConfirmationDialog.SignalName.Canceled);
+            MetadataCheck("metadata_native_cancel_apply_keeps_stage", !_metadataStageProof.Applied && !Directory.Exists(_metadataStageProof.Destination.Text));
+            _metadataStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); return;
+        }
+        if (_assetsProofStep == 59)
+        {
+            var confirm = _metadataStageProof.GetChildren().OfType<ConfirmationDialog>().Last();
+            SaveAssetProof("metadata-native-apply-confirmation", confirm.GetTexture()?.GetImage());
+            confirm.EmitSignal(ConfirmationDialog.SignalName.Confirmed); _metadataStageTask = _metadataStageProof.Operation; _assetsProofStep = 60; return;
+        }
+        if (_assetsProofStep == 60)
+        {
+            MetadataCheck("metadata_native_applied", _metadataStageProof.Applied && File.Exists(Path.Combine(_metadataStageProof.Destination.Text, "tiledata.mul")));
+            SaveAssetProof("metadata-native-applied", _metadataStageProof.GetTexture()?.GetImage());
+            _metadataStageTask = _metadataStageProof.RecoverAsync(); _assetsProofStep = 61; return;
+        }
+        if (_assetsProofStep == 61)
+        {
+            MetadataCheck("metadata_native_recovered_prior_absence", !_metadataStageProof.Applied && !Directory.Exists(_metadataStageProof.Destination.Text));
+            SaveAssetProof("metadata-native-recovered", _metadataStageProof.GetTexture()?.GetImage()); _metadataStageProof.Free();
+            _metadataStageProof = MetadataStageDialog.Open(_inspector.Metadata, _data, 26); _metadataStageProof.Destination.Text = Path.Combine(_out, "canceled-native-metadata-stage");
+            _metadataStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); _metadataStageTask = _metadataStageProof.Operation;
+            _metadataStageProof.Free(); _assetsProofStep = 62; return;
+        }
+        MetadataCheck("metadata_native_close_waits_for_owned_job", _metadataStageTask.IsCompletedSuccessfully && !Directory.Exists(Path.Combine(_out, "canceled-native-metadata-stage")));
         Finish();
     }
 

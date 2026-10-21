@@ -20,8 +20,10 @@ unsaved drafts and project image replacements appear in the **Project changes**
 menu. See [Assets workbench](assets_workbench.md) for navigation and export review.
 
 This is editor-only L3 authoring with no AI dependency or feature toggle. The
-loaded client metadata and native tiledata file stay unchanged. Binary staging,
-land records, bulk edits and old-layout tiledata are separate stories. Existing
+loaded client metadata and native tiledata file stay unchanged when saving a
+project document. F06b adds [verified native staging](item_metadata_native_staging.md)
+with a separate current/export review, explicit Apply and recovery. Land records,
+bulk edits and old-layout tiledata remain separate stories. Existing
 art previews continue to use the installed/overlaid asset metadata.
 
 The document keeps the original modern 41-byte item record. Previewing changes
@@ -35,12 +37,13 @@ base64 `original`, original-record `source_sha256`, string `name`, hexadecimal
 string `flags` and integer `height`. Files are bounded to 16 KiB on load. A
 mismatched schema, layout, ID, source record or source hash is refused. Save
 checks that the source record is still unchanged and atomically replaces only
-the project JSON. Resolved paths must remain inside the project and outside
+the project JSON; externally changed saved copies are refused until reopened.
+Resolved paths must remain inside the project and outside
 the client installation, including directory-link aliases.
 
 Headless `EditorSmokeAssets` exercises unknown-byte preservation, 64-bit flags,
 undo/redo/revert, multibyte name and height refusals, save/reload, source identity,
 install protection, draft retention, invalid-save refusal, named-bit preservation,
-editor-local recovery and the shared icon toolbar. It does not certify native
-tiledata output, which this milestone does not produce. Windowed visual and
-interaction review remains separate.
+editor-local recovery and the shared icon toolbar. F06b adds independent native
+read-back, exact untouched-byte preservation and editor prepare/apply/recovery
+proofs; see its linked staging contract for the supported boundary.

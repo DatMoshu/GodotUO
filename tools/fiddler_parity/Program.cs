@@ -32,6 +32,31 @@ try
     if (args[1] == "texmap" && args.Length == 5)
         map["texterr.def"] = args[4] == "-" ? Path.Combine(stage, "unused-oracle-texterr-probe") : Path.GetFullPath(args[4]);
     var files = new UOFileManager(version, stage, map);
+    if (args[1] == "tiledata-item")
+    {
+        const int landBytes = 512 * (4 + 32 * 30), groupBytes = 4 + 32 * 41;
+        var path = files.GetUOFilePath("tiledata.mul");
+        long length = new FileInfo(path).Length;
+        if (version < ClientVersion.CV_7090 || length < landBytes || (length - landBytes) % groupBytes != 0
+            || (length - landBytes) / groupBytes > 2048)
+            throw new InvalidDataException("Expected bounded modern tiledata, version 7.0.9.0 or later.");
+        files.TileData.Load();
+        using var stream = File.OpenRead(path);
+        var metadata = new List<object>();
+        foreach (var text in args[3].Split(','))
+        {
+            int id = int.Parse(text);
+            if (id < 0 || id >= files.TileData.StaticData.Length) throw new InvalidDataException("Item is outside tiledata.");
+            ref var item = ref files.TileData.StaticData[id];
+            stream.Position = landBytes + id / 32 * groupBytes + 4 + id % 32 * 41;
+            var raw = new byte[41]; stream.ReadExactly(raw);
+            metadata.Add(new { id, flags = item.Flags, weight = item.Weight, layer = item.Layer, count = item.Count,
+                anim = item.AnimID, hue = item.Hue, light = item.LightIndex, height = item.Height, name = item.Name,
+                raw_base64 = Convert.ToBase64String(raw), raw_sha256 = Convert.ToHexString(SHA256.HashData(raw)).ToLowerInvariant() });
+        }
+        Console.WriteLine(JsonSerializer.Serialize(new { identity, runtime = Environment.Version.ToString(), records = metadata }));
+        return 0;
+    }
     if (args[1] == "hue")
     {
         // The loader also reads radar colors. They do not participate in hue
