@@ -191,6 +191,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   and the one next door stays dark; day and night follow the shard's light
   level (the Light level setting still overrides it), with interiors dimmer
   by day. Off, the world lights exactly as before. ADR-0039.
+  Buildings, walls and trees now block the light and throw shadows, and the
+  light is shaded per pixel: a wall facing a torch brightens and falls off
+  like the ground beside it, and the side away from the torch stays dark.
   A light profile file (`lights/light_profiles.json` in your workspace) can
   change any light's reach, colour, strength and falloff shape (curves A to
   E, or your own); without one nothing changes. Spells can add short coloured

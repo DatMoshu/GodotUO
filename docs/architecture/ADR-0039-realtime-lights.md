@@ -99,6 +99,23 @@ environment variables. Curves and energy act in the per-frame accumulation,
 not the cached visibility. Classic lighting reads none of it. The file format
 is data_formats section 45; a Store pack kind for profiles is later work.
 
+Amendment (2026-10-21, owner review of the lighting stills: "the walls
+aren't lit properly and they stand out"): decision 1 and 3 are refined.
+Walls are lines on their tile, read from the art's silhouette (a wall along
+X shows its +Y face, one along Y its +X face, a corner both), not whole
+blocked tiles; light stops at a line from either side, so each face takes
+only its own side's light and a building or a post throws a shadow behind it.
+The field is sampled four times per tile side and drawn per pixel: the
+samples ride in as a texture, land corners and sprite corners carry their
+world point, and a wall's columns read the field just in front of their face,
+so a face toward a torch brightens and falls off with the same curve as the
+ground beside it, and a window matches its wall. A lamp on a wall's tile
+shines from in front of the shown face. The tile-colour Gouraud land and the
+flat per-tile sprite tint are gone. Measured on the editor's oversized World
+view (160 x 152 tiles, 19 lights), the light pass costs about 7 ms a frame
+against about 3 ms before; the extra time is the field texture and the sample
+grid.
+
 ## Validation
 
 UO+ spell-light amendment (2026-10-20, owner-authorized night-push brief):
