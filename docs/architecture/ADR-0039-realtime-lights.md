@@ -141,6 +141,13 @@ arrival seams, resolved tile positions and field colour, default-off persistence
 parent gate, fade/expiry, saturation and cleanup. The probe invokes arrival
 synthetically and does not claim a live projectile or screenshot review.
 
+Spell-wall integration proof (2026-10-21): the same resolved arrival source
+is checked against a two-sided wall edge. Its near face is lit, intensity
+falls off along that face, and the far face and cells behind it remain at
+ambient. The spell-only gate and 100-source collection limit are unchanged.
+The editor smoke's `spellwall` fixture provides matched native-art stills
+with a stationary fire-impact source; see `tools/editor_smoke/README.md`.
+
 `client.realtime.lights` runs `RealtimeLightsProbe.tscn` headless: default
 off and persistence, the ambient ramp end points, a wall blocking a light
 and a door not blocking it, falloff to zero at the radius, the cache hit and

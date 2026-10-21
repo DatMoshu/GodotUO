@@ -39,6 +39,7 @@ public partial class EditorSmoke
     private int _demoFrames, _demoTaken;
     private int _demoFacet;
     private bool _demoFixed, _demoSpell;
+    private (int x, int y, int z)? _demoSpellWall;
     private ulong _demoStartMs, _demoLastMs;
     private uint _demoClockStart;
     private const int DemoFps = 30;
@@ -52,6 +53,9 @@ public partial class EditorSmoke
         _demoFrames = int.Parse(demo[0]);
         _demoFixed = Array.IndexOf(demo, "fixed", 1) > 0;
         _demoSpell = Array.IndexOf(demo, "spell", 1) > 0;
+        int wall = Array.IndexOf(demo, "spellwall", 1);
+        _demoSpellWall = wall < 0 ? null : (int.Parse(demo[wall + 1]), int.Parse(demo[wall + 2]), int.Parse(demo[wall + 3]));
+        if (_demoSpellWall.HasValue) _demoFixed = true;
         GUO.Renderer.Lights.RealtimeLightEffects.Clear();
         _demoTaken = 0;
         _demoFacet = facet;
@@ -71,6 +75,14 @@ public partial class EditorSmoke
         // classic light state too, exactly as the light override does there,
         // so ON/OFF compare the same night rather than night against daylight.
         Profile profile = ProfileManager.CurrentProfile;
+        // Editor-only reproducible spell/wall comparison; no saved player settings.
+        if (_demoSpellWall.HasValue)
+        {
+            profile.RealtimeLights = profile.SpellLighting = true;
+            profile.UseCustomLightLevel = true;
+            profile.LightLevelType = 0;
+            profile.LightLevel = 30;
+        }
         if (profile?.UseCustomLightLevel == true)
         {
             world.Light.Overall = profile.LightLevelType == 1
@@ -79,6 +91,11 @@ public partial class EditorSmoke
             world.Light.Personal = 0;
         }
         GD.Print($"[lights-demo] realtime={profile?.RealtimeLights} overall={world.Light.Overall} personal={world.Light.Personal} classicAmbient={world.Light.IsometricLevel}");
+        if (_demoSpellWall.HasValue)
+        {
+            _demoActors.Clear();
+            return;
+        }
         ushort torch = FirstLight(0x0A12, 0x0A0F, 0x0F6B);
         ushort lantern = FirstLight(0x0A25, 0x0A22, 0x0A18, 0x0A15, torch);
         LightColors.GetHue(torch, out ushort torchColor, out bool torchIsHue);
@@ -238,7 +255,14 @@ public partial class EditorSmoke
 
         // The camera rides the first walker: same tile, same step offset.
         PlayerMobile player = world.Player;
-        Mobile lead = _demoActors[0].Mobile;
+        Mobile lead = _demoActors.Count == 0 ? null : _demoActors[0].Mobile;
+
+        if (_demoSpellWall is { } point && _demoTaken % DemoFps == 0)
+        {
+            int handle = GUO.Renderer.Lights.SpellLighting.Emit(ProfileManager.CurrentProfile, GUO.Time.Ticks,
+                GraphicEffectType.Moving, 0x36D4, point.x, point.y, point.z, impact: true);
+            GD.Print($"[lights-demo] spell-wall impact {handle} at {point.x},{point.y},{point.z}");
+        }
 
         // The spell-light hook: a 1.5 s light two tiles ahead of the lead, a
         // new colour each second (blue, green, red), fading over its end.
