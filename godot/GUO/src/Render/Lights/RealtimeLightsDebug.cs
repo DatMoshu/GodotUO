@@ -164,6 +164,22 @@ namespace GUO.Renderer.Lights
             }
         }
 
+        /// <summary>With a dump: the light target (last frame's) as <c>lights_NNNNNN.png</c> beside it.</summary>
+        public static void WriteTargetImage(Texture2D texture)
+        {
+            if (_dumpDir == null || texture == null) return;
+            try
+            {
+                using Image image = texture.GetImage();
+                if (image == null || image.IsEmpty()) return;
+                image.SavePng(Path.Combine(_dumpDir, $"lights_{_frame:000000}.png"));
+            }
+            catch (Exception e)
+            {
+                Emit($"[realtime-lights] target image failed: {e.Message}");
+            }
+        }
+
         private static void Emit(string line)
         {
             GUO.Utility.Logging.Log.Trace(line);

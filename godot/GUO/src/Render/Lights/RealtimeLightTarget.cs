@@ -9,34 +9,60 @@ namespace GUO.Renderer.Lights
 {
     /// <summary>
     /// The Realtime lights target: a <see cref="RenderTarget2D"/> the size of
-    /// the classic light target, filled each frame with the land as lit iso
-    /// quads (one colour per corner) and the tall statics as their own
-    /// sprites in their tile's colour. <c>RenderTargets.Draw</c> blends its
-    /// texture where it blends the classic light target.
+    /// the classic light target, filled each frame with the land as iso quads
+    /// and the tall statics as their own sprites, each pixel lit from the
+    /// field's samples at its own world position (the field rides in as a
+    /// texture). <c>RenderTargets.Draw</c> blends its texture where it blends
+    /// the classic light target.
     /// </summary>
+    /// <remarks>
+    /// A vertex's colour carries where it is, not its colour: R, G the field
+    /// texture coordinate of its world point, B its height above the face's
+    /// base ((px + 256) / 1024), A = 1. A = 0 is a flat vertex whose RGB is the
+    /// light itself (roofs, what stands above every light).
+    /// </remarks>
     internal sealed class RealtimeLightTarget : IDisposable
     {
         private const string ShaderCode = @"shader_type canvas_item;
 render_mode blend_disabled;
-// ADR-0039: the vertex colour is the light; the texture only masks it.
-// The light rides a varying from the vertex stage: fragment COLOR is
-// already multiplied by the texture sample (as the batcher's id shader
-// notes), and a sprite's own colours must not tint its light.
-varying vec3 light;
-void vertex() { light = COLOR.rgb; }
+// ADR-0039: the light comes from the field texture at each pixel's world
+// point; the art texture only masks it. The vertex data rides a varying:
+// fragment COLOR is already multiplied by the texture sample, and a
+// sprite's own colours must not tint its light.
+uniform sampler2D field : filter_linear, repeat_disable;
+uniform vec3 roof_ambient = vec3(1.0);
+varying vec4 data;
+void vertex() { data = COLOR; }
 void fragment() {
     float a = texture(TEXTURE, UV).a;
     if (a < 0.5) { discard; }
+    vec3 light;
+    if (data.a > 0.5) {
+        vec3 e = texture(field, data.xy).rgb;
+        light = e * e * 8.0;
+        float m = max(light.r, max(light.g, light.b));
+        if (m > 1.0) { light /= m; }
+        // Light falls off going up a wall: its top course takes less, and
+        // 30 Z above the floor (a gable, a roof edge) only the roof ambient.
+        float h = data.z * 1024.0 - 256.0;
+        light = mix(light, roof_ambient, smoothstep(0.0, 120.0, h));
+    } else {
+        light = data.rgb;
+    }
     COLOR = vec4(light, 1.0);
 }";
 
         private RenderTarget2D _target;
         private Rid _item;
         private ShaderMaterial _material;
+        private Image _fieldImage;
+        private ImageTexture _fieldTexture;
+        private int _fieldW, _fieldH;
+        private int _originX, _originY, _gridW = 1, _gridH = 1;
         private readonly List<Vector2> _points = new();
         private readonly List<Color> _colors = new();
         private readonly List<int> _indices = new();
-        private readonly List<(Rect2 rect, Texture2D texture, Rect2 source, Color bottom, Color top)> _sprites = new();
+        private readonly List<(Rect2 rect, Texture2D texture, Rect2 source, Color c0, Color c1, Color c2, Color c3)> _sprites = new();
         private readonly List<Vector2> _spritePoints = new();
         private readonly List<Vector2> _spriteUvs = new();
         private readonly List<Color> _spriteColors = new();
@@ -48,7 +74,7 @@ void fragment() {
         public int Width => _target?.Width ?? 0;
         public int Height => _target?.Height ?? 0;
 
-        /// <summary>Land quads and sprites sent by the last <see cref="End"/> (the cost log).</summary>
+        /// <summary>Land quads and sprite quads sent by the last <see cref="End"/> (the cost log).</summary>
         public int LastQuads { get; private set; }
         public int LastSprites { get; private set; }
 
@@ -63,6 +89,7 @@ void fragment() {
             _item = RenderingServer.CanvasItemCreate();
             RenderingServer.CanvasItemSetParent(_item, _target.CanvasItem);
             RenderingServer.CanvasItemSetMaterial(_item, _material.GetRid());
+            // The art masks stay nearest; only the field uniform is linear.
             RenderingServer.CanvasItemSetDefaultTextureFilter(_item, RenderingServer.CanvasItemTextureFilter.Nearest);
         }
 
@@ -79,25 +106,62 @@ void fragment() {
             _sprites.Clear();
         }
 
-        /// <summary>One land tile: top, right, bottom, left corners and their light.</summary>
+        /// <summary>
+        /// This frame's field: <paramref name="rgba"/> from <see cref="RealtimeLightField.FillTexture"/>,
+        /// <paramref name="width"/> x <paramref name="height"/> samples over the tiles
+        /// [originX, originX + gridW) x [originY, originY + gridH).
+        /// </summary>
+        public void SetField(byte[] rgba, int width, int height, int originX, int originY, int gridW, int gridH, Color roofAmbient)
+        {
+            if (!IsBuilt) return;
+            _originX = originX;
+            _originY = originY;
+            _gridW = Math.Max(1, gridW);
+            _gridH = Math.Max(1, gridH);
+            if (_fieldImage == null || _fieldW != width || _fieldH != height)
+            {
+                _fieldImage = Image.CreateFromData(width, height, false, Image.Format.Rgba8, rgba);
+                _fieldTexture = ImageTexture.CreateFromImage(_fieldImage);
+                _fieldW = width;
+                _fieldH = height;
+                _material.SetShaderParameter("field", _fieldTexture);
+            }
+            else
+            {
+                _fieldImage.SetData(width, height, false, Image.Format.Rgba8, rgba);
+                _fieldTexture.Update(_fieldImage);
+            }
+
+            _material.SetShaderParameter("roof_ambient", new Vector3(roofAmbient.R, roofAmbient.G, roofAmbient.B));
+        }
+
+        /// <summary>A vertex's data for the world point (wx, wy) in tiles, <paramref name="height"/> pixels above its base.</summary>
+        public Color At(float wx, float wy, float height = 0f)
+            => new((wx - _originX) / _gridW, (wy - _originY) / _gridH, (height + 256f) / 1024f, 1f);
+
+        /// <summary>A flat vertex: this light, wherever it is.</summary>
+        public static Color Flat(Color light) => new(light.R, light.G, light.B, 0f);
+
+        /// <summary>One land tile: top, right, bottom, left corners and their data (<see cref="At"/>).</summary>
         public void AddLand(Vector2 top, Vector2 right, Vector2 bottom, Vector2 left,
             Color cTop, Color cRight, Color cBottom, Color cLeft)
         {
             int b = _points.Count;
             _points.Add(top); _points.Add(right); _points.Add(bottom); _points.Add(left);
-            _colors.Add(Opaque(cTop)); _colors.Add(Opaque(cRight)); _colors.Add(Opaque(cBottom)); _colors.Add(Opaque(cLeft));
+            _colors.Add(cTop); _colors.Add(cRight); _colors.Add(cBottom); _colors.Add(cLeft);
             _indices.Add(b); _indices.Add(b + 1); _indices.Add(b + 2);
             _indices.Add(b); _indices.Add(b + 2); _indices.Add(b + 3);
         }
 
         /// <summary>
-        /// One tall static: its sprite, lit <paramref name="bottom"/> at its base
-        /// and <paramref name="top"/> at its top (light falls off going up a wall).
+        /// One quad of a static's sprite: <paramref name="rect"/> on screen,
+        /// <paramref name="source"/> in the art texture, and each corner's data
+        /// (top left, top right, bottom right, bottom left).
         /// </summary>
-        public void AddSprite(Rect2 rect, Texture2D texture, Rect2 source, Color bottom, Color top)
+        public void AddSprite(Rect2 rect, Texture2D texture, Rect2 source, Color c0, Color c1, Color c2, Color c3)
         {
             if (texture == null) return;
-            _sprites.Add((rect, texture, source, Opaque(bottom), Opaque(top)));
+            _sprites.Add((rect, texture, source, c0, c1, c2, c3));
         }
 
         /// <summary>Send the frame: the land first, the sprites over it in the order added.</summary>
@@ -112,7 +176,7 @@ void fragment() {
                     _item, _indices.ToArray(), _points.ToArray(), _colors.ToArray());
             }
 
-            // Sprites go as textured quads with a colour per corner, one
+            // Sprites go as textured quads with data per corner, one
             // triangle array per run of the same atlas page, in order.
             Texture2D run = null;
             foreach (var s in _sprites)
@@ -133,7 +197,7 @@ void fragment() {
                 _spritePoints.Add(new Vector2(s.rect.Position.X, s.rect.End.Y));
                 _spriteUvs.Add(new Vector2(u0, v0)); _spriteUvs.Add(new Vector2(u1, v0));
                 _spriteUvs.Add(new Vector2(u1, v1)); _spriteUvs.Add(new Vector2(u0, v1));
-                _spriteColors.Add(s.top); _spriteColors.Add(s.top); _spriteColors.Add(s.bottom); _spriteColors.Add(s.bottom);
+                _spriteColors.Add(s.c0); _spriteColors.Add(s.c1); _spriteColors.Add(s.c2); _spriteColors.Add(s.c3);
                 _spriteIndices.Add(b); _spriteIndices.Add(b + 1); _spriteIndices.Add(b + 2);
                 _spriteIndices.Add(b); _spriteIndices.Add(b + 2); _spriteIndices.Add(b + 3);
             }
@@ -155,8 +219,6 @@ void fragment() {
             _spritePoints.Clear(); _spriteUvs.Clear(); _spriteColors.Clear(); _spriteIndices.Clear();
         }
 
-        private static Color Opaque(Color c) => new(c.R, c.G, c.B, 1f);
-
         public void Teardown()
         {
             if (_item.IsValid)
@@ -167,6 +229,11 @@ void fragment() {
 
             _material?.Dispose();
             _material = null;
+            _fieldTexture?.Dispose();
+            _fieldTexture = null;
+            _fieldImage?.Dispose();
+            _fieldImage = null;
+            _fieldW = _fieldH = 0;
             _target?.Dispose();
             _target = null;
         }

@@ -102,6 +102,10 @@ namespace GUO.Renderer.Lights
         private bool[] _roofFlag = Array.Empty<bool>();
         private float[] _field = Array.Empty<float>();
         private short[] _lightTop = Array.Empty<short>();
+        private short[] _hTop = Array.Empty<short>(), _vTop = Array.Empty<short>();
+        private float[] _hOff = Array.Empty<float>(), _vOff = Array.Empty<float>();
+        private float[] _fine = Array.Empty<float>();
+        private int _fineScale = 4;
         private float[] _scratchVis = Array.Empty<float>();
         private float[] _scratchBlur = Array.Empty<float>();
         private readonly Dictionary<CacheKey, Reach> _cache = new();
@@ -112,6 +116,14 @@ namespace GUO.Renderer.Lights
         public int OriginY => _originY;
         public int Width => _width;
         public int Height => _height;
+
+        /// <summary>Light samples per tile side this frame (4, or 2 on a very large grid).</summary>
+        public int FineScale => _fineScale;
+        public int FineWidth => _width * _fineScale;
+        public int FineHeight => _height * _fineScale;
+
+        /// <summary>Grids with more cells than this sample 2 per tile side, not 4.</summary>
+        public const int FineCellLimit = 192 * 192;
 
         /// <summary>Reach maps computed by the last <see cref="Compute"/> (the cost log; the rest were cache hits).</summary>
         public int LastComputed { get; private set; }
@@ -132,8 +144,17 @@ namespace GUO.Renderer.Lights
             height = Math.Max(1, height);
             int cells = width * height;
 
+            int fine = cells <= FineCellLimit ? 4 : 2;
+            if (fine != _fineScale) _cache.Clear();
+            _fineScale = fine;
+            if (_fine.Length != cells * fine * fine * 3) _fine = new float[cells * fine * fine * 3];
+
             if (_groundZ.Length != cells)
             {
+                _hTop = new short[cells];
+                _vTop = new short[cells];
+                _hOff = new float[cells];
+                _vOff = new float[cells];
                 _groundZ = new sbyte[cells];
                 _blockTop = new short[cells];
                 _roof = new bool[cells];
@@ -154,6 +175,8 @@ namespace GUO.Renderer.Lights
             _width = width;
             _height = height;
             Array.Fill(_blockTop, NoBlock);
+            Array.Fill(_hTop, NoBlock);
+            Array.Fill(_vTop, NoBlock);
             Array.Fill(_lightTop, NoBlock);
             Array.Fill(_roof, false);
             Array.Fill(_roofZ, NoBlock);
@@ -179,6 +202,30 @@ namespace GUO.Renderer.Lights
             int i = Index(x, y);
             short top = (short)Math.Clamp(topZ, short.MinValue + 1, short.MaxValue);
             if (top > _blockTop[i]) _blockTop[i] = top;
+        }
+
+        /// <summary>
+        /// A wall as a line on its tile, not the whole tile: <paramref name="alongX"/>
+        /// is a wall running along X at world Y = y + <paramref name="offset"/>
+        /// (art "\"), else one running along Y at world X = x + offset (art "/").
+        /// Light does not cross it, from either side; the light on each side is
+        /// its own (the tallest wall on the tile wins).
+        /// </summary>
+        public void AddEdge(int x, int y, bool alongX, float offset, int topZ)
+        {
+            if (!Contains(x, y)) return;
+            int i = Index(x, y);
+            short top = (short)Math.Clamp(topZ, short.MinValue + 1, short.MaxValue);
+            offset = Math.Clamp(offset, 0f, 1f);
+            if (alongX)
+            {
+                if (top > _hTop[i]) { _hTop[i] = top; _hOff[i] = offset; }
+            }
+            else if (top > _vTop[i])
+            {
+                _vTop[i] = top;
+                _vOff[i] = offset;
+            }
         }
 
         /// <summary>A roof (or an upper floor) over a tile: the roof dim, and cover at its base Z.</summary>
@@ -265,12 +312,24 @@ namespace GUO.Renderer.Lights
             RoofAmbient = new Color(Ambient.R * roofShare, Ambient.G * roofShare, Ambient.B * roofShare);
             int cells = _width * _height;
 
-            for (int i = 0; i < cells; i++)
+            int f = _fineScale, fw = _width * f;
+            for (int ty = 0; ty < _height; ty++)
             {
-                float s = _roof[i] ? roofShare : 1f;
-                _field[i * 3] = Ambient.R * s;
-                _field[i * 3 + 1] = Ambient.G * s;
-                _field[i * 3 + 2] = Ambient.B * s;
+                for (int tx = 0; tx < _width; tx++)
+                {
+                    float s = _roof[ty * _width + tx] ? roofShare : 1f;
+                    float r = Ambient.R * s, g = Ambient.G * s, b = Ambient.B * s;
+                    for (int sy = 0; sy < f; sy++)
+                    {
+                        int row = ((ty * f + sy) * fw + tx * f) * 3;
+                        for (int sx = 0; sx < f; sx++, row += 3)
+                        {
+                            _fine[row] = r;
+                            _fine[row + 1] = g;
+                            _fine[row + 2] = b;
+                        }
+                    }
+                }
             }
 
             _blockerHash = HashBlockers();
@@ -295,6 +354,30 @@ namespace GUO.Renderer.Lights
 
                 reach.Frame = _frame;
                 Accumulate(in s, reach.Map);
+            }
+
+            // The tile field is the mean of its samples (the dump, Cell, Corner).
+            float inv = 1f / (f * f);
+            for (int ty = 0; ty < _height; ty++)
+            {
+                for (int tx = 0; tx < _width; tx++)
+                {
+                    float r = 0f, g = 0f, b = 0f;
+                    for (int sy = 0; sy < f; sy++)
+                    {
+                        int row = ((ty * f + sy) * fw + tx * f) * 3;
+                        for (int sx = 0; sx < f; sx++, row += 3)
+                        {
+                            r += _fine[row];
+                            g += _fine[row + 1];
+                            b += _fine[row + 2];
+                        }
+                    }
+                    int o = (ty * _width + tx) * 3;
+                    _field[o] = r * inv;
+                    _field[o + 1] = g * inv;
+                    _field[o + 2] = b * inv;
+                }
             }
 
             // Forget lights that have gone out (not seen this frame).
@@ -369,10 +452,12 @@ namespace GUO.Renderer.Lights
 
         private float[] ComputeReach(in Source s, float[] map)
         {
-            // One extra cell keeps the support complete while the source
+            // Samples cover the source's tile and r + 1 tiles around it: one
+            // extra tile keeps the support complete while the source
             // interpolates toward a neighbouring tile in either direction.
+            int f = _fineScale;
             int r = s.Radius + 1;
-            int side = r * 2 + 1;
+            int side = (r * 2 + 1) * f;
             int n = side * side;
             if (map == null || map.Length != n) map = new float[n];
             if (_scratchVis.Length < n)
@@ -381,24 +466,25 @@ namespace GUO.Renderer.Lights
                 _scratchBlur = new float[n];
             }
 
-            // Hard visibility per cell: a line from the source to the cell,
-            // blocked by any cell strictly between whose blocker top stands
-            // above the light. The source's own tile never blocks (a sconce
-            // on a wall lights the room it faces), nor does the target's (a
-            // wall takes light on either face).
-            for (int dy = -r; dy <= r; dy++)
+            // Hard visibility per sample: a ray from the source's tile centre
+            // to the sample, stopped by a wall line it crosses or a whole-tile
+            // blocker strictly between (the source's and the sample's own tile
+            // never block as whole tiles: a lamp on a pillar, a pillar's lit
+            // face). A wall line blocks from either side, so a wall's two faces
+            // take the light of their own side only.
+            (float lx, float ly) = LightOrigin(s.X, s.Y);
+            int x0 = (s.X - r) * f, y0 = (s.Y - r) * f;
+            for (int j = 0; j < side; j++)
             {
-                for (int dx = -r; dx <= r; dx++)
+                for (int i = 0; i < side; i++)
                 {
-                    int tx = s.X + dx, ty = s.Y + dy;
-                    float vis = Contains(tx, ty)
-                        ? Visible(s.X, s.Y, s.Z, tx, ty)
-                        : 0f;
-                    _scratchVis[(dy + r) * side + (dx + r)] = vis;
+                    float px = (x0 + i + 0.5f) / f, py = (y0 + j + 0.5f) / f;
+                    int tx = (int)MathF.Floor(px), ty = (int)MathF.Floor(py);
+                    _scratchVis[j * side + i] = Contains(tx, ty) ? Visible(s.X, s.Y, lx, ly, s.Z, px, py) : 0f;
                 }
             }
 
-            // 3x3 box blur of the visibility: soft edges where walls cut it.
+            // 3x3 box blur of the samples, kept inside the lit region: a soft edge.
             for (int y = 0; y < side; y++)
             {
                 for (int x = 0; x < side; x++)
@@ -417,78 +503,230 @@ namespace GUO.Renderer.Lights
                             count++;
                         }
                     }
-                    _scratchBlur[y * side + x] = count > 0 ? sum / count : 0f;
+                    // Never brighter than its own hard value: the soft edge falls on
+                    // the lit side, and no light bleeds through a wall to its far face.
+                    _scratchBlur[y * side + x] = count > 0 ? Math.Min(_scratchVis[y * side + x], sum / count) : 0f;
                 }
             }
 
-            for (int dy = -r; dy <= r; dy++)
+            for (int j = 0; j < side; j++)
             {
-                for (int dx = -r; dx <= r; dx++)
+                for (int i = 0; i < side; i++)
                 {
-                    int i = (dy + r) * side + (dx + r);
+                    int k = j * side + i;
                     // Cache visibility, not distance: falloff follows the
                     // sub-tile source position each frame in Accumulate.
-                    float v = _scratchBlur[i];
+                    float v = _scratchBlur[k];
                     // Ground far below or above the light takes less.
-                    int tx = s.X + dx, ty = s.Y + dy;
+                    int tx = s.X - r + i / f, ty = s.Y - r + j / f;
                     if (Contains(tx, ty))
                     {
                         int dz = Math.Abs(_groundZ[Index(tx, ty)] - s.Z);
                         if (dz > 20) v *= 0.35f;
                     }
-                    map[i] = v;
+                    map[k] = v;
                 }
             }
 
             return map;
         }
 
-        /// <summary>Hard line-of-light from (x0, y0) at Z to (x1, y1): 1 clear, 0 blocked.</summary>
-        private float Visible(int x0, int y0, int z, int x1, int y1)
+        /// <summary>Where a light on a wall line stands off it, in tiles, on the side the camera sees.</summary>
+        public const float WallLampStandoff = 0.3f;
+
+        /// <summary>
+        /// The point a light on tile (x, y) shines from: the tile's centre, or,
+        /// on a tile with a wall line, just in front of that line on the side
+        /// the camera sees (+Y of a wall along X, +X of one along Y). A lamp
+        /// hung on a wall hangs on a face; the shown face is the likely one,
+        /// and a lamp inside a room hangs on its north or west wall, whose
+        /// shown face is the room's.
+        /// </summary>
+        public (float X, float Y) LightOrigin(int x, int y)
         {
-            int dx = Math.Abs(x1 - x0), dy = Math.Abs(y1 - y0);
-            int steps = Math.Max(dx, dy);
-            if (steps <= 1) return 1f;
-            int limit = z + BlockClearance;
-            // Walk the line in steps of one cell on the longer axis; the
-            // shorter axis rounds. Both ends are excluded.
-            for (int i = 1; i < steps; i++)
+            float lx = x + 0.5f, ly = y + 0.5f;
+            if (Contains(x, y))
             {
-                int cx = x0 + (int)MathF.Round((x1 - x0) * (float)i / steps);
-                int cy = y0 + (int)MathF.Round((y1 - y0) * (float)i / steps);
-                if (!Contains(cx, cy)) continue;
-                short top = _blockTop[Index(cx, cy)];
-                if (top != NoBlock && top > limit) return 0f;
+                int i = Index(x, y);
+                if (_hTop[i] != NoBlock) ly = Math.Max(ly, y + _hOff[i] + WallLampStandoff);
+                if (_vTop[i] != NoBlock) lx = Math.Max(lx, x + _vOff[i] + WallLampStandoff);
             }
+
+            return (lx, ly);
+        }
+
+        /// <summary>
+        /// Line of light from (lx, ly) at Z (from tile (sx, sy)) to the point
+        /// (px, py), in tile units: 1 clear, 0 blocked. Walks the tiles the
+        /// segment crosses; a wall line on any of them blocks when the segment
+        /// crosses it, a whole-tile blocker when the tile is neither end's.
+        /// Only blockers standing above Z + <see cref="BlockClearance"/> count.
+        /// </summary>
+        private float Visible(int sx, int sy, float lx, float ly, int z, float px, float py)
+        {
+            int limit = z + BlockClearance;
+            int cx = (int)MathF.Floor(lx), cy = (int)MathF.Floor(ly);
+            int ex = (int)MathF.Floor(px), ey = (int)MathF.Floor(py);
+            float dx = px - lx, dy = py - ly;
+            int stepX = dx > 0 ? 1 : -1, stepY = dy > 0 ? 1 : -1;
+            float tDeltaX = dx != 0f ? Math.Abs(1f / dx) : float.MaxValue;
+            float tDeltaY = dy != 0f ? Math.Abs(1f / dy) : float.MaxValue;
+            float tMaxX = dx != 0f ? (stepX > 0 ? cx + 1 - lx : lx - cx) * tDeltaX : float.MaxValue;
+            float tMaxY = dy != 0f ? (stepY > 0 ? cy + 1 - ly : ly - cy) * tDeltaY : float.MaxValue;
+            int guard = Math.Abs(ex - cx) + Math.Abs(ey - cy) + 2;
+
+            for (int n = 0; n <= guard; n++)
+            {
+                if (Contains(cx, cy))
+                {
+                    int i = Index(cx, cy);
+                    bool end = (cx == sx && cy == sy) || (cx == ex && cy == ey);
+                    if (!end && _blockTop[i] != NoBlock && _blockTop[i] > limit) return 0f;
+
+                    if (_hTop[i] != NoBlock && _hTop[i] > limit)
+                    {
+                        float wy = cy + _hOff[i];
+                        if ((ly - wy) * (py - wy) < 0f)
+                        {
+                            float cross = lx + (wy - ly) / dy * dx;
+                            if (cross >= cx && cross <= cx + 1) return 0f;
+                        }
+                    }
+
+                    if (_vTop[i] != NoBlock && _vTop[i] > limit)
+                    {
+                        float wx = cx + _vOff[i];
+                        if ((lx - wx) * (px - wx) < 0f)
+                        {
+                            float cross = ly + (wx - lx) / dx * dy;
+                            if (cross >= cy && cross <= cy + 1) return 0f;
+                        }
+                    }
+                }
+
+                if (cx == ex && cy == ey) break;
+                if (tMaxX < tMaxY)
+                {
+                    tMaxX += tDeltaX;
+                    cx += stepX;
+                }
+                else
+                {
+                    tMaxY += tDeltaY;
+                    cy += stepY;
+                }
+            }
+
             return 1f;
         }
 
         private void Accumulate(in Source s, float[] map)
         {
+            int f = _fineScale;
             int r = s.Radius + 1;
-            int side = r * 2 + 1;
-            for (int dy = -r; dy <= r; dy++)
+            int side = (r * 2 + 1) * f;
+            int fw = _width * f, fh = _height * f;
+            // The sample grid's origin, in samples, relative to the field.
+            int gx0 = (s.X - r - _originX) * f, gy0 = (s.Y - r - _originY) * f;
+            (float lx, float ly) = LightOrigin(s.X, s.Y);
+            lx += s.OffsetX;
+            ly += s.OffsetY;
+            for (int j = 0; j < side; j++)
             {
-                int ty = s.Y + dy;
-                if (ty < _originY || ty >= _originY + _height) continue;
-                for (int dx = -r; dx <= r; dx++)
+                int gy = gy0 + j;
+                if (gy < 0 || gy >= fh) continue;
+                float py = s.Y - r + (j + 0.5f) / f;
+                for (int i = 0; i < side; i++)
                 {
-                    int tx = s.X + dx;
-                    if (tx < _originX || tx >= _originX + _width) continue;
-                    float v = map[(dy + r) * side + (dx + r)];
-                    float fx = dx - s.OffsetX, fy = dy - s.OffsetY;
+                    int gx = gx0 + i;
+                    if (gx < 0 || gx >= fw) continue;
+                    float v = map[j * side + i];
+                    if (v <= 0f) continue;
+                    float px = s.X - r + (i + 0.5f) / f;
+                    float fx = px - lx, fy = py - ly;
                     v *= Falloff(MathF.Sqrt(fx * fx + fy * fy), s.Radius, s.Curve, s.CustomCurve);
                     if (v <= 0f) continue;
-                    int cell = Index(tx, ty);
+                    int cell = gy / f * _width + gx / f;
                     if (s.Z > _lightTop[cell]) _lightTop[cell] = (short)s.Z;
-                    int i = cell * 3;
+                    int o = (gy * fw + gx) * 3;
                     v *= s.Energy;
-                    _field[i] += s.Color.R * v;
-                    _field[i + 1] += s.Color.G * v;
-                    _field[i + 2] += s.Color.B * v;
+                    _fine[o] += s.Color.R * v;
+                    _fine[o + 1] += s.Color.G * v;
+                    _fine[o + 2] += s.Color.B * v;
                 }
             }
         }
+
+        /// <summary>
+        /// The field at a world point in tile units (bilinear between samples,
+        /// clamped to the grid), brightness kept as <see cref="Cell"/> keeps it.
+        /// The shader reads the same samples from <see cref="FillTexture"/>.
+        /// </summary>
+        public Color FineAt(float wx, float wy)
+        {
+            int f = _fineScale, fw = _width * f, fh = _height * f;
+            float gx = (wx - _originX) * f - 0.5f, gy = (wy - _originY) * f - 0.5f;
+            int x0 = (int)MathF.Floor(gx), y0 = (int)MathF.Floor(gy);
+            float ax = gx - x0, ay = gy - y0;
+            float r = 0f, g = 0f, b = 0f;
+            for (int k = 0; k < 4; k++)
+            {
+                int xx = Math.Clamp(x0 + (k & 1), 0, fw - 1), yy = Math.Clamp(y0 + (k >> 1), 0, fh - 1);
+                float w = ((k & 1) != 0 ? ax : 1f - ax) * ((k >> 1) != 0 ? ay : 1f - ay);
+                int o = (yy * fw + xx) * 3;
+                r += _fine[o] * w;
+                g += _fine[o + 1] * w;
+                b += _fine[o + 2] * w;
+            }
+
+            float m = Math.Max(r, Math.Max(g, b));
+            if (m > 1f)
+            {
+                r /= m; g /= m; b /= m;
+            }
+
+            return new Color(r, g, b);
+        }
+
+        /// <summary>The largest sample value <see cref="FillTexture"/> can carry.</summary>
+        public const float TextureRange = 8f;
+
+        /// <summary>
+        /// The samples as RGBA8, <see cref="FineWidth"/> x <see cref="FineHeight"/>,
+        /// north row first: each channel is <c>sqrt(v / 8)</c>, so the dark end
+        /// keeps its precision (the shader decodes <c>c * c * 8</c>).
+        /// </summary>
+        public void FillTexture(byte[] rgba)
+        {
+            int n = _width * _fineScale * _height * _fineScale;
+            for (int i = 0; i < n; i++)
+            {
+                int o = i * 3, t = i * 4;
+                rgba[t] = Encode(_fine[o]);
+                rgba[t + 1] = Encode(_fine[o + 1]);
+                rgba[t + 2] = Encode(_fine[o + 2]);
+                rgba[t + 3] = 255;
+            }
+        }
+
+        /// <summary>Steps of the encode table over [0, <see cref="TextureRange"/>].</summary>
+        private const int EncodeSteps = 8192;
+
+        private static readonly byte[] _encode = BuildEncode();
+
+        private static byte[] BuildEncode()
+        {
+            var t = new byte[EncodeSteps + 1];
+            for (int i = 0; i <= EncodeSteps; i++)
+            {
+                float v = i * TextureRange / EncodeSteps;
+                t[i] = (byte)Math.Clamp((int)(MathF.Sqrt(v / TextureRange) * 255f + 0.5f), 0, 255);
+            }
+            return t;
+        }
+
+        private static byte Encode(float v)
+            => _encode[Math.Clamp((int)(v * (EncodeSteps / TextureRange) + 0.5f), 0, EncodeSteps)];
 
         /// <summary>
         /// The tile under a world-target pixel: the inverse of the world's iso
@@ -539,7 +777,9 @@ namespace GUO.Renderer.Lights
                 for (int x = _originX; x < _originX + _width; x++)
                 {
                     int i = Index(x, y);
-                    bool wall = _blockTop[i] != NoBlock && _blockTop[i] > _groundZ[i] + BlockClearance;
+                    int above = _groundZ[i] + BlockClearance;
+                    bool wall = (_blockTop[i] != NoBlock && _blockTop[i] > above)
+                        || (_hTop[i] != NoBlock && _hTop[i] > above) || (_vTop[i] != NoBlock && _vTop[i] > above);
                     char ch;
                     if (visible != null && !visible(x, y)) ch = wall ? '+' : '.';
                     else if (x == markX && y == markY) ch = '@';
@@ -571,9 +811,14 @@ namespace GUO.Renderer.Lights
             {
                 h = (h ^ (ulong)(uint)_originX) * 1099511628211UL;
                 h = (h ^ (ulong)(uint)_originY) * 1099511628211UL;
+                h = (h ^ (ulong)(uint)_fineScale) * 1099511628211UL;
                 for (int i = 0; i < _blockTop.Length; i++)
                 {
                     h = (h ^ (ulong)(ushort)_blockTop[i]) * 1099511628211UL;
+                    h = (h ^ (ulong)(ushort)_hTop[i]) * 1099511628211UL;
+                    h = (h ^ (ulong)(ushort)_vTop[i]) * 1099511628211UL;
+                    if (_hTop[i] != NoBlock) h = (h ^ (ulong)BitConverter.SingleToUInt32Bits(_hOff[i])) * 1099511628211UL;
+                    if (_vTop[i] != NoBlock) h = (h ^ (ulong)BitConverter.SingleToUInt32Bits(_vOff[i])) * 1099511628211UL;
                 }
             }
             return h;
