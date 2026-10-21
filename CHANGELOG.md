@@ -6,11 +6,17 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Labs
+- Weather puddle settings no longer enable water impacts on listed Wet tiles.
+  Rain rings also reach wet statics above sloped ground; crowded cells are
+  skipped when exposure cannot be checked within the scan budget.
 - An opt-in Debug build offers UO+ rain rings, tile puddles and a fading wet-player
   silhouette. Each experiment starts off; the session controls include a drop
   budget and puddle tile list. Labs are excluded from exported clients.
 
 ### Water
+- Opt-in Labs water rain can disturb the styled-water wave field, driven by
+  weather intensity and the existing default-off water-ring toggle. Primitive
+  rings are suppressed while that simulation is active; Classic keeps its fallback.
 - The synthetic shore regression now covers coast directions, wrapped mask
   coordinates, the beach/cliff height cutoff, and Classic output with every
   water model bound. It rejects headless runs that cannot render pixels.

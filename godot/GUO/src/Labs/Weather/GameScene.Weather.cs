@@ -29,6 +29,7 @@ internal partial class GameScene
         float dt = state.LastTicks == 0 ? 0 : Math.Clamp((now - state.LastTicks) / 1000f, 0, 0.25f);
         state.LastTicks = now;
         state.Step(dt, WeatherLab.IsRain(_world));
+        bool simulatedWaterRain = GUO.Labs.WaterRain.WaterRainLab.IsActive(_world);
         // Fixed 512-slot spatial cache. Collisions evict old puddles; memory cannot grow.
         // Only known visible land is eligible; never infer water in unloaded cells.
         int candidates = 0;
@@ -42,20 +43,28 @@ internal partial class GameScene
                 Land land = null;
                 GameObject waterSurface = null;
                 bool covered = false;
-                for (GameObject o = chunk.GetHeadObject(cx, cy); o != null; o = o.TNext)
+                int objects = 0;
+                GameObject head = chunk.GetHeadObject(cx, cy);
+                GameObject o = head;
+                for (; o != null && objects < 64; o = o.TNext, objects++)
                 {
                     if (o is Land l) land = l;
                     bool wet = o is Land wl && wl.TileData.IsWet || o is Static ws && ws.ItemData.IsWet;
                     if (wet && (waterSurface == null || o.Z > waterSurface.Z)) waterSurface = o;
                 }
-                if (land == null || !land.AllowedToDraw || land.IsStretched && !land.TileData.IsWet) continue;
-                for (GameObject o = chunk.GetHeadObject(cx, cy); o != null; o = o.TNext)
+                // Incomplete cells cannot be proven exposed. A wet static can
+                // still be flat water above sloped dry ground.
+                if (o != null || land == null || !land.AllowedToDraw ||
+                    waterSurface == null && land.IsStretched && !land.TileData.IsWet) continue;
+                objects = 0;
+                for (o = head; o != null && objects < 64; o = o.TNext, objects++)
                 {
                     if (o.Z > (waterSurface?.Z ?? land.Z) && (o is Static s && !s.ItemData.IsWet && (s.ItemData.IsRoof || s.ItemData.IsSurface) || o is Multi))
                     { covered = true; break; }
                 }
-                if (covered) continue;
+                if (covered || o != null) continue;
                 bool water = waterSurface != null;
+                // Preserve density gating and avoid double-stamping styled water.
                 bool puddle = !water && state.Settings.Puddles && ((land.X * 73u ^ land.Y * 193u) % 100 < state.Settings.PuddleDensity)
                     && (state.Settings.PuddleTiles.Contains(land.Graphic) ||
                     state.Settings.Cobblestone && (land.TileData.Name?.Contains("cobblestone", StringComparison.OrdinalIgnoreCase) ?? false));
@@ -77,8 +86,12 @@ internal partial class GameScene
                 surface.Water = water;
                 surface.QueuedAt = now;
                 surface.Step(dt, state.Raining, puddle);
+                // Styled water already receives these drops through its wave
+                // field. Clear old primitive rings when switching styles too.
+                if (water && simulatedWaterRain) surface.RingAge = 1;
                 if (state.RainCredit >= 1 && state.Impacts < Math.Clamp(state.Settings.DropBudget, 0, 32) &&
-                    (water || surface.Fill > 0.15f) && state.Random.Next(1200) < (water ? state.Settings.WaterDensity : state.Settings.PuddleDensity))
+                    (water && !simulatedWaterRain || !water && surface.Fill > 0.15f)
+                    && state.Random.Next(1200) < (water ? state.Settings.WaterDensity : state.Settings.PuddleDensity))
                 {
                     surface.RingAge = 0;
                     surface.DropX = state.Random.Next(-5, 6);

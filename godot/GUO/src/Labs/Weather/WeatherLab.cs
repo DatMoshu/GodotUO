@@ -59,8 +59,16 @@ internal static class WeatherLab
     internal static Vector3 Hue(float alpha) => new(0, ShaderHueTranslator.SHADER_NONE, alpha);
     internal static Texture2D DropTexture => SolidColorTextureCache.GetTexture(new GUO.Compat.Color(162, 202, 218, 255));
 
-    internal static bool IsRain(World world) => world.Weather.Count > 0 &&
-        world.Weather.CurrentWeather is WeatherType.WT_RAIN or WeatherType.WT_STORM_BREWING;
+    // Read directly from upstream weather, before either render lane updates its
+    // transient state. Effect toggles gate consumers, not this shared signal.
+    internal static float RainIntensity(World world) => world?.Weather == null ? 0 :
+        RainIntensity(world.Weather.CurrentWeather, world.Weather.Count);
+
+    internal static float RainIntensity(WeatherType? type, int count) =>
+        type is WeatherType.WT_RAIN or WeatherType.WT_STORM_BREWING
+            ? Math.Clamp(count / 70f, 0, 1) : 0;
+
+    internal static bool IsRain(World world) => RainIntensity(world) > 0;
 
     internal static void Open(World world)
     {
