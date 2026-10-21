@@ -34,9 +34,9 @@ public sealed class SaveResult
 /// </summary>
 internal static class MultiStore
 {
-    public static string EditDir => Path.Combine(EditorData.RepoRoot, "build", "multi", "edit");
-    public static string BuiltDir(string name) => Path.Combine(EditorData.RepoRoot, "build", "multi", "built", name);
-    public static string DefaultStage => Path.Combine(EditorData.RepoRoot, "build", "uodata", "multi");
+    public static string EditDir => Path.Combine(EditorData.BuildDirectory, "multi", "edit");
+    public static string BuiltDir(string name) => Path.Combine(EditorData.BuildDirectory, "multi", "built", name);
+    public static string DefaultStage => Path.Combine(EditorData.BuildDirectory, "uodata", "multi");
 
     public static string SafeName(string name)
     {
