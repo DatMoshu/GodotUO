@@ -18,7 +18,8 @@ All 32 color values and both table bounds remain unsigned 16-bit values.
 Selecting a swatch commits valid pending fields as one undo step; invalid raw
 fields remain attached to the document. The RGB picker quantizes each channel
 to five bits and preserves the selected color's existing bit 15. Importing PNG
-uses the first 32 pixels of its first row, rounds RGB to five-bit channels,
+uses the first 32 pixels of its first row, discards the low three RGB bits
+(matching the legacy hue-strip importer), ignores alpha, preserves zero,
 and replaces the working palette as one undo step. PNG does not carry bit 15.
 Import does not save automatically. Export writes the current committed palette
 as a 32-by-1 PNG. Correct or commit pending fields before export.

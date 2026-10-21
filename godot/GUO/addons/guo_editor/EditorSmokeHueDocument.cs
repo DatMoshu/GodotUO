@@ -96,6 +96,16 @@ public partial class EditorSmoke
         string png = Path.Combine(root, "palette.png"); using (Image image = Image.CreateEmpty(32, 1, false, Image.Format.Rgba8)) { image.Fill(Colors.Red); image.SavePng(png); }
         panel.ImportPalette(id, png); HueCheck("png_import_is_unsaved_working_edit", active.ColorAt(0) == 0x7C00 && active.IsDirty); active.Undo();
         HueCheck("png_import_undo_restores_raw_high_bit", active.ColorAt(0) == 0x83E0 && !active.IsDirty);
+        using (Image image = Image.CreateEmpty(32, 1, false, Image.Format.Rgba8))
+        {
+            image.Fill(Color.Color8(7, 7, 7, 0));
+            image.SetPixel(1, 0, Color.Color8(8, 127, 248));
+            image.SetPixel(2, 0, Color.Color8(127, 128, 129));
+            image.SetPixel(3, 0, Color.Color8(248, 4, 4)); image.SavePng(png);
+        }
+        panel.ImportPalette(id, png);
+        HueCheck("png_import_legacy_shift_boundaries_alpha_and_zero", active.ColorAt(0) == 0 && active.ColorAt(1) == 0x05FF && active.ColorAt(2) == 0x3E10 && active.ColorAt(3) == 0x7C00);
+        active.Undo(); HueCheck("png_boundary_import_one_undo", active.ColorAt(0) == 0x83E0 && !active.IsDirty);
         active.DraftName = "discarded working hue"; active.CommitDraft();
         panel.ReopenButton.EmitSignal(Button.SignalName.Pressed); panel.GetChildren().OfType<ConfirmationDialog>().Last().EmitSignal(ConfirmationDialog.SignalName.Canceled);
         HueCheck("reopen_cancel_retains_working_name", panel.WorkingDocument(id) == active && active.Name == "discarded working hue");

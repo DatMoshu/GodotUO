@@ -232,7 +232,9 @@ public partial class HuePanel : GridPanel
         using Image image = Image.LoadFromFile(path);
         if (image == null || image.GetWidth() < 32 || image.GetHeight() < 1) throw new IOException("Choose a palette PNG with at least 32 pixels in its first row.");
         ushort[] colors = new ushort[32];
-        for (int i = 0; i < colors.Length; i++) { Color c = image.GetPixel(i, 0); colors[i] = (ushort)((To5(c.R8) << 10) | (To5(c.G8) << 5) | To5(c.B8)); }
+        // Match the existing hue-strip importer: discard the low three bits,
+        // ignore alpha, and retain native zero (hues are not static-art pixels).
+        for (int i = 0; i < colors.Length; i++) { Color c = image.GetPixel(i, 0); colors[i] = (ushort)(((c.R8 >> 3) << 10) | ((c.G8 >> 3) << 5) | (c.B8 >> 3)); }
         (WorkingDocument(id) ?? throw new IOException("Reopen a valid hue document before importing.")).ReplacePalette(colors);
     }
 

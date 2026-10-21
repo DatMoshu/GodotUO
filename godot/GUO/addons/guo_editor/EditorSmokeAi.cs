@@ -814,8 +814,12 @@ public partial class EditorSmoke
             await Delay(0.3);
             JsonNode pointer = JsonNode.Parse(await tools.RunAsync("world_state", null, CancellationToken.None));
             var picked = _world.Host.Picked as GUO.Game.GameObjects.GameObject;
-            AiCheck("tools_world_pointer_pick", picked != null && pointer["picked"] != null &&
-                (string)pointer["position_source"] == "pointer" && (int)pointer["x"] == picked.X && (int)pointer["y"] == picked.Y &&
+            var hover = _world.Modes.Hover;
+            // Height-mode pointer cells and the renderer's picked object can
+            // differ. Verify each against its own documented source.
+            AiCheck("tools_world_pointer_pick", picked != null && hover != null && pointer["picked"] != null &&
+                (string)pointer["position_source"] == "pointer" && (int)pointer["x"] == hover.Value.Item1 && (int)pointer["y"] == hover.Value.Item2 &&
+                (int)pointer["picked"]["x"] == picked.X && (int)pointer["picked"]["y"] == picked.Y &&
                 (int)pointer["picked"]["graphic"] == picked.Graphic && (int)pointer["picked"]["hue"] == picked.Hue &&
                 (int)pointer["picked"]["z"] == picked.Z && !string.IsNullOrEmpty((string)pointer["picked"]["kind"]), pointer.ToJsonString());
             _world.ForcedMouse = null;
