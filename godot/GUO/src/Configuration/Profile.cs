@@ -53,7 +53,7 @@ namespace GUO.Configuration
         public bool JournalFileWithSerial { get; set; } = false;
     }
 
-    internal sealed class Profile
+    internal sealed class Profile : System.Text.Json.Serialization.IJsonOnDeserialized
     {
         [JsonIgnore] public string Username { get; set; }
         [JsonIgnore] public string ServerName { get; set; }
@@ -415,7 +415,23 @@ namespace GUO.Configuration
         public bool AmbientDust { get; set; } = false;
         // PORT DEVIATION (GUO): shared UO+ registry; legacy particle flags above
         // remain authoritative for old-profile compatibility (ADR-uoplus-settings).
-        public UoPlusFeature UoPlusFlags { get; set; } = UoPlusFeature.None;
+        private UoPlusFeature _uoPlusFlags;
+        private bool _uoPlusFlagsRead;
+        public UoPlusFeature UoPlusFlags
+        {
+            get => _uoPlusFlags;
+            set { _uoPlusFlags = value; _uoPlusFlagsRead = true; }
+        }
+        // PORT DEVIATION (GUO): preserve the existing styled-water user's
+        // ripples/wakes when first reading a profile predating UO+ flags.
+        // New profiles and explicitly saved off flags remain off.
+        void System.Text.Json.Serialization.IJsonOnDeserialized.OnDeserialized()
+        {
+            if (!_uoPlusFlagsRead && !string.IsNullOrWhiteSpace(WaterStyle)
+                && !string.Equals(WaterStyle, "classic", StringComparison.OrdinalIgnoreCase))
+                _uoPlusFlags |= UoPlusFeature.WaterRipples;
+            _uoPlusFlagsRead = true;
+        }
         public Dictionary<UoPlusFeature, int> UoPlusDensities { get; set; } = new();
         public int AmbientParticleDensity { get; set; } = 50; // percent, 0..100
         public int AmbientParticleCap { get; set; } = 128; // 0..512 per frame

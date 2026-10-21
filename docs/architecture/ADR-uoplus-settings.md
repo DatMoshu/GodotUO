@@ -57,8 +57,11 @@ no master flag that silently enables effects. The panel shows unavailable
 weather in normal builds and explains prerequisites next to each option.
 No external dependency, service, shell call or downloadable content is added.
 Profiles that explicitly enabled particles keep that choice; this is not a
-reset of existing preferences. Water ripples now require explicit opt-in even
-when a non-Classic water style was previously selected, as the owner requested.
+reset of existing preferences. Owner-requested merge fixes (2026-10-21)
+preserve ripples/wakes when loading an existing non-Classic water profile
+that has no UO+ flags field. The JSON completion callback migrates only that
+missing-field case. Explicit saved off flags survive reload; new profiles,
+Classic profiles and Defaults remain off. The next save records the flags.
 
 ## Validation
 

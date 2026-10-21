@@ -3426,6 +3426,11 @@ requires a non-Classic water style. Off skips ripple simulation and object scans
 clears stale waves and disables their shader contribution without changing the
 style. Sway is unavailable until its renderer ships.
 
+Loading a legacy styled-water profile without `uo_plus_flags` preserves its
+existing ripples/wakes by setting bit 256. An explicit saved zero stays off;
+new profiles and Classic profiles remain off. Saving records the migrated flag,
+so disabling it remains effective after reload.
+
 Weather runs only in a `GuoLabs=true` Debug build. Ring density thins rain
 impacts; puddle density selects ground cells and thins impacts; wet-player
 density scales body drops. Selected ground IDs and cobblestone matching remain
