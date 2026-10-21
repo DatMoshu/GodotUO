@@ -78,7 +78,7 @@ off by default, and MCP inspection does not enable it.
 | `guo_input` | Pointer motion, mouse button press/release, named key press/release, Unicode text. Shift/Ctrl/Alt supported. |
 | `guo_wait` | Wait 1–600 process frames for UI or server updates. |
 | `guo_screenshot` | PNG of the rendered viewport as MCP image content. |
-| `guo_state` | Process frame index, scene, viewport size and the player's tile position. Cheap; for scripted runs (`tools/scenario_run`). |
+| `guo_state` | Process frame index, scene, viewport size and the player's tile position. Editor builds also report selected/bound water style, wet-cell/surface checks and cumulative ripple counters (data formats section 29). Read-only; for scripted runs (`tools/scenario_run`). |
 | `guo_quit` | Clean quit after two frames, so a MovieWriter recording is finalised. |
 | `guo_overlay` | The scenario runner's human driver: a caption card and a control outline over the game; returns whether Space or Esc was pressed (`docs/data_formats.md` section 29). |
 

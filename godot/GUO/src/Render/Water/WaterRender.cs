@@ -123,6 +123,33 @@ internal static class WaterRender
     /// </summary>
     public static string Override;
 
+#if TOOLS
+    // L3 water authoring, scoped to the editor's exact world instance. Never
+    // persisted to a player profile or compiled into an exported client.
+    internal static World EditorWorld;
+    internal static IWaterStyle EditorStyle;
+    internal static float EditorSeconds;
+    internal static bool EditorPaused;
+    private static bool InEditorPreview => EditorWorld != null && ReferenceEquals(EditorWorld, Client.Game?.UO?.World);
+
+    /// <summary>Read-only scene-thread diagnostics for authoring and private interaction proofs.</summary>
+    internal static object Inspect(World world)
+    {
+        if (world?.Player == null) return null;
+        var player = world.Player;
+        bool wet = _mask.WaterAt(player.X, player.Y, out int z);
+        return new
+        {
+            selectedStyle = Resolve(ProfileManager.CurrentProfile)?.Id ?? Classic,
+            boundStyle = _bound?.Id ?? Classic, active = _styled,
+            playerWet = wet, surfaceZ = wet ? (int?)z : null,
+            playerDisturbs = wet && player.Z <= z + 1,
+            rippleStamps = _ripples.Stamps, rippleSteps = _ripples.Steps,
+            lastUpdateMs = _ripples.LastUpdateMs
+        };
+    }
+#endif
+
     private static IWaterStyle _bound;
     private static bool _boundOnce;
     private static readonly WaterMask _mask = new WaterMask();
@@ -243,6 +270,9 @@ internal static class WaterRender
     /// </summary>
     public static IWaterStyle Resolve(Profile profile)
     {
+#if TOOLS
+        if (InEditorPreview) return EditorStyle;
+#endif
         string id = Override ?? profile?.WaterStyle;
         if (string.IsNullOrEmpty(id) || string.Equals(id, Classic, StringComparison.OrdinalIgnoreCase))
         {
@@ -371,6 +401,9 @@ internal static class WaterRender
         }
 
         batcher.SetWaterUniform("water_time", (float)(Time.Ticks % 3_600_000L) / 1000f);
+#if TOOLS
+        if (InEditorPreview) batcher.SetWaterUniform("water_time", EditorSeconds);
+#endif
 
         // Canvas-local = inverse(view) * target; world = local + offset +
         // 22, the half tile UpdateRealScreenPosition takes off for the
@@ -404,6 +437,9 @@ internal static class WaterRender
         }
         float delta = _lastTicks == 0 ? 0f : Math.Clamp((Time.Ticks - _lastTicks) / 1000f, 0f, 0.25f);
         _lastTicks = Time.Ticks;
+#if TOOLS
+        if (InEditorPreview && EditorPaused) return;
+#endif
         if (_ripples.Update(world, _mask, delta))
         {
             batcher.SetWaterUniform("water_ripples", _ripples.Texture);

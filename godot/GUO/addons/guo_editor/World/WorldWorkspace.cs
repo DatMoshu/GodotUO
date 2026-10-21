@@ -22,6 +22,8 @@ public partial class WorldView
     private double _toolHeightRatio = 0.65;
     internal VBoxContainer InspectorHost { get; private set; }
     internal ArtPanel BrushLibrary => _brushArt;
+    private WaterPanel _water;
+    internal WaterPanel WaterWorkspace => _water;
     internal SpinBox BrushSizeInput => _numbers["Size (tiles)"];
     internal void ShowInspectorTab(bool inspector) => _detailTabs.CurrentTab = inspector ? 0 : 1;
     // Methods deliberately: Godot serializes settable properties during assembly reload.
@@ -171,6 +173,9 @@ public partial class WorldView
         _brush.Reparent(selected); _brush.CustomMinimumSize = Vector2.Zero; _brush.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         var advancedScroll = new ScrollContainer { Name = "Advanced", HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
         settingsTabs.AddChild(advancedScroll); _advancedTools = advancedScroll;
+        _water = new WaterPanel { Name = "Water" };
+        _water.Attach(() => _host.World);
+        settingsTabs.AddChild(_water);
         var advancedOptions = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill }; advancedScroll.AddChild(advancedOptions);
         var editors = new HBoxContainer(); advancedOptions.AddChild(editors);
         ActionButton(editors, "Pixelorama", () => EditBrushArt(false), "Project > GUO: save back to GUO returns the edit");

@@ -1789,9 +1789,22 @@ no reply). `tools/guo_mcp/run.py` is the stdio bridge: it sends the token, then 
 | `guo_input` | `kind` `motion\|button\|key\|text`; `x`,`y`; `button` `Left\|Right\|Middle\|WheelUp\|WheelDown`; `key` (Godot key name); `pressed`; `text` (at most 1024 characters); `shift`,`ctrl`,`alt` | text content; `isError` on bad arguments |
 | `guo_wait` | `frames` 1..600 | text content after that many process frames |
 | `guo_screenshot` | none | `image/png` content (base64); `isError` when headless |
-| `guo_state` | none | JSON text: `frame` (process frame index; with `--write-movie` it is the movie frame), `scene`, `width`, `height`, `player` (`map`,`x`,`y`,`z`, or null before the world) |
+| `guo_state` | none | JSON text: `frame` (process frame index; with `--write-movie` it is the movie frame), `scene`, `width`, `height`, `player` (`map`,`x`,`y`,`z`, or null before the world). Editor builds also include read-only `water` diagnostics, below. |
 | `guo_quit` | none | text, then the client quits after two frames (finalises a MovieWriter file); the connection closes |
 | `guo_overlay` | `text` (caption, at most 300 characters), `step` (its label, e.g. `3/18`), `control` `{x,y,width,height,label?}` (an outline, viewport pixels), `clear`, `hide` (draw nothing; Space and Esc still count); none of them only reads | JSON text `{skip, abort}`: Space and Esc pressed since the last call (reading clears them). Draws the human driver's caption card and outline on a canvas layer above the game; the card's step label is a Godot `Label` named `HumanOverlayStep`, visible in `guo_ui`. Space does not count while a text field has focus |
+
+In an editor (`TOOLS`) build, `guo_state.water` is null before a world exists.
+In the world it reports `selectedStyle`, `boundStyle` and `active` (the latter
+two describe the last prepared draw), `playerWet` and nullable `surfaceZ` from
+the current water mask, and `playerDisturbs` (a wet cell with the player no
+higher than surface + 1). This is geometric eligibility, not proof that the
+player emitted a stamp. The mask describes the last styled draw, can be stale
+under Classic or during transitions, and treats unknown cells as wet.
+`rippleStamps` and `rippleSteps` are cumulative
+process counters; compare samples rather than assuming they reset on a style
+or map change. `lastUpdateMs` is the most recent ripple update duration, not a
+performance benchmark. Reading these fields changes no style or wave state.
+Exported clients omit this authoring-only block.
 
 No shell, script, file or packet tools exist. Synthetic keys and buttons still held when the last controller
 disconnects are released.
@@ -1806,6 +1819,7 @@ a person shares it. Nothing in it is a client install: installs are referenced i
 <workspace>/
   profiles/servers.json        server instances
   profiles/clients.json        client profiles
+  editor/water/drafts/*.json   manually authored water presets (section 44), independent of build output
   servers/<server-id>/         a server instance's install, Config, Saves, logs, process.json, store/
     server.console.log        managed server stdout and stderr (append-only per start)
   clients/<client-id>/client.json     descriptor of one client (below)
@@ -3082,7 +3096,7 @@ Only dry ground at most
 | `scale` | 0.005..0.25 (1 / world px) | `water_params.y` |
 | `wave` | 0..1 | `water_params.z` |
 | `foam` | 0..1 | `water_params.w` |
-| `glint` | 0..1 | `water_params2.x` |
+| `glint` | 0..1 (0 disables highlights) | `water_params2.x` |
 | `foam_width` | 0..0.5 (cells) | `water_params2.y` |
 | `levels` | integer 0..16 (0 smooth) | `water_params2.z` |
 | `grain` | integer 1..8 | `water_params3.x` |
@@ -3099,9 +3113,33 @@ The four GUO packs, `guo-water-pixel`, `guo-water-cel`,
 `guo-water-realistic` and `guo-water-classicplus` (component `sea`), are built from `design/packs/water`
 by `tools/asset_store/water_packs.py`.
 
+`WaterRippleProbe.tscn` renders a spreading wave on dark pixel water with
+glints disabled: the ripple must retain two palette steps of contrast without white
+sparkles. It also checks byte-identical calm output at zero ripple strength,
+and forces fully lit crests to verify zero glint suppresses highlights while
+positive glint retains them. All inputs are synthetic; no install or shard is needed.
+After building the C# project, run with both real renderers (never `--headless`):
+
+```bat
+godot-console --path godot/GUO --rendering-method forward_plus res://src/Render/Water/WaterRippleProbe.tscn
+godot-console --path godot/GUO --rendering-method gl_compatibility res://src/Render/Water/WaterRippleProbe.tscn
+```
+
+With the engine folder on `PATH`, these commands exit nonzero on a failed
+assertion. Set `GUO_WATER_PROBE_OUT` to an evidence run's `stills/` folder to
+save calm/ripple PNGs named with the renderer and current UTC capture time.
+
 `GUO_WATER_DEBUG=1` in the client's environment paints every fragment that takes
 the water branch magenta, to see which tiles a style reaches; `2` paints the
 ripple field in grey (mid grey is flat).
+
+The editor's [Water workspace](water_authoring.md) reads and writes this same
+style schema, with drafts under `<UO_WORKSPACE_DIR>/editor/water/drafts/*.json`. Its
+export is a v2 `content` pack targeting `client`, with one `water` component
+named `sea`, `water.json`, an original `preview.png` and licence attribution
+when required. Authoring and world-preview state are `TOOLS`-only; no new
+profile fields or exported client settings are added.
+
 ## 42. Packet mods (`Data/Mods/<mod>/mod.json`, `load_mods`, ADR-0038)
 
 A packet mod is a folder the user installed beside `Data/Plugins`: a

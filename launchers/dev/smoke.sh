@@ -52,6 +52,9 @@ echo "[smoke] water render modes contract (synthetic; ADR-0037)"
 echo "[smoke] perf lab report: fields kept, privacy refusal, size (synthetic; tools/perf_lab)"
 "$UO_PYTHON" -m pytest "$UO_TOOLS/perf_lab" -q -p no:cacheprovider || FAIL=1
 
+echo "[smoke] water authoring contracts (synthetic; editor only)"
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://addons/guo_editor/Water/WaterWorkbenchProbe.tscn || FAIL=1
+
 echo "[smoke] PostFX engine regressions (synthetic)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Bootstrap/PostFxEngineProbe.tscn || FAIL=1
 
