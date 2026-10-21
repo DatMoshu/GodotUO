@@ -6,6 +6,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Water
+- The synthetic shore regression now covers coast directions, wrapped mask
+  coordinates, the beach/cliff height cutoff, and Classic output with every
+  water model bound. It rejects headless runs that cannot render pixels.
 - The UO+ water pack keeps the native water art with a gentle shimmer and
   shore lap. All water styles follow a continuous coast contour to avoid
   repeated tile-edge surf bars; high cliffs no longer produce surf.

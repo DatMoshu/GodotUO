@@ -67,7 +67,12 @@ installs all four and prints what to set for the scenario
 The pack scenario also checks a low sandy beach and holds the east docks
 shore and bay cameras for motion review. Run it with `--var style=classic` for the native
 comparison. The synthetic `res://src/Render/Water/WaterShoreProbe.tscn`
-checks the diagonal coast contour, falloff, dry-art overlaps and cliffs with
+checks 48 synthetic coast cases: axis-aligned and diagonal shores in four
+directions, mask windows at positive and negative world coordinates (including
+ring-texture seams), falloff, dry-art overlaps, and the beach/cliff cutoff at
+8/9 units above three water heights. It also checks Classic byte parity with
+all five style models bound and verifies that setting the water bit reaches
+the hue core's debug branch. These checks use
 rendered pixels; run it using `godot-console --path godot/GUO
 --rendering-method forward_plus res://src/Render/Water/WaterShoreProbe.tscn`
 and again with `gl_compatibility`. It needs a real renderer, without `--headless`.
