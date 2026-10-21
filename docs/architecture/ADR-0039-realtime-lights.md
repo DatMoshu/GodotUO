@@ -101,6 +101,29 @@ is data_formats section 45; a Store pack kind for profiles is later work.
 
 ## Validation
 
+UO+ spell-light amendment (2026-10-20, owner-authorized night-push brief):
+`SpellLighting` is a separate L1 non-parity option, off by default and requiring
+Realtime lights. A marked hook after effect construction emits a short source
+burst for known fire/energy projectiles and a recipient burst for heal-style
+effects or lightning. A marked arrival hook reads the current target and emits
+an impact burst, including projectiles without a classic explosion sprite.
+No effect animation, packet or draw order changes. Bursts are stationary, not
+projectile trails. Shards reuse effect graphics, so mappings describe graphics
+rather than identifying spell IDs. Details and curated values are in section 45.
+
+The temporary hook distinguishes spell bursts for cleanup and caps them at 16
+live. World offers have priority; temporary collection uses only spare slots
+within the existing classic 100-light cap. This replaces the prior additional
+64-source allowance, retaining the hook table's 64-entry storage limit. The
+existing per-frame budget log counts admitted temporary sources. Disabling
+either option, changing map or logging out removes spell bursts. Classic light
+offers, art filtering and the off-state target remain unchanged.
+
+`client.spell.lighting` runs `SpellLightingProbe.tscn` headless: real creation and
+arrival seams, resolved tile positions and field colour, default-off persistence,
+parent gate, fade/expiry, saturation and cleanup. The probe invokes arrival
+synthetically and does not claim a live projectile or screenshot review.
+
 `client.realtime.lights` runs `RealtimeLightsProbe.tscn` headless: default
 off and persistence, the ambient ramp end points, a wall blocking a light
 and a door not blocking it, falloff to zero at the radius, the cache hit and

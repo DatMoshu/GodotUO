@@ -39,8 +39,8 @@ namespace GUO.Game.Scenes
         /// <summary>Grid side cap, cells (a zoomed-out 4K view fits well inside).</summary>
         private const int RtMaxSide = 192;
 
-        /// <summary>Every light offer the classic table holds, then the spell-effect lights.</summary>
-        private const int RtSourceCapacity = LightsLoader.MAX_LIGHTS_DATA_INDEX_COUNT + RealtimeLightEffects.MaxLights;
+        /// <summary>Existing world offers take priority; bursts use remaining budget.</summary>
+        private const int RtSourceCapacity = RealtimeLightEffects.FrameLightCap;
 
         /// <summary>On, in game, and not during the black-and-white death frame (the classic path runs then).</summary>
         public bool UseRealtimeLights =>
@@ -89,6 +89,7 @@ namespace GUO.Game.Scenes
         /// <summary>Classic clears its target; the mode's texture is the override.</summary>
         private bool PrepareRealtimeLightTarget(UltimaBatcher2D batcher, RenderTargets renderTargets)
         {
+            if (!SpellLighting.Enabled(ProfileManager.CurrentProfile)) RealtimeLightEffects.ClearSpells();
             if (!UseRealtimeLights)
             {
                 if (_rtTarget != null) ResetRealtimeLights(renderTargets);
@@ -146,7 +147,8 @@ namespace GUO.Game.Scenes
 
                 // Spell-effect lights (RealtimeLightEffects) after the offers.
                 _rtSources ??= new RealtimeLightField.Source[RtSourceCapacity];
-                int temporary = RealtimeLightEffects.Collect(Time.Ticks, _rtSources, _rtSourceCount);
+                int temporary = RealtimeLightEffects.Collect(Time.Ticks, _rtSources, _rtSourceCount,
+                    SpellLighting.Enabled(ProfileManager.CurrentProfile));
                 _rtSourceCount += temporary;
                 var sources = new ReadOnlySpan<RealtimeLightField.Source>(_rtSources, 0, _rtSourceCount);
                 _rtField.Compute(RealtimeAmbientLevel(), sources);

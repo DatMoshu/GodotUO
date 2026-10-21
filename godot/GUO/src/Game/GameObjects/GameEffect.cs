@@ -12,10 +12,13 @@ namespace GUO.Game.GameObjects
     internal abstract partial class GameEffect : GameObject
     {
         private readonly EffectManager _manager;
+        // PORT DEVIATION (GUO): suppress late UO+ impacts from the previous map.
+        private readonly int _spellLightMap;
 
         protected GameEffect(World world, EffectManager manager, ushort graphic, ushort hue, int duration, byte speed) : base(world)
         {
             _manager = manager;
+            _spellLightMap = world.MapIndex; // PORT DEVIATION (GUO): UO+ spell lighting
 
             Graphic = graphic;
             Hue = hue;
@@ -133,6 +136,14 @@ namespace GUO.Game.GameObjects
 
         protected void CreateExplosionEffect()
         {
+            // PORT DEVIATION (GUO): UO+ burst at actual projectile arrival,
+            // also for spells without a classic explosion sprite. Default off.
+            if (this is MovingEffect && World.MapIndex == _spellLightMap)
+            {
+                var tile = GetTarget();
+                GUO.Renderer.Lights.SpellLighting.Emit(GUO.Configuration.ProfileManager.CurrentProfile,
+                    Time.Ticks, GraphicEffectType.Moving, Graphic, tile.x, tile.y, tile.z, impact: true);
+            }
             if (CanCreateExplosionEffect)
             {
                 (var targetX, var targetY, var targetZ) = GetTarget();

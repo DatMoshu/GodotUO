@@ -21,6 +21,12 @@ namespace GUO.Renderer.Lights
         /// <summary>Most live temporary lights.</summary>
         public const int MaxLights = 64;
 
+        /// <summary>UO+ spell bursts admitted at once (and thus per frame).</summary>
+        public const int MaxSpellLights = 16;
+
+        /// <summary>World offers plus temporary sources may never exceed the classic cap.</summary>
+        public const int FrameLightCap = GUO.Assets.LightsLoader.MAX_LIGHTS_DATA_INDEX_COUNT;
+
         /// <summary>Longest a temporary light may last, ms.</summary>
         public const uint MaxDurationMs = 60_000;
 
@@ -35,6 +41,7 @@ namespace GUO.Renderer.Lights
             public float Energy;
             public LightCurve Curve;
             public bool Fade;
+            public bool Spell;
             public uint Start, End;
         }
 
@@ -106,14 +113,53 @@ namespace GUO.Renderer.Lights
         public static void Clear() => _count = 0;
 
         /// <summary>
+        /// A bounded UO+ spell burst; for example AddSpell(now, x, y, z, 3, Colors.Orange, 600).
+        /// At saturation the oldest spell burst goes, preserving non-spell hooks.
+        /// </summary>
+        internal static int AddSpell(uint now, int x, int y, int z, int radius, Color color,
+            uint durationMs, LightCurve curve = LightCurve.E)
+        {
+            if (durationMs == 0) return 0;
+            Prune(now);
+            int count = 0, oldest = 0;
+            for (int i = 0; i < _count; i++)
+            {
+                if (!_entries[i].Spell) continue;
+                if (count++ == 0) oldest = _entries[i].Handle;
+            }
+            if (count >= MaxSpellLights || _count == MaxLights)
+            {
+                if (count == 0) return 0; // Generic hooks already own every slot.
+                Remove(oldest);
+            }
+            int handle = Add(now, x, y, z, radius, color, durationMs, curve);
+            _entries[_count - 1].Spell = true;
+            return handle;
+        }
+
+        /// <summary>Clear only UO+ bursts on disabling, map change or logout.</summary>
+        internal static void ClearSpells()
+        {
+            int w = 0;
+            for (int i = 0; i < _count; i++)
+            {
+                if (_entries[i].Spell) continue;
+                _entries[w++] = _entries[i];
+            }
+            _count = w;
+        }
+
+        /// <summary>
         /// The live lights as field sources into <paramref name="into"/>, from
         /// <paramref name="start"/>; returns how many were written. Expired ones go.
         /// </summary>
-        internal static int Collect(uint now, RealtimeLightField.Source[] into, int start)
+        internal static int Collect(uint now, RealtimeLightField.Source[] into, int start, bool includeSpells = true)
         {
             Prune(now);
+            if (!includeSpells) ClearSpells();
             int n = 0;
-            for (int i = 0; i < _count && start + n < into.Length; i++)
+            int end = Math.Min(into.Length, FrameLightCap);
+            for (int i = 0; i < _count && start + n < end; i++)
             {
                 ref Entry e = ref _entries[i];
                 float energy = e.Energy * Strength(in e, now);

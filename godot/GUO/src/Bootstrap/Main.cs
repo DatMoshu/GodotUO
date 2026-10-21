@@ -90,6 +90,7 @@ public partial class Main : Node
         Automation.McpHost.Attach(this);
         if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--hd-content-probe") >= 0) Store.StoreHdProbe.Run();
         if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--realtime-lights-probe") >= 0) Renderer.Lights.RealtimeLightsProbe.Run();
+        if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--spell-lighting-probe") >= 0) Renderer.Lights.SpellLightingProbe.Run();
 
         // Synthetic selection seam proof before normal scene startup for the MCP runner.
         if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--selection-seam-probe") >= 0)

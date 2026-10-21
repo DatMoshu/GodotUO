@@ -2887,6 +2887,44 @@ linearly to 0 over the last 30 % of it. At most 64 live; a full table drops the
 oldest. Time is `Time.Ticks`. With the option off nothing reads them and they
 expire on their own.
 
+**UO+ spell lighting** (non-parity, `Profile.SpellLighting`, JSON `spell_lighting`,
+default `false`). The Video checkbox in both Options interfaces is independent
+of Realtime lights, which must also be enabled. No change to classic effect
+sprites, packets, hue lookup or sampling. Cast bursts are stationary at the
+resolved source tile when the effect is created; projectile impacts use the
+resolved target tile at actual arrival, even without an explosion sprite.
+These are effect-graphic mappings, not spell IDs: a shard reusing a graphic gets
+the same tint. Hued variants use the same curated light tint.
+
+| Effect | Graphic | Radius (tiles) | Tint RGB | Duration (ms) | Falloff |
+|---|---|---|---|---|---|
+| Moving fireball / magic arrow cast | `0x36D4`, `0x36E4` | 3 | 1, .28, .06 | 500 | C |
+| Same, impact | same | 4 | same | 800 | C |
+| Moving energy bolt cast | `0x379F` | 3 | .35, .5, 1 | 450 | E |
+| Same, impact | same | 4 | same | 700 | E |
+| Fixed heal-style effect at recipient | `0x376A` | 3 | .3, 1, .55 | 900 | E |
+| Lightning at recipient | Lightning type | 4 | .6, .75, 1 | 400 | E |
+
+The small radii keep pools local, the impact is wider than the cast, and short
+durations fade over their last 30% using the existing hook's energy 2.2.
+Unknown graphics and drag effects emit nothing. No projectile trail is added;
+the cast lights the source briefly, then arrival lights the target. These
+curated bursts use built-in curves rather than the item/light profile overrides.
+At most 16 spell bursts live at once; a new burst replaces the oldest spell
+burst. All temporary hooks fill only spare slots after existing world offers,
+with **100 total light sources per frame**, including spell bursts. Saturated
+world offers suppress temporary light collection without extending burst life.
+The existing budget log's `temp` count includes the admitted bursts. Disabling
+either option clears spell bursts on the next light preparation; map changes
+and logout clear them too, without removing other temporary hooks.
+
+`client.spell.lighting` / `SpellLightingProbe.tscn` checks default-off persistence,
+both gates, the real creation and arrival hooks, tile placement, field colour,
+fade/expiry, storm saturation and cleanup without UO data or a shard. The
+arrival seam is invoked synthetically; this is headless field evidence, not an
+in-world visual review. The smoke launchers include this probe. No external
+dependency or separate doctor is required beyond the normal Godot .NET setup.
+
 **Debug output**, off unless its environment variable is set:
 
 - `GUO_LIGHTS_BUDGET=1`: per frame, at trace level and on stdout,

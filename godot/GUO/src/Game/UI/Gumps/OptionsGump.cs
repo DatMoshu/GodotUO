@@ -197,6 +197,7 @@ namespace GUO.Game.UI.Gumps
         private Checkbox _use_old_status_gump, _statusGumpBarMutuallyExclusive, _windowBorderless, _enableDeathScreen, _enableBlackWhiteEffect, _altLights, _enableLight, _enableShadows, _enableShadowsStatics, _auraMouse, _runMouseInSeparateThread, _useColoredLights, _darkNights, _partyAura, _hideChatGradient, _animatedWaterEffect;
         private Checkbox _enhancedHD; // PORT DEVIATION (GUO): Enhanced HD repaint detail
         private Checkbox _realtimeLights; // PORT DEVIATION (GUO): Realtime lights (ADR-0039)
+        private Checkbox _spellLighting; // PORT DEVIATION (GUO): UO+ spell bursts (ADR-0039)
         private Combobox _lightLevelType;
         private Combobox _hdFilter; // PORT DEVIATION (GUO): optional HD pack sampling.
         private Combobox _waterStyle; // PORT DEVIATION (GUO): water render style (ADR-0037).
@@ -2141,6 +2142,10 @@ namespace GUO.Game.UI.Gumps
                     startY
                 )
             );
+
+            // PORT DEVIATION (GUO): UO+ spell bursts, a separate default-off option.
+            section4.Add(_spellLighting = AddCheckBox(null,
+                "Spell lighting (UO+, requires Realtime lights)", _currentProfile.SpellLighting, startX, startY));
 
             section4.Add(AddLabel(null, "HD filtering", startX, startY));
             section4.AddRight(_hdFilter = AddCombobox(null,
@@ -4204,6 +4209,7 @@ namespace GUO.Game.UI.Gumps
                     _enhancedHD.IsChecked = videoDefaults.EnhancedHD; // PORT DEVIATION (GUO)
                     _hdFilter.SelectedIndex = (int)videoDefaults.HdFilter;
                     _realtimeLights.IsChecked = videoDefaults.RealtimeLights; // PORT DEVIATION (GUO)
+                    _spellLighting.IsChecked = videoDefaults.SpellLighting; // PORT DEVIATION (GUO)
                     _waterStyle.SelectedIndex = 0; // PORT DEVIATION (GUO): Classic
                     _partyAuraColorPickerBox.Hue = 0x0044;
 
@@ -4788,6 +4794,7 @@ namespace GUO.Game.UI.Gumps
 
             _currentProfile.HdFilter = (HdFilterMode)Math.Clamp(_hdFilter.SelectedIndex, 0, 3);
             _currentProfile.RealtimeLights = _realtimeLights.IsChecked; // PORT DEVIATION (GUO): ADR-0039
+            _currentProfile.SpellLighting = _spellLighting.IsChecked; // PORT DEVIATION (GUO): UO+
 
             // PORT DEVIATION (GUO): the renderer rebuilds the meshes when it sees the change.
             _currentProfile.WaterStyle = GUO.Renderer.Water.WaterRender.ChoiceId(_waterStyle.SelectedIndex);

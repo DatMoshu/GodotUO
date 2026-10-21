@@ -222,10 +222,16 @@ namespace GUO.Game.Managers
 
 
             PushToBack(effect);
+            // PORT DEVIATION (GUO): UO+ spell lighting, default off (ADR-0039).
+            // Constructors resolve entity sources before the burst is placed.
+            GUO.Renderer.Lights.SpellLighting.Emit(GUO.Configuration.ProfileManager.CurrentProfile,
+                Time.Ticks, type, graphic, effect.X, effect.Y, effect.Z);
         }
 
         public new void Clear()
         {
+            // PORT DEVIATION (GUO): no UO+ spell bursts survive logout.
+            GUO.Renderer.Lights.RealtimeLightEffects.ClearSpells();
             GameEffect first = (GameEffect) Items;
 
             while (first != null)

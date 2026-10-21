@@ -1,0 +1,13 @@
+{
+  "id": "client.spell.lighting",
+  "title": "UO+ spell lighting: cast and impact tiles, heal, expiry and shared budget",
+  "surface": "client",
+  "requires": {"build": "debug"},
+  "timeouts": {"step_s": 60, "run_s": 180},
+  "steps": [
+    {"id": "launch", "do": {"kind": "launch", "args": ["--spell-lighting-probe"], "settings": {"autologin": false, "username": "", "password": ""}},
+     "say": "Check UO+ spell bursts with synthetic effect events, no art or shard.",
+     "expect": {"log.contains": "[Spell lighting] PASS", "within_s": 45}},
+    {"id": "summary", "do": {"kind": "note", "text": "Default-off persistence and parent gate; actual creation/arrival hooks; resolved source and target tiles; warm fire and green heal field cells; fade and expiry; storm capped at 16 spells with 100 total lights, existing offers first; disable/map/logout cleanup. Headless field proof only; visual in-world review remains separate."}}
+  ]
+}
