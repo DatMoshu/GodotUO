@@ -19,6 +19,8 @@ public sealed class SoundDocument
     private readonly List<State> _history = new();
     private int _cursor;
     private State _saved;
+    private string _savedFileHash = "missing";
+    private long _revision;
     private State Current => _history[_cursor];
     public string Project { get; }
     public string Install { get; }
@@ -38,6 +40,7 @@ public sealed class SoundDocument
     public string PcmHash => Current.Hash;
     public string DocumentPath => EditorPaths.ProjectFile(Project, Install, "metadata", "sounds", $"0x{Id:X4}.json");
     public string RecoveryKey => Project + "|" + Id + "|" + SourceHash;
+    internal string NativeReviewToken => RecoveryKey + "|" + _revision + "|" + _savedFileHash + "|" + DraftName + "|" + Snapshot().ToJsonString();
 
     private SoundDocument(string project, string install, int id, Func<(byte[] Pcm, string Name)> readSource)
     {
@@ -78,7 +81,7 @@ public sealed class SoundDocument
     private void Push(State next)
     {
         if (next.Name == Current.Name && next.Hash == Current.Hash) return;
-        _history.RemoveRange(_cursor + 1, _history.Count - _cursor - 1); _history.Add(next); _cursor++;
+        _history.RemoveRange(_cursor + 1, _history.Count - _cursor - 1); _history.Add(next); _cursor++; _revision++;
         // PCM histories share immutable buffers. Bound retained sample memory as well as operation count.
         while (_history.Count > 100 || (_history.Count > 2 && _history.Select(s => s.Hash).Distinct().Sum(h => (long)_history.First(s => s.Hash == h).Pcm.Length) > 128L * 1024 * 1024))
         { _history.RemoveAt(0); _cursor--; }
@@ -99,9 +102,9 @@ public sealed class SoundDocument
     {
         if (RecoveryError != null) return;
         if (Pending && !CommitDraft()) { DraftName = CurrentName; return; }
-        if (CanUndo) _cursor--; DraftName = CurrentName;
+        if (CanUndo) { _cursor--; _revision++; } DraftName = CurrentName;
     }
-    public void Redo() { if (!CommitDraft()) return; if (CanRedo) _cursor++; DraftName = CurrentName; }
+    public void Redo() { if (!CommitDraft()) return; if (CanRedo) { _cursor++; _revision++; } DraftName = CurrentName; }
     public void Revert() { if (RecoveryError != null) return; Push(_original); DraftName = SourceName; }
 
     public JsonObject Snapshot() => new()
@@ -143,11 +146,27 @@ public sealed class SoundDocument
     public void Save()
     {
         if (!CommitDraft()) throw new IOException(RecoveryError ?? Validation);
-        CheckSource(); PersistPcm(); string path = DocumentPath; Directory.CreateDirectory(Path.GetDirectoryName(path));
+        CheckSource(); CheckSavedCopy(); PersistPcm(); string path = DocumentPath; Directory.CreateDirectory(Path.GetDirectoryName(path));
         string temporary = path + ".tmp-" + Guid.NewGuid().ToString("N");
-        try { File.WriteAllText(temporary, Snapshot().ToJsonString(new() { WriteIndented = true }) + "\n"); File.Move(temporary, path, true); }
+        try { File.WriteAllText(temporary, Snapshot().ToJsonString(new() { WriteIndented = true }) + "\n"); CheckSource(); CheckSavedCopy(); File.Move(temporary, path, true); }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
-        _saved = Current;
+        _savedFileHash = SavedHash(); _saved = Current;
+    }
+    private string SavedHash() => File.Exists(DocumentPath)
+        ? Hash(TextureDocument.Read(DocumentPath, 16384)) : "missing";
+    private void CheckSavedCopy()
+    { if (SavedHash() != _savedFileHash) throw new IOException("Saved sound copy changed outside this document. Reopen it before saving or native export."); }
+    internal void RequireNativeReview(string token)
+    {
+        CheckSource(); CheckSavedCopy();
+        if (RecoveryError != null || Pending || NativeReviewToken != token)
+            throw new IOException(RecoveryError ?? "Working sound changed. Reopen native export for a fresh review.");
+    }
+    internal JsonObject NativeStageInput(string token, string packaging, string pcmFile)
+    {
+        RequireNativeReview(token);
+        return new() { ["schema"] = 1, ["domain"] = "sound", ["id"] = Id, ["source_sha256"] = SourceHash,
+            ["name"] = CurrentName, ["pcm_sha256"] = PcmHash, ["pcm_file"] = pcmFile, ["packaging"] = packaging };
     }
     public static SoundDocument Open(string project, string install, int id, Func<(byte[] Pcm, string Name)> readSource)
     {
@@ -155,9 +174,11 @@ public sealed class SoundDocument
         if (File.Exists(path))
         {
             if (new FileInfo(path).Length > 16384) throw new IOException("Sound document exceeds 16 KiB.");
-            State state = document.ReadSnapshot(JsonNode.Parse(File.ReadAllText(path)));
+            byte[] saved = TextureDocument.Read(path, 16384); State state = document.ReadSnapshot(JsonNode.Parse(saved));
             document.Push(state); document._saved = state; document.DraftName = state.Name;
+            document._savedFileHash = Hash(saved);
         }
+        document.CheckSavedCopy(); document.CheckSource();
         return document;
     }
     internal JsonObject Recovery()

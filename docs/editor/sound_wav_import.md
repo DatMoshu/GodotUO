@@ -61,9 +61,9 @@ confirms discarding unsaved name and PCM state. Unreferenced blobs can remain
 after undo, failed saves or discarded drafts; no automatic deletion is implied.
 
 These inert project documents are neither Store packs nor native sound records.
-Native sound staging still requires F01 independent sound read-back and its
-separate policy decision. No occupied native sound replacement is authorized
-by this milestone, and no runtime source loader is changed.
+F14d adds separately reviewed [native sound staging](sound_native_staging.md)
+with pinned independent sound read-back. WAV import itself changes only the
+project document; no runtime source loader is changed.
 
 ## Verification
 

@@ -966,12 +966,17 @@ file of the same shape in `--ranges` / `UO_DATA_RANGES`):
 | `tiledata-item` | empty | Any of `flags weight layer count anim hue light height name`; the rest keep their value |
 | `hue` | One 88-byte hue entry | |
 | `cliloc-file` | Complete bounded native Cliloc; ID is zero. Explicit replacement required. | Only `filename: Cliloc.<safe suffix>`; no runtime language registration |
+| `sound` | Complete 40-byte native name plus mono 16-bit LE 22050 Hz PCM; occupied physical ID only. Explicit replacement required. | Only `packaging: mul` or `packaging: uop`; resolve/review Sound.def aliases before writing |
 | `multi` | The `MultiCollection.uop` record: `uint32 id, int32 count`, then per component `uint16 item, int16 x, y, z, uint16 flags` (0 shown, 1 hidden), `uint32 0` (no cliloc list). Ids stay below 0x4000, which the shard masks to | |
 
 **Writes** (all append-only except the in-place records):
 
 Native Cliloc staging uses the existing project snapshot and a separate reviewed
 candidate transaction; see [native Cliloc staging](editor/cliloc_native_staging.md).
+Native sound staging captures source fingerprint, working name and a hashed
+raw PCM file in a schema-1 `domain: sound` snapshot, with explicit packaging and
+logical ID. Its separate native-payload manifest binds the resolved physical row
+and affected aliases; see [native sound staging](editor/sound_native_staging.md).
 The private stage's `cliloc_sources` map binds each target to a document source
 path/hash. A new native filename records `source_exists: false`, an empty
 `source_sha1` and zero `source_size`; installation checks require it to remain

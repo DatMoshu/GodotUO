@@ -37,10 +37,19 @@ public partial class EditorSmoke
         document.DraftName = "named effect"; document.CommitDraft(); document.Save(); var reopened = Open();
         SoundDocumentCheck("save_reload_and_pcm_preserved", !reopened.IsDirty && reopened.CurrentName == "named effect" && reopened.Pcm().AsSpan().SequenceEqual(pcm));
         document.Undo(); SoundDocumentCheck("undo_after_save_dirty", document.IsDirty); document.Redo();
+        string savedCopy = File.ReadAllText(reopened.DocumentPath);
         JsonObject bad = reopened.Snapshot(); bad["id"] = 2; File.WriteAllText(reopened.DocumentPath, bad.ToJsonString());
         SoundDocumentCheck("wrong_id_refused", SoundDocumentRefused(() => Open()));
-        reopened.Save(); bad = reopened.Snapshot(); bad["source_sha256"] = "bad"; File.WriteAllText(reopened.DocumentPath, bad.ToJsonString());
-        SoundDocumentCheck("wrong_hash_refused", SoundDocumentRefused(() => Open())); reopened.Save();
+        SoundDocumentCheck("external_saved_copy_refuses_save_and_native_export", SoundDocumentRefused(reopened.Save)
+            && SoundDocumentRefused(() => reopened.RequireNativeReview(reopened.NativeReviewToken)));
+        File.WriteAllText(reopened.DocumentPath, savedCopy); bad = reopened.Snapshot(); bad["source_sha256"] = "bad"; File.WriteAllText(reopened.DocumentPath, bad.ToJsonString());
+        SoundDocumentCheck("wrong_hash_refused", SoundDocumentRefused(() => Open())); File.WriteAllText(reopened.DocumentPath, savedCopy);
+        string nativeToken = reopened.NativeReviewToken;
+        JsonObject nativeInput = reopened.NativeStageInput(nativeToken, "uop", Path.Combine(root, "captured.pcm"));
+        SoundDocumentCheck("native_snapshot_binds_pcm_name_and_source", (string)nativeInput["pcm_sha256"] == reopened.PcmHash
+            && (string)nativeInput["source_sha256"] == reopened.SourceHash && (string)nativeInput["name"] == reopened.CurrentName);
+        reopened.DraftName = "native review change"; reopened.CommitDraft(); reopened.Undo();
+        SoundDocumentCheck("native_undo_invalidates_previous_review", SoundDocumentRefused(() => reopened.RequireNativeReview(nativeToken)));
         CheckSoundDocumentEditor(Open(), Open(2));
         byte[] baseline = (byte[])pcm.Clone(); pcm[0] ^= 1;
         SoundDocumentCheck("source_pcm_change_refuses_save_reopen", SoundDocumentRefused(reopened.Save) && SoundDocumentRefused(() => Open()));
@@ -53,6 +62,13 @@ public partial class EditorSmoke
             .ToDictionary(path => path, path => (new FileInfo(path).Length, File.GetLastWriteTimeUtc(path), Hash(path)));
         SoundDocument active = panel.WorkingDocument(id);
         SoundDocumentCheck("native_inspector_binding", active != null && _inspector.Sound.Visible && _inspector.Sound.Document == active && _inspector.Sound.Footer.Visible);
+        var nativeStage = panel.OpenNativeStage();
+        SoundDocumentCheck("native_stage_initial_action", !panel.NativeStageButton.Disabled && nativeStage != null && !nativeStage.Prepared && !nativeStage.Applied && !nativeStage.Busy);
+        nativeStage.Free(); active.DraftName = new string('é', 17);
+        SoundDocumentCheck("native_pending_invalid_name_refused", SoundDocumentRefused(() => panel.OpenNativeStage())); active.DraftName = active.CurrentName;
+        string activeToken = active.NativeReviewToken; panel.SelectKind(true);
+        SoundDocumentCheck("native_music_disabled_and_context_refused", panel.NativeStageButton.Disabled && SoundDocumentRefused(() => panel.RequireNativeContext(active)));
+        panel.SelectKind(false); panel.Search($"0x{id:X4}");
         _inspector.Sound.NameInput.Text = "saved smoke sound"; _inspector.Sound.NameInput.EmitSignal(LineEdit.SignalName.TextChanged, "saved smoke sound");
         SoundDocumentCheck("active_project_save", _inspector.Sound.Save()); panel.OnAssetsChanged();
         SoundDocumentCheck("working_name_search", panel.Search("saved smoke sound") == id);
@@ -89,6 +105,7 @@ public partial class EditorSmoke
                 && JsonNode.Parse(settings.GetProjectMetadata("guo_sound", "drafts", "[]").AsString()).AsArray().Count == 1 && refused.CurrentName == "recovered name");
             recovered.Discard(refused); SoundDocumentCheck("explicit_discard_clears_failed_recovery", settings.GetProjectMetadata("guo_sound", "drafts", "[]").AsString() == "[]");
             // Restore the fixture's saved name so following model checks use the expected baseline.
+            first = SoundDocument.Open(first.Project, first.Install, first.Id, () => (first.Pcm(), "original.wav\0trailing header bytes"));
             first.DraftName = "named effect"; first.CommitDraft(); first.Save();
         }
         finally { recovered?.Free(); editor.Free(); settings.SetProjectMetadata("guo_sound", "drafts", previous); }

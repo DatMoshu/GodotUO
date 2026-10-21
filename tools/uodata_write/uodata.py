@@ -15,8 +15,9 @@ Containers written (append-only, so nothing existing moves):
   in place       tiledata.mul item records (the 7.0.9.0+ layout only), hues.mul blocks
 
 A MUL + IDX slot that already holds data is refused unless the caller asks to
-replace it, as a UOP name that already exists is always refused: an id the client
-or a shard already uses is never overwritten by accident (ADR-0022). Every record
+replace it. Existing UOP names are refused except for explicit occupied sound
+replacement; static replacement uses its separate reviewed adapter. An id the
+client or shard uses is never overwritten by accident (ADR-0022). Every record
 is checked before anything is written, so a refused call leaves the stage as it was.
   multis         MultiCollection.uop: a new entry per multi (UOP layout, zlib, flag 1),
                  or multi.mul / multi.idx on installs without it (the index grown if needed)
@@ -40,7 +41,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from guo.uomap import UOP_MAGIC, uop_entries, uop_hash  # noqa: E402
 from guo.uorecord import AssetRecord  # noqa: E402
-from guo import cliloc_records  # noqa: E402
+from guo import cliloc_records, sound_records  # noqa: E402
 
 LAND_COUNT = 0x4000
 TILE_LAND_BLOCK = 4 + 32 * 30          # new (7.0.9.0+) land group
@@ -655,6 +656,15 @@ def cliloc_name(record: AssetRecord) -> str:
     return name
 
 
+def sound_library(stage: Stage, packaging: str) -> sound_records.Library:
+    files = {}
+    for name in sound_records.filenames(packaging):
+        path = stage.read_path(name)
+        if path.stat().st_size > sound_records.MAX_FILE: raise ValueError("Sound file exceeds 512 MiB")
+        files[name] = path.read_bytes()
+    return sound_records.parse(files, packaging)
+
+
 def check_records(stage: Stage, records: list[AssetRecord], replace: bool = False) -> None:
     """Refuses, before anything is written, a record the writers would refuse or
     get wrong: an existing UOP name, an occupied MUL slot (unless replace), the old
@@ -667,7 +677,16 @@ def check_records(stage: Stage, records: list[AssetRecord], replace: bool = Fals
             raise ValueError(f"{mul_idx} entry {index} already holds data; the writer only adds (replace to overwrite)")
 
     for r in records:
-        if r.kind == "cliloc-file":
+        if r.kind == "sound":
+            if not replace or set(r.meta) != {"packaging"}:
+                raise ValueError("Native sound requires explicit replacement and packaging metadata")
+            sound_records.filenames(r.meta["packaging"])
+            sound_records.validate(r.data)
+            for name in sound_records.filenames(r.meta["packaging"]):
+                target = stage.target(name)
+                if target.exists() and (target.stat().st_nlink > 1 or name.lower() not in stage.meta["files"]):
+                    raise ValueError("Hardlinked or unregistered native sound output refused")
+        elif r.kind == "cliloc-file":
             name = cliloc_name(r); target = stage.target(name, allow_new=True)
             if not replace: raise ValueError("Native Cliloc requires explicit replacement")
             if target.exists() and (target.stat().st_nlink > 1 or name.lower() not in stage.meta["files"]):
@@ -703,6 +722,13 @@ def check_records(stage: Stage, records: list[AssetRecord], replace: bool = Fals
         check_texmaps(stage.read_path("texmaps.mul"), stage.read_path("texidx.mul"), textures)
     names = [cliloc_name(r).lower() for r in records if r.kind == "cliloc-file"]
     if len(names) != len(set(names)): raise ValueError("Duplicate native Cliloc output filename")
+    sounds = [r for r in records if r.kind == "sound"]
+    if sounds:
+        packagings = {r.meta["packaging"] for r in sounds}
+        if len(packagings) != 1: raise ValueError("One explicit sound packaging per batch is required")
+        if len({r.id for r in sounds}) != len(sounds): raise ValueError("Duplicate physical sound ID")
+        library = sound_library(stage, sounds[0].meta["packaging"])
+        sound_records.patch(library, {r.id: r.data for r in sounds})
 
 
 def output_files(stage: Stage, records: list[AssetRecord]) -> list[str]:
@@ -726,6 +752,8 @@ def output_files(stage: Stage, records: list[AssetRecord]) -> list[str]:
         names.append("hues.mul")
     if "texmap" in kinds:
         names += ["texmaps.mul", "texidx.mul"]
+    for packaging in {r.meta.get("packaging") for r in records if r.kind == "sound"}:
+        names += list(sound_records.filenames(packaging))
     names += [cliloc_name(r) for r in records if r.kind == "cliloc-file"]
     return names
 
@@ -783,6 +811,12 @@ def write_records(stage: Stage, records: list[AssetRecord], replace: bool = Fals
     if textures:
         write_texmaps(stage.path("texmaps.mul"), stage.path("texidx.mul"), textures)
         done += [f"texmap {ident:#x} ({len(payload)} bytes)" for ident, payload in textures]
+    sounds = [r for r in records if r.kind == "sound"]
+    if sounds:
+        packaging = sounds[0].meta["packaging"]
+        for name, data in sound_records.patch(sound_library(stage, packaging), {r.id: r.data for r in sounds}).items():
+            stage.path(name).write_bytes(data)
+        done += [f"sound {r.id:#x} ({len(r.data) - 40} PCM bytes)" for r in sounds]
     multis = [r for r in records if r.kind == "multi"]
     if multis:
         for r in multis:
@@ -833,6 +867,8 @@ def write_records(stage: Stage, records: list[AssetRecord], replace: bool = Fals
 
 def read_back(stage: Stage, r: AssetRecord) -> bytes | dict | None:
     """What the staged set now holds for a record (for verify)."""
+    if r.kind == "sound":
+        return sound_library(stage, r.meta["packaging"]).records.get(r.id)
     if r.kind == "cliloc-file":
         return stage.read_path(cliloc_name(r)).read_bytes()
     if r.kind == "texmap":

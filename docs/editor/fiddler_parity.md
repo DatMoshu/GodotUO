@@ -129,6 +129,12 @@ loop audition, active-library occupied/empty counts, all/empty views and next-em
 navigation. Empty inspectors stay read-only and export reviews explicitly exclude
 empty rows. Native insertion/removal and sound archive staging remain separate.
 
+F14d adds [verified native sound staging](sound_native_staging.md): explicit
+current/export audition, physical-row/shared-alias review, exact preservation of
+untouched records and opaque headers, pinned ClassicUO name/PCM read-back and
+recoverable staged promotion. MUL/IDX and uncompressed UOP are separate proofs;
+compressed sound archives, insertion/removal and music editing remain separate.
+
 Phase 1 proposal, 2026-10-19. guo-director first-pass review received;
 catalogue and survey await guo-director and exec-fable sign-off.
 F01a has separate director authorization for assignment (inbox #11093);

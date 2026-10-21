@@ -47,6 +47,7 @@ public partial class SoundPanel : GridPanel
     private readonly HashSet<string> _loadedProjects = new();
     internal event Action<SoundDocument> DocumentReopening;
     internal Button ReopenButton { get; private set; }
+    internal Button NativeStageButton { get; private set; }
     private string Project => Data.Assets?.Root ?? EditorData.ProjectRoot();
     private string Key(int id) => Project + "|" + id;
 
@@ -82,6 +83,8 @@ public partial class SoundPanel : GridPanel
         var stop = AssetUi.Action("Stop", "Stop sound or music playback", Stop);
         bar.AddChild(stop);
         ReopenButton = AssetUi.Action("Reload", "Reopen selected sound and saved working document…", ReopenSound); bar.AddChild(ReopenButton);
+        NativeStageButton = AssetUi.Action("Save", "Export selected sound to a verified native stage…", () =>
+        { try { OpenNativeStage(); } catch (Exception e) { AssetActions.ReportEdit(e.Message, "Native sound export", this); } }); bar.AddChild(NativeStageButton);
         var slots = new HBoxContainer(); AddChild(slots);
         _slots = new OptionButton { AccessibilityName = "Sound effect slot view", TooltipText = "Active loader occupancy in IDs 0x0000–0x0FFF; aliases count as occupied. Empty is not a native insertion guarantee." };
         foreach (string label in new[] { "Occupied effects", "All effect slots", "Empty effect slots" }) _slots.AddItem(label);
@@ -111,6 +114,7 @@ public partial class SoundPanel : GridPanel
         ExportButton.TooltipText = Music ? "Batch export supports sound effects; music uses its existing playback controls." : "Export sound list or WAV batch…";
         _slots.Visible = NextEmptyButton.Visible = _counts.Visible = !Music;
         ReopenButton.Disabled = Music || Selected is not int selected || !_effects.ContainsKey(selected);
+        NativeStageButton.Disabled = Music || Selected is not int native || !_effects.ContainsKey(native);
         LoopButton.Disabled = Music || Selected is not int effect || !_effects.ContainsKey(effect);
         NextEmptyButton.Disabled = Music || NextEmptyId() < 0;
         _counts.Text = $"{_effects.Count:N0} occupied · {MaxSound - _effects.Count:N0} empty · 0x0000–0x0FFF";
@@ -321,6 +325,19 @@ public partial class SoundPanel : GridPanel
         SoundDocument document = WorkingDocument(id) ?? throw new IOException("Open a valid sound document before importing WAV.");
         if (document.RecoveryError != null) throw new IOException(document.RecoveryError);
         return SoundImportDialog.Open(this, document, SoundWave.ReadFile(path), path);
+    }
+    internal void RequireNativeContext(SoundDocument document)
+    {
+        if (Music || Selected != document.Id || document.Project != EditorPaths.Real(Project)
+            || document.Install != EditorPaths.Real(Data.ClientData) || WorkingDocument(document.Id) != document)
+            throw new IOException("Sound selection or project changed. Reopen native export for the active sound.");
+    }
+    internal SoundStageDialog OpenNativeStage()
+    {
+        if (Music || Selected is not int id || !_effects.ContainsKey(id)) throw new IOException("Choose an occupied sound effect before native export.");
+        var document = WorkingDocument(id) ?? throw new IOException("Repair or reopen the sound document before native export.");
+        if (!document.CommitDraft()) throw new IOException(document.RecoveryError ?? document.Validation);
+        return SoundStageDialog.Open(this, Data, document);
     }
 
     internal void ExportWav(int id, string path)

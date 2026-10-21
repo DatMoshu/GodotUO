@@ -18,6 +18,8 @@ public partial class EditorSmoke
     private System.Threading.Tasks.Task _metadataStageTask;
     private ClilocStageDialog _clilocStageProof;
     private System.Threading.Tasks.Task _clilocStageTask;
+    private SoundStageDialog _soundStageProof;
+    private System.Threading.Tasks.Task _soundStageTask;
     private System.Threading.Tasks.Task _hueStageTask;
     private void CheckAssetWorkbench(ArtPanel art, int id)
     {
@@ -613,7 +615,59 @@ public partial class EditorSmoke
             _clilocStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); _clilocStageTask = _clilocStageProof.Operation;
             _clilocStageProof.Free(); _assetsProofStep = 69; return;
         }
-        MetadataCheck("cliloc_native_close_waits_for_owned_job", _clilocStageTask.IsCompletedSuccessfully && !Directory.Exists(Path.Combine(_out, "canceled-native-cliloc-stage")));
+        if (_assetsProofStep == 69)
+        {
+            MetadataCheck("cliloc_native_close_waits_for_owned_job", _clilocStageTask.IsCompletedSuccessfully && !Directory.Exists(Path.Combine(_out, "canceled-native-cliloc-stage")));
+            var sound = _assets.Panel<SoundPanel>(); _assets.ShowPanel(sound); sound.SelectKind(false); sound.Search("0x0000");
+            var document = sound.WorkingDocument(0); document.DraftName = "Native sound review"; document.CommitDraft(); document.ImportWave(SoundWave.Encode(new byte[22050]));
+            GetWindow().Size = AssetProofSize(1366, 900); _soundStageProof = sound.OpenNativeStage();
+            _soundStageProof.Destination.Text = Path.Combine(_out, "native-sound-stage");
+            _soundStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); _soundStageTask = _soundStageProof.Operation; _assetsProofStep = 70; return;
+        }
+        if (_soundStageTask?.IsCompleted == false) return;
+        if (_assetsProofStep <= 72)
+        {
+            int width = new[] { 1366, 1024, 1920 }[_assetsProofStep - 70];
+            MetadataCheck($"sound_native_prepared_{width}", _soundStageProof.Prepared && !_soundStageProof.Applied && !_soundStageProof.GetOkButton().Disabled
+                && !Directory.Exists(_soundStageProof.Destination.Text) && _soundStageProof.Size.Y <= GetWindow().Size.Y);
+            SaveAssetProof($"sound-native-prepared-{width}", _soundStageProof.GetTexture()?.GetImage());
+            if (!_soundStageProof.Prepared) { _failures.Add("Native sound preparation failed: " + _soundStageProof.Status); _soundStageProof.Free(); Finish(); return; }
+            _assetsProofStep++;
+            if (_assetsProofStep == 71) { GetWindow().Size = AssetProofSize(1024, 768); return; }
+            if (_assetsProofStep == 72) { GetWindow().Size = AssetProofSize(1920, 1080); return; }
+            var sound = _assets.Panel<SoundPanel>();
+            GodotUi.Walk(_soundStageProof).OfType<Button>().Single(b => b.TooltipText == "Audition current staged PCM").EmitSignal(Button.SignalName.Pressed);
+            MetadataCheck("sound_native_current_stage_audition", sound.ProjectPreviewPlaying && sound.ProjectPreviewSamples == sound.WorkingDocument(0).SourceSamples); sound.Stop();
+            GodotUi.Walk(_soundStageProof).OfType<Button>().Single(b => b.TooltipText == "Audition reviewed export PCM").EmitSignal(Button.SignalName.Pressed);
+            MetadataCheck("sound_native_export_pcm_audition", sound.ProjectPreviewPlaying && sound.ProjectPreviewSamples == 11025); sound.Stop();
+            GetWindow().Size = AssetProofSize(1024, 768); _soundStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed);
+            var confirm = _soundStageProof.GetChildren().OfType<ConfirmationDialog>().Last();
+            MetadataCheck("sound_native_confirmation_fits_1024", confirm.Size.X <= GetWindow().Size.X && confirm.Size.Y <= GetWindow().Size.Y);
+            MetadataCheck("sound_native_apply_requires_confirmation", !_soundStageProof.Applied && !Directory.Exists(_soundStageProof.Destination.Text));
+            confirm.EmitSignal(ConfirmationDialog.SignalName.Canceled);
+            MetadataCheck("sound_native_cancel_apply_keeps_stage", !_soundStageProof.Applied && !Directory.Exists(_soundStageProof.Destination.Text));
+            _soundStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); return;
+        }
+        if (_assetsProofStep == 73)
+        {
+            var confirm = _soundStageProof.GetChildren().OfType<ConfirmationDialog>().Last();
+            SaveAssetProof("sound-native-apply-confirmation", confirm.GetTexture()?.GetImage()); confirm.EmitSignal(ConfirmationDialog.SignalName.Confirmed);
+            _soundStageTask = _soundStageProof.Operation; _assetsProofStep = 74; return;
+        }
+        if (_assetsProofStep == 74)
+        {
+            MetadataCheck("sound_native_applied", _soundStageProof.Applied && (File.Exists(Path.Combine(_soundStageProof.Destination.Text, "soundLegacyMUL.uop")) || File.Exists(Path.Combine(_soundStageProof.Destination.Text, "sound.mul"))));
+            SaveAssetProof("sound-native-applied", _soundStageProof.GetTexture()?.GetImage()); _soundStageTask = _soundStageProof.RecoverAsync(); _assetsProofStep = 75; return;
+        }
+        if (_assetsProofStep == 75)
+        {
+            MetadataCheck("sound_native_recovered_prior_absence", !_soundStageProof.Applied && !Directory.Exists(_soundStageProof.Destination.Text));
+            SaveAssetProof("sound-native-recovered", _soundStageProof.GetTexture()?.GetImage()); _soundStageProof.Free();
+            _soundStageProof = _assets.Panel<SoundPanel>().OpenNativeStage(); _soundStageProof.Destination.Text = Path.Combine(_out, "canceled-native-sound-stage");
+            _soundStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); _soundStageTask = _soundStageProof.Operation;
+            _soundStageProof.Free(); _assetsProofStep = 76; return;
+        }
+        MetadataCheck("sound_native_close_waits_for_owned_job", _soundStageTask.IsCompletedSuccessfully && !Directory.Exists(Path.Combine(_out, "canceled-native-sound-stage")));
         Finish();
     }
 

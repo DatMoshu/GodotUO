@@ -55,10 +55,10 @@ assembly reload. The authorized `--windowed --assets-workbench` proof includes
 an unsaved working-name inspector. Fixture instructions are in
 `tools/scenarios/fiddler-f14b/README.md`.
 
-F14c adds WAV import/replacement and project PCM preview. Native sound staging,
-CSV exchange, new slots, deletion and music editing remain separate stories. This document
-does not grant occupied-record replacement outside the already approved static
-art workflow.
+F14c adds WAV import/replacement and project PCM preview. F14d adds separately
+reviewed [native sound staging](sound_native_staging.md), with independent
+name/PCM read-back and recoverable promotion. CSV import, new slots, deletion and
+music editing remain separate stories.
 
 ## Refreshed Fiddler reference
 

@@ -15,6 +15,8 @@
                            data = 8,192 or 32,768 raw bytes, including every original 16-bit color
   kind "cliloc-file"       id = 0; data = complete native file, meta {"filename": "Cliloc.<suffix>"};
                            explicit replacement required; no runtime language registration
+  kind "sound"             id = occupied physical sound row; data = 40-byte name plus mono 16-bit PCM;
+                           meta {"packaging": "mul" or "uop"}; explicit replacement, resolve Sound.def first
   kind "multi"             id = multi id (below 0x4000); data = the MultiCollection.uop record:
                            uint32 id, int32 count, then per component uint16 item, int16 x, y, z,
                            uint16 flags (0 shown, 1 hidden), uint32 0
@@ -26,7 +28,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-KINDS = {"static", "land", "gump", "anim", "tiledata-item", "hue", "multi", "texmap", "cliloc-file"}
+KINDS = {"static", "land", "gump", "anim", "tiledata-item", "hue", "multi", "texmap", "cliloc-file", "sound"}
 
 
 @dataclass

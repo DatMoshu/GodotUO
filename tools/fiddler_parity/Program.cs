@@ -20,7 +20,7 @@ try
         Console.WriteLine(JsonSerializer.Serialize(new { identity, runtime = Environment.Version.ToString() }));
         return 0;
     }
-    if (args.Length != 4 && !(args.Length == 5 && args[1] == "texmap"))
+    if (args.Length != 4 && !(args.Length == 5 && args[1] is "texmap" or "sound-mul" or "sound-uop"))
         throw new ArgumentException("Expected stage, packaging, client version, comma-separated IDs, optional texture DEF path.");
     var stage = Path.GetFullPath(args[0]);
     if (!ClientVersionHelper.IsClientVersionValid(args[2], out var version))
@@ -31,7 +31,85 @@ try
     map["mainmisc.uop"] = Path.Combine(stage, args[1] == "uop" ? "artLegacyMUL.uop" : "unused-oracle-probe");
     if (args[1] == "texmap" && args.Length == 5)
         map["texterr.def"] = args[4] == "-" ? Path.Combine(stage, "unused-oracle-texterr-probe") : Path.GetFullPath(args[4]);
+    if (args[1] is "sound-mul" or "sound-uop")
+    {
+        if (args.Length != 5) throw new ArgumentException("Sound oracle requires an explicit DEF path or -.");
+        map["mainmisc.uop"] = Path.Combine(stage, args[1] == "sound-uop" ? "soundLegacyMUL.uop" : "unused-oracle-probe");
+        map["sound.def"] = args[4] == "-" ? Path.Combine(stage, "unused-oracle-sound-def") : Path.GetFullPath(args[4]);
+        map["music/digital/config.txt"] = map["music/config.txt"] = Path.Combine(stage, "unused-oracle-music");
+    }
     var files = new UOFileManager(version, stage, map);
+    if (args[1] is "sound-mul" or "sound-uop")
+    {
+        // Python bounds-checks the complete native library before invocation.
+        // This reader resolves DEFs with the pinned parser and checks its
+        // provenance against the actual SoundsLoader before reading PCM.
+        bool uop = args[1] == "sound-uop";
+        using UOFile native = uop
+            ? new UOFileUop(files.GetUOFilePath("soundLegacyMUL.uop"), "build/soundlegacymul/{0:D8}.dat")
+            : new UOFileMul(files.GetUOFilePath("sound.mul"), files.GetUOFilePath("soundidx.mul"));
+        if (native.Length > 512 * 1024 * 1024) throw new InvalidDataException("Sound library exceeds 512 MiB.");
+        native.FillEntries();
+        if (native.Entries.Length > 0xFFFF + 0x4000) throw new InvalidDataException("Sound index exceeds its bounded ID range.");
+        var mapped = native.Entries.ToArray();
+        int[] physical = Enumerable.Range(0, mapped.Length).Select(i => mapped[i].Length > 0 ? i : -1).ToArray();
+        foreach (var entry in mapped)
+            if (entry.Length > 0 && (entry.Length < 42 || entry.Length > 64 * 1024 * 1024 + 40 || entry.Length % 2 != 0
+                || entry.Offset < 0 || entry.Offset + entry.Length > native.Length || entry.CompressionFlag != CompressionType.None))
+                throw new InvalidDataException("Invalid or compressed sound record.");
+        string def = files.GetUOFilePath("sound.def");
+        if (File.Exists(def))
+        {
+            if (new FileInfo(def).Length > 2 * 1024 * 1024) throw new InvalidDataException("Sound DEF exceeds 2 MiB.");
+            using var reader = new DefReader(def);
+            while (reader.Next())
+            {
+                int id = reader.ReadInt();
+                if (id < 0 || id >= 0xFFFF || id >= mapped.Length || mapped[id].Length > 0) continue;
+                int[] group = reader.ReadGroup();
+                if (group == null) continue;
+                foreach (int other in group)
+                {
+                    if (other < -1 || other >= 0xFFFF) continue;
+                    if (other == -1) { mapped[id] = default; physical[id] = -1; }
+                    else
+                    {
+                        if (other >= mapped.Length) throw new InvalidDataException("Sound DEF references beyond the native index.");
+                        if (mapped[other].Length == 0) continue;
+                        mapped[id] = mapped[other]; physical[id] = physical[other];
+                    }
+                }
+            }
+        }
+        files.Sounds.Load();
+        ((System.Collections.IDictionary)typeof(SoundsLoader).GetField("_ours", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(files.Sounds)!).Clear();
+        using var loaded = (UOFile)typeof(SoundsLoader).GetField("_file", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(files.Sounds)!;
+        if ((loaded is UOFileUop) != uop) throw new InvalidDataException("Sound container selection differs.");
+        var sounds = new List<object>();
+        foreach (string text in args[3].Split(','))
+        {
+            int id = int.Parse(text);
+            if (id < 0 || id >= 0xFFFF || id >= physical.Length || physical[id] < 0)
+                throw new InvalidDataException("Sound ID has no occupied native mapping.");
+            ref var entry = ref loaded.GetValidRefEntry(id);
+            if (entry.Offset != mapped[id].Offset || entry.Length != mapped[id].Length)
+                throw new InvalidDataException("Sound DEF provenance differs from pinned loader.");
+            if (!files.Sounds.TryGetSound(id, out byte[] pcm, out string name))
+                throw new InvalidDataException("Pinned loader refused the native sound.");
+            byte[] raw = new byte[entry.Length]; loaded.Seek(entry.Offset, SeekOrigin.Begin); loaded.Read(raw);
+            byte[] nameBytes = System.Text.Encoding.UTF8.GetBytes(name);
+            using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            hash.AppendData(System.Text.Encoding.ASCII.GetBytes(nameBytes.Length.ToString(System.Globalization.CultureInfo.InvariantCulture) + ":"));
+            hash.AppendData(nameBytes); hash.AppendData(pcm);
+            sounds.Add(new { id, physical_id = physical[id],
+                affected_ids = Enumerable.Range(0, Math.Min(physical.Length, 0xFFFF)).Where(i => physical[i] == physical[id]).ToArray(),
+                name, samples = pcm.Length / 2, source_sha256 = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant(),
+                pcm_sha256 = Convert.ToHexString(SHA256.HashData(pcm)).ToLowerInvariant(),
+                raw_base64 = Convert.ToBase64String(raw), raw_sha256 = Convert.ToHexString(SHA256.HashData(raw)).ToLowerInvariant() });
+        }
+        Console.WriteLine(JsonSerializer.Serialize(new { identity, runtime = Environment.Version.ToString(), records = sounds }));
+        return 0;
+    }
     if (args[1] == "cliloc-read")
     {
         if (Path.GetFileName(args[3]) != args[3] || args[3] is "." or "..")

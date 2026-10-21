@@ -59,6 +59,10 @@ Native Cliloc follows with a paged current/exported string review at the same
 three widths, explicit cancel/confirm, Apply, prior-absence recovery and owned
 preparation cancellation. Normal smoke checks source/saved-copy/selection guards,
 invalid pending text and the native action's initial state.
+Native sound follows with current/export name, duration and sample-count review,
+audition of both PCM buffers, physical aliases, three-width captures, explicit
+cancel/confirm Apply, exact prior-absence recovery and owned-job cancellation.
+Normal smoke checks native sound source/saved-copy/revision/selection guards.
 The normal full smoke also checks metadata drafts across selection, UTF-8
 validation, named-flag bit preservation, save/history, draft recovery and the
 source comparison's restoration of the overlay.
