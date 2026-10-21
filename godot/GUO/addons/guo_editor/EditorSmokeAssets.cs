@@ -247,6 +247,7 @@ public partial class EditorSmoke
         CheckHueRanges();
         CheckHueText();
         CheckHueStage();
+        CheckTextures();
             }
 
             foreach (var (name, when) in AssetStamp())

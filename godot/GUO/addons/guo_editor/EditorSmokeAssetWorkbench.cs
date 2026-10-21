@@ -389,8 +389,21 @@ public partial class EditorSmoke
         _hueStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); _hueStageTask = _hueStageProof.Operation;
         _hueStageProof.Free(); _assetsProofStep = 37; return;
         }
-        MetadataCheck("hue_native_close_waits_for_owned_job", _hueStageTask.IsCompletedSuccessfully && !Directory.Exists(Path.Combine(_out, "canceled-native-hue-stage")));
-        hueEditor.Document.Undo(); hueEditor.Document.Undo(); _assets.Panel<HuePanel>().OnAssetsChanged();
+        if (_assetsProofStep == 37)
+        {
+            MetadataCheck("hue_native_close_waits_for_owned_job", _hueStageTask.IsCompletedSuccessfully && !Directory.Exists(Path.Combine(_out, "canceled-native-hue-stage")));
+            hueEditor.Document.Undo(); hueEditor.Document.Undo(); _assets.Panel<HuePanel>().OnAssetsChanged();
+            var textures = _assets.Panel<TexturePanel>(); _assets.ShowPanel(textures); textures.FilterSize(0); textures.Search(textures.SmokeQuery);
+            GetWindow().Size = AssetProofSize(1366, 900); _assetsProofStep = 38; return;
+        }
+        int textureWidth = new[] { 1366, 1024, 1920 }[_assetsProofStep - 38];
+        MetadataCheck($"texture_browser_fits_{textureWidth}", _inspector.Current.Source == "Textures"
+            && _inspector.Texture != null && _inspector.ActionToolbar.GetChildren().OfType<Control>()
+                .All(c => c.GetGlobalRect().End.X <= _inspector.ActionToolbar.GetGlobalRect().End.X + 2));
+        SaveAssetProof($"texture-browser-{textureWidth}", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
+        _assetsProofStep++;
+        if (_assetsProofStep == 39) { GetWindow().Size = AssetProofSize(1024, 768); return; }
+        if (_assetsProofStep == 40) { GetWindow().Size = AssetProofSize(1920, 1080); return; }
         Finish();
     }
 

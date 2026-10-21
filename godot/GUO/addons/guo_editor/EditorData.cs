@@ -419,6 +419,33 @@ public sealed class EditorData : IDisposable
         return System.Runtime.InteropServices.MemoryMarshal.AsBytes(System.Runtime.InteropServices.MemoryMarshal.CreateReadOnlySpan(ref block, 1)).ToArray();
     }
 
+    /// <summary>Validate the effective (including TexTerr.def) entry before the native decoder reads it.</summary>
+    internal int TextureSize(int id)
+    {
+        UOFile file = Files?.Texmaps.File;
+        if (file == null || id < 0 || id >= Math.Min(file.Entries.Length, TexmapsLoader.MAX_LAND_TEXTURES_DATA_INDEX_COUNT)) return 0;
+        return TextureEntrySize(file.Entries[id], file.Length);
+    }
+    internal static int TextureEntrySize(UOFileIndex entry, long fileLength) =>
+        entry.Offset >= 0 && entry.Offset != uint.MaxValue && entry.Offset <= fileLength - entry.Length
+        ? entry.Length switch { 0x2000 => 64, 0x8000 => 128, _ => 0 } : 0;
+
+    public Image TextureImage(int id)
+    {
+        if (TextureSize(id) == 0) return null;
+        try
+        {
+            TexmapInfo texture = _files.Texmaps.GetTexmap((uint)id);
+            return texture.Width is 64 or 128 && texture.Height == texture.Width
+                ? FromPixels(texture.Pixels, texture.Width, texture.Height) : null;
+        }
+        catch (Exception ex)
+        {
+            GD.PrintErr($"[GUO editor] texture 0x{id:X4} failed to decode: {ex.Message}");
+            return null;
+        }
+    }
+
     /// <summary>Decodes a gump through <see cref="GumpsLoader.GetGump"/>. Null when empty.</summary>
     public Image GumpImage(int index)
     {

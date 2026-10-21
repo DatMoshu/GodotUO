@@ -90,6 +90,7 @@ public partial class AssetsView : VBoxContainer
         {
             Add("Anims", new AnimationPanel());
             Add("Hues", new HuePanel());
+            Add("Textures", new TexturePanel());
             Add("Multis", new MultiPanel());
             Add("Maps", new MapPanel());
             Add("Cliloc", new ClilocPanel());
