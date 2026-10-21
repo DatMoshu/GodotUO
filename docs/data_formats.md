@@ -561,7 +561,9 @@ apply atomically as one undo step after review. A blank string is not deletion.
 CSV files are bounded to 64 MiB/500,000 records; malformed or duplicate rows
 refuse the whole import. Export omits tombstones and uses atomic standard-file
 replacement outside the installation. See [working documents](editor/cliloc_documents.md)
-and [CSV exchange](editor/cliloc_csv_exchange.md). Neither emits native cliloc data.
+and [CSV exchange](editor/cliloc_csv_exchange.md). Neither emits native cliloc data;
+[separate native staging](editor/cliloc_native_staging.md) consumes the working
+snapshot after its own comparison and confirmation.
 
 [Tiledata-name synchronization](editor/cliloc_tiledata_sync.md) uses the same
 Cliloc JSON/tombstone contract. Legacy 37-byte and modern 41-byte item tables
@@ -963,9 +965,18 @@ file of the same shape in `--ranges` / `UO_DATA_RANGES`):
 | `anim` | One direction's frame group as `anim.mul` stores it | `action`, `direction` |
 | `tiledata-item` | empty | Any of `flags weight layer count anim hue light height name`; the rest keep their value |
 | `hue` | One 88-byte hue entry | |
+| `cliloc-file` | Complete bounded native Cliloc; ID is zero. Explicit replacement required. | Only `filename: Cliloc.<safe suffix>`; no runtime language registration |
 | `multi` | The `MultiCollection.uop` record: `uint32 id, int32 count`, then per component `uint16 item, int16 x, y, z, uint16 flags` (0 shown, 1 hidden), `uint32 0` (no cliloc list). Ids stay below 0x4000, which the shard masks to | |
 
 **Writes** (all append-only except the in-place records):
+
+Native Cliloc staging uses the existing project snapshot and a separate reviewed
+candidate transaction; see [native Cliloc staging](editor/cliloc_native_staging.md).
+The private stage's `cliloc_sources` map binds each target to a document source
+path/hash. A new native filename records `source_exists: false`, an empty
+`source_sha1` and zero `source_size`; installation checks require it to remain
+absent. Existing file provenance remains unchanged. Edited BWT sources emit plain
+UTF-8 while identity exports retain their compressed bytes.
 
 - **LegacyMUL UOP.** The data is appended, then one new block
   (`int32 count, int64 next = 0`, then `count` × 34-byte entries:

@@ -52,6 +52,19 @@ public partial class EditorSmoke
         doc.Save(); var reopened = Open();
         ClilocCheck("save_reload_source_unchanged", !doc.IsDirty && !reopened.IsDirty && reopened.Get(2001) == doc.Get(2001)
             && reopened.Get(3_200_001).Text == "new" && File.ReadAllBytes(source).AsSpan().SequenceEqual(bytes));
+        string nativeToken = doc.NativeReviewToken;
+        JsonNode nativeInput = JsonNode.Parse(doc.NativeStageInput(nativeToken));
+        ClilocCheck("native_document_snapshot", (string)nativeInput["source_sha256"] == doc.SourceHash && nativeInput["changes"].AsArray().Count == doc.ChangeCount);
+        doc.Edit(2001, "new native review");
+        ClilocCheck("native_changed_document_refused", ClilocRefused(() => doc.RequireNativeReview(nativeToken))); doc.Undo();
+        ClilocCheck("native_undo_invalidates_old_review", ClilocRefused(() => doc.RequireNativeReview(nativeToken)));
+        byte[] savedBytes = File.ReadAllBytes(doc.DocumentPath); File.AppendAllText(doc.DocumentPath, "\n");
+        ClilocCheck("native_and_save_external_saved_copy_refused", ClilocRefused(() => doc.RequireNativeReview(doc.NativeReviewToken)) && ClilocRefused(doc.Save));
+        File.WriteAllBytes(doc.DocumentPath, savedBytes);
+        string unicodeCustom = Path.Combine(root, "custom-ß-日本.dat"); File.WriteAllBytes(unicodeCustom, bytes);
+        var customNative = ClilocDocument.Open(project, install, "custom1", unicodeCustom);
+        JsonNode customInput = JsonNode.Parse(customNative.NativeStageInput(customNative.NativeReviewToken));
+        ClilocCheck("native_custom_exact_unicode_path_capture", (string)customInput["native_source_file"] == EditorPaths.Real(unicodeCustom) && customNative.Snapshot()["native_source_file"] == null);
         doc.Undo(); ClilocCheck("undo_after_save_is_dirty", doc.IsDirty); doc.Redo();
         JsonObject snapshot = doc.Snapshot(), wrongFlag = (JsonObject)snapshot.DeepClone(), duplicate = (JsonObject)snapshot.DeepClone();
         wrongFlag["changes"][0]["flag"] = 0; duplicate["changes"].AsArray().Add(duplicate["changes"][0].DeepClone());
@@ -68,6 +81,7 @@ public partial class EditorSmoke
         byte[] compressed = new byte[1029]; compressed[3] = 0x8e; File.WriteAllBytes(bad, compressed);
         ClilocCheck("bounded_bwt_refusal", ClilocRefused(() => ClilocDocument.Open(project, install, "bad", bad)));
         bytes[0] ^= 1; File.WriteAllBytes(source, bytes);
+        ClilocCheck("native_changed_source_refused", ClilocRefused(() => doc.RequireNativeReview(doc.NativeReviewToken)));
         ClilocCheck("source_change_refuses_save_and_reopen", ClilocRefused(reopened.Save) && ClilocRefused(() => Open()));
         ClilocCheck("install_and_escape_refused", ClilocRefused(() => EditorPaths.ProjectFile(install, install, "metadata", "cliloc.json"))
             && ClilocRefused(() => EditorPaths.ProjectFile(project, install, "..", "escaped.json")));
@@ -104,6 +118,17 @@ public partial class EditorSmoke
         reopen = panel.GetChildren().OfType<ConfirmationDialog>().Last(); reopen.EmitSignal(ConfirmationDialog.SignalName.Confirmed);
         ClilocCheck("confirmed_reopen_reloads_saved_copy", panel.WorkingDocument != current && !panel.WorkingDocument.IsDirty
             && panel.WorkingDocument.Get(500207).Text != "temporary smoke draft");
+        var nativeDialog = panel.OpenNativeStage();
+        ClilocCheck("native_stage_action_and_initial_state", panel.NativeStageButton != null && nativeDialog != null && !nativeDialog.Prepared && !nativeDialog.Applied && !nativeDialog.Busy);
+        nativeDialog?.Free();
+        ClilocDocument nativeDocument = panel.WorkingDocument; string panelToken = nativeDocument.NativeReviewToken;
+        _inspector.Strings.TextInput.Text = new string('x', 32768); _inspector.Strings.TextInput.EmitSignal(TextEdit.SignalName.TextChanged);
+        ClilocCheck("native_pending_invalid_text_refused", ClilocRefused(() => panel.RequireNativeReview(nativeDocument, panelToken)));
+        _inspector.Strings.Undo(); panel.ChooseLanguage("jpn");
+        ClilocCheck("native_changed_source_selection_refused", ClilocRefused(() => panel.RequireNativeReview(nativeDocument, panelToken)));
+        panel.SelectKind(true); ClilocCheck("native_speech_mode_disabled", panel.NativeStageButton.Disabled);
+        panel.SelectKind(false);
+        panel.ChooseLanguage("enu");
         CheckCustomClilocSources();
         CheckClilocTileSync();
     }

@@ -29,6 +29,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import struct
 import sys
@@ -39,6 +40,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from guo.uomap import UOP_MAGIC, uop_entries, uop_hash  # noqa: E402
 from guo.uorecord import AssetRecord  # noqa: E402
+from guo import cliloc_records  # noqa: E402
 
 LAND_COUNT = 0x4000
 TILE_LAND_BLOCK = 4 + 32 * 30          # new (7.0.9.0+) land group
@@ -110,13 +112,15 @@ class Stage:
             raise ValueError(f"{path} resolves outside the staged set ({real}); nothing is written there") from None
         return real
 
-    def target(self, name: str) -> Path:
+    def target(self, name: str, *, allow_new: bool = False) -> Path:
         """Where path(name) writes, checked under the root, without copying anything."""
         key = name.lower()
         if key in self.meta["files"]:
             return self.inside(self.root / self.meta["files"][key]["name"])
         src = self.install_file(name)
         if src is None:
+            if allow_new and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", name):
+                return self.inside(self.root / name)
             raise FileNotFoundError(f"{name} is not in the install")
         return self.inside(self.root / src.name)
 
@@ -130,15 +134,19 @@ class Stage:
                 return p
         return None
 
-    def path(self, name: str) -> Path:
+    def path(self, name: str, *, allow_new: bool = False) -> Path:
         """The staged copy of an install file, copied on first use (copy on write)."""
         key = name.lower()
-        dst = self.target(name)
+        dst = self.target(name, allow_new=allow_new)
         if key in self.meta["files"]:
             return dst
         src = self.install_file(name)
-        shutil.copyfile(src, dst)
-        self.meta["files"][key] = {"name": src.name, "source_sha1": sha1(src), "source_size": src.stat().st_size}
+        if src is None:
+            dst.write_bytes(b"")
+            self.meta["files"][key] = {"name": name, "source_exists": False, "source_sha1": "", "source_size": 0}
+        else:
+            shutil.copyfile(src, dst)
+            self.meta["files"][key] = {"name": src.name, "source_sha1": sha1(src), "source_size": src.stat().st_size}
         self.save()
         return dst
 
@@ -171,6 +179,9 @@ class Stage:
         changed = []
         for key, info in self.meta["files"].items():
             src = self.install_file(key)
+            if info.get("source_exists", True) is False:
+                if src is not None: changed.append(key)
+                continue
             if src is None or src.stat().st_size != info["source_size"] or sha1(src) != info["source_sha1"]:
                 changed.append(key)
         return changed
@@ -637,6 +648,13 @@ def _exists(stage: Stage, name: str) -> bool:
         return False
 
 
+def cliloc_name(record: AssetRecord) -> str:
+    name = record.meta.get("filename")
+    if type(record.id) is not int or record.id != 0 or set(record.meta) != {"filename"} or not isinstance(name, str) or not re.fullmatch(r"[Cc][Ll][Ii][Ll][Oo][Cc]\.[A-Za-z0-9_-]{1,32}", name):
+        raise ValueError("Native Cliloc requires id 0 and one Cliloc.<safe suffix> filename")
+    return name
+
+
 def check_records(stage: Stage, records: list[AssetRecord], replace: bool = False) -> None:
     """Refuses, before anything is written, a record the writers would refuse or
     get wrong: an existing UOP name, an occupied MUL slot (unless replace), the old
@@ -649,7 +667,13 @@ def check_records(stage: Stage, records: list[AssetRecord], replace: bool = Fals
             raise ValueError(f"{mul_idx} entry {index} already holds data; the writer only adds (replace to overwrite)")
 
     for r in records:
-        if r.kind in ("static", "land"):
+        if r.kind == "cliloc-file":
+            name = cliloc_name(r); target = stage.target(name, allow_new=True)
+            if not replace: raise ValueError("Native Cliloc requires explicit replacement")
+            if target.exists() and (target.stat().st_nlink > 1 or name.lower() not in stage.meta["files"]):
+                raise ValueError("Aliased or unregistered staged Cliloc output refused")
+            cliloc_records.check_container(r.data)
+        elif r.kind in ("static", "land"):
             slot("artLegacyMUL.uop", ART_PATTERN, "artidx.mul", r.id if r.kind == "land" else LAND_COUNT + r.id)
         elif r.kind == "gump":
             slot("gumpartLegacyMUL.uop", GUMP_PATTERN, "gumpidx.mul", r.id)
@@ -677,6 +701,8 @@ def check_records(stage: Stage, records: list[AssetRecord], replace: bool = Fals
     textures = [(r.id, r.data) for r in records if r.kind == "texmap"]
     if textures:
         check_texmaps(stage.read_path("texmaps.mul"), stage.read_path("texidx.mul"), textures)
+    names = [cliloc_name(r).lower() for r in records if r.kind == "cliloc-file"]
+    if len(names) != len(set(names)): raise ValueError("Duplicate native Cliloc output filename")
 
 
 def output_files(stage: Stage, records: list[AssetRecord]) -> list[str]:
@@ -700,14 +726,16 @@ def output_files(stage: Stage, records: list[AssetRecord]) -> list[str]:
         names.append("hues.mul")
     if "texmap" in kinds:
         names += ["texmaps.mul", "texidx.mul"]
+    names += [cliloc_name(r) for r in records if r.kind == "cliloc-file"]
     return names
 
 
 def check_outputs(stage: Stage, records: list[AssetRecord]) -> None:
     """Refuses, before anything is written, a call any of whose output paths (the staged
     copies and the stage's own files) resolves outside the stage root."""
+    new_files = {cliloc_name(r) for r in records if r.kind == "cliloc-file"}
     for name in output_files(stage, records):
-        stage.target(name)
+        stage.target(name, allow_new=name in new_files)
     for path in stage.own_files():
         stage.inside(path)
 
@@ -776,7 +804,10 @@ def write_records(stage: Stage, records: list[AssetRecord], replace: bool = Fals
                 mul_append(mul, idx, r.id, multi_to_mul(r.data), replace=replace)
         done += [f"multi {r.id:#x} ({struct.unpack_from('<i', r.data, 4)[0]} components)" for r in multis]
     for r in records:
-        if r.kind == "tiledata-item":
+        if r.kind == "cliloc-file":
+            name = cliloc_name(r); stage.path(name, allow_new=True).write_bytes(r.data)
+            done.append(f"Cliloc {name} ({len(r.data)} bytes)")
+        elif r.kind == "tiledata-item":
             if r.data:
                 write_tile_record(stage.path("tiledata.mul"), r.id, r.data)
             else:
@@ -802,6 +833,8 @@ def write_records(stage: Stage, records: list[AssetRecord], replace: bool = Fals
 
 def read_back(stage: Stage, r: AssetRecord) -> bytes | dict | None:
     """What the staged set now holds for a record (for verify)."""
+    if r.kind == "cliloc-file":
+        return stage.read_path(cliloc_name(r)).read_bytes()
     if r.kind == "texmap":
         at, count, _ = idx_entry(stage.read_path("texidx.mul"), r.id)
         if at < 0 or count <= 0:

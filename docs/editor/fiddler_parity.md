@@ -79,7 +79,9 @@ F15a [localized-string working documents](cliloc_documents.md) follow batch
 replacement. They support installed plain/BWT language files, edit/add/remove,
 preserved header/flags/IDs, undo, source-bound project JSON and editor-local
 draft recovery. They do not modify runtime strings or emit native cliloc files;
-F15b binary staging remains separate work.
+F15b adds [verified native Cliloc staging](cliloc_native_staging.md), including
+source-bound custom output, exact unchanged-record preservation, explicit encoding
+review, pinned ClassicUO read-back and recoverable staged promotion.
 
 F15c/d [Cliloc CSV exchange](cliloc_csv_exchange.md) adds explicit Fiddler and
 quoted UTF-8 dialects, language-scoped merge review, atomic batch undo, preserved
@@ -91,7 +93,8 @@ F15e [custom Cliloc sources](cliloc_custom_sources.md) adds Fiddler-style Custom
 working copies/recovery by source path, content version and slot. Invalid file
 choices leave the previous assignment intact; empty sources can receive Add/CSV.
 Sources outside the installation also receive shared export/project write guards.
-Native binary writing and runtime language registration remain separate.
+F15b supplies separately reviewed native custom-file output; runtime language
+registration remains separate.
 
 F16a/b [tiledata-to-Cliloc synchronization](cliloc_tiledata_sync.md) previews the
 three Fiddler item-ID ranges using ASCII source names plus valid project name

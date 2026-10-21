@@ -22,6 +22,7 @@ public sealed class ClilocDocument
     private Dictionary<int, Entry> _saved = new();
     private readonly List<EditStep[]> _history = new();
     private int _cursor;
+    private string _savedFileHash = "missing";
     public string Language { get; }
     public string Project { get; }
     public string Install { get; }
@@ -45,6 +46,8 @@ public sealed class ClilocDocument
     public IEnumerable<int> ReviewIds => _source.Keys.Concat(_changes.Keys).Distinct().OrderBy(id => id);
     public bool Recovered { get; private set; }
     internal long Revision { get; private set; }
+    internal string NativeReviewToken => Convert.ToHexString(SHA256.HashData(Utf8.GetBytes(
+        RecoveryIdentity + "|" + Revision + "|" + _savedFileHash + "|" + Snapshot().ToJsonString()))).ToLowerInvariant();
 
     private ClilocDocument(string project, string install, string language, string source, byte[] raw)
     {
@@ -216,14 +219,31 @@ public sealed class ClilocDocument
     }
     public void Save()
     {
-        CheckSource();
+        CheckSource(); CheckSavedCopy();
         string path = WritablePath(DocumentPath), json = Snapshot().ToJsonString(new() { WriteIndented = true });
         if (Encoding.UTF8.GetByteCount(json) > 16 * 1024 * 1024) throw new IOException("Cliloc document exceeds 16 MiB.");
         Directory.CreateDirectory(Path.GetDirectoryName(path));
         string temporary = path + ".tmp-" + Guid.NewGuid().ToString("N");
-        try { File.WriteAllText(temporary, json + "\n"); File.Move(temporary, path, true); }
+        try { File.WriteAllText(temporary, json + "\n"); CheckSource(); CheckSavedCopy(); File.Move(temporary, path, true); }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
-        _saved = new(_changes); Recovered = false;
+        _savedFileHash = SavedHash(); _saved = new(_changes); Recovered = false;
+    }
+    private string SavedHash() => File.Exists(DocumentPath)
+        ? Convert.ToHexString(SHA256.HashData(TextureDocument.Read(DocumentPath, 16 * 1024 * 1024))).ToLowerInvariant() : "missing";
+    private void CheckSavedCopy()
+    {
+        if (SavedHash() != _savedFileHash) throw new IOException("Saved Cliloc copy changed outside this document. Reopen the source document before saving or exporting.");
+    }
+    internal void RequireNativeReview(string token)
+    {
+        CheckSource(); CheckSavedCopy();
+        if (NativeReviewToken != token) throw new IOException("Working Cliloc changed. Reopen native export for a fresh review.");
+    }
+    internal byte[] NativeStageInput(string token)
+    {
+        RequireNativeReview(token); JsonObject input = Snapshot();
+        if (IsCustom) input["native_source_file"] = SourceFile;
+        return Utf8.GetBytes(input.ToJsonString());
     }
     internal void CheckSource()
     {
@@ -238,9 +258,11 @@ public sealed class ClilocDocument
         var document = new ClilocDocument(project, install, language, source, File.ReadAllBytes(source));
         if (File.Exists(document.DocumentPath))
         {
-            if (new FileInfo(document.DocumentPath).Length > 16 * 1024 * 1024) throw new IOException("Cliloc document exceeds 16 MiB.");
-            document.Restore(JsonNode.Parse(File.ReadAllText(document.DocumentPath)), true);
+            byte[] saved = TextureDocument.Read(document.DocumentPath, 16 * 1024 * 1024);
+            document.Restore(JsonNode.Parse(saved), true);
+            document._savedFileHash = Convert.ToHexString(SHA256.HashData(saved)).ToLowerInvariant();
         }
+        document.CheckSavedCopy(); document.CheckSource();
         return document;
     }
 }

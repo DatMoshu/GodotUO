@@ -16,6 +16,8 @@ public partial class EditorSmoke
     private System.Threading.Tasks.Task _textureStageTask;
     private MetadataStageDialog _metadataStageProof;
     private System.Threading.Tasks.Task _metadataStageTask;
+    private ClilocStageDialog _clilocStageProof;
+    private System.Threading.Tasks.Task _clilocStageTask;
     private System.Threading.Tasks.Task _hueStageTask;
     private void CheckAssetWorkbench(ArtPanel art, int id)
     {
@@ -563,7 +565,55 @@ public partial class EditorSmoke
             _metadataStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); _metadataStageTask = _metadataStageProof.Operation;
             _metadataStageProof.Free(); _assetsProofStep = 62; return;
         }
-        MetadataCheck("metadata_native_close_waits_for_owned_job", _metadataStageTask.IsCompletedSuccessfully && !Directory.Exists(Path.Combine(_out, "canceled-native-metadata-stage")));
+        if (_assetsProofStep == 62)
+        {
+            MetadataCheck("metadata_native_close_waits_for_owned_job", _metadataStageTask.IsCompletedSuccessfully && !Directory.Exists(Path.Combine(_out, "canceled-native-metadata-stage")));
+            var cliloc = _assets.Panel<ClilocPanel>(); _assets.ShowPanel(cliloc); cliloc.SelectKind(false); cliloc.ChooseLanguage("enu"); cliloc.Search("500207");
+            _inspector.Strings.TextInput.Text = "Native Cliloc reviewed text"; _inspector.Strings.TextInput.EmitSignal(TextEdit.SignalName.TextChanged); _inspector.Strings.CommitPending();
+            GetWindow().Size = AssetProofSize(1366, 900); _clilocStageProof = cliloc.OpenNativeStage();
+            _clilocStageProof.Destination.Text = Path.Combine(_out, "native-cliloc-stage");
+            _clilocStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); _clilocStageTask = _clilocStageProof.Operation; _assetsProofStep = 63; return;
+        }
+        if (_clilocStageTask?.IsCompleted == false) return;
+        if (_assetsProofStep <= 65)
+        {
+            int width = new[] { 1366, 1024, 1920 }[_assetsProofStep - 63];
+            MetadataCheck($"cliloc_native_prepared_{width}", _clilocStageProof.Prepared && !_clilocStageProof.Applied && !_clilocStageProof.GetOkButton().Disabled
+                && !Directory.Exists(_clilocStageProof.Destination.Text) && _clilocStageProof.Size.Y <= GetWindow().Size.Y);
+            SaveAssetProof($"cliloc-native-prepared-{width}", _clilocStageProof.GetTexture()?.GetImage());
+            if (!_clilocStageProof.Prepared) { _failures.Add("Native Cliloc preparation failed: " + _clilocStageProof.Status); _clilocStageProof.Free(); Finish(); return; }
+            _assetsProofStep++;
+            if (_assetsProofStep == 64) { GetWindow().Size = AssetProofSize(1024, 768); return; }
+            if (_assetsProofStep == 65) { GetWindow().Size = AssetProofSize(1920, 1080); return; }
+            GetWindow().Size = AssetProofSize(1024, 768);
+            _clilocStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed);
+            var confirm = _clilocStageProof.GetChildren().OfType<ConfirmationDialog>().Last();
+            MetadataCheck("cliloc_native_confirmation_fits_1024", confirm.Size.X <= GetWindow().Size.X && confirm.Size.Y <= GetWindow().Size.Y);
+            MetadataCheck("cliloc_native_apply_requires_confirmation", !_clilocStageProof.Applied && !Directory.Exists(_clilocStageProof.Destination.Text));
+            confirm.EmitSignal(ConfirmationDialog.SignalName.Canceled);
+            MetadataCheck("cliloc_native_cancel_apply_keeps_stage", !_clilocStageProof.Applied && !Directory.Exists(_clilocStageProof.Destination.Text));
+            _clilocStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); return;
+        }
+        if (_assetsProofStep == 66)
+        {
+            var confirm = _clilocStageProof.GetChildren().OfType<ConfirmationDialog>().Last();
+            SaveAssetProof("cliloc-native-apply-confirmation", confirm.GetTexture()?.GetImage()); confirm.EmitSignal(ConfirmationDialog.SignalName.Confirmed);
+            _clilocStageTask = _clilocStageProof.Operation; _assetsProofStep = 67; return;
+        }
+        if (_assetsProofStep == 67)
+        {
+            MetadataCheck("cliloc_native_applied", _clilocStageProof.Applied && File.Exists(Path.Combine(_clilocStageProof.Destination.Text, "Cliloc.enu")));
+            SaveAssetProof("cliloc-native-applied", _clilocStageProof.GetTexture()?.GetImage()); _clilocStageTask = _clilocStageProof.RecoverAsync(); _assetsProofStep = 68; return;
+        }
+        if (_assetsProofStep == 68)
+        {
+            MetadataCheck("cliloc_native_recovered_prior_absence", !_clilocStageProof.Applied && !Directory.Exists(_clilocStageProof.Destination.Text));
+            SaveAssetProof("cliloc-native-recovered", _clilocStageProof.GetTexture()?.GetImage()); _clilocStageProof.Free();
+            _clilocStageProof = _assets.Panel<ClilocPanel>().OpenNativeStage(); _clilocStageProof.Destination.Text = Path.Combine(_out, "canceled-native-cliloc-stage");
+            _clilocStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); _clilocStageTask = _clilocStageProof.Operation;
+            _clilocStageProof.Free(); _assetsProofStep = 69; return;
+        }
+        MetadataCheck("cliloc_native_close_waits_for_owned_job", _clilocStageTask.IsCompletedSuccessfully && !Directory.Exists(Path.Combine(_out, "canceled-native-cliloc-stage")));
         Finish();
     }
 

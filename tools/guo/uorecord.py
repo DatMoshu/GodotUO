@@ -13,6 +13,8 @@
   kind "hue"               id = hue number (1-based); data = the 88-byte hues.mul block
   kind "texmap"            id = physical texidx row (resolve TexTerr.def before writing);
                            data = 8,192 or 32,768 raw bytes, including every original 16-bit color
+  kind "cliloc-file"       id = 0; data = complete native file, meta {"filename": "Cliloc.<suffix>"};
+                           explicit replacement required; no runtime language registration
   kind "multi"             id = multi id (below 0x4000); data = the MultiCollection.uop record:
                            uint32 id, int32 count, then per component uint16 item, int16 x, y, z,
                            uint16 flags (0 shown, 1 hidden), uint32 0
@@ -24,7 +26,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-KINDS = {"static", "land", "gump", "anim", "tiledata-item", "hue", "multi", "texmap"}
+KINDS = {"static", "land", "gump", "anim", "tiledata-item", "hue", "multi", "texmap", "cliloc-file"}
 
 
 @dataclass

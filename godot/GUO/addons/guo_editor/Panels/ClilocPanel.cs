@@ -32,6 +32,7 @@ public partial class ClilocPanel : GridPanel
     internal Button ExportCsvButton { get; private set; }
     internal Button OpenCustomButton { get; private set; }
     internal Button SyncButton { get; private set; }
+    internal Button NativeStageButton { get; private set; }
     internal Button AddButton => _add;
     internal Button ReloadButton => _reload;
     internal string SourceStatus => _scope.Text;
@@ -73,12 +74,26 @@ public partial class ClilocPanel : GridPanel
         ImportCsvButton = AssetUi.Action("Load", "Import Cliloc CSV into this language's working document…", () => ClilocCsvDialog.Choose(this, true)); tools.AddChild(ImportCsvButton);
         ExportCsvButton = AssetUi.Action("Save", "Export Cliloc CSV from the working language…", () => ClilocCsvDialog.Choose(this, false)); tools.AddChild(ExportCsvButton);
         SyncButton = AssetUi.Action("Reload", "Preview item-name synchronization from tiledata into this Cliloc working document…", () => OpenTileSync()); tools.AddChild(SyncButton);
+        NativeStageButton = AssetUi.Action("Save", "Export a verified native Cliloc stage…", () => OpenNativeStage()); tools.AddChild(NativeStageButton);
         _scope = AssetUi.Label("Exact file records; runtime fallback and Clilocs.txt are separate."); tools.AddChild(_scope);
     }
     internal void PrepareExchange(ClilocDocument document)
     {
         if (document == null || Speech || WorkingDocument != document) throw new IOException("Choose the target Cliloc source document before exchanging CSV.");
         if (PreparingExchange?.Invoke(document) != true) throw new IOException("Resolve invalid text drafts or failed recovery in this source document before exchanging CSV. Reopen discards failed recovery.");
+    }
+    internal ClilocStageDialog OpenNativeStage()
+    {
+        try { ClilocDocument document = WorkingDocument; PrepareExchange(document); return ClilocStageDialog.Open(this, document, Data); }
+        catch (Exception e) { AssetActions.ReportEdit(e.Message, "Native Cliloc export", this); return null; }
+    }
+    internal void RequireNativeReview(ClilocDocument document, string token)
+    {
+        PrepareExchange(document);
+        if (!Path.GetFullPath(Project).Equals(document.Project, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)
+            || !Path.GetFullPath(Data.ClientData).Equals(document.Install, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+            throw new IOException("Cliloc project or installation changed. Reopen native export.");
+        document.RequireNativeReview(token);
     }
     internal ClilocCsvDialog OpenImportReview(string path, ClilocCsvFormat format)
     {
@@ -158,7 +173,7 @@ public partial class ClilocPanel : GridPanel
         bool assigned = _files.TryGetValue(Language, out string source);
         bool custom = Language is "custom1" or "custom2";
         _add.Disabled = Speech || !assigned; _reload.Disabled = _add.Disabled;
-        ImportCsvButton.Disabled = ExportCsvButton.Disabled = SyncButton.Disabled = _add.Disabled;
+        ImportCsvButton.Disabled = ExportCsvButton.Disabled = SyncButton.Disabled = NativeStageButton.Disabled = _add.Disabled;
         OpenCustomButton.Disabled = Speech || !custom;
         OpenCustomButton.TooltipText = custom ? "Choose a Cliloc source file for this custom slot; other source drafts are retained."
             : "Select Custom 1 or Custom 2 to open a Cliloc file outside the installed language list.";

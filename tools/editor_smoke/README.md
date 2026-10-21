@@ -55,6 +55,10 @@ Native item metadata follows the same three-width prepare, cancel/confirm,
 Apply, prior-absence recovery and owned-process cancellation proof. Regular
 smoke additionally checks source/saved-copy/draft guards, retained stale recovery
 and explicit selected-item reopen behavior.
+Native Cliloc follows with a paged current/exported string review at the same
+three widths, explicit cancel/confirm, Apply, prior-absence recovery and owned
+preparation cancellation. Normal smoke checks source/saved-copy/selection guards,
+invalid pending text and the native action's initial state.
 The normal full smoke also checks metadata drafts across selection, UTF-8
 validation, named-flag bit preservation, save/history, draft recovery and the
 source comparison's restoration of the overlay.

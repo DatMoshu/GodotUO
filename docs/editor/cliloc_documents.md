@@ -56,8 +56,9 @@ external hardlink: export replaces the output entry instead of truncating its
 backing file. These aliases use synthetic fixtures, never the actual install.
 
 F15c/d adds [reviewed CSV exchange](cliloc_csv_exchange.md), including atomic
-batch undo and separate Fiddler/quoted UTF-8 dialects. F15b native binary staging,
-and independent binary read-back remain separate stories. F15e adds custom-file
+batch undo and separate Fiddler/quoted UTF-8 dialects. F15b adds separately reviewed
+[native binary staging](cliloc_native_staging.md) with independent read-back and
+prior-stage recovery. F15e adds custom-file
 opening with source/slot/version-isolated project copies. This document
 does not claim a runtime localization pipeline or language/font certification.
 

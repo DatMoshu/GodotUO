@@ -32,6 +32,69 @@ try
     if (args[1] == "texmap" && args.Length == 5)
         map["texterr.def"] = args[4] == "-" ? Path.Combine(stage, "unused-oracle-texterr-probe") : Path.GetFullPath(args[4]);
     var files = new UOFileManager(version, stage, map);
+    if (args[1] == "cliloc-read")
+    {
+        if (Path.GetFileName(args[3]) != args[3] || args[3] is "." or "..")
+            throw new InvalidDataException("Expected one Cliloc source basename.");
+        string path = Path.Combine(stage, args[3]);
+        long size = new FileInfo(path).Length;
+        if (size < 6 || size > 64 * 1024 * 1024) throw new InvalidDataException("Cliloc must contain 6 bytes to 64 MiB.");
+        byte[] raw = File.ReadAllBytes(path), plain = raw;
+        bool compressed = raw[3] == 0x8e;
+        if (compressed)
+        {
+            if (raw.Length < 1029) throw new InvalidDataException("Truncated compressed Cliloc.");
+            byte[] table = Enumerable.Range(0, 256).Select(i => (byte)i).ToArray(), prefix = new byte[1024];
+            for (int i = 0; i < prefix.Length; i++)
+            {
+                int index = raw[i + 4]; byte value = table[index];
+                for (int j = index; j > 0; j--) table[j] = table[j - 1];
+                table[0] = prefix[i] = value;
+            }
+            long decodedLength = 0;
+            for (int i = 0; i < 256; i++)
+            {
+                int frequency = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(prefix.AsSpan(i * 4));
+                if (frequency < 0) throw new InvalidDataException("Invalid compressed Cliloc frequency.");
+                decodedLength += frequency;
+            }
+            if (decodedLength < 6 || decodedLength > 64 * 1024 * 1024 || decodedLength + 1024 > raw.Length - 4)
+                throw new InvalidDataException("Compressed Cliloc output exceeds its bounded input or 64 MiB.");
+            plain = BwtDecompress.Decompress(raw);
+        }
+        var ids = new SortedSet<int>(); int at = 6, count = 0;
+        var utf8 = new System.Text.UTF8Encoding(false, true);
+        if (plain.Length < 6 || plain.Length > 64 * 1024 * 1024 || plain[3] == 0x8e)
+            throw new InvalidDataException("Invalid decoded Cliloc header.");
+        while (at < plain.Length)
+        {
+            if (plain.Length - at < 7 || ++count > 500_000) throw new InvalidDataException("Truncated or oversized Cliloc table.");
+            int id = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(plain.AsSpan(at));
+            int length = System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(plain.AsSpan(at + 5));
+            at += 7;
+            if (id < 0 || length < 0 || length > plain.Length - at) throw new InvalidDataException("Invalid Cliloc record bounds.");
+            utf8.GetString(plain, at, length); ids.Add(id); at += length;
+        }
+        // Invoke the pinned loader's exact-file reader, without language fallback
+        // or loose Clilocs.txt overrides from an unrelated staged file.
+        var loader = new ClilocLoader(files);
+        typeof(ClilocLoader).GetMethod("ReadCliloc", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(loader, new object[] { path });
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        byte[] key = new byte[8];
+        foreach (int id in ids)
+        {
+            byte[] text = utf8.GetBytes(loader.GetString(id));
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(key, id);
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(key.AsSpan(4), text.Length);
+            hash.AppendData(key); hash.AppendData(text);
+        }
+        Console.WriteLine(JsonSerializer.Serialize(new { identity, runtime = Environment.Version.ToString(), compressed,
+            record_count = count, effective_count = ids.Count, plain_base64 = Convert.ToBase64String(plain),
+            source_sha256 = Convert.ToHexString(SHA256.HashData(raw)).ToLowerInvariant(),
+            text_sha256 = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant() }));
+        return 0;
+    }
     if (args[1] == "tiledata-item")
     {
         const int landBytes = 512 * (4 + 32 * 30), groupBytes = 4 + 32 * 41;

@@ -42,7 +42,9 @@ exchange. Shared project/export destination guards refuse registered source
 paths and resolved directory/symlink aliases, including sources outside the
 installation. Atomic output replacement preserves backing files when an output
 is a hardlink alias. These are application guards, not operating-system file
-permissions. No native Cliloc binary is emitted by this feature.
+permissions. This source-opening feature does not emit native files;
+[F15b native staging](cliloc_native_staging.md) supplies a separate reviewed
+export, including explicit custom output filenames.
 
 ## Verification
 
