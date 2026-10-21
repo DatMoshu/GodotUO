@@ -76,7 +76,7 @@ def test_incomplete_or_incomparable_measurement_rejected(side, mutation):
 
 
 @pytest.mark.parametrize("metric", ["draw_calls", "batcher_items", "mean_ms", "p95_ms", "p99_ms", "draws_per_frame"])
-@pytest.mark.parametrize("value", [None, True, "100", -1, 0, float("nan"), float("inf")])
+@pytest.mark.parametrize("value", [None, True, "100", -1, 0, float("nan"), float("inf"), 10**400])
 def test_invalid_metric_rejected(metric, value):
     measured = report()
     measured["scenes"][0][metric] = value
@@ -98,3 +98,14 @@ def test_cli_exit_codes_and_summary(tmp_path):
     assert main(args) == 2
     assert "**INVALID**" in summary.read_text(encoding="utf-8")
     assert str(tmp_path) not in summary.read_text(encoding="utf-8")
+
+
+def test_cli_oversized_integer_is_invalid_input(tmp_path, capsys):
+    baseline, measured = tmp_path / "baseline.json", tmp_path / "report.json"
+    baseline.write_text(json.dumps(report()), encoding="utf-8")
+    doc = report()
+    doc["scenes"][0]["draw_calls"] = 10**400
+    measured.write_text(json.dumps(doc), encoding="utf-8")
+
+    assert main(["--baseline", str(baseline), "--report", str(measured)]) == 2
+    assert "**INVALID**" in capsys.readouterr().out

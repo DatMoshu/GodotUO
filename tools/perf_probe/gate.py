@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
+import sys
 from decimal import Decimal
 from pathlib import Path
 
@@ -38,7 +38,9 @@ def validate(report: object) -> dict[str, dict]:
             raise ValueError(f"{scene}: needs at least {minimum_frames} measured frames")
         for key in (*COUNTS, *TIMES, "draws_per_frame"):
             value = row.get(key)
-            if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
+            # Bound metrics to the finite float range without converting:
+            # JSON integers can overflow a float conversion.
+            if type(value) not in (int, float) or not 0 < value <= sys.float_info.max:
                 raise ValueError(f"{scene}: {key} must be a finite positive number")
         if row["draws_per_frame"] < 0.95:
             raise ValueError(f"{scene}: fewer than 0.95 draws per measured frame")
