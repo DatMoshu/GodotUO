@@ -9,7 +9,7 @@ REM  shard name and port from config.bat. ModernUO otherwise asks for them at
 REM  a console prompt, and it refuses to prompt when stdin is redirected --
 REM  which is every scripted or agent-driven run.
 REM ============================================================================
-call "%~dp0..\_shared\common.bat" || exit /b 1
+call "%~dp0..\_shared\common.bat" --defer-shard-secrets || exit /b 1
 
 if not exist "%UO_SHARD_DIST%\ModernUO.exe" (
     echo [shard] Not built yet. Run launchers\shard\build.bat first.

@@ -14,6 +14,7 @@ Config, which knows this OS.
 """
 from __future__ import annotations
 
+import argparse
 import os
 import shlex
 import sys
@@ -25,7 +26,7 @@ from guo import load_config  # noqa: E402
 from guo.config import launcher_settings, native_path  # noqa: E402
 
 
-def exports() -> dict[str, str]:
+def exports(*, include_shard_secrets: bool = True) -> dict[str, str]:
     cfg = load_config()
     values = launcher_settings(cfg.root)
     out = {k: os.environ.get(k) or native_path(v) for k, v in values.items() if "%" not in v}
@@ -35,7 +36,7 @@ def exports() -> dict[str, str]:
     for key, value in (("UO_SHARD_OWNER_PASSWORD", cfg.shard_owner_password),
                        ("UO_SHARD_GM_PASSWORD", cfg.shard_gm_password),
                        ("UO_BRIDGE_ADMIN_TOKEN", cfg.bridge_admin_token)):
-        if value:
+        if value and include_shard_secrets:
             out[key] = value
 
     out.update({
@@ -69,7 +70,11 @@ def exports() -> dict[str, str]:
 
 
 def main() -> int:
-    for key, value in sorted(exports().items()):
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--without-shard-secrets", action="store_true",
+                    help="defer generated shard secrets until configure.py has run")
+    args = ap.parse_args()
+    for key, value in sorted(exports(include_shard_secrets=not args.without_shard_secrets).items()):
         print(f"export {key}={shlex.quote(value)}")
     return 0
 

@@ -283,6 +283,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- Starting the dev shard now loads generated passwords after configuration
+  migrates them, so a newly shortened login password reaches the server on
+  the same launch. Environment and local configuration overrides still win.
 - Host a pack catalogue of your own on GitHub Pages: `run.py init-catalogue`
   writes its repository, and `launchers/store/push_catalogue` signs the
   index with your key and pushes it to the Pages branch. Players add the

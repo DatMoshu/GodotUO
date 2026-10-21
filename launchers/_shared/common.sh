@@ -42,12 +42,14 @@ fi
 # shellcheck disable=SC1091
 . "$UO_ROOT/launchers/_shared/config.sh"
 
-_guo_env="$("$UO_PYTHON" "$UO_ROOT/tools/shellenv/run.py")" || {
+_guo_env_args=()
+if [ "${1:-}" = "--defer-shard-secrets" ]; then _guo_env_args+=(--without-shard-secrets); fi
+_guo_env="$("$UO_PYTHON" "$UO_ROOT/tools/shellenv/run.py" "${_guo_env_args[@]}")" || {
     echo "[common] FATAL: could not resolve the configuration (tools/shellenv)"
     return 1 2>/dev/null || exit 1
 }
 eval "$_guo_env"
-unset _guo_env
+unset _guo_env _guo_env_args
 
 # The pinned engine needs a .NET SDK new enough for the project's C#; one
 # installed per-user (dotnet-install.sh) is found here when not on PATH.

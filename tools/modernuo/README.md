@@ -49,6 +49,18 @@ owner's (`UO_SHARD_OWNER_PASSWORD`) and the game master accounts' shared one
 `common.bat` calls it after `config.bat`, `tools/guo/config.py` reads it, and
 the environment or `config.local.bat` still win. Delete it for new ones.
 
+The shard run launcher defers loading generated secrets until `configure.py`
+finishes. This matters when it replaces an older password longer than the
+login box's 16-character limit: the server must receive the newly saved value
+on that same launch. Explicit environment and local configuration overrides
+keep their usual precedence. Both launcher twins use this order.
+
+`python tools/modernuo/test_launcher_secrets.py` exercises this migration,
+first-run generation, repeat launches and override precedence in temporary
+fixtures. It executes the Windows launcher prefix but stops before starting
+any server; the shell-export check runs on every platform. The full smoke
+includes these checks.
+
 That second account is why `accountHandler.maxAccountsPerIP` is **4** in the
 template rather than ModernUO's default of 1: two clients on one machine are
 two accounts from one address, and the shard refuses the second with

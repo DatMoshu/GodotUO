@@ -12,6 +12,10 @@ every OS. A value still holding a Windows-only `%VAR%` is left out.
 eval "$(python3 tools/shellenv/run.py)"
 ```
 
+`--without-shard-secrets` omits generated shard secrets during the shard run
+launcher's initial setup. After `configure.py` has generated or migrated them,
+the launcher resolves normally. It does not clear environment or local settings.
+
 ## Tests
 
 Resolution is covered by `python tools/guo/test_config.py`; this file only prints it.
