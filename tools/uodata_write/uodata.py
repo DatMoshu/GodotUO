@@ -328,6 +328,50 @@ def mul_append(mul: Path, idx: Path, index: int, data: bytes, extra: int = 0, re
         x.write(struct.pack("<iii", at, len(data), extra))
 
 
+def check_texmaps(mul: Path, idx: Path, records: list[tuple[int, bytes]], *, occupied: bool = True) -> None:
+    """Validate a whole texture batch before copying or appending any bytes.
+
+    IDs are physical rows, not TexTerr.def aliases. The caller resolves and reviews
+    remaps. Existing world exports may fill empty rows; typed replacement cannot.
+    """
+    size, length = idx.stat().st_size, mul.stat().st_size
+    if not size or size % 12 or size > 0x4000 * 12:
+        raise ValueError("texidx.mul must contain 1..16384 complete index rows")
+    if length > 0x7fffffff:
+        raise ValueError("texmaps.mul exceeds signed 32-bit index offsets")
+    raw = idx.read_bytes()
+    for at, count, _ in struct.iter_unpack("<iii", raw):
+        if at >= 0 and count > 0 and (count not in (8192, 32768) or at + count > length):
+            raise ValueError("texidx.mul contains an invalid native texture range")
+    seen = set()
+    for ident, payload in records:
+        if type(ident) is not int or not 0 <= ident < size // 12 or ident in seen:
+            raise ValueError("Texture IDs must be unique existing physical index rows")
+        seen.add(ident)
+        at, count, _ = struct.unpack_from("<iii", raw, ident * 12)
+        if occupied and (at < 0 or count <= 0):
+            raise ValueError("Texture replacement requires an occupied physical row")
+        if not isinstance(payload, bytes) or len(payload) not in (8192, 32768):
+            raise ValueError("Texture payload must be exactly 8192 or 32768 native bytes")
+        length += len(payload)
+        if length > 0x7fffffff:
+            raise ValueError("Texture append exceeds signed 32-bit index offsets")
+
+
+def write_texmaps(mul: Path, idx: Path, records: list[tuple[int, bytes]], *, occupied: bool = True,
+                  skip_identical: bool = True) -> None:
+    """Append/repoint via the shared MUL writer, preserving each opaque extra word."""
+    check_texmaps(mul, idx, records, occupied=occupied)
+    for ident, payload in records:
+        at, count, extra = idx_entry(idx, ident)
+        if skip_identical and at >= 0 and count == len(payload):
+            with mul.open("rb") as stream:
+                stream.seek(at)
+                if stream.read(count) == payload:
+                    continue
+        mul_append(mul, idx, ident, payload, extra, replace=True)
+
+
 # --- tiledata --------------------------------------------------------------------
 
 def tile_layout(tiledata: Path) -> str:
@@ -600,6 +644,8 @@ def check_records(stage: Stage, records: list[AssetRecord], replace: bool = Fals
             if not replace and mul_occupied(stage.read_path("anim.idx"), index):
                 raise ValueError(f"anim.idx entry {index} (body {r.id}, action {r.meta['action']}, direction "
                                  f"{r.meta['direction']}) already holds data; the writer only adds (replace to overwrite)")
+        elif r.kind == "texmap" and not replace:
+            raise ValueError("Texture records require explicit replacement approval")
         elif r.kind == "multi" and 0 <= r.id < MULTI_LIMIT:
             slot("MultiCollection.uop", MULTI_PATTERN, "multi.idx", r.id)
         elif r.kind == "tiledata-item":
@@ -610,6 +656,9 @@ def check_records(stage: Stage, records: list[AssetRecord], replace: bool = Fals
             at = (h // 8) * HUE_GROUP + 4 + (h % 8) * HUE_RECORD if h >= 0 else -1
             if len(r.data) != HUE_RECORD or r.id < 1 or at + HUE_RECORD > size:
                 raise ValueError(f"hue {r.id} ({len(r.data)} bytes) is not one {HUE_RECORD}-byte hue inside hues.mul")
+    textures = [(r.id, r.data) for r in records if r.kind == "texmap"]
+    if textures:
+        check_texmaps(stage.read_path("texmaps.mul"), stage.read_path("texidx.mul"), textures)
 
 
 def output_files(stage: Stage, records: list[AssetRecord]) -> list[str]:
@@ -631,6 +680,8 @@ def output_files(stage: Stage, records: list[AssetRecord]) -> list[str]:
         names.append("tiledata.mul")
     if "hue" in kinds:
         names.append("hues.mul")
+    if "texmap" in kinds:
+        names += ["texmaps.mul", "texidx.mul"]
     return names
 
 
@@ -682,6 +733,10 @@ def write_records(stage: Stage, records: list[AssetRecord], replace: bool = Fals
         for r in anims:
             mul_append(mul, idx, anim_index(r.id, r.meta["action"], r.meta["direction"]), r.data, replace=replace)
         done.append(f"anim: {len(anims)} body/action/direction payload(s) for bodies {sorted({r.id for r in anims})}")
+    textures = [(r.id, r.data) for r in records if r.kind == "texmap"]
+    if textures:
+        write_texmaps(stage.path("texmaps.mul"), stage.path("texidx.mul"), textures)
+        done += [f"texmap {ident:#x} ({len(payload)} bytes)" for ident, payload in textures]
     multis = [r for r in records if r.kind == "multi"]
     if multis:
         for r in multis:
@@ -726,6 +781,13 @@ def write_records(stage: Stage, records: list[AssetRecord], replace: bool = Fals
 
 def read_back(stage: Stage, r: AssetRecord) -> bytes | dict | None:
     """What the staged set now holds for a record (for verify)."""
+    if r.kind == "texmap":
+        at, count, _ = idx_entry(stage.read_path("texidx.mul"), r.id)
+        if at < 0 or count <= 0:
+            return None
+        with stage.read_path("texmaps.mul").open("rb") as stream:
+            stream.seek(at)
+            return stream.read(count)
     if r.kind in ("static", "land"):
         index = r.id if r.kind == "land" else LAND_COUNT + r.id
         try:

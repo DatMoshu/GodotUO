@@ -40,9 +40,11 @@ TexTerr.def hash and original record bytes. Source/index/remap changes, external
 changed saved copies and stale image reviews are refused. A saved document is
 at most 64 KiB; history retains at most 100 immutable image states.
 
-F09c will bridge the existing world texture exporter to independently verified
-native staging. Saving the working document does not change world/runtime
-loaders or emit native texmap files. No slot allocation/removal is offered.
+F09c adds [verified native staging](texture_native_staging.md) through the shared
+texture append/repoint writer. **Export verified texture stage** prepares a
+private candidate, shows current/candidate textures and every affected alias,
+then requires a separate Apply confirmation. Saving the working document alone
+does not emit native files. No slot allocation/removal is offered.
 
 Verification: the regular editor smoke covers both installed dimensions, ID and
 land-name search, filtering, opaque pixels, PNG read-back and malformed index

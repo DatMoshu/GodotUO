@@ -121,10 +121,12 @@ public partial class TexturePanel : GridPanel
             inspection.Texture = document; inspection.TextureChanged = OnAssetsChanged;
             inspection.Actions.Add(new("replace-texture-png", "Replace texture from PNG…", "Load", () => AssetActions.Pick(EditorFileDialog.FileModeEnum.OpenFile, null,
                 path => OpenImportReview(document, TextureDocument.Read(path, 2 * 1024 * 1024), Path.GetFileName(path)), owner: this, title: "Review texture replacement")));
+            inspection.Actions.Add(new("export-texture-stage", "Export verified texture stage…", "Save", () => OpenNativeStage(document)));
         }
         else inspection.Fields.Add(("Document refused", _errors.GetValueOrDefault(Key(id)) ?? "Source unavailable"));
         return inspection;
     }
     internal TextureImportDialog OpenImportReview(TextureDocument document, byte[] png, string name) => TextureImportDialog.Open(this, document, png, name);
+    internal TextureStageDialog OpenNativeStage(TextureDocument document) => TextureStageDialog.Open(this, Data, document);
 }
 #endif

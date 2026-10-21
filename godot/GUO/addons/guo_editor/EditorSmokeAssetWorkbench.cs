@@ -12,6 +12,8 @@ public partial class EditorSmoke
     private HueTextDialog _hueTextProof;
     private HueStageDialog _hueStageProof;
     private TextureImportDialog _textureImportProof;
+    private TextureStageDialog _textureStageProof;
+    private System.Threading.Tasks.Task _textureStageTask;
     private System.Threading.Tasks.Task _hueStageTask;
     private void CheckAssetWorkbench(ArtPanel art, int id)
     {
@@ -450,9 +452,55 @@ public partial class EditorSmoke
             GodotUi.Walk(texturePanel).OfType<CheckButton>().Single(c => c.AccessibilityName == "Show source texture").ButtonPressed = true;
             _assetsProofStep = 48; return;
         }
-        MetadataCheck("texture_source_comparison_keeps_document", _inspector.Current.Image.GetWidth() == textureDocument.SourceSize && textureDocument.Size == 128 && !textureDocument.IsDirty);
-        SaveAssetProof("texture-source-comparison", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
-        GodotUi.Walk(texturePanel).OfType<CheckButton>().Single(c => c.AccessibilityName == "Show source texture").ButtonPressed = false;
+        if (_assetsProofStep == 48)
+        {
+            MetadataCheck("texture_source_comparison_keeps_document", _inspector.Current.Image.GetWidth() == textureDocument.SourceSize && textureDocument.Size == 128 && !textureDocument.IsDirty);
+            SaveAssetProof("texture-source-comparison", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
+            GodotUi.Walk(texturePanel).OfType<CheckButton>().Single(c => c.AccessibilityName == "Show source texture").ButtonPressed = false;
+            GetWindow().Size = AssetProofSize(1366, 900);
+            _textureStageProof = texturePanel.OpenNativeStage(textureDocument); _textureStageProof.Destination.Text = Path.Combine(_out, "native-texture-stage");
+            _textureStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); _textureStageTask = _textureStageProof.Operation;
+            _assetsProofStep = 49; return;
+        }
+        if (_textureStageTask?.IsCompleted == false) return;
+        if (_assetsProofStep <= 51)
+        {
+            int width = new[] { 1366, 1024, 1920 }[_assetsProofStep - 49];
+            MetadataCheck($"texture_native_prepared_{width}", _textureStageProof.Prepared && !_textureStageProof.Applied && !_textureStageProof.GetOkButton().Disabled
+                && !Directory.Exists(_textureStageProof.Destination.Text) && _textureStageProof.Size.Y <= GetWindow().Size.Y);
+            SaveAssetProof($"texture-native-prepared-{width}", _textureStageProof.GetTexture()?.GetImage());
+            if (!_textureStageProof.Prepared) { _failures.Add("Native texture preparation failed: " + _textureStageProof.Status); _textureStageProof.Free(); Finish(); return; }
+            _assetsProofStep++;
+            if (_assetsProofStep == 50) { GetWindow().Size = AssetProofSize(1024, 768); return; }
+            if (_assetsProofStep == 51) { GetWindow().Size = AssetProofSize(1920, 1080); return; }
+            _textureStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed);
+            var applyReview = _textureStageProof.GetChildren().OfType<ConfirmationDialog>().Last();
+            MetadataCheck("texture_native_apply_requires_confirmation", !_textureStageProof.Applied && !Directory.Exists(_textureStageProof.Destination.Text));
+            applyReview.EmitSignal(ConfirmationDialog.SignalName.Canceled);
+            MetadataCheck("texture_native_cancel_apply_keeps_stage", !_textureStageProof.Applied && !Directory.Exists(_textureStageProof.Destination.Text));
+            _textureStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); return;
+        }
+        if (_assetsProofStep == 52)
+        {
+            var applyReview = _textureStageProof.GetChildren().OfType<ConfirmationDialog>().Last();
+            SaveAssetProof("texture-native-apply-confirmation", applyReview.GetTexture()?.GetImage());
+            applyReview.EmitSignal(ConfirmationDialog.SignalName.Confirmed); _textureStageTask = _textureStageProof.Operation; _assetsProofStep = 53; return;
+        }
+        if (_assetsProofStep == 53)
+        {
+            MetadataCheck("texture_native_applied", _textureStageProof.Applied && File.Exists(Path.Combine(_textureStageProof.Destination.Text, "texmaps.mul")));
+            SaveAssetProof("texture-native-applied", _textureStageProof.GetTexture()?.GetImage());
+            _textureStageTask = _textureStageProof.RecoverAsync(); _assetsProofStep = 54; return;
+        }
+        if (_assetsProofStep == 54)
+        {
+            MetadataCheck("texture_native_recovered_prior_absence", !_textureStageProof.Applied && !Directory.Exists(_textureStageProof.Destination.Text));
+            SaveAssetProof("texture-native-recovered", _textureStageProof.GetTexture()?.GetImage()); _textureStageProof.Free();
+            _textureStageProof = texturePanel.OpenNativeStage(textureDocument); _textureStageProof.Destination.Text = Path.Combine(_out, "canceled-native-texture-stage");
+            _textureStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); _textureStageTask = _textureStageProof.Operation;
+            _textureStageProof.Free(); _assetsProofStep = 55; return;
+        }
+        MetadataCheck("texture_native_close_waits_for_owned_job", _textureStageTask.IsCompletedSuccessfully && !Directory.Exists(Path.Combine(_out, "canceled-native-texture-stage")));
         Finish();
     }
 

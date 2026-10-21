@@ -48,6 +48,9 @@ world-project or header-only.
 It also reviews/cancels/applies a synthetic texture PNG replacement, captures
 the working document at three widths, checks undo and project save, and compares
 the source without changing the saved working texture.
+It then prepares a verified native texture candidate at three widths, reviews
+the physical row/affected aliases, cancels and confirms Apply, recovers the prior
+absence, and closes during an owned preparation to prove cancellation.
 The normal full smoke also checks metadata drafts across selection, UTF-8
 validation, named-flag bit preservation, save/history, draft recovery and the
 source comparison's restoration of the overlay.

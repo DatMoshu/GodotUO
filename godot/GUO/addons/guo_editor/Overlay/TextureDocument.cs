@@ -89,6 +89,17 @@ public sealed class TextureDocument
     public void Revert() { Check(); Push(_original); }
     public byte[] Record() => (byte[])Current.Clone();
     public byte[] SourceRecord() => (byte[])_original.Clone();
+    internal void RequireNativeReview(string token)
+    {
+        Check(); if (ReviewToken != token) throw new IOException("Working texture changed. Reopen native export for a fresh review.");
+    }
+    internal byte[] NativeStageInput(string token)
+    {
+        RequireNativeReview(token);
+        return Encoding.UTF8.GetBytes(new JsonObject { ["schema"] = 1, ["domain"] = "texmap",
+            ["records"] = new JsonArray(new JsonObject { ["id"] = Id,
+                ["source_record_base64"] = Convert.ToBase64String(_original), ["record_base64"] = Convert.ToBase64String(Current) }) }.ToJsonString());
+    }
     internal static Image Image(byte[] record)
     {
         int size = Dimension(record); var pixels = new uint[size * size];

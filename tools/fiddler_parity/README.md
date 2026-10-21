@@ -157,3 +157,12 @@ with filename-ID validation and one candidate/verify/promote transaction for
 all selected records. `batch.py scan` reports every PNG error without writing;
 `batch.py prepare` refuses stale scans and delegates to the same independently
 verified stage adapter. `proof_batch.py` covers the additional batch contracts.
+
+F09c adds [native texture staging](../../docs/editor/texture_native_staging.md)
+through `textures.py`. The oracle uses pinned upstream `DefReader` and
+`TexmapsLoader` to report physical rows and all affected aliases, preserving
+file-order-dependent remaps. Native records retain all 16 bits. Verification
+checks the full old MUL prefix, exact appended bytes, unchanged index rows and
+opaque extras, plus independent decoded pixel/raw hashes. The typed writer's
+append helper is shared with world texture export. `proof_texmaps.py` covers
+native sizes, remaps, no-op identity, corruption, stale reviews and recovery.

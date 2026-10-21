@@ -20,7 +20,8 @@ try
         Console.WriteLine(JsonSerializer.Serialize(new { identity, runtime = Environment.Version.ToString() }));
         return 0;
     }
-    if (args.Length != 4) throw new ArgumentException("Expected stage, packaging, client version, comma-separated IDs.");
+    if (args.Length != 4 && !(args.Length == 5 && args[1] == "texmap"))
+        throw new ArgumentException("Expected stage, packaging, client version, comma-separated IDs, optional texture DEF path.");
     var stage = Path.GetFullPath(args[0]);
     if (!ClientVersionHelper.IsClientVersionValid(args[2], out var version))
         throw new ArgumentException("Invalid explicit client version.");
@@ -28,6 +29,8 @@ try
     // IsUOPInstallation checks MainMisc's existence. Only art is loaded; point
     // that probe at the explicitly selected archive, without fabricating files.
     map["mainmisc.uop"] = Path.Combine(stage, args[1] == "uop" ? "artLegacyMUL.uop" : "unused-oracle-probe");
+    if (args[1] == "texmap" && args.Length == 5)
+        map["texterr.def"] = args[4] == "-" ? Path.Combine(stage, "unused-oracle-texterr-probe") : Path.GetFullPath(args[4]);
     var files = new UOFileManager(version, stage, map);
     if (args[1] == "hue")
     {
@@ -50,6 +53,63 @@ try
                 raw_base64 = Convert.ToBase64String(raw), header = group.Header });
         }
         Console.WriteLine(JsonSerializer.Serialize(new { identity, runtime = Environment.Version.ToString(), records = hues }));
+        return 0;
+    }
+    if (args[1] == "texmap")
+    {
+        var indexPath = files.GetUOFilePath("texidx.mul");
+        var mulPath = files.GetUOFilePath("texmaps.mul");
+        long indexLength = new FileInfo(indexPath).Length, mulLength = new FileInfo(mulPath).Length;
+        if (indexLength <= 0 || indexLength % 12 != 0 || indexLength > 0x4000 * 12 || mulLength > int.MaxValue)
+            throw new InvalidDataException("Invalid bounded texture library.");
+        byte[] rawIndex = File.ReadAllBytes(indexPath);
+        for (int i = 0; i < rawIndex.Length; i += 12)
+        {
+            int at = BitConverter.ToInt32(rawIndex, i), length = BitConverter.ToInt32(rawIndex, i + 4);
+            if (at >= 0 && length > 0 && ((length != 8192 && length != 32768) || (long)at + length > mulLength))
+                throw new InvalidDataException("Invalid texture record range.");
+        }
+        var defPath = files.GetUOFilePath("TexTerr.def");
+        if (File.Exists(defPath) && new FileInfo(defPath).Length > 2 * 1024 * 1024)
+            throw new InvalidDataException("Texture DEF exceeds review budget.");
+        // Track provenance with the upstream parser, in file order. A later
+        // change to B must not retroactively change an earlier A { B } copy.
+        int[] physical = Enumerable.Range(0, rawIndex.Length / 12).ToArray();
+        if (File.Exists(defPath))
+        {
+            using var definitions = new DefReader(defPath);
+            while (definitions.Next())
+            {
+                int id = definitions.ReadInt();
+                if (id < 0 || id >= physical.Length) continue;
+                var group = definitions.ReadGroup();
+                if (group == null) continue;
+                foreach (int other in group)
+                    if (other >= 0 && other < physical.Length) physical[id] = physical[other];
+            }
+        }
+        files.Texmaps.Load();
+        using var textureFile = files.Texmaps.File;
+        var textures = new List<object>();
+        foreach (var text in args[3].Split(','))
+        {
+            int id = int.Parse(text);
+            if (id < 0 || id >= physical.Length) throw new InvalidDataException("Texture ID outside existing rows.");
+            int target = physical[id];
+            ref var entry = ref textureFile.GetValidRefEntry(id);
+            int at = BitConverter.ToInt32(rawIndex, target * 12), length = BitConverter.ToInt32(rawIndex, target * 12 + 4);
+            if (entry.Length <= 0 || entry.Offset != at || entry.Length != length)
+                throw new InvalidDataException("Texture mapping provenance differs from the upstream loader.");
+            var raw = new byte[length];
+            textureFile.Seek(entry.Offset, SeekOrigin.Begin); textureFile.Read(raw);
+            var image = files.Texmaps.GetTexmap((uint)id);
+            textures.Add(new { id, physical_id = target,
+                affected_ids = Enumerable.Range(0, physical.Length).Where(x => physical[x] == target).ToArray(),
+                width = image.Width, height = image.Height,
+                rgba_sha256 = Convert.ToHexString(SHA256.HashData(MemoryMarshal.AsBytes(image.Pixels))).ToLowerInvariant(),
+                raw_sha256 = Convert.ToHexString(SHA256.HashData(raw)).ToLowerInvariant() });
+        }
+        Console.WriteLine(JsonSerializer.Serialize(new { identity, runtime = Environment.Version.ToString(), records = textures }));
         return 0;
     }
     files.Arts.Load();

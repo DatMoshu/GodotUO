@@ -32,8 +32,10 @@ count of certified operations.
 F09a adds the [texture browser](texture_workbench.md): native 64/128-size filters,
 ID/referring-land-name search, guarded loader decoding, inspector references and
 PNG export. F09b adds reviewed PNG replacement documents, history, source
-comparison, source/saved-copy guards and recovery. Verified native texture
-staging follows as a separate milestone.
+comparison, source/saved-copy guards and recovery. F09c adds
+[verified native texture staging](texture_native_staging.md), with explicit
+physical-row/shared-alias review, exact raw-record preservation, independent
+ClassicUO decoding and prior-stage recovery.
 
 `tools/fiddler_parity` now contains an independent static-art reader and a
 single-record candidate/verify/promote adapter. The existing art inspector

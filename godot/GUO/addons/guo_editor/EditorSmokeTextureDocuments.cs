@@ -33,6 +33,11 @@ public partial class EditorSmoke
             && BinaryPrimitives.ReadUInt16LittleEndian(changed.AsSpan(6)) == 0x7C00);
         string token = doc.ReviewToken; doc.Import(changed, token);
         Check("replacement_size_and_dirty", doc.IsDirty && doc.Size == 128 && doc.CanUndo);
+        JsonNode nativeInput = JsonNode.Parse(doc.NativeStageInput(doc.ReviewToken));
+        Check("native_export_raw16_source_and_working", (string)nativeInput["domain"] == "texmap"
+            && Convert.FromBase64String((string)nativeInput["records"][0]["source_record_base64"]).AsSpan().SequenceEqual(native)
+            && Convert.FromBase64String((string)nativeInput["records"][0]["record_base64"]).AsSpan().SequenceEqual(changed));
+        Check("native_export_stale_review_refused", Refused(() => doc.NativeStageInput(token)));
         Check("stale_review_refused", Refused(() => doc.Import(native, token)));
         doc.Undo(); Check("undo_exact_source", !doc.IsDirty && doc.Record().AsSpan().SequenceEqual(native));
         doc.Redo(); Check("redo_exact_replacement", doc.Record().AsSpan().SequenceEqual(changed));
@@ -61,6 +66,9 @@ public partial class EditorSmoke
         panel.OnAssetsChanged(); Check("inspector_document_bound", _inspector.Textures.Document == active && _inspector.Textures.Visible && !_inspector.Textures.SaveButton.Disabled);
         Check("project_tray_tracks_unsaved", panel.Changes().TryGetValue(active.Id, out string changeState) && changeState == "Unsaved texture document");
         _inspector.Textures.Undo(); Check("inspector_undo", !active.IsDirty && active.Size == 64);
+        TextureStageDialog stageReview = panel.OpenNativeStage(active);
+        Check("native_review_starts_unprepared", !stageReview.Prepared && !stageReview.Applied && !stageReview.Busy && stageReview.GetOkButton().Text == "Prepare verified copy");
+        stageReview.Free();
         active.Import(TextureDocument.DecodePng(activeFixture.SavePngToBuffer()), active.ReviewToken); panel.OnAssetsChanged();
         _inspector.Textures.StashDrafts(); var recoveredEditor = new TextureEditor(); AddChild(recoveredEditor);
         TextureDocument newDocument = TextureDocument.Open(active.Project, active.Install, active.Id, () => _data.SourceTexture(active.Id)); recoveredEditor.Bind(newDocument, null);
