@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using ClassicUO.Assets;
@@ -28,6 +29,29 @@ try
     // that probe at the explicitly selected archive, without fabricating files.
     map["mainmisc.uop"] = Path.Combine(stage, args[1] == "uop" ? "artLegacyMUL.uop" : "unused-oracle-probe");
     var files = new UOFileManager(version, stage, map);
+    if (args[1] == "hue")
+    {
+        // The loader also reads radar colors. They do not participate in hue
+        // decoding; explicitly alias this read-only probe to the same bounded
+        // even-length file, avoiding a dependency on an unrelated install file.
+        map["radarcol.mul"] = Path.Combine(stage, "hues.mul");
+        files.Hues.Load();
+        var hues = new List<object>();
+        foreach (var text in args[3].Split(','))
+        {
+            int id = int.Parse(text);
+            if (id < 1 || id > files.Hues.HuesCount) throw new InvalidDataException($"Missing hue {id}.");
+            ref var group = ref files.Hues.HuesRange[(id - 1) / 8];
+            ref var entry = ref group.Entries[(id - 1) % 8];
+            byte[] raw = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref entry, 1)).ToArray();
+            var colors = new ushort[32];
+            for (int i = 0; i < 32; i++) colors[i] = entry.ColorTable[i];
+            hues.Add(new { id, colors, start = entry.TableStart, end = entry.TableEnd,
+                raw_base64 = Convert.ToBase64String(raw), header = group.Header });
+        }
+        Console.WriteLine(JsonSerializer.Serialize(new { identity, runtime = Environment.Version.ToString(), records = hues }));
+        return 0;
+    }
     files.Arts.Load();
     using var archive = files.Arts.File;
     if ((archive is UOFileUop) != (args[1] == "uop")) throw new InvalidOperationException("Container selection differs.");

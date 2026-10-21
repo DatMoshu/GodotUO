@@ -93,12 +93,8 @@ class Stage:
     def __init__(self, root: Path, install: Path):
         self.root = root.resolve()
         self.install = install.resolve()
-        try:
-            self.root.relative_to(self.install)
+        if self.root.is_relative_to(self.install):
             raise ValueError(f"a staged set inside the install is refused: {self.root}")
-        except ValueError as e:
-            if "refused" in str(e):
-                raise
         self.root.mkdir(parents=True, exist_ok=True)
         self.meta_path = self.root / "stage.json"
         self.meta = json.loads(self.meta_path.read_text(encoding="utf-8")) if self.meta_path.exists() else \

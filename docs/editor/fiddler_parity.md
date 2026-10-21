@@ -14,6 +14,21 @@ merge. The remaining catalogue is a proposed backlog, not one implementation PR.
 
 ### First implementation milestone
 
+Moshu subsequently approved the recommended implementation order and native
+export testing on this branch (2026-10-20 evening). Native hue staging follows
+the hue working document and interchange slices; textures and native saves for
+the existing metadata, Cliloc and sound documents follow as separate milestones.
+All outputs remain reviewed staged copies. This does not authorize writing the
+source installation, unrelated deletion, publication, a push or a merge.
+
+F08a–e now cover [hue documents and interchange](hue_documents.md): all 32 colors,
+names/raw bounds, history/recovery, RGB picking, PNG exchange, palette range
+operations, reviewed TXT import, explicit Windows-1252/UTF-8 output and names
+lists. F08f adds [verified native hue staging](hue_native_staging.md), reusing the
+typed native writer and recoverable promotion, with independent ClassicUO
+read-back. The original catalogue below remains a scope inventory rather than a
+count of certified operations.
+
 `tools/fiddler_parity` now contains an independent static-art reader and a
 single-record candidate/verify/promote adapter. The existing art inspector
 offers verified-stage export after image replacement; its editor-only dialog
@@ -105,7 +120,9 @@ Phase 1 proposal, 2026-10-19. guo-director first-pass review received;
 catalogue and survey await guo-director and exec-fable sign-off.
 F01a has separate director authorization for assignment (inbox #11093);
 that narrow read-only brief does not approve the remaining plan.
-No implementation, dispatch, sprint edits, publication or licence approval is implied.
+That original survey implied no implementation, dispatch, sprint edits,
+publication or licence approval. Subsequent implementation decisions are
+recorded at the top of this document.
 
 ## Variant survey: which tools deserve parity coverage first?
 
@@ -605,8 +622,9 @@ certifies the new third-party formats or their visual behavior.
 
 Phase 1 delivery is these two documents and a director review note. Phase 2
 review is in progress; the first-pass director decisions are recorded above.
-Phase 3 remains held until plan approval, except the separately authorized
-F01a read-only runner brief. This branch adds no implementation or dispatch.
+At that planning milestone, Phase 3 remained held except for the separately
+authorized F01a read-only runner brief. Subsequent owner authorizations and
+implemented slices are recorded at the top of this document.
 
 Completion review run: `20261020_guo-worker-fiddler_parity-plan-review`.
 Catalogue structure/count checks, documentation links, privacy scan and the

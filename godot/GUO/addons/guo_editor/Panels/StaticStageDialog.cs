@@ -220,6 +220,7 @@ public partial class StaticStageDialog : ConfirmationDialog
         start.ArgumentList.Add(Path.Combine(EditorData.RepoRoot, "tools", "fiddler_parity", tool));
         foreach (string arg in args) start.ArgumentList.Add(arg);
         using var process = new Process { StartInfo = start };
+        token.ThrowIfCancellationRequested();
         process.Start();
         Task<string> output = process.StandardOutput.ReadToEndAsync(token);
         Task<string> errors = process.StandardError.ReadToEndAsync(token);
@@ -229,6 +230,7 @@ public partial class StaticStageDialog : ConfirmationDialog
         catch (OperationCanceledException)
         {
             if (!process.HasExited) process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync(CancellationToken.None);
             if (!token.IsCancellationRequested) throw new IOException("Stage operation timed out. Inspect its recovery journal before retrying.");
             throw;
         }

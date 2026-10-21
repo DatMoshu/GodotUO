@@ -182,6 +182,7 @@ public partial class HuePanel : GridPanel
         ins.Origin = document?.IsDirty == true ? "Working project hue · unsaved" : Data.Assets?.Has(AssetKind.Hue, id) == true ? "Saved project hue" : "Install hue · read-only";
         if (document == null) { ins.Text += "\nHue document refused: " + _errors.GetValueOrDefault(Key(id)); return ins; }
         ins.Hue = document; ins.HueChanged = OnAssetsChanged;
+        ins.Actions.Add(new("export-hue-stage", "Export verified hue stage…", "Export", () => OpenStageReview(document)));
         ins.Actions.Add(new("export-hue", "Export working palette PNG…", "Save", () => AssetActions.Pick(EditorFileDialog.FileModeEnum.SaveFile, $"hue_0x{id:X4}.png", path =>
         {
             if (!document.CommitDraft()) throw new IOException(document.RecoveryError ?? (document.SourceError.Length > 0 ? document.SourceError : document.Validation));
@@ -205,6 +206,7 @@ public partial class HuePanel : GridPanel
     }
 
     internal bool IsCurrentProject(HueDocument document) => string.Equals(document.Project, EditorPaths.Real(Project), OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+    internal HueStageDialog OpenStageReview(HueDocument document) => HueStageDialog.Open(this, Data, document);
     internal HueTextDialog OpenTextReview(HueDocument document, byte[] bytes, string filename, HueTextFormat format = HueTextFormat.Fiddler1252)
     {
         if (!IsCurrentProject(document)) throw new IOException("The selected world project changed. Reopen import from the current hue.");

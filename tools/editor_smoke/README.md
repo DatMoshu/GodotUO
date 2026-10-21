@@ -40,8 +40,11 @@ For the Assets workbench, run
 `python tools/editor_smoke/run.py --windowed --assets-workbench --out FOLDER`.
 It captures Art/Statics and its docked metadata inspector at 1920, 1366 and
 1024 window widths, checks toolbar bounds, and captures the source/replacement
-export review. It uses a project under FOLDER, never prepares or applies a
-staged export, and cannot combine with reload, world-project or header-only.
+export review. It uses a project under FOLDER. Its native hue proof prepares,
+explicitly confirms Apply, independently reads the disposable stage and recovers
+the prior absence; it also closes an owned preparation and checks cancellation.
+The source installation stays read-only. The proof cannot combine with reload,
+world-project or header-only.
 The normal full smoke also checks metadata drafts across selection, UTF-8
 validation, named-flag bit preservation, save/history, draft recovery and the
 source comparison's restoration of the overlay.

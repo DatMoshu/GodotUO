@@ -10,6 +10,8 @@ public partial class EditorSmoke
 {
     private bool _hueRangeScrolled;
     private HueTextDialog _hueTextProof;
+    private HueStageDialog _hueStageProof;
+    private System.Threading.Tasks.Task _hueStageTask;
     private void CheckAssetWorkbench(ArtPanel art, int id)
     {
         art.SelectKind(false); art.Search($"0x{id:X4}");
@@ -343,9 +345,52 @@ public partial class EditorSmoke
             MetadataCheck("hue_text_review_ready", _hueTextProof.Plan.CanApply && !_hueTextProof.GetOkButton().Disabled && _hueTextProof.Size.Y <= DisplayServer.ScreenGetUsableRect().Size.Y);
             _hueTextProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); _assetsProofStep = 31; return;
         }
+        if (_assetsProofStep == 31)
+        {
         SaveAssetProof("hue-text-working-document", EditorInterface.Singleton.GetBaseControl().GetViewport().GetTexture()?.GetImage());
         MetadataCheck("hue_text_working_document_ready", hueEditor.Document.Name == "Project moss exchange" && hueEditor.Document.ColorAt(31) == 0x83E0 && !hueEditor.SaveButton.Disabled);
         hueEditor.Undo();
+        hueEditor.Document.ReplacePalette(Enumerable.Range(0, 32).Select(i => (ushort)(0x8000 | (i << 5))).ToArray());
+        hueEditor.Document.DraftName = "Native hue export fixture"; hueEditor.Document.CommitDraft();
+        _hueStageProof = _assets.Panel<HuePanel>().OpenStageReview(hueEditor.Document);
+        _hueStageProof.Destination.Text = Path.Combine(_out, "native-hue-stage");
+        _hueStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); _hueStageTask = _hueStageProof.Operation; _assetsProofStep = 32; return;
+        }
+        if (_hueStageTask?.IsCompleted == false) return;
+        if (_assetsProofStep <= 34)
+        {
+            int width = new[] { 1366, 1024, 1920 }[_assetsProofStep - 32];
+            MetadataCheck($"hue_native_prepared_{width}", _hueStageProof.Prepared && !_hueStageProof.Applied && !_hueStageProof.GetOkButton().Disabled
+                && !Directory.Exists(_hueStageProof.Destination.Text) && _hueStageProof.Size.Y <= GetWindow().Size.Y);
+            SaveAssetProof($"hue-native-prepared-{width}", _hueStageProof.GetTexture()?.GetImage());
+            if (!_hueStageProof.Prepared) { _failures.Add("Native hue preparation failed: " + _hueStageProof.Status); _hueStageProof.Free(); Finish(); return; }
+            _assetsProofStep++;
+            if (_assetsProofStep == 33) { GetWindow().Size = AssetProofSize(1024, 768); return; }
+            if (_assetsProofStep == 34) { GetWindow().Size = AssetProofSize(1920, 1080); return; }
+            _hueStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed);
+            var applyReview = _hueStageProof.GetChildren().OfType<ConfirmationDialog>().Last();
+            MetadataCheck("hue_native_apply_requires_confirmation", !_hueStageProof.Applied && !Directory.Exists(_hueStageProof.Destination.Text)
+                && applyReview.GetOkButton().Text == "Apply to stage");
+            applyReview.EmitSignal(ConfirmationDialog.SignalName.Confirmed); _hueStageTask = _hueStageProof.Operation; return;
+        }
+        if (_assetsProofStep == 35)
+        {
+            MetadataCheck("hue_native_applied", _hueStageProof.Applied && File.Exists(Path.Combine(_hueStageProof.Destination.Text, "hues.mul")));
+            SaveAssetProof("hue-native-applied", _hueStageProof.GetTexture()?.GetImage());
+            _hueStageTask = _hueStageProof.RecoverAsync(); _assetsProofStep = 36; return;
+        }
+        if (_assetsProofStep == 36)
+        {
+        MetadataCheck("hue_native_recovered_prior_absence", !_hueStageProof.Applied && !Directory.Exists(_hueStageProof.Destination.Text));
+        SaveAssetProof("hue-native-recovered", _hueStageProof.GetTexture()?.GetImage());
+        _hueStageProof.Free();
+        _hueStageProof = _assets.Panel<HuePanel>().OpenStageReview(hueEditor.Document);
+        _hueStageProof.Destination.Text = Path.Combine(_out, "canceled-native-hue-stage");
+        _hueStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); _hueStageTask = _hueStageProof.Operation;
+        _hueStageProof.Free(); _assetsProofStep = 37; return;
+        }
+        MetadataCheck("hue_native_close_waits_for_owned_job", _hueStageTask.IsCompletedSuccessfully && !Directory.Exists(Path.Combine(_out, "canceled-native-hue-stage")));
+        hueEditor.Document.Undo(); hueEditor.Document.Undo(); _assets.Panel<HuePanel>().OnAssetsChanged();
         Finish();
     }
 

@@ -57,10 +57,10 @@ runs these checks before and after assembly reload. The windowed Assets proof
 captures the working hue inspector at 1024, 1366 and 1920 widths.
 See `tools/scenarios/fiddler-f08a/README.md`.
 
-Reviewed native staging remains F08f. These slices
-add no native writer or native insertion,
-deletion, or replacement authorization. The existing world-project export path
-is unchanged; its presence is not proof of F08f stage certification.
+Reviewed [native staging is F08f](hue_native_staging.md). The working-document
+and interchange slices alone add no native writer, insertion or deletion.
+The existing world-project export path is unchanged; its presence alone is not
+proof of F08f stage certification.
 
 ## Palette operations (F08b/c)
 

@@ -187,6 +187,23 @@ public sealed class HueDocument
         ["raw_name"] = DraftName, ["raw_start"] = DraftStart, ["raw_end"] = DraftEnd, ["raw_color"] = DraftColor,
     };
     internal string ReviewToken => Hash(Encoding.UTF8.GetBytes(Recovery().ToJsonString()));
+    internal void RequireNativeReview(string token)
+    {
+        if (Pending || ReviewToken != token) throw new IOException("The working hue changed or has pending fields. Commit or undo them and reopen native export.");
+        CheckSource(); if (RecoveryError != null) throw new IOException(RecoveryError);
+    }
+    internal byte[] NativeStageInput(string token)
+    {
+        RequireNativeReview(token);
+        return Encoding.UTF8.GetBytes(new JsonObject
+        {
+            ["schema"] = 1, ["domain"] = "hue", ["records"] = new JsonArray(new JsonObject
+            {
+                ["id"] = Id, ["source_record_base64"] = Convert.ToBase64String(_original),
+                ["record_base64"] = Convert.ToBase64String(PreviewRecord()),
+            }),
+        }.ToJsonString());
+    }
     internal void ImportText(HueTextEntry entry, string expectedToken)
     {
         if (ReviewToken != expectedToken || Pending) throw new IOException("The working hue changed. Reopen the text import review.");

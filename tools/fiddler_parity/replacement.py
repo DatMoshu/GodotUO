@@ -218,6 +218,12 @@ def _apply(path: Path, oracle: Path) -> dict:
     report = parity.verify(candidate, plan / "baseline", plan / "expected.json", plan / "recheck", oracle)
     if report["outcome"] != "pass":
         raise ValueError("Independent recheck failed; current stage is unchanged")
+    return promote(spec, source, stage, plan)
+
+
+def promote(spec: dict, source: Path, stage: Path, plan: Path) -> dict:
+    """Shared promotion after a domain adapter's locked, independent recheck."""
+    candidate = plan / "candidate"
     stage.parent.mkdir(parents=True, exist_ok=True)
     journal = stage.with_name(stage.name + ".fiddler-journal.json")
     if journal.exists():

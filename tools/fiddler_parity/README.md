@@ -1,5 +1,16 @@
 # Fiddler parity: independent static-art read-back
 
+## Native hue staging (F08f)
+
+The same identified oracle now also reads complete hue groups through upstream
+`HuesLoader`. `hues.py` adds reviewed native hue candidates using the existing
+typed `uodata_write` writer and shared recoverable stage promotion. See
+[native hue export](../../docs/editor/hue_native_staging.md) for the CLI,
+source bindings, file limits and the isolated reader's radar-input alias.
+Build with the existing doctor, then run `proof_hues.py` explicitly alongside
+the static-art proofs. This certification does not imply native sound, Cliloc,
+tiledata, texture or animation writing.
+
 F01a is a read-only Tools adapter. It compiles `ClassicUO.Assets` through the
 same project boundary as guoasset, then loads **only art**, directly from an
 explicit stage. It does not start MCP, Godot, a shard, AI, or the full client

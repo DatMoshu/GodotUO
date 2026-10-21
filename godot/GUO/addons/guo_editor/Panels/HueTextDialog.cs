@@ -51,7 +51,7 @@ public partial class HueTextDialog : ConfirmationDialog
         dialog.Canceled += () => { dialog.Hide(); dialog.QueueFree(); }; panel.AddChild(dialog); Refresh();
         float scale = EditorInterface.Singleton.GetEditorScale(); dialog.PopupCenteredClamped((Vector2I)(new Vector2(650, 420) * scale), 0.9f); return dialog;
     }
-    private static TextureRect Strip(ushort[] colors)
+    internal static TextureRect Strip(ushort[] colors)
     {
         using Image image = Image.CreateEmpty(32, 1, false, Image.Format.Rgba8);
         for (int i = 0; i < 32; i++) { uint c = GUO.Utility.HuesHelper.Color16To32(colors[i]); image.SetPixel(i, 0, Color.Color8((byte)c, (byte)(c >> 8), (byte)(c >> 16))); }
