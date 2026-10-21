@@ -19,15 +19,10 @@ tiledata name. No game data is distributed. Empty IDs with that matcher disabled
 means no puddle tiles. Invalid input leaves the current list intact.
 
 Rain means a nonzero upstream rain/storm-brewing weather event. Water rings
-<<<<<<< HEAD
 use known Wet land or static tiles. Classic keeps separate pixel primitives;
 styled modes use [the water wave field](../WaterRain/README.md) while it is
 initialized, suppressing duplicate primitive rings. The shared
 `WeatherLab.RainIntensity(World)` signal reads rain
-=======
-use visible Wet land or static tiles, and work with Classic or styled water. They are separate
-pixel primitives. The shared `WeatherLab.RainIntensity(World)` signal reads rain
->>>>>>> fbc35a022f6ff0c88d3bbc9c87a5a5776f3d7f84
 or storm-brewing Count/70, clamped to 0–1; snow, dry and unavailable weather return
 zero. This value is independent of the three effect toggles, which gate consumers.
 Puddles fill in 30 seconds and drain in 45 seconds; impacts produce a brief

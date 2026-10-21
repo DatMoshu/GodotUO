@@ -64,14 +64,9 @@ internal partial class GameScene
                 }
                 if (covered || o != null) continue;
                 bool water = waterSurface != null;
-<<<<<<< HEAD
                 // Preserve density gating and avoid double-stamping styled water.
                 bool puddle = !water && state.Settings.Puddles && ((land.X * 73u ^ land.Y * 193u) % 100 < state.Settings.PuddleDensity)
                     && (state.Settings.PuddleTiles.Contains(land.Graphic) ||
-=======
-                // The puddle toggle must not independently enable water drops.
-                bool puddle = !water && state.Settings.Puddles && (state.Settings.PuddleTiles.Contains(land.Graphic) ||
->>>>>>> fbc35a022f6ff0c88d3bbc9c87a5a5776f3d7f84
                     state.Settings.Cobblestone && (land.TileData.Name?.Contains("cobblestone", StringComparison.OrdinalIgnoreCase) ?? false));
                 if ((!water || !state.Settings.WaterDrops) && !puddle) continue;
                 GameObject source = water ? waterSurface : land;
