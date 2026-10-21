@@ -296,6 +296,7 @@ namespace GUO.Game.Scenes
 
         public override void Unload()
         {
+            ResetAmbientParticles(); // PORT DEVIATION (GUO): ADR-0042 resource lifetime
             IO.Audio.ZoneAudio.Music.Reset();
             IO.Audio.ZoneAudio.Sfx.Reset();
             IO.Audio.PackVoice.Update(null);
@@ -1119,6 +1120,10 @@ namespace GUO.Game.Scenes
             // underlays/overlays). Overlays join the sorted stream at their
             // centre depth; underlays draw here, below even the land.
             QueueTerrainLayers();
+#if GUO_LABS
+            // PORT DEVIATION (GUO): owner-requested UO+ weather; absent from exports.
+            QueueWeatherLab();
+#endif
             DrawUnderlays(batcher);
 
             RenderedObjectsCount = _renderLists.DrawRenderLists(
@@ -1146,6 +1151,7 @@ namespace GUO.Game.Scenes
             }
 
             // draw weather
+            DrawAmbientParticles(batcher); // PORT DEVIATION (GUO): UO+ opt-in, ADR-0042
             _world.Weather.Draw(batcher, 0, 0, MAX_LAYER_DEPTH - 1);
 
             DrawSelection(batcher, MAX_LAYER_DEPTH);

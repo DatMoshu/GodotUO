@@ -409,6 +409,12 @@ namespace GUO.Configuration
         // PORT DEVIATION (GUO): UO+ spell cast/impact bursts (ADR-0039).
         // Requires RealtimeLights; existing profiles stay off.
         public bool SpellLighting { get; set; } = false;
+        // PORT DEVIATION (GUO): UO+ ambient particles, non-parity (ADR-0042).
+        public bool AmbientFog { get; set; } = false;
+        public bool AmbientLeaves { get; set; } = false;
+        public bool AmbientDust { get; set; } = false;
+        public int AmbientParticleDensity { get; set; } = 50; // percent, 0..100
+        public int AmbientParticleCap { get; set; } = 128; // 0..512 per frame
         // PORT DEVIATION (GUO): water render style (ADR-0037). "classic"
         // draws the tiles as upstream does; any other value names a water
         // style (Renderer.Water.WaterRender). Default classic.

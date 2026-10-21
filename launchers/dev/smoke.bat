@@ -47,6 +47,8 @@ echo [smoke] optional audio pack contracts (synthetic; no shard or AI service)
 echo [smoke] optional HD pack contracts (synthetic)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Store/StoreHdProbe.tscn || set "FAIL=1"
 
+echo [smoke] UO+ ambient particles contract (synthetic; ADR-0042)
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/Particles/AmbientParticlesProbe.tscn || set "FAIL=1"
 echo [smoke] Realtime lights contract (synthetic; ADR-0039)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/Lights/RealtimeLightsProbe.tscn || set "FAIL=1"
 echo [smoke] UO+ spell lighting contract (synthetic; no shard or install)
@@ -73,6 +75,11 @@ echo [smoke] keyboard: key-ups on focus loss, AltGr text (synthetic; no shard)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" -- --keyboard-probe --pregame-classic --silent || set "FAIL=1"
 echo [smoke] controller regressions and Set controls (synthetic pad; no shard)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" -- --pad-regression-probe --pregame-classic --silent || set "FAIL=1"
+
+if "%GuoLabs%"=="true" (
+    echo [smoke] UO+ weather Labs contract
+    "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" --quit-after 60 res://src/Labs/Weather/WeatherProbe.tscn || set "FAIL=1"
+)
 
 echo.
 if "%FAIL%"=="1" ( echo [smoke] FAILED & exit /b 1 )

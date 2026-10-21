@@ -56,6 +56,8 @@ Every key resolves as: **environment variable → `config.local.bat` →
 | `UO_SHARD_HOST` / `UO_SHARD_PORT` | Shard to connect to |
 | `GODOT_VERSION` / `GODOT_FLAVOR` | Pinned engine build |
 | `UO_LOG_LEVEL` | `DEBUG` \| `INFO` \| `WARN` \| `ERROR` |
+| `GUO_WEATHER_PROOF` | Optional PNG destination for the synthetic Labs weather surface probe; empty disables capture. Debug Labs only |
+| `GUO_WEATHER_PROOF_DIR` | Optional capture folder for the explicit `-uopweather proof` scratch-client test; empty disables the test. Debug Labs only; use an external evidence folder |
 | `UO_EVIDENCE_DIR` | Where `tools/evidence_archive` keeps gate evidence copied out of worktrees; default the main checkout's `build/director_evidence`. Never inside a linked worktree |
 | `UO_LAYOUT_CDDA_DIR` | Read-only local CDDA source folder for layout `scan` and `engine-bake`; blank by default |
 | `UO_LAYOUT_ZOMBOID_DIR` | Read-only local Project Zomboid installation for `zomboid-scan`, `zomboid-resolve` and `hybrid`; blank by default |
@@ -3213,3 +3215,36 @@ version is changed for the player.
 
 **Persisted.** On each entry into the world the record goes into the server's `servers.json` entry as `last_seen`
 (section 17).
+
+## 47. UO+ ambient biome particles (ADR-0042)
+
+L1 non-parity atmosphere; all types default off. Profile JSON persists:
+
+| Field | Type | Default | Runtime range |
+|---|---|---|---|
+| `AmbientFog` | bool | false | Swamp fog banks |
+| `AmbientLeaves` | bool | false | Forest/jungle or foliage leaves |
+| `AmbientDust` | bool | false | Soft-sand dust |
+| `AmbientParticleDensity` | int | 50 | 0–100 percent; zero disables |
+| `AmbientParticleCap` | int | 128 | 0–512 particles/frame; zero disables |
+
+Both Video Options interfaces edit the same fields; Cancel leaves them alone,
+Default restores the values above. Invalid persisted integers are clamped at
+consumption; negative density/cap disables. Missing fields preserve defaults.
+No shard packet, client data mutation, server consent or external process.
+
+The renderer reads only visible loaded chunks. Native land IDs follow MapGen's
+`tile-tables.default.json`: swamp 0x3DEB–0x3DEF, forest 0xC4–0xC7, jungle
+0xAC–0xAF, sand 0x16–0x19. Foliage permits leaves on other dry ground. Wet,
+covered and unknown tiles emit nothing. Classification uses original land art,
+so seasonal/theme substitutions do not change the inferred biome. The hard
+4096-tile, 64-objects/tile/scan and 512-particle bounds apply independently of
+profile values. One sprite draw per particle; motion is a deterministic tile
+hash plus elapsed time and has no persistent world objects. This is a local
+cover approximation and atmospheric overlay, not pixel-accurate occlusion.
+
+`client.ambient.particles` and smoke run the synthetic contract. For rendered
+proof run `AmbientParticlesProbe.tscn -- --render-particles` with environment
+`GUO_PARTICLES_PROOF` naming an existing evidence folder. It writes baseline,
+enabled-a, enabled-b and disabled PNGs, requires visible enabled pixels and
+zero disabled RGB differences. Synthetic ground uses no proprietary art.

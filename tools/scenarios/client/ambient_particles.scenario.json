@@ -1,0 +1,13 @@
+{
+  "id": "client.ambient.particles",
+  "title": "UO+ particles: defaults off, persistence, biomes, density, bounded work and motion",
+  "surface": "client",
+  "requires": {"build": "debug"},
+  "timeouts": {"step_s": 60, "run_s": 180},
+  "steps": [
+    {"id": "launch", "do": {"kind": "launch", "args": ["--ambient-particles-probe"], "settings": {"autologin": false, "username": "", "password": ""}},
+     "say": "Check the non-parity UO+ ambient particle contract without game data.",
+     "expect": {"log.contains": "[Ambient particles] PASS", "within_s": 45}},
+    {"id": "summary", "do": {"kind": "note", "text": "Three default-off toggles persist, native swamp/forest/sand and foliage classify, roofs/wet/unknown suppress, density thins emitters, emission/sample caps hold, independent toggles and deterministic time-based motion pass. Synthetic render proof separately checks visibility and disabled zero-pixel difference; live shard world occlusion is not proven by this contract."}}
+  ]
+}

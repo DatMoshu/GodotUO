@@ -18,11 +18,13 @@ internal static partial class LabsRegistration
         Action<string, Action> option = null)
     {
         RegisterFeatures(new Context(world, command, option));
+        RegisterWeather(new Context(world, command, option));
     }
 
     // Intentionally empty until a separately reviewed Labs feature implements it.
     // Its implementation calls each feature's registration in one place.
     static partial void RegisterFeatures(Context context);
+    static partial void RegisterWeather(Context context);
 
     internal readonly struct Context
     {
