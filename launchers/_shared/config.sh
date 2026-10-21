@@ -153,4 +153,7 @@ unset _guo_shared_dir
 : "${UO_COMFY_DIR:=}"
 : "${UO_COMFY_WORKFLOWS:=$UO_BUILD_DIR/art_exchange/workflows}"
 
+# Optional Labs weather proof outputs (empty disables capture).
+: "${GUO_WEATHER_PROOF:=}"
+: "${GUO_WEATHER_PROOF_DIR:=}"
 set +a

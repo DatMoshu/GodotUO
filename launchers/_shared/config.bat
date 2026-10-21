@@ -28,6 +28,10 @@ REM  Version string must match the folder under tools\godot.
 if not defined GODOT_VERSION        set "GODOT_VERSION=4.7.2-stable"
 if not defined GODOT_FLAVOR         set "GODOT_FLAVOR=mono_win64"
 
+REM --- Optional Labs weather proof outputs (empty disables capture) --------
+if not defined GUO_WEATHER_PROOF     set "GUO_WEATHER_PROOF="
+if not defined GUO_WEATHER_PROOF_DIR set "GUO_WEATHER_PROOF_DIR="
+
 REM  Where the pinned build and the upstream reference live. Both are
 REM  gitignored, so a git worktree has neither: leave these unset and a
 REM  worktree uses the main checkout's copies (common.bat and

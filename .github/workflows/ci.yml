@@ -153,6 +153,9 @@ jobs:
       - name: Build the client
         run: dotnet build godot/GUO/GUO.csproj -c Release --nologo
 
+      - name: Build opt-in Debug Labs
+        run: dotnet build godot/GUO/GUO.csproj -c Debug -p:GuoLabs=true --nologo
+
       - name: Build guoasset
         run: dotnet build tools/guoasset/GUO.AssetMcp.csproj -c Release --artifacts-path build/guoasset --nologo
 
