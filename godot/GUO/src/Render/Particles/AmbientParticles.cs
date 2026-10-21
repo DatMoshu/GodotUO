@@ -25,8 +25,8 @@ internal sealed class AmbientParticles : IDisposable
     internal readonly record struct Particle(AmbientParticleKind Kind, float X, float Y, float Alpha);
 
     internal static bool Enabled(Profile p) => p != null
-        && (p.AmbientFog || p.AmbientLeaves || p.AmbientDust)
-        && p.AmbientParticleDensity > 0 && p.AmbientParticleCap > 0;
+        && (UoPlusOptions.Enabled(p, UoPlusFeature.Fog) || UoPlusOptions.Enabled(p, UoPlusFeature.Leaves)
+            || UoPlusOptions.Enabled(p, UoPlusFeature.Dust)) && p.AmbientParticleCap > 0;
 
     internal void Begin(Profile profile, double seconds)
     {
@@ -52,18 +52,18 @@ internal sealed class AmbientParticles : IDisposable
         particle = default;
         if (Full) return false;
         Samples++;
-        bool enabled = kind switch
+        UoPlusFeature feature = kind switch
         {
-            AmbientParticleKind.Fog => _profile.AmbientFog,
-            AmbientParticleKind.Leaves => _profile.AmbientLeaves,
-            AmbientParticleKind.Dust => _profile.AmbientDust,
-            _ => false
+            AmbientParticleKind.Fog => UoPlusFeature.Fog,
+            AmbientParticleKind.Leaves => UoPlusFeature.Leaves,
+            AmbientParticleKind.Dust => UoPlusFeature.Dust,
+            _ => UoPlusFeature.None
         };
-        if (!enabled) return false;
+        if (!UoPlusOptions.Enabled(_profile, feature)) return false;
         uint hash = Hash(x, y, map);
         // At 100%, one in eight eligible tiles emits. Lower densities are a
         // stable subset, so changing density never relocates existing emitters.
-        if (hash % 800 >= Math.Clamp(_profile.AmbientParticleDensity, 0, 100)) return false;
+        if (hash % 800 >= UoPlusOptions.Density(_profile, feature)) return false;
         double period = kind == AmbientParticleKind.Fog ? 18 : kind == AmbientParticleKind.Leaves ? 7 : 5;
         float phase = (float)((_seconds / period + ((hash >> 10) & 1023) / 1024.0) % 1);
         float wave = MathF.Sin(phase * MathF.Tau);

@@ -40,6 +40,7 @@ public partial class SpellLightingProbe : Node
             Require(p.SpellLighting && !SpellLighting.Enabled(p), "toggle persists; needs Realtime lights");
             Require(SpellLighting.Emit(p, 1000, GraphicEffectType.Moving, 0x36D4, 8, 8, 0) == 0, "parent off emits nothing");
             p.RealtimeLights = true;
+            UoPlusOptions.Set(p, UoPlusFeature.SpellLights, true, 100);
             p.SpellLighting = false;
             current.SetValue(null, p);
             RealtimeLightEffects.Clear();

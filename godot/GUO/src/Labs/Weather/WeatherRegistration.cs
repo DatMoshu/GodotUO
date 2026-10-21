@@ -10,7 +10,6 @@ internal static partial class LabsRegistration
             if (args.Length == 1 && args[0] == "proof") Weather.WeatherLiveProof.Start(context.World);
             else Weather.WeatherLab.Open(context.World);
         });
-        context.Option("UO+ weather", () => Weather.WeatherLab.Open(context.World));
     }
 }
 #endif

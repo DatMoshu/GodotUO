@@ -10,6 +10,7 @@ internal partial class GameScene
     private void QueueWeatherLab()
     {
         var state = WeatherLab.For(_world);
+        WeatherLab.SyncProfile(state.Settings, Configuration.ProfileManager.CurrentProfile);
         if (!state.Settings.Enabled || _world.Player == null || _world.Map == null)
         {
             state.LastTicks = 0;
@@ -55,7 +56,8 @@ internal partial class GameScene
                 }
                 if (covered) continue;
                 bool water = waterSurface != null;
-                bool puddle = state.Settings.Puddles && (state.Settings.PuddleTiles.Contains(land.Graphic) ||
+                bool puddle = !water && state.Settings.Puddles && ((land.X * 73u ^ land.Y * 193u) % 100 < state.Settings.PuddleDensity)
+                    && (state.Settings.PuddleTiles.Contains(land.Graphic) ||
                     state.Settings.Cobblestone && (land.TileData.Name?.Contains("cobblestone", StringComparison.OrdinalIgnoreCase) ?? false));
                 if ((!water || !state.Settings.WaterDrops) && !puddle) continue;
                 GameObject source = water ? waterSurface : land;
@@ -76,7 +78,7 @@ internal partial class GameScene
                 surface.QueuedAt = now;
                 surface.Step(dt, state.Raining, puddle);
                 if (state.RainCredit >= 1 && state.Impacts < Math.Clamp(state.Settings.DropBudget, 0, 32) &&
-                    (water || surface.Fill > 0.15f) && state.Random.Next(12) == 0)
+                    (water || surface.Fill > 0.15f) && state.Random.Next(1200) < (water ? state.Settings.WaterDensity : state.Settings.PuddleDensity))
                 {
                     surface.RingAge = 0;
                     surface.DropX = state.Random.Next(-5, 6);

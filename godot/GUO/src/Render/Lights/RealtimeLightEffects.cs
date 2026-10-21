@@ -117,9 +117,10 @@ namespace GUO.Renderer.Lights
         /// At saturation the oldest spell burst goes, preserving non-spell hooks.
         /// </summary>
         internal static int AddSpell(uint now, int x, int y, int z, int radius, Color color,
-            uint durationMs, LightCurve curve = LightCurve.E)
+            uint durationMs, LightCurve curve = LightCurve.E, int spellBudget = MaxSpellLights)
         {
-            if (durationMs == 0) return 0;
+            spellBudget = Math.Clamp(spellBudget, 0, MaxSpellLights);
+            if (durationMs == 0 || spellBudget == 0) return 0;
             Prune(now);
             int count = 0, oldest = 0;
             for (int i = 0; i < _count; i++)
@@ -127,10 +128,14 @@ namespace GUO.Renderer.Lights
                 if (!_entries[i].Spell) continue;
                 if (count++ == 0) oldest = _entries[i].Handle;
             }
-            if (count >= MaxSpellLights || _count == MaxLights)
+            // A density reduction may leave several previously admitted bursts.
+            while (count >= spellBudget || _count == MaxLights)
             {
                 if (count == 0) return 0; // Generic hooks already own every slot.
                 Remove(oldest);
+                count--;
+                for (int i = 0; i < _count; i++)
+                    if (_entries[i].Spell) { oldest = _entries[i].Handle; break; }
             }
             int handle = Add(now, x, y, z, radius, color, durationMs, curve);
             _entries[_count - 1].Spell = true;
@@ -147,6 +152,15 @@ namespace GUO.Renderer.Lights
                 _entries[w++] = _entries[i];
             }
             _count = w;
+        }
+
+        /// <summary>Apply a lower density immediately, retaining the newest spell bursts.</summary>
+        internal static void LimitSpells(int budget)
+        {
+            budget = Math.Clamp(budget, 0, MaxSpellLights);
+            int retained = 0;
+            for (int i = _count - 1; i >= 0; i--)
+                if (_entries[i].Spell && ++retained > budget) Remove(_entries[i].Handle);
         }
 
         /// <summary>

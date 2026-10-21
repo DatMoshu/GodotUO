@@ -413,6 +413,10 @@ namespace GUO.Configuration
         public bool AmbientFog { get; set; } = false;
         public bool AmbientLeaves { get; set; } = false;
         public bool AmbientDust { get; set; } = false;
+        // PORT DEVIATION (GUO): shared UO+ registry; legacy particle flags above
+        // remain authoritative for old-profile compatibility (ADR-uoplus-settings).
+        public UoPlusFeature UoPlusFlags { get; set; } = UoPlusFeature.None;
+        public Dictionary<UoPlusFeature, int> UoPlusDensities { get; set; } = new();
         public int AmbientParticleDensity { get; set; } = 50; // percent, 0..100
         public int AmbientParticleCap { get; set; } = 128; // 0..512 per frame
         // PORT DEVIATION (GUO): water render style (ADR-0037). "classic"

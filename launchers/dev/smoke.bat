@@ -49,6 +49,8 @@ echo [smoke] optional HD pack contracts (synthetic)
 
 echo [smoke] UO+ ambient particles contract (synthetic; ADR-0042)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/Particles/AmbientParticlesProbe.tscn || set "FAIL=1"
+echo [smoke] shared UO+ flags and densities (synthetic; ADR-uoplus-settings)
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Configuration/UoPlusProbe.tscn || set "FAIL=1"
 echo [smoke] Realtime lights contract (synthetic; ADR-0039)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/Lights/RealtimeLightsProbe.tscn || set "FAIL=1"
 echo [smoke] UO+ spell lighting contract (synthetic; no shard or install)

@@ -149,13 +149,8 @@ internal sealed partial class ModernOptions : ModernGump
         Bool("Video", "Shadows", p => p.ShadowsEnabled, (p, v) => p.ShadowsEnabled = v);
         Bool("Video", "Death screen", p => p.EnableDeathScreen, (p, v) => p.EnableDeathScreen = v);
         Bool("Video", "Realtime lights", p => p.RealtimeLights, (p, v) => p.RealtimeLights = v);
-        Bool("Video", "Spell lighting (UO+, requires Realtime lights)", p => p.SpellLighting, (p, v) => p.SpellLighting = v);
-        // UO+ non-parity ambient particles (ADR-0042), all types default off.
-        Bool("Video", "UO+ fog banks", p => p.AmbientFog, (p, v) => p.AmbientFog = v);
-        Bool("Video", "UO+ drifting leaves", p => p.AmbientLeaves, (p, v) => p.AmbientLeaves = v);
-        Bool("Video", "UO+ dust", p => p.AmbientDust, (p, v) => p.AmbientDust = v);
-        Int("Video", "UO+ particle density (%)", 0, 100, p => p.AmbientParticleDensity, (p, v) => p.AmbientParticleDensity = v);
-        Int("Video", "UO+ particles per frame", 0, 512, p => p.AmbientParticleCap, (p, v) => p.AmbientParticleCap = v);
+        // One shared UO+ surface for mouse, touch and controller.
+        Action_("Video", "UO+ effects...", () => { Close(); UoPlusOptionsGump.Open(World); });
         Bool("Video", "Enhanced HD", p => p.EnhancedHD, (p, v) =>
         {
             if (p.EnhancedHD != v)

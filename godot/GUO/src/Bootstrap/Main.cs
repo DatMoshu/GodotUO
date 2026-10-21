@@ -240,6 +240,12 @@ public partial class Main : Node
                     GD.Print("[GUO] audio muted for a scripted run (--sound to hear it)");
                 }
 
+                if (_options.UoPlusUiProbe)
+                {
+                    Configuration.UoPlusProbe.RunUi(this);
+                    break;
+                }
+
                 // A phone has no mouse; a desktop asks for the layer by flag.
                 // The mouse only stands in for a finger on the desktop: on a
                 // device the fingers are real, and emulating more of them
@@ -722,6 +728,7 @@ public partial class Main : Node
         || _options.PadWheelsProbe
         || _options.PadRegressionProbe
         || _options.TouchGestureProbe
+        || _options.UoPlusUiProbe
         || _options.KeyboardProbe
         || _options.OneScreenProbe
         || _options.GlyphShots
@@ -1542,6 +1549,7 @@ public partial class Main : Node
                 || PadWheelsProbe
                 || PadRegressionProbe
                 || TouchGestureProbe
+                || UoPlusUiProbe
                 || KeyboardProbe
                 || OneScreenProbe
                 || GlyphShots
@@ -1709,6 +1717,8 @@ public partial class Main : Node
 
         /// <summary>--touch-gesture-probe: touch scrolling without a shard; see TouchGestureProbe.</summary>
         public bool TouchGestureProbe { get; private set; }
+        /// <summary>--uoplus-ui-probe: shared Options with an unsaved fixture profile.</summary>
+        public bool UoPlusUiProbe { get; private set; }
         /// <summary>--keyboard-probe: the keyboard layer without a shard; see KeyboardProbe.</summary>
         public bool KeyboardProbe { get; private set; }
 
@@ -1998,6 +2008,10 @@ public partial class Main : Node
                     case "--touch-gesture-probe":
                         o.TouchGestureProbe = true;
                         o.Touch = true;
+                        o.ScratchProfile = true;
+                        break;
+                    case "--uoplus-ui-probe":
+                        o.UoPlusUiProbe = true;
                         o.ScratchProfile = true;
                         break;
                     case "--keyboard-probe":

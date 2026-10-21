@@ -2890,8 +2890,10 @@ oldest. Time is `Time.Ticks`. With the option off nothing reads them and they
 expire on their own.
 
 **UO+ spell lighting** (non-parity, `Profile.SpellLighting`, JSON `spell_lighting`,
-default `false`). The Video checkbox in both Options interfaces is independent
-of Realtime lights, which must also be enabled. No change to classic effect
+default `false`). Both Video Options interfaces open the shared UO+ panel
+(section 47); its spell checkbox is independent of Realtime lights, which must
+also be enabled. Density controls the spell-only budget up to 16 bursts.
+No change to classic effect
 sprites, packets, hue lookup or sampling. Cast bursts are stationary at the
 resolved source tile when the effect is created; projectile impacts use the
 resolved target tile at actual arrival, even without an explosion sprite.
@@ -3228,8 +3230,8 @@ L1 non-parity atmosphere; all types default off. Profile JSON persists:
 | `AmbientParticleDensity` | int | 50 | 0–100 percent; zero disables |
 | `AmbientParticleCap` | int | 128 | 0–512 particles/frame; zero disables |
 
-Both Video Options interfaces edit the same fields; Cancel leaves them alone,
-Default restores the values above. Invalid persisted integers are clamped at
+Both Video Options interfaces open the shared UO+ panel described below;
+Cancel leaves fields alone and Defaults stages the values above. Invalid persisted integers are clamped at
 consumption; negative density/cap disables. Missing fields preserve defaults.
 No shard packet, client data mutation, server consent or external process.
 
@@ -3248,3 +3250,45 @@ proof run `AmbientParticlesProbe.tscn -- --render-particles` with environment
 `GUO_PARTICLES_PROOF` naming an existing evidence folder. It writes baseline,
 enabled-a, enabled-b and disabled PNGs, requires visible enabled pixels and
 zero disabled RGB differences. Synthetic ground uses no proprietary art.
+
+### Shared UO+ flags and per-feature densities (ADR-uoplus-settings)
+
+**Video → UO+ effects...** is the common classic/Modern Options surface.
+All new flags are off by default. Apply persists the staged values; Okay
+applies and closes; Cancel discards edits; Defaults stages all flags off,
+densities 50% and ambient cap 128. Density 0 suppresses an effect while keeping
+its checkbox selected. Parent Options Apply does not overwrite panel edits.
+
+| Profile field | Type | Default | Meaning |
+|---|---|---|---|
+| `UoPlusFlags` (`uo_plus_flags`) | integer bit mask | 0 | 8 rain rings, 16 puddles, 32 wet player, 64 reserved sway, 256 water ripples |
+| `UoPlusDensities` (`uo_plus_densities`) | object of feature-name → integer | `{}` | Independent 0–100 values, clamped at use; names `Fog`, `Leaves`, `Dust`, `RainRings`, `Puddles`, `WetPlayer`, `Sway`, `SpellLights`, `WaterRipples` |
+
+Fog/leaves/dust flags remain authoritative in `AmbientFog`, `AmbientLeaves`
+and `AmbientDust`; spell lights remain in `SpellLighting` (`spell_lighting`).
+Mask bits 1/2/4/128 are ignored to prevent duplicate authorities.
+An absent particle density uses legacy `AmbientParticleDensity`; other absent
+densities use 50. Missing or null objects are safe; unknown flag bits are ignored.
+Unavailable rows cannot activate even through manually edited flags.
+
+Particle density thins stable emitters. Spell-light density sets the spell-only
+live-burst budget to `ceil(16 × density / 100)`, trimming older spell bursts when
+lowered. Generic hooks and the total 100-source cap are preserved; Realtime
+lights remains a prerequisite. Water ripple density scales disturbance strength and
+requires a non-Classic water style. Off skips ripple simulation and object scans,
+clears stale waves and disables their shader contribution without changing the
+style. Sway is unavailable until its renderer ships.
+
+Weather runs only in a `GuoLabs=true` Debug build. Ring density thins rain
+impacts; puddle density selects ground cells and thins impacts; wet-player
+density scales body drops. Selected ground IDs and cobblestone matching remain
+session-local. Invalid ground IDs reject Apply before any changes. Normal and
+exported clients cannot activate weather. The Labs `-uopweather` command opens
+this same panel. Off skips effect drawing and simulation.
+
+Smoke: `res://src/Configuration/UoPlusProbe.tscn`; scenario:
+`client.uoplus.options`. The native panel proof uses `--uoplus-ui-probe` with
+`GUO_UOPLUS_PROOF` naming an existing private evidence folder. It writes top
+and bottom screenshots and uses an unsaved fixture profile. No external
+dependency or doctor launcher is required; Labs weather's README retains its
+build/dependency doctor.

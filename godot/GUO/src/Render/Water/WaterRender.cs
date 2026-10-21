@@ -129,6 +129,11 @@ internal static class WaterRender
     private static readonly WaterRipples _ripples = new WaterRipples();
     private static long _lastTicks;
     private static int _lastMap = -1;
+    private static Vector4 _styleParams2;
+    private static bool _ripplesEnabled;
+
+    internal static bool RipplesEnabled(Profile profile) =>
+        IsStyled(profile) && UoPlusOptions.Enabled(profile, UoPlusFeature.WaterRipples);
 
     /// <summary>The shader's water_model for a model name (uo_water.gdshaderinc); 0 is Classic.</summary>
     public static int Model(string model) => model switch
@@ -330,9 +335,16 @@ internal static class WaterRender
             if (style == null)
             {
                 batcher.SetWaterUniform("water_model", 0);
+                _ripples.Reset();
+                _ripplesEnabled = false;
+                _lastTicks = 0;
                 return;
             }
-            style.Bind(batcher.SetWaterUniform);
+            style.Bind((name, value) =>
+            {
+                if (name == "water_params2") _styleParams2 = value.AsVector4();
+                batcher.SetWaterUniform(name, value);
+            });
             style.BindRipples(_ripples);
             _ripples.Reset();
             batcher.SetWaterUniform("water_debug", int.TryParse(System.Environment.GetEnvironmentVariable("GUO_WATER_DEBUG"), out int debug) ? debug : 0);
@@ -341,7 +353,21 @@ internal static class WaterRender
 
         if (style == null)
         {
+            if (_ripplesEnabled) _ripples.Reset();
+            _ripplesEnabled = false;
+            _lastTicks = 0;
             return;
+        }
+
+        bool ripplesEnabled = RipplesEnabled(ProfileManager.CurrentProfile);
+        var parameters = _styleParams2;
+        if (!ripplesEnabled) parameters.W = 0f;
+        batcher.SetWaterUniform("water_params2", parameters);
+        if (ripplesEnabled != _ripplesEnabled)
+        {
+            _ripples.Reset();
+            _lastTicks = 0;
+            _ripplesEnabled = ripplesEnabled;
         }
 
         batcher.SetWaterUniform("water_time", (float)(Time.Ticks % 3_600_000L) / 1000f);
@@ -365,6 +391,11 @@ internal static class WaterRender
             batcher.SetWaterUniform("water_mask", _mask.Texture);
             batcher.SetWaterUniform("water_mask_origin", new Vector2(_mask.OriginX, _mask.OriginY));
         }
+
+        // Off means no object scan, stamps or wave simulation; the style still draws.
+        if (!ripplesEnabled) return;
+        style.BindRipples(_ripples);
+        _ripples.Strength *= UoPlusOptions.Density(ProfileManager.CurrentProfile, UoPlusFeature.WaterRipples) / 100f;
 
         if (world.Map.Index != _lastMap)
         {

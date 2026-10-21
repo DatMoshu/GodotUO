@@ -8,7 +8,11 @@ namespace GUO.Renderer.Lights;
 
 internal static class SpellLighting
 {
-    internal static bool Enabled(Profile profile) => profile is { RealtimeLights: true, SpellLighting: true };
+    internal static bool Enabled(Profile profile) => profile is { RealtimeLights: true }
+        && UoPlusOptions.Enabled(profile, UoPlusFeature.SpellLights);
+
+    internal static int Budget(Profile profile) =>
+        (RealtimeLightEffects.MaxSpellLights * UoPlusOptions.Density(profile, UoPlusFeature.SpellLights) + 99) / 100;
 
     // Graphics describe visible effects, not spell IDs: shards reuse these for other spells.
     // Casts are short stationary source glows; impacts are emitted at actual arrival,
@@ -32,6 +36,6 @@ internal static class SpellLighting
                 (4, new Color(0.6f, 0.75f, 1f), 400u, LightCurve.E),
             _ => (0, default, 0u, LightCurve.E)
         };
-        return duration == 0 ? 0 : RealtimeLightEffects.AddSpell(now, x, y, z, radius, color, duration, curve);
+        return duration == 0 ? 0 : RealtimeLightEffects.AddSpell(now, x, y, z, radius, color, duration, curve, Budget(profile));
     }
 }

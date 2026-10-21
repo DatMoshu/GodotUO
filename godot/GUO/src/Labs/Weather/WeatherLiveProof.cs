@@ -4,6 +4,7 @@ using System;
 using System.IO;
 using Godot;
 using GUO.Game;
+using GUO.Configuration;
 using GUO.Game.GameObjects;
 
 namespace GUO.Labs.Weather;
@@ -40,11 +41,15 @@ public partial class WeatherLiveProof : Node
             if (!_world.InGame) throw new InvalidOperationException("client left the world");
             _world.Weather.Reset();
             state.Settings.WaterDrops = state.Settings.Puddles = state.Settings.WetPlayer = false;
+            foreach (var id in new[] { UoPlusFeature.RainRings, UoPlusFeature.Puddles, UoPlusFeature.WetPlayer })
+                UoPlusOptions.Set(ProfileManager.CurrentProfile, id, false, 100);
             await Shot("weather-live-off");
             // The test explicitly selects the tile under the player, without shipping its ID.
             for (GameObject o = _world.Map.GetTile(_world.Player.X, _world.Player.Y, false); o != null; o = o.TNext)
                 if (o is Land land) state.Settings.PuddleTiles.Add(land.Graphic);
             state.Settings.WaterDrops = state.Settings.Puddles = state.Settings.WetPlayer = true;
+            foreach (var id in new[] { UoPlusFeature.RainRings, UoPlusFeature.Puddles, UoPlusFeature.WetPlayer })
+                UoPlusOptions.Set(ProfileManager.CurrentProfile, id, true, 100);
             _world.Weather.Generate(WeatherType.WT_RAIN, 70, 15);
             await ToSignal(GetTree().CreateTimer(32), SceneTreeTimer.SignalName.Timeout);
             await Shot("weather-live-rain");

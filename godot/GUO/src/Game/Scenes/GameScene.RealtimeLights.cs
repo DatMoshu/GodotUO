@@ -90,6 +90,7 @@ namespace GUO.Game.Scenes
         private bool PrepareRealtimeLightTarget(UltimaBatcher2D batcher, RenderTargets renderTargets)
         {
             if (!SpellLighting.Enabled(ProfileManager.CurrentProfile)) RealtimeLightEffects.ClearSpells();
+            else RealtimeLightEffects.LimitSpells(SpellLighting.Budget(ProfileManager.CurrentProfile));
             if (!UseRealtimeLights)
             {
                 if (_rtTarget != null) ResetRealtimeLights(renderTargets);

@@ -5,9 +5,12 @@ experiments: rain rings on water, rain-filled tile puddles, and a wet player
 silhouette. Tree sway and biome particles are separate lanes.
 
 Build with `dotnet build godot/GUO/GUO.csproj -p:GuoLabs=true` (Debug).
-Open **General → Labs: UO+ weather** in Modern Options, or `-uopweather`.
-The controls apply immediately and last for this World/session only. They do
-not modify upstream weather, profile serialization, packets or picking.
+Open **Video → UO+ effects...** in either Options interface, or `-uopweather`.
+The shared panel stages flags and per-feature densities until Apply/Okay;
+Cancel discards edits and Defaults stages all effects off. Flags and densities
+persist in the player profile; ground IDs and cobblestone matching remain
+World/session-local. The shared flag API is described in ADR-uoplus-settings.
+The controls do not modify upstream weather, packets or picking.
 Default builds and every export exclude this code.
 
 Puddles accept a comma-separated list of land graphic IDs (decimal or `0x`
