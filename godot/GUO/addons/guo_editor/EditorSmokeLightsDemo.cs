@@ -21,7 +21,11 @@ public partial class EditorSmoke
     /// carrier across, saving <c>world_pan/frame_NNNN.png</c> each frame;
     /// <c>FRAMES,fixed</c> keeps the camera on the shot cell and the walkers
     /// cross the frame; <c>,spell</c> also casts a spell-effect light
-    /// (<c>RealtimeLightEffects</c>) beside the first walker every second. The
+    /// (<c>RealtimeLightEffects</c>) beside the first walker every second;
+    /// <c>,still</c> spawns no walkers (a fixed camera on the shot cell). Fixed
+    /// lights for a still come from <c>GUO_LIGHTS_DEMO_LIGHTS</c>:
+    /// <c>X,Y,Z,R,RRGGBB</c> entries separated by <c>;</c>, each lit for the
+    /// whole clip through <c>RealtimeLightEffects</c>. The
     /// walkers take real steps (walk animation, facing) through the mobile's
     /// own step queue; their lit hand-held light feeds the scene's lights.
     /// </summary>
@@ -38,7 +42,7 @@ public partial class EditorSmoke
     private readonly List<DemoActor> _demoActors = new();
     private int _demoFrames, _demoTaken;
     private int _demoFacet;
-    private bool _demoFixed, _demoSpell;
+    private bool _demoFixed, _demoSpell, _demoStill;
     private ulong _demoStartMs, _demoLastMs;
     private uint _demoClockStart;
     private const int DemoFps = 30;
@@ -52,7 +56,10 @@ public partial class EditorSmoke
         _demoFrames = int.Parse(demo[0]);
         _demoFixed = Array.IndexOf(demo, "fixed", 1) > 0;
         _demoSpell = Array.IndexOf(demo, "spell", 1) > 0;
+        _demoStill = Array.IndexOf(demo, "still", 1) > 0;
+        _demoFixed |= _demoStill;
         GUO.Renderer.Lights.RealtimeLightEffects.Clear();
+        AddDemoLights();
         _demoTaken = 0;
         _demoFacet = facet;
         _demoClockStart = GUO.Time.Ticks;
@@ -96,6 +103,13 @@ public partial class EditorSmoke
         // walking height) is the walk, the other the crossing. Out and back;
         // the camera rides actor 0, and every path stays inside the others'
         // view range. The passability map goes to the log for checking.
+        _demoActors.Clear();
+        if (_demoStill)
+        {
+            GD.Print("[lights-demo] still: no walkers");
+            return;
+        }
+
         LogPassability(world, x, y, 20);
         (int ax, int ay, int adx, int ady, int alen) = BestRun(world, x, y, 1, -1, 20);
         (int cx, int cy, int cdx, int cdy, int clen) = BestRun(world, x, y, 1, 1, 20);
@@ -116,6 +130,28 @@ public partial class EditorSmoke
             (0x203C, Layer.Hair, 0x045E), (0x1517, Layer.Shirt, 0x0587), (0x1539, Layer.Pants, 0x0001), (0x170B, Layer.Shoes, 0x0000), (0x1515, Layer.Cloak, 0x0455)));
         _demoActors.Add(Spawn(world, 0x7F000003, 0x0190, 0x03EC, "Lantern carrier", lantern, across,
             (0x2048, Layer.Hair, 0x0462), (0x1F03, Layer.Robe, 0x0497), (0x170B, Layer.Shoes, 0x0000)));
+    }
+
+    /// <summary>The fixed lights of GUO_LIGHTS_DEMO_LIGHTS, lit for the clip.</summary>
+    private static void AddDemoLights()
+    {
+        string spec = System.Environment.GetEnvironmentVariable("GUO_LIGHTS_DEMO_LIGHTS");
+        if (string.IsNullOrWhiteSpace(spec)) return;
+        foreach (string entry in spec.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            string[] f = entry.Split(',');
+            if (f.Length < 5 || !int.TryParse(f[0], out int lx) || !int.TryParse(f[1], out int ly)
+                || !int.TryParse(f[2], out int lz) || !int.TryParse(f[3], out int lr))
+            {
+                GD.PrintErr($"[lights-demo] bad light \"{entry}\": wants X,Y,Z,R,RRGGBB");
+                continue;
+            }
+
+            Color c = Color.FromHtml(f[4]);
+            int handle = GUO.Renderer.Lights.RealtimeLightEffects.Add(GUO.Time.Ticks, lx, ly, lz, lr, c,
+                GUO.Renderer.Lights.RealtimeLightEffects.MaxDurationMs, GUO.Renderer.Lights.LightCurve.B, fadeOut: false);
+            GD.Print($"[lights-demo] fixed light {handle} at {lx},{ly},{lz} r={lr} colour {c.ToHtml(false)}");
+        }
     }
 
     /// <summary>Whether a tile can be walked: no wall or impassable static within 16 Z above its ground.</summary>
@@ -238,7 +274,7 @@ public partial class EditorSmoke
 
         // The camera rides the first walker: same tile, same step offset.
         PlayerMobile player = world.Player;
-        Mobile lead = _demoActors[0].Mobile;
+        Mobile lead = _demoActors.Count > 0 ? _demoActors[0].Mobile : null;
 
         // The spell-light hook: a 1.5 s light two tiles ahead of the lead, a
         // new colour each second (blue, green, red), fading over its end.
