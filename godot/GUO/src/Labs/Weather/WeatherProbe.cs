@@ -2,6 +2,7 @@
 #if GUO_LABS
 using System;
 using Godot;
+using GUO.Game;
 
 namespace GUO.Labs.Weather;
 public partial class WeatherProbe : Node
@@ -14,6 +15,16 @@ public partial class WeatherProbe : Node
             Require(!state.Settings.Enabled, "all three effects must default off");
             state.Settings.WaterDrops = true;
             Require(!state.Settings.Puddles && !state.Settings.WetPlayer, "toggles must be independent");
+            Require(WeatherLab.RainIntensity(null) == 0, "unavailable weather must be dry");
+            Require(WeatherLab.RainIntensity(WeatherType.WT_RAIN, 35) == 0.5f &&
+                WeatherLab.RainIntensity(WeatherType.WT_STORM_BREWING, 70) == 1,
+                "rain and brewing intensity must use upstream's seventy-drop range");
+            Require(WeatherLab.RainIntensity(WeatherType.WT_RAIN, 255) == 1 &&
+                WeatherLab.RainIntensity(WeatherType.WT_RAIN, -1) == 0,
+                "intensity must be clamped");
+            foreach (var type in new WeatherType?[] { null, WeatherType.WT_SNOW,
+                WeatherType.WT_STORM_APPROACH, WeatherType.WT_INVALID_0, WeatherType.WT_INVALID_1 })
+                Require(WeatherLab.RainIntensity(type, 70) == 0, "non-rain events must not stamp water");
             state.Settings.WetPlayer = true;
             for (int i = 0; i < 240; i++) state.Step(1f / 60, true);
             Require(state.Wetness > 0.99f, "wetness must fill over four seconds");
