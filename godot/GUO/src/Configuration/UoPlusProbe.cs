@@ -27,6 +27,11 @@ public partial class UoPlusProbe : Node
             Check(!AmbientParticles.Enabled(p) && !WaterRender.RipplesEnabled(p), "off paths skip work");
             var legacyWater = JsonSerializer.Deserialize("{\"water_style\":\"uo\"}", ProfileJsonContext.DefaultToUse.Profile);
             Check(WaterRender.RipplesEnabled(legacyWater), "legacy styled water preserves ripples");
+            Check(UoPlusOptions.Density(legacyWater, UoPlusFeature.WaterRipples) == 100,
+                "legacy styled water preserves its full disturbance strength");
+            var legacyDensity = JsonSerializer.Deserialize("{\"water_style\":\"uo\",\"uo_plus_densities\":{\"WaterRipples\":25}}", ProfileJsonContext.DefaultToUse.Profile);
+            Check(UoPlusOptions.Density(legacyDensity, UoPlusFeature.WaterRipples) == 25,
+                "an explicitly supplied ripple density survives migration");
             var explicitOff = JsonSerializer.Deserialize("{\"water_style\":\"uo\",\"uo_plus_flags\":0}", ProfileJsonContext.DefaultToUse.Profile);
             Check(!WaterRender.RipplesEnabled(explicitOff), "explicit saved off survives migration");
             var newWater = new Profile { WaterStyle = "uo" };

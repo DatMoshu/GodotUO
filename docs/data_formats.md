@@ -3429,7 +3429,8 @@ style. Sway is unavailable until its renderer ships.
 Loading a legacy styled-water profile without `uo_plus_flags` preserves its
 existing ripples/wakes by setting bit 256. An explicit saved zero stays off;
 new profiles and Classic profiles remain off. Saving records the migrated flag,
-so disabling it remains effective after reload.
+so disabling it remains effective after reload. Its missing density migrates to
+100% to preserve prior disturbance strength; an explicit density is retained.
 
 Weather runs only in a `GuoLabs=true` Debug build. Ring density thins rain
 impacts; puddle density selects ground cells and thins impacts; wet-player

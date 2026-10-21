@@ -429,7 +429,13 @@ namespace GUO.Configuration
         {
             if (!_uoPlusFlagsRead && !string.IsNullOrWhiteSpace(WaterStyle)
                 && !string.Equals(WaterStyle, "classic", StringComparison.OrdinalIgnoreCase))
+            {
                 _uoPlusFlags |= UoPlusFeature.WaterRipples;
+                // Old styled-water disturbances used their full configured
+                // strength. Do not silently halve it with the new 50% default.
+                UoPlusDensities ??= new Dictionary<UoPlusFeature, int>();
+                UoPlusDensities.TryAdd(UoPlusFeature.WaterRipples, 100);
+            }
             _uoPlusFlagsRead = true;
         }
         public Dictionary<UoPlusFeature, int> UoPlusDensities { get; set; } = new();

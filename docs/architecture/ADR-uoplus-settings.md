@@ -61,7 +61,9 @@ reset of existing preferences. Owner-requested merge fixes (2026-10-21)
 preserve ripples/wakes when loading an existing non-Classic water profile
 that has no UO+ flags field. The JSON completion callback migrates only that
 missing-field case. Explicit saved off flags survive reload; new profiles,
-Classic profiles and Defaults remain off. The next save records the flags.
+Classic profiles and Defaults remain off. Migrated ripple density is 100% to
+preserve the prior disturbance strength; a supplied density is retained.
+The next save records the flags and density.
 
 ## Validation
 
