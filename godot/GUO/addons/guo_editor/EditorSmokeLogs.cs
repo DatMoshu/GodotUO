@@ -269,6 +269,20 @@ public partial class EditorSmoke
         catch (ArgumentException) { return true; }
     }
 
+    private static bool FixturePidReady(string path, int previous)
+    {
+        // A PID file can exist while write_text is truncating/writing it. The
+        // newline is a completion marker; sharing/retry belongs in this wait,
+        // not in the production process controller or a weakened assertion.
+        try
+        {
+            byte[] bytes = ReadShared(path);
+            return bytes.Length > 1 && bytes[^1] == (byte)'\n'
+                && int.TryParse(Encoding.ASCII.GetString(bytes), out int pid) && pid > 0 && pid != previous;
+        }
+        catch (IOException) { return false; }
+    }
+
     private static bool ConsoleReleased(string path)
     {
         try { using var file = new FileStream(path, FileMode.Open, System.IO.FileAccess.ReadWrite, FileShare.None); return true; }
@@ -289,6 +303,15 @@ public partial class EditorSmoke
         {
             Workspace.RootOverride = root;
             Directory.CreateDirectory(home);
+            string pidProbe = Path.Combine(dir, "fixture-pid-probe.txt");
+            File.WriteAllText(pidProbe, "123");
+            LogsCheck("fixture_pid_waits_for_complete_write", !FixturePidReady(pidProbe, 0));
+            using (var writing = new FileStream(pidProbe, FileMode.Create, System.IO.FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
+            {
+                writing.Write(Encoding.ASCII.GetBytes("123\n")); writing.Flush();
+                LogsCheck("fixture_pid_reads_shared_writer", FixturePidReady(pidProbe, 0));
+                LogsCheck("fixture_pid_refuses_previous_child", !FixturePidReady(pidProbe, 123));
+            }
             string console = LogSources.ServerConsole(id);
             LogsCheck("server_console_workspace_path", console == Path.Combine(home, "server.console.log") && LogSources.ServerConsole("../bad") == "");
             if (_afterReload)
@@ -305,9 +328,9 @@ public partial class EditorSmoke
             var profile = new ServerProfile { Id = id, Name = "Console fixture", Host = "127.0.0.1", Port = 2619, ServerDirectory = home };
             string script = Path.Combine(home, "console fixture.py");
             File.WriteAllText(script, "import os, sys, time\nfrom pathlib import Path\n"
-                + "Path(__file__).with_name('fixture.pid').write_text(str(os.getpid()))\n"
+                + "Path(__file__).with_name('fixture.pid').write_text(str(os.getpid()) + '\\n')\n"
                 + "print('fixture stdout ready', flush=True)\nprint('fixture stderr ready', file=sys.stderr, flush=True)\n"
-                + "print('password=fixture-only-value', flush=True)\nprint('argument=' + sys.argv[1], flush=True)\ntime.sleep(0.3 if len(sys.argv) > 2 else 180)\n");
+                + "print('password=fixture-only-value', flush=True)\nprint('argument=' + sys.argv[1], flush=True)\ntime.sleep(0.3 if len(sys.argv) > 2 else 600)\n");
             string python = EditorData.Setting("UO_PYTHON", OperatingSystem.IsWindows() ? "python" : "python3");
             profile.Executable = Path.IsPathFullyQualified(python) ? python : (System.Environment.GetEnvironmentVariable("PATH") ?? "")
                 .Split(Path.PathSeparator).Select(p => Path.Combine(p.Trim('"'), python + (OperatingSystem.IsWindows() && !python.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? ".exe" : "")))
@@ -333,7 +356,7 @@ public partial class EditorSmoke
             LogsCheck("server_console_stop_cleanup", await LogWait(() => ProcessGone(child) && ConsoleReleased(console)) && !File.Exists(state));
             byte[] first = ReadShared(console);
             ManagedServerProcess.Start(profile, state);
-            LogsCheck("server_console_restart", await LogWait(() => File.Exists(childFile) && File.ReadAllText(childFile) != child.ToString() && ReadShared(console).Length > first.Length));
+            LogsCheck("server_console_restart", await LogWait(() => FixturePidReady(childFile, child) && ReadShared(console).Length > first.Length));
             int restarted = int.Parse(File.ReadAllText(childFile));
             ManagedServerProcess.Stop(state);
             LogsCheck("server_console_restart_cleanup", await LogWait(() => ProcessGone(restarted) && ConsoleReleased(console)) && !ManagedServerProcess.Running(state));
@@ -350,9 +373,9 @@ public partial class EditorSmoke
             // are files, not static addon objects, and all tailers below are shut down before reload.
             if (_reloadTest && !_afterReload && _failures.Count == 0)
             {
-                string previousChild = File.ReadAllText(childFile);
+                int previousChild = int.Parse(File.ReadAllText(childFile));
                 ManagedServerProcess.Start(profile, state);
-                LogsCheck("server_console_reload_fixture_ready", await LogWait(() => File.ReadAllText(childFile) != previousChild));
+                LogsCheck("server_console_reload_fixture_ready", await LogWait(() => FixturePidReady(childFile, previousChild)));
                 leaveForReload = _failures.Count == 0;
             }
             _logsReport["server_console_path"] = console;
