@@ -13,7 +13,7 @@ public struct MultiPart
     public short X, Y, Z;
     public bool Shown;
     public ushort Hue;
-    /// <summary>Original signed Fiddler TXT flags. Native flags have a separate contract.</summary>
+    /// <summary>Original signed Fiddler TXT/UOA flags. Native flags have a separate contract.</summary>
     public int? TextFlags;
     public readonly int ExportTextFlags => TextFlags is int raw && (raw != 0) == Shown ? raw : (Shown ? 1 : 0);
 

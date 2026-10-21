@@ -220,7 +220,7 @@ public partial class EditorSmoke
         _meReport["format_components"] = count;
         _meReport["format_hidden"] = hiddenCount;
         var kept = new List<string>();
-        foreach ((string format, string ext, _) in MultiEditView.LegacyFormats.Where(f => f.Format != "txt-fiddler"))
+        foreach ((string format, string ext, _) in MultiEditView.LegacyFormats.Where(f => !MultiEditView.IsReviewedText(f.Format)))
         {
             string file = Path.Combine(dir, $"smoke_{format}.{ext}");
             string err = await view.ExportFileAsync(file, format);

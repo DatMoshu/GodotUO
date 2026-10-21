@@ -126,7 +126,7 @@ def assert_entry_order(comps: list[Component], op: str, table: dict) -> None:
 def op_import(ctx: Context, p: dict) -> dict:
     t0 = time.perf_counter()
     if "path" in p:
-        if p.get("format") == "txt-fiddler" and Path(p["path"]).stat().st_size > 4 * 1024 * 1024:
+        if p.get("format") in ("txt-fiddler", "uoa-fiddler") and Path(p["path"]).stat().st_size > 4 * 1024 * 1024:
             raise formats.FormatError("Fiddler TXT exceeds 4 MiB")
         data = Path(p["path"]).read_bytes()
         name = Path(p["path"]).name
@@ -135,13 +135,13 @@ def op_import(ctx: Context, p: dict) -> dict:
         name = p.get("name", "")
     fmt = p.get("format") or formats.detect(name, data[:512])
     tiles = formats.read(fmt, data)
-    if p.get("recentre", fmt != "txt-fiddler"):
+    if p.get("recentre", fmt not in ("txt-fiddler", "uoa-fiddler")):
         tiles = formats.recentre(tiles)
-    if fmt == "txt-fiddler": formats.write_fiddler_txt(tiles)  # validates centered int16 bounds too
+    if fmt in ("txt-fiddler", "uoa-fiddler"): formats.write_fiddler_txt(tiles)  # validates centered int16 bounds too
     out = {"components": kit.comps_out(formats.comps_of(tiles)), "format": fmt, "notes": [], "ms": kit.ms_since(t0)}
     if any(t.hue for t in tiles):
         out["hues"] = [t.hue for t in tiles]
-    if fmt == "txt-fiddler": out["text_flags"] = [t.text_flags for t in tiles]
+    if fmt in ("txt-fiddler", "uoa-fiddler"): out["text_flags"] = [t.text_flags for t in tiles]
     return out
 
 
@@ -150,7 +150,7 @@ def op_export(ctx: Context, p: dict) -> dict:
     fmt = p["format"]
     hues = p.get("hues") or []
     flags = p.get("text_flags") or []
-    if fmt == "txt-fiddler":
+    if fmt in ("txt-fiddler", "uoa-fiddler"):
         rows = p["components"]
         if not isinstance(rows, list) or not 1 <= len(rows) <= 65535:
             raise formats.FormatError("Fiddler TXT requires 1 to 65535 components")
@@ -166,7 +166,7 @@ def op_export(ctx: Context, p: dict) -> dict:
     out = {"format": fmt, "bytes": len(data), "ms": kit.ms_since(t0)}
     if "path" in p:
         target = Path(p["path"])
-        if fmt == "txt-fiddler":
+        if fmt in ("txt-fiddler", "uoa-fiddler"):
             from guo import load_config
             cfg = load_config()
             roots = [Path(value).resolve() for value in (cfg.client_data, cfg.client_data_env, cfg.client_data_setting) if str(value).strip() not in ('', '.')]

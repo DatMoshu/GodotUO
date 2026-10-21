@@ -13,11 +13,12 @@ public partial class MultiEditView
 {
     internal ConfirmationDialog TextReview { get; private set; }
     private int _textReviewRequest;
+    internal static bool IsReviewedText(string format) => format is "txt-fiddler" or "uoa-fiddler";
 
-    private async Task<MultiPart[]> ReadFiddlerTextAsync(byte[] bytes)
+    private async Task<MultiPart[]> ReadFiddlerTextAsync(byte[] bytes, string format = "txt-fiddler")
     {
         JsonObject raw = await _gen.RequestAsync("import", new JsonObject {
-            ["format"] = "txt-fiddler", ["data"] = Convert.ToBase64String(bytes), ["base64"] = true, ["recentre"] = false });
+            ["format"] = format, ["data"] = Convert.ToBase64String(bytes), ["base64"] = true, ["recentre"] = false });
         if (raw["error"] != null) throw new IOException(raw["error"].GetValue<string>());
         JsonArray rows = raw["components"] as JsonArray ?? throw new IOException("TXT reader returned no components.");
         JsonArray flags = raw["text_flags"] as JsonArray ?? throw new IOException("TXT reader returned no flags.");
@@ -26,38 +27,42 @@ public partial class MultiEditView
             Y = checked((short)(int)row[2]), Z = checked((short)(int)row[3]), Shown = (int)flags[i] != 0, TextFlags = (int)flags[i] }).ToArray();
     }
 
-    private async Task<byte[]> FiddlerTextBytesAsync(MultiPart[] parts)
+    private async Task<byte[]> FiddlerTextBytesAsync(MultiPart[] parts, string format = "txt-fiddler")
     {
         var rows = new JsonArray(); var flags = new JsonArray();
         foreach (MultiPart p in parts) { rows.Add((JsonNode)new JsonArray(p.Id, p.X, p.Y, p.Z, p.Shown ? 1 : 0)); flags.Add(p.ExportTextFlags); }
-        JsonObject result = await _gen.RequestAsync("export", new JsonObject { ["format"] = "txt-fiddler", ["components"] = rows, ["text_flags"] = flags });
+        JsonObject result = await _gen.RequestAsync("export", new JsonObject { ["format"] = format, ["components"] = rows, ["text_flags"] = flags });
         if (result["error"] != null) throw new IOException(result["error"].GetValue<string>());
         return Encoding.UTF8.GetBytes(result["data"].GetValue<string>());
     }
 
     /// <summary>GUI exchange always reviews captured records, coordinate policy and representational loss.</summary>
-    internal async Task ReviewFiddlerTextAsync(string path, bool export)
+    internal async Task ReviewFiddlerTextAsync(string path, bool export, string format = "txt-fiddler")
     {
         try
         {
             int request = ++_textReviewRequest;
+            if (!IsReviewedText(format)) throw new IOException("Choose a supported reviewed text format.");
+            bool uoa = format == "uoa-fiddler";
+            string label = uoa ? "Fiddler UOA" : "Fiddler TXT";
             var lifetime = _writeLifetime.Token;
             TextReview?.QueueFree(); TextReview = null;
             MultiTextSnapshot snapshot = new(_doc);
             MultiTextInput input = export ? null : new(path);
             MultiTextDestination destination = export ? new(path) : null;
-            MultiPart[] original = export ? snapshot.Parts : await ReadFiddlerTextAsync(input.Bytes);
-            byte[] output = export ? await FiddlerTextBytesAsync(original) : null;
+            MultiPart[] original = export ? snapshot.Parts : await ReadFiddlerTextAsync(input.Bytes, format);
+            byte[] output = export ? await FiddlerTextBytesAsync(original, format) : null;
             if (lifetime.IsCancellationRequested || !IsInsideTree() || request != _textReviewRequest) return;
             snapshot.Check(_doc); input?.Check(); destination?.Check();
-            var dialog = new ConfirmationDialog { Title = export ? "Review Fiddler TXT export" : "Review Fiddler TXT import",
-                OkButtonText = export ? "Export TXT" : "Open working copy", DialogHideOnOk = false };
+            var dialog = new ConfirmationDialog { Title = $"Review {label} {(export ? "export" : "import")}",
+                OkButtonText = export ? (uoa ? "Export UOA" : "Export TXT") : "Open working copy", DialogHideOnOk = false };
             TextReview = dialog;
             var body = new VBoxContainer { CustomMinimumSize = new Vector2(640, 0) * EditorInterface.Singleton.GetEditorScale() }; dialog.AddChild(body);
             body.AddChild(AssetUi.Label(Path.GetFileName(path)));
-            body.AddChild(AssetUi.Label($"{original.Length:N0} components · hexadecimal IDs · signed decimal offsets/flags · order and duplicates preserved"));
+            body.AddChild(AssetUi.Label($"{original.Length:N0} components · {(uoa ? "decimal" : "hexadecimal")} IDs · signed decimal offsets/flags · order and duplicates preserved"));
+            if (uoa) body.AddChild(AssetUi.Label("Fiddler ignores the first three input header values. Export writes version 6, template 1, item version −1 and the current component count."));
             int opaque = original.Count(p => p.ExportTextFlags is not (0 or 1));
-            body.AddChild(AssetUi.Label($"{opaque:N0} components have flags beyond 0/1. Project copies and Fiddler TXT retain them; native staging requires a separate flag translation."));
+            body.AddChild(AssetUi.Label($"{opaque:N0} components have flags beyond 0/1. Project copies and {label} retain them; native staging requires a separate flag translation."));
             CheckBox centre = null, loss = null;
             if (!export)
             {
@@ -67,7 +72,7 @@ public partial class MultiEditView
             int hued = original.Count(p => p.Hue != 0);
             if (export && hued > 0)
             {
-                loss = new CheckBox { Text = $"Export without hue ({hued:N0} components)", TooltipText = "Fiddler TXT has no hue field. The working document keeps its hues.", AccessibilityName = "Confirm hue loss in TXT export" };
+                loss = new CheckBox { Text = $"Export without hue ({hued:N0} components)", TooltipText = $"{label} has no hue field. The working document keeps its hues.", AccessibilityName = "Confirm hue loss in text export" };
                 body.AddChild(loss); dialog.GetOkButton().Disabled = true;
                 loss.Toggled += value => dialog.GetOkButton().Disabled = !value;
             }
@@ -83,14 +88,14 @@ public partial class MultiEditView
                     MultiPart[] parts = centre?.ButtonPressed == true ? MultiTextSnapshot.Centre(original) : original;
                     bounds.Text = $"X {parts.Min(p => p.X)}…{parts.Max(p => p.X)} · Y {parts.Min(p => p.Y)}…{parts.Max(p => p.Y)} · Z {parts.Min(p => p.Z)}…{parts.Max(p => p.Z)}";
                     rows.Clear(); TreeItem root = rows.CreateItem();
-                    foreach (MultiPart p in parts.Take(200)) { TreeItem row=rows.CreateItem(root); row.SetText(0,$"0x{p.Id:X}"); row.SetText(1,p.X.ToString()); row.SetText(2,p.Y.ToString()); row.SetText(3,p.Z.ToString()); row.SetText(4,p.ExportTextFlags.ToString()); }
+                    foreach (MultiPart p in parts.Take(200)) { TreeItem row=rows.CreateItem(root); row.SetText(0,uoa ? p.Id.ToString() : $"0x{p.Id:X}"); row.SetText(1,p.X.ToString()); row.SetText(2,p.Y.ToString()); row.SetText(3,p.Z.ToString()); row.SetText(4,p.ExportTextFlags.ToString()); }
                     status.Visible = false; dialog.GetOkButton().Disabled = loss != null && !loss.ButtonPressed;
                 }
                 catch (Exception e) { status.Text = "Cannot centre: " + e.Message; status.Visible = true; dialog.GetOkButton().Disabled = true; }
             }
             if (centre != null) centre.Toggled += _ => Show();
             if (original.Length > 200) body.AddChild(AssetUi.Label("First 200 components shown; the operation includes every reviewed component."));
-            body.AddChild(AssetUi.Label(export ? "Windows-compatible TXT · no hue or level fields · working document unchanged" : "Opens a new working copy · installed data unchanged"));
+            body.AddChild(AssetUi.Label(export ? $"Windows-compatible {(uoa ? "UOA" : "TXT")} · no hue or level fields · working document unchanged" : "Opens a new working copy · installed data unchanged"));
             dialog.Confirmed += () =>
             {
                 try
@@ -99,7 +104,7 @@ public partial class MultiEditView
                     snapshot.Check(_doc); input?.Check();
                     if (export) { if (loss != null && !loss.ButtonPressed) throw new IOException("Confirm hue loss before exporting."); destination.Write(output); }
                     else OpenParts(MultiStore.SafeName(Path.GetFileNameWithoutExtension(path)), centre.ButtonPressed ? MultiTextSnapshot.Centre(original) : original);
-                    _status.Text = export ? $"Exported {original.Length:N0} components as Fiddler TXT" : $"Opened {original.Length:N0} components from Fiddler TXT";
+                    _status.Text = export ? $"Exported {original.Length:N0} components as {label}" : $"Opened {original.Length:N0} components from {label}";
                     dialog.Hide(); dialog.QueueFree(); TextReview = null;
                 }
                 catch (Exception e) { status.Text=e.Message; status.Visible=true; }

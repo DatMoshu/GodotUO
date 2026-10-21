@@ -142,6 +142,10 @@ hue-loss confirmation. The existing decimal-ID TXT profile remains separate.
 The independent pinned Fiddler probe checks scalar TXT contracts in both
 directions; native multi flag translation, spatial rendering and other external
 multi formats remain separate certification work.
+The next F24a leaf adds [Fiddler UOA text](multi_fiddler_uoa.md): explicit decimal
+IDs, matching header normalization, retained signed flags and the shared
+coordinate/hue-loss review. It has its own pinned reader/exporter comparison;
+UO Architect binary and other multi formats remain separate.
 
 Phase 1 proposal, 2026-10-19. guo-director first-pass review received;
 catalogue and survey await guo-director and exec-fable sign-off.

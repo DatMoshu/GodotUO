@@ -1820,14 +1820,17 @@ Same parameters and seed, same bytes.
   `lossy` `{id: id}` for window sets that share one art on the other axis, which come back as the first set), built from
   the styles, and with `run.py orient-table` from the mined catalogue and tiledata names.
 - `import` / `export`: `format` is one of `txt` (GUO legacy TXT: decimal IDs unless `0x`-prefixed), `txt-fiddler`
-  (Fiddler TXT: hexadecimal uint16 IDs, decimal int16 X/Y/Z, signed int32 flags), `uoa` (UO Architect
+  (Fiddler TXT: hexadecimal uint16 IDs, decimal int16 X/Y/Z, signed int32 flags), `uoa-fiddler`
+  (Fiddler UOA text: four headers, decimal uint16 IDs/int16 offsets/int32 flags), `uoa` (GUO legacy UO Architect
   text, 4 header lines), `uoab` (UO Architect binary designs, version 1 or 2), `wsc`, `csv-punt`, `csv-swerv`,
   `centred` (CentrED# `id,x,y,z,hue,flags`) and `uox3`. Import detects legacy formats from the name/head and recentres.
-  `txt-fiddler` must be selected explicitly and preserves coordinates by default (`recentre: true` opts in).
-  Its `text_flags` result/parameter parallels `components`; export writes canonical `0xID X Y Z Flags` CRLF lines.
-  It accepts 1–65,535 entries and at most 4 MiB. Editor TXT review covers hue loss and stale source/document/output.
+  `txt-fiddler` and `uoa-fiddler` must be selected explicitly and preserve coordinates by default (`recentre: true` opts in).
+  Their `text_flags` result/parameter parallels `components`; TXT export writes canonical `0xID X Y Z Flags` CRLF lines.
+  Each accepts 1–65,535 entries and at most 4 MiB. Editor text review covers hue loss and stale source/document/output.
   Rotate/mirror `preserve_entries: true` refuses splitting, recombination or order changes so opaque per-entry
   metadata cannot be assigned to a different part merely because aggregate counts match.
+  UOA's first three header values are ignored as in Fiddler; output normalizes them to version 6/template 1/item −1,
+  with the current count in the fourth line. Both profiles retain signed raw `text_flags` and review hue loss.
 
 The validator (section 16) also refuses a roof with floor open to the sky, a door with nowhere to stand on a side, and
 a stair whose foot is unreachable, whose arrival is not floor above, whose hole is not cut, or that does not climb the

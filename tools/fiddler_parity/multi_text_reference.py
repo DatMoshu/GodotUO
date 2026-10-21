@@ -1,6 +1,6 @@
-"""Build a read-only Fiddler TXT contract probe from an explicit pinned source.
+"""Build a read-only Fiddler TXT/UOA contract probe from an explicit pinned source.
 
-The unchanged TXT parsing case and text export method are compiled in an isolated
+The unchanged TXT/UOA parsing cases and text export methods compile in an isolated
 wrapper. Spatial image conversion and all other formats are excluded. Third-party
 source and binaries stay in the configured build directory, never this checkout.
 """
@@ -32,6 +32,8 @@ def build(source: Path, out: Path | None = None) -> Path:
     if 'THE BEER-WARE LICENSE' not in notice: raise ValueError('Reference retention notice is missing')
     reader = original.split('case Multis.ImportType.TXT:', 1)[1].split('case Multis.ImportType.UOA:', 1)[0]
     export = 'public void ExportToTextFile' + original.split('public void ExportToTextFile', 1)[1].split('public void ExportToWscFile', 1)[0]
+    uoa_reader = original.split('case Multis.ImportType.UOA:', 1)[1].split('case Multis.ImportType.', 1)[0]
+    uoa_export = 'public void ExportToUOAFile' + original.split('public void ExportToUOAFile', 1)[1].split('/// <summary>', 1)[0]
     declaration = original.split('public struct MultiTileEntry', 1)[1].split('/// <summary>', 1)[0]
     entry = 'public struct MultiTileEntry' + declaration
     # Only the surrounding fields/CLI are ours. The reader case and writer method
@@ -48,14 +50,16 @@ try {
     if (args.Length != 2 || new FileInfo(args[1]).Length > 4 * 1024 * 1024)
         throw new InvalidDataException("Expected read/write and a bounded input file");
     Reference value;
-    if (args[0] == "read") value = new Reference(args[1]);
-    else if (args[0] == "write") {
+    if (args[0] == "read" || args[0] == "read-uoa") value = new Reference(args[1], args[0] == "read-uoa");
+    else if (args[0] == "write" || args[0] == "write-uoa") {
         using var json = JsonDocument.Parse(File.ReadAllBytes(args[1]));
         var rows = json.RootElement.GetProperty("records").EnumerateArray().Select(r => new Reference.MultiTileEntry {
             ItemId = r.GetProperty("id").GetUInt16(), OffsetX = r.GetProperty("x").GetInt16(),
             OffsetY = r.GetProperty("y").GetInt16(), OffsetZ = r.GetProperty("z").GetInt16(),
             Flags = r.GetProperty("flags").GetInt32(), Unk1 = 0 }).ToArray();
-        value = new Reference(rows); value.ExportToTextFile(json.RootElement.GetProperty("output").GetString()!);
+        value = new Reference(rows);
+        if (args[0] == "write-uoa") value.ExportToUOAFile(json.RootElement.GetProperty("output").GetString()!);
+        else value.ExportToTextFile(json.RootElement.GetProperty("output").GetString()!);
     } else throw new InvalidDataException("Expected read or write");
     Console.WriteLine(JsonSerializer.Serialize(new { records = value.SortedTiles.Select(r => new {
         id = r.ItemId, x = r.OffsetX, y = r.OffsetY, z = r.OffsetZ, flags = r.Flags, unknown = r.Unk1 }) }));
@@ -66,29 +70,29 @@ sealed class Reference {
     private int MaxHeight;
     public MultiTileEntry[] SortedTiles;
     public Reference(MultiTileEntry[] rows) { SortedTiles = rows; }
-    public Reference(string fileName) { _min = _max = Point.Empty; int itemCount; switch (0) { case 0:
-''' + reader + '\n} }\n' + entry + '\n' + export + '\n}\n'
+    public Reference(string fileName, bool uoa) { _min = _max = Point.Empty; int itemCount; switch (uoa ? 1 : 0) { case 0:
+''' + reader + '\ncase 1:\n' + uoa_reader + '\n} }\n' + entry + '\n' + export + '\n' + uoa_export + '\n}\n'
     out = (out or location()).resolve(); parity.protect_install(out)
     out.mkdir(parents=True, exist_ok=True)
     (out/'Program.cs').write_text(code, encoding='utf-8')
     (out/'Reference.csproj').write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup></Project>\n')
     result = subprocess.run(['dotnet', 'build', str(out/'Reference.csproj'), '-c', 'Release', '--nologo'], capture_output=True, text=True, timeout=120)
     (out/'build.log').write_text(result.stdout + result.stderr, encoding='utf-8')
-    if result.returncode: raise RuntimeError('Fiddler TXT reference build failed: ' + (result.stdout + result.stderr)[-12000:])
+    if result.returncode: raise RuntimeError('Fiddler text reference build failed: ' + (result.stdout + result.stderr)[-12000:])
     binary = out/'bin'/'Release'/'net10.0'/'Reference.dll'
     manifest = {'commit': COMMIT, 'source_sha256': SOURCE_SHA256, 'generated_sha256': hashlib.sha256(code.encode()).hexdigest(),
-                'binary_sha256': parity.digest(binary), 'scope': 'unchanged TXT case and export method; no ConvertList or image rendering'}
+                'binary_sha256': parity.digest(binary), 'scope': 'unchanged TXT/UOA cases and export methods; no ConvertList or image rendering'}
     (out/'identity.json').write_text(json.dumps(manifest, indent=2)+'\n', encoding='utf-8')
     return binary
 
 
 def invoke(binary: Path, operation: str, path: Path) -> dict:
-    if not binary.is_file(): raise ValueError('Build the Fiddler TXT probe with python tools/fiddler_parity/multi_text_reference.py --source <pinned-file>')
+    if not binary.is_file(): raise ValueError('Build the Fiddler text probe with python tools/fiddler_parity/multi_text_reference.py --source <pinned-file>')
     identity = json.loads((binary.parents[3]/'identity.json').read_text(encoding='utf-8'))
     if identity.get('commit') != COMMIT or identity.get('source_sha256') != SOURCE_SHA256 or identity.get('binary_sha256') != parity.digest(binary):
-        raise ValueError('Fiddler TXT reference identity changed; rebuild the pinned probe')
+        raise ValueError('Fiddler text reference identity changed; rebuild the pinned probe')
     result = subprocess.run(['dotnet', str(binary), operation, str(path)], capture_output=True, text=True, timeout=30)
-    if result.returncode: raise ValueError('Pinned Fiddler TXT contract refused input: ' + result.stderr.strip())
+    if result.returncode: raise ValueError('Pinned Fiddler text contract refused input: ' + result.stderr.strip())
     return json.loads(result.stdout)
 
 

@@ -20,7 +20,7 @@ internal sealed class MultiTextInput
     internal static byte[] Read(string path)
     {
         using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-        if (file.Length > MaxBytes) throw new IOException("Fiddler TXT exceeds 4 MiB. Split the file before importing.");
+        if (file.Length > MaxBytes) throw new IOException("Multi text exceeds 4 MiB. Split the file before importing.");
         byte[] bytes = new byte[(int)file.Length]; file.ReadExactly(bytes);
         if (file.ReadByte() != -1) throw new IOException("The file changed while reading. Choose it again.");
         return bytes;
@@ -29,7 +29,7 @@ internal sealed class MultiTextInput
     internal void Check()
     {
         if (EditorPaths.Real(_chosen) != _real || Hash(Read(_real)) != _hash)
-            throw new IOException("The selected TXT file changed after review. Close this review and import it again.");
+            throw new IOException("The selected text file changed after review. Close this review and import it again.");
     }
 }
 
@@ -77,7 +77,7 @@ internal sealed class MultiTextDestination
     }
     internal void Write(byte[] bytes)
     {
-        if (bytes.Length > MultiTextInput.MaxBytes) throw new IOException("Fiddler TXT exceeds 4 MiB.");
+        if (bytes.Length > MultiTextInput.MaxBytes) throw new IOException("Multi text exceeds 4 MiB.");
         Check(); string temp = _real + ".tmp-" + Guid.NewGuid().ToString("N");
         try { File.WriteAllBytes(temp, bytes); Check(); File.Move(temp, _real, true); }
         finally { if (File.Exists(temp)) File.Delete(temp); }

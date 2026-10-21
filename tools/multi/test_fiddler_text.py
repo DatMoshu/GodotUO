@@ -13,6 +13,42 @@ import gen_cli
 
 
 class FiddlerTextTests(unittest.TestCase):
+    def test_uoa_decimal_ids_flags_and_canonical_header(self):
+        text='77 version\r\n98 template id\r\n33 item version\r\n2 num components\r\n1650 12 -8 7 -2\r\n65535 -32768 32767 0 2147483647\r\n'
+        tiles=formats.read('uoa-fiddler',text.encode())
+        self.assertEqual(tiles[0],formats.Tile(1650,12,-8,7,True,text_flags=-2))
+        output=formats.write('uoa-fiddler',tiles).decode()
+        self.assertEqual(output,text.replace('77 version','6 version').replace('98 template id','1 template id').replace('33 item version','-1 item version'))
+
+    def test_uoa_refuses_count_mismatch_hex_ids_and_invalid_bounds(self):
+        prefix='6 version\n1 template id\n-1 item version\n1 num components\n'
+        for value in (prefix, prefix+'0x1650 0 0 0 1', prefix+'65536 0 0 0 1', prefix+'1 32768 0 0 1',
+                      prefix+'1 0 0 0 -2147483649',prefix+'1 0 0 0 1\n1 0 0 0 1',prefix+'1 0 0 0 1 extra'):
+            with self.subTest(value=value),self.assertRaises(formats.FormatError): formats.read_fiddler_uoa(value)
+
+    def test_uoa_cli_default_coordinates_and_raw_flags(self):
+        ctx=gen_cli.Context(user=False)
+        imported=gen_cli.run_op(ctx,'import',{'format':'uoa-fiddler','data':'6 version\n1 template id\n-1 item version\n1 num components\n1650 12 -8 7 -2'})
+        self.assertEqual(imported['components'],[[1650,12,-8,7]])
+        self.assertEqual(imported['text_flags'],[-2])
+        exported=gen_cli.run_op(ctx,'export',dict(imported,format='uoa-fiddler'))
+        self.assertTrue(exported['data'].endswith('1650 12 -8 7 -2\r\n'))
+
+    def test_uoa_cli_protects_install_and_writes_canonical_bytes(self):
+        with tempfile.TemporaryDirectory(prefix='guo-multi-uoa-') as folder:
+            root=Path(folder); install=root/'install'; install.mkdir()
+            source=install/'keep.uoa'; source.write_bytes(b'unchanged source')
+            cfg=SimpleNamespace(client_data=install, client_data_env=str(install), client_data_setting='')
+            payload={'format':'uoa-fiddler','components':[[1650,12,-8,7]],'text_flags':[-2]}
+            with patch('guo.load_config',return_value=cfg):
+                refused=gen_cli.run_op(gen_cli.Context(user=False),'export',dict(payload,path=str(source)))
+                self.assertIn('error',refused); self.assertEqual(source.read_bytes(),b'unchanged source')
+                target=root/'output'/'multi.uoa'
+                accepted=gen_cli.run_op(gen_cli.Context(user=False),'export',dict(payload,path=str(target)))
+                self.assertNotIn('error',accepted)
+                self.assertEqual(target.read_bytes(),b'6 version\r\n1 template id\r\n-1 item version\r\n1 num components\r\n1650 12 -8 7 -2\r\n')
+                self.assertFalse(list(target.parent.glob('*.tmp-*')))
+
     def test_bare_ids_are_hex_only_in_explicit_profile(self):
         self.assertEqual(formats.read('txt-fiddler', b'1650 12 -8 7 1')[0].item, 0x1650)
         self.assertEqual(formats.read('txt', b'1650 12 -8 7 1')[0].item, 1650)

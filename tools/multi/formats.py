@@ -88,9 +88,9 @@ def write_txt(tiles: list[Tile]) -> str:
     return "".join(f"0x{t.item:04X} {t.x} {t.y} {t.z} {1 if t.visible else 0}\n" for t in tiles)
 
 
-def read_fiddler_txt(text: str) -> list[Tile]:
+def read_fiddler_txt(text: str, *, check_size: bool = True) -> list[Tile]:
     """Fiddler 4.24: hexadecimal item IDs, signed decimal offsets and int32 flags."""
-    if len(text.encode('utf-8')) > 4 * 1024 * 1024:
+    if check_size and len(text.encode('utf-8')) > 4 * 1024 * 1024:
         raise FormatError('Fiddler TXT exceeds 4 MiB')
     out = []
     for number, line in enumerate(text.splitlines(), 1):
@@ -133,6 +133,36 @@ def write_fiddler_txt(tiles: list[Tile]) -> str:
     result = ''.join(out)
     if len(result) > 4 * 1024 * 1024: raise FormatError('Fiddler TXT exceeds 4 MiB')
     return result
+
+
+def read_fiddler_uoa(text: str) -> list[Tile]:
+    """Fiddler UOA text: four header lines, decimal IDs, retained signed flags."""
+    if len(text.encode('utf-8')) > 4 * 1024 * 1024: raise FormatError('Fiddler UOA exceeds 4 MiB')
+    ls = text.splitlines()
+    if len(ls) < 5: raise FormatError('Fiddler UOA requires four header lines and components')
+    count_field = ls[3].split()
+    if not count_field or not re.fullmatch('[+]?[0-9]+', count_field[0]): raise FormatError('Fiddler UOA fourth header must start with a decimal component count')
+    digits = count_field[0].lstrip('+0') or '0'
+    if len(digits) > 5 or not 1 <= int(digits) <= 65535: raise FormatError('Fiddler UOA requires 1 to 65535 components')
+    count = int(digits)
+    if len(ls) - 4 != count: raise FormatError(f'Fiddler UOA header declares {count} components, found {len(ls)-4}')
+    canonical = []
+    for number, line in enumerate(ls[4:], 5):
+        fields = line.split()
+        if len(fields) != 5 or not re.fullmatch('[+]?[0-9]+', fields[0]): raise FormatError(f'Fiddler UOA line {number}: expected decimal ID X Y Z Flags')
+        ident = fields[0].lstrip('+0') or '0'
+        if len(ident) > 5 or int(ident) > 65535: raise FormatError(f'Fiddler UOA line {number}: ID must fit uint16')
+        canonical.append(f'0x{int(ident):X} ' + ' '.join(fields[1:]))
+    try: return read_fiddler_txt('\n'.join(canonical), check_size=False)
+    except FormatError as error:
+        message = re.sub(r'line (\d+)', lambda match: 'line '+str(int(match[1])+4), str(error))
+        raise FormatError(message.replace('Fiddler TXT','Fiddler UOA')) from error
+
+
+def write_fiddler_uoa(tiles: list[Tile]) -> str:
+    canonical = write_fiddler_txt(tiles)
+    records = [line.split(' ', 1) for line in canonical.splitlines()]
+    return f'6 version\r\n1 template id\r\n-1 item version\r\n{len(tiles)} num components\r\n' + ''.join(f'{int(ident,16)} {rest}\r\n' for ident,rest in records)
 
 
 # --- UOA text ----------------------------------------------------------------------------------
@@ -345,6 +375,7 @@ def write_uox3(tiles: list[Tile]) -> str:
 # --- dispatch ----------------------------------------------------------------------------------
 
 FORMATS = {
+    "uoa-fiddler": "UO Architect text (Fiddler)",
     "txt-fiddler": "Fiddler TXT (hexadecimal IDs)",
     "txt": "GUO legacy text (decimal IDs unless 0x-prefixed)", "uoa": "UO Architect text", "uoab": "UO Architect binary",
     "wsc": "WSC worldfile", "csv-punt": "CSV (Punt)", "csv-swerv": "CSV (SwervUO)",
@@ -377,7 +408,7 @@ def read(fmt: str, data: bytes) -> list[Tile]:
         ds = read_uoab(data)
         return [t for d in ds for t in d.tiles]
     text = data.decode("utf-8-sig", "replace")
-    readers = {"txt": read_txt, "txt-fiddler": read_fiddler_txt, "uoa": read_uoa, "wsc": read_wsc, "csv-punt": read_csv, "csv-swerv": read_csv,
+    readers = {"txt": read_txt, "txt-fiddler": read_fiddler_txt, "uoa-fiddler": read_fiddler_uoa, "uoa": read_uoa, "wsc": read_wsc, "csv-punt": read_csv, "csv-swerv": read_csv,
                "centred": read_csv, "uox3": read_uox3}
     if fmt not in readers:
         raise FormatError(f"format '{fmt}': {', '.join(FORMATS)}")
@@ -391,7 +422,7 @@ def write(fmt: str, tiles: list[Tile], name: str = "multi") -> bytes:
         return write_csv(tiles, fmt[4:]).encode("utf-8")
     if fmt == "centred":
         return write_csv(tiles, "centred").encode("utf-8")
-    writers = {"txt": write_txt, "txt-fiddler": write_fiddler_txt, "uoa": write_uoa, "wsc": write_wsc, "uox3": write_uox3}
+    writers = {"txt": write_txt, "txt-fiddler": write_fiddler_txt, "uoa-fiddler": write_fiddler_uoa, "uoa": write_uoa, "wsc": write_wsc, "uox3": write_uox3}
     if fmt not in writers:
         raise FormatError(f"format '{fmt}': {', '.join(FORMATS)}")
     return writers[fmt](tiles).encode("utf-8")

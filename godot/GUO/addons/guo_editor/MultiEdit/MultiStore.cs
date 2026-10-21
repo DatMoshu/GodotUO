@@ -203,7 +203,7 @@ internal static class MultiStore
             {
                 ct.ThrowIfCancellationRequested();
                 if (snapshot.Any(p => p.ExportTextFlags is not (0 or 1)))
-                    throw new IOException("This multi contains opaque Fiddler TXT flags. Export Fiddler TXT to preserve them; native staging cannot preserve that flag contract yet.");
+                    throw new IOException("This multi contains opaque Fiddler text flags. Export reviewed Fiddler TXT or UOA to preserve them; native staging cannot preserve that flag contract yet.");
                 stageDir = Path.GetFullPath(stageDir);
                 string client = EditorData.Setting("UO_CLIENT_DATA", "");
                 if (client.Length > 0 && IsInside(Path.GetFullPath(client), stageDir))

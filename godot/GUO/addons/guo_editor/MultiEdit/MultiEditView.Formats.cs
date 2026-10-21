@@ -21,7 +21,8 @@ public partial class MultiEditView
     {
         ("txt-fiddler", "txt", "Fiddler TXT (hexadecimal IDs)"),
         ("txt", "txt", "GUO legacy TXT (decimal IDs unless 0x-prefixed)"),
-        ("uoa", "uoa", "UO Architect text"),
+        ("uoa-fiddler", "uoa", "UO Architect text (Fiddler, decimal IDs)"),
+        ("uoa", "uoa", "GUO legacy UOA text"),
         ("uoab", "uoab", "UO Architect binary"),
         ("wsc", "wsc", "WSC world items"),
         ("csv-punt", "csv", "CSV (PUNT)"),
@@ -70,10 +71,10 @@ public partial class MultiEditView
 
         dialog.FileSelected += p =>
         {
-            if (f.Format == "txt-fiddler")
+            if (IsReviewedText(f.Format))
             {
-                if (export) _ = ReviewFiddlerTextAsync(p, true);
-                else GuardUnsaved(() => _ = ReviewFiddlerTextAsync(p, false));
+                if (export) _ = ReviewFiddlerTextAsync(p, true, f.Format);
+                else GuardUnsaved(() => _ = ReviewFiddlerTextAsync(p, false, f.Format));
             }
             else if (export)
             {
@@ -96,19 +97,19 @@ public partial class MultiEditView
     {
         try { AssetActions.EnsureExportDestination(path); }
         catch (Exception e) { _status.Text = e.Message; return e.Message; }
-        if (format != "txt-fiddler" && _doc.Parts.Any(p => p.ExportTextFlags is not (0 or 1)))
+        if (!IsReviewedText(format) && _doc.Parts.Any(p => p.ExportTextFlags is not (0 or 1)))
         {
-            const string message = "This format cannot preserve opaque Fiddler TXT flags. Choose Fiddler TXT to keep them.";
+            const string message = "This format cannot preserve opaque Fiddler text flags. Choose reviewed Fiddler TXT or UOA to keep them.";
             _status.Text = message; return message;
         }
-        if (format == "txt-fiddler")
+        if (IsReviewedText(format))
         {
             try
             {
-                if (_doc.Parts.Any(p => p.Hue != 0)) throw new IOException("Fiddler TXT cannot carry hue. Use the reviewed export menu to confirm the loss, or choose a hue-capable format.");
+                if (_doc.Parts.Any(p => p.Hue != 0)) throw new IOException("This Fiddler text format cannot carry hue. Use the reviewed export menu to confirm the loss, or choose a hue-capable format.");
                 MultiTextSnapshot snapshot = new(_doc);
                 var lifetime = _writeLifetime.Token;
-                byte[] bytes = await FiddlerTextBytesAsync(snapshot.Parts);
+                byte[] bytes = await FiddlerTextBytesAsync(snapshot.Parts, format);
                 lifetime.ThrowIfCancellationRequested();
                 snapshot.Check(_doc);
                 MultiTextDestination destination = new(path);
@@ -141,14 +142,14 @@ public partial class MultiEditView
     /// <summary>Opens a file of another tool's format (detected from its name and head when <paramref name="format"/> is null).</summary>
     public async Task<string> ImportFileAsync(string path, string format = null)
     {
-        if (format == "txt-fiddler")
+        if (IsReviewedText(format))
         {
             try
             {
                 MultiTextSnapshot snapshot = new(_doc);
                 var lifetime = _writeLifetime.Token;
                 MultiTextInput input = new(path);
-                MultiPart[] importedParts = await ReadFiddlerTextAsync(input.Bytes);
+                MultiPart[] importedParts = await ReadFiddlerTextAsync(input.Bytes, format);
                 lifetime.ThrowIfCancellationRequested();
                 input.Check(); snapshot.Check(_doc);
                 OpenParts(MultiStore.SafeName(Path.GetFileNameWithoutExtension(path)), importedParts);
