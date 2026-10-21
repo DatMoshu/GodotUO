@@ -41,7 +41,10 @@ pixels a frame: a clip of the world as the game draws it, with no shard.
 `--guo-editor-lights-demo FRAMES` instead walks three light-bearers along the
 street there, the camera on the first, and saves FRAMES frames at 30 fps into
 the same folder: the Realtime lights demo clip (ADR-0039), with no shard;
-`FRAMES,fixed` keeps the camera still and the walkers cross the frame. The
+`FRAMES,fixed` keeps the camera still and the walkers cross the frame;
+adding `,spell` casts a 1.5 s spell-effect light (blue, green, red in turn)
+two tiles ahead of the first walker every second, through
+`RealtimeLightEffects` (data_formats section 45). The
 walkers step by a fixed clock, one thirtieth of a second per frame, so the
 clip plays at walking speed however slowly the editor drew it.
 `world_pan/times.txt` records frame index, simulation milliseconds, and wall

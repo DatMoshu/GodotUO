@@ -39,6 +39,9 @@ namespace GUO.Game.Scenes
         /// <summary>Grid side cap, cells (a zoomed-out 4K view fits well inside).</summary>
         private const int RtMaxSide = 192;
 
+        /// <summary>Every light offer the classic table holds, then the spell-effect lights.</summary>
+        private const int RtSourceCapacity = LightsLoader.MAX_LIGHTS_DATA_INDEX_COUNT + RealtimeLightEffects.MaxLights;
+
         /// <summary>On, in game, and not during the black-and-white death frame (the classic path runs then).</summary>
         public bool UseRealtimeLights =>
             ProfileManager.CurrentProfile != null
@@ -49,24 +52,38 @@ namespace GUO.Game.Scenes
         /// <summary>The mode's light texture for this frame, or null for the classic target.</summary>
         internal Texture2D RealtimeLightTexture { get; private set; }
 
-        /// <summary>Called from AddLight once a light offer is accepted: keep its tile.</summary>
-        private void RecordRealtimeLight(GameObject obj, ref LightData light)
+        /// <summary>
+        /// Called from AddLight once a light offer is accepted: keep its tile.
+        /// <paramref name="graphic"/> is the lit item's graphic (the light
+        /// profile file's key, with the light id).
+        /// </summary>
+        private void RecordRealtimeLight(GameObject obj, ushort graphic, ref LightData light)
         {
             if (!UseRealtimeLights || obj == null) return;
-            _rtSources ??= new RealtimeLightField.Source[LightsLoader.MAX_LIGHTS_DATA_INDEX_COUNT];
-            if (_rtSourceCount >= _rtSources.Length) return;
+            _rtSources ??= new RealtimeLightField.Source[RtSourceCapacity];
+            if (_rtSourceCount >= LightsLoader.MAX_LIGHTS_DATA_INDEX_COUNT) return;
 
             ref readonly var info = ref Client.Game.UO.Lights.GetLight(light.ID);
             // Width is a diameter, not a radius. Widening it washed together
             // nearby carriers and lamps into one nearly saturated plaza.
             int radius = info.Texture == null ? 3 : Math.Max(2, (int)MathF.Round(info.UV.Width / RadiusDiameter));
+
+            // The light profile file (section 45): unset fields keep the offer's.
+            var profiles = RealtimeLightProfiles.Current;
+            LightProfile p = profiles.Resolve(graphic, light.ID);
+            if (p.Radius > 0) radius = p.Radius;
+            if (p.RadiusScale > 0f) radius = Math.Max(1, (int)MathF.Round(radius * p.RadiusScale));
+            Godot.Color color = p.Color ?? RealtimeLightColor(light.Color, light.IsHue);
+            LightCurve curve = p.Curve ?? LightCurve.B;
+            float energy = p.Energy > 0f ? p.Energy : RealtimeLightField.Energy;
+            float[] custom = curve == LightCurve.Custom ? profiles.CustomCurve(p.CustomCurve) : null;
             // Invert the world's isometric projection of the walking offset.
             // The visibility grid stays tile based; radial falloff follows the
             // same continuous position as the mobile or moving effect sprite.
             float ox = (obj.Offset.X + obj.Offset.Y) / 44f;
             float oy = (obj.Offset.Y - obj.Offset.X) / 44f;
             _rtSources[_rtSourceCount++] = new RealtimeLightField.Source(
-                obj.X, obj.Y, obj.Z, radius, RealtimeLightColor(light.Color, light.IsHue), ox, oy);
+                obj.X, obj.Y, obj.Z, radius, color, ox, oy, curve, energy, custom);
         }
 
         /// <summary>Classic clears its target; the mode's texture is the override.</summary>
@@ -112,6 +129,7 @@ namespace GUO.Game.Scenes
                 return;
             }
 
+            long t0 = RealtimeLightsDebug.Stamp();
             try
             {
                 _rtField ??= new RealtimeLightField();
@@ -124,9 +142,24 @@ namespace GUO.Game.Scenes
                 }
 
                 BuildRealtimeGrid();
-                _rtField.Compute(RealtimeAmbientLevel(),
-                    new ReadOnlySpan<RealtimeLightField.Source>(_rtSources ?? Array.Empty<RealtimeLightField.Source>(), 0, _rtSourceCount));
+                long t1 = RealtimeLightsDebug.Stamp();
+
+                // Spell-effect lights (RealtimeLightEffects) after the offers.
+                _rtSources ??= new RealtimeLightField.Source[RtSourceCapacity];
+                int temporary = RealtimeLightEffects.Collect(Time.Ticks, _rtSources, _rtSourceCount);
+                _rtSourceCount += temporary;
+                var sources = new ReadOnlySpan<RealtimeLightField.Source>(_rtSources, 0, _rtSourceCount);
+                _rtField.Compute(RealtimeAmbientLevel(), sources);
+                long t2 = RealtimeLightsDebug.Stamp();
                 DrawRealtimeGeometry(ref matrix);
+                long t3 = RealtimeLightsDebug.Stamp();
+
+                RealtimeLightsDebug.Record(new RealtimeLightsDebug.Budget(_rtSourceCount, temporary, _rtField.LastComputed,
+                    RealtimeLightsDebug.Ms(t0, t1), RealtimeLightsDebug.Ms(t1, t2), RealtimeLightsDebug.Ms(t2, t3)));
+                if (RealtimeLightsDebug.DumpDue())
+                {
+                    RealtimeLightsDebug.WriteDump(RealtimeLightDump(sources));
+                }
 
                 RealtimeLightTexture = _rtTarget.Texture;
                 renderTargets.LightOverride = RealtimeLightTexture;
@@ -153,6 +186,59 @@ namespace GUO.Game.Scenes
                 _rtSourceCount = 0;
                 _lightCount = 0;
             }
+        }
+
+        /// <summary>
+        /// The light under a world-target pixel (the space of
+        /// <c>SelectedObject.TranslatedMousePositionByViewport</c>): the tile, read at
+        /// that tile's ground Z, and the field there. Null when the mode has no field.
+        /// </summary>
+        internal string RealtimeLightReadout(int pixelX, int pixelY)
+        {
+            if (_rtField == null || _rtField.Width <= 1) return null;
+            float u = pixelX + _offset.X, v = pixelY + _offset.Y;
+            int z = _world.Player?.Z ?? 0;
+            (int x, int y) = RealtimeLightField.ScreenToTile(u, v, z);
+            // The ground's height moves the diamond: settle on the tile whose ground Z it is.
+            for (int i = 0; i < 3; i++)
+            {
+                int gz = _rtField.GroundZ(x, y);
+                if (gz == z) break;
+                z = gz;
+                (x, y) = RealtimeLightField.ScreenToTile(u, v, z);
+            }
+
+            Godot.Color c = _rtField.Cell(x, y);
+            short block = _rtField.BlockTop(x, y), cover = _rtField.CoverZ(x, y);
+            return string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"pixel={pixelX},{pixelY} tile={x},{y},{z} light={c.R:0.000},{c.G:0.000},{c.B:0.000} " +
+                $"block={(block == RealtimeLightField.NoBlock ? "-" : block.ToString())} " +
+                $"cover={(cover == RealtimeLightField.NoBlock ? "-" : cover.ToString())} roofed={_rtField.IsRoofed(x, y)}");
+        }
+
+        /// <summary>The light dump for this frame: readouts, then the grid (visible chunks upper case).</summary>
+        private string RealtimeLightDump(ReadOnlySpan<RealtimeLightField.Source> sources)
+        {
+            var visible = new HashSet<long>();
+            foreach (Chunk chunk in _visibleChunks)
+            {
+                if (chunk != null && !chunk.IsDestroyed) visible.Add(((long)chunk.X << 32) | (uint)chunk.Y);
+            }
+
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            var mouse = SelectedObject.TranslatedMousePositionByViewport;
+            int px = _world.Player?.X ?? int.MinValue, py = _world.Player?.Y ?? int.MinValue;
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine(string.Create(inv, $"# realtime-lights dump ticks={Time.Ticks} level={RealtimeAmbientLevel():0.000} offset={_offset.X},{_offset.Y} maxZ={_maxZ}"));
+            sb.Append("# mouse ").AppendLine(RealtimeLightReadout(mouse.X, mouse.Y));
+            if (_world.Player != null)
+            {
+                Godot.Color pc = _rtField.Cell(px, py);
+                sb.AppendLine(string.Create(inv, $"# player tile={px},{py},{_world.Player.Z} light={pc.R:0.000},{pc.G:0.000},{pc.B:0.000}"));
+            }
+            sb.Append("# profiles ").AppendLine(RealtimeLightProfiles.Current.Source);
+            sb.Append(_rtField.DumpAscii(sources, (x, y) => visible.Contains(((long)(x >> 3) << 32) | (uint)(y >> 3)), px, py));
+            return sb.ToString();
         }
 
         /// <summary>
