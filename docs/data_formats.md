@@ -2806,8 +2806,12 @@ for the shard's light level.
 
 On, each frame the scene builds a tile grid over the visible chunks plus an
 8-tile margin (side capped at 192): per cell the ground Z (`Land.AverageZ`),
-the top Z of the tallest light blocker (tiledata `Wall`, or `Impassable` with
-`Height >= 8`; never `Door` or `Window`) and whether a `Roof` static covers it.
+the light blockers on it, and whether a `Roof` static covers it. A blocker is
+tiledata `Wall`, or `Impassable` with `Height >= 8`; never `Door` or `Window`.
+A wall whose art reads as a wall plane (`WallFaces`, below) is a **line** on
+its tile: along X at world `y + offset`, or along Y at `x + offset` (a corner
+piece is both); any other blocker fills its tile. Each keeps the top Z of the
+tallest on the tile.
 Ambient is `RealtimeLightField.AmbientFor(IsometricLight.IsometricLevel)`:
 white at level 0, warm through the middle, blue-grey at night. The ramp's
 luminance is normalized to the classic grey (weights 0.2126, 0.7152, 0.0722),
@@ -2815,28 +2819,56 @@ so equal night levels retain equal ambient brightness. Roofed cells take 55 % of
 100 % at night. Each accepted light offer (`AddLight`) adds a source at its
 tile with radius `round(light.mul width / 44)` tiles (2..8) and the
 classic light tint (the light-shader palette, or the hue's table entry 16;
-an untinted light is warm RGB (1, 0.72, 0.38)), at an energy of 2.2. A source's reach
-is a `(2(r+1)+1)^2` visibility map: hard line-of-light through the blocker grid (blockers
-above source Z + 3 block; neither end blocks), a 3x3 box blur, times
-`Falloff(d, r)` (smoothstep), times 0.35 where the ground is more than
+an untinted light is warm RGB (1, 0.72, 0.38)), at an energy of 2.2. The field is sampled
+`F` times per tile side (`F = 4`; 2 when the grid has more than 192 x 192
+cells). A source's reach is a visibility map of `((2(r+1)+1) F)^2` samples:
+a ray from the source point to each sample's centre is blocked by a wall line
+it crosses, or by a whole-tile blocker on a tile that is neither the source's
+nor the sample's (only blockers above source Z + 3 count). The source point is
+its tile's centre, or, when the tile has a wall line, 0.3 tiles in front of
+that line on the +Y / +X side (a lamp hangs on the face the camera sees). Then
+a 3x3 box blur over the samples, never above the sample's own hard value (the
+soft edge falls on the lit side; nothing leaks through a wall), times the
+falloff at the sample's distance, times 0.35 where the ground is more than
 20 Z from the source. Reaches are cached by (x, y, z, r) while the blocker
 grid's FNV-1a hash is unchanged. Distance falloff is evaluated each frame at
 the sprite's interpolated position: tile offsets are `(Offset.X + Offset.Y)/44`
 and `(Offset.Y - Offset.X)/44`. Moving pools therefore advance between tile
-completions without recomputing cached visibility. The sum has no ceiling: a cell brighter
-than white is scaled by its brightest channel when read, keeping its hue.
+completions without recomputing cached visibility. The sum has no ceiling: a sample brighter
+than white is scaled by its brightest channel when read, keeping its hue. A
+tile's value (the dump, `Cell`) is the mean of its samples.
+
+**Wall faces** (`WallFaces`, cached per graphic). The art's silhouette bottom,
+per column, in tile-box pixels (diamond top (22, 0), right (44, 22), bottom
+(22, 44), left (0, 22); the art centred, bottom row on the bottom corner), is
+fitted by `Y = X + k` (a wall along X, art `\`, its shown face +Y) or
+`Y = -X + k` (along Y, `/`, face +X), or by two such lines split at a column
+(a corner), taking the one-line fit unless two lines fit more than 1 px
+better; a fit with mean residual over 2.5 px, or under 6 columns, is no wall.
+The line is `offset = (k + 22) / 44` (along X) or `(k - 22) / 44` (along Y),
+clamped to 0..1.
 
 The field is drawn into a GUO-owned target the size of the classic light
 target: every visible land tile as its iso quad (stretched corners from
-`YOffsets`) with the field's corner colours, then every visible standing
-static (`Height >= 4`, wall, roof or foliage; not above `_maxZ`, not a hidden
-roof) as its own art sprite in its cell's colour, masked by the sprite's
-alpha. `RenderTargets.LightOverride` carries the texture; `RenderTargets.Draw`
+`YOffsets`), then every visible standing static (`Height >= 4`, wall, roof or
+foliage; not above `_maxZ`, not a hidden roof) as its own art sprite masked by
+its alpha. Each pixel reads the field per pixel from a texture of the samples
+(RGBA8, `F` texels per tile, each channel `sqrt(v / 8)`, linear filtering):
+a vertex colour carries its world point (R, G: texture coordinate; B: height
+above its base, `(px + 256) / 1024`; A = 1). Land corners are their world
+corners. A wall, window or door with faces is one quad per face, each column
+reading the field 0.3 tiles in front of the face's line at that point, so the
+face takes its own side's light with the ground's falloff; other statics read
+across their tile's middle. Height counts from the face's base plus 4 px per
+Z the static stands above the ground; the light fades to the roof ambient by
+`smoothstep(0, 120, h)`. Roofs, cover pieces (at or above the tile's cover Z)
+and statics above every light on their tile are flat roof ambient (A = 0, RGB
+the light). `RenderTargets.LightOverride` carries the texture; `RenderTargets.Draw`
 blends it with the classic darkness blend in place of the light target. The
 option off never builds the target.
 
 Log line every 5 s at trace level: `[realtime-lights] grid=WxH lights=N
-computed=N cached=N quads=N sprites=N`. Scenario `client.realtime.lights`
+computed=N cached=N quads=N sprites=N roofs=N above=N darkQuads=N faces=N fine=F`. Scenario `client.realtime.lights`
 (`--realtime-lights-probe`, `RealtimeLightsProbe.tscn`) checks the contract
 headless and prints `[Realtime lights] PASS`.
 
@@ -2943,8 +2975,9 @@ dependency or separate doctor is required beyond the normal Godot .NET setup.
   the readout under the mouse (`pixel=X,Y tile=X,Y,Z light=R,G,B block=Z|-
   cover=Z|- roofed=bool`, the pixel in `TranslatedMousePositionByViewport`
   space, read at the tile's ground Z); the player's tile and light; the
-  profile source. Then the grid, one text row per tile row, north at the top:
-  `*` a light source, `@` the player, `#` a blocker above ground + 3, `^`
+  profile source. Beside it `DIR/lights_NNNNNN.png` is the light target as
+  drawn the frame before. Then the grid, one text row per tile row, north at the top:
+  `*` a light source, `@` the player, `#` a blocker or wall line above ground + 3, `^`
   covered, `0`-`9` the brightest channel in tenths, `X` white; outside the
   visible chunks `+` a blocker, `.` anything else. Then one `# light X,Y,Z r=R
   curve=C energy=E color=#RRGGBB` per source. The pixel-to-tile inverse is

@@ -74,6 +74,18 @@ public partial class SpellLightingProbe : Node
             Color ambient = RealtimeLightField.AmbientFor(0.0625f);
             Require(field.Cell(8, 8).R > ambient.R + 0.1f && field.Cell(18, 8).R > ambient.R + 0.1f, "cast and impact light expected cells");
             GD.Print(field.DumpAscii(sources.AsSpan(0, 2)));
+            // The actual arrival source enters the same face/shadow field as a lamp.
+            field.Begin(0, 0, 32, 24);
+            for (int x = 0; x < 32; x++) field.AddEdge(x, 7, true, 0.5f, 20);
+            field.Compute(0.0625f, sources.AsSpan(0, 2));
+            Require(field.FineAt(18.5f, 7.85f).R > ambient.R + 0.1f,
+                "spell impact lights the wall face toward it");
+            Require(Math.Abs(field.FineAt(18.5f, 7.1f).R - ambient.R) < 0.03f
+                && Math.Abs(field.FineAt(18.5f, 6.5f).R - ambient.R) < 0.03f,
+                "wall blocks spell impact on its far face and behind it");
+            Require(field.FineAt(18.5f, 7.85f).R > field.FineAt(21.5f, 7.85f).R + 0.05f,
+                "spell intensity falls off along the wall face");
+            GD.Print("[Spell lighting] wall-face/shadow PASS actual-arrival-source=18,8,5");
             Require(RealtimeLightEffects.Collect(now + 1500, sources, 0) == 0, "cast and impact expire");
             manager.Clear();
 
