@@ -13,7 +13,7 @@ namespace GUO.Renderer.Water;
 /// The ripple field: a small wave simulation over the water around the
 /// player, 2 x 2 texels a cell, which the water shading reads as a height.
 /// Things on the water disturb it: a mobile standing or swimming in water, a
-/// boat that moves (its hull outline, which leaves a bow wave and a wake),
+/// boat that moves (directional stern ribbons, separate from impact waves),
 /// an effect that lands on water (a splash, a thrown or fishing effect) and
 /// an item that comes to rest on a water cell. Purely cosmetic: nothing here
 /// feeds movement, targeting or the server.
@@ -46,6 +46,14 @@ internal sealed class WaterRipples
     private float[] _before = new float[Size * Size];
     private float[] _scratch = new float[Size * Size];
     private readonly byte[] _pixels = new byte[Size * Size];
+    // Boat ribbons advect and fade; unlike impact waves they never enter the
+    // isotropic wave equation. This prevents a travelling hull emitting rings.
+    private readonly float[] _wake = new float[Size * Size];
+    private readonly List<WakeRibbon> _ribbons = new(2048);
+    private struct WakeRibbon
+    {
+        internal float X, Y, AlongX, AlongY, DriftX, DriftY, Amount, Age;
+    }
     private Image _image;
     private ImageTexture _texture;
 
@@ -78,6 +86,7 @@ internal sealed class WaterRipples
     /// <summary>For the probe and the perf table: steps run and stamps made so far.</summary>
     public int Steps { get; private set; }
     public int Stamps { get; private set; }
+    internal int HullStamps { get; private set; }
     public double LastUpdateMs { get; private set; }
 
     /// <summary>Forget everything: a new map, a style switched off and on.</summary>
@@ -85,6 +94,8 @@ internal sealed class WaterRipples
     {
         Array.Clear(_now);
         Array.Clear(_before);
+        Array.Clear(_wake);
+        _ribbons.Clear();
         _boats.Clear();
         _items.Clear();
         _effects.Clear();
@@ -129,6 +140,8 @@ internal sealed class WaterRipples
             // Calm long enough: one last flat upload, then nothing per frame.
             Array.Clear(_now);
             Array.Clear(_before);
+            Array.Clear(_wake);
+            _ribbons.Clear();
             stepped = true;
         }
 
@@ -201,6 +214,7 @@ internal sealed class WaterRipples
 
         OriginX = newX;
         OriginY = newY;
+        DrawWake();
         return true;
     }
 
@@ -243,6 +257,16 @@ internal sealed class WaterRipples
         }
         _before = now;
         _now = before;
+        for (int i = _ribbons.Count - 1; i >= 0; i--)
+        {
+            WakeRibbon ribbon = _ribbons[i];
+            ribbon.Age += StepSeconds;
+            if (ribbon.Age >= 4f) { _ribbons.RemoveAt(i); continue; }
+            ribbon.X += ribbon.DriftX * StepSeconds;
+            ribbon.Y += ribbon.DriftY * StepSeconds;
+            _ribbons[i] = ribbon;
+        }
+        DrawWake();
         Steps++;
     }
 
@@ -250,7 +274,7 @@ internal sealed class WaterRipples
     {
         for (int i = 0; i < _pixels.Length; i++)
         {
-            _pixels[i] = (byte)Math.Clamp((int)((_now[i] * 0.5f + 0.5f) * 255f + 0.5f), 0, 255);
+            _pixels[i] = (byte)Math.Clamp((int)(((_now[i] + _wake[i]) * 0.5f + 0.5f) * 255f + 0.5f), 0, 255);
         }
 
         if (_image == null)
@@ -295,7 +319,9 @@ internal sealed class WaterRipples
         {
             return 0f;
         }
-        return (_now[ty * Size + tx] + _now[ty * Size + tx + 1] + _now[(ty + 1) * Size + tx] + _now[(ty + 1) * Size + tx + 1]) * 0.25f;
+        int i = ty * Size + tx;
+        return (_now[i] + _wake[i] + _now[i + 1] + _wake[i + 1]
+            + _now[i + Size] + _wake[i + Size] + _now[i + Size + 1] + _wake[i + Size + 1]) * .25f;
     }
 
     // ---- what disturbs the water --------------------------------------
@@ -371,7 +397,7 @@ internal sealed class WaterRipples
 
             float dx = x - was.X, dy = y - was.Y;
             _boats[item.Serial] = (x, y);
-            if (dx * dx + dy * dy < 1e-4f)
+            if (dx * dx + dy * dy < 1e-8f)
             {
                 continue;
             }
@@ -404,24 +430,69 @@ internal sealed class WaterRipples
         int samples = (int)MathF.Ceiling(distance * 2f);
         // Surface displacement per hull cell travelled, before the preset's
         // ripple strength. Subdivision changes sample positions, not total input.
-        const float pushPerCell = 0.18f;
+        const float pushPerCell = 0.3f;
         float push = pushPerCell * distance / samples;
+        float forwardX = dx / distance, forwardY = dy / distance;
+        float sideX = -forwardY, sideY = forwardX;
+        float halfX = (r.Width - r.X) * .5f, halfY = (r.Height - r.Y) * .5f;
+        float length = Math.Abs(forwardX) * halfX + Math.Abs(forwardY) * halfY;
+        float width = Math.Abs(sideX) * halfX + Math.Abs(sideY) * halfY;
         for (int sample = 1; sample <= samples; sample++)
         {
             // Midpoint integration keeps one-cell packet steps centred on the
             // same path as smaller interpolated steps, including a heading change.
             float fraction = (sample - 0.5f) / samples;
             float sx = fromX + dx * fraction, sy = fromY + dy * fraction;
-            for (int ox = r.X; ox <= r.Width; ox++)
+            sx += (r.X + r.Width) * .5f - forwardX * (length + .35f);
+            sy += (r.Y + r.Height) * .5f - forwardY * (length + .35f);
+            // Leave two continuous stern shoulders. Older sections move outward
+            // and aft, forming trailing arms rather than concentric hull circles.
+            for (int side = -1; side <= 1; side++)
             {
-                Stamp(sx + ox, sy + r.Y - 0.5f, 0.5f, push);
-                Stamp(sx + ox, sy + r.Height + 0.5f, 0.5f, push);
+                if (_ribbons.Count == 2048) _ribbons.RemoveAt(0);
+                float ax = -forwardX + sideX * side * .4f;
+                float ay = -forwardY + sideY * side * .4f;
+                float inverse = 1f / MathF.Sqrt(ax * ax + ay * ay);
+                _ribbons.Add(new WakeRibbon {
+                    X = sx + sideX * side * width * .8f, Y = sy + sideY * side * width * .8f,
+                    AlongX = ax * inverse, AlongY = ay * inverse,
+                    DriftX = sideX * side * .65f - forwardX * .15f,
+                    DriftY = sideY * side * .65f - forwardY * .15f,
+                    Amount = push * Strength * (side == 0 ? .35f : 1f)
+                });
+                Stamps++;
+                HullStamps++;
             }
-            for (int oy = r.Y; oy <= r.Height; oy++)
-            {
-                Stamp(sx + r.X - 0.5f, sy + oy, 0.5f, push);
-                Stamp(sx + r.Width + 0.5f, sy + oy, 0.5f, push);
-            }
+        }
+        _calmFor = 0;
+        DrawWake();
+    }
+
+    private void DrawWake()
+    {
+        Array.Clear(_wake);
+        foreach (WakeRibbon ribbon in _ribbons)
+        {
+            float cx = (ribbon.X - OriginX + .5f) * PerCell;
+            float cy = (ribbon.Y - OriginY + .5f) * PerCell;
+            // Long overlapping strips bridge individual server movement ticks;
+            // short round kernels read as a string of beads even without waves.
+            const float alongRadius = 2.2f * PerCell;
+            float acrossRadius = (.55f + ribbon.Age * .06f) * PerCell;
+            float fade = 1f - ribbon.Age / 4f;
+            float amplitude = ribbon.Amount * fade * fade;
+            const int reach = 6;
+            for (int y = Math.Max(1, (int)cy - reach); y <= Math.Min(Size - 2, (int)cy + reach); y++)
+                for (int x = Math.Max(1, (int)cx - reach); x <= Math.Min(Size - 2, (int)cx + reach); x++)
+                {
+                    float ox = x + .5f - cx, oy = y + .5f - cy;
+                    float along = (ox * ribbon.AlongX + oy * ribbon.AlongY) / alongRadius;
+                    float across = (-ox * ribbon.AlongY + oy * ribbon.AlongX) / acrossRadius;
+                    if (Math.Abs(along) >= 1f || Math.Abs(across) >= 1f) continue;
+                    float taper = .5f + .5f * MathF.Cos(along * MathF.PI);
+                    // One narrow crest/trough across a ribbon, never a radial pulse.
+                    _wake[y * Size + x] += amplitude * taper * MathF.Cos(across * MathF.PI) * (.5f + .5f * MathF.Cos(across * MathF.PI));
+                }
         }
     }
 
@@ -445,7 +516,17 @@ internal sealed class WaterRipples
             bool arrived = known
                 ? was.X != item.X || was.Y != item.Y
                 : !_jumped && Math.Abs(item.X - world.Player.X) < InsideView && Math.Abs(item.Y - world.Player.Y) < InsideView;
-            if (arrived && mask.WaterAt(item.X, item.Y, out int z) && item.Z <= z + 1)
+            // Planks, holds and tillers are separate server Items at water Z.
+            // Their movement belongs to the hull wake, not dropped-item splashes.
+            bool aboard = false;
+            if (arrived)
+                foreach (uint serial in _boats.Keys)
+                {
+                    Item boat = world.Items.Get(serial);
+                    if (boat?.MultiInfo is Rectangle hull && WithinHull(hull, boat.X, boat.Y, item.X, item.Y))
+                    { aboard = true; break; }
+                }
+            if (arrived && !aboard && mask.WaterAt(item.X, item.Y, out int z) && item.Z <= z + 1)
             {
                 Stamp(item.X, item.Y, 0.6f, 0.6f);
             }
@@ -516,4 +597,8 @@ internal sealed class WaterRipples
             _effects.Remove(e);
         }
     }
+
+    internal static bool WithinHull(Rectangle hull, int boatX, int boatY, int x, int y) =>
+        x >= boatX + hull.X - 1 && x <= boatX + hull.Width + 1
+        && y >= boatY + hull.Y - 1 && y <= boatY + hull.Height + 1;
 }

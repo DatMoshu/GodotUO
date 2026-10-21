@@ -34,8 +34,13 @@ its model does not use a replacement tint or glints. Pixel and Cel retain
 their characteristic bands even when palette levels is zero.
 UO+ gives local ripple crests a muted blue-grey lift separately from ambient
 shimmer, so wakes remain visible over dark native tiles without white foam.
-Moving native hulls stamp their swept path by distance travelled; stopped
-hulls and jumps over four cells add no new wake. Existing waves keep decaying.
+Moving native hulls leave narrow stern ribbons, swept by distance travelled.
+Older sections flow outward and aft and fade over four seconds; they do not
+enter the circular splash-wave simulation. Planks, holds and other items within
+the hull footprint do not emit separate impact rings as the boat moves.
+Stopped hulls and jumps over four cells add no new wake. Splashes still spread
+and decay with wave retention. The synthetic moving hull uses the same wake path.
+TOOLS diagnostics expose cumulative `hullStamps` separately from all ripple inputs.
 Pixel glint strength scales highlight brightness as well as crest selection;
 zero disables it and one allows full bright crests. Its curated starting
 preset uses gentler swells and glints. The UO+ and Pixel editor starters use

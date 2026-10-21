@@ -1798,7 +1798,7 @@ the current water mask, and `playerDisturbs` (a wet cell with the player no
 higher than surface + 1). This is geometric eligibility, not proof that the
 player emitted a stamp. The mask describes the last styled draw, can be stale
 under Classic or during transitions, and treats unknown cells as wet.
-`rippleStamps` and `rippleSteps` are cumulative
+`rippleStamps`, `hullStamps` (directional boat-ribbon inputs only) and `rippleSteps` are cumulative
 process counters; compare samples rather than assuming they reset on a style
 or map change. `lastUpdateMs` is the most recent ripple update duration, not a
 performance benchmark. Reading these fields changes no style or wave state.
@@ -2891,10 +2891,16 @@ at 20 Hz on the CPU (a front moves about three cells a second) over the ripple w
 shifts by whole cells when the player is 16 cells from its centre, keeping
 the waves inside). Disturbances: a mobile on a water cell no higher than its
 surface + 1 (moving pushes harder than standing); a multi on water that moves
-(its hull outline, `Item.MultiInfo`, at a rate scaled by its speed); an item that
+(stern ribbons based on `Item.MultiInfo`, integrated by distance travelled); an item that
 moves onto water or appears there within 14 cells of the player; a fixed
 effect that appears over water and a moving effect that ends there. After 6
-seconds without a disturbance the field stops stepping and uploading. The
+seconds without a disturbance the field stops stepping and uploading. Boat
+ribbons are a separate bounded field: narrow crest/trough strips leave the
+stern, advect outward and aft at 20 Hz, and fade over four seconds without
+entering the circular impact-wave equation. Items inside a water multi's hull
+footprint do not add dropped-item splashes. Stopped boats and jumps beyond
+four cells add no ribbons. The editor's synthetic hull uses this same input.
+The
 style's `BindRipples` sets the strength and damping (the `uo` style: 1.0 and
 0.985 a step). Continuous pushes are rates per second, so the field looks the
 same at any frame rate. A style is `IWaterStyle` (`Id`, `DisplayName`, `Bind`,

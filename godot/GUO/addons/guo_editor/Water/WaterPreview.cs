@@ -211,18 +211,15 @@ internal partial class WaterPreview : SubViewportContainer
         {
             if (Boat)
             {
+                float was = _boat;
                 _boat += .08f; if (_boat > 3) _boat = -3;
-                // A moving synthetic hull: two sides and a bow; the field leaves the trail.
-                EachField(field =>
-                {
-                    field.Stamp(_boat, -1, .45f, .18f);
-                    field.Stamp(_boat, 1, .45f, .18f);
-                    field.Stamp(_boat + 1, 0, .5f, .25f);
-                });
+                // The same directional stern wake as a native moving hull.
+                EachField(field => field.StampHull(new GUO.Compat.Rectangle(-1, -1, 1, 1), was, 0, _boat, 0));
             }
+            EachField(field => field.StepForProbe(1));
             _step -= .05f; steps++;
         }
-        if (steps > 0) { EachField(field => field.StepForProbe(steps)); BindWaves(); }
+        if (steps > 0) BindWaves();
     }
 
     public override void _Process(double delta) { if (IsVisibleInTree() || LiveWorld) Advance((float)delta); }

@@ -83,6 +83,8 @@ public partial class WaterProbe : Node
             Require(ripples.Texture != null && ripples.Texture.GetWidth() == WaterRipples.Size, "the ripple texture");
 
             var hull = new GUO.Compat.Rectangle(-2, -4, 2, 4);
+            Require(WaterRipples.WithinHull(hull, 1000, 1000, 1002, 1004), "boat fittings must be covered by the hull disturbance");
+            Require(!WaterRipples.WithinHull(hull, 1000, 1000, 1010, 1010), "items in open water must retain impact splashes");
             var packetWake = new WaterRipples(); packetWake.CentreOnForProbe(1000, 1000);
             var interpolatedWake = new WaterRipples(); interpolatedWake.CentreOnForProbe(1000, 1000);
             packetWake.StampHull(hull, 1000, 1000, 1000, 1002);
@@ -97,10 +99,28 @@ public partial class WaterProbe : Node
                     hullEnergy += Math.Abs(a);
                 }
             Require(hullEnergy > .1f, "a travelling hull must disturb its path");
+            float sternEnergy = 0;
+            for (int x = 994; x <= 1006; x++)
+                for (int y = 992; y <= 1010; y++)
+                {
+                    float height = Math.Abs(packetWake.HeightAt(x, y));
+                    if (y >= 1000) Require(height < 1e-6f, "boat ribbons must trail the stern, not encircle the hull");
+                    else sternEnergy += height;
+                }
+            Require(sternEnergy > .1f, "stern ribbons must remain visible");
+            packetWake.StepForProbe(40);
+            for (int x = 994; x <= 1006; x++)
+                for (int y = 1000; y <= 1010; y++)
+                    Require(Math.Abs(packetWake.HeightAt(x, y)) < 1e-6f, "boat ribbons must flow aft without outward circular wave propagation");
             int hullStamps = packetWake.Stamps;
             packetWake.StampHull(hull, 1000, 1002, 1000, 1002);
             packetWake.StampHull(hull, 1000, 1002, 1050, 1050);
             Require(packetWake.Stamps == hullStamps, "stopped and teleported boats must not stamp a wake");
+            packetWake.StepForProbe(80);
+            float wakeAfterStop = 0;
+            for (int x = 990; x <= 1010; x++)
+                for (int y = 988; y <= 1010; y++) wakeAfterStop += Math.Abs(packetWake.HeightAt(x, y));
+            Require(wakeAfterStop < 1e-6f, "a stopped boat's ribbons must fully fade");
 
             int packs = PackStyles();
 

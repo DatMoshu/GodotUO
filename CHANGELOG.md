@@ -9,6 +9,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - UO+ keeps its quiet native surface while making boat wakes and local
   ripples readable on dark water. Moving hulls now disturb their swept path
   by distance travelled, avoiding frame-dependent wake strength.
+- Moving boats leave flowing stern ribbons rather than perimeter impact rings;
+  boat fittings no longer trigger dropped-item splashes. The synthetic hull
+  preview shares that wake path, and diagnostics distinguish hull inputs.
 - Pixel water starts with gentler swells and highlights; its glint strength
   now controls highlight brightness. UO+ and Pixel editor starters match
   their curated runtime packs.
