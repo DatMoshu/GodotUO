@@ -21,6 +21,9 @@ run. This is separate from the following live acceptance procedure.
    current shard's land graphic IDs. After 15 seconds patches are partly filled;
    after 30 seconds full patches have splash/ripple responses to rain.
 4. Verify unlisted dry tiles, sloping dry terrain and covered cells stay dry.
+   Wet static water above sloping dry ground must still receive water rings.
+   With only puddles enabled, even listed Wet land must have no water impacts.
+   Cells whose object chain exceeds 64 entries are skipped conservatively.
    Disable puddles: patches disappear immediately. Re-enable to begin filling.
 5. Enable wet player. After four seconds, drops trace the current dressed body
    contour. Walk and turn; drops follow animation alpha, never a bounding box.

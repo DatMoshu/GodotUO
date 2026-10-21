@@ -26,6 +26,13 @@ would couple this lane to simultaneous water work and omit Classic water.
 A fullscreen overlay would paint rings across foreground objects. Independent
 pixel primitives in the existing painter queue avoid both problems.
 
+The follow-up supplies a shared, toggle-independent rain intensity signal for
+the water lane: rain and storm-brewing Count/70 clamped to 0–1, zero otherwise.
+Styled-water simulation integration and duplicate-ring suppression travel
+together in the water lane's PR; this signal alone does not alter rendering.
+Tile inspection is bounded to 64 objects per pass and skips incomplete cells
+rather than guessing whether a roof or higher surface blocks the rain.
+
 ## ADR dependencies and engine compatibility
 
 Depends on ADR-0001/0002 (scene seam and canvas batcher) and the existing L4 build

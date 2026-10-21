@@ -41,21 +41,29 @@ internal partial class GameScene
                 Land land = null;
                 GameObject waterSurface = null;
                 bool covered = false;
-                for (GameObject o = chunk.GetHeadObject(cx, cy); o != null; o = o.TNext)
+                int objects = 0;
+                GameObject head = chunk.GetHeadObject(cx, cy);
+                GameObject o = head;
+                for (; o != null && objects < 64; o = o.TNext, objects++)
                 {
                     if (o is Land l) land = l;
                     bool wet = o is Land wl && wl.TileData.IsWet || o is Static ws && ws.ItemData.IsWet;
                     if (wet && (waterSurface == null || o.Z > waterSurface.Z)) waterSurface = o;
                 }
-                if (land == null || !land.AllowedToDraw || land.IsStretched && !land.TileData.IsWet) continue;
-                for (GameObject o = chunk.GetHeadObject(cx, cy); o != null; o = o.TNext)
+                // Incomplete cells cannot be proven exposed. A wet static can
+                // still be flat water above sloped dry ground.
+                if (o != null || land == null || !land.AllowedToDraw ||
+                    waterSurface == null && land.IsStretched && !land.TileData.IsWet) continue;
+                objects = 0;
+                for (o = head; o != null && objects < 64; o = o.TNext, objects++)
                 {
                     if (o.Z > (waterSurface?.Z ?? land.Z) && (o is Static s && !s.ItemData.IsWet && (s.ItemData.IsRoof || s.ItemData.IsSurface) || o is Multi))
                     { covered = true; break; }
                 }
-                if (covered) continue;
+                if (covered || o != null) continue;
                 bool water = waterSurface != null;
-                bool puddle = state.Settings.Puddles && (state.Settings.PuddleTiles.Contains(land.Graphic) ||
+                // The puddle toggle must not independently enable water drops.
+                bool puddle = !water && state.Settings.Puddles && (state.Settings.PuddleTiles.Contains(land.Graphic) ||
                     state.Settings.Cobblestone && (land.TileData.Name?.Contains("cobblestone", StringComparison.OrdinalIgnoreCase) ?? false));
                 if ((!water || !state.Settings.WaterDrops) && !puddle) continue;
                 GameObject source = water ? waterSurface : land;

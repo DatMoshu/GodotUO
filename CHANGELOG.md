@@ -6,6 +6,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Labs
+- Weather puddle settings no longer enable water impacts on listed Wet tiles.
+  Rain rings also reach wet statics above sloped ground; crowded cells are
+  skipped when exposure cannot be checked within the scan budget.
 - An opt-in Debug build offers UO+ rain rings, tile puddles and a fading wet-player
   silhouette. Each experiment starts off; the session controls include a drop
   budget and puddle tile list. Labs are excluded from exported clients.
