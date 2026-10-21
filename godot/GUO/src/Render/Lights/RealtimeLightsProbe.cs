@@ -21,6 +21,24 @@ public partial class RealtimeLightsProbe : Node
     {
         try
         {
+            using (var parent = new Node())
+            using (var target = new RealtimeLightTarget())
+            {
+                target.EnsureSize(parent, 4, 4);
+                byte[] bytes = new byte[16];
+                target.SetField(bytes, 2, 2, 0, 0, 1, 1, Colors.White);
+                target.SetField(bytes, 2, 2, 3, 4, 1, 1, Colors.Black);
+                Require(target.FieldUploads == 1, "Unchanged light bytes must skip upload even when origin/ambient changes");
+                bytes[0] = 1;
+                target.SetField(bytes, 2, 2, 3, 4, 1, 1, Colors.Black);
+                Require(target.FieldUploads == 2, "Changed bytes in a reused buffer must upload");
+                target.SetField(bytes, 1, 4, 3, 4, 1, 1, Colors.Black);
+                Require(target.FieldUploads == 3, "Changed dimensions must recreate even with identical bytes");
+                target.Teardown();
+                target.EnsureSize(parent, 4, 4);
+                target.SetField(bytes, 1, 4, 3, 4, 1, 1, Colors.Black);
+                Require(target.FieldUploads == 4, "Recreated targets must upload their first frame");
+            }
             var profile = JsonSerializer.Deserialize("{}", ProfileJsonContext.DefaultToUse.Profile);
             Require(!profile.RealtimeLights, "Existing profiles must default off");
             profile.RealtimeLights = true;

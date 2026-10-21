@@ -68,24 +68,30 @@ namespace GUO.Renderer.Lights
         public const int MinColumns = 6;
 
         private static readonly Dictionary<ushort, WallFaces> _cache = new();
+        private static object _artSource;
 
         /// <summary>The faces of a static's art (cached per graphic); none when it reads as no wall plane.</summary>
         public static WallFaces For(ushort graphic)
         {
+            var arts = Client.Game?.UO?.FileManager?.Arts;
+            if (!ReferenceEquals(_artSource, arts))
+            {
+                _cache.Clear();
+                _artSource = arts;
+            }
+            if (arts == null) return default;
             if (_cache.TryGetValue(graphic, out WallFaces faces)) return faces;
-            faces = default;
             try
             {
-                var files = Client.Game?.UO?.FileManager;
-                if (files?.Arts != null)
-                {
-                    var art = files.Arts.GetArt((uint)(graphic + GUO.Assets.ArtLoader.MAX_LAND_DATA_INDEX_COUNT));
-                    faces = Classify(art.Pixels, art.Width, art.Height);
-                }
+                var art = arts.GetArt((uint)(graphic + GUO.Assets.ArtLoader.MAX_LAND_DATA_INDEX_COUNT));
+                if (art.Width <= 0 || art.Height <= 0 || art.Pixels.Length < art.Width * art.Height)
+                    return default;
+                faces = Classify(art.Pixels, art.Width, art.Height);
             }
             catch (Exception)
             {
-                faces = default;
+                // Loading may be transiently unavailable; retry next time.
+                return default;
             }
 
             _cache[graphic] = faces;
@@ -94,6 +100,9 @@ namespace GUO.Renderer.Lights
 
         /// <summary>Forget every classification (the art changed).</summary>
         public static void ClearCache() => _cache.Clear();
+
+        /// <summary>Forget a static whose native art was refreshed.</summary>
+        public static void Invalidate(ushort graphic) => _cache.Remove(graphic);
 
         /// <summary>
         /// Fit the silhouette's bottom edge: one "\" or "/" line, or two

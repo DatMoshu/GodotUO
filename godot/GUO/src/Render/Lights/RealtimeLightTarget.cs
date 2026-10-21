@@ -58,6 +58,7 @@ void fragment() {
         private Image _fieldImage;
         private ImageTexture _fieldTexture;
         private int _fieldW, _fieldH;
+        private byte[] _uploadedField = Array.Empty<byte>();
         private int _originX, _originY, _gridW = 1, _gridH = 1;
         private readonly List<Vector2> _points = new();
         private readonly List<Color> _colors = new();
@@ -77,6 +78,7 @@ void fragment() {
         /// <summary>Land quads and sprite quads sent by the last <see cref="End"/> (the cost log).</summary>
         public int LastQuads { get; private set; }
         public int LastSprites { get; private set; }
+        internal int FieldUploads { get; private set; }
 
         public void EnsureSize(Node parent, int width, int height)
         {
@@ -118,18 +120,28 @@ void fragment() {
             _originY = originY;
             _gridW = Math.Max(1, gridW);
             _gridH = Math.Max(1, gridH);
-            if (_fieldImage == null || _fieldW != width || _fieldH != height)
+            bool resized = _fieldImage == null || _fieldW != width || _fieldH != height;
+            bool changed = resized || !rgba.AsSpan().SequenceEqual(_uploadedField);
+            if (resized)
             {
+                _fieldTexture?.Dispose();
+                _fieldImage?.Dispose();
                 _fieldImage = Image.CreateFromData(width, height, false, Image.Format.Rgba8, rgba);
                 _fieldTexture = ImageTexture.CreateFromImage(_fieldImage);
                 _fieldW = width;
                 _fieldH = height;
                 _material.SetShaderParameter("field", _fieldTexture);
             }
-            else
+            else if (changed)
             {
                 _fieldImage.SetData(width, height, false, Image.Format.Rgba8, rgba);
                 _fieldTexture.Update(_fieldImage);
+            }
+            if (changed)
+            {
+                if (_uploadedField.Length != rgba.Length) _uploadedField = new byte[rgba.Length];
+                rgba.CopyTo(_uploadedField, 0);
+                FieldUploads++;
             }
 
             _material.SetShaderParameter("roof_ambient", new Vector3(roofAmbient.R, roofAmbient.G, roofAmbient.B));
@@ -234,6 +246,7 @@ void fragment() {
             _fieldImage?.Dispose();
             _fieldImage = null;
             _fieldW = _fieldH = 0;
+            _uploadedField = Array.Empty<byte>();
             _target?.Dispose();
             _target = null;
         }
