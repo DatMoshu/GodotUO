@@ -15,7 +15,7 @@ public partial class MultiEditView
 {
     internal ConfirmationDialog TextReview { get; private set; }
     private int _textReviewRequest;
-    internal static bool IsReviewedText(string format) => format is "txt-fiddler" or "uoa-fiddler" or "wsc-fiddler";
+    internal static bool IsReviewedText(string format) => format is "txt-fiddler" or "uoa-fiddler" or "wsc-fiddler" or "csv-fiddler";
 
     private async Task<MultiPart[]> ReadFiddlerTextAsync(byte[] bytes, string format = "txt-fiddler")
     {
@@ -24,16 +24,18 @@ public partial class MultiEditView
         if (raw["error"] != null) throw new IOException(raw["error"].GetValue<string>());
         JsonArray rows = raw["components"] as JsonArray ?? throw new IOException("TXT reader returned no components.");
         JsonArray flags = raw["text_flags"] as JsonArray ?? throw new IOException("TXT reader returned no flags.");
+        JsonArray extra=raw["text_extra"] as JsonArray;
         if (rows.Count is < 1 or > 65535 || rows.Count != flags.Count) throw new IOException("TXT reader returned an invalid component count.");
+        if (format=="csv-fiddler" && (extra==null || extra.Count!=rows.Count)) throw new IOException("CSV reader returned an invalid extra-field count.");
         return rows.Select((row, i) => new MultiPart { Id = checked((ushort)(int)row[0]), X = checked((short)(int)row[1]),
-            Y = checked((short)(int)row[2]), Z = checked((short)(int)row[3]), Shown = (int)flags[i] != 0, TextFlags = (int)flags[i] }).ToArray();
+            Y = checked((short)(int)row[2]), Z = checked((short)(int)row[3]), Shown = (int)flags[i] != 0, TextFlags = (int)flags[i], TextExtra=extra==null ? null : (int)extra[i] }).ToArray();
     }
 
     private async Task<byte[]> FiddlerTextBytesAsync(MultiPart[] parts, string format = "txt-fiddler")
     {
-        var rows = new JsonArray(); var flags = new JsonArray();
-        foreach (MultiPart p in parts) { rows.Add((JsonNode)new JsonArray(p.Id, p.X, p.Y, p.Z, p.Shown ? 1 : 0)); flags.Add(p.ExportTextFlags); }
-        JsonObject result = await _gen.RequestAsync("export", new JsonObject { ["format"] = format, ["components"] = rows, ["text_flags"] = flags });
+        var rows = new JsonArray(); var flags = new JsonArray(); var extra=new JsonArray();
+        foreach (MultiPart p in parts) { rows.Add((JsonNode)new JsonArray(p.Id, p.X, p.Y, p.Z, p.Shown ? 1 : 0)); flags.Add(p.ExportTextFlags); extra.Add(p.TextExtra.GetValueOrDefault()); }
+        JsonObject result = await _gen.RequestAsync("export", new JsonObject { ["format"] = format, ["components"] = rows, ["text_flags"] = flags, ["text_extra"]=extra });
         if (result["error"] != null) throw new IOException(result["error"].GetValue<string>());
         return Encoding.UTF8.GetBytes(result["data"].GetValue<string>());
     }
@@ -45,8 +47,8 @@ public partial class MultiEditView
         {
             int request = ++_textReviewRequest;
             if (!IsReviewedText(format)) throw new IOException("Choose a supported reviewed text format.");
-            bool uoa = format == "uoa-fiddler", wsc = format == "wsc-fiddler";
-            string extension = wsc ? "WSC" : uoa ? "UOA" : "TXT";
+            bool uoa = format == "uoa-fiddler", wsc = format == "wsc-fiddler", csv=format=="csv-fiddler";
+            string extension = csv ? "CSV" : wsc ? "WSC" : uoa ? "UOA" : "TXT";
             string label = $"Fiddler {extension}";
             var lifetime = _writeLifetime.Token;
             TextReview?.QueueFree(); TextReview = null;
@@ -54,6 +56,7 @@ public partial class MultiEditView
             MultiTextInput input = export ? null : new(path);
             MultiTextDestination destination = export ? new(path) : null;
             MultiPart[] original = export ? snapshot.Parts : await ReadFiddlerTextAsync(input.Bytes, format);
+            if(export && !csv && original.Any(p=>p.TextExtra.GetValueOrDefault()!=0)) throw new IOException("Choose Fiddler CSV to preserve nonzero Unk1 values.");
             byte[] output = export ? await FiddlerTextBytesAsync(original, format) : null;
             if (lifetime.IsCancellationRequested || !IsInsideTree() || request != _textReviewRequest) return;
             snapshot.Check(_doc); input?.Check(); destination?.Check();
@@ -64,6 +67,7 @@ public partial class MultiEditView
             body.AddChild(AssetUi.Label(Path.GetFileName(path)));
             body.AddChild(AssetUi.Label($"{original.Length:N0} components · {(uoa || wsc ? "decimal" : "hexadecimal")} IDs · signed decimal offsets · order and duplicates preserved"));
             if (uoa) body.AddChild(AssetUi.Label("Fiddler ignores the first three input header values. Export writes version 6, template 1, item version −1 and the current component count."));
+            if (csv) body.AddChild(AssetUi.Label("CSV retains signed 32-bit flags and Unk1. IDs/flags export as hexadecimal; offsets stay decimal. Other formats refuse nonzero Unk1 loss."));
             int opaque = original.Count(p => p.ExportTextFlags is not (0 or 1));
             body.AddChild(AssetUi.Label(wsc
                 ? (export ? "WSC writes Color 0 and no flags. Fiddler may shift positive coordinates when reopening it. ID 65535 is refused to avoid its sentinel defect."
@@ -93,9 +97,10 @@ public partial class MultiEditView
                 loss.Toggled += value => dialog.GetOkButton().Disabled = !value;
             }
             var bounds = AssetUi.Label(""); body.AddChild(bounds);
-            var rows = new Tree { Columns = 5, HideRoot = true, ColumnTitlesVisible = true, AccessibilityName = "Reviewed multi components",
-                CustomMinimumSize = new Vector2(0, wsc ? 160 : 200) * EditorInterface.Singleton.GetEditorScale() }; body.AddChild(rows);
+            var rows = new Tree { Columns = csv ? 6 : 5, HideRoot = true, ColumnTitlesVisible = true, AccessibilityName = "Reviewed multi components",
+                CustomMinimumSize = new Vector2(0, wsc ? 160 : csv ? 180 : 200) * EditorInterface.Singleton.GetEditorScale() }; body.AddChild(rows);
             foreach (var c in new[] { (0,"Item ID"), (1,"X"), (2,"Y"), (3,"Z"), (4,"Flags") }) rows.SetColumnTitle(c.Item1,c.Item2);
+            if(csv) rows.SetColumnTitle(5,"Unk1");
             var status = AssetUi.Label(""); status.Visible = false; body.AddChild(status);
             MultiPart[] SelectedParts()
             {
@@ -120,7 +125,7 @@ public partial class MultiEditView
                     MultiPart[] parts = SelectedParts();
                     bounds.Text = $"X {parts.Min(p => p.X)}…{parts.Max(p => p.X)} · Y {parts.Min(p => p.Y)}…{parts.Max(p => p.Y)} · Z {parts.Min(p => p.Z)}…{parts.Max(p => p.Z)}";
                     rows.Clear(); TreeItem root = rows.CreateItem();
-                    foreach (MultiPart p in parts.Take(200)) { TreeItem row=rows.CreateItem(root); row.SetText(0,uoa || wsc ? p.Id.ToString() : $"0x{p.Id:X}"); row.SetText(1,p.X.ToString()); row.SetText(2,p.Y.ToString()); row.SetText(3,p.Z.ToString()); row.SetText(4,p.ExportTextFlags.ToString()); }
+                    foreach (MultiPart p in parts.Take(200)) { TreeItem row=rows.CreateItem(root); row.SetText(0,uoa || wsc ? p.Id.ToString() : $"0x{p.Id:X}"); row.SetText(1,p.X.ToString()); row.SetText(2,p.Y.ToString()); row.SetText(3,p.Z.ToString()); row.SetText(4,p.ExportTextFlags.ToString()); if(csv) row.SetText(5,p.TextExtra.GetValueOrDefault().ToString()); }
                     status.Visible = false; dialog.GetOkButton().Disabled = loss != null && !loss.ButtonPressed;
                 }
                 catch (Exception e) { status.Text = e.Message; status.Visible = true; dialog.GetOkButton().Disabled = true; }

@@ -153,6 +153,12 @@ consent. It preserves the legacy color-retaining WSC profile and refuses Fiddler
 65535 sentinel defect. Its independent probe records the legacy differences;
 spatial rendering, settings migration and other formats remain separate.
 
+F24a's [reviewed Fiddler CSV](multi_fiddler_csv.md) retains hexadecimal IDs,
+signed flags and the trailing `Unk1` int32 through project/history, stamps and
+one-to-one transforms. It adds an extra review column and refuses nonzero
+extra-field loss to other formats/native staging. Legacy CSV dialects remain
+separate; native translation and spatial rendering are not certified here.
+
 Phase 1 proposal, 2026-10-19. guo-director first-pass review received;
 catalogue and survey await guo-director and exec-fable sign-off.
 F01a has separate director authorization for assignment (inbox #11093);

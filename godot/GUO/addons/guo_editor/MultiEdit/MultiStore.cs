@@ -63,7 +63,8 @@ internal static class MultiStore
         for (int i = 0; i < parts.Count; i++)
         {
             MultiPart p = parts[i];
-            string raw = p.TextFlags.HasValue ? ", " + p.TextFlags.Value.ToString(CultureInfo.InvariantCulture) : "";
+            string raw = p.TextFlags.HasValue || p.TextExtra.HasValue ? ", " + (p.TextFlags?.ToString(CultureInfo.InvariantCulture) ?? "null") : "";
+            if (p.TextExtra.HasValue) raw += ", " + p.TextExtra.Value.ToString(CultureInfo.InvariantCulture);
             sb.Append($"    [{p.Id}, {p.X}, {p.Y}, {p.Z}, {(p.Shown ? 1 : 0)}, {p.Hue}{raw}]{(i + 1 < parts.Count ? "," : "")}\n");
         }
 
@@ -92,6 +93,7 @@ internal static class MultiStore
                 Shown = c.GetArrayLength() < 5 || c[4].GetInt32() != 0,
                 Hue = c.GetArrayLength() > 5 ? (ushort)c[5].GetInt32() : (ushort)0,
                 TextFlags = c.GetArrayLength() > 6 && c[6].ValueKind != JsonValueKind.Null ? c[6].GetInt32() : null,
+                TextExtra = c.GetArrayLength() > 7 && c[7].ValueKind != JsonValueKind.Null ? c[7].GetInt32() : null,
             });
         }
 
@@ -202,8 +204,8 @@ internal static class MultiStore
             try
             {
                 ct.ThrowIfCancellationRequested();
-                if (snapshot.Any(p => p.ExportTextFlags is not (0 or 1)))
-                    throw new IOException("This multi contains opaque Fiddler text flags. Export reviewed Fiddler TXT or UOA to preserve them; native staging cannot preserve that flag contract yet.");
+                if (snapshot.Any(p => p.ExportTextFlags is not (0 or 1) || p.TextExtra.GetValueOrDefault()!=0))
+                    throw new IOException("This multi contains opaque Fiddler flags or nonzero CSV Unk1. Choose reviewed Fiddler CSV to preserve both; native translation requires a separate contract.");
                 stageDir = Path.GetFullPath(stageDir);
                 string client = EditorData.Setting("UO_CLIENT_DATA", "");
                 if (client.Length > 0 && IsInside(Path.GetFullPath(client), stageDir))

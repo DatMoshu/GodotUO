@@ -57,6 +57,7 @@ public partial class EditorSmoke
         File.WriteAllText(source,Record(0,65535,0,0,0));
         MeCheck("fiddler_wsc_sentinel_import_refused",await view.ImportFileAsync(source,"wsc-fiddler")!=null && doc.Parts[0].Hue==21);
         view.NewMulti();
+        await MeFiddlerCsvAsync(view,dir);
     }
 }
 #endif

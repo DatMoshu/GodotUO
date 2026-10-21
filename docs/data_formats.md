@@ -1837,6 +1837,12 @@ Same parameters and seed, same bytes.
   ID 65535, incomplete/duplicate fields and overflow are refused; input/output are bounded to 4 MiB and 65,535
   components. Automatic detection keeps the existing color-retaining `wsc` profile. See
   `docs/editor/multi_fiddler_wsc.md` for the seeded-minimum heuristic and explicit sentinel refusal.
+  `csv-fiddler` is also explicit: hexadecimal uint16 IDs/int32 flag bit patterns, decimal int16 offsets and
+  trailing signed int32 Unk1 (decimal or 0x hex on input, empty/absent means zero). Its parallel `text_extra`
+  array preserves Unk1 alongside `text_flags`; both arrays must match component count and int32 bounds.
+  Canonical output is `TileID,OffsetX,OffsetY,OffsetZ,Flag,Unk1` plus lower-case hex ID/flags/extra and CRLF.
+  Coordinates are preserved by default; count/byte budgets match reviewed TXT. Nonzero extra values block
+  lossy legacy/text/native export. See `docs/editor/multi_fiddler_csv.md` for project retention and review.
 
 The validator (section 16) also refuses a roof with floor open to the sky, a door with nowhere to stand on a side, and
 a stair whose foot is unreachable, whose arrival is not floor above, whose hole is not cut, or that does not climb the
@@ -1854,7 +1860,7 @@ diffable (one component per line) and keeps the hue, which a multi record cannot
 | `name` | The multi's name in a stage |
 | `source` | The client multi id it was opened from, or `null` |
 | `floor_z`, `storey_height` | `7` and `20`, the client's story heights |
-| `components` | `[item, x, y, z, shown, hue, text_flags?]` per component, in list order (the order breaks ties in painting): `item` and `hue` numbers, `shown` `1` or `0`, x/y from the centre. Optional seventh column retains original signed int32 Fiddler TXT flags; omitted for existing six-column documents. TXT export retains these flags while visibility matches, otherwise emits the edited visibility as 0/1. Native flag translation is separate and refuses opaque effective TXT flags. |
+| `components` | `[item, x, y, z, shown, hue, text_flags?, text_extra?]` per component, in list order (the order breaks ties in painting): `item` and `hue` numbers, `shown` `1` or `0`, x/y from the centre. Optional seventh column retains original signed int32 Fiddler text flags; omitted for existing six-column documents. Optional eighth column retains CSV's signed int32 `Unk1`; a null seventh placeholder is allowed when only the eighth is present. CSV export retains both fields; TXT/UOA retain flags while visibility matches, otherwise emit edited visibility as 0/1. Exporters that cannot retain nonzero `text_extra` refuse it. Native flag/extra translation is separate and refuses opaque effective flags or nonzero extra values. |
 
 Writing it to a stage goes through the built form of §16 (`components.json`: `[item, x, y, z]` with a
 fifth element `0` when hidden, plus a `multi.json` with `valid`, `problems`, `doors`, `size`,

@@ -1,6 +1,6 @@
-"""Build a read-only Fiddler TXT/UOA contract probe from an explicit pinned source.
+"""Build a read-only Fiddler TXT/UOA/CSV contract probe from an explicit pinned source.
 
-The unchanged TXT/UOA parsing cases and text export methods compile in an isolated
+The unchanged TXT/UOA/CSV parsing cases and text export methods compile in an isolated
 wrapper. Spatial image conversion and all other formats are excluded. Third-party
 source and binaries stay in the configured build directory, never this checkout.
 """
@@ -34,6 +34,10 @@ def build(source: Path, out: Path | None = None) -> Path:
     export = 'public void ExportToTextFile' + original.split('public void ExportToTextFile', 1)[1].split('public void ExportToWscFile', 1)[0]
     uoa_reader = original.split('case Multis.ImportType.UOA:', 1)[1].split('case Multis.ImportType.', 1)[0]
     uoa_export = 'public void ExportToUOAFile' + original.split('public void ExportToUOAFile', 1)[1].split('/// <summary>', 1)[0]
+    csv_tail = original.split('case Multis.ImportType.CSV:',1)[1].split('            ConvertList();',1)[0]
+    csv_reader = csv_tail[:csv_tail.rfind('            }')]
+    csv_extra = 'private static int ParseCsvUnk1'+original.split('private static int ParseCsvUnk1',1)[1].split('public void ExportToCsvFile',1)[0]
+    csv_export = 'public void ExportToCsvFile'+original.split('public void ExportToCsvFile',1)[1].split('public void ExportToXmlFile',1)[0]
     declaration = original.split('public struct MultiTileEntry', 1)[1].split('/// <summary>', 1)[0]
     entry = 'public struct MultiTileEntry' + declaration
     # Only the surrounding fields/CLI are ours. The reader case and writer method
@@ -50,15 +54,16 @@ try {
     if (args.Length != 2 || new FileInfo(args[1]).Length > 4 * 1024 * 1024)
         throw new InvalidDataException("Expected read/write and a bounded input file");
     Reference value;
-    if (args[0] == "read" || args[0] == "read-uoa") value = new Reference(args[1], args[0] == "read-uoa");
-    else if (args[0] == "write" || args[0] == "write-uoa") {
+    if (args[0] == "read" || args[0] == "read-uoa" || args[0] == "read-csv") value = new Reference(args[1], args[0]);
+    else if (args[0] == "write" || args[0] == "write-uoa" || args[0] == "write-csv") {
         using var json = JsonDocument.Parse(File.ReadAllBytes(args[1]));
         var rows = json.RootElement.GetProperty("records").EnumerateArray().Select(r => new Reference.MultiTileEntry {
             ItemId = r.GetProperty("id").GetUInt16(), OffsetX = r.GetProperty("x").GetInt16(),
             OffsetY = r.GetProperty("y").GetInt16(), OffsetZ = r.GetProperty("z").GetInt16(),
-            Flags = r.GetProperty("flags").GetInt32(), Unk1 = 0 }).ToArray();
+            Flags = r.GetProperty("flags").GetInt32(), Unk1 = r.TryGetProperty("unknown",out var extra) ? extra.GetInt32() : 0 }).ToArray();
         value = new Reference(rows);
-        if (args[0] == "write-uoa") value.ExportToUOAFile(json.RootElement.GetProperty("output").GetString()!);
+        if (args[0] == "write-csv") value.ExportToCsvFile(json.RootElement.GetProperty("output").GetString()!);
+        else if (args[0] == "write-uoa") value.ExportToUOAFile(json.RootElement.GetProperty("output").GetString()!);
         else value.ExportToTextFile(json.RootElement.GetProperty("output").GetString()!);
     } else throw new InvalidDataException("Expected read or write");
     Console.WriteLine(JsonSerializer.Serialize(new { records = value.SortedTiles.Select(r => new {
@@ -70,8 +75,8 @@ sealed class Reference {
     private int MaxHeight;
     public MultiTileEntry[] SortedTiles;
     public Reference(MultiTileEntry[] rows) { SortedTiles = rows; }
-    public Reference(string fileName, bool uoa) { _min = _max = Point.Empty; int itemCount; switch (uoa ? 1 : 0) { case 0:
-''' + reader + '\ncase 1:\n' + uoa_reader + '\n} }\n' + entry + '\n' + export + '\n' + uoa_export + '\n}\n'
+    public Reference(string fileName, string format) { _min = _max = Point.Empty; int itemCount; switch (format == "read-csv" ? 2 : format == "read-uoa" ? 1 : 0) { case 0:
+''' + reader + '\ncase 1:\n' + uoa_reader + '\ncase 2:\n' + csv_reader + '\n} }\n' + entry + '\n' + export + '\n' + uoa_export + '\n' + csv_extra + '\n' + csv_export + '\n}\n'
     out = (out or location()).resolve(); parity.protect_install(out)
     out.mkdir(parents=True, exist_ok=True)
     (out/'Program.cs').write_text(code, encoding='utf-8')
@@ -81,7 +86,7 @@ sealed class Reference {
     if result.returncode: raise RuntimeError('Fiddler text reference build failed: ' + (result.stdout + result.stderr)[-12000:])
     binary = out/'bin'/'Release'/'net10.0'/'Reference.dll'
     manifest = {'commit': COMMIT, 'source_sha256': SOURCE_SHA256, 'generated_sha256': hashlib.sha256(code.encode()).hexdigest(),
-                'binary_sha256': parity.digest(binary), 'scope': 'unchanged TXT/UOA cases and export methods; no ConvertList or image rendering'}
+                'binary_sha256': parity.digest(binary), 'scope': 'unchanged TXT/UOA/CSV cases, CSV extra parser and export methods; no ConvertList or image rendering'}
     (out/'identity.json').write_text(json.dumps(manifest, indent=2)+'\n', encoding='utf-8')
     return binary
 

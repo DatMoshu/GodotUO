@@ -26,6 +26,7 @@ public partial class MultiEditView
         ("uoab", "uoab", "UO Architect binary"),
         ("wsc-fiddler", "wsc", "Fiddler WSC (reviewed world items)"),
         ("wsc", "wsc", "GUO legacy WSC (keeps Color)"),
+        ("csv-fiddler", "csv", "Fiddler CSV (hex IDs/flags, retains Unk1)"),
         ("csv-punt", "csv", "CSV (PUNT)"),
         ("csv-swerv", "csv", "CSV (SWERV)"),
         ("centred", "csv", "CentrED# blueprint"),
@@ -98,6 +99,11 @@ public partial class MultiEditView
     {
         try { AssetActions.EnsureExportDestination(path); }
         catch (Exception e) { _status.Text = e.Message; return e.Message; }
+        if (format!="csv-fiddler" && _doc.Parts.Any(p=>p.TextExtra.GetValueOrDefault()!=0))
+        {
+            const string message="This format cannot preserve nonzero CSV Unk1. Choose Fiddler CSV to keep it.";
+            _status.Text=message; return message;
+        }
         if (!IsReviewedText(format) && _doc.Parts.Any(p => p.ExportTextFlags is not (0 or 1)))
         {
             const string message = "This format cannot preserve opaque Fiddler text flags. Choose reviewed Fiddler TXT or UOA to keep them.";

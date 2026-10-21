@@ -40,6 +40,7 @@ class Tile:
     hue: int = 0
     level: int = 0
     text_flags: int | None = None
+    text_extra: int | None = None
 
     def component(self) -> Component:
         return Component(self.item, self.x, self.y, self.z, self.visible)
@@ -121,7 +122,9 @@ def read_fiddler_txt(text: str, *, check_size: bool = True) -> list[Tile]:
     return out
 
 
-def write_fiddler_txt(tiles: list[Tile]) -> str:
+def write_fiddler_txt(tiles: list[Tile], *, allow_extra: bool = False) -> str:
+    if not allow_extra and any(t.text_extra not in (None,0) for t in tiles):
+        raise FormatError('This text format cannot preserve nonzero CSV Unk1; choose csv-fiddler')
     out = []
     if not tiles or len(tiles) > 65535: raise FormatError('Fiddler TXT requires 1 to 65535 components')
     for tile in tiles:
@@ -352,6 +355,52 @@ def write_fiddler_wsc(tiles: list[Tile]) -> str:
 
 # --- CSV ---------------------------------------------------------------------------------------
 
+def _fiddler_hex32(token: str) -> int:
+    digits=token.removeprefix('0x').removeprefix('0X')
+    if not re.fullmatch('[0-9a-fA-F]+',digits): raise FormatError('expected hexadecimal int32')
+    digits=digits.lstrip('0') or '0'
+    if len(digits)>8: raise FormatError('hexadecimal value exceeds int32 bits')
+    value=int(digits,16)
+    return value if value<2**31 else value-2**32
+
+
+def read_fiddler_csv(text: str) -> list[Tile]:
+    if len(text.encode('utf-8'))>4*1024*1024: raise FormatError('Fiddler CSV exceeds 4 MiB')
+    out=[]
+    for number,line in enumerate(text.splitlines(),1):
+        if line.strip().startswith('TileID,OffsetX'): continue
+        try:
+            fields=[f.strip() for f in line.split(',')]
+            if len(fields) not in (5,6): raise FormatError('expected ID,X,Y,Z,Flag and optional Unk1')
+            flags=_fiddler_hex32(fields[4]); extra=fields[5] if len(fields)>5 else ''
+            if not extra: value=0
+            elif extra.lower().startswith('0x'): value=_fiddler_hex32(extra)
+            else:
+                if not re.fullmatch('[+-]?[0-9]+',extra): raise FormatError('Unk1 must be decimal or 0x-prefixed int32')
+                digits=extra.lstrip('+-0') or '0'
+                if len(digits)>10: raise FormatError('Unk1 exceeds int32')
+                value=int(digits)*(-1 if extra.startswith('-') else 1)
+                if not -(2**31)<=value<2**31: raise FormatError('Unk1 exceeds int32')
+            tile=read_fiddler_txt(' '.join(fields[:4])+f' {flags}',check_size=False)[0]
+            out.append(replace(tile,text_extra=value))
+            if len(out)>65535: raise FormatError('at most 65535 components')
+        except FormatError as error: raise FormatError(f'Fiddler CSV line {number}: {error}') from error
+    if not out: raise FormatError('Fiddler CSV contains no components')
+    return out
+
+
+def write_fiddler_csv(tiles: list[Tile]) -> str:
+    canonical=write_fiddler_txt(tiles,allow_extra=True)
+    records=[line.split() for line in canonical.splitlines()]
+    out=['TileID,OffsetX,OffsetY,OffsetZ,Flag,Unk1\r\n']
+    for tile,record in zip(tiles,records):
+        extra=tile.text_extra if tile.text_extra is not None else 0
+        if type(extra) is not int or not -(2**31)<=extra<2**31: raise FormatError('Fiddler CSV Unk1 must be int32')
+        out.append(f'0x{tile.item:04x},{tile.x},{tile.y},{tile.z},0x{int(record[4]) & 0xffffffff:x},0x{extra & 0xffffffff:x}\r\n')
+    result=''.join(out)
+    if len(result)>4*1024*1024: raise FormatError('Fiddler CSV output exceeds 4 MiB')
+    return result
+
 def _csv_rows(text: str) -> list[list[str]]:
     return [[c.strip() for c in ln.split(",")] for ln in lines(text)]
 
@@ -422,6 +471,7 @@ def write_uox3(tiles: list[Tile]) -> str:
 # --- dispatch ----------------------------------------------------------------------------------
 
 FORMATS = {
+    "csv-fiddler": "Fiddler CSV (hex IDs/flags, retained Unk1)",
     "wsc-fiddler": "Fiddler WSC (reviewed world items)",
     "uoa-fiddler": "UO Architect text (Fiddler)",
     "txt-fiddler": "Fiddler TXT (hexadecimal IDs)",
@@ -456,7 +506,7 @@ def read(fmt: str, data: bytes) -> list[Tile]:
         ds = read_uoab(data)
         return [t for d in ds for t in d.tiles]
     text = data.decode("utf-8-sig", "replace")
-    readers = {"txt": read_txt, "txt-fiddler": read_fiddler_txt, "uoa-fiddler": read_fiddler_uoa, "wsc-fiddler": read_fiddler_wsc, "uoa": read_uoa, "wsc": read_wsc, "csv-punt": read_csv, "csv-swerv": read_csv,
+    readers = {"txt": read_txt, "txt-fiddler": read_fiddler_txt, "uoa-fiddler": read_fiddler_uoa, "wsc-fiddler": read_fiddler_wsc, "csv-fiddler":read_fiddler_csv, "uoa": read_uoa, "wsc": read_wsc, "csv-punt": read_csv, "csv-swerv": read_csv,
                "centred": read_csv, "uox3": read_uox3}
     if fmt not in readers:
         raise FormatError(f"format '{fmt}': {', '.join(FORMATS)}")
@@ -464,6 +514,9 @@ def read(fmt: str, data: bytes) -> list[Tile]:
 
 
 def write(fmt: str, tiles: list[Tile], name: str = "multi") -> bytes:
+    if fmt!='csv-fiddler' and any(t.text_extra not in (None,0) for t in tiles):
+        raise FormatError('This format cannot preserve nonzero CSV Unk1; choose csv-fiddler')
+    if fmt=='csv-fiddler': return write_fiddler_csv(tiles).encode('ascii')
     if fmt == "uoab":
         return write_uoab([Design(name, "GUO", "Generated", tiles)])
     if fmt.startswith("csv-"):
@@ -482,4 +535,4 @@ def recentre(tiles: list[Tile]) -> list[Tile]:
         return tiles
     cx = (min(t.x for t in tiles) + max(t.x for t in tiles)) // 2
     cy = (min(t.y for t in tiles) + max(t.y for t in tiles)) // 2
-    return [Tile(t.item, t.x - cx, t.y - cy, t.z, t.visible, t.hue, t.level, t.text_flags) for t in tiles]
+    return [replace(t,x=t.x-cx,y=t.y-cy) for t in tiles]

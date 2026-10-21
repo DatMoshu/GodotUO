@@ -26,7 +26,7 @@ from generate import DescriptionError  # noqa: E402
 from multifile import Component  # noqa: E402
 
 OPS = ("styles", "house", "autowall", "roof", "stairs", "rotate", "mirror", "import", "export", "validate-style")
-REVIEWED_TEXT = ("txt-fiddler", "uoa-fiddler", "wsc-fiddler")
+REVIEWED_TEXT = ("txt-fiddler", "uoa-fiddler", "wsc-fiddler", "csv-fiddler")
 
 
 class Context:
@@ -143,11 +143,13 @@ def op_import(ctx: Context, p: dict) -> dict:
         tiles = formats.read_fiddler_wsc(data.decode("utf-8-sig","replace"),set(dynamic_ids))
     if p.get("recentre", fmt not in REVIEWED_TEXT):
         tiles = formats.recentre(tiles)
-    if fmt in REVIEWED_TEXT: formats.write_fiddler_txt(tiles)  # validates centered int16 bounds too
+    if fmt in REVIEWED_TEXT:
+        (formats.write_fiddler_csv if fmt=="csv-fiddler" else formats.write_fiddler_txt)(tiles)  # validates centered int16 bounds too
     out = {"components": kit.comps_out(formats.comps_of(tiles)), "format": fmt, "notes": [], "ms": kit.ms_since(t0)}
     if any(t.hue for t in tiles):
         out["hues"] = [t.hue for t in tiles]
     if fmt in REVIEWED_TEXT: out["text_flags"] = [t.text_flags for t in tiles]
+    if fmt=="csv-fiddler": out["text_extra"]=[t.text_extra for t in tiles]
     return out
 
 
@@ -156,6 +158,7 @@ def op_export(ctx: Context, p: dict) -> dict:
     fmt = p["format"]
     hues = p.get("hues") or []
     flags = p.get("text_flags") or []
+    extra = p.get("text_extra") or []
     if fmt in REVIEWED_TEXT:
         rows = p["components"]
         if not isinstance(rows, list) or not 1 <= len(rows) <= 65535:
@@ -165,8 +168,11 @@ def op_export(ctx: Context, p: dict) -> dict:
             raise formats.FormatError("Fiddler text components require integer ID/X/Y/Z and optional 0/1 visibility; use text_flags for raw flags")
         if "text_flags" in p and (not isinstance(p["text_flags"], list) or len(p["text_flags"]) != len(rows)):
             raise formats.FormatError("Fiddler text text_flags must match the component count")
+        if "text_extra" in p and (not isinstance(p["text_extra"],list) or len(p["text_extra"])!=len(rows)
+                or any(type(value) is not int or not -(2**31)<=value<2**31 for value in p["text_extra"])):
+            raise formats.FormatError("Fiddler text_extra must be an int32 list matching components")
     tiles = [formats.Tile(c.item, c.x, c.y, c.z, c.visible, hues[i] if i < len(hues) else 0,
-                         text_flags=flags[i] if i < len(flags) else None)
+                         text_flags=flags[i] if i < len(flags) else None, text_extra=extra[i] if i<len(extra) else None)
              for i, c in enumerate(comps_in(p["components"]))]
     data = formats.write(fmt, tiles, p.get("name", "multi"))
     out = {"format": fmt, "bytes": len(data), "ms": kit.ms_since(t0)}

@@ -15,10 +15,12 @@ public struct MultiPart
     public ushort Hue;
     /// <summary>Original signed Fiddler TXT/UOA flags. Native flags have a separate contract.</summary>
     public int? TextFlags;
+    /// <summary>Original signed Fiddler CSV Unk1. Native translation is separate.</summary>
+    public int? TextExtra;
     public readonly int ExportTextFlags => TextFlags is int raw && (raw != 0) == Shown ? raw : (Shown ? 1 : 0);
 
     public readonly bool SameAs(in MultiPart o) =>
-        Id == o.Id && X == o.X && Y == o.Y && Z == o.Z && Shown == o.Shown && Hue == o.Hue && TextFlags == o.TextFlags;
+        Id == o.Id && X == o.X && Y == o.Y && Z == o.Z && Shown == o.Shown && Hue == o.Hue && TextFlags == o.TextFlags && TextExtra == o.TextExtra;
 }
 
 /// <summary>The client's story heights: floor n is at z 7 + 20 n, the foundation below 7.</summary>
@@ -88,8 +90,8 @@ public sealed class MultiDocument
         Changed?.Invoke();
     }
 
-    public MultiPart Make(ushort id, int x, int y, int z, bool shown = true, ushort hue = 0, int? textFlags = null) =>
-        new() { Uid = _nextUid++, Id = id, X = (short)x, Y = (short)y, Z = (short)z, Shown = shown, Hue = hue, TextFlags = textFlags };
+    public MultiPart Make(ushort id, int x, int y, int z, bool shown = true, ushort hue = 0, int? textFlags = null, int? textExtra = null) =>
+        new() { Uid = _nextUid++, Id = id, X = (short)x, Y = (short)y, Z = (short)z, Shown = shown, Hue = hue, TextFlags = textFlags, TextExtra = textExtra };
 
     /// <summary>
     /// One named transaction. <paramref name="change"/> edits <see cref="Parts"/>; nothing is recorded when

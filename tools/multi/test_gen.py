@@ -204,9 +204,9 @@ def run(check) -> None:
         got = [(t.item, t.x, t.y, t.z, t.visible, t.hue) for t in back]
         check(got == same, f"format {fmt}: round-trips" + (" (hue kept)" if hue_ok else ""))
         detected = formats.detect("x" + {"txt": ".txt", "uoa": ".uoa", "wsc": ".wsc", "uox3": ".dfn"}.get(fmt, ".bin"), data[:512])
-        if fmt in ("txt-fiddler", "uoa-fiddler", "wsc-fiddler"):
+        if fmt in ("txt-fiddler", "uoa-fiddler", "wsc-fiddler", "csv-fiddler"):
             # These profiles require explicit selection; detection retains the legacy dialect.
-            check(detected == {"txt-fiddler": "txt", "uoa-fiddler": "uoa", "wsc-fiddler":"wsc"}[fmt],
+            check(detected == {"txt-fiddler": "txt", "uoa-fiddler": "uoa", "wsc-fiddler":"wsc", "csv-fiddler":"csv-punt"}[fmt],
                   f"format {fmt}: detection retains the legacy profile")
         else:
             check(detected in (fmt, "txt") or fmt in ("csv-punt", "csv-swerv", "centred", "uoab"), f"format {fmt}: detected")
