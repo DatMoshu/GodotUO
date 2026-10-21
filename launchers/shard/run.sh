@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs the local ModernUO dev shard in the foreground, printing its console until Ctrl+C.
 set -euo pipefail
-GUO_NEEDS_GODOT=0 . "$(dirname "$0")/../_shared/common.sh" || exit 1
+GUO_NEEDS_GODOT=0 . "$(dirname "$0")/../_shared/common.sh" --defer-shard-secrets || exit 1
 
 if [ ! -x "$UO_SHARD_DIST/ModernUO" ]; then
     echo "[shard] Not built yet. Run launchers/shard/build.sh first."

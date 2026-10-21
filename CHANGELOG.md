@@ -286,6 +286,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 - Profile settings migrate automatically; profile version 10.
 
 ### Building and managing
+- Starting the dev shard now loads generated passwords after configuration
+  migrates them, so a newly shortened login password reaches the server on
+  the same launch. Environment and local configuration overrides still win.
 - Host a pack catalogue of your own on GitHub Pages: `run.py init-catalogue`
   writes its repository, and `launchers/store/push_catalogue` signs the
   index with your key and pushes it to the Pages branch. Players add the
@@ -295,6 +298,7 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   your machine, outside the checkout. Draw calls may rise by at most 5% per
   scene and batcher items may not rise; frame times remain advisory. Hosted
   CI tests the gate with synthetic reports and makes no FPS claim.
+  Oversized numeric inputs return an invalid-report result instead of crashing.
 - CI keeps NuGet packages between runs, and the Android release build also
   keeps its Gradle downloads. The CI health report for 2026-10-18 (times per
   workflow, every failure of the last three weeks, no flaky steps) is in
