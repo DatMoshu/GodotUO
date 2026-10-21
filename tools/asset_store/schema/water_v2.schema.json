@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "guo/water@2",
+  "title": "Water style parameters (W-01 authoring contract; W-02 renderer pending)",
+  "description": "Data only. See docs/data_formats.md section 44 for units, formulas, transport rules and installation gating.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "name", "model", "surface", "depth", "shoreline", "normal", "flow", "wake", "lighting", "clock", "pixel"],
+  "properties": {
+    "schema": {"const": "guo/water@2", "default": "guo/water@2"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 48, "pattern": "^[^\\u0000-\\u001f\\u007f\\ud800-\\udfff]*[^\\s\\u0000-\\u001f\\u007f\\ud800-\\udfff][^\\u0000-\\u001f\\u007f\\ud800-\\udfff]*(?![\\s\\S])", "default": "Custom water"},
+    "model": {"enum": ["uo", "pixel", "cel", "realistic", "classicplus"], "default": "uo"},
+    "surface": {
+      "type": "object", "additionalProperties": false, "required": ["base_color", "opacity"],
+      "properties": {
+        "base_color": {"$ref": "#/$defs/rgb", "default": [1, 1, 1], "description": "sRGB multiplier on native colour; white preserves it."},
+        "opacity": {"type": "number", "minimum": 0, "maximum": 1, "default": 1, "description": "Multiplier on native alpha coverage."}
+      }
+    },
+    "depth": {
+      "type": "object", "additionalProperties": false, "required": ["tint", "strength", "falloff"],
+      "properties": {
+        "tint": {"$ref": "#/$defs/rgb", "default": [0.12, 0.24, 0.42], "description": "sRGB depth blend target."},
+        "strength": {"type": "number", "minimum": 0, "maximum": 1, "default": 0, "description": "Maximum depth tint blend; zero disables."},
+        "falloff": {"type": "number", "minimum": 0.25, "maximum": 64, "default": 8, "description": "E-folding distance in water cells from low shore; not bathymetry."}
+      }
+    },
+    "shoreline": {
+      "type": "object", "additionalProperties": false, "required": ["width", "strength"],
+      "properties": {
+        "width": {"type": "number", "minimum": 0, "maximum": 2, "default": 0.22, "description": "Foam width in cells; zero disables."},
+        "strength": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.85, "description": "Foam intensity, or native brightness modulation in classicplus; zero disables."}
+      }
+    },
+    "normal": {
+      "type": "object", "additionalProperties": false, "required": ["amplitude", "speed", "scale"],
+      "properties": {
+        "amplitude": {"type": "number", "minimum": 0, "maximum": 2, "default": 0.22, "description": "Dimensionless procedural normal amplitude; zero disables ambient perturbation."},
+        "speed": {"type": "number", "minimum": 0, "maximum": 4, "default": 1, "description": "Normal animation speed multiplier; independent of wake simulation."},
+        "scale": {"type": "number", "minimum": 0.005, "maximum": 0.25, "default": 0.045, "description": "Pattern frequency in inverse world pixels."}
+      }
+    },
+    "flow": {
+      "type": "object", "additionalProperties": false, "required": ["direction", "strength"],
+      "properties": {
+        "direction": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number", "minimum": -1, "maximum": 1}, "default": [1, 0], "description": "World cell X/Y vector; normalise on use; zero vector disables flow."},
+        "strength": {"type": "number", "minimum": 0, "maximum": 8, "default": 0, "description": "Pattern advection in cells per second; cosmetic only."}
+      }
+    },
+    "wake": {
+      "type": "object", "additionalProperties": false, "required": ["boat", "player", "object", "damping"],
+      "properties": {
+        "boat": {"type": "number", "minimum": 0, "maximum": 2, "default": 1, "description": "Boat disturbance rate multiplier; zero disables."},
+        "player": {"type": "number", "minimum": 0, "maximum": 2, "default": 1, "description": "Mobile disturbance rate multiplier; zero disables."},
+        "object": {"type": "number", "minimum": 0, "maximum": 2, "default": 1, "description": "Falling/thrown item and effect disturbance multiplier; zero disables."},
+        "damping": {"type": "number", "minimum": 0.9, "maximum": 0.999, "default": 0.985, "description": "Amplitude retention per 20 Hz simulation step."}
+      }
+    },
+    "lighting": {
+      "type": "object", "additionalProperties": false, "required": ["reflection", "sun_glint"],
+      "properties": {
+        "reflection": {"type": "number", "minimum": 0, "maximum": 1, "default": 0, "description": "Surface reflection blend; zero disables. Source and tier fallback pending W-02/W-07."},
+        "sun_glint": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.35, "description": "Highlight strength; zero disables."}
+      }
+    },
+    "clock": {
+      "type": "object", "additionalProperties": false, "required": ["source", "rate", "offset", "fixed_time"],
+      "properties": {
+        "source": {"enum": ["elapsed", "fixed"], "default": "elapsed", "description": "Local presentation clock only; no network time source."},
+        "rate": {"type": "number", "minimum": 0, "maximum": 4, "default": 1, "description": "Elapsed seconds multiplier; zero freezes at offset."},
+        "offset": {"type": "number", "minimum": 0, "maximum": 3600, "default": 0, "description": "Elapsed clock offset in seconds; result modulo 3600."},
+        "fixed_time": {"type": "number", "minimum": 0, "maximum": 3600, "default": 0, "description": "Fixed presentation seconds modulo 3600; ignores rate and offset."}
+      }
+    },
+    "pixel": {
+      "type": "object", "additionalProperties": false, "required": ["levels", "grain"],
+      "properties": {
+        "levels": {"type": "integer", "minimum": 0, "maximum": 16, "default": 6, "description": "Brightness levels; zero allows smooth style shading."},
+        "grain": {"type": "integer", "minimum": 1, "maximum": 8, "default": 1, "description": "World pixels per style pixel; native art remains nearest."}
+      }
+    }
+  },
+  "$defs": {
+    "rgb": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "minimum": 0, "maximum": 1}}
+  }
+}

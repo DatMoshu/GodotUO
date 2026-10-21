@@ -3140,6 +3140,71 @@ named `sea`, `water.json`, an original `preview.png` and licence attribution
 when required. Authoring and world-preview state are `TOOLS`-only; no new
 profile fields or exported client settings are added.
 
+### W-01: expanded water parameter contract (`guo/water@2`)
+
+**Authoring contract, ahead of W-02's renderer.** The normative JSON Schema is
+`tools/asset_store/schema/water_v2.schema.json`; its `default` annotations are
+data for authoring controls. `water_v2.defaults.json` beside it is one complete
+parameter set. All fields are required, including every group's children;
+validators never fill missing fields. Unknown fields at any depth are refused.
+The five existing model names remain valid. Classic is still the zero pack,
+selected by the profile, and is not an authored model.
+
+The Store's Python and C# installers continue to accept **only `guo/water@1`**
+until W-02 consumes every v2 group. A v2 authoring document must be refused at
+installation rather than accepted with ignored controls. Existing v1 packs and
+their rendering remain unchanged. This schema adds no textures, shader code,
+profile fields, Options entries, automatic downloads or shard authority.
+
+| Group / field | Inclusive range; default | Meaning |
+|---|---|---|
+| `schema` | `guo/water@2` | Version of the entire set, never independently versioned groups |
+| `name` | 1..48 Unicode characters, nonblank, no control characters; `Custom water` | Authoring label (v2 counts Unicode characters, not v1's UTF-16 units) |
+| `model` | `uo`, `pixel`, `cel`, `realistic`, `classicplus`; `uo` | Built-in shading model; all groups must be consumed or explicitly refused by a future renderer |
+| `surface.base_color` | RGB array, each 0..1; `[1,1,1]` | sRGB multiplier on the native, hued and lit texel; white preserves its colour |
+| `surface.opacity` | 0..1; 1 | Multiplier on native coverage, never creates coverage outside the art silhouette |
+| `depth.tint` | RGB array, each 0..1; `[0.12,0.24,0.42]` | sRGB target colour for the depth blend |
+| `depth.strength` | 0..1; 0 | Maximum tint blend; 0 disables depth tint |
+| `depth.falloff` | 0.25..64 cells; 8 | Tint blend is `strength * (1 - exp(-d / falloff))`. `d` is distance into water from the low-shore contour, not bathymetry: the current world mask contains no underwater floor depth |
+| `shoreline.width` | 0..2 cells; 0.22 | Distance from the low-shore contour covered by foam; 0 disables foam |
+| `shoreline.strength` | 0..1; 0.85 | Foam intensity (native brightness modulation for `classicplus`); 0 disables it; cliffs stay excluded |
+| `normal.amplitude` | 0..2; 0.22 | Dimensionless strength of the procedural surface normal/ripple perturbation; 0 disables ambient perturbation |
+| `normal.speed` | 0..4; 1 | Multiplier on normal animation, independent of wake simulation |
+| `normal.scale` | 0.005..0.25 inverse world pixels; 0.045 | Spatial frequency of the procedural normal pattern; native texture sampling remains nearest |
+| `flow.direction` | two numbers -1..1; `[1,0]` | World cell X/Y direction, normalised when consumed; `[0,0]` disables flow without division by zero |
+| `flow.strength` | 0..8 cells/second; 0 | Pattern advection rate along direction; never moves objects or changes shard physics |
+| `wake.boat`, `wake.player`, `wake.object` | each 0..2; each 1 | Independent multipliers on boat, mobile and falling/thrown item/effect disturbance rates; 0 disables that source. `player` includes other mobiles, as in WATER-03 |
+| `wake.damping` | 0.9..0.999; 0.985 | Amplitude retention per 20 Hz simulation step, independent of render FPS |
+| `lighting.reflection` | 0..1; 0 | Surface reflection blend; 0 disables it. Reflection source and reduced-tier fallback are W-02/W-07 work; no capture pass is authorised by this contract |
+| `lighting.sun_glint` | 0..1; 0.35 | Highlight strength; 0 disables highlights in every model |
+| `clock.source` | `elapsed` or `fixed`; `elapsed` | Client-local presentation clock; does not select a network/shard clock |
+| `clock.rate` | 0..4; 1 | Speed multiplier on elapsed presentation seconds; 0 freezes at the offset |
+| `clock.offset`, `clock.fixed_time` | each 0..3600 seconds; each 0 | Elapsed mode: `(elapsed_seconds * rate + offset) % 3600`; fixed mode: `fixed_time % 3600` (rate/offset ignored). No claim of seamless looping. This clock never changes native art animation or simulation time |
+| `pixel.levels` | integer 0..16; 6 | Brightness levels; 0 allows smooth style shading |
+| `pixel.grain` | integer 1..8 world pixels; 1 | Style pixel size; native art stays nearest-neighbour |
+
+Numbers must be finite JSON numbers, not booleans or strings. The document
+uses the v1 transport envelope: at most 16 KiB of UTF-8, no BOM, duplicate keys
+or lone surrogates. JSON Schema validates the parsed document; the future
+reader must enforce those byte-level rules before parsing. JSON Schema's
+`integer` is mathematical: `2.0` and `2e0` are valid v2 integer values, unlike
+v1's lexical integer rule. Bounds prevent unbounded resource requests; they
+are authoring limits, not a promise of acceptable cost for every combination.
+
+There is **no automatic migration**: v1 `speed`, `scale`, `wave`, `foam`,
+`foam_width`, `glint`, `levels`, `grain`, and `ripples.damping` correspond to
+v2 `normal.speed`, `normal.scale`, `normal.amplitude`, `shoreline.strength`,
+`shoreline.width`, `lighting.sun_glint`, `pixel.levels`, `pixel.grain`, and
+`wake.damping`. V1 `ripples.strength` seeds all three wake strengths; `tint`
+seeds `depth.tint`. V1 models interpret tint and wave differently, so copying
+these values is only an authoring starting point, not a pixel-parity conversion.
+W-02 must retain the v1 path or prove a separate migration before replacing it.
+
+Contract gate: `python -m pytest tools/asset_store/test_water_schema.py` checks
+the schema, complete defaults, bounds and malformed group shapes, and verifies
+that the shipping v1 Python validator refuses the v2 set. The shared Store
+corpus also checks that refusal in both Python and C# installers.
+
 ## 42. Packet mods (`Data/Mods/<mod>/mod.json`, `load_mods`, ADR-0038)
 
 A packet mod is a folder the user installed beside `Data/Plugins`: a
