@@ -81,6 +81,44 @@ river-north and river-west. They are drawn with ClassicUO, GUO plain
 The world, water edges included, is the same pixel for pixel. The riverbank
 fix still covers what it covers; it is only drawn in runs.
 
+### Correction, 2026-10-22 (PERF-V7): river-west is not 0 px
+
+The table above is the 2026-10-19 result as it was measured then and is
+kept as such. The main validation of 2026-10-22 (Codex perf seat, run
+`20261022_guo-codex-perf-20261022_main-live`, `river-exact-diff.json`)
+compared one sequential plain / merged-cover pair at 1600x900 exactly in
+RGB, with the name labels and chat excluded by rectangle and no radar in a
+fresh profile, and found three world pixels:
+
+| pixel | plain | merged |
+|---|---|---|
+| (802, 16) | 35 2d 1e | 35 26 1e |
+| (575, 233) | 33 2b 19 | 44 3b 2b |
+| (1334, 264) | 3d 42 0f | 3d 48 1a |
+
+What that evidence establishes: three world pixels differ between the two
+paths in that pair, each isolated (the 3x3 ring around each is identical
+in both stills). A neighbourhood check of the same two stills (run
+`20261022_guo-fable-perftour-20261022_live-plan`,
+`guo_PERF-V7_river-pixel-neighbourhood_data_20261022.json`) finds the other
+path's colour within 2 px of the pixel, in the same still, for (802, 16)
+and (575, 233), and not for (1334, 264). That the pixels sit on stretched
+riverbank tiles is read from their position on the river in the stills, not
+from the tile data; it is a reading, not a source-linked fact. None of this
+establishes the cause.
+
+Hypothesis, not yet reproduced under control: plain GUO samples each
+tile's own texture, while the merged cover path draws a run as one mesh
+over the land `Texture2DArray` with the tile's UVs scaled by `w / Size`
+into the page and back by `Size` in the shader; on a stretched tile, whose
+corners are pulled to its z, that rescaling may round a nearest-sampled
+UV at a texel edge to the other side for a few fragments. A controlled
+reproduction (the same tile drawn both ways from a fixed camera, the
+fragment's UVs dumped) is the next step; until then neither the cause nor
+whether the paths can be made exactly equal is settled, and no pixel
+difference is waived. `tools/visual_ab` now counts pixels exactly in any
+channel and reports isolated pixels beside the count for information.
+
 ## The switches
 
 - `--merged-land=off` and `--merged-cover=off` restore upstream's per-tile draw
