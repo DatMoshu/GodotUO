@@ -7,7 +7,8 @@
     "expansion": "Configuration/expansion.json",
     "email": "Configuration/email-settings.json",
     "crowdsec": "Configuration/crowdsec.json",
-    "access": "Configuration/server-access.json"
+    "access": "Configuration/server-access.json",
+    "water": "Data/GUO/public/shard-content.json"
   },
   "expansion_table": "Data/expansions.json",
   "other": {
@@ -17,6 +18,18 @@
     "help": "Every other line of modernuo.json, by its own name. They have no plain label yet; change them only if you know what they do."
   },
   "groups": [
+    {
+      "name": "UO+ water rendering",
+      "help": "Requires a deployed shard-content descriptor. Players see this offer when they next play with this shard's content; water settings need separate consent. No packs are downloaded by these fields.",
+      "fields": [
+        { "file": "water", "path": "water/default", "label": "Default water style", "type": "string", "optional": true, "max_length": 200,
+          "help": "classic, uo, or an installed pack style such as guo-water-pixel:sea. Missing means classic." },
+        { "file": "water", "path": "water/lock", "label": "Restrict player water choices after consent", "type": "bool", "optional": true,
+          "help": "Off: players may override the default. On: only allowed styles are offered after consent. Players can always withdraw consent to use their own settings." },
+        { "file": "water", "path": "water/allowed", "label": "Allowed water styles", "type": "list", "optional": true,
+          "help": "One style ID per line, maximum 64. With restrictions on, include the default; an empty list permits only the default. This never installs styles." }
+      ]
+    },
     {
       "name": "Server",
       "help": "What the server is called, where it listens and which game data it reads.",

@@ -448,6 +448,10 @@ namespace GUO.Configuration
         // draws the tiles as upstream does; any other value names a water
         // style (Renderer.Water.WaterRender). Default classic.
         public string WaterStyle { get; set; } = "classic";
+        // PORT DEVIATION (GUO): explicit, revocable consent to one shard water
+        // policy (ADR-0037 decision 8). Personal WaterStyle is never overwritten.
+        public string ShardWaterConsent { get; set; } = "";
+        public string ShardWaterStyle { get; set; } = "";
 
         public bool HideChatGradient { get; set; } = false;
 

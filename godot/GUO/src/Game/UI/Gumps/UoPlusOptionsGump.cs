@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using GUO.Configuration;
 using GUO.Game.Managers;
 using GUO.Game.UI.Controls;
+using GUO.Renderer.Water;
 
 namespace GUO.Game.UI.Gumps;
 
@@ -14,6 +15,10 @@ internal sealed class UoPlusOptionsGump : Gump
     private readonly HSliderBar _cap;
     private readonly Combobox _touchUi;
     private bool _defaultsStaged;
+    private readonly Combobox _water;
+    private readonly string[] _waterIds;
+    private readonly Checkbox _shardWater;
+    private readonly bool _shardAcceptedAtOpen;
 #if GUO_LABS
     private readonly StbTextBox _tiles;
     private readonly Checkbox _cobblestone;
@@ -45,6 +50,26 @@ internal sealed class UoPlusOptionsGump : Gump
             _profile.TouchUi.HasValue ? (_profile.TouchUi.Value ? 1 : 2) : 0);
         area.Add(_touchUi);
         int y = 50;
+        area.Add(new Label("Water style", true, 0xFFFF, font: 1) { X = 4, Y = y });
+        var waterChoices = WaterRender.PlayerChoiceLists(_profile);
+        _waterIds = waterChoices.Ids;
+        _water = new Combobox(150, y, Width - 230, waterChoices.Names, WaterRender.PlayerChoiceIndex(_profile), font: 1);
+        area.Add(_water);
+        y += 34;
+        if (WaterRender.ShardPolicy != null)
+        {
+            _shardAcceptedAtOpen = WaterRender.ShardAccepted(_profile);
+            var shardDescription = new Label(WaterRender.ShardDescription, true, 0x0386, Width - 90, 1) { X = 4, Y = y };
+            area.Add(shardDescription);
+            y += shardDescription.Height + 12;
+            _shardWater = new Checkbox(0xD2, 0xD3, "Use this shard's water settings (consent)", 1, 0xFFFF)
+                { X = 4, Y = y, IsChecked = _shardAcceptedAtOpen };
+            area.Add(_shardWater);
+            // A newly accepted policy starts at its default. Reopen to choose
+            // another permitted style; no staged edit changes the live profile.
+            _shardWater.ValueChanged += (_, _) => _water.IsEnabled = _shardWater.IsChecked == _shardAcceptedAtOpen;
+            y += 34;
+        }
         foreach (var feature in UoPlusOptions.Features)
         {
             bool available = feature.Available;
@@ -104,6 +129,11 @@ internal sealed class UoPlusOptionsGump : Gump
 #endif
         if (_defaultsStaged) UoPlusOptions.ResetDefaults(_profile);
         _profile.TouchUi = _touchUi.SelectedIndex == 0 ? null : _touchUi.SelectedIndex == 1;
+        bool acceptShard = _shardWater?.IsChecked == true && !_defaultsStaged;
+        WaterRender.AcceptShard(_profile, acceptShard);
+        if (acceptShard == _shardAcceptedAtOpen)
+            WaterRender.SetPlayerChoice(_profile, _waterIds[System.Math.Clamp(_water.SelectedIndex, 0, _waterIds.Length - 1)]);
+        if (_defaultsStaged) { _profile.WaterStyle = WaterRender.Classic; _profile.ShardWaterStyle = ""; }
         foreach (var (id, row) in _rows) UoPlusOptions.Set(_profile, id, row.Toggle.IsChecked, row.Density.Value);
         _profile.AmbientParticleCap = _cap.Value;
         _defaultsStaged = false;
@@ -117,6 +147,8 @@ internal sealed class UoPlusOptionsGump : Gump
         _touchUi.SelectedIndex = 0;
         foreach (var row in _rows.Values) { row.Toggle.IsChecked = false; row.Density.Value = 50; }
         _cap.Value = 128;
+        if (_shardWater != null) _shardWater.IsChecked = false;
+        _water.SelectedIndex = 0;
 #if GUO_LABS
         _cobblestone.IsChecked = true; _tiles.SetText(""); _error.Text = "";
 #endif

@@ -123,6 +123,51 @@ internal static class WaterRender
     /// </summary>
     public static string Override;
 
+    // The shard session is created only after the player approves its content.
+    // Water consent is separate and never inferred from approving that content.
+    internal static GUO.Store.StoreWaterPolicy ShardPolicy => GUO.Host.ShardSession.Active
+        && string.Equals(GUO.Host.ShardSession.Current.Host, Settings.GlobalSettings?.IP, StringComparison.OrdinalIgnoreCase)
+        && GUO.Host.ShardSession.Current.Port == Settings.GlobalSettings?.Port
+        ? GUO.Host.ShardSession.Current.Water : null;
+    private static GUO.Host.ShardSession.Data _policySession;
+    private static string _consentKey;
+    internal static string ShardConsentKey
+    {
+        get
+        {
+            var session = GUO.Host.ShardSession.Current;
+            if (!ReferenceEquals(session, _policySession))
+            {
+                _policySession = session;
+                _consentKey = session?.Water?.ConsentKey((session.ContentUrl ?? "") + "\n"
+                    + (session.Host ?? "").ToLowerInvariant() + ":" + session.Port);
+            }
+            return ShardPolicy == null ? null : _consentKey;
+        }
+    }
+
+    internal static bool ShardAccepted(Profile p) => ShardConsentKey is string key && p?.ShardWaterConsent == key;
+    internal static string SelectedId(Profile p) => ShardAccepted(p)
+        ? ShardPolicy.Select(p.ShardWaterStyle) : p?.WaterStyle ?? Classic;
+
+    internal static void SetPlayerChoice(Profile p, string id)
+    {
+        if (ShardAccepted(p)) p.ShardWaterStyle = ShardPolicy.Select(id);
+        else p.WaterStyle = id;
+    }
+
+    internal static void AcceptShard(Profile p, bool accept)
+    {
+        if (!accept) { p.ShardWaterConsent = ""; return; }
+        if (ShardConsentKey is not string key) return;
+        if (p.ShardWaterConsent != key) p.ShardWaterStyle = ShardPolicy.Default;
+        p.ShardWaterConsent = key;
+    }
+
+    internal static string ShardDescription => ShardPolicy is { } policy
+        ? $"Water set by shard: {policy.Default}. " + (policy.Lock ? "Style choices restricted after consent." : "Players may override.")
+        : "";
+
 #if TOOLS
     // L3 water authoring, scoped to the editor's exact world instance. Never
     // persisted to a player profile or compiled into an exported client.
@@ -243,6 +288,30 @@ internal static class WaterRender
         return (ids.ToArray(), names.ToArray());
     }
 
+    internal static (string[] Ids, string[] Names) PlayerChoiceLists(Profile profile)
+    {
+        if (!ShardAccepted(profile) || !ShardPolicy.Lock) return ChoiceLists();
+        var ids = new List<string>();
+        var names = new List<string>();
+        foreach (var choice in Choices())
+            if (ShardPolicy.Allows(choice.Id)) { ids.Add(choice.Id); names.Add(choice.Name); }
+        // Missing packs never download automatically; Classic is the safe fallback.
+        if (ids.Count == 0) { ids.Add(Classic); names.Add("Classic tiles (shard style unavailable)"); }
+        return (ids.ToArray(), names.ToArray());
+    }
+
+    internal static int PlayerChoiceIndex(Profile p)
+    {
+        int index = Array.FindIndex(PlayerChoiceLists(p).Ids, id => string.Equals(id, SelectedId(p), StringComparison.OrdinalIgnoreCase));
+        return Math.Max(0, index);
+    }
+
+    internal static string PlayerChoiceId(Profile p, int index)
+    {
+        var ids = PlayerChoiceLists(p).Ids;
+        return index >= 0 && index < ids.Length ? ids[index] : Classic;
+    }
+
     /// <summary>Where a profile's style sits in ChoiceLists(); 0 (Classic) when it is not offered.</summary>
     public static int ChoiceIndex(string id)
     {
@@ -273,7 +342,7 @@ internal static class WaterRender
 #if TOOLS
         if (InEditorPreview) return EditorStyle;
 #endif
-        string id = Override ?? profile?.WaterStyle;
+        string id = Override ?? SelectedId(profile);
         if (string.IsNullOrEmpty(id) || string.Equals(id, Classic, StringComparison.OrdinalIgnoreCase))
         {
             return null;

@@ -3048,6 +3048,42 @@ Classic retains the opted-in primitive fallback. No profile/packet/pack schema
 changes. See [rain limits and doctor](../godot/GUO/src/Labs/WaterRain/README.md)
 and [scenario](../tools/scenarios/client/water_rain.md).
 
+**Shard water policy** (WATER-05, ADR-0037 decision 8). The existing public
+`guo/shard-content@1` descriptor may include:
+
+```json
+"water": { "default": "uo", "lock": true, "allowed": ["uo", "classic"] }
+```
+
+This uses the descriptor fetched on Play and carried in `shard_session.json`;
+there is no new game packet. Admin > Settings > **UO+ water rendering** edits
+`Data/GUO/public/shard-content.json` through existing `admin_settings_edit`
+fields `water:water/default`, `water:water/lock`, `water:water/allowed` and
+`admin_settings_save`. Deploy content first; a missing descriptor cannot be
+created by the Settings form. Pack redeployment preserves the policy. Existing
+connections retain their offer until the next content session; it is not a live
+broadcast. No installation or download is triggered by a water setting.
+
+An absent block offers nothing. Inside a block the default is `classic`, lock
+is false and allowed is empty. IDs are `classic`, `uo`, or a `pack:component`
+identity, with nonempty parts containing ASCII letters/digits or `-`, `_`, `.`
+and at most 200 characters total. Unknown bare style names are rejected;
+unavailable pack identities fall back to Classic. At most 64 distinct IDs are
+allowed, compared ignoring case. The default must occur in a nonempty allowlist;
+an empty locked allowlist permits
+only the default. Without lock, any installed style may override the default.
+
+Options > **UO+ effects** shows "Water set by shard" and **Use this shard's
+water settings (consent)**. It starts unchecked. Apply accepts the default;
+reopen to choose another allowed style. Cancel changes nothing; unchecking
+and applying restores the personal `water_style`. Consent and the independent
+shard choice persist as `shard_water_consent` and `shard_water_style` in the
+profile. Consent is a SHA-256 of descriptor URL, connection host and port, case-normalized default,
+lock and sorted allowlist, separated by newlines. Changing those policy values
+requires fresh consent; changing pack content alone does not. Policy is used
+only for its session's connection endpoint. Unknown or missing styles fall
+back to Classic. The player may always withdraw consent, including when locked.
+
 **Ripples** (`WaterRipples`, WATER-03) are a two-buffer wave equation stepped
 at 20 Hz on the CPU (a front moves about three cells a second) over the ripple window, which follows the player (it
 shifts by whole cells when the player is 16 cells from its centre, keeping

@@ -24,6 +24,7 @@ public partial class WaterProbe : Node
         try
         {
             WaterRender.Override = null;
+            ShardConsent();
             var profile = JsonSerializer.Deserialize("{}", ProfileJsonContext.DefaultToUse.Profile);
             Require(profile.WaterStyle == WaterRender.Classic && !WaterRender.IsStyled(profile), "existing profiles must be Classic");
 
@@ -169,6 +170,64 @@ public partial class WaterProbe : Node
 
     private static string Hash(byte[] data) =>
         Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(data)).ToLowerInvariant();
+
+    private static void ShardConsent()
+    {
+        string file = GUO.Host.ShardSession.FilePath;
+        var session = GUO.Host.ShardSession.Current;
+        var settings = Settings.GlobalSettings;
+        string temporary = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "guo-water-consent-" + Guid.NewGuid().ToString("N") + ".json");
+        void Offer(string style, bool locked)
+        {
+            System.IO.File.WriteAllText(temporary, JsonSerializer.Serialize(new GUO.Host.ShardSession.Data
+            {
+                Host = "127.0.0.1", Port = 2593, ContentLock = "probe-only", ContentUrl = "https://shard.example/content",
+                Water = new GUO.Store.StoreWaterPolicy { Default = style, Lock = locked }
+            }));
+            GUO.Host.ShardSession.FilePath = temporary;
+            GUO.Host.ShardSession.Load();
+        }
+        try
+        {
+            Settings.GlobalSettings = new Settings { IP = "127.0.0.1", Port = 2593 };
+            Offer("uo", true);
+            var p = new Profile();
+            Require(!WaterRender.ShardAccepted(p) && WaterRender.Resolve(p) == null, "shard offers never enable water without consent");
+            WaterRender.AcceptShard(p, true);
+            Require(WaterRender.ShardAccepted(p) && WaterRender.Resolve(p)?.Id == "uo" && p.WaterStyle == "classic",
+                "accepting uses the default without overwriting the personal style");
+            Require(WaterRender.PlayerChoiceLists(p).Ids.Length == 1 && WaterRender.PlayerChoiceId(p, 0) == "uo", "locked choices");
+            WaterRender.SetPlayerChoice(p, "classic");
+            Require(WaterRender.Resolve(p)?.Id == "uo", "a locked-out style cannot bypass the policy");
+            var copy = JsonSerializer.Deserialize(JsonSerializer.Serialize(p, ProfileJsonContext.DefaultToUse.Profile), ProfileJsonContext.DefaultToUse.Profile);
+            Require(WaterRender.ShardAccepted(copy), "consent persists with the profile");
+            GUO.Host.ShardSession.SetCurrentForProbe(null);
+            Require(!WaterRender.ShardAccepted(copy) && WaterRender.Resolve(copy) == null, "leaving the shard restores the personal choice");
+            GUO.Host.ShardSession.Load();
+            Require(WaterRender.ShardAccepted(copy) && WaterRender.Resolve(copy)?.Id == "uo", "reconnecting to the unchanged shard preserves consent");
+            WaterRender.AcceptShard(p, false);
+            Require(WaterRender.Resolve(p) == null && p.WaterStyle == "classic", "withdraw consent restores the exact personal choice");
+            Offer("uo", false);
+            Require(!WaterRender.ShardAccepted(copy), "changed policy requires new consent");
+            WaterRender.AcceptShard(p, true);
+            WaterRender.SetPlayerChoice(p, "classic");
+            Require(WaterRender.Resolve(p) == null && p.WaterStyle == "classic", "unlocked policy permits an override");
+            Offer("missing-pack:water", true);
+            WaterRender.AcceptShard(p, true);
+            Require(WaterRender.Resolve(p) == null && WaterRender.PlayerChoiceLists(p).Ids[0] == "classic", "missing styles fall back without installing packs");
+            Settings.GlobalSettings.Port = 2594;
+            Require(!WaterRender.ShardAccepted(p) && WaterRender.ShardPolicy == null, "a policy cannot cross connection endpoints");
+            GD.Print("[water consent] PASS: offer off, accept/decline/revoke, persistence/reconnect, lock/override, changed policy, missing pack and endpoint isolation");
+        }
+        finally
+        {
+            System.IO.File.WriteAllText(temporary, JsonSerializer.Serialize(session));
+            GUO.Host.ShardSession.Load();
+            GUO.Host.ShardSession.FilePath = file;
+            Settings.GlobalSettings = settings;
+            if (System.IO.File.Exists(temporary)) System.IO.File.Delete(temporary);
+        }
+    }
 
     private static void Require(bool ok, string what)
     {

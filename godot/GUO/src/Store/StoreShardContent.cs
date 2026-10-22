@@ -27,6 +27,7 @@ internal sealed class StoreShardContent
     public IReadOnlyList<StoreShardCatalogue> Catalogues { get; init; }
     public StoreContentLock Lock { get; init; }
     public bool ScriptsAllowed { get; init; }
+    public StoreWaterPolicy Water { get; init; }
     public string IdentityHash => Lock.IdentityHash;
 
     /// <summary>Fetches and checks a descriptor: HTTPS, or HTTP on loopback or the LAN; no redirects.</summary>
@@ -72,7 +73,8 @@ internal sealed class StoreShardContent
         StorePack.Require(contentLock.Bindings != null && contentLock.Bindings.Count <= 65536, "Invalid bindings");
         string scripts = root.TryGetProperty("scripts", out var s) ? s.GetString() : "allowed";
         StorePack.Require(scripts is "allowed" or "forbidden", "scripts must be allowed or forbidden");
-        return new StoreShardContent { Url = url, ShardName = name, Catalogues = catalogues, Lock = contentLock, ScriptsAllowed = scripts == "allowed" };
+        var water = root.TryGetProperty("water", out var w) ? StoreWaterPolicy.Parse(w) : null;
+        return new StoreShardContent { Url = url, ShardName = name, Catalogues = catalogues, Lock = contentLock, ScriptsAllowed = scripts == "allowed", Water = water };
     }
 
     /// <summary>What the player is asked to approve: the packs, the catalogues and their keys.</summary>
