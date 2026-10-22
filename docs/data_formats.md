@@ -2849,7 +2849,9 @@ grid's FNV-1a hash is unchanged. Distance falloff is evaluated each frame at
 the sprite's interpolated position: tile offsets are `(Offset.X + Offset.Y)/44`
 and `(Offset.Y - Offset.X)/44`. Moving pools therefore advance between tile
 completions without recomputing cached visibility. The sum has no ceiling: a sample brighter
-than white is scaled by its brightest channel when read, keeping its hue. A
+than white is scaled by its brightest channel when read, keeping its hue, and
+then raised channel by channel to no less than its cell's ambient, so a warm
+torch in daylight cannot read darker than the sunlit ground around it. A
 tile's value (the dump, `Cell`) is the mean of its samples.
 
 **Wall faces** (`WallFaces`, cached per graphic). The art's silhouette bottom,
@@ -2960,6 +2962,37 @@ durations fade over their last 30% using the existing hook's energy 2.2.
 Unknown graphics and drag effects emit nothing. No projectile trail is added;
 the cast lights the source briefly, then arrival lights the target. These
 curated bursts use built-in curves rather than the item/light profile overrides.
+
+**UO+ time-of-day light** (non-parity, UO+ flag `TimeOfDay`, mask bit 512,
+default off; requires Realtime lights). The hour comes from
+`Profile.RealtimeLightsHour` (`realtime_lights_hour`, int, default `-1`): `-1`
+is the shard's clock, 0..23 a fixed hour (read as H:30), set by the UO+
+panel's hour slider. The shard sends no clock, so the client computes the RunUO
+family's (`Clock.GetTime` in RunUO, ServUO and ModernUO): UO minutes are
+`(UTC now - 1997-09-01) / 5 s`, plus `320 x map index`, plus `player X / 16`;
+the hour is that over 60, mod 24, kept fractional. A shard with another clock
+gets this tint at the wrong hour; its light level still sets brightness.
+
+| Hour | 0-3.6 | 4.6 | 5.5 | 7 | 10-16 | 19 | 21 | 22.4 | 23.3 |
+|---|---|---|---|---|---|---|---|---|---|
+| Tint RGB | .66 .74 1 | 1 .84 .82 | 1 .88 .72 | 1 .96 .90 | 1 1 1 | 1 .96 .88 | 1 .86 .68 | 1 .79 .80 | .82 .78 .98 |
+| | night | first light | dawn | morning | noon | afternoon | golden | dusk | twilight |
+
+Between keys the tint is smoothstep-eased; it wraps at 24. The ambient is the
+tint scaled to the classic grey's luminance (no channel above 1), mixed with
+the level-only ramp above by `w = strength x smoothstep(0.30, 0.55, grey)`:
+a level darker than any night sky (a dungeon) keeps the ramp whatever the hour.
+`strength` is the feature's UO+ density / 100. Every source's energy is scaled
+by `1 - 0.55 x daylight x smoothstep(0.55, 0.95, grey) x strength`, where
+daylight is `min(smoothstep(4.5, 7, h), 1 - smoothstep(20.5, 23, h))`: torches
+read at 45 % under a noon sun, in full at night and underground. Roofed cells
+take the same share of this ambient as above. With a fixed hour and no
+**Light level** override, the level is the RunUO family light cycle for that
+hour (12 to 4:00, rising to 0 by 6:00, 0 to 22:00, falling to 12 by 24:00), so
+the slider previews the whole day; the shard's level is used otherwise. Off,
+or at density 0, the field is exactly the level-only ramp. The 5 s log line
+adds ` hour=H tod=S` when on. The editor demo takes `,hour,H` (and `todoff`
+for the before frame); `tools/editor_smoke/README.md`.
 At most 16 spell bursts live at once; a new burst replaces the oldest spell
 burst. All temporary hooks fill only spare slots after existing world offers,
 with **100 total light sources per frame**, including spell bursts. Saturated
@@ -3403,13 +3436,13 @@ zero disabled RGB differences. Synthetic ground uses no proprietary art.
 **Video → UO+ effects...** is the common classic/Modern Options surface.
 All new flags are off by default. Apply persists the staged values; Okay
 applies and closes; Cancel discards edits; Defaults stages all flags off,
-densities 50% and ambient cap 128. Density 0 suppresses an effect while keeping
+densities 50%, ambient cap 128 and the time-of-day hour -1 (shard clock). Density 0 suppresses an effect while keeping
 its checkbox selected. Parent Options Apply does not overwrite panel edits.
 
 | Profile field | Type | Default | Meaning |
 |---|---|---|---|
-| `UoPlusFlags` (`uo_plus_flags`) | integer bit mask | 0 | 8 rain rings, 16 puddles, 32 wet player, 64 reserved sway, 256 water ripples |
-| `UoPlusDensities` (`uo_plus_densities`) | object of feature-name → integer | `{}` | Independent 0–100 values, clamped at use; names `Fog`, `Leaves`, `Dust`, `RainRings`, `Puddles`, `WetPlayer`, `Sway`, `SpellLights`, `WaterRipples` |
+| `UoPlusFlags` (`uo_plus_flags`) | integer bit mask | 0 | 8 rain rings, 16 puddles, 32 wet player, 64 reserved sway, 256 water ripples, 512 time-of-day light |
+| `UoPlusDensities` (`uo_plus_densities`) | object of feature-name → integer | `{}` | Independent 0–100 values, clamped at use; names `Fog`, `Leaves`, `Dust`, `RainRings`, `Puddles`, `WetPlayer`, `Sway`, `SpellLights`, `WaterRipples`, `TimeOfDay` |
 
 Fog/leaves/dust flags remain authoritative in `AmbientFog`, `AmbientLeaves`
 and `AmbientDust`; spell lights remain in `SpellLighting` (`spell_lighting`).

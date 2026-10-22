@@ -116,6 +116,26 @@ view (160 x 152 tiles, 19 lights), the light pass costs about 7 ms a frame
 against about 3 ms before; the extra time is the field texture and the sample
 grid.
 
+Amendment (2026-10-22, LIGHTS-04, time of day): decision 4's "time of day
+is colour only" stands, and the colour now follows the hour, not only the
+level. The level cannot tell dawn from dusk, or morning from evening, and the
+shard sends no clock; the RunUO family (RunUO, ServUO, ModernUO) derives its
+clock and light cycle from one formula on UTC, which the client computes for
+the player's map and column. A UO+ flag, Time-of-day light (off by default,
+requires Realtime lights, density = colour strength), tints the ambient warm at
+dawn, white at noon, orange-pink at dusk and blue at night, at the level's
+luminance, so the shard still owns brightness and a dungeon's dark level keeps
+the level ramp at any hour. Torches are scaled down by daylight (45 % at noon).
+The stills also showed a pre-existing fault against
+decision 5: by day, scaling a torch's over-white sum by its brightest channel
+left a brown ring darker than daylight. A sample is now floored at its cell's
+ambient after that scaling, for the option with or without time of day.
+A fixed-hour slider in the UO+ panel overrides the clock, and, without a
+Light level override, sets the level from the same light cycle, for preview
+and for shards with another clock. Off, the field is unchanged. The scene also
+frees the light target when it unloads (one marked line in `Unload`); before,
+its canvas item outlived the scene. Section 45 has the numbers.
+
 ## Validation
 
 UO+ spell-light amendment (2026-10-20, owner-authorized night-push brief):

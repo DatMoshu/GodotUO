@@ -658,6 +658,10 @@ internal sealed class WorldHost : IDisposable
             GD.PrintErr($"[GUO editor] closing the world project: {ex.GetType().Name}: {ex.Message}");
         }
 
+        // The embedded scene never runs GameScene.Unload: free what Realtime
+        // lights holds (a canvas item under the light target) here.
+        _scene?.ReleaseRealtimeLights();
+
         if (_game != null)
         {
             try

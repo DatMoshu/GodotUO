@@ -111,6 +111,8 @@ namespace GUO.Renderer.Lights
         private readonly Dictionary<CacheKey, Reach> _cache = new();
         private int _frame;
         private ulong _blockerHash;
+        private float _lightScale = 1f;
+        private float _roofShare = 1f;
 
         public int OriginX => _originX;
         public int OriginY => _originY;
@@ -304,11 +306,21 @@ namespace GUO.Renderer.Lights
         /// is the classic grey; <paramref name="nightness"/> out is 0 by day, 1 at the darkest.
         /// </summary>
         public void Compute(float isometricLevel, ReadOnlySpan<Source> sources)
+            => Compute(isometricLevel, AmbientFor(isometricLevel), 1f, sources);
+
+        /// <summary>
+        /// As <see cref="Compute(float, ReadOnlySpan{Source})"/> with the ambient
+        /// colour given (the time of day's, <see cref="RealtimeTimeOfDay.Ambient"/>)
+        /// and every source's energy scaled by <paramref name="lightScale"/>.
+        /// </summary>
+        public void Compute(float isometricLevel, Color ambient, float lightScale, ReadOnlySpan<Source> sources)
         {
             _frame++;
-            Ambient = AmbientFor(isometricLevel);
+            Ambient = ambient;
+            _lightScale = lightScale;
             float day = Math.Clamp(isometricLevel, 0f, 1f);
             float roofShare = RoofDaylight + (1f - RoofDaylight) * (1f - day);
+            _roofShare = roofShare;
             RoofAmbient = new Color(Ambient.R * roofShare, Ambient.G * roofShare, Ambient.B * roofShare);
             int cells = _width * _height;
 
@@ -404,7 +416,11 @@ namespace GUO.Renderer.Lights
             float m = Math.Max(r, Math.Max(g, b));
             if (m > 1f)
             {
-                r /= m; g /= m; b /= m;
+                // As FillTexture: the hue kept, never below the cell's ambient.
+                float s = _roof[cy * _width + cx] ? _roofShare : 1f;
+                r = Math.Max(r / m, Ambient.R * s);
+                g = Math.Max(g / m, Ambient.G * s);
+                b = Math.Max(b / m, Ambient.B * s);
             }
 
             return new Color(r, g, b);
@@ -649,7 +665,7 @@ namespace GUO.Renderer.Lights
                     int cell = gy / f * _width + gx / f;
                     if (s.Z > _lightTop[cell]) _lightTop[cell] = (short)s.Z;
                     int o = (gy * fw + gx) * 3;
-                    v *= s.Energy;
+                    v *= s.Energy * _lightScale;
                     _fine[o] += s.Color.R * v;
                     _fine[o + 1] += s.Color.G * v;
                     _fine[o + 2] += s.Color.B * v;
@@ -673,10 +689,10 @@ namespace GUO.Renderer.Lights
             {
                 int xx = Math.Clamp(x0 + (k & 1), 0, fw - 1), yy = Math.Clamp(y0 + (k >> 1), 0, fh - 1);
                 float w = ((k & 1) != 0 ? ax : 1f - ax) * ((k >> 1) != 0 ? ay : 1f - ay);
-                int o = (yy * fw + xx) * 3;
-                r += _fine[o] * w;
-                g += _fine[o + 1] * w;
-                b += _fine[o + 2] * w;
+                (float sr, float sg, float sb) = Sample(yy * fw + xx, yy / f * _width + xx / f);
+                r += sr * w;
+                g += sg * w;
+                b += sb * w;
             }
 
             float m = Math.Max(r, Math.Max(g, b));
@@ -686,6 +702,21 @@ namespace GUO.Renderer.Lights
             }
 
             return new Color(r, g, b);
+        }
+
+        /// <summary>
+        /// Sample <paramref name="i"/> as drawn: brighter than white, scaled by
+        /// its brightest channel to keep the hue, but never below its cell's
+        /// ambient, so by day a torch cannot dim the sunlit ground around it.
+        /// </summary>
+        private (float r, float g, float b) Sample(int i, int cell)
+        {
+            int o = i * 3;
+            float r = _fine[o], g = _fine[o + 1], b = _fine[o + 2];
+            float m = Math.Max(r, Math.Max(g, b));
+            if (m <= 1f) return (r, g, b);
+            float s = _roof[cell] ? _roofShare : 1f;
+            return (Math.Max(r / m, Ambient.R * s), Math.Max(g / m, Ambient.G * s), Math.Max(b / m, Ambient.B * s));
         }
 
         /// <summary>The largest sample value <see cref="FillTexture"/> can carry.</summary>
@@ -698,13 +729,25 @@ namespace GUO.Renderer.Lights
         /// </summary>
         public void FillTexture(byte[] rgba)
         {
-            int n = _width * _fineScale * _height * _fineScale;
-            for (int i = 0; i < n; i++)
+            int f = _fineScale, fw = _width * f, n = fw * _height * f;
+            float ar = Ambient.R, ag = Ambient.G, ab = Ambient.B;
+            float[] fine = _fine;
+            for (int i = 0, o = 0, t = 0; i < n; i++, o += 3, t += 4)
             {
-                int o = i * 3, t = i * 4;
-                rgba[t] = Encode(_fine[o]);
-                rgba[t + 1] = Encode(_fine[o + 1]);
-                rgba[t + 2] = Encode(_fine[o + 2]);
+                float r = fine[o], g = fine[o + 1], b = fine[o + 2];
+                if (r > 1f || g > 1f || b > 1f)
+                {
+                    // As Sample: the hue kept, never below the cell's ambient.
+                    float m = Math.Max(r, Math.Max(g, b));
+                    float s = _roof[i / fw / f * _width + i % fw / f] ? _roofShare : 1f;
+                    r = Math.Max(r / m, ar * s);
+                    g = Math.Max(g / m, ag * s);
+                    b = Math.Max(b / m, ab * s);
+                }
+
+                rgba[t] = Encode(r);
+                rgba[t + 1] = Encode(g);
+                rgba[t + 2] = Encode(b);
                 rgba[t + 3] = 255;
             }
         }

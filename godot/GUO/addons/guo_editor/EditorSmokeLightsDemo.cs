@@ -83,7 +83,21 @@ public partial class EditorSmoke
             profile.LightLevelType = 0;
             profile.LightLevel = 30;
         }
-        if (profile?.UseCustomLightLevel == true)
+        // ",hour,H[,todoff]": Realtime lights at hour H (time-of-day light on, or
+        // off for the before frame), the classic level set from that hour too.
+        int hourAt = Array.IndexOf(demo, "hour", 1);
+        if (hourAt > 0 && profile != null)
+        {
+            int hour = int.Parse(demo[hourAt + 1]);
+            profile.RealtimeLights = true;
+            profile.UseCustomLightLevel = false;
+            profile.RealtimeLightsHour = hour;
+            UoPlusOptions.Set(profile, UoPlusFeature.TimeOfDay, Array.IndexOf(demo, "todoff", 1) < 0, 100);
+            world.Light.Overall = GUO.Renderer.Lights.RealtimeTimeOfDay.LevelForHour(hour + 0.5f);
+            world.Light.Personal = 0;
+            GD.Print($"[lights-demo] hour={hour} timeOfDay={UoPlusOptions.Enabled(profile, UoPlusFeature.TimeOfDay)}");
+        }
+        else if (profile?.UseCustomLightLevel == true)
         {
             world.Light.Overall = profile.LightLevelType == 1
                 ? Math.Min(world.Light.RealOverall, profile.LightLevel)

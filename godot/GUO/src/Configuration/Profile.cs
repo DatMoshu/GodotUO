@@ -409,6 +409,10 @@ namespace GUO.Configuration
         // PORT DEVIATION (GUO): UO+ spell cast/impact bursts (ADR-0039).
         // Requires RealtimeLights; existing profiles stay off.
         public bool SpellLighting { get; set; } = false;
+        // PORT DEVIATION (GUO): UO+ time-of-day light colour (ADR-0039 addendum).
+        // The hour the colour follows: -1 is the shard's clock, 0..23 a fixed
+        // hour (which then also sets the light level, unless Light level is set).
+        public int RealtimeLightsHour { get; set; } = -1;
         // PORT DEVIATION (GUO): UO+ ambient particles, non-parity (ADR-0042).
         public bool AmbientFog { get; set; } = false;
         public bool AmbientLeaves { get; set; } = false;

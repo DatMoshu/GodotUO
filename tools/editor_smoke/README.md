@@ -67,6 +67,10 @@ server/client bar stays inside the window and occupies one row at 1920, 1366
 and 1024 logical pixels wide, and saves `editor_header_*.png`. It runs no other
 editor checks and cannot be combined with `--reload`.
 
+`,hour,H` (0..23) turns on Realtime lights with the UO+ time-of-day light at
+H:30, the classic level set from that hour's light cycle; add `,todoff` for
+the same hour and level without the time-of-day colour (the before frame).
+
 For the spell-wall regression, use `--guo-editor-lights-demo
 12,spellwall,1498,1628,0` with world shot `0,1496,1628,960,720`.
 This editor-only fixture enables Realtime lights and Spell lighting at night

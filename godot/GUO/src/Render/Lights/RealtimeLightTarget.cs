@@ -80,6 +80,9 @@ void fragment() {
         public int LastSprites { get; private set; }
         internal int FieldUploads { get; private set; }
 
+        /// <summary>Canvas items created and not yet freed, over every target (the probe's leak check).</summary>
+        internal static int LiveItems { get; private set; }
+
         public void EnsureSize(Node parent, int width, int height)
         {
             if (parent == null || width <= 0 || height <= 0) return;
@@ -89,6 +92,7 @@ void fragment() {
             _target = new RenderTarget2D(parent, width, height);
             _material = new ShaderMaterial { Shader = new Shader { Code = ShaderCode } };
             _item = RenderingServer.CanvasItemCreate();
+            LiveItems++;
             RenderingServer.CanvasItemSetParent(_item, _target.CanvasItem);
             RenderingServer.CanvasItemSetMaterial(_item, _material.GetRid());
             // The art masks stay nearest; only the field uniform is linear.
@@ -237,6 +241,7 @@ void fragment() {
             {
                 RenderingServer.FreeRid(_item);
                 _item = default;
+                LiveItems--;
             }
 
             _material?.Dispose();

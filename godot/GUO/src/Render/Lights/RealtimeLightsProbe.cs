@@ -21,9 +21,12 @@ public partial class RealtimeLightsProbe : Node
     {
         try
         {
-            using (var parent = new Node())
+            // The parent is freed by hand: Dispose on a Node wrapper leaves the
+            // engine object (and the target's viewports under it) alive at exit.
+            var targetParent = new Node();
             using (var target = new RealtimeLightTarget())
             {
+                Node parent = targetParent;
                 target.EnsureSize(parent, 4, 4);
                 byte[] bytes = new byte[16];
                 target.SetField(bytes, 2, 2, 0, 0, 1, 1, Colors.White);
@@ -38,6 +41,23 @@ public partial class RealtimeLightsProbe : Node
                 target.EnsureSize(parent, 4, 4);
                 target.SetField(bytes, 1, 4, 3, 4, 1, 1, Colors.Black);
                 Require(target.FieldUploads == 4, "Recreated targets must upload their first frame");
+            }
+            targetParent.Free();
+            // Bounded teardown: resizing and recreating a target frees its old
+            // canvas item each time, and disposing frees the last one.
+            int liveBefore = RealtimeLightTarget.LiveItems;
+            {
+                var parent = new Node();
+                var target = new RealtimeLightTarget();
+                for (int i = 0; i < 8; i++) target.EnsureSize(parent, 4 + i, 4);
+                Require(RealtimeLightTarget.LiveItems == liveBefore + 1, "A resized light target holds one canvas item");
+                target.Teardown();
+                Require(RealtimeLightTarget.LiveItems == liveBefore, "Teardown frees the canvas item");
+                target.EnsureSize(parent, 6, 6);
+                target.Dispose();
+                target.Dispose();
+                Require(RealtimeLightTarget.LiveItems == liveBefore, "Dispose frees the canvas item once");
+                parent.Free();
             }
             var profile = JsonSerializer.Deserialize("{}", ProfileJsonContext.DefaultToUse.Profile);
             Require(!profile.RealtimeLights, "Existing profiles must default off");
@@ -57,6 +77,33 @@ public partial class RealtimeLightsProbe : Node
                 Require(Math.Abs(luminance - level) < 0.0001f, "Ambient must preserve classic night brightness");
             }
 
+            // Time of day (UO+, ADR-0039 addendum): the RunUO family clock, its light
+            // cycle, the colour of the hour, and torches weaker by day.
+            Require(profile.RealtimeLightsHour == -1, "The time-of-day hour defaults to the shard clock");
+            Require(!UoPlusOptions.Requested(profile, UoPlusFeature.TimeOfDay), "Time-of-day light defaults off");
+            var epoch = new DateTime(1997, 9, 1, 0, 0, 0, DateTimeKind.Utc);
+            Require(Math.Abs(RealtimeTimeOfDay.ShardHour(epoch.AddSeconds(5 * 60 * 13), 0, 0) - 13f) < 0.001f, "Five seconds per UO minute from 1997-09-01");
+            Require(Math.Abs(RealtimeTimeOfDay.ShardHour(epoch, 1, 160) - (320 + 10) / 60f) < 0.001f, "Map index and column shift the hour");
+            Require(RealtimeTimeOfDay.LevelForHour(2f) == 12 && RealtimeTimeOfDay.LevelForHour(5f) == 6
+                && RealtimeTimeOfDay.LevelForHour(12f) == 0 && RealtimeTimeOfDay.LevelForHour(23f) == 6, "Light cycle as the RunUO family's");
+            Color dawnTint = RealtimeTimeOfDay.Tint(5.5f), noonTint = RealtimeTimeOfDay.Tint(12f),
+                duskTint = RealtimeTimeOfDay.Tint(22.4f), nightTint = RealtimeTimeOfDay.Tint(1f);
+            Require(dawnTint.R > dawnTint.G && dawnTint.G > dawnTint.B, "Dawn is warm");
+            Require(noonTint.R > 0.99f && noonTint.G > 0.99f && noonTint.B > 0.99f, "Noon is white");
+            Require(duskTint.R > duskTint.G && duskTint.B >= duskTint.G - 0.01f, "Dusk is orange-pink");
+            Require(nightTint.B > nightTint.R && nightTint.B > nightTint.G, "Night is blue");
+            Color noonAmbient = RealtimeTimeOfDay.Ambient(1f, 12f, 1f);
+            Require(noonAmbient.R > 0.99f && noonAmbient.G > 0.99f && noonAmbient.B > 0.99f, "Noon at full day is the classic frame");
+            Color nightAmbient = RealtimeTimeOfDay.Ambient(0.625f, 1f, 1f);
+            float nightLum = nightAmbient.R * 0.2126f + nightAmbient.G * 0.7152f + nightAmbient.B * 0.0722f;
+            Require(nightAmbient.B > nightAmbient.R && Math.Abs(nightLum - 0.625f) < 0.002f, "Night keeps the level's brightness, tinted blue");
+            Color cave = RealtimeTimeOfDay.Ambient(0.1875f, 12f, 1f), caveRamp = RealtimeLightField.AmbientFor(0.1875f);
+            Require(Math.Abs(cave.R - caveRamp.R) < 0.001f && Math.Abs(cave.B - caveRamp.B) < 0.001f, "A dungeon's dark level ignores the noon sky");
+            Color zero = RealtimeTimeOfDay.Ambient(0.625f, 22.4f, 0f), ramp = RealtimeLightField.AmbientFor(0.625f);
+            Require(Math.Abs(zero.R - ramp.R) < 0.001f && Math.Abs(zero.B - ramp.B) < 0.001f, "Strength 0 is the level-only ramp");
+            Require(RealtimeTimeOfDay.LightScale(1f, 12f, 1f) < 0.5f && RealtimeTimeOfDay.LightScale(0.625f, 1f, 1f) > 0.99f
+                && RealtimeTimeOfDay.LightScale(0.1875f, 12f, 1f) > 0.99f, "Torches weaker by day, full at night and underground");
+
             // Tiledata rule.
             Require(RealtimeLightField.Blocks(true, false, false, false, 0), "A wall blocks");
             Require(RealtimeLightField.Blocks(false, true, false, false, 20), "A tall impassable static blocks");
@@ -71,7 +118,7 @@ public partial class RealtimeLightsProbe : Node
             var torch = new RealtimeLightField.Source(16, 16, 0, 6, Colors.White);
             field.Compute(0.0625f, new[] { torch });
             Require(field.LastComputed == 1 && field.CacheCount == 1, "One reach computed and cached");
-            Color at = field.Cell(16, 16), near = field.Cell(18, 16), far = field.Cell(16, 23), behind = field.Cell(22, 16), beside = field.Cell(19, 16);
+            Color at = field.Cell(16, 16), near = field.Cell(18, 16), far = field.Cell(16, 23), behind = field.Cell(22, 16), beside = field.Cell(16, 21);
             Require(at.R >= near.R && near.R > night.R + 0.05f, "Light falls off with distance");
             Require(Math.Abs(far.R - night.R) < 0.02f, "Nothing past the radius");
             Require(behind.R < beside.R - 0.1f && Math.Abs(behind.R - night.R) < 0.03f, "A wall blocks the light behind it");
@@ -82,6 +129,11 @@ public partial class RealtimeLightsProbe : Node
             for (int y = 0; y < 32; y++) field.AddBlocker(20, y, 20);
             field.Compute(0.0625f, new[] { torch });
             Require(field.LastComputed == 0, "Unchanged frame hits the cache");
+            float full = field.Cell(16, 21).R - night.R;
+            field.Begin(0, 0, 32, 32);
+            for (int y = 0; y < 32; y++) field.AddBlocker(20, y, 20);
+            field.Compute(0.0625f, RealtimeLightField.AmbientFor(0.0625f), 0.5f, new[] { torch });
+            Require(Math.Abs(field.Cell(16, 21).R - night.R - full * 0.5f) < 0.01f && full > 0.05f, "The light scale scales every source");
 
             // A door opens in the wall (the blocker goes): recomputed, light passes.
             field.Begin(0, 0, 32, 32);
@@ -96,6 +148,13 @@ public partial class RealtimeLightsProbe : Node
             var high = new RealtimeLightField.Source(16, 16, 18, 6, Colors.White);
             field.Compute(0.0625f, new[] { high });
             Require(field.Cell(21, 16).R > night.R + 0.05f, "A light above the wall top reaches over it");
+
+            // By day a warm torch keeps its hue but never dims the daylight around it.
+            field.Begin(0, 0, 32, 32);
+            field.Compute(1f, new[] { new RealtimeLightField.Source(16, 16, 0, 6, RealtimeLightField.WarmLight) });
+            Color sunTorch = field.Cell(16, 16), sunFine = field.FineAt(16.5f, 16.5f);
+            Require(sunTorch.R > 0.99f && sunTorch.G > 0.99f && sunTorch.B > 0.99f
+                && sunFine.R > 0.99f && sunFine.G > 0.99f && sunFine.B > 0.99f, "A torch by day is no darker than daylight");
 
             // Roof dim by day, none at night.
             field.Begin(0, 0, 8, 8);
