@@ -105,6 +105,17 @@ public partial class EditorSmoke
             world.Light.Personal = 0;
             GD.Print($"[lights-demo] hour={hour} timeOfDay={UoPlusOptions.Enabled(profile, UoPlusFeature.TimeOfDay)} sunShadows={UoPlusOptions.Enabled(profile, UoPlusFeature.SunShadows)}");
         }
+        // ",level,N": a custom light level N (0 bright .. 31 dark) over the hour's, so
+        // the light types read against a dark street.
+        int levelAt = Array.IndexOf(demo, "level", 1);
+        if (levelAt > 0 && profile != null)
+        {
+            profile.UseCustomLightLevel = true;
+            profile.LightLevelType = 0;
+            profile.LightLevel = byte.Parse(demo[levelAt + 1]);
+            world.Light.Overall = profile.LightLevel;
+            world.Light.Personal = 0;
+        }
         else if (profile?.UseCustomLightLevel == true)
         {
             world.Light.Overall = profile.LightLevelType == 1

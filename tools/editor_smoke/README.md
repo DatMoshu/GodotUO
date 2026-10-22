@@ -74,6 +74,8 @@ and `,sun` for the UO+ sun and moon shadows at full strength.
 `,gallery,X,Y,Z` (no walkers, camera fixed) lights every light preset in two
 rows of four around X,Y, a spot sweeping between them, and a flash every
 1.5 s (data_formats section 45).
+`,level,N` sets a custom light level N (0..31) over the hour's, for a dark
+street.
 
 For the spell-wall regression, use `--guo-editor-lights-demo
 12,spellwall,1498,1628,0` with world shot `0,1496,1628,960,720`.
