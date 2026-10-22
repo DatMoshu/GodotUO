@@ -55,13 +55,13 @@ Dependency doctor (no extra software, services or models):
 
 ```text
 dotnet build godot/GUO/GUO.csproj -c Debug -p:GuoLabs=true
-godot-console --headless --path godot/GUO --quit-after 60 res://src/Labs/Weather/WeatherProbe.tscn
+godot-console --headless --path godot/GUO --quit-after 60 res://src/Render/Weather/WeatherProbe.tscn
 ```
 
 If the weather command or scene class is missing, rerun this doctor with the
 repository's pinned mono Godot and .NET SDK. See `tools/worktree_setup` if the
-engine/upstream cannot resolve. Smoke: set `GuoLabs=true` before
-`launchers/dev/smoke.bat` or `launchers/dev/smoke.sh` to include this contract.
+engine/upstream cannot resolve. `launchers/dev/smoke.bat` or
+`launchers/dev/smoke.sh` includes this shipping contract in every build.
 
 Scenario: `tools/scenarios/client/weather_lab.md`. Synthetic surface render:
 `res://src/Labs/Weather/WeatherVisualProbe.tscn`; `GUO_WEATHER_PROOF` optionally
