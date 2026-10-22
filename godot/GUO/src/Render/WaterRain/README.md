@@ -7,6 +7,10 @@ style. Both flags default off and keep separate densities. Classic water, or
 styled water with the ripple simulation off, retains the opted-in primitive
 ring fallback. Puddles and wet-player effects remain independent.
 
+Integration dependency: weather promotion [PR #120](https://github.com/DatMoshu/GodotUO/pull/120),
+head `bdd731b5b141a4269f68aca3a71266f056a40324`. PR #120 must precede
+WATER-07; naming this candidate does not claim it is merged or accepted.
+
 The shared input is `WeatherLab.RainIntensity(World)`: 0..1, rain, storm or brewing
 weather count divided by 70, zero for dry/snow/missing weather. Effect toggles
 gate consumers rather than the signal. The weather seat owns this provider.

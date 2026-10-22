@@ -938,6 +938,58 @@ diff --git a/Projects/UOContent/Network/BanExemptions.cs b/Projects/UOContent/Ne
          if (ManualAllowlist.Contains(address))
 MUO_EOF_0
 chmod 0644 $BASE/patches/0006-loopback-ban-exemption.patch
+install -d "$(dirname $BASE/patches/0007-guo-weather.patch)"
+cat > $BASE/patches/0007-guo-weather.patch <<'MUO_EOF_0'
+diff --git a/Projects/UOContent/Custom/GuoWeather.cs b/Projects/UOContent/Custom/GuoWeather.cs
+new file mode 100644
+--- /dev/null
++++ b/Projects/UOContent/Custom/GuoWeather.cs
+@@ -0,0 +1,43 @@
++// GUO dev-shard acceptance command; sends only to the requesting GM.
++using Server.Commands;
++using Server.Network;
++using System.Globalization;
++
++namespace Server.Custom.Guo;
++
++public static class GuoWeather
++{
++    public static void Configure() =>
++        CommandSystem.Register("GuoWeather", AccessLevel.GameMaster, OnCommand);
++
++    [Usage("GuoWeather rain|storm|brewing|snow|clear [0-70]")]
++    [Description("Sends a weather packet only to the requesting GM for GUO acceptance checks.")]
++    private static void OnCommand(CommandEventArgs e)
++    {
++        if (e.Length is < 1 or > 2)
++        {
++            e.Mobile.SendMessage("Usage: GuoWeather rain|storm|brewing|snow|clear [0-70]");
++            return;
++        }
++        int type = e.GetString(0).ToLowerInvariant() switch
++        {
++            "rain" => 0, "storm" => 1, "snow" => 2, "brewing" => 3,
++            "clear" => 0xFF, _ => -1
++        };
++        int count = 70;
++        if (e.Length == 2 && !int.TryParse(e.GetString(1), NumberStyles.Integer,
++            CultureInfo.InvariantCulture, out count))
++        {
++            e.Mobile.SendMessage("Count must be an integer from 0 to 70.");
++            return;
++        }
++        if (type < 0 || count is < 0 or > 70)
++        {
++            e.Mobile.SendMessage("Use rain, storm, brewing, snow or clear, with count 0-70.");
++            return;
++        }
++        if (type == 0xFF) count = 0;
++        e.Mobile.NetState.SendWeather((byte)type, (byte)count, 15);
++        e.Mobile.SendMessage($"GUO_WEATHER type={type} count={count}");
++    }
++}
+MUO_EOF_0
+chmod 0644 $BASE/patches/0007-guo-weather.patch
 
 # checkout at the pin; patches off before the pin moves, on after
 if [ ! -d "$SRC/.git" ]; then as_user git clone --no-checkout "$CLONE_URL" "$SRC"; fi
@@ -947,6 +999,7 @@ as_user git -C "$SRC" update-index --no-skip-worktree global.json 2>/dev/null ||
 as_user git -C "$SRC" checkout -q -- global.json 2>/dev/null || true
 head="$(as_user git -C "$SRC" rev-parse -q --verify HEAD 2>/dev/null || true)"
 if [ "$head" != "$PIN" ]; then
+    if as_user git -C "$SRC" apply -R --check "$BASE/patches/0007-guo-weather.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0007-guo-weather.patch"; fi
     if as_user git -C "$SRC" apply -R --check "$BASE/patches/0006-loopback-ban-exemption.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0006-loopback-ban-exemption.patch"; fi
     if as_user git -C "$SRC" apply -R --check "$BASE/patches/0005-system-message-hook.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0005-system-message-hook.patch"; fi
     if as_user git -C "$SRC" apply -R --check "$BASE/patches/0005-guo-pad-attack-record.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0005-guo-pad-attack-record.patch"; fi
@@ -1011,6 +1064,14 @@ elif as_user git -C "$SRC" apply -R --check "$BASE/patches/0006-loopback-ban-exe
 else
     as_user git -C "$SRC" apply --check "$BASE/patches/0006-loopback-ban-exemption.patch" || true
     die "0006-loopback-ban-exemption.patch does not apply to the checkout at $PIN; stopping"
+fi
+if as_user git -C "$SRC" apply --check "$BASE/patches/0007-guo-weather.patch" >/dev/null 2>&1; then
+    as_user git -C "$SRC" apply "$BASE/patches/0007-guo-weather.patch"
+elif as_user git -C "$SRC" apply -R --check "$BASE/patches/0007-guo-weather.patch" >/dev/null 2>&1; then
+    echo "muo_shard: 0007-guo-weather.patch already applied, skipping"
+else
+    as_user git -C "$SRC" apply --check "$BASE/patches/0007-guo-weather.patch" || true
+    die "0007-guo-weather.patch does not apply to the checkout at $PIN; stopping"
 fi
 
 # the archive's SDK can trail the SDK version the pin's global.json names; build with the installed one

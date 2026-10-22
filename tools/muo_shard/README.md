@@ -83,7 +83,8 @@ Things to know:
 - The backup timer runs `muo-backup.sh`; the shard keeps running while it does.
 - A public port wants auto account creation off: `profiles/guo-vps.profile.json` does that with its own overlay folder,
   `tools/modernuo/config-vps/` (the template's `modernuo.json` with that one setting changed, the port fixed at 2593 and
-  the name `GUO`; a test fails if it drifts from the template in any other way). Same pin and patches as `guo-dev`,
+  the name `GUO`; a test fails if it drifts from the template in any other way). Same pin as `guo-dev`; the VPS excludes
+  the dev-only loopback-ban exemption and requester-only GM weather probe command patches.
   `MemoryMax=4G`, a daily backup timer. With auto creation off the owner makes every other account in game: the
   `shard.admin_add_account` scenario drives the Admin gump (`--no-record`: the gump's layout changes at the movie's
   1280x720; the new account's password comes from `GUO_SCENARIO_NEW_PASSWORD`, never `--var`), and `login_probe.py` says whether a login is accepted without a client. The generated `muo-run.sh` always
