@@ -5,9 +5,10 @@
 Proposed. **Recommendation: Reject**, measured 2026-09-27 (Epic B, B2; see
 "Measured" below). It stays Proposed until the owner signs off.
 
-**Amended 2026-10-19** (below): the alternative listed here, a depth buffer
-instead of the sort, is now proposed for the world pass, with the statics kept
-on the GPU. The amendment has its own status and also waits for the owner.
+**Amended 2026-10-19; accepted 2026-10-22 (owner)** (below): the alternative
+listed here, a depth buffer instead of the sort, is accepted for the world
+pass, with the statics kept on the GPU. The original batching proposal above
+retains its own status.
 
 Written up overnight 2026-09-26 so the owner could decide; see
 `docs/parity_2026-09-26_night.md`, P1.
@@ -194,7 +195,9 @@ it; upstream's own prepare is the yardstick.
 
 ## Amendment 2026-10-19: a depth buffer for the world pass, statics kept on the GPU
 
-**Status:** Proposed; the owner decides. Written by the perf lane (PERF-GPU)
+**Status:** Accepted 2026-10-22 (owner). Moshu approved this amendment and its
+ADR-0001 amendment in the exec-fable terminal at 06:40Z ("I approve").
+Written by the perf lane (PERF-GPU)
 from the numbers measured 2026-10-18/19. The measurement above still stands:
 rebuilding the sorted world into new arrays every frame is slower than
 per-sprite calls, and nothing here does that.
@@ -318,7 +321,8 @@ buffer.
 ADR-0001 governs the renderer. It keeps one presenter, and makes
 `CalculateDepthZ()` the only source of depth, for drawing and picking alike.
 This amendment keeps both, but it changes two things ADR-0001 states, so it
-also needs an **ADR-0001 amendment**, for the owner to decide with this one.
+also needs an **ADR-0001 amendment**, accepted by the owner with this one
+on 2026-10-22; see ADR-0001's amendment below its original decision.
 
 **What stays:**
 
