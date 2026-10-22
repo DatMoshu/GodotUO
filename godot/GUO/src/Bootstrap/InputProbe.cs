@@ -182,7 +182,7 @@ internal static class InputProbe
     {
         if (!LoginPreflight.Decide(expectedAccount, ProbeAccount, autoLogin, env, out string secret, out why))
         {
-            Check("strict login: the allocated account may connect", false, why);
+            GD.Print($"[GUO] input probe: strict login refused, no connect: {why}");
             return false;
         }
 
@@ -283,8 +283,9 @@ internal static class InputProbe
                 return;
             }
 
-            if (!StrictLogin(account, AutoLogin, System.Environment.GetEnvironmentVariable, strictScene.Connect, out _))
+            if (!StrictLogin(account, AutoLogin, System.Environment.GetEnvironmentVariable, strictScene.Connect, out string refused))
             {
+                Check("the allocated account may connect", false, refused);
                 return;
             }
 

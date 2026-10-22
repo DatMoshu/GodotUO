@@ -873,7 +873,24 @@ public partial class Main : Node
     /// <summary>Shard-free keyboard checks: key-ups on focus loss, AltGr text; see KeyboardProbe.</summary>
     private void KeyboardProbeThenQuit() => Quit(KeyboardProbe.Run() ? 0 : 1);
     /// <summary>Shard-free login preflight rules; see LoginPreflightProbe.</summary>
-    private async void LoginPreflightProbeThenQuit() => Quit(await LoginPreflightProbe.Run(this) ? 0 : 1);
+    /// <summary>
+    /// The probe is bounded: whatever it awaits, the client quits with a
+    /// failure after LoginPreflightProbe.RunTimeoutMs, so a signal that
+    /// never comes cannot strand a smoke or a runtime lease.
+    /// </summary>
+    private async void LoginPreflightProbeThenQuit()
+    {
+        System.Threading.Tasks.Task<bool> run = LoginPreflightProbe.Run(this);
+        System.Threading.Tasks.Task first = await System.Threading.Tasks.Task.WhenAny(run, System.Threading.Tasks.Task.Delay(LoginPreflightProbe.RunTimeoutMs));
+        if (first != run)
+        {
+            GD.PrintErr($"[GUO] login preflight probe: FAIL timed out after {LoginPreflightProbe.RunTimeoutMs} ms");
+            Quit(1);
+            return;
+        }
+
+        Quit(run.Result ? 0 : 1);
+    }
 
     /// <summary>The menu wheel, the interact radar, the new buttons and "Set controls"; see PadWheelsProbe.</summary>
     private async void PadWheelsProbeThenQuit()

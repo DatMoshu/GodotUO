@@ -13,6 +13,12 @@ namespace GUO.Host;
 
 internal static class LoginPreflightProbe
 {
+    /// <summary>How long one awaited frame may take before the check fails instead of hanging.</summary>
+    public const int FrameTimeoutMs = 10_000;
+
+    /// <summary>How long the whole probe may run before Main quits it with a failure.</summary>
+    public const int RunTimeoutMs = 120_000;
+
     private static int _failed, _checks;
 
     private static void Check(string name, bool ok, string detail = "")
@@ -153,25 +159,42 @@ internal static class LoginPreflightProbe
 
     /// <summary>
     /// The capture marker survives the UI's own list draws, which go
-    /// through RenderLists.DrawRenderLists after the world every frame: a
-    /// world frame drawn on the pass stays marked at capture time.
+    /// through RenderLists.DrawRenderLists(batcher, maxGroundZ) after the
+    /// world every frame: a world frame drawn on the pass stays marked at
+    /// capture time. Headless, the client never draws (GameController's
+    /// DrawFrame returns on the zero-size window before UIManager.Draw), and
+    /// the rendering server never emits a frame signal, so the probe waits
+    /// on process frames and calls the UI's overload itself, on empty
+    /// lists, the way UIManager and the child lists do. The live proof is
+    /// gpu_test_on_pass per capture in the parity run.
     /// </summary>
     private static async System.Threading.Tasks.Task Marker(Node host)
     {
+        // Every wait is finite: a signal that never comes (the render frame
+        // signal, headless, stranded a lease once) fails the check within
+        // FrameTimeoutMs instead of hanging the client.
         async System.Threading.Tasks.Task Frame()
         {
-            await host.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            async System.Threading.Tasks.Task Signal() => await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
+            System.Threading.Tasks.Task signal = Signal();
+            System.Threading.Tasks.Task first = await System.Threading.Tasks.Task.WhenAny(signal, System.Threading.Tasks.Task.Delay(FrameTimeoutMs));
+            Check($"a process frame arrived within {FrameTimeoutMs} ms", first == signal);
         }
 
+        var uiLists = new RenderLists();
         int draws = RenderLists.ListDraws;
         GpuWorld.LastFrameOnPass = true;
         await Frame();
+        uiLists.DrawRenderLists(null, sbyte.MaxValue);
         await Frame();
-        Check("the UI drew its lists in between", RenderLists.ListDraws > draws, $"{RenderLists.ListDraws - draws} list draws");
+        uiLists.DrawRenderLists(null, sbyte.MaxValue);
+        await Frame();
+        Check("the UI's list draws ran in between", RenderLists.ListDraws >= draws + 2, $"{RenderLists.ListDraws - draws} list draws");
         Check("a world frame marked as drawn on the pass stays marked across the UI's list draws", GpuWorld.LastFrameOnPass);
 
         GpuWorld.LastFrameOnPass = false;
         await Frame();
+        uiLists.DrawRenderLists(null, sbyte.MaxValue);
         Check("and an unmarked one stays unmarked", !GpuWorld.LastFrameOnPass);
     }
 }
