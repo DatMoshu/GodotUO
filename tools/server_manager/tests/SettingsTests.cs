@@ -21,6 +21,9 @@ internal static class SettingsTests
         // A server folder from GUO's own templates, plus the files ModernUO makes on first boot.
         string server = Path.Combine(home, "settings server"), config = Path.Combine(server, "Configuration");
         Directory.CreateDirectory(config); Directory.CreateDirectory(Path.Combine(server, "Data"));
+        string descriptor = Path.Combine(server, "Data", "GUO", "public", "shard-content.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(descriptor));
+        File.WriteAllText(descriptor, "{\"schema\":\"guo/shard-content@1\",\"shard\":{\"name\":\"test\"},\"untouched\":42}");
         string templates = Path.Combine(repo, "tools", "modernuo", "config");
         File.WriteAllText(Path.Combine(config, "modernuo.json"), File.ReadAllText(Path.Combine(templates, "modernuo.template.json"))
             .Replace("@UO_CLIENT_DATA@", home.Replace("\\", "\\\\")).Replace("@UO_SHARD_NAME@", "Test Shard").Replace("@UO_SHARD_LISTENER@", "127.0.0.1:2593"));
@@ -40,6 +43,23 @@ internal static class SettingsTests
         var s = ServerSettings.Load(schema, server, key => ShardSecrets.ReadFile(key, secretsFile));
         Require(s.MissingFiles.SequenceEqual(new[] { "Configuration/crowdsec.json" }), "missing files: " + string.Join(",", s.MissingFiles));
         SettingsField F(string id) => s.Field(id) ?? throw new Exception("settings: no field " + id);
+        // WATER-05: edit the existing descriptor, reject impossible restrictions,
+        // and preserve its other content and the previous on-disk version.
+        var waterDefault = F("water:water/default");
+        var waterLock = F("water:water/lock");
+        var waterAllowed = F("water:water/allowed");
+        s.Set(waterDefault, "uo"); s.Set(waterLock, "True"); s.Set(waterAllowed, "classic");
+        Require(s.Validate().ContainsKey(waterDefault.Id), "locked water default outside allowlist accepted");
+        s.Set(waterAllowed, "uo\nUO");
+        Require(s.Validate().ContainsKey(waterDefault.Id), "duplicate water IDs accepted");
+        s.Set(waterAllowed, "uo\nclassic");
+        Require(s.Validate().Count == 0, "valid water policy refused");
+        s.Write(null, DateTime.UtcNow);
+        var waterDoc = JsonNode.Parse(File.ReadAllText(descriptor));
+        Require((int)waterDoc["untouched"] == 42 && (bool)waterDoc["water"]["lock"]
+            && (string)waterDoc["water"]["default"] == "uo" && waterDoc["water"]["allowed"].AsArray().Count == 2,
+            "water write lost descriptor fields or JSON types");
+        s = ServerSettings.Load(schema, server, key => ShardSecrets.ReadFile(key, secretsFile));
         SettingsField perIp = F("modernuo:settings/accountHandler.maxAccountsPerIP"), delay = F("modernuo:settings/autosave.saveDelay"),
             name = F("modernuo:settings/serverListing.serverName"), listen = F("modernuo:listeners"), mail = F("email:emailPassword"),
             webhook = F("modernuo:settings/pages.discordWebhookUrl"), expansion = F("expansion:Id"), fel = F("expansion:MapSelectionFlags/Felucca"),

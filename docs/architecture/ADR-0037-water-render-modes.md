@@ -2,6 +2,17 @@
 
 ## Status
 
+WATER-05 implementation: the existing `guo/shard-content@1` descriptor now
+carries the optional `water` block. Admin Settings edits
+`Data/GUO/public/shard-content.json`; pack redeployment preserves it. This
+uses the existing descriptor/session transport rather than a new game
+packet. Separate, revocable profile consent is required even after content
+approval. A changed policy or descriptor address invalidates that consent.
+The shared UO+ panel shows "Water set by shard" and the consent toggle;
+both Options water selectors enforce accepted restrictions. With `lock`
+and an empty allowlist, only the default is permitted. Declining restores
+the personal choice, and an unavailable style falls back to Classic.
+
 WATER-06 amendment (owner request, 2026-10-19): retain the three WATER-04
 packs and add the data-only `guo-water-classicplus` pack, displayed as UO+.
 Its built-in model 5 preserves native water texels with a subtle dithered

@@ -223,6 +223,12 @@ def cmd_deploy(cfg, a) -> int:
         "scripts": a.scripts,
     }
     out = Path(a.descriptor) if a.descriptor else shard / "Data" / "GUO" / "public" / "shard-content.json"
+    # WATER-05: Admin Settings owns the optional policy. Redeploying packs
+    # preserves it; the C# descriptor check below validates it before writing.
+    if out.is_file():
+        prior = json.loads(out.read_text(encoding="utf-8"))
+        if "water" in prior:
+            descriptor["water"] = prior["water"]
     descriptor_bytes = (json.dumps(descriptor, indent=2) + "\n").encode("utf-8")
     staged_descriptor = work / "shard-content.json"
     staged_descriptor.write_bytes(descriptor_bytes)

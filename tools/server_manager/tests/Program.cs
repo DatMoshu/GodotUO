@@ -12,6 +12,7 @@ var profileB=new ServerProfile { Name="Test B", Executable=Environment.ProcessPa
 void Require(bool ok, string what) { if(!ok) throw new Exception(what); }
 string Refused(Action action) { try { action(); return null; } catch(Exception e) when (e is InvalidDataException or JsonException or InvalidOperationException or ArgumentException or PlatformNotSupportedException) { return e.Message; } }
 try {
+    WaterPolicyTests.Run();
     var list=new ServerProfiles { Selected=profile.Id, Servers=new() { profile } }; string file=Path.Combine(home,"profiles.json"); list.Save(file);
     if(ServerProfiles.Load(file).Selected!=profile.Id) throw new Exception("Selection was not preserved");
     ManagedServerProcess.Start(profile,a); ManagedServerProcess.Start(profileB,b);

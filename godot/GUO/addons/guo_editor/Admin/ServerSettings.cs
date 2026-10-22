@@ -419,6 +419,21 @@ internal sealed class ServerSettings
             }
         }
 
+        if (Diff().Any(c => c.Field.File == "water"))
+        {
+            try
+            {
+                var policy = new GUO.Store.StoreWaterPolicy
+                {
+                    Default = Get(Field("water:water/default")) is { Length: > 0 } style ? style : "classic",
+                    Lock = Get(Field("water:water/lock")) == "True",
+                    Allowed = (Get(Field("water:water/allowed")) ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                };
+                policy.Validate();
+            }
+            catch (InvalidDataException ex) { errors["water:water/default"] = ex.Message; }
+        }
+
         return errors;
     }
 
