@@ -846,6 +846,8 @@ namespace GUO.Game
 
         private void InternalMapChangeClear(bool noplayer)
         {
+            // PORT DEVIATION (GUO): temporary UO+ bursts belong to the old map.
+            GUO.Renderer.Lights.RealtimeLightEffects.ClearSpells();
             if (!noplayer)
             {
                 Map.Destroy();

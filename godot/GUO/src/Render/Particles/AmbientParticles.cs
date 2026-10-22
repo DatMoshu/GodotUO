@@ -15,7 +15,7 @@ internal sealed class AmbientParticles : IDisposable
     internal const int MaximumSamples = 4096;
     internal const int MaximumTileObjects = 64;
     private ImageTexture _fog;
-    private Profile _profile;
+    private int _fogDensity, _leavesDensity, _dustDensity;
     private double _seconds;
     private int _limit;
     internal int Samples { get; private set; }
@@ -25,16 +25,21 @@ internal sealed class AmbientParticles : IDisposable
     internal readonly record struct Particle(AmbientParticleKind Kind, float X, float Y, float Alpha);
 
     internal static bool Enabled(Profile p) => p != null
-        && (p.AmbientFog || p.AmbientLeaves || p.AmbientDust)
-        && p.AmbientParticleDensity > 0 && p.AmbientParticleCap > 0;
+        && (UoPlusOptions.Enabled(p, UoPlusFeature.Fog) || UoPlusOptions.Enabled(p, UoPlusFeature.Leaves)
+            || UoPlusOptions.Enabled(p, UoPlusFeature.Dust)) && p.AmbientParticleCap > 0;
 
     internal void Begin(Profile profile, double seconds)
     {
-        _profile = profile;
+        _fogDensity = FrameDensity(profile, UoPlusFeature.Fog);
+        _leavesDensity = FrameDensity(profile, UoPlusFeature.Leaves);
+        _dustDensity = FrameDensity(profile, UoPlusFeature.Dust);
         _seconds = double.IsFinite(seconds) ? Math.Max(0, seconds) : 0;
         _limit = Enabled(profile) ? Math.Clamp(profile.AmbientParticleCap, 0, MaximumParticles) : 0;
         Samples = Emitted = 0;
     }
+
+    private static int FrameDensity(Profile profile, UoPlusFeature feature)
+        => UoPlusOptions.Enabled(profile, feature) ? UoPlusOptions.Density(profile, feature) : 0;
 
     // Native interior land IDs from MapGen's tile-tables.default.json. Unknown
     // and custom ground stays quiet. Foliage also supports trees on grass.
@@ -52,18 +57,18 @@ internal sealed class AmbientParticles : IDisposable
         particle = default;
         if (Full) return false;
         Samples++;
-        bool enabled = kind switch
+        int density = kind switch
         {
-            AmbientParticleKind.Fog => _profile.AmbientFog,
-            AmbientParticleKind.Leaves => _profile.AmbientLeaves,
-            AmbientParticleKind.Dust => _profile.AmbientDust,
-            _ => false
+            AmbientParticleKind.Fog => _fogDensity,
+            AmbientParticleKind.Leaves => _leavesDensity,
+            AmbientParticleKind.Dust => _dustDensity,
+            _ => 0
         };
-        if (!enabled) return false;
+        if (density == 0) return false;
         uint hash = Hash(x, y, map);
         // At 100%, one in eight eligible tiles emits. Lower densities are a
         // stable subset, so changing density never relocates existing emitters.
-        if (hash % 800 >= Math.Clamp(_profile.AmbientParticleDensity, 0, 100)) return false;
+        if (hash % 800 >= density) return false;
         double period = kind == AmbientParticleKind.Fog ? 18 : kind == AmbientParticleKind.Leaves ? 7 : 5;
         float phase = (float)((_seconds / period + ((hash >> 10) & 1023) / 1024.0) % 1);
         float wave = MathF.Sin(phase * MathF.Tau);

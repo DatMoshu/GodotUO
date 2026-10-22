@@ -88,6 +88,10 @@ namespace GUO.Renderer.Arts
         /// </summary>
         public void Refresh(uint idx)
         {
+            // PORT DEVIATION (GUO): wall-plane classification follows native
+            // art edits along with the sprite cache (ADR-0039).
+            if (idx >= 0x4000 && idx - 0x4000 <= ushort.MaxValue)
+                GUO.Renderer.Lights.WallFaces.Invalidate((ushort)(idx - 0x4000));
             if (idx < _spriteInfos.Length)
             {
                 _spriteInfos[idx] = default;

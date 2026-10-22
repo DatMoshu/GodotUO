@@ -52,14 +52,21 @@ echo [smoke] optional HD pack contracts (synthetic)
 
 echo [smoke] UO+ ambient particles contract (synthetic; ADR-0042)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/Particles/AmbientParticlesProbe.tscn || set "FAIL=1"
+echo [smoke] shared UO+ flags and densities (synthetic; ADR-uoplus-settings)
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Configuration/UoPlusProbe.tscn || set "FAIL=1"
 echo [smoke] Realtime lights contract (synthetic; ADR-0039)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/Lights/RealtimeLightsProbe.tscn || set "FAIL=1"
+echo [smoke] UO+ spell lighting contract (synthetic; no shard or install)
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/Lights/SpellLightingProbe.tscn || set "FAIL=1"
 echo [smoke] water render modes contract (synthetic; ADR-0037)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/Water/WaterProbe.tscn || set "FAIL=1"
 echo [smoke] server lab tables and server rows (synthetic; nothing fetched or started)
 "%UO_PYTHON%" "%UO_TOOLS%\server_lab\test_server_lab.py" || set "FAIL=1"
 echo [smoke] perf lab report: fields kept, privacy refusal, size (synthetic; tools\perf_lab)
 "%UO_PYTHON%" -m pytest "%UO_TOOLS%\perf_lab" -q -p no:cacheprovider || set "FAIL=1"
+
+echo [smoke] water authoring contracts (synthetic; editor only)
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://addons/guo_editor/Water/WaterWorkbenchProbe.tscn || set "FAIL=1"
 
 echo [smoke] PostFX engine regressions (synthetic)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Bootstrap/PostFxEngineProbe.tscn || set "FAIL=1"
@@ -80,6 +87,7 @@ echo [smoke] controller regressions and Set controls (synthetic pad; no shard)
 if "%GuoLabs%"=="true" (
     echo [smoke] UO+ weather Labs contract
     "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" --quit-after 60 res://src/Labs/Weather/WeatherProbe.tscn || set "FAIL=1"
+    "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" --quit-after 60 res://src/Labs/WaterRain/WaterRainProbe.tscn || set "FAIL=1"
 )
 
 echo.

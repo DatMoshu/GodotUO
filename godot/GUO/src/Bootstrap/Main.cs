@@ -90,6 +90,7 @@ public partial class Main : Node
         Automation.McpHost.Attach(this);
         if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--hd-content-probe") >= 0) Store.StoreHdProbe.Run();
         if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--realtime-lights-probe") >= 0) Renderer.Lights.RealtimeLightsProbe.Run();
+        if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--spell-lighting-probe") >= 0) Renderer.Lights.SpellLightingProbe.Run();
         if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--ambient-particles-probe") >= 0) Renderer.Particles.AmbientParticlesProbe.Run();
 
         // Synthetic selection seam proof before normal scene startup for the MCP runner.
@@ -237,6 +238,12 @@ public partial class Main : Node
                     // start -- it reads what is playing, not the speaker.
                     AudioServer.SetBusMute(AudioServer.GetBusIndex("Master"), true);
                     GD.Print("[GUO] audio muted for a scripted run (--sound to hear it)");
+                }
+
+                if (_options.UoPlusUiProbe)
+                {
+                    Configuration.UoPlusProbe.RunUi(this);
+                    break;
                 }
 
                 // A phone has no mouse; a desktop asks for the layer by flag.
@@ -721,6 +728,7 @@ public partial class Main : Node
         || _options.PadWheelsProbe
         || _options.PadRegressionProbe
         || _options.TouchGestureProbe
+        || _options.UoPlusUiProbe
         || _options.KeyboardProbe
         || _options.OneScreenProbe
         || _options.GlyphShots
@@ -1541,6 +1549,7 @@ public partial class Main : Node
                 || PadWheelsProbe
                 || PadRegressionProbe
                 || TouchGestureProbe
+                || UoPlusUiProbe
                 || KeyboardProbe
                 || OneScreenProbe
                 || GlyphShots
@@ -1708,6 +1717,8 @@ public partial class Main : Node
 
         /// <summary>--touch-gesture-probe: touch scrolling without a shard; see TouchGestureProbe.</summary>
         public bool TouchGestureProbe { get; private set; }
+        /// <summary>--uoplus-ui-probe: shared Options with an unsaved fixture profile.</summary>
+        public bool UoPlusUiProbe { get; private set; }
         /// <summary>--keyboard-probe: the keyboard layer without a shard; see KeyboardProbe.</summary>
         public bool KeyboardProbe { get; private set; }
 
@@ -1997,6 +2008,10 @@ public partial class Main : Node
                     case "--touch-gesture-probe":
                         o.TouchGestureProbe = true;
                         o.Touch = true;
+                        o.ScratchProfile = true;
+                        break;
+                    case "--uoplus-ui-probe":
+                        o.UoPlusUiProbe = true;
                         o.ScratchProfile = true;
                         break;
                     case "--keyboard-probe":

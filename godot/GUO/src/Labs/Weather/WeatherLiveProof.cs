@@ -4,6 +4,7 @@ using System;
 using System.IO;
 using Godot;
 using GUO.Game;
+using GUO.Configuration;
 using GUO.Game.GameObjects;
 
 namespace GUO.Labs.Weather;
@@ -31,20 +32,32 @@ public partial class WeatherLiveProof : Node
 
     public override async void _Ready()
     {
+        var profile = ProfileManager.CurrentProfile;
+        var weatherFlags = UoPlusFeature.RainRings | UoPlusFeature.Puddles | UoPlusFeature.WetPlayer;
+        var originalFlags = profile?.UoPlusFlags ?? UoPlusFeature.None;
+        var weatherIds = new[] { UoPlusFeature.RainRings, UoPlusFeature.Puddles, UoPlusFeature.WetPlayer };
+        var originalDensities = new System.Collections.Generic.Dictionary<UoPlusFeature, int>();
+        foreach (var id in weatherIds)
+            if (profile?.UoPlusDensities != null && profile.UoPlusDensities.TryGetValue(id, out int density))
+                originalDensities[id] = density;
         try
         {
             Directory.CreateDirectory(_output);
             var state = WeatherLab.For(_world);
-            await GUO.Host.InputProbe.Say(this, "[go 1499 1761 -3");
+            // Exposed shore land beside the docks: the dock itself covers wet
+            // land, which cannot produce the dry-ground puddles asserted below.
+            await GUO.Host.InputProbe.Say(this, "[go 1480 1740 0");
             await ToSignal(GetTree().CreateTimer(4), SceneTreeTimer.SignalName.Timeout);
             if (!_world.InGame) throw new InvalidOperationException("client left the world");
             _world.Weather.Reset();
             state.Settings.WaterDrops = state.Settings.Puddles = state.Settings.WetPlayer = false;
+            foreach (var id in weatherIds) UoPlusOptions.Set(profile, id, false, 100);
             await Shot("weather-live-off");
             // The test explicitly selects the tile under the player, without shipping its ID.
             for (GameObject o = _world.Map.GetTile(_world.Player.X, _world.Player.Y, false); o != null; o = o.TNext)
                 if (o is Land land) state.Settings.PuddleTiles.Add(land.Graphic);
             state.Settings.WaterDrops = state.Settings.Puddles = state.Settings.WetPlayer = true;
+            foreach (var id in weatherIds) UoPlusOptions.Set(profile, id, true, 100);
             _world.Weather.Generate(WeatherType.WT_RAIN, 70, 15);
             await ToSignal(GetTree().CreateTimer(32), SceneTreeTimer.SignalName.Timeout);
             await Shot("weather-live-rain");
@@ -65,7 +78,18 @@ public partial class WeatherLiveProof : Node
             GetTree().Quit();
         }
         catch (Exception ex) { GD.PrintErr("[weather live] FAIL: " + ex); GetTree().Quit(1); }
-        finally { _running = false; }
+        finally
+        {
+            // The explicit proof temporarily overrides the shared gates, never saved preferences.
+            if (profile != null)
+            {
+                profile.UoPlusFlags = (profile.UoPlusFlags & ~weatherFlags) | (originalFlags & weatherFlags);
+                foreach (var id in weatherIds)
+                    if (originalDensities.TryGetValue(id, out int density)) profile.UoPlusDensities[id] = density;
+                    else profile.UoPlusDensities?.Remove(id);
+            }
+            _running = false;
+        }
     }
 
     private async System.Threading.Tasks.Task Shot(string name)

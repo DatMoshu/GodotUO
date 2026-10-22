@@ -1789,9 +1789,22 @@ no reply). `tools/guo_mcp/run.py` is the stdio bridge: it sends the token, then 
 | `guo_input` | `kind` `motion\|button\|key\|text`; `x`,`y`; `button` `Left\|Right\|Middle\|WheelUp\|WheelDown`; `key` (Godot key name); `pressed`; `text` (at most 1024 characters); `shift`,`ctrl`,`alt` | text content; `isError` on bad arguments |
 | `guo_wait` | `frames` 1..600 | text content after that many process frames |
 | `guo_screenshot` | none | `image/png` content (base64); `isError` when headless |
-| `guo_state` | none | JSON text: `frame` (process frame index; with `--write-movie` it is the movie frame), `scene`, `width`, `height`, `player` (`map`,`x`,`y`,`z`, or null before the world) |
+| `guo_state` | none | JSON text: `frame` (process frame index; with `--write-movie` it is the movie frame), `scene`, `width`, `height`, `player` (`map`,`x`,`y`,`z`, or null before the world). Editor builds also include read-only `water` diagnostics, below. |
 | `guo_quit` | none | text, then the client quits after two frames (finalises a MovieWriter file); the connection closes |
 | `guo_overlay` | `text` (caption, at most 300 characters), `step` (its label, e.g. `3/18`), `control` `{x,y,width,height,label?}` (an outline, viewport pixels), `clear`, `hide` (draw nothing; Space and Esc still count); none of them only reads | JSON text `{skip, abort}`: Space and Esc pressed since the last call (reading clears them). Draws the human driver's caption card and outline on a canvas layer above the game; the card's step label is a Godot `Label` named `HumanOverlayStep`, visible in `guo_ui`. Space does not count while a text field has focus |
+
+In an editor (`TOOLS`) build, `guo_state.water` is null before a world exists.
+In the world it reports `selectedStyle`, `boundStyle` and `active` (the latter
+two describe the last prepared draw), `playerWet` and nullable `surfaceZ` from
+the current water mask, and `playerDisturbs` (a wet cell with the player no
+higher than surface + 1). This is geometric eligibility, not proof that the
+player emitted a stamp. The mask describes the last styled draw, can be stale
+under Classic or during transitions, and treats unknown cells as wet.
+`rippleStamps` and `rippleSteps` are cumulative
+process counters; compare samples rather than assuming they reset on a style
+or map change. `lastUpdateMs` is the most recent ripple update duration, not a
+performance benchmark. Reading these fields changes no style or wave state.
+Exported clients omit this authoring-only block.
 
 No shell, script, file or packet tools exist. Synthetic keys and buttons still held when the last controller
 disconnects are released.
@@ -1806,6 +1819,7 @@ a person shares it. Nothing in it is a client install: installs are referenced i
 <workspace>/
   profiles/servers.json        server instances
   profiles/clients.json        client profiles
+  editor/water/drafts/*.json   manually authored water presets (section 44), independent of build output
   servers/<server-id>/         a server instance's install, Config, Saves, logs, process.json, store/
     server.console.log        managed server stdout and stderr (append-only per start)
   clients/<client-id>/client.json     descriptor of one client (below)
@@ -2806,8 +2820,12 @@ for the shard's light level.
 
 On, each frame the scene builds a tile grid over the visible chunks plus an
 8-tile margin (side capped at 192): per cell the ground Z (`Land.AverageZ`),
-the top Z of the tallest light blocker (tiledata `Wall`, or `Impassable` with
-`Height >= 8`; never `Door` or `Window`) and whether a `Roof` static covers it.
+the light blockers on it, and whether a `Roof` static covers it. A blocker is
+tiledata `Wall`, or `Impassable` with `Height >= 8`; never `Door` or `Window`.
+A wall whose art reads as a wall plane (`WallFaces`, below) is a **line** on
+its tile: along X at world `y + offset`, or along Y at `x + offset` (a corner
+piece is both); any other blocker fills its tile. Each keeps the top Z of the
+tallest on the tile.
 Ambient is `RealtimeLightField.AmbientFor(IsometricLight.IsometricLevel)`:
 white at level 0, warm through the middle, blue-grey at night. The ramp's
 luminance is normalized to the classic grey (weights 0.2126, 0.7152, 0.0722),
@@ -2815,28 +2833,56 @@ so equal night levels retain equal ambient brightness. Roofed cells take 55 % of
 100 % at night. Each accepted light offer (`AddLight`) adds a source at its
 tile with radius `round(light.mul width / 44)` tiles (2..8) and the
 classic light tint (the light-shader palette, or the hue's table entry 16;
-an untinted light is warm RGB (1, 0.72, 0.38)), at an energy of 2.2. A source's reach
-is a `(2(r+1)+1)^2` visibility map: hard line-of-light through the blocker grid (blockers
-above source Z + 3 block; neither end blocks), a 3x3 box blur, times
-`Falloff(d, r)` (smoothstep), times 0.35 where the ground is more than
+an untinted light is warm RGB (1, 0.72, 0.38)), at an energy of 2.2. The field is sampled
+`F` times per tile side (`F = 4`; 2 when the grid has more than 192 x 192
+cells). A source's reach is a visibility map of `((2(r+1)+1) F)^2` samples:
+a ray from the source point to each sample's centre is blocked by a wall line
+it crosses, or by a whole-tile blocker on a tile that is neither the source's
+nor the sample's (only blockers above source Z + 3 count). The source point is
+its tile's centre, or, when the tile has a wall line, 0.3 tiles in front of
+that line on the +Y / +X side (a lamp hangs on the face the camera sees). Then
+a 3x3 box blur over the samples, never above the sample's own hard value (the
+soft edge falls on the lit side; nothing leaks through a wall), times the
+falloff at the sample's distance, times 0.35 where the ground is more than
 20 Z from the source. Reaches are cached by (x, y, z, r) while the blocker
 grid's FNV-1a hash is unchanged. Distance falloff is evaluated each frame at
 the sprite's interpolated position: tile offsets are `(Offset.X + Offset.Y)/44`
 and `(Offset.Y - Offset.X)/44`. Moving pools therefore advance between tile
-completions without recomputing cached visibility. The sum has no ceiling: a cell brighter
-than white is scaled by its brightest channel when read, keeping its hue.
+completions without recomputing cached visibility. The sum has no ceiling: a sample brighter
+than white is scaled by its brightest channel when read, keeping its hue. A
+tile's value (the dump, `Cell`) is the mean of its samples.
+
+**Wall faces** (`WallFaces`, cached per graphic). The art's silhouette bottom,
+per column, in tile-box pixels (diamond top (22, 0), right (44, 22), bottom
+(22, 44), left (0, 22); the art centred, bottom row on the bottom corner), is
+fitted by `Y = X + k` (a wall along X, art `\`, its shown face +Y) or
+`Y = -X + k` (along Y, `/`, face +X), or by two such lines split at a column
+(a corner), taking the one-line fit unless two lines fit more than 1 px
+better; a fit with mean residual over 2.5 px, or under 6 columns, is no wall.
+The line is `offset = (k + 22) / 44` (along X) or `(k - 22) / 44` (along Y),
+clamped to 0..1.
 
 The field is drawn into a GUO-owned target the size of the classic light
 target: every visible land tile as its iso quad (stretched corners from
-`YOffsets`) with the field's corner colours, then every visible standing
-static (`Height >= 4`, wall, roof or foliage; not above `_maxZ`, not a hidden
-roof) as its own art sprite in its cell's colour, masked by the sprite's
-alpha. `RenderTargets.LightOverride` carries the texture; `RenderTargets.Draw`
+`YOffsets`), then every visible standing static (`Height >= 4`, wall, roof or
+foliage; not above `_maxZ`, not a hidden roof) as its own art sprite masked by
+its alpha. Each pixel reads the field per pixel from a texture of the samples
+(RGBA8, `F` texels per tile, each channel `sqrt(v / 8)`, linear filtering):
+a vertex colour carries its world point (R, G: texture coordinate; B: height
+above its base, `(px + 256) / 1024`; A = 1). Land corners are their world
+corners. A wall, window or door with faces is one quad per face, each column
+reading the field 0.3 tiles in front of the face's line at that point, so the
+face takes its own side's light with the ground's falloff; other statics read
+across their tile's middle. Height counts from the face's base plus 4 px per
+Z the static stands above the ground; the light fades to the roof ambient by
+`smoothstep(0, 120, h)`. Roofs, cover pieces (at or above the tile's cover Z)
+and statics above every light on their tile are flat roof ambient (A = 0, RGB
+the light). `RenderTargets.LightOverride` carries the texture; `RenderTargets.Draw`
 blends it with the classic darkness blend in place of the light target. The
 option off never builds the target.
 
 Log line every 5 s at trace level: `[realtime-lights] grid=WxH lights=N
-computed=N cached=N quads=N sprites=N`. Scenario `client.realtime.lights`
+computed=N cached=N quads=N sprites=N roofs=N above=N darkQuads=N faces=N fine=F`. Scenario `client.realtime.lights`
 (`--realtime-lights-probe`, `RealtimeLightsProbe.tscn`) checks the contract
 headless and prints `[Realtime lights] PASS`.
 
@@ -2889,6 +2935,46 @@ linearly to 0 over the last 30 % of it. At most 64 live; a full table drops the
 oldest. Time is `Time.Ticks`. With the option off nothing reads them and they
 expire on their own.
 
+**UO+ spell lighting** (non-parity, `Profile.SpellLighting`, JSON `spell_lighting`,
+default `false`). Both Video Options interfaces open the shared UO+ panel
+(section 47); its spell checkbox is independent of Realtime lights, which must
+also be enabled. Density controls the spell-only budget up to 16 bursts.
+No change to classic effect
+sprites, packets, hue lookup or sampling. Cast bursts are stationary at the
+resolved source tile when the effect is created; projectile impacts use the
+resolved target tile at actual arrival, even without an explosion sprite.
+These are effect-graphic mappings, not spell IDs: a shard reusing a graphic gets
+the same tint. Hued variants use the same curated light tint.
+
+| Effect | Graphic | Radius (tiles) | Tint RGB | Duration (ms) | Falloff |
+|---|---|---|---|---|---|
+| Moving fireball / magic arrow cast | `0x36D4`, `0x36E4` | 3 | 1, .28, .06 | 500 | C |
+| Same, impact | same | 4 | same | 800 | C |
+| Moving energy bolt cast | `0x379F` | 3 | .35, .5, 1 | 450 | E |
+| Same, impact | same | 4 | same | 700 | E |
+| Fixed heal-style effect at recipient | `0x376A` | 3 | .3, 1, .55 | 900 | E |
+| Lightning at recipient | Lightning type | 4 | .6, .75, 1 | 400 | E |
+
+The small radii keep pools local, the impact is wider than the cast, and short
+durations fade over their last 30% using the existing hook's energy 2.2.
+Unknown graphics and drag effects emit nothing. No projectile trail is added;
+the cast lights the source briefly, then arrival lights the target. These
+curated bursts use built-in curves rather than the item/light profile overrides.
+At most 16 spell bursts live at once; a new burst replaces the oldest spell
+burst. All temporary hooks fill only spare slots after existing world offers,
+with **100 total light sources per frame**, including spell bursts. Saturated
+world offers suppress temporary light collection without extending burst life.
+The existing budget log's `temp` count includes the admitted bursts. Disabling
+either option clears spell bursts on the next light preparation; map changes
+and logout clear them too, without removing other temporary hooks.
+
+`client.spell.lighting` / `SpellLightingProbe.tscn` checks default-off persistence,
+both gates, the real creation and arrival hooks, tile placement, field colour,
+fade/expiry, storm saturation and cleanup without UO data or a shard. The
+arrival seam is invoked synthetically; this is headless field evidence, not an
+in-world visual review. The smoke launchers include this probe. No external
+dependency or separate doctor is required beyond the normal Godot .NET setup.
+
 **Debug output**, off unless its environment variable is set:
 
 - `GUO_LIGHTS_BUDGET=1`: per frame, at trace level and on stdout,
@@ -2903,8 +2989,9 @@ expire on their own.
   the readout under the mouse (`pixel=X,Y tile=X,Y,Z light=R,G,B block=Z|-
   cover=Z|- roofed=bool`, the pixel in `TranslatedMousePositionByViewport`
   space, read at the tile's ground Z); the player's tile and light; the
-  profile source. Then the grid, one text row per tile row, north at the top:
-  `*` a light source, `@` the player, `#` a blocker above ground + 3, `^`
+  profile source. Beside it `DIR/lights_NNNNNN.png` is the light target as
+  drawn the frame before. Then the grid, one text row per tile row, north at the top:
+  `*` a light source, `@` the player, `#` a blocker or wall line above ground + 3, `^`
   covered, `0`-`9` the brightest channel in tenths, `X` white; outside the
   visible chunks `+` a blocker, `.` anything else. Then one `# light X,Y,Z r=R
   curve=C energy=E color=#RRGGBB` per source. The pixel-to-tile inverse is
@@ -2949,6 +3036,17 @@ bit 6, circle-of-transparency in bit 7). Classic never sets it.
 
 The mask is rebuilt on the CPU when the player moves 8 cells or the loaded
 chunks change.
+
+**Labs rain input** (L4, UO+, default off; 2026-10-21):
+`WeatherLab.RainIntensity(World)` supplies 0..1 (rain/brewing count / 70;
+zero for dry, snow or missing weather). The existing session-local
+`WaterDrops` checkbox gates its consumer. Styled water injects bounded
+raindrop stamps after following the player and before the normal wave update;
+only loaded, exposed Wet land/statics at the mask's height qualify. The current
+styled-world/frame predicate suppresses duplicate primitive water rings;
+Classic retains the opted-in primitive fallback. No profile/packet/pack schema
+changes. See [rain limits and doctor](../godot/GUO/src/Labs/WaterRain/README.md)
+and [scenario](../tools/scenarios/client/water_rain.md).
 
 **Ripples** (`WaterRipples`, WATER-03) are a two-buffer wave equation stepped
 at 20 Hz on the CPU (a front moves about three cells a second) over the ripple window, which follows the player (it
@@ -2998,7 +3096,7 @@ Only dry ground at most
 | `scale` | 0.005..0.25 (1 / world px) | `water_params.y` |
 | `wave` | 0..1 | `water_params.z` |
 | `foam` | 0..1 | `water_params.w` |
-| `glint` | 0..1 | `water_params2.x` |
+| `glint` | 0..1 (0 disables highlights) | `water_params2.x` |
 | `foam_width` | 0..0.5 (cells) | `water_params2.y` |
 | `levels` | integer 0..16 (0 smooth) | `water_params2.z` |
 | `grain` | integer 1..8 | `water_params3.x` |
@@ -3015,9 +3113,98 @@ The four GUO packs, `guo-water-pixel`, `guo-water-cel`,
 `guo-water-realistic` and `guo-water-classicplus` (component `sea`), are built from `design/packs/water`
 by `tools/asset_store/water_packs.py`.
 
+`WaterRippleProbe.tscn` renders a spreading wave on dark pixel water with
+glints disabled: the ripple must retain two palette steps of contrast without white
+sparkles. It also checks byte-identical calm output at zero ripple strength,
+and forces fully lit crests to verify zero glint suppresses highlights while
+positive glint retains them. All inputs are synthetic; no install or shard is needed.
+After building the C# project, run with both real renderers (never `--headless`):
+
+```bat
+godot-console --path godot/GUO --rendering-method forward_plus res://src/Render/Water/WaterRippleProbe.tscn
+godot-console --path godot/GUO --rendering-method gl_compatibility res://src/Render/Water/WaterRippleProbe.tscn
+```
+
+With the engine folder on `PATH`, these commands exit nonzero on a failed
+assertion. Set `GUO_WATER_PROBE_OUT` to an evidence run's `stills/` folder to
+save calm/ripple PNGs named with the renderer and current UTC capture time.
+
 `GUO_WATER_DEBUG=1` in the client's environment paints every fragment that takes
 the water branch magenta, to see which tiles a style reaches; `2` paints the
 ripple field in grey (mid grey is flat).
+
+The editor's [Water workspace](water_authoring.md) reads and writes this same
+style schema, with drafts under `<UO_WORKSPACE_DIR>/editor/water/drafts/*.json`. Its
+export is a v2 `content` pack targeting `client`, with one `water` component
+named `sea`, `water.json`, an original `preview.png` and licence attribution
+when required. Authoring and world-preview state are `TOOLS`-only; no new
+profile fields or exported client settings are added.
+
+### W-01: expanded water parameter contract (`guo/water@2`)
+
+**Authoring contract, ahead of W-02's renderer.** The normative JSON Schema is
+`tools/asset_store/schema/water_v2.schema.json`; its `default` annotations are
+data for authoring controls. `water_v2.defaults.json` beside it is one complete
+parameter set. All fields are required, including every group's children;
+validators never fill missing fields. Unknown fields at any depth are refused.
+The five existing model names remain valid. Classic is still the zero pack,
+selected by the profile, and is not an authored model.
+
+The Store's Python and C# installers continue to accept **only `guo/water@1`**
+until W-02 consumes every v2 group. A v2 authoring document must be refused at
+installation rather than accepted with ignored controls. Existing v1 packs and
+their rendering remain unchanged. This schema adds no textures, shader code,
+profile fields, Options entries, automatic downloads or shard authority.
+
+| Group / field | Inclusive range; default | Meaning |
+|---|---|---|
+| `schema` | `guo/water@2` | Version of the entire set, never independently versioned groups |
+| `name` | 1..48 Unicode characters, nonblank, no control characters; `Custom water` | Authoring label (v2 counts Unicode characters, not v1's UTF-16 units) |
+| `model` | `uo`, `pixel`, `cel`, `realistic`, `classicplus`; `uo` | Built-in shading model; all groups must be consumed or explicitly refused by a future renderer |
+| `surface.base_color` | RGB array, each 0..1; `[1,1,1]` | sRGB multiplier on the native, hued and lit texel; white preserves its colour |
+| `surface.opacity` | 0..1; 1 | Multiplier on native coverage, never creates coverage outside the art silhouette |
+| `depth.tint` | RGB array, each 0..1; `[0.12,0.24,0.42]` | sRGB target colour for the depth blend |
+| `depth.strength` | 0..1; 0 | Maximum tint blend; 0 disables depth tint |
+| `depth.falloff` | 0.25..64 cells; 8 | Tint blend is `strength * (1 - exp(-d / falloff))`. `d` is distance into water from the low-shore contour, not bathymetry: the current world mask contains no underwater floor depth |
+| `shoreline.width` | 0..2 cells; 0.22 | Distance from the low-shore contour covered by foam; 0 disables foam |
+| `shoreline.strength` | 0..1; 0.85 | Foam intensity (native brightness modulation for `classicplus`); 0 disables it; cliffs stay excluded |
+| `normal.amplitude` | 0..2; 0.22 | Dimensionless strength of the procedural surface normal/ripple perturbation; 0 disables ambient perturbation |
+| `normal.speed` | 0..4; 1 | Multiplier on normal animation, independent of wake simulation |
+| `normal.scale` | 0.005..0.25 inverse world pixels; 0.045 | Spatial frequency of the procedural normal pattern; native texture sampling remains nearest |
+| `flow.direction` | two numbers -1..1; `[1,0]` | World cell X/Y direction, normalised when consumed; `[0,0]` disables flow without division by zero |
+| `flow.strength` | 0..8 cells/second; 0 | Pattern advection rate along direction; never moves objects or changes shard physics |
+| `wake.boat`, `wake.player`, `wake.object` | each 0..2; each 1 | Independent multipliers on boat, mobile and falling/thrown item/effect disturbance rates; 0 disables that source. `player` includes other mobiles, as in WATER-03 |
+| `wake.damping` | 0.9..0.999; 0.985 | Amplitude retention per 20 Hz simulation step, independent of render FPS |
+| `lighting.reflection` | 0..1; 0 | Surface reflection blend; 0 disables it. Reflection source and reduced-tier fallback are W-02/W-07 work; no capture pass is authorised by this contract |
+| `lighting.sun_glint` | 0..1; 0.35 | Highlight strength; 0 disables highlights in every model |
+| `clock.source` | `elapsed` or `fixed`; `elapsed` | Client-local presentation clock; does not select a network/shard clock |
+| `clock.rate` | 0..4; 1 | Speed multiplier on elapsed presentation seconds; 0 freezes at the offset |
+| `clock.offset`, `clock.fixed_time` | each 0..3600 seconds; each 0 | Elapsed mode: `(elapsed_seconds * rate + offset) % 3600`; fixed mode: `fixed_time % 3600` (rate/offset ignored). No claim of seamless looping. This clock never changes native art animation or simulation time |
+| `pixel.levels` | integer 0..16; 6 | Brightness levels; 0 allows smooth style shading |
+| `pixel.grain` | integer 1..8 world pixels; 1 | Style pixel size; native art stays nearest-neighbour |
+
+Numbers must be finite JSON numbers, not booleans or strings. The document
+uses the v1 transport envelope: at most 16 KiB of UTF-8, no BOM, duplicate keys
+or lone surrogates. JSON Schema validates the parsed document; the future
+reader must enforce those byte-level rules before parsing. JSON Schema's
+`integer` is mathematical: `2.0` and `2e0` are valid v2 integer values, unlike
+v1's lexical integer rule. Bounds prevent unbounded resource requests; they
+are authoring limits, not a promise of acceptable cost for every combination.
+
+There is **no automatic migration**: v1 `speed`, `scale`, `wave`, `foam`,
+`foam_width`, `glint`, `levels`, `grain`, and `ripples.damping` correspond to
+v2 `normal.speed`, `normal.scale`, `normal.amplitude`, `shoreline.strength`,
+`shoreline.width`, `lighting.sun_glint`, `pixel.levels`, `pixel.grain`, and
+`wake.damping`. V1 `ripples.strength` seeds all three wake strengths; `tint`
+seeds `depth.tint`. V1 models interpret tint and wave differently, so copying
+these values is only an authoring starting point, not a pixel-parity conversion.
+W-02 must retain the v1 path or prove a separate migration before replacing it.
+
+Contract gate: `python -m pytest tools/asset_store/test_water_schema.py` checks
+the schema, complete defaults, bounds and malformed group shapes, and verifies
+that the shipping v1 Python validator refuses the v2 set. The shared Store
+corpus also checks that refusal in both Python and C# installers.
+
 ## 42. Packet mods (`Data/Mods/<mod>/mod.json`, `load_mods`, ADR-0038)
 
 A packet mod is a folder the user installed beside `Data/Plugins`: a
@@ -3190,8 +3377,8 @@ L1 non-parity atmosphere; all types default off. Profile JSON persists:
 | `AmbientParticleDensity` | int | 50 | 0–100 percent; zero disables |
 | `AmbientParticleCap` | int | 128 | 0–512 particles/frame; zero disables |
 
-Both Video Options interfaces edit the same fields; Cancel leaves them alone,
-Default restores the values above. Invalid persisted integers are clamped at
+Both Video Options interfaces open the shared UO+ panel described below;
+Cancel leaves fields alone and Defaults stages the values above. Invalid persisted integers are clamped at
 consumption; negative density/cap disables. Missing fields preserve defaults.
 No shard packet, client data mutation, server consent or external process.
 
@@ -3210,3 +3397,51 @@ proof run `AmbientParticlesProbe.tscn -- --render-particles` with environment
 `GUO_PARTICLES_PROOF` naming an existing evidence folder. It writes baseline,
 enabled-a, enabled-b and disabled PNGs, requires visible enabled pixels and
 zero disabled RGB differences. Synthetic ground uses no proprietary art.
+
+### Shared UO+ flags and per-feature densities (ADR-uoplus-settings)
+
+**Video → UO+ effects...** is the common classic/Modern Options surface.
+All new flags are off by default. Apply persists the staged values; Okay
+applies and closes; Cancel discards edits; Defaults stages all flags off,
+densities 50% and ambient cap 128. Density 0 suppresses an effect while keeping
+its checkbox selected. Parent Options Apply does not overwrite panel edits.
+
+| Profile field | Type | Default | Meaning |
+|---|---|---|---|
+| `UoPlusFlags` (`uo_plus_flags`) | integer bit mask | 0 | 8 rain rings, 16 puddles, 32 wet player, 64 reserved sway, 256 water ripples |
+| `UoPlusDensities` (`uo_plus_densities`) | object of feature-name → integer | `{}` | Independent 0–100 values, clamped at use; names `Fog`, `Leaves`, `Dust`, `RainRings`, `Puddles`, `WetPlayer`, `Sway`, `SpellLights`, `WaterRipples` |
+
+Fog/leaves/dust flags remain authoritative in `AmbientFog`, `AmbientLeaves`
+and `AmbientDust`; spell lights remain in `SpellLighting` (`spell_lighting`).
+Mask bits 1/2/4/128 are ignored to prevent duplicate authorities.
+An absent particle density uses legacy `AmbientParticleDensity`; other absent
+densities use 50. Missing or null objects are safe; unknown flag bits are ignored.
+Unavailable rows cannot activate even through manually edited flags.
+
+Particle density thins stable emitters. Spell-light density sets the spell-only
+live-burst budget to `ceil(16 × density / 100)`, trimming older spell bursts when
+lowered. Generic hooks and the total 100-source cap are preserved; Realtime
+lights remains a prerequisite. Water ripple density scales disturbance strength and
+requires a non-Classic water style. Off skips ripple simulation and object scans,
+clears stale waves and disables their shader contribution without changing the
+style. Sway is unavailable until its renderer ships.
+
+Loading a legacy styled-water profile without `uo_plus_flags` preserves its
+existing ripples/wakes by setting bit 256. An explicit saved zero stays off;
+new profiles and Classic profiles remain off. Saving records the migrated flag,
+so disabling it remains effective after reload. Its missing density migrates to
+100% to preserve prior disturbance strength; an explicit density is retained.
+
+Weather runs only in a `GuoLabs=true` Debug build. Ring density thins rain
+impacts; puddle density selects ground cells and thins impacts; wet-player
+density scales body drops. Selected ground IDs and cobblestone matching remain
+session-local. Invalid ground IDs reject Apply before any changes. Normal and
+exported clients cannot activate weather. The Labs `-uopweather` command opens
+this same panel. Off skips effect drawing and simulation.
+
+Smoke: `res://src/Configuration/UoPlusProbe.tscn`; scenario:
+`client.uoplus.options`. The native panel proof uses `--uoplus-ui-probe` with
+`GUO_UOPLUS_PROOF` naming an existing private evidence folder. It writes top
+and bottom screenshots and uses an unsaved fixture profile. No external
+dependency or doctor launcher is required; Labs weather's README retains its
+build/dependency doctor.

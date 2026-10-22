@@ -4,6 +4,7 @@ using System;
 using System.Runtime.CompilerServices;
 using Godot;
 using GUO.Game;
+using GUO.Configuration;
 using GUO.Game.GameObjects;
 using GUO.Renderer;
 using Rectangle = GUO.Compat.Rectangle;
@@ -16,6 +17,7 @@ internal sealed class WeatherSettings
     internal bool WaterDrops, Puddles, WetPlayer;
     internal bool Cobblestone = true;
     internal int DropBudget = 12;
+    internal int WaterDensity = 100, PuddleDensity = 100, WetDensity = 100;
     internal readonly System.Collections.Generic.HashSet<ushort> PuddleTiles = new();
     internal bool Enabled => WaterDrops || Puddles || WetPlayer;
 }
@@ -37,7 +39,7 @@ internal sealed class WeatherState
         Raining = rain;
         delta = Math.Clamp(delta, 0, 0.25f);
         Wetness = Settings.WetPlayer ? Approach(Wetness, rain ? 1 : 0, delta / (rain ? 4 : 18)) : 0;
-        BodyDrops = Math.Clamp(Settings.DropBudget, 0, 32);
+        BodyDrops = (Math.Clamp(Settings.DropBudget, 0, 32) * Math.Clamp(Settings.WetDensity, 0, 100) + 99) / 100;
         AlphaChecks = 1024;
         Impacts = 0;
         RainCredit = rain ? Math.Min(32, RainCredit + delta * 40) : 0;
@@ -57,49 +59,30 @@ internal static class WeatherLab
     internal static Vector3 Hue(float alpha) => new(0, ShaderHueTranslator.SHADER_NONE, alpha);
     internal static Texture2D DropTexture => SolidColorTextureCache.GetTexture(new GUO.Compat.Color(162, 202, 218, 255));
 
-    internal static bool IsRain(World world) => world.Weather.Count > 0 &&
-        world.Weather.CurrentWeather is WeatherType.WT_RAIN or WeatherType.WT_STORM_BREWING;
+    // Read directly from upstream weather, before either render lane updates its
+    // transient state. Effect toggles gate consumers, not this shared signal.
+    internal static float RainIntensity(World world) => world?.Weather == null ? 0 :
+        RainIntensity(world.Weather.CurrentWeather, world.Weather.Count);
+
+    internal static float RainIntensity(WeatherType? type, int count) =>
+        type is WeatherType.WT_RAIN or WeatherType.WT_STORM_BREWING
+            ? Math.Clamp(count / 70f, 0, 1) : 0;
+
+    internal static bool IsRain(World world) => RainIntensity(world) > 0;
 
     internal static void Open(World world)
     {
-        var settings = For(world).Settings;
-        var window = new Window { Title = "UO+ weather (experimental)", Size = new Vector2I(460, 350) };
-        var rows = new VBoxContainer { OffsetLeft = 14, OffsetTop = 14, OffsetRight = 445, OffsetBottom = 335 };
-        window.AddChild(rows);
-        void Toggle(string label, bool initial, Action<bool> set)
-        {
-            var box = new CheckBox { Text = label, ButtonPressed = initial };
-            box.Toggled += value => set(value);
-            rows.AddChild(box);
-        }
-        Toggle("Rain rings on water", settings.WaterDrops, value => settings.WaterDrops = value);
-        Toggle("Puddles on selected land tiles", settings.Puddles, value =>
-        {
-            settings.Puddles = value;
-            if (!value) foreach (var surface in For(world).Surfaces)
-                if (surface != null && !surface.Water) { surface.Fill = 0; surface.RingAge = 1; }
-        });
-        Toggle("Include tiles named cobblestone", settings.Cobblestone, value => settings.Cobblestone = value);
-        Toggle("Wet player silhouette", settings.WetPlayer, value => settings.WetPlayer = value);
-        rows.AddChild(new Label { Text = "Drop budget per frame (0–32)" });
-        var budget = new SpinBox { MinValue = 0, MaxValue = 32, Step = 1, Value = settings.DropBudget };
-        budget.ValueChanged += value => settings.DropBudget = (int)value;
-        rows.AddChild(budget);
-        rows.AddChild(new Label { Text = "Puddle land graphics: decimal or 0x hex, comma separated" });
-        var tiles = new LineEdit { Text = string.Join(",", settings.PuddleTiles), PlaceholderText = "Select your shard's cobblestone graphics" };
-        rows.AddChild(tiles);
-        var apply = new Button { Text = "Apply tile list" };
-        apply.Pressed += () =>
-        {
-            if (!TryTiles(tiles.Text, out var values)) { tiles.TooltipText = "Use land graphic IDs from 0 to 16383."; return; }
-            settings.PuddleTiles.Clear();
-            foreach (ushort id in values) settings.PuddleTiles.Add(id);
-            tiles.TooltipText = "Tile list applied for this session.";
-        };
-        rows.AddChild(apply);
-        window.CloseRequested += window.QueueFree;
-        ((SceneTree)Engine.GetMainLoop()).Root.AddChild(window);
-        window.PopupCentered();
+        Game.UI.Gumps.UoPlusOptionsGump.Open(world);
+    }
+
+    internal static void SyncProfile(WeatherSettings settings, Profile profile)
+    {
+        settings.WaterDrops = UoPlusOptions.Enabled(profile, UoPlusFeature.RainRings);
+        settings.Puddles = UoPlusOptions.Enabled(profile, UoPlusFeature.Puddles);
+        settings.WetPlayer = UoPlusOptions.Enabled(profile, UoPlusFeature.WetPlayer);
+        settings.WaterDensity = UoPlusOptions.Density(profile, UoPlusFeature.RainRings);
+        settings.PuddleDensity = UoPlusOptions.Density(profile, UoPlusFeature.Puddles);
+        settings.WetDensity = UoPlusOptions.Density(profile, UoPlusFeature.WetPlayer);
     }
 
     internal static bool TryTiles(string text, out ushort[] ids)

@@ -28,7 +28,8 @@ namespace GUO.Game.Scenes
         private int _rtSourceCount;
         private readonly List<(float key, GameObject obj)> _rtSprites = new();
         private long _rtLogAt;
-        private int _rtRoofs, _rtAbove, _rtDarkQuads;
+        private int _rtRoofs, _rtAbove, _rtDarkQuads, _rtWallFaces;
+        private byte[] _rtFieldBytes;
 
         /// <summary>Margin of tiles around the visible chunks, so a light just off screen still reaches in.</summary>
         private const int RtMargin = 8;
@@ -39,8 +40,8 @@ namespace GUO.Game.Scenes
         /// <summary>Grid side cap, cells (a zoomed-out 4K view fits well inside).</summary>
         private const int RtMaxSide = 192;
 
-        /// <summary>Every light offer the classic table holds, then the spell-effect lights.</summary>
-        private const int RtSourceCapacity = LightsLoader.MAX_LIGHTS_DATA_INDEX_COUNT + RealtimeLightEffects.MaxLights;
+        /// <summary>Existing world offers take priority; bursts use remaining budget.</summary>
+        private const int RtSourceCapacity = RealtimeLightEffects.FrameLightCap;
 
         /// <summary>On, in game, and not during the black-and-white death frame (the classic path runs then).</summary>
         public bool UseRealtimeLights =>
@@ -89,6 +90,8 @@ namespace GUO.Game.Scenes
         /// <summary>Classic clears its target; the mode's texture is the override.</summary>
         private bool PrepareRealtimeLightTarget(UltimaBatcher2D batcher, RenderTargets renderTargets)
         {
+            if (!SpellLighting.Enabled(ProfileManager.CurrentProfile)) RealtimeLightEffects.ClearSpells();
+            else RealtimeLightEffects.LimitSpells(SpellLighting.Budget(ProfileManager.CurrentProfile));
             if (!UseRealtimeLights)
             {
                 if (_rtTarget != null) ResetRealtimeLights(renderTargets);
@@ -146,7 +149,8 @@ namespace GUO.Game.Scenes
 
                 // Spell-effect lights (RealtimeLightEffects) after the offers.
                 _rtSources ??= new RealtimeLightField.Source[RtSourceCapacity];
-                int temporary = RealtimeLightEffects.Collect(Time.Ticks, _rtSources, _rtSourceCount);
+                int temporary = RealtimeLightEffects.Collect(Time.Ticks, _rtSources, _rtSourceCount,
+                    SpellLighting.Enabled(ProfileManager.CurrentProfile));
                 _rtSourceCount += temporary;
                 var sources = new ReadOnlySpan<RealtimeLightField.Source>(_rtSources, 0, _rtSourceCount);
                 _rtField.Compute(RealtimeAmbientLevel(), sources);
@@ -159,6 +163,8 @@ namespace GUO.Game.Scenes
                 if (RealtimeLightsDebug.DumpDue())
                 {
                     RealtimeLightsDebug.WriteDump(RealtimeLightDump(sources));
+                    // The light target as drawn last frame, beside the text dump.
+                    RealtimeLightsDebug.WriteTargetImage(_rtTarget.Texture);
                 }
 
                 RealtimeLightTexture = _rtTarget.Texture;
@@ -169,7 +175,7 @@ namespace GUO.Game.Scenes
                     _rtLogAt = Time.Ticks;
                     string line = $"[realtime-lights] grid={_rtField.Width}x{_rtField.Height} lights={_rtSourceCount} " +
                               $"computed={_rtField.LastComputed} cached={_rtField.CacheCount} " +
-                              $"quads={_rtTarget.LastQuads} sprites={_rtTarget.LastSprites} roofs={_rtRoofs} above={_rtAbove} darkQuads={_rtDarkQuads} ambient={_rtField.Ambient}";
+                              $"quads={_rtTarget.LastQuads} sprites={_rtTarget.LastSprites} roofs={_rtRoofs} above={_rtAbove} darkQuads={_rtDarkQuads} faces={_rtWallFaces} fine={_rtField.FineScale} ambient={_rtField.Ambient}";
                     Log.Trace(line);
                     // The editor's World tab has no client log file: its console gets the line.
                     if (Engine.IsEditorHint()) GD.Print(line);
@@ -327,7 +333,19 @@ namespace GUO.Game.Scenes
                                 }
                                 if (RealtimeLightField.Blocks(data.IsWall, data.IsImpassable, data.IsDoor, data.IsWindow, data.Height))
                                 {
-                                    _rtField.AddBlocker(tx, ty, obj.Z + data.Height);
+                                    // A wall stands on a line of its tile, read from
+                                    // its art; light reaches each side of it, not
+                                    // through it. Anything else blocks its whole tile.
+                                    WallFaces faces = data.IsWall ? WallFaces.For(graphic) : default;
+                                    if (faces.Count == 0)
+                                    {
+                                        _rtField.AddBlocker(tx, ty, obj.Z + data.Height);
+                                    }
+                                    else
+                                    {
+                                        _rtField.AddEdge(tx, ty, faces.First.AlongX, faces.First.Offset, obj.Z + data.Height);
+                                        if (faces.Count > 1) _rtField.AddEdge(tx, ty, faces.Second.AlongX, faces.Second.Offset, obj.Z + data.Height);
+                                    }
                                 }
                                 break;
                             }
@@ -338,15 +356,22 @@ namespace GUO.Game.Scenes
             }
         }
 
-        /// <summary>The land as lit quads, the tall statics as masked sprites.</summary>
+        /// <summary>The land as quads, the tall statics as masked sprites, each pixel lit from the field at its world point.</summary>
         private void DrawRealtimeGeometry(ref Transform2D matrix)
         {
             _rtTarget.Begin(matrix, _rtField.Ambient);
+            int bytes = _rtField.FineWidth * _rtField.FineHeight * 4;
+            if (_rtFieldBytes == null || _rtFieldBytes.Length != bytes) _rtFieldBytes = new byte[bytes];
+            _rtField.FillTexture(_rtFieldBytes);
+            _rtTarget.SetField(_rtFieldBytes, _rtField.FineWidth, _rtField.FineHeight,
+                _rtField.OriginX, _rtField.OriginY, _rtField.Width, _rtField.Height, _rtField.RoofAmbient);
+
             float zoom = matrix.X.X > 0.01f ? matrix.X.X : 1f;
             _rtSprites.Clear();
             _rtRoofs = 0;
             _rtAbove = 0;
             _rtDarkQuads = 0;
+            _rtWallFaces = 0;
             ref var statics = ref Client.Game.UO.FileManager.TileData.StaticData;
 
             foreach (Chunk chunk in _visibleChunks)
@@ -379,13 +404,9 @@ namespace GUO.Game.Scenes
                             if (graphic >= statics.Length) continue;
                             ref StaticTiles data = ref statics[graphic];
                             if (_noDrawRoofs && data.IsRoof) continue;
-                            // Flat floor pieces take the ground's smooth light;
-                            // anything that stands up takes its tile's. A flat
-                            // piece above the lights (a floor used as a roof, an
-                            // upper storey) is drawn, in the roof ambient.
-                            // Flat pieces at ground level take the land's smooth
-                            // light; an upper floor is drawn (it is cover) and takes
-                            // its own cell's light at its height.
+                            // Flat pieces at ground level take the land's light
+                            // (it is under them); an upper floor is drawn (it is
+                            // cover) and takes its own light at its height.
                             bool flat = data.Height < 4 && !data.IsWall && !data.IsRoof && !data.IsFoliage;
                             if (flat && obj.Z < _rtField.GroundZ(obj.X, obj.Y) + RealtimeLightField.UpperFloorZ) continue;
 
@@ -421,30 +442,106 @@ namespace GUO.Game.Scenes
             {
                 ref readonly SpriteInfo art = ref Client.Game.UO.Arts.GetArt(obj.Graphic);
                 if (art.Texture == null) continue;
-                int sx = ((obj.X - obj.Y) * 22) - _offset.X - 22;
-                int sy = ((obj.X + obj.Y) * 22 - (obj.Z << 2)) - _offset.Y - 22;
-                // DrawStatic's placement: centred on the tile, bottom at its base.
-                int px = sx + 22 - (art.UV.Width >> 1);
-                int py = sy + 44 - art.UV.Height;
-                // A roof stands above every light on its tile: ambient only
-                // (with the roof dim, like the cells it covers).
-                ref StaticTiles sdata = ref statics[obj.Graphic];
-                bool roof = sdata.IsRoof;
-                if (roof) _rtRoofs++;
-                else if (_rtField.IsAboveLight(obj.X, obj.Y, obj.Z)) _rtAbove++;
-                Color bottom = roof ? _rtField.RoofAmbient : _rtField.CellAt(obj.X, obj.Y, obj.Z);
-                // Light falls off going up: a wall's top course is lit less by a
-                // lamp at its foot. Flat pieces and roofs are one colour.
-                Color top = roof || sdata.Height < 4 ? bottom : bottom.Lerp(_rtField.RoofAmbient, Math.Min(1f, sdata.Height / 20f) * 0.75f);
-                _rtTarget.AddSprite(
-                    new Rect2(px, py, art.UV.Width, art.UV.Height),
-                    art.Texture,
-                    art.UV.ToGodotF(),
-                    bottom,
-                    top);
+                AddRealtimeSprite(obj, in art, ref statics[obj.Graphic]);
             }
 
             _rtTarget.End();
+        }
+
+        /// <summary>Where a wall face's light is read: this far in front of its line, in tiles (clear of the samples behind it).</summary>
+        private const float RtFaceFront = 0.3f;
+
+        /// <summary>
+        /// One static's sprite. A roof, or anything above every light on its
+        /// tile, is flat roof ambient. A wall, window or door is lit along its
+        /// visible face (<see cref="WallFaces"/>): each column reads the field
+        /// just in front of the face at that point, so the face takes the light
+        /// on its own side of the wall with the ground's falloff, and a corner
+        /// piece is two quads. Anything else reads the field across its tile.
+        /// Every pixel then fades toward the roof ambient with its height.
+        /// </summary>
+        private void AddRealtimeSprite(GameObject obj, in SpriteInfo art, ref StaticTiles sdata)
+        {
+            int sx = ((obj.X - obj.Y) * 22) - _offset.X - 22;
+            int sy = ((obj.X + obj.Y) * 22 - (obj.Z << 2)) - _offset.Y - 22;
+            int w = art.UV.Width, h = art.UV.Height;
+            // DrawStatic's placement: centred on the tile, bottom at its base.
+            int px = sx + 22 - (w >> 1);
+            int py = sy + 44 - h;
+            Rect2 source = art.UV.ToGodotF();
+
+            bool roof = sdata.IsRoof;
+            // Part of the cover over its tile (a roof piece without the roof
+            // flag, an upper floor's edge): the light under it does not reach it.
+            short coverZ = _rtField.CoverZ(obj.X, obj.Y);
+            bool cover = !sdata.IsWall && !sdata.IsWindow && !sdata.IsDoor
+                && coverZ != RealtimeLightField.NoBlock && obj.Z >= coverZ;
+            if (roof || cover || _rtField.IsAboveLight(obj.X, obj.Y, obj.Z))
+            {
+                if (roof) _rtRoofs++;
+                else _rtAbove++;
+                Color flat = RealtimeLightTarget.Flat(_rtField.RoofAmbient);
+                _rtTarget.AddSprite(new Rect2(px, py, w, h), art.Texture, source, flat, flat, flat, flat);
+                return;
+            }
+
+            WallFaces faces = sdata.IsWall || sdata.IsWindow || sdata.IsDoor ? WallFaces.For(obj.Graphic) : default;
+            if (faces.Count == 0)
+            {
+                AddRealtimeQuad(obj, art.Texture, source, px, py, sx, sy, 0, w, w, h, default, false);
+                return;
+            }
+
+            _rtWallFaces += faces.Count;
+            AddRealtimeQuad(obj, art.Texture, source, px, py, sx, sy, faces.First.From, faces.First.To, w, h, faces.First, true);
+            if (faces.Count > 1)
+            {
+                AddRealtimeQuad(obj, art.Texture, source, px, py, sx, sy, faces.Second.From, faces.Second.To, w, h, faces.Second, true);
+            }
+        }
+
+        /// <summary>Columns [from, to) of a sprite as one quad, each corner carrying its world point and height.</summary>
+        private void AddRealtimeQuad(GameObject obj, Texture2D texture, Rect2 source, int px, int py, int sx, int sy,
+            int from, int to, int w, int h, in WallFaces.Face face, bool isFace)
+        {
+            if (to <= from) return;
+            float su = source.Size.X / w;
+            var rect = new Rect2(px + from, py, to - from, h);
+            var src = new Rect2(source.Position.X + from * su, source.Position.Y, (to - from) * su, source.Size.Y);
+            float x0 = px + from - sx, x1 = px + to - sx, y0 = py - sy, y1 = py + h - sy;
+            _rtTarget.AddSprite(rect, texture, src,
+                RealtimeVertex(obj, x0, y0, in face, isFace),
+                RealtimeVertex(obj, x1, y0, in face, isFace),
+                RealtimeVertex(obj, x1, y1, in face, isFace),
+                RealtimeVertex(obj, x0, y1, in face, isFace));
+        }
+
+        /// <summary>
+        /// A sprite corner at tile-box pixel (bx, by): the world point its column
+        /// stands on and its height above that point's base. On a face the point
+        /// is on the face's line, pushed <see cref="RtFaceFront"/> to the side the
+        /// camera sees; off a face it is on the line across the tile's middle.
+        /// </summary>
+        private Color RealtimeVertex(GameObject obj, float bx, float by, in WallFaces.Face face, bool isFace)
+        {
+            // Box: top corner (22, 0) is world (x, y); X - 22 = 22 (dx - dy), Y = 22 (dx + dy).
+            float across = (bx - 22f) / 22f;
+            // Standing above the ground (a gable, an upper wall): that much
+            // higher above the light's floor, in pixels (4 per Z).
+            float lift = Math.Max(0, obj.Z - _rtField.GroundZ(obj.X, obj.Y)) * 4f;
+            if (!isFace)
+            {
+                return _rtTarget.At(obj.X + (1f + across) * 0.5f, obj.Y + (1f - across) * 0.5f, 44f - by + lift);
+            }
+
+            if (face.AlongX)
+            {
+                float dy = face.Offset;
+                return _rtTarget.At(obj.X + across + dy, obj.Y + dy + RtFaceFront, bx + face.K - by + lift);
+            }
+
+            float dx = face.Offset;
+            return _rtTarget.At(obj.X + dx + RtFaceFront, obj.Y + dx - across, face.K - bx - by + lift);
         }
 
         private void AddRealtimeLand(Land land)
@@ -470,9 +567,10 @@ namespace GUO.Game.Scenes
                 left = new Vector2(sx, sy + 22);
             }
 
-            Color c0 = _rtField.Corner(x, y), c1 = _rtField.Corner(x + 1, y), c2 = _rtField.Corner(x + 1, y + 1), c3 = _rtField.Corner(x, y + 1);
-            if (Math.Min(Math.Min(c0.R, c1.R), Math.Min(c2.R, c3.R)) < 0.05f) _rtDarkQuads++;
-            _rtTarget.AddLand(top, right, bottom, left, c0, c1, c2, c3);
+            if (_rtField.Cell(x, y).R < 0.05f) _rtDarkQuads++;
+            // Each corner is its world point: the shader reads the field per pixel.
+            _rtTarget.AddLand(top, right, bottom, left,
+                _rtTarget.At(x, y), _rtTarget.At(x + 1, y), _rtTarget.At(x + 1, y + 1), _rtTarget.At(x, y + 1));
         }
 
         /// <summary>A light's tint: the classic light palette, or the hue when the offer is hued.</summary>

@@ -1,0 +1,13 @@
+{
+  "id": "client.uoplus.options",
+  "title": "UO+ shared settings: default off, staged edits, persistence and controller scrolling",
+  "surface": "client",
+  "requires": {"build": "debug"},
+  "timeouts": {"step_s": 60, "run_s": 180},
+  "steps": [
+    {"id": "launch", "do": {"kind": "launch", "args": ["--uoplus-ui-probe", "--pregame-classic"], "settings": {"autologin": false, "username": "", "password": ""}},
+     "say": "Set GUO_UOPLUS_PROOF to a private evidence folder before this run. The native panel uses an unsaved fixture profile.",
+     "expect": {"log.contains": "[UO+ options UI] PASS", "within_s": 45}},
+    {"id": "summary", "do": {"kind": "note", "text": "Checks old/new profile defaults, independent flag/density JSON round trips, zero/clamps, build availability, water prerequisites, spell-only admission and cleanup without affecting generic hooks, staged edits, Apply/Defaults/Cancel, controller focus and scroll-to-bottom. Captures panel screenshots. Sway has no renderer; live-world effects are separate proofs."}}
+  ]
+}

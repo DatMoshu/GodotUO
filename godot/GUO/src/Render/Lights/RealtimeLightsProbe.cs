@@ -21,6 +21,24 @@ public partial class RealtimeLightsProbe : Node
     {
         try
         {
+            using (var parent = new Node())
+            using (var target = new RealtimeLightTarget())
+            {
+                target.EnsureSize(parent, 4, 4);
+                byte[] bytes = new byte[16];
+                target.SetField(bytes, 2, 2, 0, 0, 1, 1, Colors.White);
+                target.SetField(bytes, 2, 2, 3, 4, 1, 1, Colors.Black);
+                Require(target.FieldUploads == 1, "Unchanged light bytes must skip upload even when origin/ambient changes");
+                bytes[0] = 1;
+                target.SetField(bytes, 2, 2, 3, 4, 1, 1, Colors.Black);
+                Require(target.FieldUploads == 2, "Changed bytes in a reused buffer must upload");
+                target.SetField(bytes, 1, 4, 3, 4, 1, 1, Colors.Black);
+                Require(target.FieldUploads == 3, "Changed dimensions must recreate even with identical bytes");
+                target.Teardown();
+                target.EnsureSize(parent, 4, 4);
+                target.SetField(bytes, 1, 4, 3, 4, 1, 1, Colors.Black);
+                Require(target.FieldUploads == 4, "Recreated targets must upload their first frame");
+            }
             var profile = JsonSerializer.Deserialize("{}", ProfileJsonContext.DefaultToUse.Profile);
             Require(!profile.RealtimeLights, "Existing profiles must default off");
             profile.RealtimeLights = true;
@@ -144,6 +162,7 @@ public partial class RealtimeLightsProbe : Node
             // Falloff end points.
             Require(Math.Abs(RealtimeLightField.Falloff(0f, 5f) - 1f) < 0.001f && RealtimeLightField.Falloff(5f, 5f) < 0.001f, "Falloff is 1 at the source and 0 at the radius");
 
+            CheckWalls(night);
             CheckProfiles();
             CheckEffects(night);
             CheckDebug();
@@ -156,6 +175,72 @@ public partial class RealtimeLightsProbe : Node
             GD.PrintErr($"[Realtime lights] FAIL: {e.Message}");
             return false;
         }
+    }
+
+    /// <summary>Wall lines, their two sides, shadows behind blockers, wall lamps and the per-pixel samples.</summary>
+    private static void CheckWalls(Color night)
+    {
+        // Art classification: a "\" wall, a "/" wall, a "V" corner, and a blob that is no wall.
+        Require(Wall(c => c - 10).Count == 1 && Wall(c => c - 10).First.AlongX, "A \\ silhouette is a wall along X");
+        Require(Wall(c => 40 - c).Count == 1 && !Wall(c => 40 - c).First.AlongX, "A / silhouette is a wall along Y");
+        WallFaces v = Wall(c => c < 22 ? c + 10 : 54 - c);
+        Require(v.Count == 2 && v.First.AlongX && !v.Second.AlongX && v.First.To == v.Second.From, "A V silhouette is a corner: two faces split at a column");
+        Require(Wall(c => (c * 7919) % 23 + 10).Count == 0, "A ragged silhouette is no wall plane");
+        // Line placement: a "\" whose base runs through the tile's middle (box Y = X) is the line y + 0.5.
+        WallFaces middle = Wall(c => c + 55);
+        Require(middle.Count == 1 && Math.Abs(middle.First.Offset - 0.5f) < 0.05f, "A \\ base through the tile's middle is on its middle line");
+
+        // A wall along X on y = 10.5 across the grid; a light 3 south of it.
+        var field = new RealtimeLightField();
+        field.Begin(0, 0, 32, 32);
+        for (int x = 0; x < 32; x++) field.AddEdge(x, 10, true, 0.5f, 20);
+        field.Compute(0.0625f, new[] { new RealtimeLightField.Source(16, 13, 0, 6, Colors.White) });
+        Require(field.FineAt(16.5f, 10.85f).R > night.R + 0.1f, "The face toward the light is lit");
+        Require(Math.Abs(field.FineAt(16.5f, 10.1f).R - night.R) < 0.03f, "The far side of the wall is dark");
+        Require(Math.Abs(field.FineAt(16.5f, 8.5f).R - night.R) < 0.02f, "Nothing reaches past the wall");
+        // The same wall lit from the north: its south face (the shown one) is dark.
+        field.Compute(0.0625f, new[] { new RealtimeLightField.Source(16, 7, 0, 6, Colors.White) });
+        Require(Math.Abs(field.FineAt(16.5f, 10.85f).R - night.R) < 0.03f && field.FineAt(16.5f, 10.1f).R > night.R + 0.1f, "A wall's faces take the light of their own side");
+        // Per-pixel falloff along the face: brighter in front of the light than off to the side.
+        field.Compute(0.0625f, new[] { new RealtimeLightField.Source(16, 13, 0, 6, new Color(0.3f, 0.3f, 0.3f)) });
+        Require(field.FineAt(16.5f, 10.85f).R > field.FineAt(19.5f, 10.85f).R + 0.02f
+            && field.FineAt(19.5f, 10.85f).R > field.FineAt(21.5f, 10.85f).R, "Light falls off along the face as it does on the ground");
+        Require(field.FineAt(16.25f, 12f).R != field.FineAt(16.75f, 12f).R || field.FineScale > 1, "Samples finer than a tile");
+
+        // A post (a whole-tile blocker) throws a shadow wedge behind it.
+        field.Begin(0, 0, 32, 32);
+        field.AddBlocker(16, 15, 20);
+        field.Compute(0.0625f, new[] { new RealtimeLightField.Source(16, 13, 0, 6, Colors.White) });
+        Require(Math.Abs(field.FineAt(16.5f, 17.5f).R - night.R) < 0.03f, "Behind a post is its shadow");
+        Require(field.FineAt(18.5f, 15.5f).R > night.R + 0.1f, "Beside the post is lit");
+
+        // A lamp on a wall's tile shines from the shown face, not from inside it.
+        field.Begin(0, 0, 16, 16);
+        field.AddEdge(5, 5, true, 0.5f, 20);
+        Require(Math.Abs(field.LightOrigin(5, 5).Y - (5.5f + RealtimeLightField.WallLampStandoff)) < 0.001f
+            && Math.Abs(field.LightOrigin(4, 5).Y - 5.5f) < 0.001f, "A wall lamp stands off its wall on the shown side");
+
+        // The texture carries the samples: sqrt(v / 8) encoded, decoded c * c * 8.
+        field.Begin(0, 0, 4, 4);
+        field.Compute(1f, ReadOnlySpan<RealtimeLightField.Source>.Empty);
+        var rgba = new byte[field.FineWidth * field.FineHeight * 4];
+        field.FillTexture(rgba);
+        float decoded = rgba[0] / 255f * (rgba[0] / 255f) * RealtimeLightField.TextureRange;
+        Require(Math.Abs(decoded - 1f) < 0.03f && rgba[3] == 255, "The field texture decodes to the field");
+    }
+
+    private static WallFaces Wall(Func<int, int> bottom) => WallFaces.Classify(Silhouette(44, 100, bottom), 44, 100);
+
+    /// <summary>A 44-wide art whose column c is opaque from row 0 down to row bottom(c).</summary>
+    private static uint[] Silhouette(int width, int height, Func<int, int> bottom)
+    {
+        var px = new uint[width * height];
+        for (int c = 0; c < width; c++)
+        {
+            int b = Math.Clamp(bottom(c), 0, height - 1);
+            for (int r = 0; r <= b; r++) px[r * width + c] = 0xFF808080;
+        }
+        return px;
     }
 
     /// <summary>The light profile file and the A..E curves.</summary>

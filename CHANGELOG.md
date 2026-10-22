@@ -6,14 +6,31 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 ## Unreleased
 
 ### Labs
+- Weather puddle settings no longer enable water impacts on listed Wet tiles.
+  Rain rings also reach wet statics above sloped ground; crowded cells are
+  skipped when exposure cannot be checked within the scan budget.
 - An opt-in Debug build offers UO+ rain rings, tile puddles and a fading wet-player
   silhouette. Each experiment starts off; the session controls include a drop
   budget and puddle tile list. Labs are excluded from exported clients.
 
 ### Water
+- Opt-in Labs water rain can disturb the styled-water wave field, driven by
+  weather intensity and the existing default-off water-ring toggle. Primitive
+  rings are suppressed while that simulation is active; Classic keeps its fallback.
 - The synthetic shore regression now covers coast directions, wrapped mask
   coordinates, the beach/cliff height cutoff, and Classic output with every
   water model bound. It rejects headless runs that cannot render pixels.
+- The editor has a Water workspace with editable starter presets, synthetic
+  splash and hull previews, reversible tuning, Classic comparison, local
+  drafts and data-only Store pack export.
+- Water drafts live in the per-user workspace, survive build cleanup and
+  check for edits from another session before saving over an existing draft.
+- Document the expanded water parameter schema and complete data defaults,
+  with authoring contract tests; v2 pack installation waits for renderer support.
+- Pixel-water ripples keep their own brightness steps so they remain visible
+  against the dark animated tiles.
+- Pixel water respects a pack's zero glint setting, keeping white sparkles
+  out of styles that disable them.
 - The UO+ water pack keeps the native water art with a gentle shimmer and
   shore lap. All water styles follow a continuous coast contour to avoid
   repeated tile-edge surf bars; high cliffs no longer produce surf.
@@ -191,6 +208,9 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   and the one next door stays dark; day and night follow the shard's light
   level (the Light level setting still overrides it), with interiors dimmer
   by day. Off, the world lights exactly as before. ADR-0039.
+  Buildings, walls and trees now block the light and throw shadows, and the
+  light is shaded per pixel: a wall facing a torch brightens and falls off
+  like the ground beside it, and the side away from the torch stays dark.
   A light profile file (`lights/light_profiles.json` in your workspace) can
   change any light's reach, colour, strength and falloff shape (curves A to
   E, or your own); without one nothing changes. Spells can add short coloured

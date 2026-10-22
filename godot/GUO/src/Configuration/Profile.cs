@@ -53,7 +53,7 @@ namespace GUO.Configuration
         public bool JournalFileWithSerial { get; set; } = false;
     }
 
-    internal sealed class Profile
+    internal sealed class Profile : System.Text.Json.Serialization.IJsonOnDeserialized
     {
         [JsonIgnore] public string Username { get; set; }
         [JsonIgnore] public string ServerName { get; set; }
@@ -406,10 +406,39 @@ namespace GUO.Configuration
         // shard's light level colours; off is the classic light target,
         // byte-identical. Default off.
         public bool RealtimeLights { get; set; } = false;
+        // PORT DEVIATION (GUO): UO+ spell cast/impact bursts (ADR-0039).
+        // Requires RealtimeLights; existing profiles stay off.
+        public bool SpellLighting { get; set; } = false;
         // PORT DEVIATION (GUO): UO+ ambient particles, non-parity (ADR-0042).
         public bool AmbientFog { get; set; } = false;
         public bool AmbientLeaves { get; set; } = false;
         public bool AmbientDust { get; set; } = false;
+        // PORT DEVIATION (GUO): shared UO+ registry; legacy particle flags above
+        // remain authoritative for old-profile compatibility (ADR-uoplus-settings).
+        private UoPlusFeature _uoPlusFlags;
+        private bool _uoPlusFlagsRead;
+        public UoPlusFeature UoPlusFlags
+        {
+            get => _uoPlusFlags;
+            set { _uoPlusFlags = value; _uoPlusFlagsRead = true; }
+        }
+        // PORT DEVIATION (GUO): preserve the existing styled-water user's
+        // ripples/wakes when first reading a profile predating UO+ flags.
+        // New profiles and explicitly saved off flags remain off.
+        void System.Text.Json.Serialization.IJsonOnDeserialized.OnDeserialized()
+        {
+            if (!_uoPlusFlagsRead && !string.IsNullOrWhiteSpace(WaterStyle)
+                && !string.Equals(WaterStyle, "classic", StringComparison.OrdinalIgnoreCase))
+            {
+                _uoPlusFlags |= UoPlusFeature.WaterRipples;
+                // Old styled-water disturbances used their full configured
+                // strength. Do not silently halve it with the new 50% default.
+                UoPlusDensities ??= new Dictionary<UoPlusFeature, int>();
+                UoPlusDensities.TryAdd(UoPlusFeature.WaterRipples, 100);
+            }
+            _uoPlusFlagsRead = true;
+        }
+        public Dictionary<UoPlusFeature, int> UoPlusDensities { get; set; } = new();
         public int AmbientParticleDensity { get; set; } = 50; // percent, 0..100
         public int AmbientParticleCap { get; set; } = 128; // 0..512 per frame
         // PORT DEVIATION (GUO): water render style (ADR-0037). "classic"

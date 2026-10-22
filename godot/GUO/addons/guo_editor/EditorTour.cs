@@ -643,6 +643,7 @@ public partial class EditorTour : Node
                 ("maps", "Assets: Maps, then jump to UO World", MapsSeg),
                 ("pick", "World tab: pick and inspect", PickSeg),
                 ("layers", "World tab: the Layers menu and seasons", LayersSeg),
+                ("water", "Water: author, preview and export a preset", WaterSeg),
                 ("guides", "World tab: the Guides menu", GuidesSeg),
                 ("minimap", "World tab: the minimap", MinimapSeg),
                 ("multi", "World tab: placing a multi", MultiPlaceSeg),

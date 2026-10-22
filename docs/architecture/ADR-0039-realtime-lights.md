@@ -99,7 +99,54 @@ environment variables. Curves and energy act in the per-frame accumulation,
 not the cached visibility. Classic lighting reads none of it. The file format
 is data_formats section 45; a Store pack kind for profiles is later work.
 
+Amendment (2026-10-21, owner review of the lighting stills: "the walls
+aren't lit properly and they stand out"): decision 1 and 3 are refined.
+Walls are lines on their tile, read from the art's silhouette (a wall along
+X shows its +Y face, one along Y its +X face, a corner both), not whole
+blocked tiles; light stops at a line from either side, so each face takes
+only its own side's light and a building or a post throws a shadow behind it.
+The field is sampled four times per tile side and drawn per pixel: the
+samples ride in as a texture, land corners and sprite corners carry their
+world point, and a wall's columns read the field just in front of their face,
+so a face toward a torch brightens and falls off with the same curve as the
+ground beside it, and a window matches its wall. A lamp on a wall's tile
+shines from in front of the shown face. The tile-colour Gouraud land and the
+flat per-tile sprite tint are gone. Measured on the editor's oversized World
+view (160 x 152 tiles, 19 lights), the light pass costs about 7 ms a frame
+against about 3 ms before; the extra time is the field texture and the sample
+grid.
+
 ## Validation
+
+UO+ spell-light amendment (2026-10-20, owner-authorized night-push brief):
+`SpellLighting` is a separate L1 non-parity option, off by default and requiring
+Realtime lights. A marked hook after effect construction emits a short source
+burst for known fire/energy projectiles and a recipient burst for heal-style
+effects or lightning. A marked arrival hook reads the current target and emits
+an impact burst, including projectiles without a classic explosion sprite.
+No effect animation, packet or draw order changes. Bursts are stationary, not
+projectile trails. Shards reuse effect graphics, so mappings describe graphics
+rather than identifying spell IDs. Details and curated values are in section 45.
+
+The temporary hook distinguishes spell bursts for cleanup and caps them at 16
+live. World offers have priority; temporary collection uses only spare slots
+within the existing classic 100-light cap. This replaces the prior additional
+64-source allowance, retaining the hook table's 64-entry storage limit. The
+existing per-frame budget log counts admitted temporary sources. Disabling
+either option, changing map or logging out removes spell bursts. Classic light
+offers, art filtering and the off-state target remain unchanged.
+
+`client.spell.lighting` runs `SpellLightingProbe.tscn` headless: real creation and
+arrival seams, resolved tile positions and field colour, default-off persistence,
+parent gate, fade/expiry, saturation and cleanup. The probe invokes arrival
+synthetically and does not claim a live projectile or screenshot review.
+
+Spell-wall integration proof (2026-10-21): the same resolved arrival source
+is checked against a two-sided wall edge. Its near face is lit, intensity
+falls off along that face, and the far face and cells behind it remain at
+ambient. The spell-only gate and 100-source collection limit are unchanged.
+The editor smoke's `spellwall` fixture provides matched native-art stills
+with a stationary fire-impact source; see `tools/editor_smoke/README.md`.
 
 `client.realtime.lights` runs `RealtimeLightsProbe.tscn` headless: default
 off and persistence, the ambient ramp end points, a wall blocking a light
