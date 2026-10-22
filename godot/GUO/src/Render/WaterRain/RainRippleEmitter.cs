@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: BSD-2-Clause
-#if GUO_LABS
 using System;
 using GUO.Renderer.Water;
 
-namespace GUO.Labs.WaterRain;
+namespace GUO.Renderer.WaterRain;
 
 /// <summary>Bounded rain impacts in world cells; the existing water field owns the waves.</summary>
 internal sealed class RainRippleEmitter
@@ -15,6 +14,7 @@ internal sealed class RainRippleEmitter
     private uint _random = 29171;
     internal int LastAttempts { get; private set; }
     internal int LastStamps { get; private set; }
+    internal int TotalStamps { get; private set; }
 
     internal void Reset()
     {
@@ -50,6 +50,7 @@ internal sealed class RainRippleEmitter
             float jitterY = Next(801) / 1000f - 0.4f;
             field.Stamp(x + jitterX, y + jitterY, 0.4f, 0.35f);
             LastStamps++;
+            TotalStamps++;
         }
     }
 
@@ -74,4 +75,3 @@ internal struct RainSurface
     }
     internal bool Exposed => _waterZ.HasValue && (!_coverZ.HasValue || _coverZ <= _waterZ);
 }
-#endif

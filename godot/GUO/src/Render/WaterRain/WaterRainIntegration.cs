@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: BSD-2-Clause
-#if GUO_LABS
 using System.Runtime.CompilerServices;
 using GUO.Game;
 using GUO.Renderer.Weather;
 using GUO.Renderer.Water;
 
-namespace GUO.Labs.WaterRain;
+namespace GUO.Renderer.WaterRain;
 
-internal static class WaterRainLab
+internal static class WaterRainIntegration
 {
     private sealed class Context
     {
@@ -24,7 +23,9 @@ internal static class WaterRainLab
     internal static void Update(World world, WaterMask mask, WaterRipples field,
         RainRippleEmitter emitter, float delta, bool jumped)
     {
-        if (!WeatherLab.For(world).Settings.WaterDrops || field.Strength <= 0)
+        var settings = WeatherLab.For(world).Settings;
+        WeatherLab.SyncProfile(settings, GUO.Configuration.ProfileManager.CurrentProfile);
+        if (!settings.WaterDrops || field.Strength <= 0)
         {
             emitter.Reset();
             return;
@@ -34,10 +35,12 @@ internal static class WaterRainLab
         context.Field = field;
         context.Tick = Time.Ticks;
         context.Map = world.MapIndex;
-        var settings = WeatherLab.For(world).Settings;
-        emitter.Update(field, delta, WeatherLab.RainIntensity(world), !jumped,
+        emitter.Update(field, delta, RainAmount(settings, WeatherLab.RainIntensity(world)), !jumped,
             settings.DropBudget, world.Player.X, world.Player.Y, context.Query.ExposedWater);
     }
+
+    internal static float RainAmount(WeatherSettings settings, float intensity) =>
+        settings.WaterDrops ? intensity * System.Math.Clamp(settings.WaterDensity, 0, 100) / 100f : 0;
 
     /// <summary>Only this world's initialized styled frame may replace primitive water rings.</summary>
     internal static bool IsActive(World world) => world?.Player != null && world.Map != null
@@ -46,4 +49,3 @@ internal static class WaterRainLab
         && context.Field.OriginX != int.MinValue && context.Field.Strength > 0
         && WeatherLab.For(world).Settings.WaterDrops;
 }
-#endif

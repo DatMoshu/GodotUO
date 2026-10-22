@@ -145,6 +145,7 @@ internal static class WaterRender
             playerWet = wet, surfaceZ = wet ? (int?)z : null,
             playerDisturbs = wet && player.Z <= z + 1,
             rippleStamps = _ripples.Stamps, rippleSteps = _ripples.Steps,
+            rainStamps = _ripples.RainStamps, rainAttempts = _ripples.RainAttempts,
             lastUpdateMs = _ripples.LastUpdateMs
         };
     }

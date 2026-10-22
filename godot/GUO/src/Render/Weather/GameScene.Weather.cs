@@ -29,11 +29,7 @@ internal partial class GameScene
         state.LastTicks = now;
         float intensity = WeatherLab.RainIntensity(_world);
         state.Step(dt, intensity);
-#if GUO_LABS
-        bool simulatedWaterRain = GUO.Labs.WaterRain.WaterRainLab.IsActive(_world);
-#else
-        bool simulatedWaterRain = false;
-#endif
+        bool simulatedWaterRain = GUO.Renderer.WaterRain.WaterRainIntegration.IsActive(_world);
         // Fixed 512-slot spatial cache. Collisions evict old puddles; memory cannot grow.
         // Only known visible land is eligible; never infer water in unloaded cells.
         int candidates = 0;

@@ -3037,15 +3037,18 @@ bit 6, circle-of-transparency in bit 7). Classic never sets it.
 The mask is rebuilt on the CPU when the player moves 8 cells or the loaded
 chunks change.
 
-**Labs rain input** (L4, UO+, default off; 2026-10-21):
-`WeatherLab.RainIntensity(World)` supplies 0..1 (rain/brewing count / 70;
-zero for dry, snow or missing weather). The existing session-local
-`WaterDrops` checkbox gates its consumer. Styled water injects bounded
+**Styled-water rain input** (L1, UO+, default off; WATER-07): normal builds and
+exports consume `GUO.Renderer.Weather.WeatherLab.RainIntensity(World)` from the
+weather promotion. Every real `0x65` updates count / 70 for rain and both storm
+types; snow, clear, missing and expired input produce zero. Both **Weather:
+rain rings** and **Water ripples and wakes** must be enabled for wave impacts;
+their densities scale rain frequency and wave strength independently. Styled water injects bounded
 raindrop stamps after following the player and before the normal wave update;
 only loaded, exposed Wet land/statics at the mask's height qualify. The current
 styled-world/frame predicate suppresses duplicate primitive water rings;
-Classic retains the opted-in primitive fallback. No profile/packet/pack schema
-changes. See [rain limits and doctor](../godot/GUO/src/Labs/WaterRain/README.md)
+Classic, or a disabled styled wave field, retains the opted-in primitive fallback.
+No additional profile/packet/pack schema changes are required.
+See [rain limits and doctor](../godot/GUO/src/Render/WaterRain/README.md)
 and [scenario](../tools/scenarios/client/water_rain.md).
 
 **Ripples** (`WaterRipples`, WATER-03) are a two-buffer wave equation stepped

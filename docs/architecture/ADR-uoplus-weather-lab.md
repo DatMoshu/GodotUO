@@ -74,12 +74,15 @@ rendering; live-world visual acceptance remains a separate scenario step.
 
 Owner-requested water follow-up (2026-10-21): with a styled water mode, the
 existing default-off water-ring toggle can inject rain into the existing wave
-field through a `GUO_LABS` seam. `WeatherLab.RainIntensity(World)` is the shared
+field. WATER-07 promotes this consumer to `src/Render/WaterRain` in normal and
+export builds, on the reviewed weather promotion dependency (PR #120,
+`55d9e3a46b75c5d112b36350eb65272178717f61`). Both Rain rings and Water ripples
+UO+ toggles are required, with independent densities. `WeatherLab.RainIntensity(World)` is the shared
 0..1 input. Bounded, loaded-cell/height/cover validation precedes each impact;
 the field's existing update uploads it. A current-world/map/frame predicate
 suppresses primitive water rings while simulation is active. Classic retains
 the primitive fallback. No new shader, profile field or export path is added.
-See [the water rain doctor](../../godot/GUO/src/Labs/WaterRain/README.md) and
+See [the water rain doctor](../../godot/GUO/src/Render/WaterRain/README.md) and
 [scenario](../../tools/scenarios/client/water_rain.md).
 
 The cache and per-frame budgets bound work. Puddles can be evicted by travel or

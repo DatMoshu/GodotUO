@@ -1,13 +1,14 @@
 # client.water.rain — rain impacts in styled-water simulation
 
-Requires a Debug `GuoLabs=true` build. Contract and synthetic GPU commands are
-in [the rain doctor](../../../godot/GUO/src/Labs/WaterRain/README.md).
+Use normal Debug and export builds, without `GuoLabs`. Contract and supporting
+synthetic GPU commands are in [the rain doctor](../../../godot/GUO/src/Render/WaterRain/README.md).
 Use `WeatherProbe.tscn` too to check the shared normalized rain input.
 
 1. With every weather toggle off, compare styled water against the same scene
    before this feature; no rain stamps or primitive overlays should appear.
 2. At exposed Wet land and static water near Britain docks, choose a styled
-   mode and enable only **Rain rings on water** in `-uopweather`. Trigger rain
+   mode and enable **Weather: rain rings** and **Water ripples and wakes** in
+   Options > **UO+ effects**. Trigger rain
    through the controlled shard's weather tools. New disturbances spread through
    the water field; its existing style renders them. Verify all five styles.
 3. Change rain intensity from low to maximum: candidate impact frequency follows
@@ -28,3 +29,11 @@ Use `WeatherProbe.tscn` too to check the shared normalized rain input.
 Record live steps as NOT RUN until exercised against a controlled shard.
 Synthetic fields and pixel comparisons prove the wave/shader contract, not
 in-world placement, roof occlusion, live appearance or frame-time cost.
+
+For the dev-shard WATER-07 clip, use the deployed requester-only GM command:
+`[GuoWeather clear`, then `[GuoWeather storm 70` for ten seconds, then
+`[GuoWeather clear`. Capture calm → rain → calm and cumulative rain stamp
+counters. Snow must stop new stamps. Do not use a local weather injector as
+real-server proof. Run only after the director's maintenance result, with the
+assigned private account and a runtime lease. Frame costs require a separate
+exclusive benchmark window.
