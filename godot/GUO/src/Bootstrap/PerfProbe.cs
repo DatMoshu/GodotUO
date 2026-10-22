@@ -67,10 +67,12 @@ internal static class PerfProbe
     /// <c>--perf-static-world</c>: the tile walk leaves out every mobile but
     /// the player, every item and every effect, so a scene's counts depend on
     /// the map alone. The count gate (tools/perf_probe/gate.py) measures with
-    /// it: a passer-by walking through the Britain bank, or a spawn and its
-    /// loot at the mouth of Despise, moved the dungeon's batcher items between
-    /// identical runs (158 to 160) and failed a stock gate (PERF-V6). Frame
-    /// times under this flag are lower than play; they are advisory there.
+    /// it: the dungeon's batcher items moved between two identical runs (158
+    /// to 160) and failed a stock gate (PERF-V6); the working hypothesis is
+    /// dynamic content (a passer-by, a spawn and its loot at the mouth of
+    /// Despise), not yet reproduced under control, and a map-only world is
+    /// the proposed stabilisation. Frame times under this flag are lower
+    /// than play; they are advisory there.
     ///
     /// Set by <see cref="Run"/> for the probe's lifetime and cleared when it
     /// ends, never by argument parsing: the flag is refused without
