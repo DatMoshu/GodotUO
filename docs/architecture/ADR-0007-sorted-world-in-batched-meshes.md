@@ -298,9 +298,54 @@ A mobile body adds 50 (its +0.5). A tie field follows: the object's index in
 its tile (4 bits) and, for statics, its rank along the diagonal (9 bits). That
 rank is the insertion order the sort falls back to today. The visible span at
 zoom 2.5 is under 300 diagonals, so the key needs 28 bits. The key has to map
-exactly onto a 32-bit float depth buffer, which is why precision is the first
-thing measured. If it fails, the fallback is ties by submission inside one page
-buffer.
+exactly onto a 32-bit float depth buffer; the encoding below preserves all
+28 bits. Normalizing the integer by dividing by `2^28` does not.
+
+#### Exact depth encoding, measured 2026-10-22
+
+Exec-fable's decision #12505 authorized testing exact bit-pattern encoding
+and the two-level alternative before GPU-01. The original step-1 result
+was **39/39 for its required 24-bit cases**, not proof of 28-bit precision:
+its normalized 28-bit cases only printed diagnostics. At the middle and top
+of that range, adjacent integers already collide as CPU floats.
+
+**Chosen encoding:** for the complete unsigned key `K` in `[0, 2^28)`,
+`depth = uintBitsToFloat(0x2f800000u + K)`. Positive normal floats sort in
+unsigned bit-pattern order. This interval contains exactly `2^28` distinct
+values, from `2^-32` through the float immediately below `1`; it crosses
+neither zero, subnormals, NaNs, infinities nor depth-clamp endpoints.
+Reverse Z makes the larger key nearer.
+
+The instance buffer carries `K >> 9` and `K & 511` in two spare transform
+lanes, each exactly representable as a float. The vertex shader reconstructs
+the uint with shift/or, adds the constant and bit-casts it. A flat varying
+carries the result to an unconditional fragment `DEPTH` write, avoiding
+interpolator rounding. No numeric conversion of the full uint to float is
+allowed. The buffer remains 20 floats per instance; the probe's integer-key
+flag occupies a third spare lane. `CalculateDepthZ()` remains the source of
+the ordered integer key; this is its storage encoding, not a second depth
+function.
+
+On Forward+ (Godot 4.7.2, Vulkan, RTX 4090), the extended synthetic probe
+checks all **268,435,455 adjacent pairs**, both submission orders, within
+one atlas page and across two pages. Each of the four exact-encoding sweeps
+has zero wrong pixels. CPU monotonicity and round-trip checks visit the same
+full domain. Instance upload and vertex reconstruction are additionally
+checked at every encoded exponent transition and selected rank boundaries.
+The original **39/39** still passes; the extended gate is **41/41**.
+
+The two-level alternative writes the high 19 bits to depth and leaves the
+low 9-bit rank to page-local submission order. Sorted instances in one page
+pass, but one of the two cross-page assignments loses **267,911,168** pairs;
+page-local sorting cannot order those ties across pages. It is rejected for
+unordered persistent chunk/page buffers. Exact encoding is the viable
+tested choice and needs no page segmentation or rank sorting. Probe wall
+times include vsync and CPU readback; they are not per-instance performance
+measurements or a world-frame speed claim.
+
+The proof and its two-level negative controls are reproducible with
+`launchers/dev/depth_probe.bat`. All art is synthetic. Compatibility retains
+the canvas fallback; no 28-bit precision claim applies there.
 
 **What a static does per frame today, and where it goes:**
 

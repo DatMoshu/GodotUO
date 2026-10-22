@@ -6,6 +6,13 @@ orders them. `launchers\dev\depth_probe.bat` checks it against the canvas
 world pass on synthetic art, so it needs neither a UO install nor a shard.
 Nothing in the client draws through the pass yet.
 
+**Follow-up 2026-10-22:** the original 39 required checks remain unchanged.
+The probe now also requires exact 28-bit instance upload and an exhaustive
+CPU/GPU adjacent-key sweep on Forward+. See the ADR-0007 amendment's
+"Exact depth encoding, measured 2026-10-22" subsection. This supersedes the
+original normalized 28-bit experiment as the implementation choice; it does
+not reinterpret the original diagnostic cases as required checks.
+
 ## Results, 2026-10-19 (RTX 4090)
 
 | Check | Forward+ (Vulkan) | Compatibility (OpenGL 3) |
@@ -68,3 +75,16 @@ launchers\dev\depth_probe.bat --rendering-method gl_compatibility
 
 Set `GUO_DEPTH_PROBE_DUMP` to a folder to save the canvas and depth images of
 every failing case. The probe needs a real window, not `--headless`.
+
+The extended probe uses eight exhaustive sweeps: exact and two-level depth,
+one and two pages, both assignments/submission orders. Each sweep visits
+all `2^28 - 1` adjacent pairs, in 64 batches of up to 2048×2048 pixels.
+Every readback checks the winning instance, the batch-range stamp and the
+column stamp, plus the total number of covered pairs. No page/rank or float
+exponent boundary is skipped. The exact scheme must pass all four sweeps.
+The two-level reversed same-page run is a negative control; both cross-page
+assignments are required before that alternative could qualify. It fails.
+
+With `GUO_DEPTH_PROBE_DUMP`, the extended probe saves representative synthetic
+stills and `depth-key-results.json`. Its elapsed times include readback and
+vsync, and must not be used as world-render or per-instance benchmarks.

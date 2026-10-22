@@ -22,7 +22,8 @@ using GUO.Renderer;
 /// <item>Depth order: two overlapping quads with different keys, submitted
 /// both ways round, in one page and across two pages. The nearer key must
 /// win either way, for adjacent 24-bit keys at the bottom, middle and top of
-/// the range. Adjacent 28-bit keys are reported, not required.</item>
+/// the range. The old normalized 28-bit cases remain diagnostic controls;
+/// exact 28-bit encoding is required by the extended exhaustive probe.</item>
 /// <item>Ties: equal keys in one page. Reported as "later wins" (the sort's
 /// insertion order) or "earlier wins" (the key would need tie bits).</item>
 /// </list>
@@ -175,7 +176,29 @@ public partial class DepthProbe : Node
             GD.Print($"[depth-probe] info ties at {key:0.00}, one page: {winner}");
         }
 
+        GD.Print($"[depth-probe] original step-1 {_checks - _failures}/{_checks} checks passed");
+
+        // Instance upload / vertex reconstruction at every exponent transition
+        // of the encoding, plus rank, midpoint and top boundaries. The separate
+        // hardware sweep then asserts EVERY adjacent pair, not just these samples.
+        var boundaries = new SortedSet<uint> { 0, 510, 511, 512, (1u << 27) - 1, (1u << 27), WorldDepthKey.Count - 2 };
+        for (uint boundary = 1u << 23; boundary < WorldDepthKey.Count; boundary += 1u << 23)
+            boundaries.Add(boundary - 1);
+        bool uploadOk = true;
+        foreach (uint key in boundaries)
+        {
+            foreach (bool nearFirst in new[] { false, true })
+            foreach (Texture2D page in new Texture2D[] { redBlue, green })
+            {
+                Color8 got = await PairColour(pass, redBlue, page, 0, 0, nearFirst, key);
+                bool ok = got.R < 100 && got.A > 0;
+                uploadOk &= ok;
+                if (!ok) GD.Print($"[depth-key] FAIL upload key {key}/{key + 1}, two-pages {page != redBlue}, near-first {nearFirst}");
+            }
+        }
+        Check("28-bit instance upload / vertex / fragment depth", uploadOk, "integer-key reconstruction or depth order failed");
         pass.Dispose();
+        Check("28-bit exhaustive CPU and Forward+ depth order", await DepthKeyProbe.Run(this), "exact encoding did not preserve all adjacent pairs");
 
         GD.Print($"[depth-probe] {_checks - _failures}/{_checks} checks passed");
         GD.Print($"[depth-probe] {(_failures == 0 ? "PASS" : "FAIL")}");
@@ -301,7 +324,7 @@ public partial class DepthProbe : Node
     /// <paramref name="a"/>; the second blue (or <paramref name="b"/>'s colour).
     /// </summary>
     private async System.Threading.Tasks.Task<Color8> PairColour(
-        WorldDepthPass pass, Texture2D a, Texture2D b, float keyA, float keyB, bool bFirst)
+        WorldDepthPass pass, Texture2D a, Texture2D b, float keyA, float keyB, bool bFirst, uint? integerKey = null)
     {
         // In texture pixels: the red half of the red/blue art, then its blue
         // half, or all of a second page.
@@ -309,15 +332,20 @@ public partial class DepthProbe : Node
         Rect2 other = a == b ? new Rect2(4, 0, 4, 4) : new Rect2(0, 0, 4, 4);
 
         pass.Begin(Transform2D.Identity);
+        void Add(Texture2D texture, Rect2 dest, Rect2 source, float rawKey, uint increment)
+        {
+            if (integerKey.HasValue) pass.AddKeyedQuad(texture, dest, source, integerKey.Value + increment);
+            else pass.AddQuad(texture, dest, source, rawKey);
+        }
         if (bFirst)
         {
-            pass.AddQuad(b, new Rect2(15, 15, 20, 20), other, keyB);
-            pass.AddQuad(a, new Rect2(10, 10, 20, 20), red, keyA);
+            Add(b, new Rect2(15, 15, 20, 20), other, keyB, 1);
+            Add(a, new Rect2(10, 10, 20, 20), red, keyA, 0);
         }
         else
         {
-            pass.AddQuad(a, new Rect2(10, 10, 20, 20), red, keyA);
-            pass.AddQuad(b, new Rect2(15, 15, 20, 20), other, keyB);
+            Add(a, new Rect2(10, 10, 20, 20), red, keyA, 0);
+            Add(b, new Rect2(15, 15, 20, 20), other, keyB, 1);
         }
 
         pass.End();
@@ -326,7 +354,10 @@ public partial class DepthProbe : Node
         Image image = pass.Viewport.GetTexture().GetImage();
         image.Convert(Image.Format.Rgba8);
         Color c = image.GetPixel(22, 22);
-        Dump($"pair_{keyA:0.########}_{keyB:0.########}_{(bFirst ? "bfirst" : "afirst")}{(a == b ? "" : "_2p")}", null, image);
+        // Original pair dumps only; the exhaustive probe saves eight representative
+        // synthetic stills rather than hundreds of redundant upload samples.
+        if (!integerKey.HasValue)
+            Dump($"pair_{keyA:0.########}_{keyB:0.########}_{(bFirst ? "bfirst" : "afirst")}{(a == b ? "" : "_2p")}", null, image);
 
         return new Color8((byte)c.R8, (byte)c.G8, (byte)c.B8, (byte)c.A8);
     }
