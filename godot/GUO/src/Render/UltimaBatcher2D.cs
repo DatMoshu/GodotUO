@@ -364,16 +364,38 @@ namespace GUO.Renderer
             SetOnAllMaterials(name, value);
         }
 
+        /// <summary>
+        /// One StringName per uniform name, made once. SetShaderParameter
+        /// takes a StringName, and a C# string handed to it builds a new one
+        /// on every call (interning, then a native free): the water uniforms
+        /// alone did that several times a frame, on every material
+        /// (dotnet-trace 2026-10-22: StringName..ctor under SetWaterUniform,
+        /// MergedLand.Draw and FlushCover together ~1% of all samples).
+        /// </summary>
+        private readonly Dictionary<string, StringName> _uniformNames = new Dictionary<string, StringName>();
+
+        private StringName UniformName(string name)
+        {
+            if (!_uniformNames.TryGetValue(name, out StringName sn))
+            {
+                sn = new StringName(name);
+                _uniformNames[name] = sn;
+            }
+
+            return sn;
+        }
+
         private void SetOnAllMaterials(string name, Variant value)
         {
-            GpuWorld.Pass?.SetShared(name, value); // PORT DEVIATION (GUO): --gpu-world's materials share the hue uniforms
-            _material.SetShaderParameter(name, value);
-            _meshMaterial.SetShaderParameter(name, value);
-            _landArrayMaterial.SetShaderParameter(name, value);
+            StringName param = UniformName(name);
+            GpuWorld.Pass?.SetShared(param, value); // PORT DEVIATION (GUO): --gpu-world's materials share the hue uniforms
+            _material.SetShaderParameter(param, value);
+            _meshMaterial.SetShaderParameter(param, value);
+            _landArrayMaterial.SetShaderParameter(param, value);
 
             foreach (ShaderMaterial material in _blendMaterials.Values)
             {
-                material.SetShaderParameter(name, value);
+                material.SetShaderParameter(param, value);
             }
         }
 
@@ -666,6 +688,31 @@ void fragment() {
         /// <summary>The land mesh shader on LandPages' Texture2DArray (--merged-land=array).</summary>
         private ShaderMaterial _landArrayMaterial;
 
+        private static readonly StringName LandPagesParam = "land_pages";
+
+        /// <summary>The page array <see cref="_landArrayMaterial"/> was last bound to.</summary>
+        private Texture2DArray _boundLandPages;
+
+        /// <summary>
+        /// Binds <paramref name="pages"/> to the land-array material, once per
+        /// array object. LandPages keeps one Texture2DArray and refills it in
+        /// place (CreateFromImages replaces the texture under the same RID), so
+        /// a material bound to it stays bound through every rebuild; only a new
+        /// object (LandPages.Reset, then the first Sync) needs the set again.
+        /// Before this, FlushCover set it on every cover flush, which built a
+        /// StringName and crossed into Godot each time for nothing.
+        /// </summary>
+        private void BindLandPages(Texture2DArray pages)
+        {
+            if (ReferenceEquals(_boundLandPages, pages))
+            {
+                return;
+            }
+
+            _landArrayMaterial.SetShaderParameter(LandPagesParam, pages);
+            _boundLandPages = pages;
+        }
+
         /// <summary>
         /// All visible land as one mesh over LandPages' Texture2DArray
         /// (MergedLand, --merged-land=array): the land mesh shader's shading,
@@ -675,7 +722,7 @@ void fragment() {
         {
             EnsureStarted();
             SelectSpriteSampler(null);
-            _landArrayMaterial.SetShaderParameter("land_pages", pages);
+            BindLandPages(pages);
             EnsureMaterial(_landArrayMaterial);
             FlushRun();
             Commands++;
@@ -954,7 +1001,7 @@ void fragment() {
             }
 
             FlushQuadRun();
-            _landArrayMaterial.SetShaderParameter("land_pages", LandPages.Array);
+            BindLandPages(LandPages.Array);
             Commands++;
             Count(4, default);
             RenderingServer.CanvasItemAddMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, default);

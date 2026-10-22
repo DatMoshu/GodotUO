@@ -151,7 +151,7 @@ namespace GUO.Renderer
             _viewport.AddChild(_root);
             parent.AddChild(_viewport);
 
-            var arrays = new Godot.Collections.Array();
+            using var arrays = new Godot.Collections.Array();
             arrays.Resize((int)Mesh.ArrayType.Max);
             // The canvas renderer's rect: corners top-left, bottom-left,
             // bottom-right, top-right; triangles 0 1 2 and 0 2 3.
@@ -994,7 +994,7 @@ namespace GUO.Renderer
                 Material.SetShaderParameter("land_pages", LandPages.Array);
 
                 // The arrays are sized exactly: the server takes whole arrays.
-                var arrays = new Godot.Collections.Array();
+                using var arrays = new Godot.Collections.Array();
                 arrays.Resize((int)Mesh.ArrayType.Max);
                 arrays[(int)Mesh.ArrayType.Vertex] = _points.AsSpan(0, _vertices).ToArray();
                 arrays[(int)Mesh.ArrayType.TexUV] = _uvs.AsSpan(0, _vertices).ToArray();

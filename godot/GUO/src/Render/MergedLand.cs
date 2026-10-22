@@ -195,7 +195,7 @@ namespace GUO.Renderer
 
                 ArrayMesh mesh = _meshes[s];
                 mesh.ClearSurfaces();
-                var arrays = new Godot.Collections.Array();
+                using var arrays = new Godot.Collections.Array();
                 arrays.Resize((int)Mesh.ArrayType.Max);
                 arrays[(int)Mesh.ArrayType.Vertex] = points;
                 arrays[(int)Mesh.ArrayType.TexUV] = uvs;
@@ -258,7 +258,7 @@ namespace GUO.Renderer
 
             ArrayMesh mesh = _meshes[0];
             mesh.ClearSurfaces();
-            var arrays = new Godot.Collections.Array();
+            using var arrays = new Godot.Collections.Array();
             arrays.Resize((int)Mesh.ArrayType.Max);
             arrays[(int)Mesh.ArrayType.Vertex] = points;
             arrays[(int)Mesh.ArrayType.TexUV] = uvs;
