@@ -731,8 +731,10 @@ namespace GUO.Renderer.Lights
         /// <summary>
         /// The probe's reference: the accumulation loop as it was before the field
         /// and radius cut, kept so the probe can prove both give the same samples.
+        /// Init-only and false by default: only the probe constructs a field with it;
+        /// the game's field (GameScene) never sets it.
         /// </summary>
-        internal bool ReferenceAccumulate;
+        internal bool ReferenceAccumulate { get; init; }
 
         private void AccumulateReference(in Source s, float[] map)
         {
