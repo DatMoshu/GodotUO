@@ -708,6 +708,7 @@ namespace GUO.Game.Scenes
                     if (chunk.Mesh.Instanced)
                     {
                         chunk.Mesh.Instances.Show(); // PORT DEVIATION (GUO): --gpu-world
+                        GpuWorld.InstancesShown++;
                     }
 
                     // Reset visibility and alpha for this frame
@@ -1164,7 +1165,7 @@ namespace GUO.Game.Scenes
                 _offset.Y
             );
 
-
+            RedrawWorldOnCanvas(batcher); // PORT DEVIATION (GUO): --gpu-world (GPU-03)
 
             if (
                 _multi != null

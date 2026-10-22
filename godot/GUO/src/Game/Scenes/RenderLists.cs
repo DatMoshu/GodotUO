@@ -693,6 +693,16 @@ namespace GUO.Game.Scenes
                 }
 
                 GpuWorld.FellBack(pass.FailedWhy);
+
+                // GPU-03: the walk left this frame's statics to the pass, so
+                // the canvas path alone would draw a world without them. The
+                // scene suspends the pass and draws the frame again.
+                if (GpuWorld.InstancesShown > 0)
+                {
+                    GpuWorld.RedrawOnCanvas = true;
+                    _coverOwner.Release();
+                    return 0;
+                }
             }
 
             return DrawSorted(batcher, span, maxGroundZ, false);
@@ -721,7 +731,10 @@ namespace GUO.Game.Scenes
                 Array.Resize(ref _gpuS, capacity);
             }
 
-            uint previous = 0;
+            uint previous = 0;      // the largest key so far
+            uint previousOther = 0; // the largest key of anything that is not covering land
+            bool previousLand = false;
+            float previousDepth = 0f;
             for (int i = 0; i < span.Length; i++)
             {
                 // The sorted order lives in _keys (DepthKey); span itself is in queue order.
@@ -755,17 +768,56 @@ namespace GUO.Game.Scenes
                     return;
                 }
 
+                bool land = obj is Land;
                 if (i > 0 && key < previous)
                 {
-                    pass.Abandon("the key does not reproduce the sort");
-                    return;
+                    // GPU-03: covering land is queued in the cover walk's order,
+                    // the key orders a diagonal in the tile walk's, and the
+                    // two disagree for tiles at one depth. Tiles at one depth
+                    // do not overlap (ChunkMesh's land order rests on the same
+                    // fact), so a run of covering land at one depth may come
+                    // out of the key in any order, as long as the run stays
+                    // above everything else drawn before it; what follows the
+                    // run is checked against the run's largest key.
+                    bool landRun = land && previousLand && next.Depth == previousDepth && key >= previousOther;
+                    if (!landRun)
+                    {
+                        if (!s_keyOrderReported)
+                        {
+                            s_keyOrderReported = true;
+                            ref readonly Drawable prev = ref span[DepthKey.Seq(_keys[i - 1])];
+                            DepthTile(prev.Object, out int px, out int py);
+                            Godot.GD.Print($"[GUO] --gpu-world key order: #{i - 1} {Describe(prev, px, py)} then #{i} {Describe(next, x, y)} key {key:X8} < {previous:X8}");
+                        }
+
+                        pass.Abandon("the key does not reproduce the sort");
+                        return;
+                    }
+                }
+                else
+                {
+                    previous = key;
                 }
 
-                previous = key;
+                if (!land)
+                {
+                    previousOther = previous;
+                }
+
+                previousLand = land;
+                previousDepth = next.Depth;
                 _gpuDepthAbs[i] = depthAbs;
                 _gpuTieAbs[i] = tieAbs;
                 _gpuS[i] = s;
             }
+        }
+
+        private static bool s_keyOrderReported;
+
+        private static string Describe(in Drawable d, int tx, int ty)
+        {
+            GameObject o = d.Object;
+            return $"{o.GetType().Name} g={o.Graphic:X4} at ({o.X},{o.Y},{o.Z}) tile ({tx},{ty}) off=({o.Offset.X},{o.Offset.Y},{o.Offset.Z}) depth={d.Depth} seq={d.Seq} slot={(o is Land ? 0 : d.Slot)} pass={d.Pass}";
         }
 
         /// <summary>

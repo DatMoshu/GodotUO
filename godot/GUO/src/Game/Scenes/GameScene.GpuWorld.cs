@@ -29,7 +29,7 @@ namespace GUO.Game.Scenes
             // The world frame starts: whether it goes through the pass is
             // decided in RenderLists.DrawWorld; until then, and when the
             // switch is off, it did not.
-            GpuWorld.LastFrameOnPass = false;
+            GpuWorld.FrameStarts();
             if (!GpuWorld.Enabled)
             {
                 if (GpuWorld.Pass != null)
@@ -65,8 +65,11 @@ namespace GUO.Game.Scenes
         private void BeginGpuFrame()
         {
             WorldDepthPass pass = GpuWorld.Pass;
-            if (pass == null || !GpuWorld.Enabled)
+            if (pass == null || !GpuWorld.Enabled || GpuWorld.Suspended)
             {
+                // Suspended: no Begin, so DrawWorld sees a pass that has not
+                // begun and draws the canvas path; the chunks rebuilt without
+                // instances (Building is false) and queue their statics.
                 return;
             }
 
@@ -117,8 +120,37 @@ namespace GUO.Game.Scenes
 
             if (why != null)
             {
+                // Known before the walk: the walk that follows builds the
+                // chunks without instances, so nothing is missing on the canvas.
                 pass.Abandon(why);
+                GpuWorld.Suspend(why);
             }
+        }
+
+        /// <summary>
+        /// GPU-03: the sorted pass fell back after the walk had left this
+        /// frame's statics to the pass. The pass is suspended, and the frame
+        /// is walked and drawn again on the canvas, where the rebuilt chunks
+        /// queue their statics as sprites. Costs a second gather and the
+        /// chunk rebuilds, once per suspension.
+        /// </summary>
+        private bool RedrawWorldOnCanvas(UltimaBatcher2D batcher)
+        {
+            if (!GpuWorld.RedrawOnCanvas)
+            {
+                return false;
+            }
+
+            GpuWorld.Suspend(GpuWorld.LastFallback);
+            GpuWorld.RedrawOnCanvas = false;
+            FillGameObjectList();
+            QueueStagedSplats();
+            QueueTerrainLayers();
+#if GUO_LABS
+            QueueWeatherLab();
+#endif
+            RenderedObjectsCount = _renderLists.DrawRenderLists(batcher, _maxGroundZ, _visibleChunks, _offset.X, _offset.Y);
+            return true;
         }
     }
 }

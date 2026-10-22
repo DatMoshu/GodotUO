@@ -595,9 +595,15 @@ internal static class PerfProbe
         // frames, so a scene that fell back to the canvas is told apart from
         // one the pass drew (GpuWorld.FellBack logs the reason once).
         long gpuDrawnBefore = GpuWorld.FramesDrawn, gpuFallbackBefore = GpuWorld.FramesFallback;
+        long gpuSuspendedBefore = GpuWorld.FramesSuspended;
+        int coverSkippedBefore = UltimaBatcher2D.CoverSkipped;
         Image a = await Frame(false), b = await Frame(true), c = await Frame(false), b2 = await Frame(true), c2 = await Frame(false);
         ParityToggle(was);
         long gpuDrawn = GpuWorld.FramesDrawn - gpuDrawnBefore, gpuFallback = GpuWorld.FramesFallback - gpuFallbackBefore;
+        // GPU-03: covering tiles the pass left to the bake (no land-array
+        // page) and suspensions over the captures, for the parity reviewer.
+        long gpuSuspended = GpuWorld.FramesSuspended - gpuSuspendedBefore;
+        int coverSkipped = UltimaBatcher2D.CoverSkipped - coverSkippedBefore;
         byte[] da = a.GetData(), db = b.GetData(), dc = c.GetData(), db2 = b2.GetData(), dc2 = c2.GetData();
         int bpp = da.Length / (a.GetWidth() * a.GetHeight());
         long stable = 0, violations = 0, strict = 0;
@@ -655,7 +661,7 @@ internal static class PerfProbe
         }
 
         GD.Print($"[GUO] perf probe: parity {name}: {violations} of {stable} stable pixels differ, {strict} repeatably (max channel delta {strictMaxDelta})"
-            + (GpuWorld.Enabled ? $"; gpu-world: {testOnPass} of {testCaptures} test captures on the pass; over the five captures {gpuDrawn} frames drawn, {gpuFallback} fallback{(gpuFallback > 0 ? " (" + GpuWorld.LastFallback + ")" : "")}" : ""));
+            + (GpuWorld.Enabled ? $"; gpu-world: {testOnPass} of {testCaptures} test captures on the pass; over the five captures {gpuDrawn} frames drawn, {gpuFallback} fallback{(gpuFallback > 0 ? " (" + GpuWorld.LastFallback + ")" : "")}, {gpuSuspended} suspended, {coverSkipped} cover tiles skipped" : ""));
         return new Dictionary<string, object>
         {
             ["parity_stable_px"] = stable, ["parity_violations"] = violations, ["parity_strict"] = strict,
@@ -663,6 +669,7 @@ internal static class PerfProbe
             ["gpu_test_captures"] = testCaptures, ["gpu_test_on_pass"] = testOnPass,
             ["gpu_frames_drawn"] = gpuDrawn, ["gpu_frames_fallback"] = gpuFallback,
             ["gpu_last_fallback"] = gpuFallback > 0 ? GpuWorld.LastFallback ?? "" : "",
+            ["gpu_suspended"] = gpuSuspended, ["gpu_cover_skipped"] = coverSkipped,
         };
     }
 
@@ -736,12 +743,13 @@ internal static class PerfProbe
         if (results.Any(r => r.ContainsKey("parity_violations")))
         {
             md.AppendLine();
-            md.AppendLine("| Scene | parity: stable pixels | test differs | repeatably (strict) | strict max delta | test captures on the pass | frames drawn / fallback over the captures | last fallback |");
-            md.AppendLine("|---|---:|---:|---:|---:|---:|---:|---|");
+            md.AppendLine("| Scene | parity: stable pixels | test differs | repeatably (strict) | strict max delta | test captures on the pass | frames drawn / fallback over the captures | last fallback | suspended | cover tiles skipped |");
+            md.AppendLine("|---|---:|---:|---:|---:|---:|---:|---|---:|---:|");
             foreach (var r in results.Where(r => r.ContainsKey("parity_violations")))
             {
                 md.AppendLine($"| {r["scene"]} | {r["parity_stable_px"]} | {r["parity_violations"]} | {r["parity_strict"]} | {r.GetValueOrDefault("parity_strict_max_delta", "")}"
-                    + $" | {r.GetValueOrDefault("gpu_test_on_pass", "")} of {r.GetValueOrDefault("gpu_test_captures", "")} | {r.GetValueOrDefault("gpu_frames_drawn", "")} / {r.GetValueOrDefault("gpu_frames_fallback", "")} | {r.GetValueOrDefault("gpu_last_fallback", "")} |");
+                    + $" | {r.GetValueOrDefault("gpu_test_on_pass", "")} of {r.GetValueOrDefault("gpu_test_captures", "")} | {r.GetValueOrDefault("gpu_frames_drawn", "")} / {r.GetValueOrDefault("gpu_frames_fallback", "")} | {r.GetValueOrDefault("gpu_last_fallback", "")}"
+                    + $" | {r.GetValueOrDefault("gpu_suspended", "")} | {r.GetValueOrDefault("gpu_cover_skipped", "")} |");
             }
         }
 

@@ -49,7 +49,59 @@ namespace GUO.Renderer
         public static bool Active => Enabled && Pass != null;
 
         /// <summary>Chunks build their instances while this is true; a chunk built without them queues its statics as before.</summary>
-        public static bool Building => Enabled && Pass != null;
+        public static bool Building => Enabled && Pass != null && !Suspended;
+
+        /// <summary>
+        /// GPU-03: world frames left before the pass is tried again after a
+        /// frame it could not carry. While it counts down the chunks hold
+        /// their statics as sprites again, so a canvas frame draws them all.
+        /// </summary>
+        public static int SuspendedFrames { get; private set; }
+
+        public static bool Suspended => SuspendedFrames > 0;
+
+        /// <summary>How many world frames a suspension lasts (two seconds at 60).</summary>
+        public const int SuspendFrames = 120;
+
+        /// <summary>Instanced chunk sets the walk showed this world frame (GameScene counts them).</summary>
+        public static int InstancesShown;
+
+        /// <summary>
+        /// Set by RenderLists.DrawWorld when a frame fell back after the walk
+        /// had already left its statics to the pass: the canvas has not got
+        /// them, so GameScene suspends the pass and walks and draws the frame
+        /// again on the canvas.
+        /// </summary>
+        public static bool RedrawOnCanvas;
+
+        /// <summary>A world frame starts: a suspension counts down, the frame's counters reset.</summary>
+        public static void FrameStarts()
+        {
+            if (SuspendedFrames > 0)
+            {
+                SuspendedFrames--;
+            }
+
+            InstancesShown = 0;
+            RedrawOnCanvas = false;
+            LastFrameOnPass = false;
+        }
+
+        /// <summary>The pass stays off for SuspendFrames world frames; said once per reason.</summary>
+        public static void Suspend(string why)
+        {
+            SuspendedFrames = SuspendFrames;
+            FramesSuspended++;
+            if (why != _lastSuspended)
+            {
+                _lastSuspended = why;
+                GD.Print($"[GUO] --gpu-world: the pass is suspended for {SuspendFrames} frames: {why}");
+            }
+        }
+
+        /// <summary>Suspensions so far, for the perf probe.</summary>
+        public static long FramesSuspended;
+        private static string _lastSuspended;
 
         public static WorldDepthPass Create(Node parent, Vector2I size)
         {
