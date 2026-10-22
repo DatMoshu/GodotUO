@@ -80,7 +80,7 @@ namespace GUO.Renderer
             _viewport.AddChild(_root);
             parent.AddChild(_viewport);
 
-            var arrays = new Godot.Collections.Array();
+            using var arrays = new Godot.Collections.Array();
             arrays.Resize((int)Mesh.ArrayType.Max);
             // The canvas renderer's rect: corners top-left, bottom-left,
             // bottom-right, top-right; triangles 0 1 2 and 0 2 3.

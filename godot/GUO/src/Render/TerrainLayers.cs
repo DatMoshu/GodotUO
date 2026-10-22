@@ -386,7 +386,7 @@ namespace GUO.Renderer
             uvs[3] = new Vector2(1f, 0f);
             uvs[4] = new Vector2(1f, 1f);
             uvs[5] = new Vector2(0f, 1f);
-            var arrays = new Godot.Collections.Array();
+            using var arrays = new Godot.Collections.Array();
             arrays.Resize((int)Mesh.ArrayType.Max);
             arrays[(int)Mesh.ArrayType.Vertex] = verts;
             arrays[(int)Mesh.ArrayType.Color] = colors;
