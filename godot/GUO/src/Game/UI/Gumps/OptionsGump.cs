@@ -2154,8 +2154,8 @@ namespace GUO.Game.UI.Gumps
             // draws the tiles as upstream does and replaces nothing.
             section4.Add(AddLabel(null, "Water", startX, startY));
             section4.AddRight(_waterStyle = AddCombobox(null,
-                GUO.Renderer.Water.WaterRender.ChoiceLists().Names,
-                GUO.Renderer.Water.WaterRender.ChoiceIndex(_currentProfile.WaterStyle), startX, startY, 180));
+                GUO.Renderer.Water.WaterRender.PlayerChoiceLists(_currentProfile).Names,
+                GUO.Renderer.Water.WaterRender.PlayerChoiceIndex(_currentProfile), startX, startY, 180));
 
             SettingsSection section5 = AddSettingsSection(box, "Shadows");
             section5.Y = section4.Bounds.Bottom + 40;
@@ -4796,7 +4796,8 @@ namespace GUO.Game.UI.Gumps
             _currentProfile.RealtimeLights = _realtimeLights.IsChecked; // PORT DEVIATION (GUO): ADR-0039
 
             // PORT DEVIATION (GUO): the renderer rebuilds the meshes when it sees the change.
-            _currentProfile.WaterStyle = GUO.Renderer.Water.WaterRender.ChoiceId(_waterStyle.SelectedIndex);
+            GUO.Renderer.Water.WaterRender.SetPlayerChoice(_currentProfile,
+                GUO.Renderer.Water.WaterRender.PlayerChoiceId(_currentProfile, _waterStyle.SelectedIndex));
 
             _currentProfile.PartyAura = _partyAura.IsChecked;
             _currentProfile.PartyAuraHue = _partyAuraColorPickerBox.Hue;
