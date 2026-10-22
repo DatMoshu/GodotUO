@@ -156,6 +156,53 @@ public partial class RealtimeLightsProbe : Node
             Require(sunTorch.R > 0.99f && sunTorch.G > 0.99f && sunTorch.B > 0.99f
                 && sunFine.R > 0.99f && sunFine.G > 0.99f && sunFine.B > 0.99f, "A torch by day is no darker than daylight");
 
+            // Sun and moon shadows (UO+, ADR-0039 addendum).
+            Require(!UoPlusOptions.Requested(profile, UoPlusFeature.SunShadows), "Sun shadows default off");
+            var noonSun = RealtimeTimeOfDay.SkyShadow(12.5f, 1f, 1f);
+            var dawnSun = RealtimeTimeOfDay.SkyShadow(5.5f, 1f, 1f);
+            var duskSun = RealtimeTimeOfDay.SkyShadow(22.5f, 1f, 1f);
+            var moon = RealtimeTimeOfDay.SkyShadow(1.5f, 0.625f, 1f);
+            Require(noonSun.Active && noonSun.TanElevation > 1.5f, "Noon: a high sun, short shadows");
+            Require(dawnSun.Active && dawnSun.TanElevation < 0.4f && dawnSun.DirX < -0.9f, "Dawn: a low sun in the east, long shadows to the west");
+            Require(duskSun.Active && duskSun.TanElevation < 0.4f && duskSun.DirX > 0.9f, "Dusk: a low sun in the west, long shadows to the east");
+            Require(moon.Active && moon.Strength <= RealtimeTimeOfDay.MoonShadow + 0.001f && moon.Strength < noonSun.Strength, "Night: a faint moon shadow");
+            Require(!RealtimeTimeOfDay.SkyShadow(12.5f, 0.1875f, 1f).Active, "No sky shadow in a dungeon's dark");
+            Require(!RealtimeTimeOfDay.SkyShadow(12.5f, 1f, 0f).Active, "Strength 0 is no shadow");
+
+            var sunField = new RealtimeLightField();
+            var lowSun = new RealtimeLightField.Sun(-1f, 0f, 0.5f, 0.5f); // west-pointing, 20 Z wall -> 4 tiles
+            void SunGrid()
+            {
+                sunField.Begin(0, 0, 32, 32);
+                for (int y = 0; y < 32; y++) sunField.AddBlocker(20, y, 20);
+                sunField.SetRoof(17, 4);
+            }
+            SunGrid();
+            sunField.SetSun(in lowSun);
+            sunField.Compute(1f, ReadOnlySpan<RealtimeLightField.Source>.Empty);
+            Require(sunField.LastShadowComputed == 1, "The shadow mask is computed");
+            Require(sunField.Cell(18, 16).R < 0.75f && sunField.Cell(22, 16).R > 0.99f && sunField.Cell(13, 16).R > 0.99f,
+                "A wall's shadow falls away from the sun, as long as its height allows");
+            Require(Math.Abs(sunField.Cell(17, 4).R - RealtimeLightField.RoofDaylight) < 0.01f, "Under a roof the sky shadow adds nothing");
+            SunGrid();
+            sunField.SetSun(in lowSun);
+            sunField.Compute(1f, ReadOnlySpan<RealtimeLightField.Source>.Empty);
+            Require(sunField.LastShadowComputed == 0, "An unchanged sun and grid hit the mask cache");
+            SunGrid();
+            sunField.SetSun(new RealtimeLightField.Sun(1f, 0f, 0.5f, 0.5f));
+            sunField.Compute(1f, ReadOnlySpan<RealtimeLightField.Source>.Empty);
+            Require(sunField.LastShadowComputed == 1 && sunField.Cell(22, 16).R < 0.75f && sunField.Cell(18, 16).R > 0.99f, "A moved sun recomputes the mask");
+            SunGrid();
+            sunField.SetSun(in lowSun);
+            sunField.AddMobileCaster(8.5f, 8.5f, 0);
+            sunField.Compute(1f, new[] { new RealtimeLightField.Source(18, 24, 0, 3, Colors.White) });
+            Require(sunField.FineAt(7.6f, 8.5f).R < 0.85f && sunField.FineAt(8.5f, 10.5f).R > 0.99f, "A mobile casts its own shadow");
+            Require(sunField.Cell(18, 24).R > sunField.Cell(18, 16).R + 0.2f, "A lamp lights a sky shadow");
+            sunField.Begin(0, 0, 32, 32);
+            sunField.SetSun(default);
+            sunField.Compute(1f, ReadOnlySpan<RealtimeLightField.Source>.Empty);
+            Require(sunField.Cell(18, 16).R > 0.99f, "No sun set is no shadow");
+
             // Roof dim by day, none at night.
             field.Begin(0, 0, 8, 8);
             field.SetRoof(2, 2);

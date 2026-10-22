@@ -2992,7 +2992,36 @@ hour (12 to 4:00, rising to 0 by 6:00, 0 to 22:00, falling to 12 by 24:00), so
 the slider previews the whole day; the shard's level is used otherwise. Off,
 or at density 0, the field is exactly the level-only ramp. The 5 s log line
 adds ` hour=H tod=S` when on. The editor demo takes `,hour,H` (and `todoff`
-for the before frame); `tools/editor_smoke/README.md`.
+for the before frame, `sun` for the shadows below); `tools/editor_smoke/README.md`.
+
+**UO+ sun and moon shadows** (non-parity, UO+ flag `SunShadows`, mask bit
+1024, default off; requires Realtime lights; density = strength). The sky light
+follows the same hour as the time-of-day light (fixed or shard clock; a fixed
+hour sets the level as above when either flag is on). The sun is up while
+`smoothstep(4, 5.5, h) x (1 - smoothstep(22.5, 24, h)) >= 0.5`: across the day
+`t = (h - 4.5) / 19`, towards the light `(cos(pi t), sin(pi t))` (rising in the
+east, +X; south, +Y, at 14:00; setting in the west), elevation `6 + 56 sin(pi t)`
+degrees, share `0.42 x` that sun-up value. Otherwise the moon crosses the same
+way over the night (23.5 to 4.5) at `6 + 34 sin(pi t)` degrees with share
+`0.16 x (1 - sun-up)`. Both shares fade by `smoothstep(0, 0.15, sin(pi t))`
+at the horizon (so the switch does not show), and by
+`smoothstep(0.30, 0.55, grey) x density / 100` (no sky shadow in a dungeon).
+
+A cell's caster top is the highest of: its whole-tile blocker, its wall lines,
+any foliage static or any static at least 8 tall (`AddCaster`), and a cover
+(roof or upper floor) at its base Z + 10. A shadow mask at 2 samples per tile
+side marches from each outdoor sample towards the light in half-tile steps,
+up to 6 tiles or `40 / (10 tan e)`, skipping its own cell. A caster whose top
+stands `over = top - ground Z - distance x 10 tan e > 0` above the sample's line to the light
+shades it by `min(1, over / 4)` (one tile is 10 Z). Roofed samples get none
+(the roof share holds). The mask is cached on the blocker hash, the caster
+tops, cover and ground, the azimuth to a degree and `tan e` to 0.02. Each
+mobile in the grid stamps a capsule from its sprite's position along the
+shadow, `min(4, 14 / (10 tan e))` tiles long, radius 0.32 (full to 0.16), fading
+to 40 % at the tip. Each fine sample's ambient is multiplied by
+`1 - share x shade`, before lamps add, so a lamp lights a sky shadow; the
+daylight floor above uses that shadowed ambient. The 5 s log line adds
+` sunShadowComputed=0|1`.
 At most 16 spell bursts live at once; a new burst replaces the oldest spell
 burst. All temporary hooks fill only spare slots after existing world offers,
 with **100 total light sources per frame**, including spell bursts. Saturated
@@ -3441,8 +3470,8 @@ its checkbox selected. Parent Options Apply does not overwrite panel edits.
 
 | Profile field | Type | Default | Meaning |
 |---|---|---|---|
-| `UoPlusFlags` (`uo_plus_flags`) | integer bit mask | 0 | 8 rain rings, 16 puddles, 32 wet player, 64 reserved sway, 256 water ripples, 512 time-of-day light |
-| `UoPlusDensities` (`uo_plus_densities`) | object of feature-name → integer | `{}` | Independent 0–100 values, clamped at use; names `Fog`, `Leaves`, `Dust`, `RainRings`, `Puddles`, `WetPlayer`, `Sway`, `SpellLights`, `WaterRipples`, `TimeOfDay` |
+| `UoPlusFlags` (`uo_plus_flags`) | integer bit mask | 0 | 8 rain rings, 16 puddles, 32 wet player, 64 reserved sway, 256 water ripples, 512 time-of-day light, 1024 sun and moon shadows |
+| `UoPlusDensities` (`uo_plus_densities`) | object of feature-name → integer | `{}` | Independent 0–100 values, clamped at use; names `Fog`, `Leaves`, `Dust`, `RainRings`, `Puddles`, `WetPlayer`, `Sway`, `SpellLights`, `WaterRipples`, `TimeOfDay`, `SunShadows` |
 
 Fog/leaves/dust flags remain authoritative in `AmbientFog`, `AmbientLeaves`
 and `AmbientDust`; spell lights remain in `SpellLighting` (`spell_lighting`).

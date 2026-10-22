@@ -69,7 +69,8 @@ editor checks and cannot be combined with `--reload`.
 
 `,hour,H` (0..23) turns on Realtime lights with the UO+ time-of-day light at
 H:30, the classic level set from that hour's light cycle; add `,todoff` for
-the same hour and level without the time-of-day colour (the before frame).
+the same hour and level without the time-of-day colour (the before frame),
+and `,sun` for the UO+ sun and moon shadows at full strength.
 
 For the spell-wall regression, use `--guo-editor-lights-demo
 12,spellwall,1498,1628,0` with world shot `0,1496,1628,960,720`.

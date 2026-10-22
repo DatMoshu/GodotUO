@@ -203,6 +203,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   says what it needs. ADR-0008.
 
 ### Playing
+- **UO+ sun and moon shadows** (UO+ effects, off by default, needs Realtime
+  lights): walls, roof eaves, trees and characters cast a ground shadow away
+  from the sun, long at dawn and dusk and short at midday, with a faint moon
+  shadow at night. Torches still light the shade.
 - **UO+ time-of-day light** (UO+ effects, off by default, needs Realtime
   lights): the light takes the colour of the shard's hour, warm at dawn,
   white at noon, orange-pink at dusk and blue at night, and torches read
