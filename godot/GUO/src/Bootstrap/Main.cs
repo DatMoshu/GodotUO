@@ -801,7 +801,7 @@ public partial class Main : Node
     /// <summary>Frame time in the five fixed scenes, then quit; see PerfProbe.</summary>
     private async void PerfProbeThenQuit()
     {
-        await PerfProbe.Run(this, _options.PerfOut, _options.PerfLabel, _options.PerfZoom, _options.PerfParity);
+        await PerfProbe.Run(this, _options.PerfOut, _options.PerfLabel, _options.PerfZoom, _options.PerfParity, _options.PerfProfile);
         Quit(PerfProbe.Passed ? 0 : 1);
     }
 
@@ -1648,6 +1648,9 @@ public partial class Main : Node
         public string PerfLabel { get; private set; } = "";
 
         public float PerfZoom { get; private set; }
+
+        /// <summary>--perf-profile plain|defaults|uoplus-max: the profile preset the perf probe measures with (PerfProfilePreset).</summary>
+        public string PerfProfile { get; private set; } = "";
         /// <summary>Photograph and time every post-processing look into this folder (ADR-0023).</summary>
         public string PostFxSheet { get; private set; }
 
@@ -2071,6 +2074,9 @@ public partial class Main : Node
                         break;
                     case "--perf-zoom":
                         o.PerfZoom = float.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture);
+                        break;
+                    case "--perf-profile":
+                        o.PerfProfile = Next();
                         break;
                     case "--postfx-sheet":
                         o.PostFxSheet = Next();
