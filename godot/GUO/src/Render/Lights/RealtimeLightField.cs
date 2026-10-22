@@ -407,7 +407,8 @@ namespace GUO.Renderer.Lights
                 }
 
                 reach.Frame = _frame;
-                Accumulate(in s, reach.Map);
+                if (ReferenceAccumulate) AccumulateReference(in s, reach.Map);
+                else Accumulate(in s, reach.Map);
             }
 
             // The tile field is the mean of its samples (the dump, Cell, Corner).
@@ -711,6 +712,54 @@ namespace GUO.Renderer.Lights
                     float d2 = fx * fx + fy * fy;
                     if (d2 >= reach2) continue;
                     float d = MathF.Sqrt(d2);
+                    v *= Falloff(d, s.Radius, s.Curve, s.CustomCurve);
+                    // A spot's beam shapes the light per frame; the cached reach
+                    // (walls) is the same, so a sweeping beam never recomputes it.
+                    if (spot) v *= s.Beam.At(fx, fy, d);
+                    if (v <= 0f) continue;
+                    int cell = gy / f * _width + gx / f;
+                    if (s.Z > _lightTop[cell]) _lightTop[cell] = (short)s.Z;
+                    int o = (gy * fw + gx) * 3;
+                    v *= s.Energy * _lightScale;
+                    _fine[o] += s.Color.R * v;
+                    _fine[o + 1] += s.Color.G * v;
+                    _fine[o + 2] += s.Color.B * v;
+                }
+            }
+        }
+
+        /// <summary>
+        /// The probe's reference: the accumulation loop as it was before the field
+        /// and radius cut, kept so the probe can prove both give the same samples.
+        /// </summary>
+        internal bool ReferenceAccumulate;
+
+        private void AccumulateReference(in Source s, float[] map)
+        {
+            int f = _fineScale;
+            int r = s.Radius + 1;
+            int side = (r * 2 + 1) * f;
+            int fw = _width * f, fh = _height * f;
+            // The sample grid's origin, in samples, relative to the field.
+            int gx0 = (s.X - r - _originX) * f, gy0 = (s.Y - r - _originY) * f;
+            (float lx, float ly) = LightOrigin(s.X, s.Y);
+            lx += s.OffsetX;
+            ly += s.OffsetY;
+            bool spot = s.Beam.IsSpot;
+            for (int j = 0; j < side; j++)
+            {
+                int gy = gy0 + j;
+                if (gy < 0 || gy >= fh) continue;
+                float py = s.Y - r + (j + 0.5f) / f;
+                for (int i = 0; i < side; i++)
+                {
+                    int gx = gx0 + i;
+                    if (gx < 0 || gx >= fw) continue;
+                    float v = map[j * side + i];
+                    if (v <= 0f) continue;
+                    float px = s.X - r + (i + 0.5f) / f;
+                    float fx = px - lx, fy = py - ly;
+                    float d = MathF.Sqrt(fx * fx + fy * fy);
                     v *= Falloff(d, s.Radius, s.Curve, s.CustomCurve);
                     // A spot's beam shapes the light per frame; the cached reach
                     // (walls) is the same, so a sweeping beam never recomputes it.

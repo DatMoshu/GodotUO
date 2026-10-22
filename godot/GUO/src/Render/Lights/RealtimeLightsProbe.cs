@@ -503,6 +503,43 @@ public partial class RealtimeLightsProbe : Node
                 $"Nothing beyond the radius is lit ({curve})");
         }
 
+        // Before/after parity: the cut loop and the reference (the loop before the
+        // cut) give bit-identical cells and samples, for walk offsets, lights on and
+        // past the field's edges, the radius boundary, a custom curve, radius 0
+        // (clamped to 1), the largest radius and a beam, all in one frame.
+        var parity = new[]
+        {
+            new RealtimeLightField.Source(5, 6, 0, 3, Colors.White, 0.37f, -0.61f),
+            new RealtimeLightField.Source(0, 0, 0, 4, new Color(1f, 0.6f, 0.3f), curve: LightCurve.C, energy: 2.4f),
+            new RealtimeLightField.Source(23, 23, 0, 5, Colors.White, -0.5f, 0.5f, LightCurve.E),
+            new RealtimeLightField.Source(-2, 12, 0, 4, Colors.White, curve: LightCurve.D),
+            new RealtimeLightField.Source(12, 26, 0, 4, Colors.White, curve: LightCurve.A),
+            new RealtimeLightField.Source(16, 8, 0, 4, Colors.White, curve: LightCurve.Custom, customCurve: new[] { 1f, 0.8f, 0.3f, 0f }),
+            new RealtimeLightField.Source(9, 17, 0, 0, Colors.White),
+            new RealtimeLightField.Source(12, 12, 0, RealtimeLightField.MaxRadius, new Color(0.5f, 0.7f, 1f), energy: 1.2f),
+            new RealtimeLightField.Source(18, 18, 0, 5, Colors.White, 0.25f, 0.1f, LightCurve.D, beam: new RealtimeLightField.Cone(200f, 50f)),
+        };
+        var cut = new RealtimeLightField();
+        cut.Begin(0, 0, 24, 24);
+        cut.Compute(0.0625f, parity);
+        var reference = new RealtimeLightField { ReferenceAccumulate = true };
+        reference.Begin(0, 0, 24, 24);
+        reference.Compute(0.0625f, parity);
+        bool identical = true;
+        for (int y = 0; y < 24 && identical; y++)
+        {
+            for (int x = 0; x < 24 && identical; x++)
+            {
+                identical = cut.Cell(x, y) == reference.Cell(x, y);
+                for (int k = 0; k < 16 && identical; k++)
+                {
+                    float wx = x + ((k & 3) + 0.5f) / 4f, wy = y + ((k >> 2) + 0.5f) / 4f;
+                    identical = cut.FineAt(wx, wy) == reference.FineAt(wx, wy);
+                }
+            }
+        }
+        Require(identical, "The field and radius cut gives the same samples as the loop before it");
+
         var sweep = new LightSpot(0f, 40f, 45f, 4f);
         var c0 = sweep.ConeAt(0.0); var c1 = sweep.ConeAt(1.0);
         Require(Math.Abs(c0.DirX - 1f) < 0.001f && c1.DirY > 0.69f, "A sweep swings the beam by its angle over its period");
