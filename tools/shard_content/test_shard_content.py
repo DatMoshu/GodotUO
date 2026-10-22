@@ -191,6 +191,29 @@ class ShardContentTests(unittest.TestCase):
             self.assertIn("PASS refused", r.stdout)
             self.assertFalse((Path(temp) / "client/.shard-content").exists())
 
+    def test_redeploy_preserves_admin_water_policy(self):
+        with tempfile.TemporaryDirectory() as temp:
+            shard = Path(temp) / "shard"
+            (shard / "Data").mkdir(parents=True)
+            url = serve(self, self.store)
+            self.deploy(shard, url)
+            path = shard / "Data/GUO/public/shard-content.json"
+            doc = json.loads(path.read_text(encoding="utf-8"))
+            policy = {"default": "uo", "lock": True, "allowed": ["uo", "classic"]}
+            doc["water"] = policy
+            path.write_text(json.dumps(doc), encoding="utf-8")
+            self.deploy(shard, url)
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["water"], policy)
+
+    def test_descriptor_refuses_invalid_water_before_install(self):
+        with tempfile.TemporaryDirectory() as temp:
+            url = self.descriptor_variant(temp, lambda v: v.update(water={"default": "uo", "lock": True, "allowed": ["classic"]}))
+            client = Path(temp) / "client"
+            r = self.prepare(url, client, "default water style must be allowed")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("PASS refused", r.stdout)
+            self.assertFalse((client / ".shard-content").exists())
+
     def test_a_signed_catalogue_claimed_unsigned_is_refused(self):
         with tempfile.TemporaryDirectory() as temp:
             url = self.descriptor_variant(temp, lambda v: v["catalogues"][0].pop("key"))

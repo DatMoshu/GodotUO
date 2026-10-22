@@ -56,6 +56,7 @@ internal static class ShardSession
         [JsonPropertyName("content_lock")] public string ContentLock { get; set; }
         [JsonPropertyName("content_identity")] public string ContentIdentity { get; set; }
         [JsonPropertyName("scripts_allowed")] public bool? ScriptsAllowed { get; set; }
+        [JsonPropertyName("water")] public GUO.Store.StoreWaterPolicy Water { get; set; }
 
         /// <summary>A session that changes what this run loads: the shard's files, or its content.</summary>
         [JsonIgnore] public bool Holds => DataFolder != null || ContentLock != null;
@@ -137,6 +138,7 @@ internal static class ShardSession
         try
         {
             Data d = JsonSerializer.Deserialize<Data>(File.ReadAllText(FilePath));
+            d?.Water?.Validate();
 
             if (d == null || !d.Holds)
             {
@@ -195,6 +197,7 @@ internal static class ShardSession
             ContentLock = content != null ? contentLock : null,
             ContentIdentity = content?.IdentityHash,
             ScriptsAllowed = content?.ScriptsAllowed,
+            Water = content?.Water,
         };
 
         Write(d);
