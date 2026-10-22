@@ -138,6 +138,17 @@ public partial class Main : Node
             InputProbe.AutoLogin = true;
         }
 
+        // A strict (measuring) run decides here, before any scene exists,
+        // whether anything may connect: the allocated account against the
+        // configured one, the credential, and no autologin. Refused, nothing
+        // starts, so no route (typed, strict or upstream's) can connect.
+        if (InputProbe.Strict && !StrictStartup(_options, System.Environment.GetEnvironmentVariable, out _, out string refused))
+        {
+            GD.PrintErr($"[GUO] perf probe: not starting: {refused}");
+            Quit(1);
+            return;
+        }
+
         GameController.PinnedWindowPosition = _options.WindowPosition;
         GameController.PinnedWindowSize = _options.WindowSize;
 
@@ -369,6 +380,10 @@ public partial class Main : Node
                 else if (_options.KeyboardProbe)
                 {
                     CallDeferred(nameof(KeyboardProbeThenQuit));
+                }
+                else if (_options.LoginPreflightProbe)
+                {
+                    CallDeferred(nameof(LoginPreflightProbeThenQuit));
                 }
                 else if (_options.PadWheelsProbe)
                 {
@@ -730,6 +745,7 @@ public partial class Main : Node
         || _options.TouchGestureProbe
         || _options.UoPlusUiProbe
         || _options.KeyboardProbe
+        || _options.LoginPreflightProbe
         || _options.OneScreenProbe
         || _options.GlyphShots
         || _options.AssetProbe.Length > 0
@@ -856,6 +872,38 @@ public partial class Main : Node
     private async void TouchGesturesThenQuit() => Quit(await TouchGestureProbe.Run(this) ? 0 : 1);
     /// <summary>Shard-free keyboard checks: key-ups on focus loss, AltGr text; see KeyboardProbe.</summary>
     private void KeyboardProbeThenQuit() => Quit(KeyboardProbe.Run() ? 0 : 1);
+    /// <summary>Shard-free login preflight rules; see LoginPreflightProbe.</summary>
+    /// <summary>
+    /// The probe is bounded: whatever it awaits, the client quits with a
+    /// failure after LoginPreflightProbe.RunTimeoutMs, so a signal that
+    /// never comes cannot strand a smoke or a runtime lease.
+    /// </summary>
+    private async void LoginPreflightProbeThenQuit()
+    {
+        // A fault anywhere in the probe is a FAIL and an exit, never an
+        // unobserved exception out of an async void.
+        bool passed = false;
+        try
+        {
+            System.Threading.Tasks.Task<bool> run = LoginPreflightProbe.Run(this);
+            System.Threading.Tasks.Task first = await System.Threading.Tasks.Task.WhenAny(run, System.Threading.Tasks.Task.Delay(LoginPreflightProbe.RunTimeoutMs));
+            if (first != run)
+            {
+                GD.PrintErr($"[GUO] login preflight probe: FAIL timed out after {LoginPreflightProbe.RunTimeoutMs} ms");
+            }
+            else
+            {
+                passed = await run;
+            }
+        }
+        catch (Exception e)
+        {
+            GD.PrintErr($"[GUO] login preflight probe: FAIL faulted: {e.GetType().Name}: {e.Message}");
+            passed = false;
+        }
+
+        Quit(passed ? 0 : 1);
+    }
 
     /// <summary>The menu wheel, the interact radar, the new buttons and "Set controls"; see PadWheelsProbe.</summary>
     private async void PadWheelsProbeThenQuit()
@@ -1392,6 +1440,18 @@ public partial class Main : Node
         Quit(1);
     }
 
+    /// <summary>
+    /// The strict run's startup decision, from the parsed options as _Ready
+    /// applies them: the configured account is --account or the probe's
+    /// default, the allocated one is --perf-expect-account, autologin is
+    /// --autologin. LoginPreflightProbe runs this on real parses.
+    /// </summary>
+    public static bool StrictStartup(Options options, Func<string, string> env, out string secret, out string why)
+    {
+        string configured = string.IsNullOrWhiteSpace(options.Account) ? InputProbe.DefaultAccountName : options.Account;
+        return LoginPreflight.Decide(options.ExpectAccount, configured, options.AutoLogin, env, out secret, out why);
+    }
+
     private void Quit(int code)
     {
         GetTree().Quit(code);
@@ -1722,6 +1782,12 @@ public partial class Main : Node
         /// <summary>--keyboard-probe: the keyboard layer without a shard; see KeyboardProbe.</summary>
         public bool KeyboardProbe { get; private set; }
 
+        /// <summary>--login-preflight-probe: the measuring run's login and arrival rules without a shard; see LoginPreflightProbe.</summary>
+        public bool LoginPreflightProbe { get; private set; }
+
+        /// <summary>--perf-expect-account NAME: the allocated account of a strict run, as given.</summary>
+        public string ExpectAccount { get; private set; }
+
         /// <summary>--one-screen-probe: the one-screen drawer in the world; see OneScreenProbe.</summary>
         public bool OneScreenProbe { get; private set; }
 
@@ -1992,6 +2058,22 @@ public partial class Main : Node
                     case "--merged-land=off":
                         MergedLandMode(false, false, false);
                         break;
+                    case "--gpu-world":
+                    case "--gpu-world=on":
+                        // ADR-0007 amendment: the world's statics as instances of
+                        // the world depth pass, the sorted pass ordered by its
+                        // depth buffer. Off by default; Forward+ only.
+                        GUO.Renderer.GpuWorld.Enabled = true;
+                        GUO.Host.PerfProbe.ParityToggle = on => GUO.Renderer.GpuWorld.Enabled = on;
+                        GUO.Host.PerfProbe.ParityState = () => GUO.Renderer.GpuWorld.Enabled;
+                        break;
+                    case "--gpu-world=off":
+                        GUO.Renderer.GpuWorld.Enabled = false;
+                        break;
+                    case "--gpu-world-raw":
+                        // The experimental raw-bytes output (WorldDepthPass.RawOutput).
+                        GUO.Renderer.GpuWorld.RawOutput = true;
+                        break;
                     case "--cover-cull":
                         // Epic B, B4 fix 2b: covering land only where it overlaps its object.
                         GUO.Game.Scenes.RenderLists.CoverCull = true;
@@ -2068,6 +2150,28 @@ public partial class Main : Node
                         break;
                     case "--perf-scene":
                         GUO.Host.PerfProbe.Only.Add(Next());
+                        break;
+                    case "--perf-expect-character":
+                        // The run measures nothing unless it is in the world as
+                        // this character, and never creates one to get there.
+                        GUO.Host.PerfProbe.ExpectCharacter = Next();
+                        GUO.Host.InputProbe.ProbeCharacter = GUO.Host.PerfProbe.ExpectCharacter;
+                        GUO.Host.InputProbe.NeverCreate = true;
+                        break;
+                    case "--perf-expect-map":
+                        GUO.Host.PerfProbe.ExpectMap = int.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture);
+                        break;
+                    case "--perf-expect-account":
+                        // The allocated account, recorded as given: the
+                        // configured account (--account, or the default) is
+                        // never overwritten with it, so StrictStartup compares
+                        // two independent values in whatever order the flags came.
+                        o.ExpectAccount = Next();
+                        GUO.Host.PerfProbe.ExpectAccount = o.ExpectAccount;
+                        GUO.Host.InputProbe.Strict = true;
+                        break;
+                    case "--login-preflight-probe":
+                        o.LoginPreflightProbe = true;
                         break;
                     case "--perf-zoom":
                         o.PerfZoom = float.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture);

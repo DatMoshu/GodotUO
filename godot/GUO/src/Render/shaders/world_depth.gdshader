@@ -1,6 +1,8 @@
 shader_type spatial;
 render_mode unshaded, cull_disabled, depth_draw_always, skip_vertex_transform, shadows_disabled, fog_disabled;
 
+#include "res://src/Render/shaders/world_depth_key.gdshaderinc"
+
 // The world depth pass (ADR-0007, amendment 2026-10-19): one quad per
 // MultiMesh instance, placed in the world render target's own pixels and
 // ordered by the GPU depth test on a key derived from CalculateDepthZ().
@@ -31,6 +33,7 @@ uniform vec4 screen = vec4(1.0, 1.0, 0.0, 0.0);
 uniform float flip_y = 1.0;
 // 1: clip z is the key (reverse Z, larger nearer); 0: 1 - key.
 uniform float key_reversed = 1.0;
+varying flat float fragment_depth;
 
 void vertex() {
 	vec2 vertex_base = VERTEX.xy;
@@ -43,7 +46,14 @@ void vertex() {
 	ndc.y *= -flip_y;
 	UV = uv;
 	float key = MODEL_MATRIX[3].z;
-	POSITION = vec4(ndc, mix(1.0 - key, key, key_reversed), 1.0);
+	// The third row is spare: high 19 bits, low 9 bits, integer-key flag.
+	// Never convert the full uint to float numerically before the bit cast.
+	if (MODEL_MATRIX[2].z > 0.5) {
+		uint full_key = (uint(MODEL_MATRIX[0].z) << 9u) | uint(MODEL_MATRIX[1].z);
+		key = world_depth_key(full_key);
+	}
+	fragment_depth = key_reversed > 0.5 ? key : 1.0 - key;
+	POSITION = vec4(ndc, fragment_depth, 1.0);
 }
 
 // sRGB to linear, exactly, so the renderer's encode on output gives the
@@ -58,4 +68,7 @@ void fragment() {
 		discard;
 	}
 	ALBEDO = srgb_to_linear(c.rgb);
+	// Flat, explicit depth avoids rasterizer interpolation rounding of adjacent
+	// representable values. This includes the raw-key path used by step 1.
+	DEPTH = fragment_depth;
 }
