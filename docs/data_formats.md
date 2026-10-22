@@ -2927,6 +2927,34 @@ Realtime lights path reads it; the classic light path never does.
   (0..4), evenly spaced over `t`, resampled to 33 and forced to 0 at the radius.
 - Curves and energy shape each frame's falloff only; the cached visibility
   (walls, roofs) is unchanged, so editing them never invalidates a reach.
+- `flicker` (0..0.9): the share of the energy a flame's flicker takes away,
+  `1 - flicker x n(t)`, with `n = 0.5 + 0.5 (0.6 sin(7.3 r t + p) + 0.4 sin(13.1 r t + 1.7 p))`,
+  t in seconds, the phase p from the light's tile (neighbouring flames are out
+  of step). `flickerRate` (0.05..4, default 1) is r.
+- `spot`: `{ "direction": deg, "width": deg, "sweep": deg, "period": s }`.
+  This makes the light a beam: direction in tile space (0 east, +X; 90 south,
+  +Y), full width 2..340, a 12-degree smoothstep edge. Within 0.35 tiles of the
+  source it lights all round (the lamp itself). `sweep` (0..180) swings the
+  direction by `sweep x sin(2 pi t / period)` (period 0.2..120, default 4). The
+  beam shapes each frame's falloff, like a curve: the cached reach is the same,
+  so a sweeping beam never recomputes its walls.
+- `preset`: the name of a preset below; the entry's own fields are laid over it.
+- `presets` (top level, optional): named entries, which may themselves name a
+  built-in preset. They redefine or add to the curated set:
+
+| Preset | Radius | Tint | Energy | Curve | Flicker | Rate |
+|---|---|---|---|---|---|---|
+| `candle` | 2 | `#FFB868` | 1.6 | C | 0.18 | 1.3 |
+| `torch` | 4 | `#FF9440` | 2.4 | C | 0.22 | 1 |
+| `brazier` | 5 | `#FF7A30` | 2.8 | C | 0.28 | 0.8 |
+| `lantern` | 4 | `#FFD08A` | 2.0 | D | 0.05 | 1 |
+| `oil-lamp` | 3 | `#FFC070` | 1.8 | D | 0.08 | 0.7 |
+| `forge` | 5 | `#FF5A1E` | 3.0 | C | 0.35 | 0.6 |
+| `magic-crystal` | 4 | `#7FB8FF` | 2.2 | E | 0.06 | 0.3 |
+| `will-o-wisp` | 3 | `#B8FFD8` | 1.8 | E | 0.4 | 0.25 |
+
+  An unknown preset name rejects the file. Nothing uses a preset unless an
+  entry names it, so the built-in default still changes nothing.
 
 **Spell-effect lights** (`RealtimeLightEffects`, game-loop thread only).
 `Add(x, y, z, radius, color, durationMs, curve = E, energy = 2.2, fadeOut = true)`
@@ -2934,7 +2962,12 @@ returns a handle (0 for a zero duration); `Remove(handle)`, `Clear()`. Each
 live light joins the frame's sources after the light offers, through the same
 blockers and roofs. Duration is capped at 60 s; with `fadeOut` the energy falls
 linearly to 0 over the last 30 % of it. At most 64 live; a full table drops the
-oldest. Time is `Time.Ticks`. With the option off nothing reads them and they
+oldest. `AddFlash(now, x, y, z, radius, color, durationMs, energy = 4, curve = E)`
+is full at once, then `exp(-5 age / duration)` (lightning, an explosion).
+`AddSpot(now, x, y, z, radius, color, durationMs, spot, energy = 2.2, curve = D)`
+is a beam (a `spot` as above, its sweep timed from the light's start).
+`AddPreset(now, name, x, y, z, durationMs)` lights a preset by name (0 when
+unknown), flicker and beam included. Time is `Time.Ticks`. With the option off nothing reads them and they
 expire on their own.
 
 **UO+ spell lighting** (non-parity, `Profile.SpellLighting`, JSON `spell_lighting`,
@@ -2958,7 +2991,9 @@ the same tint. Hued variants use the same curated light tint.
 | Lightning at recipient | Lightning type | 4 | .6, .75, 1 | 400 | E |
 
 The small radii keep pools local, the impact is wider than the cast, and short
-durations fade over their last 30% using the existing hook's energy 2.2.
+durations fade over their last 30% using the existing hook's energy 2.2. Impacts
+and lightning are flashes (light-types addendum): energy 2.2 x 1.6, full at once,
+then `exp(-5 age / duration)`.
 Unknown graphics and drag effects emit nothing. No projectile trail is added;
 the cast lights the source briefly, then arrival lights the target. These
 curated bursts use built-in curves rather than the item/light profile overrides.

@@ -271,6 +271,7 @@ public partial class RealtimeLightsProbe : Node
             CheckWalls(night);
             CheckProfiles();
             CheckEffects(night);
+            CheckLightTypes(night);
             CheckDebug();
 
             GD.Print("[Realtime lights] PASS");
@@ -456,6 +457,77 @@ public partial class RealtimeLightsProbe : Node
     }
 
     /// <summary>The budget record, the dump and the pixel-to-tile readout.</summary>
+    /// <summary>Spot, flash, presets and flicker (ADR-0039 light-types addendum).</summary>
+    private static void CheckLightTypes(Color night)
+    {
+        // A spot pointing east, 60 degrees wide: ahead lit, behind and beside dark, its own tile lit.
+        var field = new RealtimeLightField();
+        var east = new RealtimeLightField.Cone(0f, 60f);
+        field.Begin(0, 0, 32, 32);
+        field.Compute(0.0625f, new[] { new RealtimeLightField.Source(16, 16, 0, 6, Colors.White, beam: east) });
+        Require(field.Cell(19, 16).R > night.R + 0.2f, "A spot lights ahead of it");
+        Require(Math.Abs(field.Cell(13, 16).R - night.R) < 0.02f && Math.Abs(field.Cell(16, 19).R - night.R) < 0.02f, "Not behind it nor beside it");
+        Require(field.Cell(16, 16).R > night.R + 0.2f, "A spot's own lamp glows all round");
+        // Swing the beam south: the same reach (no recompute), the light moves.
+        field.Begin(0, 0, 32, 32);
+        field.Compute(0.0625f, new[] { new RealtimeLightField.Source(16, 16, 0, 6, Colors.White, beam: new RealtimeLightField.Cone(90f, 60f)) });
+        Require(field.LastComputed == 0, "A sweeping beam keeps the cached reach");
+        Require(field.Cell(16, 19).R > night.R + 0.2f && Math.Abs(field.Cell(19, 16).R - night.R) < 0.02f, "The beam follows its direction");
+        var sweep = new LightSpot(0f, 40f, 45f, 4f);
+        var c0 = sweep.ConeAt(0.0); var c1 = sweep.ConeAt(1.0);
+        Require(Math.Abs(c0.DirX - 1f) < 0.001f && c1.DirY > 0.69f, "A sweep swings the beam by its angle over its period");
+
+        // A flash: full at once, an exponential fall, gone at its end.
+        RealtimeLightEffects.Clear();
+        const uint t = 50_000;
+        var into = new RealtimeLightField.Source[8];
+        Require(RealtimeLightEffects.AddFlash(t, 4, 4, 0, 5, Colors.White, 400, energy: 4f) > 0, "A flash is added");
+        Require(RealtimeLightEffects.Collect(t, into, 0) == 1 && Math.Abs(into[0].Energy - 4f) < 0.01f, "A flash starts at its peak");
+        RealtimeLightEffects.Collect(t + 200, into, 0);
+        Require(into[0].Energy < 4f * 0.1f && into[0].Energy > 0f, "A flash falls fast");
+        Require(RealtimeLightEffects.Collect(t + 400, into, 0) == 0, "A flash is gone at its end");
+
+        // Presets: the curated eight, a file entry over a preset, a spot in the file, flicker.
+        foreach (string name in new[] { "candle", "torch", "brazier", "lantern", "oil-lamp", "forge", "magic-crystal", "will-o-wisp" })
+        {
+            Require(RealtimeLightProfiles.BuiltInPresets.TryGetValue(name, out LightProfile pr) && pr.Radius > 0 && pr.Color.HasValue, $"Preset {name} is built in");
+        }
+        var profiles = RealtimeLightProfiles.Parse(@"{
+            ""version"": 1,
+            ""presets"": { ""blue-torch"": { ""preset"": ""torch"", ""color"": ""#4060FF"" } },
+            ""items"": {
+                ""0x0A0F"": { ""preset"": ""candle"", ""radius"": 3 },
+                ""0x0A10"": { ""preset"": ""blue-torch"" },
+                ""0x0A11"": { ""preset"": ""lantern"", ""spot"": { ""direction"": 45, ""width"": 50, ""sweep"": 30, ""period"": 6 } }
+            }
+        }");
+        LightProfile candle = profiles.Resolve(0x0A0F, 0);
+        Require(candle.Radius == 3 && candle.Curve == LightCurve.C && candle.Flicker > 0.1f, "An entry lays its fields over its preset");
+        Require(profiles.Resolve(0x0A10, 0).Color.Value.B > 0.9f && profiles.Resolve(0x0A10, 0).Energy > 2f, "A file preset builds on a built-in one");
+        LightProfile beam = profiles.Resolve(0x0A11, 0);
+        Require(beam.Spot.HasValue && Math.Abs(beam.Spot.Value.Width - 50f) < 0.01f && Math.Abs(beam.Spot.Value.Sweep - 30f) < 0.01f, "A spot is read from the file");
+        Require(profiles.Resolve(0x1234, 0).Curve == null && profiles.Resolve(0x1234, 0).Flicker == null && !profiles.Resolve(0x1234, 0).Spot.HasValue, "Untouched items keep the offer");
+        bool rejected = false;
+        try { RealtimeLightProfiles.Parse(@"{ ""items"": { ""1"": { ""preset"": ""no-such"" } } }"); }
+        catch (FormatException) { rejected = true; }
+        Require(rejected, "An unknown preset rejects the file");
+        float lo = 1f, hi = 0f;
+        for (int i = 0; i < 200; i++)
+        {
+            float k = candle.FlickerAt(i * 0.05, 7);
+            lo = Math.Min(lo, k); hi = Math.Max(hi, k);
+        }
+        Require(lo >= 1f - candle.Flicker.Value - 0.001f && hi <= 1.001f && hi - lo > 0.05f, "A flame flickers within its depth");
+        Require(Math.Abs(candle.FlickerAt(1.0, 7) - candle.FlickerAt(1.0, 8)) > 0.001f, "Neighbouring flames do not flicker together");
+        Require(new LightProfile(0, 0f, null, 0f, null, -1).FlickerAt(1.0, 7) == 1f, "No flicker is steady");
+
+        // The effect hook takes a preset by name.
+        Require(RealtimeLightEffects.AddPreset(t, "forge", 2, 2, 0, 1000) > 0, "A preset light is added by name");
+        Require(RealtimeLightEffects.AddPreset(t, "no-such", 2, 2, 0, 1000) == 0, "An unknown preset adds nothing");
+        Require(RealtimeLightEffects.Collect(t + 10, into, 0) == 1 && into[0].Radius == 5 && into[0].Color.R > into[0].Color.B, "The forge preset's radius and tint");
+        RealtimeLightEffects.Clear();
+    }
+
     private static void CheckDebug()
     {
         RealtimeLightsDebug.Configure(false, null);

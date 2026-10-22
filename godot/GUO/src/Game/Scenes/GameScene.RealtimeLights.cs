@@ -83,8 +83,12 @@ namespace GUO.Game.Scenes
             // same continuous position as the mobile or moving effect sprite.
             float ox = (obj.Offset.X + obj.Offset.Y) / 44f;
             float oy = (obj.Offset.Y - obj.Offset.X) / 44f;
+            // A preset's flame flickers and a spot's beam sweeps by the clock (ADR-0039 light types).
+            double seconds = Time.Ticks / 1000.0;
+            energy *= p.FlickerAt(seconds, obj.X * 73856093 ^ obj.Y * 19349663);
+            RealtimeLightField.Cone beam = p.Spot.HasValue ? p.Spot.Value.ConeAt(seconds) : default;
             _rtSources[_rtSourceCount++] = new RealtimeLightField.Source(
-                obj.X, obj.Y, obj.Z, radius, color, ox, oy, curve, energy, custom);
+                obj.X, obj.Y, obj.Z, radius, color, ox, oy, curve, energy, custom, beam);
         }
 
         /// <summary>Classic clears its target; the mode's texture is the override.</summary>

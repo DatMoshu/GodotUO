@@ -36,6 +36,10 @@ internal static class SpellLighting
                 (4, new Color(0.6f, 0.75f, 1f), 400u, LightCurve.E),
             _ => (0, default, 0u, LightCurve.E)
         };
-        return duration == 0 ? 0 : RealtimeLightEffects.AddSpell(now, x, y, z, radius, color, duration, curve, Budget(profile));
+        if (duration == 0) return 0;
+        int handle = RealtimeLightEffects.AddSpell(now, x, y, z, radius, color, duration, curve, Budget(profile));
+        // Lightning strikes and blasts flash: full at once, then an exponential fall (light types addendum).
+        if (handle != 0 && (type == GraphicEffectType.Lightning || impact)) RealtimeLightEffects.MakeFlash(handle);
+        return handle;
     }
 }

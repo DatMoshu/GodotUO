@@ -203,6 +203,10 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   says what it needs. ADR-0008.
 
 ### Playing
+- Realtime lights: the light profile file gains spot lights (a beam that can
+  sweep), flame flicker and eight curated presets (candle, torch, brazier,
+  lantern, oil lamp, forge, magic crystal, will-o-wisp). Spell impacts and
+  lightning now flash and fall away instead of fading.
 - **UO+ sun and moon shadows** (UO+ effects, off by default, needs Realtime
   lights): walls, roof eaves, trees and characters cast a ground shadow away
   from the sun, long at dawn and dusk and short at midday, with a faint moon
