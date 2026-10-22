@@ -16,6 +16,15 @@ namespace GUO.Game.Scenes
     /// so an unmarked tile is never mistaken for a marked one; the counter
     /// is 64-bit, so it does not wrap in any run (a thousand frames a second
     /// for three hundred million years).
+    ///
+    /// A tile holds one stamp, so this is not a set per owner: if owner B
+    /// marked a tile between owner A's gather and A's draw, A would no
+    /// longer see its own mark. The supported lifecycle is therefore that an
+    /// owner's frame (Clear, gather, DrawWorld) completes before another
+    /// owner touches the same land, which is how the client runs (one
+    /// RenderLists, one frame at a time, on the main thread); RenderLists
+    /// asserts it in debug builds, and tools/render_sort_tests compares
+    /// against a set per owner under that lifecycle.
     /// </remarks>
     internal struct CoverStamp
     {

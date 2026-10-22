@@ -105,18 +105,59 @@ Check(DepthKey.Seq(DepthKey.Of(12.5f, 123456)) == 123456, "the sequence survives
     Check(!owner.Marked(fresh), "a fresh tile reads as marked after a frame");
 
     // A second owner over the same tiles (a scene recreated, a probe beside
-    // the game) never sees the first one's marks, in any interleaving.
+    // the game) never reads the first one's marks as its own.
     var other = new CoverStamp();
     other.NextFrame();
     owner.Mark(ref tile);
     Check(owner.Marked(tile) && !other.Marked(tile), "the other owner saw this owner's mark");
-    other.Mark(ref tile);
-    Check(other.Marked(tile) && !owner.Marked(tile), "this owner saw the other owner's mark");
     var late = new CoverStamp();
     late.NextFrame();
     Check(!late.Marked(tile), "a new owner's first frame read an older owner's mark (stamps are not process-wide)");
     for (int f = 0; f < 100000; f++) owner.NextFrame();
     Check(!owner.Marked(tile) && !owner.Marked(fresh) && owner.Current > late.Current, "stamps are not strictly increasing across owners and frames");
+
+    // What a single stamp per tile cannot do, stated so nobody relies on it:
+    // a mark by B between A's gather and A's draw hides A's own mark. That
+    // is why the supported lifecycle is one owner's frame at a time
+    // (RenderLists asserts it in debug builds).
+    owner.NextFrame();
+    owner.Mark(ref tile);
+    other.NextFrame();
+    other.Mark(ref tile);
+    Check(!owner.Marked(tile), "interleaved owners are not expected to keep both marks; if they now do, update CoverStamp's remarks");
+}
+
+// CoverStamp against the HashSet-per-owner it replaced, under the supported
+// lifecycle: frames of different owners never interleave, and within a frame
+// an owner marks and queries tiles in any order. Random sequences, both
+// implementations, every answer compared.
+{
+    const int owners = 3, tiles = 64;
+    var stamps = new CoverStamp[owners];
+    var sets = new HashSet<int>[owners];
+    for (int o = 0; o < owners; o++) sets[o] = new HashSet<int>();
+    var tileStamps = new long[tiles];
+    int compared = 0;
+    for (int frame = 0; frame < 4000; frame++)
+    {
+        int o = rng.Next(owners);
+        stamps[o].NextFrame();
+        sets[o].Clear();
+        int steps = rng.Next(1, 40);
+        for (int s = 0; s < steps; s++)
+        {
+            int t = rng.Next(tiles);
+            bool stampSays = stamps[o].Marked(tileStamps[t]), setSays = sets[o].Contains(t);
+            Check(stampSays == setSays, $"frame {frame} owner {o} tile {t}: stamp says {stampSays}, set says {setSays}");
+            compared++;
+            if (!stampSays && rng.Next(3) != 0)
+            {
+                stamps[o].Mark(ref tileStamps[t]);
+                sets[o].Add(t);
+            }
+        }
+    }
+    Check(compared > 50000, "the reference comparison ran too few steps");
 }
 
 // ChunkCursor: one lookup per chunk a walk passes through, none for negative tiles.

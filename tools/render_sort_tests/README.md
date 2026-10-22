@@ -5,7 +5,10 @@ rests on: the key sort (`DepthKey`) orders draws exactly as the comparison
 sort it replaced (depth, then queue order), also over a queue shaped like
 the real one (shadow/body pairs, meshed statics, covering land, Seq == index);
 the per-frame cover mark (`CoverStamp`) is void after a frame, idempotent
-within one, and never shared between two owners or with a fresh tile; the
+within one, never shared between two owners or with a fresh tile, and
+answers exactly as the set per owner it replaced over random frames under
+the supported lifecycle (one owner's frame at a time; an interleaving is
+stated as unsupported and asserted in debug builds); the
 chunk cursor (`ChunkCursor`) looks a chunk up once per chunk a walk passes
 through, never for a negative tile, and remembers an unloaded chunk.
 

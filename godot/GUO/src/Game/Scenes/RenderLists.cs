@@ -121,9 +121,14 @@ namespace GUO.Game.Scenes
         /// same question. The stamp advances in <see cref="Clear"/>, so last
         /// frame's tiles are never mistaken for this frame's, and no per-frame
         /// clearing of the tiles themselves is needed. See CoverStamp for why
-        /// two owners and a fresh tile can never collide.
+        /// two owners and a fresh tile can never collide, and for the one
+        /// lifecycle it supports: a frame of one owner at a time, which
+        /// <see cref="_gathering"/> asserts in debug builds.
         /// </remarks>
         private CoverStamp _coverStamp;
+
+        /// <summary>The owner whose frame is in progress (its Clear was the last one); see CoverStamp.</summary>
+        private static RenderLists _gathering;
 
         /// <summary>The keys of <see cref="_world"/>, sorted in place by DrawWorld (<see cref="DepthKey"/>).</summary>
         private ulong[] _keys = new ulong[1024];
@@ -161,6 +166,8 @@ namespace GUO.Game.Scenes
             {
                 return;
             }
+
+            System.Diagnostics.Debug.Assert(ReferenceEquals(_gathering, this), "another RenderLists cleared since this one did: cover marks are per frame of one owner");
 
             Map.Map map = obj.World?.Map;
 
@@ -365,6 +372,7 @@ namespace GUO.Game.Scenes
             _stretchedTiles.Clear();
             _world.Clear();
             _coverStamp.NextFrame();
+            _gathering = this;
             LastCover = (CoverQueued, CoverOverlapping); // PORT DEVIATION (GUO): B4 fix 2 counters
             CoverQueued = CoverOverlapping = 0;
             _transparentObjects.Clear();
@@ -597,6 +605,7 @@ namespace GUO.Game.Scenes
         private int DrawWorld(UltimaBatcher2D batcher, sbyte maxGroundZ)
         {
             long stageAt = PerfStages.Now();
+            System.Diagnostics.Debug.Assert(ReferenceEquals(_gathering, this), "another RenderLists cleared since this one did: cover marks are per frame of one owner");
             var span = CollectionsMarshal.AsSpan(_world);
 
             // PORT DEVIATION (GUO): sort 8-byte keys, not the drawables. Seq is

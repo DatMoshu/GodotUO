@@ -23,7 +23,11 @@ per frame at 2560x1440.
    `DrawWorld`. A tile now carries the stamp of the frame that queued it
    (`CoverStamp`): stamps come from one 64-bit process-wide counter, so two
    owners over the same land never share a value, a fresh tile's 0 never
-   matches, and nothing wraps in any run.
+   matches, and nothing wraps in any run. A tile holds one stamp, not a
+   set per owner, so the supported lifecycle is one owner's frame (Clear,
+   gather, DrawWorld) at a time, which is how the client runs (one
+   RenderLists on the main thread); RenderLists asserts it in debug builds
+   and the proof compares against a set per owner under that lifecycle.
 3. **`CoverFromBelow` looks a chunk up when it changes, not per tile.** The
    cover square is walked a row at a time, so eight neighbours share a
    chunk. `LandAt` walks through a `ChunkCursor` that goes to `Map` (as an
