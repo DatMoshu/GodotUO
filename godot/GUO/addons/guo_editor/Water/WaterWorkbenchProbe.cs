@@ -150,7 +150,9 @@ public partial class WaterWorkbenchProbe : Node
                 GUO.Workspace.Workspace.RootOverride = workspace; panel.DraftFolderOverride = null;
                 panel.LoadStyle(WaterAuthoring.Presets[1]); Press(panel, "Save draft");
                 string durable = panel.DraftPath;
-                Require(Path.GetDirectoryName(durable) == Path.Combine(workspace, "editor", "water", "drafts"),
+                // Both sides normalised: Workspace.Root is Path.GetFullPath of the override,
+                // while `workspace` carries UO_BUILD_DIR as written (forward slashes pass too).
+                Require(Path.GetFullPath(Path.GetDirectoryName(durable)) == Path.GetFullPath(Path.Combine(workspace, "editor", "water", "drafts")),
                     "saved drafts belong to the configured user workspace");
                 System.Environment.SetEnvironmentVariable("UO_BUILD_DIR", Path.Combine(data, "new-build-output"));
                 panel.RefreshPresets();
