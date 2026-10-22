@@ -473,6 +473,36 @@ public partial class RealtimeLightsProbe : Node
         field.Compute(0.0625f, new[] { new RealtimeLightField.Source(16, 16, 0, 6, Colors.White, beam: new RealtimeLightField.Cone(90f, 60f)) });
         Require(field.LastComputed == 0, "A sweeping beam keeps the cached reach");
         Require(field.Cell(16, 19).R > night.R + 0.2f && Math.Abs(field.Cell(19, 16).R - night.R) < 0.02f, "The beam follows its direction");
+        // The accumulation's bounds and radius cut: a light the field's edge clips
+        // gives the same cells as in a larger field, for each curve and a beam, and
+        // nothing beyond its radius is lit.
+        foreach ((LightCurve curve, RealtimeLightField.Cone cone) in new[]
+        {
+            (LightCurve.B, default(RealtimeLightField.Cone)), (LightCurve.C, default), (LightCurve.E, default),
+            (LightCurve.D, new RealtimeLightField.Cone(45f, 70f)),
+        })
+        {
+            var edge = new RealtimeLightField.Source(1, 2, 0, 4, Colors.White, curve: curve, energy: 2.2f, beam: cone);
+            var small = new RealtimeLightField();
+            small.Begin(0, 0, 24, 24);
+            small.Compute(0.0625f, new[] { edge });
+            var large = new RealtimeLightField();
+            large.Begin(-12, -12, 48, 48);
+            large.Compute(0.0625f, new[] { edge });
+            bool same = true;
+            for (int y = 0; y < 8 && same; y++)
+            {
+                for (int x = 0; x < 8 && same; x++)
+                {
+                    Color a = small.Cell(x, y), b = large.Cell(x, y);
+                    same = Math.Abs(a.R - b.R) < 1e-5f && Math.Abs(a.G - b.G) < 1e-5f && Math.Abs(a.B - b.B) < 1e-5f;
+                }
+            }
+            Require(same, $"A clipped light matches the unclipped one ({curve}{(cone.IsSpot ? ", spot" : "")})");
+            Require(Math.Abs(large.Cell(1 + 6, 2).R - night.R) < 1e-5f && Math.Abs(large.Cell(1, 2 - 6).R - night.R) < 1e-5f,
+                $"Nothing beyond the radius is lit ({curve})");
+        }
+
         var sweep = new LightSpot(0f, 40f, 45f, 4f);
         var c0 = sweep.ConeAt(0.0); var c1 = sweep.ConeAt(1.0);
         Require(Math.Abs(c0.DirX - 1f) < 0.001f && c1.DirY > 0.69f, "A sweep swings the beam by its angle over its period");

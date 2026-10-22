@@ -690,20 +690,27 @@ namespace GUO.Renderer.Lights
             lx += s.OffsetX;
             ly += s.OffsetY;
             bool spot = s.Beam.IsSpot;
-            for (int j = 0; j < side; j++)
+            // Only the samples inside the field, and (for a sized light) inside its
+            // radius: every curve is 0 at d >= radius, so the skipped samples added
+            // nothing. sqrt is monotonic and radius^2 is exact, so the cut is too.
+            int j0 = Math.Max(0, -gy0), j1 = Math.Min(side, fh - gy0);
+            int i0 = Math.Max(0, -gx0), i1 = Math.Min(side, fw - gx0);
+            float reach2 = s.Radius > 0 ? (float)s.Radius * s.Radius : float.PositiveInfinity;
+            for (int j = j0; j < j1; j++)
             {
                 int gy = gy0 + j;
-                if (gy < 0 || gy >= fh) continue;
                 float py = s.Y - r + (j + 0.5f) / f;
-                for (int i = 0; i < side; i++)
+                float fy = py - ly;
+                for (int i = i0; i < i1; i++)
                 {
                     int gx = gx0 + i;
-                    if (gx < 0 || gx >= fw) continue;
                     float v = map[j * side + i];
                     if (v <= 0f) continue;
                     float px = s.X - r + (i + 0.5f) / f;
-                    float fx = px - lx, fy = py - ly;
-                    float d = MathF.Sqrt(fx * fx + fy * fy);
+                    float fx = px - lx;
+                    float d2 = fx * fx + fy * fy;
+                    if (d2 >= reach2) continue;
+                    float d = MathF.Sqrt(d2);
                     v *= Falloff(d, s.Radius, s.Curve, s.CustomCurve);
                     // A spot's beam shapes the light per frame; the cached reach
                     // (walls) is the same, so a sweeping beam never recomputes it.
