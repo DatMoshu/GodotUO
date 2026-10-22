@@ -41,6 +41,9 @@ echo [smoke] shard launcher secret reload (synthetic; no server)
 echo [smoke] selection seam (synthetic; no shard or install)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Bootstrap/SelectionSeamProbe.tscn || set "FAIL=1"
 
+echo [smoke] world depth ordering (CPU only; no shard or install)
+dotnet run --project "%UO_ROOT%\tools\world_depth_tests\WorldDepthTests.csproj" --artifacts-path "%UO_BUILD_DIR%\world-depth-tests" --nologo || set "FAIL=1"
+
 echo [smoke] network checks: packet length guard, server identity (tools\network_tests; no shard)
 dotnet run --project "%UO_ROOT%\tools\network_tests\NetworkTests.csproj" --nologo || set "FAIL=1"
 

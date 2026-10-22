@@ -301,9 +301,9 @@ namespace GUO.Game.Scenes
 
         private static readonly Comparison<Drawable> ByDepth = static (a, b) =>
         {
-            int order = a.Depth.CompareTo(b.Depth);
-
-            return order != 0 ? order : a.Seq.CompareTo(b.Seq);
+            // PORT DEVIATION (GUO): share the existing comparator with the
+            // GPU-world ordering checks; the comparison itself is unchanged.
+            return WorldDepthOrder.Compare(a.Depth, a.Seq, b.Depth, b.Seq);
         };
         /// <summary>
         /// Every gump draw, in the order the control tree asked for it.

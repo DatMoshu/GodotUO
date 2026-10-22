@@ -33,6 +33,9 @@ echo "[smoke] shard launcher secret reload (synthetic; no server)"
 echo "[smoke] selection seam (synthetic; no shard or install)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Bootstrap/SelectionSeamProbe.tscn || FAIL=1
 
+echo "[smoke] world depth ordering (CPU only; no shard or install)"
+dotnet run --project "$UO_ROOT/tools/world_depth_tests/WorldDepthTests.csproj" --artifacts-path "$UO_BUILD_DIR/world-depth-tests" --nologo || FAIL=1
+
 echo "[smoke] optional audio pack contracts (synthetic; no shard or AI service)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Store/StoreAudioProbe.tscn || FAIL=1
 
