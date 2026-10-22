@@ -44,6 +44,9 @@ echo [smoke] selection seam (synthetic; no shard or install)
 echo [smoke] network checks: packet length guard, server identity (tools\network_tests; no shard)
 dotnet run --project "%UO_ROOT%\tools\network_tests\NetworkTests.csproj" --nologo || set "FAIL=1"
 
+echo [smoke] world sort order: key sort equals the depth-then-sequence comparison (tools\render_sort_tests)
+dotnet run --project "%UO_ROOT%\tools\render_sort_tests\RenderSortTests.csproj" --nologo || set "FAIL=1"
+
 echo [smoke] optional audio pack contracts (synthetic; no shard or AI service)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Store/StoreAudioProbe.tscn || set "FAIL=1"
 

@@ -36,6 +36,13 @@ namespace GUO.Game.GameObjects
         public ushort OriginalGraphic;
         public UltimaBatcher2D.YOffsets YOffsets;
 
+        /// <summary>
+        /// PORT DEVIATION (GUO): the frame stamp of the last RenderLists frame
+        /// that queued this tile to cover something below it; read and written
+        /// only by RenderLists (CoverFromBelow, DrawWorld).
+        /// </summary>
+        public int CoverStamp;
+
         private Land(World world) : base(world) { }
 
         public static Land Create(World world, ushort graphic)
