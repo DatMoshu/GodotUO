@@ -24,7 +24,7 @@ internal static class UoPlusOptions
         new(UoPlusFeature.RainRings, "Weather: rain rings", "Requires rain; Labs build", LabsAvailable),
         new(UoPlusFeature.Puddles, "Weather: puddles", "Requires rain and selected ground; Labs build", LabsAvailable),
         new(UoPlusFeature.WetPlayer, "Weather: wet player", "Requires rain; Labs build", LabsAvailable),
-        new(UoPlusFeature.Sway, "Tree and plant sway", "Not available in this version", false),
+        new(UoPlusFeature.Sway, "Tree and plant sway", "Density controls wind amplitude; rain strengthens gusts", true),
         new(UoPlusFeature.SpellLights, "Spell-effect lights", "Requires Realtime lights", true),
         new(UoPlusFeature.WaterRipples, "Water ripples and wakes", "Requires a non-Classic water style", true),
     };

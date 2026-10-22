@@ -127,6 +127,8 @@
     <EmbeddedResource Include="src/Resources/embedded/glyphs/*.png" LogicalName="glyphs/%(Filename)%(Extension)" />
     <!-- GUO: the community server catalogue, servers/ at the repo root (docs/data_formats.md 18) -->
     <EmbeddedResource Include="../../servers/catalogue.json" LogicalName="servers/catalogue.json" />
+    <!-- UO+ item classifications must survive every export's resource filters. -->
+    <EmbeddedResource Include="src/Render/Sway/sway_ranges.json" LogicalName="sway_ranges.json" />
     <!--
       The eight UI fonts, upstream's own .xnb files. They replace the FileEmbed
       source generator the same way the two PNGs above do; see src/Render/Fonts.cs.

@@ -47,7 +47,7 @@ namespace GUO.Renderer
     /// order is the sorted order and the argument is accepted and ignored.
     /// </para>
     /// </remarks>
-    public sealed class UltimaBatcher2D : IDisposable
+    public sealed partial class UltimaBatcher2D : IDisposable
     {
         private const string SHADER_PATH = "res://src/Render/shaders/uo_hue.gdshader";
         private const string BLEND_SHADER_PATH = "res://src/Render/shaders/uo_hue_blend.gdshader";
@@ -143,6 +143,7 @@ namespace GUO.Renderer
             _meshMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(MESH_SHADER_PATH) };
             _splatMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(SPLAT_SHADER_PATH) };
             _layerMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(LAYER_SHADER_PATH) };
+            _swayMaterial = new ShaderMaterial { Shader = GD.Load<Shader>("res://src/Render/shaders/uo_sway.gdshader") };
             // Epic B (--merged-land=array): the land mesh shader on a Texture2DArray.
             _landArrayMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(LAND_ARRAY_SHADER_PATH) };
             _currentMaterial = _nextMaterial = _material;
@@ -329,6 +330,7 @@ namespace GUO.Renderer
             _landArrayMaterial?.Dispose();
             _splatMaterial?.Dispose();
             _layerMaterial?.Dispose();
+            DisposeSway();
 
             if (_idItem.IsValid)
             {
@@ -369,6 +371,7 @@ namespace GUO.Renderer
             _material.SetShaderParameter(name, value);
             _meshMaterial.SetShaderParameter(name, value);
             _landArrayMaterial.SetShaderParameter(name, value);
+            _swayMaterial.SetShaderParameter(name, value);
 
             foreach (ShaderMaterial material in _blendMaterials.Values)
             {
@@ -427,6 +430,7 @@ namespace GUO.Renderer
             {
                 RenderingServer.CanvasItemClear(_items[i]);
             }
+            NextSwayFrame();
         }
 
         public void Begin()
@@ -953,6 +957,9 @@ void fragment() {
         /// ArrayMeshes nor the per-vertex lighting used by stretched land.
         /// </summary>
         public int DrawStaticMeshSprite(MeshLayer layer, int index, int offsetX, int offsetY)
+            => DrawStaticMeshSprite(layer, index, offsetX, offsetY, default);
+
+        internal int DrawStaticMeshSprite(MeshLayer layer, int index, int offsetX, int offsetY, Sway.SwayInstance sway)
         {
             if (index < 0 || index >= layer.Count || !layer.Visible[index] || layer.Textures[index] == null)
                 return 0;
@@ -960,10 +967,12 @@ void fragment() {
             ref var quad = ref layer.Vertices[index];
             var uvSize = quad.TextureCoordinate3 - quad.TextureCoordinate0;
             var size = quad.Position3 - quad.Position0;
+            StaticSway = sway;
             AddSprite(layer.Textures[index],
                 quad.TextureCoordinate0.X, quad.TextureCoordinate0.Y, uvSize.X, uvSize.Y,
                 quad.Position0.X - offsetX, quad.Position0.Y - offsetY, size.X, size.Y,
                 quad.Hue0, 0f, 0f, 0f, 1f, 0f, 0);
+            StaticSway = default;
             return 1;
         }
 
@@ -1906,6 +1915,12 @@ void fragment() {
             }
 
             SelectSpriteSampler(texture);
+            // PORT DEVIATION (GUO): only a classified static's upright art;
+            // shadows go through AddQuad and keep their native silhouette.
+            if (StaticSway.Active && rotationSin == 0f && rotationCos == 1f && effects == 0
+                && DrawSway(texture, new Vector2(sourceX, sourceY), new Vector2(sourceW, sourceH),
+                    new Vector2(destinationX - originX * destinationW, destinationY - originY * destinationH),
+                    new Vector2(destinationW, destinationH), color, StaticSway)) return;
             EnsureMaterial(_currentMaterial);
 
             int textureWidth = WidthOf(texture);

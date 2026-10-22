@@ -61,12 +61,10 @@ internal static class WeatherLab
 
     // Read directly from upstream weather, before either render lane updates its
     // transient state. Effect toggles gate consumers, not this shared signal.
-    internal static float RainIntensity(World world) => world?.Weather == null ? 0 :
-        RainIntensity(world.Weather.CurrentWeather, world.Weather.Count);
+    internal static float RainIntensity(World world) => WeatherSignal.RainIntensity(world);
 
     internal static float RainIntensity(WeatherType? type, int count) =>
-        type is WeatherType.WT_RAIN or WeatherType.WT_STORM_BREWING
-            ? Math.Clamp(count / 70f, 0, 1) : 0;
+        WeatherSignal.RainIntensity(type, count);
 
     internal static bool IsRain(World world) => RainIntensity(world) > 0;
 
