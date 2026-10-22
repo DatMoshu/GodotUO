@@ -1,11 +1,28 @@
 # What HD-2D lighting does that Realtime lights does not
 
-A review of an "HD-2D" ClassicUO fork's lighting, read from a build shared with
-the project, against Realtime lights (ADR-0039, data_formats section 45). The
-review read the C# and the compiled shaders' instructions and constants.
-Nothing from that build (code, shaders, art) is in GUO; this page describes
-techniques in our own words. Shader details are inferred from bytecode, not
-source.
+A review of an "HD-2D" ClassicUO fork's lighting against Realtime lights
+(ADR-0039, data_formats section 45 as merged). Nothing from that build (code,
+shaders, art) is in GUO, and the build is not redistributed; this page
+describes techniques in our own words.
+
+## The build reviewed
+
+| | |
+|---|---|
+| Form | a Windows client build (no source), shared privately with the project as a RAR archive |
+| Archive SHA-256 | `deec684297889ad5f0dabe0e744deb1a8a347d6ec2616487c4c30c5ddb46d8f4` |
+| `ClassicUO.exe` | file version 0.1.11.0, product version `1.0.0+7d2721419301daa4ae9350cbb824facf15da90ca`; SHA-256 `6ae736cdfce10d5be90fd3ff2f59faf333f0929e40ce9e80d0b86936261bd086` |
+| `ClassicUO.Renderer.dll` | SHA-256 `61f798cda3385f421e0a7e1e6c578aba4cf6dfd6c290793be7f265bc3154ab3e` |
+| Method | the C# decompiled with ILSpy; the shaders are compiled SM3 bytecode with no HLSL, read from their instructions, constants and parameter names |
+
+How the facts below were obtained:
+- **Read from the C#:** the order of the passes, the targets and their sizes,
+  the caps, the casters, the visibility rays and their cache, the blur weights,
+  and the ambient remap.
+- **Inferred from shader bytecode:** the per-pixel falloff form, N·L by surface
+  type, the upright shading, the PCSS-style shadow filter, and the flicker in the
+  lit pass. They are marked *(inferred)* below.
+- **Vendor's own claim, not measured here:** the frame-time figure.
 
 ## How HD-2D lights a frame
 
@@ -28,24 +45,32 @@ source.
 3. **Per-light lit quads.** Each light is one quad over the g-buffer, masked by
    stencil and added into a light target cleared to the ambient. The light at
    each pixel is:
-   - a `(1 - d²/r²)²` falloff, with the light about 8 to 10 Z up;
-   - N·L from the surface type, uprights lit in front and dim behind;
+   - a `(1 - d²/r²)²` falloff (the same form is also in the C#), with the light
+     about 8 to 10 Z up;
+   - N·L from the surface type, uprights lit in front and dim behind *(inferred)*;
    - a per-light tile visibility mask (5 rays per tile through edge spans,
-     cached for 4 s);
-   - a PCSS-style soft shadow lookup, with 15 % of the light kept in shadow;
-   - a three-sine flicker.
+     cached for 4 s; from the C#);
+   - a PCSS-style soft shadow lookup, with 15 % of the light kept in shadow
+     *(inferred; the 15 % is a named constant)*;
+   - a three-sine flicker *(constants from the C#)*.
 4. **Soften.** A two-pass blur of the light target that rejects taps of
    another surface type or height (bilateral), then a multiply over the world.
 5. **Ambient.** The server level, remapped (levels from 20 up become 28), with
    a 3 % floor and a cool glow around the player. There is no time-of-day
    colour and no sky shadow.
 
-Cost, by its own notes: one baseline line, 60 fps and 16.7 ms a frame in a busy
-street, with 2.0 ms for the world draw. The light passes are not measured
+Cost, **as the build's own notes claim it** (not measured by this review): one
+baseline line, 60 fps and 16.7 ms a frame in a busy street, with 2.0 ms for
+the world draw. The light passes are not measured
 separately. The design has hard caps: 10 shadowed lights, 160 casters and 1500
 wall quads per light, 127 masked lights.
 
 ## Where Realtime lights stands
+
+"Merged" means on main (PR 111 and earlier). The rows marked *proposed* are
+in open PRs, not yet merged or approved, and stacked in this order: PR 114
+(LIGHTS-04, time of day), then LIGHTS-05 (sky shadows) and LIGHTS-06 (light
+types) on top of it. Until they merge, main has none of them.
 
 | | HD-2D | Realtime lights |
 |---|---|---|
@@ -53,9 +78,9 @@ wall quads per light, 127 masked lights.
 | Walls | south/east planes from the tile edge; side from the art | lines on their tile from the art's silhouette; each face reads the field in front of it |
 | Light vs surface angle | N·L per surface type | none: a face takes the light in front of it at full strength |
 | Occlusion | per-light tile visibility plus polar shadow maps | cached per-light reach maps through wall lines, blocker tops and a clearance |
-| Shadows of mobiles, trees, lamps | yes, from each light | from the sky only (LIGHTS-05), not from lamps |
-| Sky | none | time-of-day tint, sun and moon shadows (LIGHTS-04, -05) |
-| Light shapes | point, flicker | point, spot with sweep, flash, presets with flicker (LIGHTS-06) |
+| Shadows of mobiles, trees, lamps | yes, from each light | merged: none (lamp light stops at walls and tall blockers only); *proposed* (LIGHTS-05): from the sky only |
+| Sky | none | merged: colour from the light level only; *proposed*: time-of-day tint (PR 114), sun and moon shadows (LIGHTS-05) |
+| Light shapes | point, flicker | merged: point, profile curves, spell bursts; *proposed* (LIGHTS-06): spot with sweep, flash, presets with flicker |
 | Passes and targets | float g-buffer, shadow-map target, stencil, two blurs | one light target, one small field texture; Compatibility renderer |
 
 What HD-2D does that ADR-0039 chose not to do:
@@ -65,9 +90,12 @@ What HD-2D does that ADR-0039 chose not to do:
 Those stay out of the L1 option. Three of its ideas fit the tile field as it
 is.
 
-## Three follow-ups
+## Three follow-ups (proposals)
 
-1. **Light incidence on wall faces.** Today a wall face reads the field just
+These are proposals for the owner and director to schedule; they are not
+approved work. Follow-up 3 builds on the proposed LIGHTS-05.
+
+1. **Light incidence on wall faces.** On main a wall face reads the field just
    in front of it, so a torch beside the wall and a torch facing it light the
    face the same. Give each face column a cosine term: the face's normal (+Y
    for a wall along X, +X for one along Y, as `WallFaces` already knows) dotted
@@ -80,7 +108,7 @@ is.
    - This is HD-2D's N·L without a g-buffer: the surface type is already known
      per sprite on the tile grid.
 2. **Wall height spans and light height.**
-   - Today a blocker has a top Z and a light passes over it when it starts
+   - On main a blocker has a top Z and a light passes over it when it starts
      above the top. Edges should carry a Z span (base and top, from tiledata
      height).
    - A light should cast from a lift by kind: a wall torch or lamp post above
@@ -94,8 +122,8 @@ is.
    - Done when the probe shows a fence blocking a ground light and passing a
      raised one, and a still shows a lamp post lighting over a fence. Reach
      maps stay cached; the cache key gains the lift.
-3. **Lamp shadows of mobiles and tall statics on the ground.** LIGHTS-05
-   stamps a capsule shadow of each mobile away from the sun. Do the same away
+3. **Lamp shadows of mobiles and tall statics on the ground.** The proposed
+   LIGHTS-05 stamps a capsule shadow of each mobile away from the sun. Do the same away
    from each of the few nearest lamps:
    - the capsule's length comes from the lamp's lift and the caster's
      height, with HD-2D's soft knee so it stays finite;
@@ -107,5 +135,5 @@ is.
    - Done when a clip of a walker passing between two torches shows two
      shadows swinging, and the budget stays under 8 ms at the bank view.
 
-Each is one story under ADR-0039, inside the existing option or its UO+ flags,
-with a probe check and before/after stills.
+If scheduled, each is one story under ADR-0039, inside the existing option or
+its UO+ flags, with a probe check and before/after stills.
