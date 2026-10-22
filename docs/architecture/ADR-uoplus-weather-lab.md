@@ -7,6 +7,35 @@ review. No approval to promote to L1 or merge is implied.
 
 ## Decision
 
+### Shipping amendment — owner sprint brief, 2026-10-22 (WX-01–03)
+
+The three effects are promoted to L1 under `src/Render/Weather`, using the
+existing shared UO+ persisted flags and individual densities. They remain off
+by default, including exports. The Labs commands, explicit local override and
+visual/proof harness remain Debug-only. The sections below describe the original
+L4 implementation; this amendment supersedes its build exclusion and signal.
+
+Every shard 0x65 packet supplies an independent UO+ weather signal, including
+same-type count changes and zero-count clears. A marked reader-copy seam leaves
+classic weather dispatch unchanged. Rain and both storm types produce
+`clamp(count / 70, 0, 1)`; snow/unknown/clear produce zero. Signal expiry follows
+the six-minute classic weather lifetime independently of classic rendering.
+World/facet cleanup removes the signal and visual cache. No packet is sent,
+rewritten or suppressed. Labs may explicitly override only its own signal.
+
+Intensity scales impact admission, wetting speed and puddle filling speed;
+drying and drainage retain 18/45-second lifetimes. Native art stays nearest;
+the existing shared depth queue and non-pickable surface objects are unchanged.
+Normal builds retain primitive water rings; the existing Labs styled-water
+wave integration stays guarded pending that lane's separate shipping work.
+Snow does not fill puddles; a frost/snow-dust visual is deferred.
+
+L1 proof: `client.weather`, normal smoke WeatherProbe, shared UoPlusProbe,
+normal/ExportRelease builds, and the live acceptance in `client/weather.md`.
+The existing two bounded object scans retain wet statics over sloped land and
+reject incomplete chains. Live Britain and Yew checks must be reported separately
+from those source facts. No new external dependency or doctor is needed.
+
 Classify weather additions as L4: default-off, session-local experiments compiled
 only with `GuoLabs=true` in Debug. Each effect has an independent checkbox in a
 panel registered through the shared Labs command/Options hook. No new profile

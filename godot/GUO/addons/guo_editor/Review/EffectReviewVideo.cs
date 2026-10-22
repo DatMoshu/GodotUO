@@ -5,7 +5,7 @@ using System.IO;
 using Environment = System.Environment;
 using Godot;
 using GUO.Configuration;
-using GUO.Labs.Weather;
+using GUO.Renderer.Weather;
 using GUO.Labs.WaterRain;
 using GUO.Renderer;
 using GUO.Renderer.Particles;

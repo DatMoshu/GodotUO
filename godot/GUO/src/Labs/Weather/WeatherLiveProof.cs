@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 #if GUO_LABS
 using System;
+using GUO.Renderer.Weather;
 using System.IO;
 using Godot;
 using GUO.Game;
@@ -50,6 +51,7 @@ public partial class WeatherLiveProof : Node
             await ToSignal(GetTree().CreateTimer(4), SceneTreeTimer.SignalName.Timeout);
             if (!_world.InGame) throw new InvalidOperationException("client left the world");
             _world.Weather.Reset();
+            state.RainOverride = 0;
             state.Settings.WaterDrops = state.Settings.Puddles = state.Settings.WetPlayer = false;
             foreach (var id in weatherIds) UoPlusOptions.Set(profile, id, false, 100);
             await Shot("weather-live-off");
@@ -59,6 +61,7 @@ public partial class WeatherLiveProof : Node
             state.Settings.WaterDrops = state.Settings.Puddles = state.Settings.WetPlayer = true;
             foreach (var id in weatherIds) UoPlusOptions.Set(profile, id, true, 100);
             _world.Weather.Generate(WeatherType.WT_RAIN, 70, 15);
+            state.RainOverride = 1;
             await ToSignal(GetTree().CreateTimer(32), SceneTreeTimer.SignalName.Timeout);
             await Shot("weather-live-rain");
             int filled = 0, rings = 0;
@@ -67,6 +70,7 @@ public partial class WeatherLiveProof : Node
             GD.Print($"[weather live] rain: wetness={state.Wetness:F3}, full-puddles={filled}, active-rings={rings}");
             if (state.Wetness < 0.9f || filled == 0 || rings == 0) throw new InvalidOperationException("rain integration did not populate every effect");
             _world.Weather.Reset();
+            state.RainOverride = 0;
             await ToSignal(GetTree().CreateTimer(20), SceneTreeTimer.SignalName.Timeout);
             await Shot("weather-live-drying");
             if (state.Wetness != 0) throw new InvalidOperationException("wet player did not dry");
@@ -80,6 +84,7 @@ public partial class WeatherLiveProof : Node
         catch (Exception ex) { GD.PrintErr("[weather live] FAIL: " + ex); GetTree().Quit(1); }
         finally
         {
+            WeatherLab.For(_world).RainOverride = null;
             // The explicit proof temporarily overrides the shared gates, never saved preferences.
             if (profile != null)
             {

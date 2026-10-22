@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: BSD-2-Clause
-#if GUO_LABS
 using System;
 using System.Runtime.CompilerServices;
 using Godot;
@@ -9,9 +8,9 @@ using GUO.Game.GameObjects;
 using GUO.Renderer;
 using Rectangle = GUO.Compat.Rectangle;
 
-namespace GUO.Labs.Weather;
+namespace GUO.Renderer.Weather;
 
-// Session-local state: no ported profile fields, packets, services or game data.
+// Bounded visual state; flags and densities come from the shared UO+ profile.
 internal sealed class WeatherSettings
 {
     internal bool WaterDrops, Puddles, WetPlayer;
@@ -31,18 +30,23 @@ internal sealed class WeatherState
     internal int Map = -1, BodyDrops, Impacts;
     internal float Wetness, RainCredit;
     internal bool Raining;
+#if GUO_LABS
+    internal float? RainOverride;
+#endif
     internal readonly BodyFrame[] Frames = new BodyFrame[32];
     internal int FrameCount, AlphaChecks;
 
-    internal void Step(float delta, bool rain)
+    internal void Step(float delta, float intensity)
     {
+        intensity = Math.Clamp(intensity, 0, 1);
+        bool rain = intensity > 0;
         Raining = rain;
         delta = Math.Clamp(delta, 0, 0.25f);
-        Wetness = Settings.WetPlayer ? Approach(Wetness, rain ? 1 : 0, delta / (rain ? 4 : 18)) : 0;
+        Wetness = Settings.WetPlayer ? Approach(Wetness, rain ? 1 : 0, delta * (rain ? intensity / 4 : 1f / 18)) : 0;
         BodyDrops = (Math.Clamp(Settings.DropBudget, 0, 32) * Math.Clamp(Settings.WetDensity, 0, 100) + 99) / 100;
         AlphaChecks = 1024;
         Impacts = 0;
-        RainCredit = rain ? Math.Min(32, RainCredit + delta * 40) : 0;
+        RainCredit = rain ? Math.Min(32, RainCredit + delta * 40 * intensity) : 0;
     }
 
     internal static float Approach(float value, float target, float amount) =>
@@ -54,21 +58,71 @@ internal readonly record struct BodyFrame(ushort Id, byte Group, byte Direction,
 
 internal static class WeatherLab
 {
+    private sealed class Signal
+    {
+        internal WeatherType? Type;
+        internal int Count;
+        internal uint Expires;
+    }
+    private static readonly ConditionalWeakTable<GUO.Game.Weather, Signal> Signals = new();
     private static readonly ConditionalWeakTable<World, WeatherState> States = new();
     internal static WeatherState For(World world) => States.GetValue(world, _ => new WeatherState());
     internal static Vector3 Hue(float alpha) => new(0, ShaderHueTranslator.SHADER_NONE, alpha);
     internal static Texture2D DropTexture => SolidColorTextureCache.GetTexture(new GUO.Compat.Color(162, 202, 218, 255));
 
-    // Read directly from upstream weather, before either render lane updates its
-    // transient state. Effect toggles gate consumers, not this shared signal.
-    internal static float RainIntensity(World world) => world?.Weather == null ? 0 :
-        RainIntensity(world.Weather.CurrentWeather, world.Weather.Count);
+    // Observe every 0x65, including same-type intensity changes that classic ignores.
+    // The classic renderer and its message/timer semantics stay untouched.
+    internal static void Observe(GUO.Game.Weather weather, WeatherType type, int count, uint now)
+    {
+        var signal = Signals.GetValue(weather, _ => new Signal());
+        signal.Type = type;
+        signal.Count = count;
+        signal.Expires = now + Constants.WEATHER_TIMER;
+    }
+
+    internal static void Clear(World world)
+    {
+        Signals.Remove(world.Weather);
+        States.Remove(world);
+    }
+
+    internal static float RainIntensity(World world)
+    {
+#if GUO_LABS
+        if (world != null && States.TryGetValue(world, out var state) && state.RainOverride.HasValue)
+            return Math.Clamp(state.RainOverride.Value, 0, 1);
+#endif
+        return world?.Weather != null && Signals.TryGetValue(world.Weather, out var signal)
+            && unchecked((int)(signal.Expires - Time.Ticks)) >= 0
+            ? RainIntensity(signal.Type, signal.Count) : 0;
+    }
 
     internal static float RainIntensity(WeatherType? type, int count) =>
-        type is WeatherType.WT_RAIN or WeatherType.WT_STORM_BREWING
+        type is WeatherType.WT_RAIN or WeatherType.WT_STORM_APPROACH or WeatherType.WT_STORM_BREWING
             ? Math.Clamp(count / 70f, 0, 1) : 0;
 
     internal static bool IsRain(World world) => RainIntensity(world) > 0;
+
+#if TOOLS
+    // Read-only automation evidence. No state is created by inspection.
+    internal static object Inspect(World world)
+    {
+        if (world?.Player == null) return null;
+        int puddles = 0, rings = 0;
+        float maxFill = 0;
+        States.TryGetValue(world, out var state);
+        if (state != null)
+            foreach (var surface in state.Surfaces)
+                if (surface != null && surface.QueuedAt == state.LastTicks)
+                {
+                    if (surface.Fill > 0) puddles++;
+                    if (surface.RingAge < 1) rings++;
+                    maxFill = Math.Max(maxFill, surface.Fill);
+                }
+        return new { rainIntensity = RainIntensity(world), wetness = state?.Wetness ?? 0,
+            puddles, rings, maxFill, enabled = state?.Settings.Enabled ?? false };
+    }
+#endif
 
     internal static void Open(World world)
     {
@@ -160,9 +214,11 @@ internal sealed class WeatherSurface : GameObject
     internal bool Water;
     internal WeatherSurface(World world) : base(world) { Graphic = 1; AlphaHue = 255; }
 
-    internal void Step(float delta, bool rain, bool puddles)
+    internal void Step(float delta, float intensity, bool puddles)
     {
-        Fill = !Water && puddles ? WeatherState.Approach(Fill, rain ? 1 : 0, delta / (rain ? 30 : 45)) : 0;
+        intensity = Math.Clamp(intensity, 0, 1);
+        Fill = !Water && puddles ? WeatherState.Approach(Fill, intensity > 0 ? 1 : 0,
+            delta * (intensity > 0 ? intensity / 30 : 1f / 45)) : 0;
         RingAge = Math.Min(1, RingAge + delta / 0.65f);
     }
 
@@ -200,4 +256,3 @@ internal sealed class WeatherSurface : GameObject
     }
     public override bool CheckMouseSelection() => false;
 }
-#endif

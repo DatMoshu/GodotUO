@@ -63,15 +63,12 @@ public partial class UoPlusProbe : Node
             Check(WaterRender.RipplesEnabled(copy), "non-Classic water plus flag enables ripples");
             copy.WaterStyle = WaterRender.Classic;
             Check(!WaterRender.RipplesEnabled(copy), "Classic never simulates ripples");
-#if GUO_LABS
-            var weather = new Labs.Weather.WeatherSettings();
-            Labs.Weather.WeatherLab.SyncProfile(weather, copy);
+            var weather = new GUO.Renderer.Weather.WeatherSettings();
+            GUO.Renderer.Weather.WeatherLab.SyncProfile(weather, copy);
             Check(weather.WaterDrops && weather.Puddles && weather.WetPlayer && weather.WaterDensity == 40 && weather.PuddleDensity == 50 && weather.WetDensity == 60,
-                "Labs reads shared flags and individual densities");
-#else
-            copy.UoPlusFlags |= UoPlusFeature.RainRings | UoPlusFeature.Sway;
-            Check(!UoPlusOptions.Enabled(copy, UoPlusFeature.RainRings) && !UoPlusOptions.Enabled(copy, UoPlusFeature.Sway), "unavailable renderers stay off even in edited profiles");
-#endif
+                "shipping weather reads shared flags and individual densities");
+            copy.UoPlusFlags |= UoPlusFeature.Sway;
+            Check(!UoPlusOptions.Enabled(copy, UoPlusFeature.Sway), "unavailable sway stays off even in edited profiles");
             UoPlusOptions.DisableAll(copy);
             Check(UoPlusOptions.Flags(copy) == UoPlusFeature.None && !AmbientParticles.Enabled(copy), "disable all restores off state");
             RealtimeLightEffects.Clear();

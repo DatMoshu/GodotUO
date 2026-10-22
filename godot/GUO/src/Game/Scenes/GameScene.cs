@@ -1120,10 +1120,8 @@ namespace GUO.Game.Scenes
             // underlays/overlays). Overlays join the sorted stream at their
             // centre depth; underlays draw here, below even the land.
             QueueTerrainLayers();
-#if GUO_LABS
-            // PORT DEVIATION (GUO): owner-requested UO+ weather; absent from exports.
+            // PORT DEVIATION (GUO): owner-requested UO+ weather, independently default off.
             QueueWeatherLab();
-#endif
             DrawUnderlays(batcher);
 
             RenderedObjectsCount = _renderLists.DrawRenderLists(

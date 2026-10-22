@@ -1,0 +1,48 @@
+diff --git a/Projects/UOContent/Custom/GuoWeather.cs b/Projects/UOContent/Custom/GuoWeather.cs
+new file mode 100644
+--- /dev/null
++++ b/Projects/UOContent/Custom/GuoWeather.cs
+@@ -0,0 +1,43 @@
++// GUO dev-shard acceptance command; sends only to the requesting GM.
++using Server.Commands;
++using Server.Network;
++using System.Globalization;
++
++namespace Server.Custom.Guo;
++
++public static class GuoWeather
++{
++    public static void Configure() =>
++        CommandSystem.Register("GuoWeather", AccessLevel.GameMaster, OnCommand);
++
++    [Usage("GuoWeather rain|storm|brewing|snow|clear [0-70]")]
++    [Description("Sends a weather packet only to the requesting GM for GUO acceptance checks.")]
++    private static void OnCommand(CommandEventArgs e)
++    {
++        if (e.Length is < 1 or > 2)
++        {
++            e.Mobile.SendMessage("Usage: GuoWeather rain|storm|brewing|snow|clear [0-70]");
++            return;
++        }
++        int type = e.GetString(0).ToLowerInvariant() switch
++        {
++            "rain" => 0, "storm" => 1, "snow" => 2, "brewing" => 3,
++            "clear" => 0xFF, _ => -1
++        };
++        int count = 70;
++        if (e.Length == 2 && !int.TryParse(e.GetString(1), NumberStyles.Integer,
++            CultureInfo.InvariantCulture, out count))
++        {
++            e.Mobile.SendMessage("Count must be an integer from 0 to 70.");
++            return;
++        }
++        if (type < 0 || count is < 0 or > 70)
++        {
++            e.Mobile.SendMessage("Use rain, storm, brewing, snow or clear, with count 0-70.");
++            return;
++        }
++        if (type == 0xFF) count = 0;
++        e.Mobile.NetState.SendWeather((byte)type, (byte)count, 15);
++        e.Mobile.SendMessage($"GUO_WEATHER type={type} count={count}");
++    }
++}

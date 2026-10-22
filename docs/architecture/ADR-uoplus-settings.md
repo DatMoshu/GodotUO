@@ -38,9 +38,10 @@ resets the field, writes zero ripple strength to the existing shader uniform
 and skips object scans and simulation, preserving the selected water style.
 No shader, native art, packets, picking or upstream weather behavior changes.
 
-L4 weather stays behind `GUO_LABS` in Debug builds. Its water rings, puddles
-and wet-player flags/densities use the same profile API; release/export code
-cannot enable them. Ring density thins impacts, puddle density selects stable
+Owner sprint amendment (2026-10-22, WX-01/02): rain rings, puddles and wet player
+are L1 consumers, available in normal and exported builds, independently off by
+default. Their flags/densities use the same profile API. Ring density thins
+impacts, puddle density selects stable
 ground cells and thins impacts, wet-player density scales the body-drop budget.
 Puddle ground IDs and the cobblestone selector remain session-local experiments;
 invalid IDs reject the entire staged Apply. The old Labs command opens this
@@ -52,9 +53,9 @@ surface must not claim an absent effect works.
 
 ## Consequences
 
-The settings surface is L1; it does not promote Labs weather to L1. There is
-no master flag that silently enables effects. The panel shows unavailable
-weather in normal builds and explains prerequisites next to each option.
+The settings surface and weather consumers are L1. There is
+no master flag that silently enables effects. The panel explains the shard-rain
+and cobblestone prerequisites next to each weather option.
 No external dependency, service, shell call or downloadable content is added.
 Profiles that explicitly enabled particles keep that choice; this is not a
 reset of existing preferences. Owner-requested merge fixes (2026-10-21)

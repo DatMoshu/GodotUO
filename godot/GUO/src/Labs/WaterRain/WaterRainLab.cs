@@ -2,7 +2,7 @@
 #if GUO_LABS
 using System.Runtime.CompilerServices;
 using GUO.Game;
-using GUO.Labs.Weather;
+using GUO.Renderer.Weather;
 using GUO.Renderer.Water;
 
 namespace GUO.Labs.WaterRain;

@@ -1,5 +1,13 @@
 # UO+ weather (L4, non-parity)
 
+Shipping amendment (2026-10-22): the effects now live in `src/Render/Weather`
+and ship in normal/export builds as default-off L1 UO+ options. See
+`tools/scenarios/client/weather.md` and ADR-uoplus-weather-lab's amendment.
+This folder contains only Debug Labs probes and the explicit local injector.
+The injector's `RainOverride` is absent from normal builds; it must not be used
+as evidence of real shard weather. The original notes below describe the Labs
+workflow; normal clients open Video → UO+ effects and use shard weather.
+
 Owner scope: 2026-10-20 night weather brief. Three independent, default-off
 experiments: rain rings on water, rain-filled tile puddles, and a wet player
 silhouette. Tree sway and biome particles are separate lanes.
