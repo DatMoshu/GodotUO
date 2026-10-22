@@ -1,5 +1,13 @@
 # UO+ weather (L4, non-parity)
 
+Shipping amendment (2026-10-22): the effects now live in `src/Render/Weather`
+and ship in normal/export builds as default-off L1 UO+ options. See
+`tools/scenarios/client/weather.md` and ADR-uoplus-weather-lab's amendment.
+This folder contains only Debug Labs probes and the explicit local injector.
+The injector's `RainOverride` is absent from normal builds; it must not be used
+as evidence of real shard weather. The original notes below describe the Labs
+workflow; normal clients open Video → UO+ effects and use shard weather.
+
 Owner scope: 2026-10-20 night weather brief. Three independent, default-off
 experiments: rain rings on water, rain-filled tile puddles, and a wet player
 silhouette. Tree sway and biome particles are separate lanes.
@@ -47,13 +55,13 @@ Dependency doctor (no extra software, services or models):
 
 ```text
 dotnet build godot/GUO/GUO.csproj -c Debug -p:GuoLabs=true
-godot-console --headless --path godot/GUO --quit-after 60 res://src/Labs/Weather/WeatherProbe.tscn
+godot-console --headless --path godot/GUO --quit-after 60 res://src/Render/Weather/WeatherProbe.tscn
 ```
 
 If the weather command or scene class is missing, rerun this doctor with the
 repository's pinned mono Godot and .NET SDK. See `tools/worktree_setup` if the
-engine/upstream cannot resolve. Smoke: set `GuoLabs=true` before
-`launchers/dev/smoke.bat` or `launchers/dev/smoke.sh` to include this contract.
+engine/upstream cannot resolve. `launchers/dev/smoke.bat` or
+`launchers/dev/smoke.sh` includes this shipping contract in every build.
 
 Scenario: `tools/scenarios/client/weather_lab.md`. Synthetic surface render:
 `res://src/Labs/Weather/WeatherVisualProbe.tscn`; `GUO_WEATHER_PROOF` optionally

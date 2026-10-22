@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: BSD-2-Clause
-#if GUO_LABS
 using System;
 using Godot;
 using GUO.Game;
-using GUO.Labs.Weather;
+using GUO.Renderer.Weather;
 using GUO.Renderer.Water;
 
-namespace GUO.Labs.WaterRain;
+namespace GUO.Renderer.WaterRain;
 
 public partial class WaterRainProbe : Node
 {
@@ -14,8 +13,17 @@ public partial class WaterRainProbe : Node
     {
         try
         {
-            Require(!new WeatherSettings().WaterDrops && !WaterRainLab.IsActive(null),
+            Require(!new WeatherSettings().WaterDrops && !WaterRainIntegration.IsActive(null),
                 "water rain must default off and cannot suppress primitives without an initialized world");
+            var settings = new WeatherSettings { WaterDensity = 100 };
+            Require(WaterRainIntegration.RainAmount(settings, 1) == 0, "water drops off must suppress styled rain independently");
+            settings.WaterDrops = true;
+            settings.WaterDensity = 50;
+            Require(Math.Abs(Count(60, WaterRainIntegration.RainAmount(settings, 1)) - 200) <= 1,
+                "Rain rings density must scale the real wave consumer");
+            settings.WaterDensity = 0;
+            Require(Count(60, WaterRainIntegration.RainAmount(settings, 1)) == 0,
+                "zero Rain rings density must perform no stamps");
             var field = new WaterRipples();
             var rain = new RainRippleEmitter();
             int queries = 0;
@@ -97,4 +105,3 @@ public partial class WaterRainProbe : Node
         if (!ok) throw new InvalidOperationException(message);
     }
 }
-#endif

@@ -192,7 +192,7 @@ def test_guo_dev_pin_is_the_shared_pin():
 
 
 # Patches deliberately carried by guo-dev only (owner decision). Anything else must be on both profiles.
-DEV_ONLY_PATCHES = {"0006-loopback-ban-exemption.patch"}
+DEV_ONLY_PATCHES = {"0006-loopback-ban-exemption.patch", "0007-guo-weather.patch"}
 
 
 @pytest.mark.parametrize("profile", [GUO, VPS])

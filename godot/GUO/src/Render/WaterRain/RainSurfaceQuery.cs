@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: BSD-2-Clause
-#if GUO_LABS
 using System;
 using GUO.Game;
 using GUO.Game.GameObjects;
 using GUO.Renderer.Water;
 
-namespace GUO.Labs.WaterRain;
+namespace GUO.Renderer.WaterRain;
 
 internal sealed class RainSurfaceQuery
 {
@@ -40,4 +39,3 @@ internal sealed class RainSurfaceQuery
         return surface.Exposed && surface.WaterZ == maskZ;
     }
 }
-#endif

@@ -798,6 +798,8 @@ namespace GUO.Game
 
         public void Clear()
         {
+            // PORT DEVIATION (GUO): UO+ weather cannot cross a world/facet lifetime.
+            GUO.Renderer.Weather.WeatherLab.Clear(this);
             Scripts.Stop("Logged out");
             _packScripts?.Dispose();
             _packScripts = null;
@@ -846,6 +848,8 @@ namespace GUO.Game
 
         private void InternalMapChangeClear(bool noplayer)
         {
+            // PORT DEVIATION (GUO): weather packets belong to the old facet.
+            GUO.Renderer.Weather.WeatherLab.Clear(this);
             // PORT DEVIATION (GUO): temporary UO+ bursts belong to the old map.
             GUO.Renderer.Lights.RealtimeLightEffects.ClearSpells();
             if (!noplayer)

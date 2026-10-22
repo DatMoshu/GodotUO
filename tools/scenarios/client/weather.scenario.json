@@ -1,0 +1,13 @@
+{
+  "id": "client.weather",
+  "title": "UO+ weather: shard intensity, dry/snow gates, fill/drain and default off",
+  "surface": "client",
+  "requires": {"build": "debug"},
+  "timeouts": {"step_s": 60, "run_s": 180},
+  "steps": [
+    {"id": "launch", "do": {"kind": "launch", "args": ["--weather-probe"], "settings": {"autologin": false, "username": "", "password": ""}},
+     "say": "Check the shipping weather contract without a shard or client data.",
+     "expect": {"log.contains": "[weather] PASS", "within_s": 45}},
+    {"id": "summary", "do": {"kind": "note", "text": "Checks default off, independent flags, same-type intensity updates, both storms, snow/clear/expiry, world cleanup, intensity-scaled wetness and puddle fill, dry drainage, budgets and no picking. Live Britain/Yew and server storm captures are separate acceptance evidence; see client/weather.md."}}
+  ]
+}

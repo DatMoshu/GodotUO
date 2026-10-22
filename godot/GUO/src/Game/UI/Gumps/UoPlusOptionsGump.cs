@@ -64,7 +64,7 @@ internal sealed class UoPlusOptionsGump : Gump
         area.Add(_cap);
 #if GUO_LABS
         y += 66;
-        var settings = Labs.Weather.WeatherLab.For(world).Settings;
+        var settings = GUO.Renderer.Weather.WeatherLab.For(world).Settings;
         _cobblestone = new Checkbox(0xD2, 0xD3, "Puddles: include ground named cobblestone", 1, 0xFFFF)
             { X = 4, Y = y, IsChecked = settings.Cobblestone };
         area.Add(_cobblestone);
@@ -86,12 +86,12 @@ internal sealed class UoPlusOptionsGump : Gump
     internal bool ApplyChanges(bool save = true)
     {
 #if GUO_LABS
-        if (!Labs.Weather.WeatherLab.TryTiles(_tiles.Text, out var tiles))
+        if (!GUO.Renderer.Weather.WeatherLab.TryTiles(_tiles.Text, out var tiles))
         {
             _error.Text = "Use ground IDs from 0 to 16383; no changes applied.";
             return false;
         }
-        var settings = Labs.Weather.WeatherLab.For(World).Settings;
+        var settings = GUO.Renderer.Weather.WeatherLab.For(World).Settings;
         settings.PuddleTiles.Clear();
         foreach (ushort id in tiles) settings.PuddleTiles.Add(id);
         settings.Cobblestone = _cobblestone.IsChecked;
