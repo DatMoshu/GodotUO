@@ -880,16 +880,29 @@ public partial class Main : Node
     /// </summary>
     private async void LoginPreflightProbeThenQuit()
     {
-        System.Threading.Tasks.Task<bool> run = LoginPreflightProbe.Run(this);
-        System.Threading.Tasks.Task first = await System.Threading.Tasks.Task.WhenAny(run, System.Threading.Tasks.Task.Delay(LoginPreflightProbe.RunTimeoutMs));
-        if (first != run)
+        // A fault anywhere in the probe is a FAIL and an exit, never an
+        // unobserved exception out of an async void.
+        bool passed = false;
+        try
         {
-            GD.PrintErr($"[GUO] login preflight probe: FAIL timed out after {LoginPreflightProbe.RunTimeoutMs} ms");
-            Quit(1);
-            return;
+            System.Threading.Tasks.Task<bool> run = LoginPreflightProbe.Run(this);
+            System.Threading.Tasks.Task first = await System.Threading.Tasks.Task.WhenAny(run, System.Threading.Tasks.Task.Delay(LoginPreflightProbe.RunTimeoutMs));
+            if (first != run)
+            {
+                GD.PrintErr($"[GUO] login preflight probe: FAIL timed out after {LoginPreflightProbe.RunTimeoutMs} ms");
+            }
+            else
+            {
+                passed = await run;
+            }
+        }
+        catch (Exception e)
+        {
+            GD.PrintErr($"[GUO] login preflight probe: FAIL faulted: {e.GetType().Name}: {e.Message}");
+            passed = false;
         }
 
-        Quit(run.Result ? 0 : 1);
+        Quit(passed ? 0 : 1);
     }
 
     /// <summary>The menu wheel, the interact radar, the new buttons and "Set controls"; see PadWheelsProbe.</summary>

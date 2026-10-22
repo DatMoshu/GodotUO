@@ -165,10 +165,30 @@ internal static class LoginPreflightProbe
     /// DrawFrame returns on the zero-size window before UIManager.Draw), and
     /// the rendering server never emits a frame signal, so the probe waits
     /// on process frames and calls the UI's overload itself, on empty
-    /// lists, the way UIManager and the child lists do. The live proof is
-    /// gpu_test_on_pass per capture in the parity run.
+    /// lists, the way UIManager and the child lists do, with a real batcher
+    /// on a canvas item of its own (the depth and particle probes' route:
+    /// a Node2D under the host, disposed and freed after). The overload
+    /// touches the batcher even on empty lists (CurrentObjectId). The live
+    /// proof is gpu_test_on_pass per capture in the parity run.
     /// </summary>
     private static async System.Threading.Tasks.Task Marker(Node host)
+    {
+        var canvas = new Node2D { Name = "LoginPreflightProbeCanvas" };
+        host.AddChild(canvas);
+        UltimaBatcher2D batcher = null;
+        try
+        {
+            batcher = new UltimaBatcher2D(canvas.GetCanvasItem());
+            await MarkerWith(host, batcher);
+        }
+        finally
+        {
+            batcher?.Dispose();
+            canvas.QueueFree();
+        }
+    }
+
+    private static async System.Threading.Tasks.Task MarkerWith(Node host, UltimaBatcher2D batcher)
     {
         // Every wait is finite: a signal that never comes (the render frame
         // signal, headless, stranded a lease once) fails the check within
@@ -185,16 +205,16 @@ internal static class LoginPreflightProbe
         int draws = RenderLists.ListDraws;
         GpuWorld.LastFrameOnPass = true;
         await Frame();
-        uiLists.DrawRenderLists(null, sbyte.MaxValue);
+        uiLists.DrawRenderLists(batcher, sbyte.MaxValue);
         await Frame();
-        uiLists.DrawRenderLists(null, sbyte.MaxValue);
+        uiLists.DrawRenderLists(batcher, sbyte.MaxValue);
         await Frame();
         Check("the UI's list draws ran in between", RenderLists.ListDraws >= draws + 2, $"{RenderLists.ListDraws - draws} list draws");
         Check("a world frame marked as drawn on the pass stays marked across the UI's list draws", GpuWorld.LastFrameOnPass);
 
         GpuWorld.LastFrameOnPass = false;
         await Frame();
-        uiLists.DrawRenderLists(null, sbyte.MaxValue);
+        uiLists.DrawRenderLists(batcher, sbyte.MaxValue);
         Check("and an unmarked one stays unmarked", !GpuWorld.LastFrameOnPass);
     }
 }
