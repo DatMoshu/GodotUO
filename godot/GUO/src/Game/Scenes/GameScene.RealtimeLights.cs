@@ -374,6 +374,41 @@ namespace GUO.Game.Scenes
             _rtWallFaces = 0;
             ref var statics = ref Client.Game.UO.FileManager.TileData.StaticData;
 
+            // PERF (2026-10-22 traces): this pass re-walked every visible
+            // chunk's tile lists, computed CalculateDepthZ per object and
+            // sorted, repeating what FillGameObjectList and the world sort
+            // had just produced (35-41% of the pass). The world's gathered,
+            // sorted list is read instead when it is there; the walk below
+            // remains for a frame whose world was not drawn.
+            if (_renderLists.WorldSorted)
+            {
+                foreach (GameObject tile in _renderLists.LandTiles)
+                {
+                    if (tile is Land land && RealtimeLandVisible(land, zoom)) AddRealtimeLand(land);
+                }
+
+                foreach (GameObject tile in _renderLists.StretchedLandTiles)
+                {
+                    if (tile is Land land && RealtimeLandVisible(land, zoom)) AddRealtimeLand(land);
+                }
+
+                // Back to front, in the world's draw order (the same objects
+                // the world drew, in the order it drew them; a mobile's two
+                // passes and effects are not light sprites and are skipped).
+                int count = _renderLists.WorldCount;
+                for (int i = 0; i < count; i++)
+                {
+                    GameObject obj = _renderLists.WorldObjectAt(i);
+                    if (!RealtimeSpriteCandidate(obj, zoom, statics)) continue;
+                    ref readonly SpriteInfo art = ref Client.Game.UO.Arts.GetArt(obj.Graphic);
+                    if (art.Texture == null) continue;
+                    AddRealtimeSprite(obj, in art, ref statics[obj.Graphic]);
+                }
+
+                _rtTarget.End();
+                return;
+            }
+
             foreach (Chunk chunk in _visibleChunks)
             {
                 if (chunk == null || chunk.IsDestroyed) continue;
@@ -385,48 +420,14 @@ namespace GUO.Game.Scenes
                         {
                             if (obj is Land land)
                             {
-                                int ly = ((land.X + land.Y) * 22 - (land.Z << 2)) - _offset.Y - 22;
-                                int lx = ((land.X - land.Y) * 22) - _offset.X - 22;
-                                // Generous: a hill's corners sit well above its tile's own Z.
-                                if (ly >= -320 && ly <= _rtTarget.Height / zoom + 120 && lx >= -120 && lx <= _rtTarget.Width / zoom + 120)
+                                if (RealtimeLandVisible(land, zoom))
                                 {
                                     AddRealtimeLand(land);
                                 }
                                 continue;
                             }
 
-                            if (obj is not (Static or Multi or Item) || !obj.AllowedToDraw || obj.Z >= _maxZ)
-                            {
-                                continue;
-                            }
-
-                            ushort graphic = obj.Graphic;
-                            if (graphic >= statics.Length) continue;
-                            ref StaticTiles data = ref statics[graphic];
-                            if (_noDrawRoofs && data.IsRoof) continue;
-                            // Flat pieces at ground level take the land's light
-                            // (it is under them); an upper floor is drawn (it is
-                            // cover) and takes its own light at its height.
-                            bool flat = data.Height < 4 && !data.IsWall && !data.IsRoof && !data.IsFoliage;
-                            if (flat && obj.Z < _rtField.GroundZ(obj.X, obj.Y) + RealtimeLightField.UpperFloorZ) continue;
-
-                            // Under drawn cover (a roof, an upper floor below the
-                            // view's cut) the world shows the cover, not what is
-                            // beneath; no light sprite for that (walls keep theirs:
-                            // their outer face shows). Standing on the cover is not
-                            // under it, and a viewer under it sees no cover at all.
-                            if (!data.IsWall && !data.IsRoof)
-                            {
-                                short coverZ = _rtField.CoverZ(obj.X, obj.Y);
-                                bool coverDrawn = coverZ != RealtimeLightField.NoBlock && coverZ < _maxZ
-                                    && !(_noDrawRoofs && _rtField.CoverIsRoofFlag(obj.X, obj.Y));
-                                if (coverDrawn && obj.Z < coverZ) continue;
-                            }
-
-                            // Only what the target can show.
-                            int sy = ((obj.X + obj.Y) * 22 - (obj.Z << 2)) - _offset.Y - 22;
-                            int sx = ((obj.X - obj.Y) * 22) - _offset.X - 22;
-                            if (sy < -220 || sy > _rtTarget.Height / zoom + 220 || sx < -220 || sx > _rtTarget.Width / zoom + 220) continue;
+                            if (!RealtimeSpriteCandidate(obj, zoom, statics)) continue;
 
                             // The world's own depth (ADR-0001: one computation), so
                             // a roof covers the furniture under it here as it does there.
@@ -446,6 +447,51 @@ namespace GUO.Game.Scenes
             }
 
             _rtTarget.End();
+        }
+
+        /// <summary>A land tile the light target can show. Generous: a hill's corners sit well above its tile's own Z.</summary>
+        private bool RealtimeLandVisible(Land land, float zoom)
+        {
+            int ly = ((land.X + land.Y) * 22 - (land.Z << 2)) - _offset.Y - 22;
+            int lx = ((land.X - land.Y) * 22) - _offset.X - 22;
+            return ly >= -320 && ly <= _rtTarget.Height / zoom + 120 && lx >= -120 && lx <= _rtTarget.Width / zoom + 120;
+        }
+
+        /// <summary>Whether <paramref name="obj"/> gets a light sprite this frame (the pass's own filters).</summary>
+        private bool RealtimeSpriteCandidate(GameObject obj, float zoom, StaticTiles[] statics)
+        {
+            if (obj is not (Static or Multi or Item) || !obj.AllowedToDraw || obj.Z >= _maxZ)
+            {
+                return false;
+            }
+
+            ushort graphic = obj.Graphic;
+            if (graphic >= statics.Length) return false;
+            ref StaticTiles data = ref statics[graphic];
+            if (_noDrawRoofs && data.IsRoof) return false;
+            // Flat pieces at ground level take the land's light
+            // (it is under them); an upper floor is drawn (it is
+            // cover) and takes its own light at its height.
+            bool flat = data.Height < 4 && !data.IsWall && !data.IsRoof && !data.IsFoliage;
+            if (flat && obj.Z < _rtField.GroundZ(obj.X, obj.Y) + RealtimeLightField.UpperFloorZ) return false;
+
+            // Under drawn cover (a roof, an upper floor below the
+            // view's cut) the world shows the cover, not what is
+            // beneath; no light sprite for that (walls keep theirs:
+            // their outer face shows). Standing on the cover is not
+            // under it, and a viewer under it sees no cover at all.
+            if (!data.IsWall && !data.IsRoof)
+            {
+                short coverZ = _rtField.CoverZ(obj.X, obj.Y);
+                bool coverDrawn = coverZ != RealtimeLightField.NoBlock && coverZ < _maxZ
+                    && !(_noDrawRoofs && _rtField.CoverIsRoofFlag(obj.X, obj.Y));
+                if (coverDrawn && obj.Z < coverZ) return false;
+            }
+
+            // Only what the target can show.
+            int sy = ((obj.X + obj.Y) * 22 - (obj.Z << 2)) - _offset.Y - 22;
+            int sx = ((obj.X - obj.Y) * 22) - _offset.X - 22;
+            return !(sy < -220 || sy > _rtTarget.Height / zoom + 220 || sx < -220 || sx > _rtTarget.Width / zoom + 220);
         }
 
         /// <summary>Where a wall face's light is read: this far in front of its line, in tiles (clear of the samples behind it).</summary>

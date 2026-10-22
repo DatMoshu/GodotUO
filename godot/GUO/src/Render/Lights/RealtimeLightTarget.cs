@@ -64,10 +64,6 @@ void fragment() {
         private readonly List<Color> _colors = new();
         private readonly List<int> _indices = new();
         private readonly List<(Rect2 rect, Texture2D texture, Rect2 source, Color c0, Color c1, Color c2, Color c3)> _sprites = new();
-        private readonly List<Vector2> _spritePoints = new();
-        private readonly List<Vector2> _spriteUvs = new();
-        private readonly List<Color> _spriteColors = new();
-        private readonly List<int> _spriteIndices = new();
         private bool _disposed;
 
         public bool IsBuilt => _target != null && !_target.IsDisposed && !_disposed;
@@ -177,6 +173,13 @@ void fragment() {
         }
 
         /// <summary>Send the frame: the land first, the sprites over it in the order added.</summary>
+        /// <remarks>
+        /// PERF (2026-10-22 traces): this pass was 36-44% of the main thread
+        /// with UO+ lights on. Two interop calls per sprite (the page's
+        /// width and height) and a list-to-array copy per run were most of
+        /// it; a page's size is now read once per run, and each run's arrays
+        /// are sized exactly and written once (the server takes whole arrays).
+        /// </remarks>
         public void End()
         {
             if (!IsBuilt) return;
@@ -190,45 +193,48 @@ void fragment() {
 
             // Sprites go as textured quads with data per corner, one
             // triangle array per run of the same atlas page, in order.
-            Texture2D run = null;
-            foreach (var s in _sprites)
+            int count = _sprites.Count;
+            int start = 0;
+            while (start < count)
             {
-                if (!ReferenceEquals(run, s.texture))
-                {
-                    FlushSprites(run);
-                    run = s.texture;
-                }
-
-                float tw = Math.Max(1, s.texture.GetWidth()), th = Math.Max(1, s.texture.GetHeight());
-                float u0 = s.source.Position.X / tw, v0 = s.source.Position.Y / th;
-                float u1 = s.source.End.X / tw, v1 = s.source.End.Y / th;
-                int b = _spritePoints.Count;
-                _spritePoints.Add(s.rect.Position);
-                _spritePoints.Add(new Vector2(s.rect.End.X, s.rect.Position.Y));
-                _spritePoints.Add(s.rect.End);
-                _spritePoints.Add(new Vector2(s.rect.Position.X, s.rect.End.Y));
-                _spriteUvs.Add(new Vector2(u0, v0)); _spriteUvs.Add(new Vector2(u1, v0));
-                _spriteUvs.Add(new Vector2(u1, v1)); _spriteUvs.Add(new Vector2(u0, v1));
-                _spriteColors.Add(s.c0); _spriteColors.Add(s.c1); _spriteColors.Add(s.c2); _spriteColors.Add(s.c3);
-                _spriteIndices.Add(b); _spriteIndices.Add(b + 1); _spriteIndices.Add(b + 2);
-                _spriteIndices.Add(b); _spriteIndices.Add(b + 2); _spriteIndices.Add(b + 3);
+                Texture2D run = _sprites[start].texture;
+                int end = start + 1;
+                while (end < count && ReferenceEquals(_sprites[end].texture, run)) end++;
+                FlushSprites(run, start, end);
+                start = end;
             }
-
-            FlushSprites(run);
         }
 
-        private void FlushSprites(Texture2D texture)
+        private void FlushSprites(Texture2D texture, int start, int end)
         {
-            if (_spritePoints.Count == 0 || texture == null)
+            int n = end - start;
+            if (n <= 0 || texture == null) return;
+
+            float tw = Math.Max(1, texture.GetWidth()), th = Math.Max(1, texture.GetHeight());
+            var points = new Vector2[n * 4];
+            var uvs = new Vector2[n * 4];
+            var colors = new Color[n * 4];
+            var indices = new int[n * 6];
+            var sprites = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_sprites);
+            for (int i = 0; i < n; i++)
             {
-                _spritePoints.Clear(); _spriteUvs.Clear(); _spriteColors.Clear(); _spriteIndices.Clear();
-                return;
+                ref readonly var s = ref sprites[start + i];
+                float u0 = s.source.Position.X / tw, v0 = s.source.Position.Y / th;
+                float u1 = s.source.End.X / tw, v1 = s.source.End.Y / th;
+                int b = i * 4, k = i * 6;
+                points[b] = s.rect.Position;
+                points[b + 1] = new Vector2(s.rect.End.X, s.rect.Position.Y);
+                points[b + 2] = s.rect.End;
+                points[b + 3] = new Vector2(s.rect.Position.X, s.rect.End.Y);
+                uvs[b] = new Vector2(u0, v0); uvs[b + 1] = new Vector2(u1, v0);
+                uvs[b + 2] = new Vector2(u1, v1); uvs[b + 3] = new Vector2(u0, v1);
+                colors[b] = s.c0; colors[b + 1] = s.c1; colors[b + 2] = s.c2; colors[b + 3] = s.c3;
+                indices[k] = b; indices[k + 1] = b + 1; indices[k + 2] = b + 2;
+                indices[k + 3] = b; indices[k + 4] = b + 2; indices[k + 5] = b + 3;
             }
 
             RenderingServer.CanvasItemAddTriangleArray(
-                _item, _spriteIndices.ToArray(), _spritePoints.ToArray(), _spriteColors.ToArray(),
-                _spriteUvs.ToArray(), null, null, texture.GetRid());
-            _spritePoints.Clear(); _spriteUvs.Clear(); _spriteColors.Clear(); _spriteIndices.Clear();
+                _item, indices, points, colors, uvs, null, null, texture.GetRid());
         }
 
         public void Teardown()
