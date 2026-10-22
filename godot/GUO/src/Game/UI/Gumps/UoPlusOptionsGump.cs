@@ -12,6 +12,7 @@ internal sealed class UoPlusOptionsGump : Gump
     private readonly Profile _profile;
     private readonly Dictionary<UoPlusFeature, (Checkbox Toggle, HSliderBar Density)> _rows = new();
     private readonly HSliderBar _cap;
+    private readonly Combobox _touchUi;
     private bool _defaultsStaged;
 #if GUO_LABS
     private readonly StbTextBox _tiles;
@@ -28,18 +29,22 @@ internal sealed class UoPlusOptionsGump : Gump
     internal UoPlusOptionsGump(World world, Profile profile) : base(world, 0, 0)
     {
         _profile = profile ?? new Profile();
-        Width = 580;
+        Width = System.Math.Clamp(Client.Game.ClientBounds.Width - 16, 320, 580);
         Height = System.Math.Min(480, System.Math.Max(320, Client.Game.ClientBounds.Height - 16));
         X = System.Math.Max(0, (Client.Game.ClientBounds.Width - Width) / 2);
         Y = System.Math.Max(0, (Client.Game.ClientBounds.Height - Height) / 2);
         CanMove = true; CanCloseWithEsc = CanCloseWithRightClick = true;
         AcceptMouseInput = true; WantUpdateSize = false;
         Add(new AlphaBlendControl(0.95f) { Width = Width, Height = Height });
-        Add(new Label("UO+ effects", true, 0xFFFF, font: 1) { X = 18, Y = 12 });
-        Add(new Label("Optional visual effects. All start off. Density 0 hides an effect.", true, 0xFFFF, font: 1) { X = 18, Y = 38 });
-        var area = new ScrollArea(16, 66, 548, Height - 130, true);
+        Add(new Label("UO+", true, 0xFFFF, font: 1) { X = 18, Y = 12 });
+        Add(new Label("Reopen inventory after applying Touch UI.", true, 0xFFFF, Width - 36, font: 1) { X = 18, Y = 38 });
+        var area = new ScrollArea(16, 66, Width - 32, Height - 130, true);
         Add(area);
-        int y = 0;
+        area.Add(new Label("Touch UI", true, 0xFFFF, font: 1) { X = 4, Y = 0 });
+        _touchUi = new Combobox(100, 0, Width - 154, new[] { "Automatic (touch pointer)", "On", "Off" },
+            _profile.TouchUi.HasValue ? (_profile.TouchUi.Value ? 1 : 2) : 0);
+        area.Add(_touchUi);
+        int y = 50;
         foreach (var feature in UoPlusOptions.Features)
         {
             bool available = feature.Available;
@@ -49,17 +54,17 @@ internal sealed class UoPlusOptionsGump : Gump
                 IsEnabled = available
             };
             area.Add(toggle);
-            area.Add(new Label(feature.Hint, true, available ? (ushort)0x0386 : (ushort)0x0021, 490, 1)
+            area.Add(new Label(feature.Hint, true, available ? (ushort)0x0386 : (ushort)0x0021, Width - 70, 1)
                 { X = 4, Y = y + 24 });
             area.Add(new Label("Density (%)", true, 0xFFFF, font: 1) { X = 4, Y = y + 46 });
-            var density = new HSliderBar(128, y + 46, 330, 0, 100, UoPlusOptions.Density(_profile, feature.Id),
+            var density = new HSliderBar(128, y + 46, Width - 210, 0, 100, UoPlusOptions.Density(_profile, feature.Id),
                 HSliderBarStyle.MetalWidgetRecessedBar, true, 1, 0xFFFF) { IsEnabled = available };
             area.Add(density);
             _rows[feature.Id] = (toggle, density);
             y += 80;
         }
         area.Add(new Label("Ambient particles per frame (shared cap)", true, 0xFFFF, font: 1) { X = 4, Y = y });
-        _cap = new HSliderBar(4, y + 26, 430, 0, 512, System.Math.Clamp(_profile.AmbientParticleCap, 0, 512),
+        _cap = new HSliderBar(4, y + 26, Width - 110, 0, 512, System.Math.Clamp(_profile.AmbientParticleCap, 0, 512),
             HSliderBarStyle.MetalWidgetRecessedBar, true, 1, 0xFFFF);
         area.Add(_cap);
 #if GUO_LABS
@@ -80,7 +85,7 @@ internal sealed class UoPlusOptionsGump : Gump
         AddButton(3, 290, "Defaults"); AddButton(4, 426, "Okay");
     }
 
-    private void AddButton(int id, int x, string text) => Add(new NiceButton(x, Height - 42, 118, 28,
+    private void AddButton(int id, int x, string text) => Add(new NiceButton(18 + (id - 1) * ((Width - 36) / 4), Height - 50, (Width - 36) / 4 - 6, 44,
         ButtonAction.Activate, text, font: 1) { ButtonParameter = id, IsSelectable = false });
 
     internal bool ApplyChanges(bool save = true)
@@ -98,6 +103,7 @@ internal sealed class UoPlusOptionsGump : Gump
         _error.Text = "";
 #endif
         if (_defaultsStaged) UoPlusOptions.ResetDefaults(_profile);
+        _profile.TouchUi = _touchUi.SelectedIndex == 0 ? null : _touchUi.SelectedIndex == 1;
         foreach (var (id, row) in _rows) UoPlusOptions.Set(_profile, id, row.Toggle.IsChecked, row.Density.Value);
         _profile.AmbientParticleCap = _cap.Value;
         _defaultsStaged = false;
@@ -108,6 +114,7 @@ internal sealed class UoPlusOptionsGump : Gump
     internal void RestoreDefaults()
     {
         _defaultsStaged = true;
+        _touchUi.SelectedIndex = 0;
         foreach (var row in _rows.Values) { row.Toggle.IsChecked = false; row.Density.Value = 50; }
         _cap.Value = 128;
 #if GUO_LABS

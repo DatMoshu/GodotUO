@@ -295,6 +295,10 @@ namespace GUO.Input.Touch
         /// <returns>True when the event was consumed here.</returns>
         public static bool Handle(InputEvent e)
         {
+            // UX-03: a hybrid PC can return to its physical mouse after touch.
+            // Godot's touch-generated mouse (device -1) still must be swallowed.
+            if (e is InputEventMouse && e.Device != -1 && !Godot.Input.EmulateTouchFromMouse
+                && InputMode.Current == InputKind.KeyboardMouse) return false;
             // The second screen's fingers come here directly (DualScreen.Deliver).
             if (Modern.ModernGump.HandleInput(e) || BarEditor.HandleInput(e) || WindowMenu.HandleInput(e))
             {
@@ -415,6 +419,16 @@ namespace GUO.Input.Touch
                 {
                     StartWalk();
                 }
+            }
+            else if (TouchInventory.Active && UIManager.MouseOverControl?.RootParent is Game.UI.Gumps.GridContainerGump
+                && Game.SerialHelper.IsItem(UIManager.MouseOverControl.LocalSerial))
+            {
+                // UX-03: movement starts a drag; holding still asks the shard
+                // for the item's context without picking it up first.
+                if (held < LongPressMs) return;
+                GameActions.OpenPopupMenu(UIManager.MouseOverControl.LocalSerial);
+                _phase = Phase.Done;
+                Note("long press on inventory item -> context menu");
             }
             else if (OverItemSlot())
             {
