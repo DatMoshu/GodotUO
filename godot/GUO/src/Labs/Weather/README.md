@@ -64,5 +64,7 @@ For a repeatable live proof, launch a scratch GM client with
 `-uopweather proof`. The explicit test moves the character to the Britain docks,
 selects its current land graphic for puddles, sets local rain, captures off/rain/
 drying/dry frames and checks effect state over about 90 seconds before quitting.
+The proof uses exposed shore land beside the docks so dry-ground puddles and
+nearby water can both render; covered water under the dock is not puddle ground.
 It never starts automatically and never changes the server weather. The test
 requires a GM character on a shard you control. Failure reports name this README.

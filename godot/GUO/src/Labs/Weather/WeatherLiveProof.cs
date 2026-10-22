@@ -44,7 +44,9 @@ public partial class WeatherLiveProof : Node
         {
             Directory.CreateDirectory(_output);
             var state = WeatherLab.For(_world);
-            await GUO.Host.InputProbe.Say(this, "[go 1499 1761 -3");
+            // Exposed shore land beside the docks: the dock itself covers wet
+            // land, which cannot produce the dry-ground puddles asserted below.
+            await GUO.Host.InputProbe.Say(this, "[go 1480 1740 0");
             await ToSignal(GetTree().CreateTimer(4), SceneTreeTimer.SignalName.Timeout);
             if (!_world.InGame) throw new InvalidOperationException("client left the world");
             _world.Weather.Reset();
