@@ -1,11 +1,14 @@
-"""How two GUO variants' screenshots differ: every pixel, and the isolated ones apart.
+"""How two GUO variants' screenshots differ: every pixel that differs in any channel, and the isolated ones apart.
 
-An isolated pixel is a differing pixel none of whose eight neighbours differs.
-A moved sprite, a label, a radar dot or a missing tile differs in a patch; a
-single texel is what the land-array path's nearest sampling gives on a
-stretched tile when the rescaled UV lands on the other side of a texel edge
-(PERF-V7, docs/perf/2026-10-19_cover_regression.md, "The river scenes").
-Reported apart so a run can tell the two kinds without a human at the sheet.
+The count is exact: a pixel differs when any of R, G or B differs by one or
+more. (Converting the RGB difference to luminance first would lose a
+one-step change in a single channel, blue in particular.)
+
+An isolated pixel is a differing pixel none of whose eight neighbours
+differs. That describes the shape of the difference, not its cause and not
+whether it is acceptable: it is reported beside the exact count so a reader
+knows whether a difference is a patch (a sprite, a label, a radar dot, a
+tile) or scattered single pixels, and then looks at the diff picture.
 """
 from __future__ import annotations
 
@@ -14,7 +17,10 @@ from PIL import Image, ImageChops
 
 def differing(a: Image.Image, b: Image.Image) -> Image.Image:
     """A mode-L mask: 255 where the two RGB images differ in any channel."""
-    return ImageChops.difference(a.convert("RGB"), b.convert("RGB")).convert("L").point(lambda v: 255 if v > 0 else 0)
+    delta = ImageChops.difference(a.convert("RGB"), b.convert("RGB"))
+    red, green, blue = delta.split()
+    any_channel = ImageChops.lighter(ImageChops.lighter(red, green), blue)
+    return any_channel.point(lambda v: 255 if v > 0 else 0)
 
 
 def count(mask: Image.Image) -> tuple[int, int, list[tuple[int, int]]]:
@@ -43,6 +49,7 @@ def count(mask: Image.Image) -> tuple[int, int, list[tuple[int, int]]]:
 
 
 def describe(total: int, isolated: int) -> str:
+    """The exact count, with the isolated count beside it for information."""
     if not total:
         return "0 px"
     return f"{total} px" if not isolated else f"{total} px ({isolated} isolated)"

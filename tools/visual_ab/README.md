@@ -5,12 +5,13 @@ same spots. Each client runs once per scene with `GUO_SHOT_DUMP` set
 (`src/Bootstrap/ShotDump.cs`, compiled into both), does the scene's steps and
 saves its own screenshots; GUO runs plain, `--merged-land=array` and with
 `--merged-cover`. Output per scene in `build/visual_ab/<scene>/`: each shot,
-a labelled sheet, and a diff of each GUO variant against plain GUO. The diff
-table counts every differing pixel and, apart, the isolated ones (no differing
-neighbour): those are single texels of stretched riverbank tiles that the land
-array's nearest sampling picks from the other side of a texel edge (PERF-V7,
-[the cover regression note](../../docs/perf/2026-10-19_cover_regression.md)),
-and are the only difference a variant may have. Needs a shard.
+a labelled sheet, and a diff of each GUO variant against plain GUO, which must
+be empty. The diff table counts every pixel that differs in any channel by any
+step (exact), and beside it, for information, how many of those are isolated
+(no differing neighbour): the shape of a difference, not its cause or its
+acceptability. A non-empty diff is read from the diff picture, whatever its
+shape (PERF-V7, [the cover regression note](../../docs/perf/2026-10-19_cover_regression.md)).
+Needs a shard.
 
 ## Run
 
@@ -25,5 +26,6 @@ python tools/visual_ab/run.py --sheets        redraw the sheets from shots alrea
 python -m pytest -q tools/visual_ab
 ```
 
-The diff split (all pixels, isolated pixels) is tested on synthetic pictures.
+The exact count (single-channel one-step controls in R, G and B, black against
+one blue step) and the isolated split are tested on synthetic pictures.
 The run itself is the check for the clients, and its exit code says whether it passed.

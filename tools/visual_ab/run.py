@@ -289,8 +289,8 @@ def sheets(out: Path) -> list[str]:
                 row.append(diff.describe(total, isolated))
             lines.append("| " + " | ".join(row) + " |")
     return ["| scene/shot | guo-array vs guo | guo-cover vs guo |", "|---|---:|---:|", *lines,
-            "", "An isolated pixel has no differing neighbour: a single texel of a stretched tile",
-            "sampled from the land array (PERF-V7), not a sprite, label or tile that moved."]
+            "", "Counts are exact (any channel, any step). An isolated pixel has no differing",
+            "neighbour; that is the shape of a difference, not its cause: look at the diff picture."]
 
 
 def main() -> int:
