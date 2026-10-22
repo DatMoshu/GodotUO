@@ -133,6 +133,55 @@ namespace GUO.Renderer.Lights
             return 1f - (1f - DayLightScale) * sun * Math.Clamp(strength, 0f, 1f);
         }
 
+        /// <summary>The sun is up from this hour (the RunUO family light cycle brightens from 4:00) ...</summary>
+        public const float SunRise = 4.5f;
+
+        /// <summary>... to this one (night is full at 24:00): highest at 14:00, the middle of the bright day.</summary>
+        public const float SunSet = 23.5f;
+
+        /// <summary>A full sky shadow at noon takes this share of the ambient (before strength).</summary>
+        public const float SunShadow = 0.42f;
+
+        /// <summary>A moon shadow takes this share: faint, and it keeps the night's blue.</summary>
+        public const float MoonShadow = 0.16f;
+
+        /// <summary>
+        /// The sky light's shadow at an hour: the sun rises in the east (+X),
+        /// stands in the south (+Y) and sets in the west, low and long at dawn
+        /// and dusk, high and short in the middle of the day; between sunset
+        /// and sunrise a faint moon crosses the same way. Shadows fall away
+        /// from the light. Strength fades with the level as the sky colour
+        /// does (none in a dungeon), times <paramref name="strength"/> (0..1).
+        /// </summary>
+        public static RealtimeLightField.Sun SkyShadow(float hour, float isometricLevel, float strength)
+        {
+            hour = Wrap(hour);
+            float sky = Smooth(0.30f, 0.55f, Math.Clamp(isometricLevel, 0f, 1f)) * Math.Clamp(strength, 0f, 1f);
+            // The sun's disc is up a little longer than full daylight: dawn and dusk get the long shadows.
+            float day = Smooth(4.0f, 5.5f, hour) * (1f - Smooth(22.5f, 24f, hour));
+            float t, maxElevation, share;
+            if (day >= 0.5f)
+            {
+                t = Math.Clamp((hour - SunRise) / (SunSet - SunRise), 0f, 1f);
+                maxElevation = 62f;
+                share = SunShadow * day;
+            }
+            else
+            {
+                // The night runs from sunset to sunrise across midnight.
+                float night = SunRise + 24f - SunSet;
+                t = Math.Clamp(Wrap(hour - SunSet) / night, 0f, 1f);
+                maxElevation = 40f;
+                share = MoonShadow * (1f - day);
+            }
+
+            // Near the swap both strengths are small, so the direction change does not show.
+            share *= Smooth(0.0f, 0.15f, (float)Math.Sin(Math.PI * t));
+            float elevation = (6f + (maxElevation - 6f) * (float)Math.Sin(Math.PI * t)) * (MathF.PI / 180f);
+            float toX = MathF.Cos(MathF.PI * t), toY = MathF.Sin(MathF.PI * t);
+            return new RealtimeLightField.Sun(-toX, -toY, MathF.Tan(elevation), share * sky);
+        }
+
         private static float Wrap(float hour)
         {
             hour %= 24f;

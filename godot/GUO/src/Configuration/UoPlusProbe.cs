@@ -45,7 +45,7 @@ public partial class UoPlusProbe : Node
             Check(UoPlusOptions.Requested(p, UoPlusFeature.SpellLights), "legacy spell checkbox remains authoritative");
             int index = 0;
             foreach (var feature in UoPlusOptions.Features)
-                UoPlusOptions.Set(p, feature.Id, true, ++index * 10);
+                UoPlusOptions.Set(p, feature.Id, true, ++index * 7); // stays under 100 for up to 14 features
             var copy = JsonSerializer.Deserialize(JsonSerializer.Serialize(p, ProfileJsonContext.DefaultToUse.Profile),
                 ProfileJsonContext.DefaultToUse.Profile);
             index = 0;
@@ -53,7 +53,7 @@ public partial class UoPlusProbe : Node
             {
                 index++;
                 Check(UoPlusOptions.Enabled(copy, feature.Id) == feature.Available, "availability and saved flags");
-                if (feature.Available) Check(UoPlusOptions.Density(copy, feature.Id) == index * 10, "independent densities persist");
+                if (feature.Available) Check(UoPlusOptions.Density(copy, feature.Id) == index * 7, "independent densities persist");
             }
             UoPlusOptions.Set(copy, UoPlusFeature.Fog, true, -9);
             UoPlusOptions.Set(copy, UoPlusFeature.Leaves, true, 999);

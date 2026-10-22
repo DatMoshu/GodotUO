@@ -19,7 +19,7 @@ namespace GUO.Renderer.Lights
     /// roof covers it. A light's reach is a small map of its radius, computed
     /// once and cached until the light moves or the blockers around it change.
     /// </remarks>
-    internal sealed class RealtimeLightField
+    internal sealed partial class RealtimeLightField
     {
         /// <summary>No blocker on the cell.</summary>
         public const short NoBlock = short.MinValue;
@@ -184,6 +184,7 @@ namespace GUO.Renderer.Lights
             Array.Fill(_roofZ, NoBlock);
             Array.Fill(_roofFlag, false);
             Array.Clear(_groundZ);
+            BeginSun(cells);
         }
 
         public bool Contains(int x, int y)
@@ -346,6 +347,7 @@ namespace GUO.Renderer.Lights
 
             _blockerHash = HashBlockers();
             LastComputed = 0;
+            ApplySun();
 
             if (_cache.Count > CacheLimit) _cache.Clear();
 
@@ -715,7 +717,7 @@ namespace GUO.Renderer.Lights
             float r = _fine[o], g = _fine[o + 1], b = _fine[o + 2];
             float m = Math.Max(r, Math.Max(g, b));
             if (m <= 1f) return (r, g, b);
-            float s = _roof[cell] ? _roofShare : 1f;
+            float s = (_roof[cell] ? _roofShare : 1f) * SunK(i);
             return (Math.Max(r / m, Ambient.R * s), Math.Max(g / m, Ambient.G * s), Math.Max(b / m, Ambient.B * s));
         }
 
@@ -739,7 +741,7 @@ namespace GUO.Renderer.Lights
                 {
                     // As Sample: the hue kept, never below the cell's ambient.
                     float m = Math.Max(r, Math.Max(g, b));
-                    float s = _roof[i / fw / f * _width + i % fw / f] ? _roofShare : 1f;
+                    float s = (_roof[i / fw / f * _width + i % fw / f] ? _roofShare : 1f) * SunK(i);
                     r = Math.Max(r / m, ar * s);
                     g = Math.Max(g / m, ag * s);
                     b = Math.Max(b / m, ab * s);

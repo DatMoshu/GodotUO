@@ -83,8 +83,9 @@ public partial class EditorSmoke
             profile.LightLevelType = 0;
             profile.LightLevel = 30;
         }
-        // ",hour,H[,todoff]": Realtime lights at hour H (time-of-day light on, or
-        // off for the before frame), the classic level set from that hour too.
+        // ",hour,H[,todoff][,sun]": Realtime lights at hour H (time-of-day light on,
+        // or off for the before frame; sun and moon shadows with ",sun"), the
+        // classic level set from that hour too.
         int hourAt = Array.IndexOf(demo, "hour", 1);
         if (hourAt > 0 && profile != null)
         {
@@ -93,9 +94,10 @@ public partial class EditorSmoke
             profile.UseCustomLightLevel = false;
             profile.RealtimeLightsHour = hour;
             UoPlusOptions.Set(profile, UoPlusFeature.TimeOfDay, Array.IndexOf(demo, "todoff", 1) < 0, 100);
+            UoPlusOptions.Set(profile, UoPlusFeature.SunShadows, Array.IndexOf(demo, "sun", 1) > 0, 100);
             world.Light.Overall = GUO.Renderer.Lights.RealtimeTimeOfDay.LevelForHour(hour + 0.5f);
             world.Light.Personal = 0;
-            GD.Print($"[lights-demo] hour={hour} timeOfDay={UoPlusOptions.Enabled(profile, UoPlusFeature.TimeOfDay)}");
+            GD.Print($"[lights-demo] hour={hour} timeOfDay={UoPlusOptions.Enabled(profile, UoPlusFeature.TimeOfDay)} sunShadows={UoPlusOptions.Enabled(profile, UoPlusFeature.SunShadows)}");
         }
         else if (profile?.UseCustomLightLevel == true)
         {

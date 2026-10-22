@@ -136,6 +136,19 @@ and for shards with another clock. Off, the field is unchanged. The scene also
 frees the light target when it unloads (one marked line in `Unload`); before,
 its canvas item outlived the scene. Section 45 has the numbers.
 
+Amendment (2026-10-22, LIGHTS-05, sun and moon shadows): decision 4's "no
+sun shadows" is relaxed for one UO+ flag, off by default. The objection was
+to screen-space marches over a height buffer, which fought the shard and the
+art. This shadow lives in the field instead: the sky ambient of an outdoor
+sample is reduced where a wall, a roof eave, a tree or a mobile stands
+between it and a sun or moon placed by the same hour as the time-of-day
+light. Lamps are added after it and are never shadowed by it. Nothing is
+shaded per pixel on the art, so the baked shading still reads as the light
+direction on the sprites themselves; the ground shadow is the addition. The
+static mask is cached on the blockers and the sun's quantized angle, and the
+mobiles' shadows are per frame. A dungeon-dark level has no sky shadow.
+Section 45 has the numbers.
+
 ## Validation
 
 UO+ spell-light amendment (2026-10-20, owner-authorized night-push brief):

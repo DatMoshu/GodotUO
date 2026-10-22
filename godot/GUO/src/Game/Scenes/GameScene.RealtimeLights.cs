@@ -164,6 +164,11 @@ namespace GUO.Game.Scenes
                 _rtSourceCount += temporary;
                 var sources = new ReadOnlySpan<RealtimeLightField.Source>(_rtSources, 0, _rtSourceCount);
                 float level = RealtimeAmbientLevel();
+                // UO+ sun and moon shadows: the sky light's direction from the same hour.
+                var uoPlus = ProfileManager.CurrentProfile;
+                _rtField.SetSun(UoPlusOptions.Enabled(uoPlus, UoPlusFeature.SunShadows)
+                    ? RealtimeTimeOfDay.SkyShadow(RealtimeHour(), level, UoPlusOptions.Density(uoPlus, UoPlusFeature.SunShadows) / 100f)
+                    : default);
                 if (RealtimeTimeOfDayStrength(out float hour, out float strength))
                 {
                     _rtField.Compute(level, RealtimeTimeOfDay.Ambient(level, hour, strength),
@@ -195,7 +200,8 @@ namespace GUO.Game.Scenes
                     string line = $"[realtime-lights] grid={_rtField.Width}x{_rtField.Height} lights={_rtSourceCount} " +
                               $"computed={_rtField.LastComputed} cached={_rtField.CacheCount} " +
                               $"quads={_rtTarget.LastQuads} sprites={_rtTarget.LastSprites} roofs={_rtRoofs} above={_rtAbove} darkQuads={_rtDarkQuads} faces={_rtWallFaces} fine={_rtField.FineScale} ambient={_rtField.Ambient}" +
-                              (RealtimeTimeOfDayStrength(out float todHour, out float todStrength) ? $" hour={todHour:0.00} tod={todStrength:0.00}" : "");
+                              (RealtimeTimeOfDayStrength(out float todHour, out float todStrength) ? $" hour={todHour:0.00} tod={todStrength:0.00}" : "") +
+                              (UoPlusOptions.Enabled(ProfileManager.CurrentProfile, UoPlusFeature.SunShadows) ? $" sunShadowComputed={_rtField.LastShadowComputed}" : "");
                     Log.Trace(line);
                     // The editor's World tab has no client log file: its console gets the line.
                     if (Engine.IsEditorHint()) GD.Print(line);
@@ -283,9 +289,10 @@ namespace GUO.Game.Scenes
             }
 
             // A fixed time-of-day hour stands in for the shard's level, unless Light level is set.
-            else if (RealtimeTimeOfDayStrength(out float hour, out _) && profile.RealtimeLightsHour >= 0)
+            else if (profile != null && profile.RealtimeLightsHour >= 0
+                && (UoPlusOptions.Enabled(profile, UoPlusFeature.TimeOfDay) || UoPlusOptions.Enabled(profile, UoPlusFeature.SunShadows)))
             {
-                overall = RealtimeTimeOfDay.LevelForHour(hour);
+                overall = RealtimeTimeOfDay.LevelForHour(RealtimeHour());
             }
 
             // IsometricLight.Recalculate: 0 is full light, 30 the darkest, with a remainder.
@@ -304,10 +311,17 @@ namespace GUO.Game.Scenes
             var profile = ProfileManager.CurrentProfile;
             if (!UoPlusOptions.Enabled(profile, UoPlusFeature.TimeOfDay)) return false;
             strength = UoPlusOptions.Density(profile, UoPlusFeature.TimeOfDay) / 100f;
-            hour = profile.RealtimeLightsHour >= 0
+            hour = RealtimeHour();
+            return true;
+        }
+
+        /// <summary>The hour the UO+ sky features follow: the profile's fixed hour, or the shard's clock.</summary>
+        private float RealtimeHour()
+        {
+            var profile = ProfileManager.CurrentProfile;
+            return profile != null && profile.RealtimeLightsHour >= 0
                 ? Math.Min(profile.RealtimeLightsHour, 23) + 0.5f
                 : RealtimeTimeOfDay.ShardHour(DateTime.UtcNow, _world.Map?.Index ?? 0, _world.Player?.X ?? 0);
-            return true;
         }
 
         /// <summary>Ground, blockers and roofs from the visible chunks (plus a margin).</summary>
@@ -347,6 +361,7 @@ namespace GUO.Game.Scenes
         private void FillRealtimeChunk(Chunk chunk)
         {
             ref var statics = ref Client.Game.UO.FileManager.TileData.StaticData;
+            bool shadows = UoPlusOptions.Enabled(ProfileManager.CurrentProfile, UoPlusFeature.SunShadows);
             for (int y = 0; y < 8; y++)
             {
                 for (int x = 0; x < 8; x++)
@@ -359,6 +374,11 @@ namespace GUO.Game.Scenes
                         {
                             case Land land:
                                 groundZ = land.AverageZ;
+                                break;
+                            case Mobile mobile when shadows:
+                                // Its sky shadow follows the sprite between tiles, as its light does.
+                                _rtField.AddMobileCaster(mobile.X + 0.5f + (mobile.Offset.X + mobile.Offset.Y) / 44f,
+                                    mobile.Y + 0.5f + (mobile.Offset.Y - mobile.Offset.X) / 44f, mobile.Z);
                                 break;
                             case Static or Multi:
                             {
@@ -374,6 +394,11 @@ namespace GUO.Game.Scenes
                                     // An upper storey's floor (or a flat rooftop): covers
                                     // and shades what is under it, as a roof does.
                                     _rtField.SetRoof(tx, ty, obj.Z, roofFlag: false);
+                                }
+                                // A tree's canopy or a tall static that lets lamp light by still shades the sky.
+                                if (shadows && (data.IsFoliage || data.Height >= RealtimeLightField.BlockerHeight))
+                                {
+                                    _rtField.AddCaster(tx, ty, obj.Z + data.Height);
                                 }
                                 if (RealtimeLightField.Blocks(data.IsWall, data.IsImpassable, data.IsDoor, data.IsWindow, data.Height))
                                 {
