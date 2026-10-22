@@ -452,8 +452,13 @@ internal static class PerfProbe
         // pixels where the first test frame differs; "strict" counts those where
         // both test frames agree with each other and differ from plain -- a
         // repeatable rendering difference, which flicker or motion almost never is.
+        // PORT DEVIATION (GUO): --gpu-world's frame counters over the test
+        // frames, so a scene that fell back to the canvas is told apart from
+        // one the pass drew (GpuWorld.FellBack logs the reason once).
+        long gpuDrawnBefore = GpuWorld.FramesDrawn, gpuFallbackBefore = GpuWorld.FramesFallback;
         Image a = await Frame(false), b = await Frame(true), c = await Frame(false), b2 = await Frame(true), c2 = await Frame(false);
         ParityToggle(was);
+        long gpuDrawn = GpuWorld.FramesDrawn - gpuDrawnBefore, gpuFallback = GpuWorld.FramesFallback - gpuFallbackBefore;
         byte[] da = a.GetData(), db = b.GetData(), dc = c.GetData(), db2 = b2.GetData(), dc2 = c2.GetData();
         int bpp = da.Length / (a.GetWidth() * a.GetHeight());
         long stable = 0, violations = 0, strict = 0;
@@ -510,11 +515,14 @@ internal static class PerfProbe
             mask.SavePng(stem + "_violations.png");
         }
 
-        GD.Print($"[GUO] perf probe: parity {name}: {violations} of {stable} stable pixels differ, {strict} repeatably (max channel delta {strictMaxDelta})");
+        GD.Print($"[GUO] perf probe: parity {name}: {violations} of {stable} stable pixels differ, {strict} repeatably (max channel delta {strictMaxDelta})"
+            + (GpuWorld.Enabled ? $"; gpu-world frames drawn {gpuDrawn}, fallback {gpuFallback}{(gpuFallback > 0 ? " (" + GpuWorld.LastFallback + ")" : "")}" : ""));
         return new Dictionary<string, object>
         {
             ["parity_stable_px"] = stable, ["parity_violations"] = violations, ["parity_strict"] = strict,
             ["parity_strict_max_delta"] = strictMaxDelta,
+            ["gpu_frames_drawn"] = gpuDrawn, ["gpu_frames_fallback"] = gpuFallback,
+            ["gpu_last_fallback"] = gpuFallback > 0 ? GpuWorld.LastFallback ?? "" : "",
         };
     }
 
@@ -587,11 +595,12 @@ internal static class PerfProbe
         if (results.Any(r => r.ContainsKey("parity_violations")))
         {
             md.AppendLine();
-            md.AppendLine("| Scene | parity: stable pixels | test differs | repeatably (strict) | strict max delta |");
-            md.AppendLine("|---|---:|---:|---:|---:|");
+            md.AppendLine("| Scene | parity: stable pixels | test differs | repeatably (strict) | strict max delta | gpu-world frames drawn | fallback | last fallback |");
+            md.AppendLine("|---|---:|---:|---:|---:|---:|---:|---|");
             foreach (var r in results.Where(r => r.ContainsKey("parity_violations")))
             {
-                md.AppendLine($"| {r["scene"]} | {r["parity_stable_px"]} | {r["parity_violations"]} | {r["parity_strict"]} | {r.GetValueOrDefault("parity_strict_max_delta", "")} |");
+                md.AppendLine($"| {r["scene"]} | {r["parity_stable_px"]} | {r["parity_violations"]} | {r["parity_strict"]} | {r.GetValueOrDefault("parity_strict_max_delta", "")}"
+                    + $" | {r.GetValueOrDefault("gpu_frames_drawn", "")} | {r.GetValueOrDefault("gpu_frames_fallback", "")} | {r.GetValueOrDefault("gpu_last_fallback", "")} |");
             }
         }
 

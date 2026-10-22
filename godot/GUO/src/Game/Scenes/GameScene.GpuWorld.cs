@@ -36,6 +36,7 @@ namespace GUO.Game.Scenes
                 return;
             }
 
+            GpuWorld.DropIfDead();
             RenderTarget2D target = renderTargets.WorldRenderTarget;
             _gpuView = matrix;
             _gpuSize = new Vector2I(target.Width, target.Height);

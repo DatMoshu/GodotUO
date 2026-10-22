@@ -73,6 +73,15 @@ namespace GUO.Renderer
             Generation++;
         }
 
+        /// <summary>The pass went with the scene's world target: forget it, so chunks built for it rebuild.</summary>
+        public static void DropIfDead()
+        {
+            if (Pass != null && !Pass.Alive)
+            {
+                Destroy();
+            }
+        }
+
         /// <summary>A frame that could not go through the pass; said once per reason.</summary>
         public static void FellBack(string why)
         {

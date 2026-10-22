@@ -3262,7 +3262,13 @@ Since PERF-03 each scene also carries `render_frame_ms`, `ui_ms`,
 `statics`, `mobiles`, `items`, `cover_land`, `multis`, `other`,
 `transparent`; per frame) and `drawn_<stage>` (objects drawn per frame, the
 sorted-list stages only, absent when none). Scenes `cave-roof` and
-`open-sea` were added after `dungeon`.
+`open-sea` were added after `dungeon`. With `--perf-parity`, each standing
+scene also carries `parity_stable_px`, `parity_violations`,
+`parity_strict`, `parity_strict_max_delta` (pixels: stable across the plain
+frames, differing in the first test frame, differing repeatably, and the
+largest channel delta of those), and since GPU-02 `gpu_frames_drawn`,
+`gpu_frames_fallback` (the `--gpu-world` pass's frame counters over the
+test frames) and `gpu_last_fallback` (the reason, or empty).
 Since PERF-01, `system` is `{gpu, gpu_vendor, gpu_api, driver,
 driver_version, rendering_method, cpu, cpu_threads, ram_gib, os, os_version,
 screen "WxH", refresh_hz, engine}`, from Godot's `RenderingServer`, `OS`

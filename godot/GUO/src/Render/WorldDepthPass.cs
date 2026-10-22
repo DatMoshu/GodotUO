@@ -891,7 +891,10 @@ namespace GUO.Renderer
 
             public void Dispose()
             {
-                _instance.QueueFree();
+                if (GodotObject.IsInstanceValid(_instance))
+                {
+                    _instance.QueueFree();
+                }
             }
         }
 
@@ -1039,7 +1042,13 @@ namespace GUO.Renderer
             _shown.Clear();
             _pageMaterials.Clear();
             _materials.Clear();
-            _viewport.QueueFree();
+            if (GodotObject.IsInstanceValid(_viewport))
+            {
+                _viewport.QueueFree();
+            }
         }
+
+        /// <summary>False once the viewport was freed with its parent (the scene unloaded): the pass is gone.</summary>
+        public bool Alive => GodotObject.IsInstanceValid(_viewport);
     }
 }
