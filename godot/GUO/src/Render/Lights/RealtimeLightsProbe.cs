@@ -473,6 +473,29 @@ public partial class RealtimeLightsProbe : Node
         field.Compute(0.0625f, new[] { new RealtimeLightField.Source(16, 16, 0, 6, Colors.White, beam: new RealtimeLightField.Cone(90f, 60f)) });
         Require(field.LastComputed == 0, "A sweeping beam keeps the cached reach");
         Require(field.Cell(16, 19).R > night.R + 0.2f && Math.Abs(field.Cell(19, 16).R - night.R) < 0.02f, "The beam follows its direction");
+        // A light the field's edge clips is dimmer at the edge than the same light in
+        // a larger field, with the loop before the cut too: reach treats tiles
+        // outside the field as blocked and its soft edge blurs them in. (An earlier
+        // check assumed equality; this records why that oracle was wrong.)
+        {
+            var edgeLight = new[] { new RealtimeLightField.Source(1, 2, 0, 4, Colors.White, energy: 2.2f) };
+            var smallRef = new RealtimeLightField { ReferenceAccumulate = true };
+            smallRef.Begin(0, 0, 24, 24);
+            smallRef.Compute(0.0625f, edgeLight);
+            var largeRef = new RealtimeLightField { ReferenceAccumulate = true };
+            largeRef.Begin(-12, -12, 48, 48);
+            largeRef.Compute(0.0625f, edgeLight);
+            bool differs = false;
+            for (int y = 0; y < 8 && !differs; y++)
+            {
+                for (int x = 0; x < 8 && !differs; x++)
+                {
+                    differs = smallRef.Cell(x, y) != largeRef.Cell(x, y);
+                }
+            }
+            Require(differs, "Before the cut too, a light at the field's edge differs from the same light in a larger field");
+        }
+
         // Nothing beyond a light's radius is lit, for each curve and a beam.
         foreach ((LightCurve curve, RealtimeLightField.Cone cone) in new[]
         {
@@ -523,6 +546,7 @@ public partial class RealtimeLightsProbe : Node
             }
         }
         Require(identical, "The field and radius cut gives the same samples as the loop before it");
+        GD.Print($"[Realtime lights] cut == reference loop: {parity.Length} lights, 576 cells, 9216 samples bit-identical");
 
         var sweep = new LightSpot(0f, 40f, 45f, 4f);
         var c0 = sweep.ConeAt(0.0); var c1 = sweep.ConeAt(1.0);
