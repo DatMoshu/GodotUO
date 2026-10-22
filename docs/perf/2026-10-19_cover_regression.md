@@ -97,9 +97,15 @@ fresh profile, and found three world pixels:
 | (1334, 264) | 3d 42 0f | 3d 48 1a |
 
 What that evidence establishes: three world pixels differ between the two
-paths in that pair, each isolated (no differing neighbour), each on a
-stretched riverbank tile, each taking a colour that occurs next to it in
-the same tile. It does not establish the cause.
+paths in that pair, each isolated (the 3x3 ring around each is identical
+in both stills). A neighbourhood check of the same two stills (run
+`20261022_guo-fable-perftour-20261022_live-plan`,
+`guo_PERF-V7_river-pixel-neighbourhood_data_20261022.json`) finds the other
+path's colour within 2 px of the pixel, in the same still, for (802, 16)
+and (575, 233), and not for (1334, 264). That the pixels sit on stretched
+riverbank tiles is read from their position on the river in the stills, not
+from the tile data; it is a reading, not a source-linked fact. None of this
+establishes the cause.
 
 Hypothesis, not yet reproduced under control: plain GUO samples each
 tile's own texture, while the merged cover path draws a run as one mesh
