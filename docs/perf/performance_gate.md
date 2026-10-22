@@ -49,6 +49,12 @@ effects and a wandering NPC or a dropped loot pile cannot move a count
 between two identical runs; and `--perf-scene` for its five stationary and
 walk scenes, so the probe spends no time on scenes the gate does not bind
 on. A probe report without `static_world: true` cannot record or compare.
+`--perf-static-world` is a probe-only flag: the client refuses to start with
+it and without `--perf-probe` (exit 2), and the switch is live only while
+the probe runs, so ordinary play can never see a thinned world. The gate's
+map-only fixture says nothing about mobiles, items, effects or play: the
+perf probe without the flag and the benchmark tour (`launchers/dev/perf_tour`)
+keep measuring the full world, and remain the evidence for those.
 
 `--fixture` is your label for a stable shard world and data fixture. Change
 it when the world or content changes. The tool does not freeze NPCs, verify

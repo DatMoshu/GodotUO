@@ -71,8 +71,13 @@ internal static class PerfProbe
     /// loot at the mouth of Despise, moved the dungeon's batcher items between
     /// identical runs (158 to 160) and failed a stock gate (PERF-V6). Frame
     /// times under this flag are lower than play; they are advisory there.
+    ///
+    /// Set by <see cref="Run"/> for the probe's lifetime and cleared when it
+    /// ends, never by argument parsing: the flag is refused without
+    /// <c>--perf-probe</c> (<see cref="PerfProbeFlags.ProbeOnlyError"/>), so
+    /// ordinary play can never run with a thinned world.
     /// </summary>
-    public static bool StaticWorld;
+    public static bool StaticWorld { get; private set; }
 
     private const int Settle = 180;
     private static string _outDir, _label;
@@ -144,7 +149,21 @@ internal static class PerfProbe
         }
     }
 
-    public static async System.Threading.Tasks.Task Run(Node host, string outDir, string label, float zoom = 0, bool parity = false)
+    public static async System.Threading.Tasks.Task Run(Node host, string outDir, string label, float zoom = 0, bool parity = false,
+        bool staticWorld = false)
+    {
+        StaticWorld = staticWorld;
+        try
+        {
+            await RunProbe(host, outDir, label, zoom, parity);
+        }
+        finally
+        {
+            StaticWorld = false;
+        }
+    }
+
+    private static async System.Threading.Tasks.Task RunProbe(Node host, string outDir, string label, float zoom, bool parity)
     {
         _outDir = string.IsNullOrWhiteSpace(outDir) ? ProjectSettings.GlobalizePath("user://perf") : outDir;
         _label = label;

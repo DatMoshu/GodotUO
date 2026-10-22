@@ -6,5 +6,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../godot/GUO/src/Client/ArgTrace.cs" Link="ArgTrace.cs" />
+    <Compile Include="../../godot/GUO/src/Bootstrap/PerfProbeFlags.cs" Link="PerfProbeFlags.cs" />
   </ItemGroup>
 </Project>
