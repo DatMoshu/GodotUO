@@ -48,8 +48,12 @@ namespace GUO.Renderer.Lights
         public readonly float Energy;         // 0 = keep
         public readonly LightCurve? Curve;
         public readonly int CustomCurve;      // index into the file's custom curves, when Curve is Custom
+        public readonly float? Flicker;       // 0..0.9 of the energy a flame's flicker takes away; null = keep
+        public readonly float? FlickerRate;   // flicker speed, 1 = a torch's; null = keep
+        public readonly LightSpot? Spot;      // a beam instead of all round; null = keep
 
-        public LightProfile(int radius, float radiusScale, Color? color, float energy, LightCurve? curve, int customCurve)
+        public LightProfile(int radius, float radiusScale, Color? color, float energy, LightCurve? curve, int customCurve,
+            float? flicker = null, float? flickerRate = null, LightSpot? spot = null)
         {
             Radius = radius;
             RadiusScale = radiusScale;
@@ -57,6 +61,9 @@ namespace GUO.Renderer.Lights
             Energy = energy;
             Curve = curve;
             CustomCurve = customCurve;
+            Flicker = flicker;
+            FlickerRate = flickerRate;
+            Spot = spot;
         }
 
         /// <summary>This entry laid over <paramref name="under"/>: set fields win.</summary>
@@ -66,7 +73,50 @@ namespace GUO.Renderer.Lights
             Color ?? under.Color,
             Energy > 0 ? Energy : under.Energy,
             Curve ?? under.Curve,
-            Curve.HasValue ? CustomCurve : under.CustomCurve);
+            Curve.HasValue ? CustomCurve : under.CustomCurve,
+            Flicker ?? under.Flicker,
+            FlickerRate ?? under.FlickerRate,
+            Spot ?? under.Spot);
+
+        /// <summary>
+        /// The energy scale of this light's flicker at <paramref name="seconds"/>:
+        /// 1 without flicker; otherwise between 1 - flicker and 1, from two
+        /// unrelated sines whose phase comes from <paramref name="seed"/> (the
+        /// light's tile), so neighbouring flames do not pulse together.
+        /// </summary>
+        public float FlickerAt(double seconds, int seed)
+        {
+            float a = Flicker ?? 0f;
+            if (a <= 0f) return 1f;
+            double rate = FlickerRate ?? 1.0, ph = (uint)seed * 0.6180339887 % 1.0 * Math.Tau;
+            double n = 0.5 + 0.5 * (0.6 * Math.Sin(seconds * 7.3 * rate + ph) + 0.4 * Math.Sin(seconds * 13.1 * rate + ph * 1.7));
+            return 1f - a * (float)n;
+        }
+    }
+
+    /// <summary>
+    /// A spot light's beam in the profile file: where it points (degrees in
+    /// tile space, 0 east, 90 south), its full width, and an optional sweep
+    /// (degrees either side, over a period in seconds).
+    /// </summary>
+    internal readonly struct LightSpot
+    {
+        public readonly float Direction, Width, Sweep, Period;
+
+        public LightSpot(float direction, float width, float sweep = 0f, float period = 4f)
+        {
+            Direction = direction;
+            Width = Math.Clamp(width, 2f, 340f);
+            Sweep = Math.Clamp(sweep, 0f, 180f);
+            Period = Math.Clamp(period, 0.2f, 120f);
+        }
+
+        /// <summary>The beam at <paramref name="seconds"/>: the direction swings by the sweep.</summary>
+        public RealtimeLightField.Cone ConeAt(double seconds)
+        {
+            float dir = Direction + (Sweep > 0f ? Sweep * (float)Math.Sin(seconds * Math.Tau / Period) : 0f);
+            return new RealtimeLightField.Cone(dir, Width);
+        }
     }
 
     /// <summary>
@@ -84,6 +134,31 @@ namespace GUO.Renderer.Lights
         public const int CurveSamples = 33;
 
         private static RealtimeLightProfiles _current;
+
+        /// <summary>
+        /// The curated light presets (section 45). A file entry names one with
+        /// <c>"preset"</c> and lays its own fields over it; the file's
+        /// <c>presets</c> object may redefine these or add more. Nothing uses a
+        /// preset unless an entry names it.
+        /// </summary>
+        public static readonly IReadOnlyDictionary<string, LightProfile> BuiltInPresets = new Dictionary<string, LightProfile>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["candle"] = new(2, 0f, Rgb(0xFFB868), 1.6f, LightCurve.C, -1, 0.18f, 1.3f),
+            ["torch"] = new(4, 0f, Rgb(0xFF9440), 2.4f, LightCurve.C, -1, 0.22f, 1f),
+            ["brazier"] = new(5, 0f, Rgb(0xFF7A30), 2.8f, LightCurve.C, -1, 0.28f, 0.8f),
+            ["lantern"] = new(4, 0f, Rgb(0xFFD08A), 2.0f, LightCurve.D, -1, 0.05f, 1f),
+            ["oil-lamp"] = new(3, 0f, Rgb(0xFFC070), 1.8f, LightCurve.D, -1, 0.08f, 0.7f),
+            ["forge"] = new(5, 0f, Rgb(0xFF5A1E), 3.0f, LightCurve.C, -1, 0.35f, 0.6f),
+            ["magic-crystal"] = new(4, 0f, Rgb(0x7FB8FF), 2.2f, LightCurve.E, -1, 0.06f, 0.3f),
+            ["will-o-wisp"] = new(3, 0f, Rgb(0xB8FFD8), 1.8f, LightCurve.E, -1, 0.4f, 0.25f),
+        };
+
+        private static Color Rgb(uint rgb) => new(((rgb >> 16) & 0xFF) / 255f, ((rgb >> 8) & 0xFF) / 255f, (rgb & 0xFF) / 255f);
+
+        private readonly Dictionary<string, LightProfile> _presets = new(BuiltInPresets, StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>A preset by name (the file's, else built-in).</summary>
+        public bool TryPreset(string name, out LightProfile preset) => _presets.TryGetValue(name ?? "", out preset);
 
         private readonly Dictionary<ushort, LightProfile> _items = new();
         private readonly Dictionary<byte, LightProfile> _lights = new();
@@ -203,9 +278,17 @@ namespace GUO.Renderer.Lights
                 }
             }
 
+            if (root.TryGetProperty("presets", out JsonElement presets))
+            {
+                foreach (JsonProperty pr in presets.EnumerateObject())
+                {
+                    p._presets[pr.Name] = p.ParseEntry(pr.Value, curveNames, pr.Name);
+                }
+            }
+
             if (root.TryGetProperty("default", out JsonElement def))
             {
-                p._default = ParseEntry(def, curveNames, "default");
+                p._default = p.ParseEntry(def, curveNames, "default");
             }
 
             if (root.TryGetProperty("lights", out JsonElement lights))
@@ -214,7 +297,7 @@ namespace GUO.Renderer.Lights
                 {
                     int id = ParseId(l.Name);
                     if (id < 0 || id > 255) throw new FormatException($"light id {l.Name} is not 0..255");
-                    p._lights[(byte)id] = ParseEntry(l.Value, curveNames, l.Name);
+                    p._lights[(byte)id] = p.ParseEntry(l.Value, curveNames, l.Name);
                 }
             }
 
@@ -224,7 +307,7 @@ namespace GUO.Renderer.Lights
                 {
                     int id = ParseId(it.Name);
                     if (id < 0 || id > 0xFFFF) throw new FormatException($"item graphic {it.Name} is not 0..0xFFFF");
-                    p._items[(ushort)id] = ParseEntry(it.Value, curveNames, it.Name);
+                    p._items[(ushort)id] = p.ParseEntry(it.Value, curveNames, it.Name);
                 }
             }
 
@@ -287,7 +370,7 @@ namespace GUO.Renderer.Lights
             }
         }
 
-        private static LightProfile ParseEntry(JsonElement e, Dictionary<string, int> curveNames, string name)
+        private LightProfile ParseEntry(JsonElement e, Dictionary<string, int> curveNames, string name)
         {
             if (e.ValueKind != JsonValueKind.Object) throw new FormatException($"{name}: entry is not an object");
 
@@ -296,6 +379,9 @@ namespace GUO.Renderer.Lights
             Color? color = null;
             LightCurve? curve = null;
             int custom = -1;
+            float? flicker = null, flickerRate = null;
+            LightSpot? spot = null;
+            LightProfile? basePreset = null;
 
             foreach (JsonProperty f in e.EnumerateObject())
             {
@@ -330,6 +416,25 @@ namespace GUO.Renderer.Lights
                         }
                         break;
                     }
+                    case "flicker":
+                        flicker = Math.Clamp(f.Value.GetSingle(), 0f, 0.9f);
+                        break;
+                    case "flickerRate":
+                        flickerRate = Math.Clamp(f.Value.GetSingle(), 0.05f, 4f);
+                        break;
+                    case "spot":
+                        spot = ParseSpot(f.Value, name);
+                        break;
+                    case "preset":
+                    {
+                        string preset = f.Value.GetString();
+                        if (!_presets.TryGetValue(preset ?? "", out LightProfile pp))
+                        {
+                            throw new FormatException($"{name}: preset \"{preset}\" is not defined");
+                        }
+                        basePreset = pp;
+                        break;
+                    }
                     case "note":
                         break;
                     default:
@@ -337,7 +442,29 @@ namespace GUO.Renderer.Lights
                 }
             }
 
-            return new LightProfile(radius, scale, color, energy, curve, custom);
+            var entry = new LightProfile(radius, scale, color, energy, curve, custom, flicker, flickerRate, spot);
+            return basePreset.HasValue ? entry.Over(basePreset.Value) : entry;
+        }
+
+        private static LightSpot ParseSpot(JsonElement e, string name)
+        {
+            if (e.ValueKind != JsonValueKind.Object) throw new FormatException($"{name}: spot is not an object");
+            float direction = 0f, width = 0f, sweep = 0f, period = 4f;
+            bool hasDirection = false, hasWidth = false;
+            foreach (JsonProperty f in e.EnumerateObject())
+            {
+                switch (f.Name)
+                {
+                    case "direction": direction = f.Value.GetSingle(); hasDirection = true; break;
+                    case "width": width = f.Value.GetSingle(); hasWidth = true; break;
+                    case "sweep": sweep = f.Value.GetSingle(); break;
+                    case "period": period = f.Value.GetSingle(); break;
+                    default: throw new FormatException($"{name}: spot has an unknown field \"{f.Name}\"");
+                }
+            }
+
+            if (!hasDirection || !hasWidth) throw new FormatException($"{name}: spot wants direction and width");
+            return new LightSpot(direction, width, sweep, period);
         }
 
         private static float[] ResampleCurve(JsonElement e, string name)

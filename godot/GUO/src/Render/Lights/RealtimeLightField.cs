@@ -47,6 +47,43 @@ namespace GUO.Renderer.Lights
 
         private const int CacheLimit = 512;
 
+        /// <summary>
+        /// A spot light's beam: the unit direction it points in tile space and
+        /// its half width, with a soft edge beyond it. Default is no cone (omni).
+        /// </summary>
+        public readonly struct Cone
+        {
+            public readonly float DirX, DirY, CosInner, CosOuter;
+
+            /// <summary><paramref name="degrees"/> in tile space (0 east, +X; 90 south, +Y); width is the full angle.</summary>
+            public Cone(float degrees, float widthDegrees, float softDegrees = 12f)
+            {
+                float a = degrees * (MathF.PI / 180f);
+                DirX = MathF.Cos(a);
+                DirY = MathF.Sin(a);
+                float half = Math.Clamp(widthDegrees, 2f, 340f) * 0.5f * (MathF.PI / 180f);
+                float soft = Math.Clamp(softDegrees, 0.5f, 90f) * (MathF.PI / 180f);
+                CosInner = MathF.Cos(half);
+                CosOuter = MathF.Cos(Math.Min(MathF.PI, half + soft));
+            }
+
+            public bool IsSpot => DirX != 0f || DirY != 0f;
+
+            /// <summary>The beam's share at offset (fx, fy) from the source, distance d: 1 inside, a smoothstep edge, 0 outside.</summary>
+            public float At(float fx, float fy, float d)
+            {
+                if (d < SpotCore) return 1f;
+                float c = (fx * DirX + fy * DirY) / d;
+                if (c >= CosInner) return 1f;
+                if (c <= CosOuter) return 0f;
+                float t = (c - CosOuter) / (CosInner - CosOuter);
+                return t * t * (3f - 2f * t);
+            }
+        }
+
+        /// <summary>Within this distance of a spot's source (tiles), it lights all round: the lamp itself glows.</summary>
+        public const float SpotCore = 0.35f;
+
         public readonly struct Source
         {
             public readonly int X, Y, Z;
@@ -56,10 +93,13 @@ namespace GUO.Renderer.Lights
             public readonly LightCurve Curve;
             public readonly float Energy;
             public readonly float[] CustomCurve;
+            public readonly Cone Beam;
 
             public Source(int x, int y, int z, int radius, Color color, float offsetX = 0f, float offsetY = 0f,
-                LightCurve curve = LightCurve.B, float energy = RealtimeLightField.Energy, float[] customCurve = null)
+                LightCurve curve = LightCurve.B, float energy = RealtimeLightField.Energy, float[] customCurve = null,
+                Cone beam = default)
             {
+                Beam = beam;
                 X = x;
                 Y = y;
                 Z = z;
@@ -367,7 +407,8 @@ namespace GUO.Renderer.Lights
                 }
 
                 reach.Frame = _frame;
-                Accumulate(in s, reach.Map);
+                if (ReferenceAccumulate) AccumulateReference(in s, reach.Map);
+                else Accumulate(in s, reach.Map);
             }
 
             // The tile field is the mean of its samples (the dump, Cell, Corner).
@@ -649,6 +690,64 @@ namespace GUO.Renderer.Lights
             (float lx, float ly) = LightOrigin(s.X, s.Y);
             lx += s.OffsetX;
             ly += s.OffsetY;
+            bool spot = s.Beam.IsSpot;
+            // Only the samples inside the field, and (for a sized light) inside its
+            // radius: every curve is 0 at d >= radius, so the skipped samples added
+            // nothing. sqrt is monotonic and radius^2 is exact, so the cut is too.
+            int j0 = Math.Max(0, -gy0), j1 = Math.Min(side, fh - gy0);
+            int i0 = Math.Max(0, -gx0), i1 = Math.Min(side, fw - gx0);
+            float reach2 = s.Radius > 0 ? (float)s.Radius * s.Radius : float.PositiveInfinity;
+            for (int j = j0; j < j1; j++)
+            {
+                int gy = gy0 + j;
+                float py = s.Y - r + (j + 0.5f) / f;
+                float fy = py - ly;
+                for (int i = i0; i < i1; i++)
+                {
+                    int gx = gx0 + i;
+                    float v = map[j * side + i];
+                    if (v <= 0f) continue;
+                    float px = s.X - r + (i + 0.5f) / f;
+                    float fx = px - lx;
+                    float d2 = fx * fx + fy * fy;
+                    if (d2 >= reach2) continue;
+                    float d = MathF.Sqrt(d2);
+                    v *= Falloff(d, s.Radius, s.Curve, s.CustomCurve);
+                    // A spot's beam shapes the light per frame; the cached reach
+                    // (walls) is the same, so a sweeping beam never recomputes it.
+                    if (spot) v *= s.Beam.At(fx, fy, d);
+                    if (v <= 0f) continue;
+                    int cell = gy / f * _width + gx / f;
+                    if (s.Z > _lightTop[cell]) _lightTop[cell] = (short)s.Z;
+                    int o = (gy * fw + gx) * 3;
+                    v *= s.Energy * _lightScale;
+                    _fine[o] += s.Color.R * v;
+                    _fine[o + 1] += s.Color.G * v;
+                    _fine[o + 2] += s.Color.B * v;
+                }
+            }
+        }
+
+        /// <summary>
+        /// The probe's reference: the accumulation loop as it was before the field
+        /// and radius cut, kept so the probe can prove both give the same samples.
+        /// Init-only and false by default: only the probe constructs a field with it;
+        /// the game's field (GameScene) never sets it.
+        /// </summary>
+        internal bool ReferenceAccumulate { get; init; }
+
+        private void AccumulateReference(in Source s, float[] map)
+        {
+            int f = _fineScale;
+            int r = s.Radius + 1;
+            int side = (r * 2 + 1) * f;
+            int fw = _width * f, fh = _height * f;
+            // The sample grid's origin, in samples, relative to the field.
+            int gx0 = (s.X - r - _originX) * f, gy0 = (s.Y - r - _originY) * f;
+            (float lx, float ly) = LightOrigin(s.X, s.Y);
+            lx += s.OffsetX;
+            ly += s.OffsetY;
+            bool spot = s.Beam.IsSpot;
             for (int j = 0; j < side; j++)
             {
                 int gy = gy0 + j;
@@ -662,7 +761,11 @@ namespace GUO.Renderer.Lights
                     if (v <= 0f) continue;
                     float px = s.X - r + (i + 0.5f) / f;
                     float fx = px - lx, fy = py - ly;
-                    v *= Falloff(MathF.Sqrt(fx * fx + fy * fy), s.Radius, s.Curve, s.CustomCurve);
+                    float d = MathF.Sqrt(fx * fx + fy * fy);
+                    v *= Falloff(d, s.Radius, s.Curve, s.CustomCurve);
+                    // A spot's beam shapes the light per frame; the cached reach
+                    // (walls) is the same, so a sweeping beam never recomputes it.
+                    if (spot) v *= s.Beam.At(fx, fy, d);
                     if (v <= 0f) continue;
                     int cell = gy / f * _width + gx / f;
                     if (s.Z > _lightTop[cell]) _lightTop[cell] = (short)s.Z;

@@ -271,6 +271,7 @@ public partial class RealtimeLightsProbe : Node
             CheckWalls(night);
             CheckProfiles();
             CheckEffects(night);
+            CheckLightTypes(night);
             CheckDebug();
 
             GD.Print("[Realtime lights] PASS");
@@ -456,6 +457,152 @@ public partial class RealtimeLightsProbe : Node
     }
 
     /// <summary>The budget record, the dump and the pixel-to-tile readout.</summary>
+    /// <summary>Spot, flash, presets and flicker (ADR-0039 light-types addendum).</summary>
+    private static void CheckLightTypes(Color night)
+    {
+        // A spot pointing east, 60 degrees wide: ahead lit, behind and beside dark, its own tile lit.
+        var field = new RealtimeLightField();
+        var east = new RealtimeLightField.Cone(0f, 60f);
+        field.Begin(0, 0, 32, 32);
+        field.Compute(0.0625f, new[] { new RealtimeLightField.Source(16, 16, 0, 6, Colors.White, beam: east) });
+        Require(field.Cell(19, 16).R > night.R + 0.2f, "A spot lights ahead of it");
+        Require(Math.Abs(field.Cell(13, 16).R - night.R) < 0.02f && Math.Abs(field.Cell(16, 19).R - night.R) < 0.02f, "Not behind it nor beside it");
+        Require(field.Cell(16, 16).R > night.R + 0.2f, "A spot's own lamp glows all round");
+        // Swing the beam south: the same reach (no recompute), the light moves.
+        field.Begin(0, 0, 32, 32);
+        field.Compute(0.0625f, new[] { new RealtimeLightField.Source(16, 16, 0, 6, Colors.White, beam: new RealtimeLightField.Cone(90f, 60f)) });
+        Require(field.LastComputed == 0, "A sweeping beam keeps the cached reach");
+        Require(field.Cell(16, 19).R > night.R + 0.2f && Math.Abs(field.Cell(19, 16).R - night.R) < 0.02f, "The beam follows its direction");
+        // A light the field's edge clips is dimmer at the edge than the same light in
+        // a larger field, with the loop before the cut too: reach treats tiles
+        // outside the field as blocked and its soft edge blurs them in. (An earlier
+        // check assumed equality; this records why that oracle was wrong.)
+        {
+            var edgeLight = new[] { new RealtimeLightField.Source(1, 2, 0, 4, Colors.White, energy: 2.2f) };
+            var smallRef = new RealtimeLightField { ReferenceAccumulate = true };
+            smallRef.Begin(0, 0, 24, 24);
+            smallRef.Compute(0.0625f, edgeLight);
+            var largeRef = new RealtimeLightField { ReferenceAccumulate = true };
+            largeRef.Begin(-12, -12, 48, 48);
+            largeRef.Compute(0.0625f, edgeLight);
+            bool differs = false;
+            for (int y = 0; y < 8 && !differs; y++)
+            {
+                for (int x = 0; x < 8 && !differs; x++)
+                {
+                    differs = smallRef.Cell(x, y) != largeRef.Cell(x, y);
+                }
+            }
+            Require(differs, "Before the cut too, a light at the field's edge differs from the same light in a larger field");
+        }
+
+        // Nothing beyond a light's radius is lit, for each curve and a beam.
+        foreach ((LightCurve curve, RealtimeLightField.Cone cone) in new[]
+        {
+            (LightCurve.B, default(RealtimeLightField.Cone)), (LightCurve.C, default), (LightCurve.E, default),
+            (LightCurve.D, new RealtimeLightField.Cone(45f, 70f)),
+        })
+        {
+            var open = new RealtimeLightField();
+            open.Begin(-12, -12, 48, 48);
+            open.Compute(0.0625f, new[] { new RealtimeLightField.Source(1, 2, 0, 4, Colors.White, curve: curve, energy: 2.2f, beam: cone) });
+            Require(Math.Abs(open.Cell(1 + 6, 2).R - night.R) < 1e-5f && Math.Abs(open.Cell(1, 2 - 6).R - night.R) < 1e-5f,
+                $"Nothing beyond the radius is lit ({curve}{(cone.IsSpot ? ", spot" : "")})");
+        }
+
+        // Before/after parity: the cut loop and the reference (the loop before the
+        // cut) give bit-identical cells and samples, for walk offsets, lights on and
+        // past the field's edges, the radius boundary, a custom curve, radius 0
+        // (clamped to 1), the largest radius and a beam, all in one frame.
+        var parity = new[]
+        {
+            new RealtimeLightField.Source(5, 6, 0, 3, Colors.White, 0.37f, -0.61f),
+            new RealtimeLightField.Source(0, 0, 0, 4, new Color(1f, 0.6f, 0.3f), curve: LightCurve.C, energy: 2.4f),
+            new RealtimeLightField.Source(23, 23, 0, 5, Colors.White, -0.5f, 0.5f, LightCurve.E),
+            new RealtimeLightField.Source(-2, 12, 0, 4, Colors.White, curve: LightCurve.D),
+            new RealtimeLightField.Source(12, 26, 0, 4, Colors.White, curve: LightCurve.A),
+            new RealtimeLightField.Source(16, 8, 0, 4, Colors.White, curve: LightCurve.Custom, customCurve: new[] { 1f, 0.8f, 0.3f, 0f }),
+            new RealtimeLightField.Source(9, 17, 0, 0, Colors.White),
+            new RealtimeLightField.Source(12, 12, 0, RealtimeLightField.MaxRadius, new Color(0.5f, 0.7f, 1f), energy: 1.2f),
+            new RealtimeLightField.Source(18, 18, 0, 5, Colors.White, 0.25f, 0.1f, LightCurve.D, beam: new RealtimeLightField.Cone(200f, 50f)),
+        };
+        var cut = new RealtimeLightField();
+        cut.Begin(0, 0, 24, 24);
+        cut.Compute(0.0625f, parity);
+        var reference = new RealtimeLightField { ReferenceAccumulate = true };
+        reference.Begin(0, 0, 24, 24);
+        reference.Compute(0.0625f, parity);
+        bool identical = true;
+        for (int y = 0; y < 24 && identical; y++)
+        {
+            for (int x = 0; x < 24 && identical; x++)
+            {
+                identical = cut.Cell(x, y) == reference.Cell(x, y);
+                for (int k = 0; k < 16 && identical; k++)
+                {
+                    float wx = x + ((k & 3) + 0.5f) / 4f, wy = y + ((k >> 2) + 0.5f) / 4f;
+                    identical = cut.FineAt(wx, wy) == reference.FineAt(wx, wy);
+                }
+            }
+        }
+        Require(identical, "The field and radius cut gives the same samples as the loop before it");
+        GD.Print($"[Realtime lights] cut == reference loop: {parity.Length} lights, 576 cells, 9216 samples bit-identical");
+
+        var sweep = new LightSpot(0f, 40f, 45f, 4f);
+        var c0 = sweep.ConeAt(0.0); var c1 = sweep.ConeAt(1.0);
+        Require(Math.Abs(c0.DirX - 1f) < 0.001f && c1.DirY > 0.69f, "A sweep swings the beam by its angle over its period");
+
+        // A flash: full at once, an exponential fall, gone at its end.
+        RealtimeLightEffects.Clear();
+        const uint t = 50_000;
+        var into = new RealtimeLightField.Source[8];
+        Require(RealtimeLightEffects.AddFlash(t, 4, 4, 0, 5, Colors.White, 400, energy: 4f) > 0, "A flash is added");
+        Require(RealtimeLightEffects.Collect(t, into, 0) == 1 && Math.Abs(into[0].Energy - 4f) < 0.01f, "A flash starts at its peak");
+        RealtimeLightEffects.Collect(t + 200, into, 0);
+        Require(into[0].Energy < 4f * 0.1f && into[0].Energy > 0f, "A flash falls fast");
+        Require(RealtimeLightEffects.Collect(t + 400, into, 0) == 0, "A flash is gone at its end");
+
+        // Presets: the curated eight, a file entry over a preset, a spot in the file, flicker.
+        foreach (string name in new[] { "candle", "torch", "brazier", "lantern", "oil-lamp", "forge", "magic-crystal", "will-o-wisp" })
+        {
+            Require(RealtimeLightProfiles.BuiltInPresets.TryGetValue(name, out LightProfile pr) && pr.Radius > 0 && pr.Color.HasValue, $"Preset {name} is built in");
+        }
+        var profiles = RealtimeLightProfiles.Parse(@"{
+            ""version"": 1,
+            ""presets"": { ""blue-torch"": { ""preset"": ""torch"", ""color"": ""#4060FF"" } },
+            ""items"": {
+                ""0x0A0F"": { ""preset"": ""candle"", ""radius"": 3 },
+                ""0x0A10"": { ""preset"": ""blue-torch"" },
+                ""0x0A11"": { ""preset"": ""lantern"", ""spot"": { ""direction"": 45, ""width"": 50, ""sweep"": 30, ""period"": 6 } }
+            }
+        }");
+        LightProfile candle = profiles.Resolve(0x0A0F, 0);
+        Require(candle.Radius == 3 && candle.Curve == LightCurve.C && candle.Flicker > 0.1f, "An entry lays its fields over its preset");
+        Require(profiles.Resolve(0x0A10, 0).Color.Value.B > 0.9f && profiles.Resolve(0x0A10, 0).Energy > 2f, "A file preset builds on a built-in one");
+        LightProfile beam = profiles.Resolve(0x0A11, 0);
+        Require(beam.Spot.HasValue && Math.Abs(beam.Spot.Value.Width - 50f) < 0.01f && Math.Abs(beam.Spot.Value.Sweep - 30f) < 0.01f, "A spot is read from the file");
+        Require(profiles.Resolve(0x1234, 0).Curve == null && profiles.Resolve(0x1234, 0).Flicker == null && !profiles.Resolve(0x1234, 0).Spot.HasValue, "Untouched items keep the offer");
+        bool rejected = false;
+        try { RealtimeLightProfiles.Parse(@"{ ""items"": { ""1"": { ""preset"": ""no-such"" } } }"); }
+        catch (FormatException) { rejected = true; }
+        Require(rejected, "An unknown preset rejects the file");
+        float lo = 1f, hi = 0f;
+        for (int i = 0; i < 200; i++)
+        {
+            float k = candle.FlickerAt(i * 0.05, 7);
+            lo = Math.Min(lo, k); hi = Math.Max(hi, k);
+        }
+        Require(lo >= 1f - candle.Flicker.Value - 0.001f && hi <= 1.001f && hi - lo > 0.05f, "A flame flickers within its depth");
+        Require(Math.Abs(candle.FlickerAt(1.0, 7) - candle.FlickerAt(1.0, 8)) > 0.001f, "Neighbouring flames do not flicker together");
+        Require(new LightProfile(0, 0f, null, 0f, null, -1).FlickerAt(1.0, 7) == 1f, "No flicker is steady");
+
+        // The effect hook takes a preset by name.
+        Require(RealtimeLightEffects.AddPreset(t, "forge", 2, 2, 0, 1000) > 0, "A preset light is added by name");
+        Require(RealtimeLightEffects.AddPreset(t, "no-such", 2, 2, 0, 1000) == 0, "An unknown preset adds nothing");
+        Require(RealtimeLightEffects.Collect(t + 10, into, 0) == 1 && into[0].Radius == 5 && into[0].Color.R > into[0].Color.B, "The forge preset's radius and tint");
+        RealtimeLightEffects.Clear();
+    }
+
     private static void CheckDebug()
     {
         RealtimeLightsDebug.Configure(false, null);

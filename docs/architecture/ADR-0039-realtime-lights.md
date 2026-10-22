@@ -149,6 +149,27 @@ static mask is cached on the blockers and the sun's quantized angle, and the
 mobiles' shadows are per frame. A dungeon-dark level has no sky shadow.
 Section 45 has the numbers.
 
+Amendment (2026-10-22, LIGHTS-06, light types and presets; owner call): a
+light offer stays a point source on the grid, and the profile file and the
+effect hook gain three shapes of it, all inside the field's per-frame
+accumulation. None changes the cached visibility (walls, roofs).
+
+1. **Spot.** A cone with a direction, a width and an optional sweep. Its own
+   lamp still glows all round within a third of a tile. A sweeping beam reuses
+   the cached reach, so it costs no more than a still one.
+2. **Flash.** Full at once, then an exponential fall over its duration, through
+   the same walls (lightning, an explosion). UO+ spell impacts and lightning
+   now flash instead of fading linearly.
+3. **Presets.** A small curated set (candle, torch, brazier, lantern, oil lamp,
+   forge, magic crystal, will-o-wisp): radius, tint, energy, curve and a flame
+   flicker. A file entry names one and overrides fields; the file may define
+   more.
+
+Presets are data, used only when a profile entry names them, so the
+option's default frame is unchanged. Shipping a profile that maps item
+graphics to presets is Store pack work (section 45's "later work"). Flicker is
+deterministic in time and tile, so clips and captures repeat.
+
 ## Validation
 
 UO+ spell-light amendment (2026-10-20, owner-authorized night-push brief):

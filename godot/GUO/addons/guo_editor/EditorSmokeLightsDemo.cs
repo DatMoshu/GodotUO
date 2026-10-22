@@ -40,6 +40,7 @@ public partial class EditorSmoke
     private int _demoFacet;
     private bool _demoFixed, _demoSpell;
     private (int x, int y, int z)? _demoSpellWall;
+    private (int x, int y, int z)? _demoGallery;
     private ulong _demoStartMs, _demoLastMs;
     private uint _demoClockStart;
     private const int DemoFps = 30;
@@ -56,6 +57,11 @@ public partial class EditorSmoke
         int wall = Array.IndexOf(demo, "spellwall", 1);
         _demoSpellWall = wall < 0 ? null : (int.Parse(demo[wall + 1]), int.Parse(demo[wall + 2]), int.Parse(demo[wall + 3]));
         if (_demoSpellWall.HasValue) _demoFixed = true;
+        // ",gallery,X,Y,Z": every light preset in two rows around X,Y, a sweeping
+        // spot between them and a flash every 1.5 s (ADR-0039 light types). No walkers.
+        int gallery = Array.IndexOf(demo, "gallery", 1);
+        _demoGallery = gallery < 0 ? null : (int.Parse(demo[gallery + 1]), int.Parse(demo[gallery + 2]), int.Parse(demo[gallery + 3]));
+        if (_demoGallery.HasValue) _demoFixed = true;
         GUO.Renderer.Lights.RealtimeLightEffects.Clear();
         _demoTaken = 0;
         _demoFacet = facet;
@@ -99,6 +105,17 @@ public partial class EditorSmoke
             world.Light.Personal = 0;
             GD.Print($"[lights-demo] hour={hour} timeOfDay={UoPlusOptions.Enabled(profile, UoPlusFeature.TimeOfDay)} sunShadows={UoPlusOptions.Enabled(profile, UoPlusFeature.SunShadows)}");
         }
+        // ",level,N": a custom light level N (0 bright .. 31 dark) over the hour's, so
+        // the light types read against a dark street.
+        int levelAt = Array.IndexOf(demo, "level", 1);
+        if (levelAt > 0 && profile != null)
+        {
+            profile.UseCustomLightLevel = true;
+            profile.LightLevelType = 0;
+            profile.LightLevel = byte.Parse(demo[levelAt + 1]);
+            world.Light.Overall = profile.LightLevel;
+            world.Light.Personal = 0;
+        }
         else if (profile?.UseCustomLightLevel == true)
         {
             world.Light.Overall = profile.LightLevelType == 1
@@ -107,7 +124,7 @@ public partial class EditorSmoke
             world.Light.Personal = 0;
         }
         GD.Print($"[lights-demo] realtime={profile?.RealtimeLights} overall={world.Light.Overall} personal={world.Light.Personal} classicAmbient={world.Light.IsometricLevel}");
-        if (_demoSpellWall.HasValue)
+        if (_demoSpellWall.HasValue || _demoGallery.HasValue)
         {
             _demoActors.Clear();
             return;
@@ -278,6 +295,29 @@ public partial class EditorSmoke
             int handle = GUO.Renderer.Lights.SpellLighting.Emit(ProfileManager.CurrentProfile, GUO.Time.Ticks,
                 GraphicEffectType.Moving, 0x36D4, point.x, point.y, point.z, impact: true);
             GD.Print($"[lights-demo] spell-wall impact {handle} at {point.x},{point.y},{point.z}");
+        }
+
+        if (_demoGallery is { } g)
+        {
+            uint at = GUO.Time.Ticks;
+            if (_demoTaken == 0)
+            {
+                string[] presets = { "candle", "torch", "brazier", "lantern", "oil-lamp", "forge", "magic-crystal", "will-o-wisp" };
+                for (int i = 0; i < presets.Length; i++)
+                {
+                    // Two rows of four along X, three tiles apart, either side of the spot.
+                    int px = g.x - 5 + (i % 4) * 3, py = g.y + (i < 4 ? -3 : 3);
+                    int handle = GUO.Renderer.Lights.RealtimeLightEffects.AddPreset(at, presets[i], px, py, g.z, 60_000);
+                    GD.Print($"[lights-demo] preset {presets[i]} {handle} at {px},{py},{g.z}");
+                }
+                var sweep = new GUO.Renderer.Lights.LightSpot(0f, 40f, 70f, 4f);
+                GD.Print($"[lights-demo] spot {GUO.Renderer.Lights.RealtimeLightEffects.AddSpot(at, g.x - 6, g.y, g.z, 7, new Color(1f, 0.92f, 0.75f), 60_000, in sweep)} at {g.x - 6},{g.y},{g.z}");
+            }
+            if (_demoTaken % 45 == 20)
+            {
+                int handle = GUO.Renderer.Lights.RealtimeLightEffects.AddFlash(at, g.x + 4, g.y, g.z, 6, new Color(0.7f, 0.8f, 1f), 500);
+                GD.Print($"[lights-demo] flash {handle} at {g.x + 4},{g.y},{g.z}");
+            }
         }
 
         // The spell-light hook: a 1.5 s light two tiles ahead of the lead, a

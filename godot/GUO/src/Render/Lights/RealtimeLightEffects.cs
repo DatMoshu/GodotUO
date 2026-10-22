@@ -42,8 +42,14 @@ namespace GUO.Renderer.Lights
             public LightCurve Curve;
             public bool Fade;
             public bool Spell;
+            public bool Flash;
+            public float Flicker, FlickerRate;
+            public LightSpot? Spot;
             public uint Start, End;
         }
+
+        /// <summary>A flash's light falls by e^(-k age / duration): at its end, under 1 % is left.</summary>
+        public const float FlashDecay = 5f;
 
         private static readonly Entry[] _entries = new Entry[MaxLights];
         private static int _count;
@@ -93,6 +99,60 @@ namespace GUO.Renderer.Lights
                 End = now + durationMs,
             };
             return handle;
+        }
+
+        /// <summary>
+        /// A flash: full at once, then gone along an exponential (lightning, an
+        /// explosion). Throws the same wall shadows as any light while it lasts.
+        /// </summary>
+        public static int AddFlash(uint now, int x, int y, int z, int radius, Color color, uint durationMs,
+            float energy = 4f, LightCurve curve = LightCurve.E)
+        {
+            int handle = Add(now, x, y, z, radius, color, durationMs, curve, energy, fadeOut: false);
+            if (handle != 0) _entries[_count - 1].Flash = true;
+            return handle;
+        }
+
+        /// <summary>A spot light: a beam of <paramref name="spot"/>'s width, sweeping if it says so, for a while.</summary>
+        public static int AddSpot(uint now, int x, int y, int z, int radius, Color color, uint durationMs, in LightSpot spot,
+            float energy = RealtimeLightField.Energy, LightCurve curve = LightCurve.D)
+        {
+            int handle = Add(now, x, y, z, radius, color, durationMs, curve, energy, fadeOut: false);
+            if (handle != 0) _entries[_count - 1].Spot = spot;
+            return handle;
+        }
+
+        /// <summary>
+        /// A named preset (<see cref="RealtimeLightProfiles.TryPreset"/>) at a tile for a while: its
+        /// radius, tint, energy, curve, flicker and beam. 0 when the preset is unknown.
+        /// </summary>
+        public static int AddPreset(uint now, string preset, int x, int y, int z, uint durationMs)
+        {
+            if (!RealtimeLightProfiles.Current.TryPreset(preset, out LightProfile p)) return 0;
+            LightCurve curve = p.Curve is { } c && c != LightCurve.Custom ? c : LightCurve.B;
+            int handle = Add(now, x, y, z, p.Radius > 0 ? p.Radius : 3, p.Color ?? RealtimeLightField.WarmLight, durationMs,
+                curve, p.Energy > 0f ? p.Energy : RealtimeLightField.Energy, fadeOut: false);
+            if (handle == 0) return 0;
+            ref Entry e = ref _entries[_count - 1];
+            e.Flicker = p.Flicker ?? 0f;
+            e.FlickerRate = p.FlickerRate ?? 1f;
+            e.Spot = p.Spot;
+            return handle;
+        }
+
+        /// <summary>Turn a live light's envelope into a flash (its energy rises to 1.6x and falls exponentially).</summary>
+        internal static bool MakeFlash(int handle)
+        {
+            for (int i = 0; i < _count; i++)
+            {
+                if (_entries[i].Handle != handle) continue;
+                _entries[i].Flash = true;
+                _entries[i].Fade = false;
+                _entries[i].Energy = Math.Min(8f, _entries[i].Energy * 1.6f);
+                return true;
+            }
+
+            return false;
         }
 
         /// <summary>Put a light out early. False when it had already gone.</summary>
@@ -177,8 +237,14 @@ namespace GUO.Renderer.Lights
             {
                 ref Entry e = ref _entries[i];
                 float energy = e.Energy * Strength(in e, now);
+                double seconds = now / 1000.0;
+                if (e.Flicker > 0f)
+                {
+                    energy *= new LightProfile(0, 0f, null, 0f, null, -1, e.Flicker, e.FlickerRate).FlickerAt(seconds, e.X * 73856093 ^ e.Y * 19349663);
+                }
                 if (energy <= 0f) continue;
-                into[start + n++] = new RealtimeLightField.Source(e.X, e.Y, e.Z, e.Radius, e.Color, curve: e.Curve, energy: energy);
+                RealtimeLightField.Cone beam = e.Spot.HasValue ? e.Spot.Value.ConeAt((now - e.Start) / 1000.0) : default;
+                into[start + n++] = new RealtimeLightField.Source(e.X, e.Y, e.Z, e.Radius, e.Color, curve: e.Curve, energy: energy, beam: beam);
             }
 
             return n;
@@ -186,6 +252,12 @@ namespace GUO.Renderer.Lights
 
         private static float Strength(in Entry e, uint now)
         {
+            if (e.Flash)
+            {
+                float age = Math.Max(0, (int)(now - e.Start)), span = Math.Max(1f, e.End - e.Start);
+                return MathF.Exp(-FlashDecay * age / span);
+            }
+
             if (!e.Fade) return 1f;
             float total = e.End - e.Start;
             float left = (int)(e.End - now);

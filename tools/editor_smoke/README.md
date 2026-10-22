@@ -71,6 +71,11 @@ editor checks and cannot be combined with `--reload`.
 H:30, the classic level set from that hour's light cycle; add `,todoff` for
 the same hour and level without the time-of-day colour (the before frame),
 and `,sun` for the UO+ sun and moon shadows at full strength.
+`,gallery,X,Y,Z` (no walkers, camera fixed) lights every light preset in two
+rows of four around X,Y, a spot sweeping between them, and a flash every
+1.5 s (data_formats section 45).
+`,level,N` sets a custom light level N (0..31) over the hour's, for a dark
+street.
 
 For the spell-wall regression, use `--guo-editor-lights-demo
 12,spellwall,1498,1628,0` with world shot `0,1496,1628,960,720`.
