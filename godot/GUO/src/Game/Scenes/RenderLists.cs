@@ -134,7 +134,11 @@ namespace GUO.Game.Scenes
         private CoverOwner _coverOwner;
 
         /// <summary>The keys of <see cref="_world"/>, sorted in place by DrawWorld (<see cref="DepthKey"/>).</summary>
-        private ulong[] _keys = new ulong[1024];
+        /// <remarks>
+        /// Sized on first use: UI controls make a RenderLists per draw, and an
+        /// eager 8 KB here was 48 KB of garbage a frame at the login screen.
+        /// </remarks>
+        private ulong[] _keys = Array.Empty<ulong>();
 
         /// <summary>
         /// PORT DEVIATION (GUO): the Realtime lights pass (ADR-0039) reads the
