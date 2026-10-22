@@ -379,10 +379,8 @@ namespace GUO.Game.Scenes
                 case Game.GameObjects.SplatObject:
                 // PORT DEVIATION (GUO): terrain overlay layers sort the same way.
                 case Game.GameObjects.LayerObject:
-#if GUO_LABS
                 // PORT DEVIATION (GUO): UO+ surface decals use the existing depth queue.
-                case GUO.Labs.Weather.WeatherSurface:
-#endif
+                case GUO.Renderer.Weather.WeatherSurface:
                     float depth = toRender.CalculateDepthZ();
 
                     if (toRender is Mobile)
@@ -463,6 +461,7 @@ namespace GUO.Game.Scenes
         // Test accessors. Kept internal; allow unit tests to inspect what was queued
         // without requiring a live graphics device to invoke the flush path.
         internal int GumpTextsCount => _gumps.Count;
+        internal int WorldCount => _world.Count;
         internal NoAtlasGumpCommand PeekGumpText(int index) => _gumps[index];
 
         public int DrawRenderLists(UltimaBatcher2D batcher, sbyte maxGroundZ)

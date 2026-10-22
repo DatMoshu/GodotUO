@@ -41,10 +41,8 @@ namespace GUO.Game.GameObjects
             }
 
             bool charSitting = false;
-#if GUO_LABS
             // PORT DEVIATION (GUO): collect the visible player's dressed silhouette.
-            if (this == World.Player) GUO.Labs.Weather.WeatherLab.BeginBody(World);
-#endif
+            if (this == World.Player) GUO.Renderer.Weather.WeatherLab.BeginBody(World);
             ushort overridedHue = 0;
 
             AnimationsLoader.SittingInfoData seatData = AnimationsLoader.SittingInfoData.Empty;
@@ -498,11 +496,9 @@ namespace GUO.Game.GameObjects
             FrameInfo.Y = Math.Abs(FrameInfo.Y);
             FrameInfo.Width = FrameInfo.X + FrameInfo.Width;
             FrameInfo.Height = FrameInfo.Y + FrameInfo.Height;
-#if GUO_LABS
             // PORT DEVIATION (GUO): draw once after equipment, still inside the sorted mobile pass.
             if (this == World.Player && Pass != DrawPass.Shadow)
-                GUO.Labs.Weather.WeatherLab.EndBody(this, batcher, depth + 1f);
-#endif
+                GUO.Renderer.Weather.WeatherLab.EndBody(this, batcher, depth + 1f);
 
             return true;
         }
@@ -698,7 +694,7 @@ namespace GUO.Game.GameObjects
                 animGroup,
                 dir,
                 out var hueFromFile,
-                out var weatherUop, // PORT DEVIATION (GUO): reuse the frame format for Labs alpha sampling.
+                out var weatherUop, // PORT DEVIATION (GUO): reuse the frame format for UO+ alpha sampling.
                 isEquip,
                 false
             );
@@ -841,12 +837,10 @@ namespace GUO.Game.GameObjects
                     }
 
                     int xx = -spriteInfo.Center.X;
-#if GUO_LABS
                     // PORT DEVIATION (GUO): bounded UO+ drops sample this frame's body silhouette.
                     if (!charIsSitting && owner == owner.World.Player)
-                        GUO.Labs.Weather.WeatherLab.CollectBody(owner, id, animGroup, dir,
+                        GUO.Renderer.Weather.WeatherLab.CollectBody(owner, id, animGroup, dir,
                             weatherUop, frameIndex, mirror, x, y, spriteInfo.UV.Width, spriteInfo.UV.Height, depth + 1f);
-#endif
                     int yy = -(spriteInfo.UV.Height + spriteInfo.Center.Y + 3);
 
                     if (mirror)

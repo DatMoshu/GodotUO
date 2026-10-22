@@ -11,7 +11,8 @@
                 "tools/modernuo/patches/0004-guo-pad-dummies.patch",
                 "tools/modernuo/patches/0005-guo-pad-attack-record.patch",
                 "tools/modernuo/patches/0005-system-message-hook.patch",
-                "tools/modernuo/patches/0006-loopback-ban-exemption.patch"]
+                "tools/modernuo/patches/0006-loopback-ban-exemption.patch",
+                "tools/modernuo/patches/0007-guo-weather.patch"]
   },
   "config_overlay": "tools/modernuo/config",
   "listen": {"port": 2593},

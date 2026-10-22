@@ -3,7 +3,7 @@
 using System;
 using Godot;
 using GUO.Game;
-using GUO.Labs.Weather;
+using GUO.Renderer.Weather;
 using GUO.Renderer.Water;
 
 namespace GUO.Labs.WaterRain;

@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
-#if GUO_LABS
 using System;
 using GUO.Game.GameObjects;
-using GUO.Labs.Weather;
+using GUO.Renderer.Weather;
 
 namespace GUO.Game.Scenes;
 internal partial class GameScene
@@ -28,8 +27,13 @@ internal partial class GameScene
         long now = Time.Ticks;
         float dt = state.LastTicks == 0 ? 0 : Math.Clamp((now - state.LastTicks) / 1000f, 0, 0.25f);
         state.LastTicks = now;
-        state.Step(dt, WeatherLab.IsRain(_world));
+        float intensity = WeatherLab.RainIntensity(_world);
+        state.Step(dt, intensity);
+#if GUO_LABS
         bool simulatedWaterRain = GUO.Labs.WaterRain.WaterRainLab.IsActive(_world);
+#else
+        bool simulatedWaterRain = false;
+#endif
         // Fixed 512-slot spatial cache. Collisions evict old puddles; memory cannot grow.
         // Only known visible land is eligible; never infer water in unloaded cells.
         int candidates = 0;
@@ -85,7 +89,7 @@ internal partial class GameScene
                 }
                 surface.Water = water;
                 surface.QueuedAt = now;
-                surface.Step(dt, state.Raining, puddle);
+                surface.Step(dt, intensity, puddle);
                 // Styled water already receives these drops through its wave
                 // field. Clear old primitive rings when switching styles too.
                 if (water && simulatedWaterRain) surface.RingAge = 1;
@@ -105,4 +109,3 @@ internal partial class GameScene
         }
     }
 }
-#endif

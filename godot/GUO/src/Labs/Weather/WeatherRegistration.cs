@@ -8,7 +8,7 @@ internal static partial class LabsRegistration
         context.Command("uopweather", args =>
         {
             if (args.Length == 2 && args[1] == "proof") Weather.WeatherLiveProof.Start(context.World);
-            else Weather.WeatherLab.Open(context.World);
+            else Game.UI.Gumps.UoPlusOptionsGump.Open(context.World);
         });
     }
 }

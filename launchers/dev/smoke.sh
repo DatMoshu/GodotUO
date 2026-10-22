@@ -71,9 +71,11 @@ echo "[smoke] keyboard: key-ups on focus loss, AltGr text (synthetic; no shard)"
 echo "[smoke] controller regressions and Set controls (synthetic pad; no shard)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" -- --pad-regression-probe --pregame-classic --silent || FAIL=1
 
+echo "[smoke] UO+ shipping weather contract"
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" --quit-after 60 res://src/Render/Weather/WeatherProbe.tscn || FAIL=1
+
 if [ "${GuoLabs:-false}" = "true" ]; then
     echo "[smoke] UO+ weather Labs contract"
-    "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" --quit-after 60 res://src/Labs/Weather/WeatherProbe.tscn || FAIL=1
     "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" --quit-after 60 res://src/Labs/WaterRain/WaterRainProbe.tscn || FAIL=1
 fi
 

@@ -38,6 +38,7 @@ is retired (as `0004-multi-tile-enumerator` was).
 | 0005-pad | Record controller probe attacks | **ours**, depends on 0004-pad | none |
 | 0005 | System message hook | **ours** | none |
 | 0006 | Keep loopback out of automatic behavioral bans | **ours**, local development probes | none |
+| 0007 | GM-only caller weather packet for acceptance | **ours**, local development probes | none |
 | issue | `MultiData.LoadUOP` and uncompressed entries | **upstream** (issue, no patch) | `upstream/issue-multidata-loaduop-uncompressed.md` |
 
 ### 0006: loopback ban exemption (NET-00c, MUO patch)
@@ -68,6 +69,23 @@ still requires the shard console's detection/filter messages.
 
 **Verdict: ours.** Local readiness checks and development clients share one
 address. Keep this narrow policy separate from public-shard ban policy.
+
+### 0007: GM weather acceptance command (WX-02, MUO patch)
+
+`patches/0007-guo-weather.patch` adds `[GuoWeather rain|storm|brewing|snow|clear
+[0-70]`. It registers at GameMaster access and sends the standard 0x65 only to
+the requesting GM. Missing intensity means 70; clear always sends count zero.
+Invalid/overflow/out-of-range counts reject before sending. No world state,
+automatic weather, other clients or saved configuration is changed. This is
+dev-shard test tooling, never client code. Deployment/restart needs the shared
+shard window; merely tracking this patch does not deploy it.
+
+`python tools/modernuo/test_weather_command.py` compiles the actual command
+with packet and registration stand-ins: modes/bytes, zero and clear, invalid
+text/overflow/range, declared GM registration and caller isolation. Live
+acceptance must also verify Configure discovery in the deployed assembly,
+player rejection and server-packet reception. Use the existing shard fetch/build
+doctor (`launchers/shard/fetch.bat`, `launchers/shard/build.bat`) if unavailable.
 
 ### 0001: headless owner account
 

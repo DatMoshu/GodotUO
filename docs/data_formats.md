@@ -3432,16 +3432,34 @@ new profiles and Classic profiles remain off. Saving records the migrated flag,
 so disabling it remains effective after reload. Its missing density migrates to
 100% to preserve prior disturbance strength; an explicit density is retained.
 
-Weather runs only in a `GuoLabs=true` Debug build. Ring density thins rain
+Weather ships in normal and exported builds (WX-01–03, owner sprint amendment
+to ADR-uoplus-weather-lab), independently off by default. Ring density thins rain
 impacts; puddle density selects ground cells and thins impacts; wet-player
 density scales body drops. Selected ground IDs and cobblestone matching remain
-session-local. Invalid ground IDs reject Apply before any changes. Normal and
-exported clients cannot activate weather. The Labs `-uopweather` command opens
-this same panel. Off skips effect drawing and simulation.
+session-local Labs controls. Invalid Labs ground IDs reject Apply before any
+changes. Normal clients select cobblestone by tiledata name. The Labs
+`-uopweather` command opens this same panel. Off skips drawing and simulation.
+
+The UO+ signal observes every shard weather packet (0x65), including same-type
+intensity updates that classic suppresses. Rain and both storm types use
+`clamp(count / 70, 0, 1)`; snow, clear and unknown types use zero. The signal
+expires after the classic six-minute lifetime and resets with the world/facet.
+Classic packet handling, weather messages and precipitation rendering retain
+their original behavior. Labs probes can explicitly override their local signal;
+normal/export builds cannot. Intensity scales impacts per second, wetting and
+puddle filling. At full intensity, wetness rises in 4 seconds and puddles fill
+in 30; once dry they fade in 18 and drain in 45. Snow produces no new fill;
+frost/snow-dust visuals are deferred. Water rings expire within 0.65 seconds.
+The 512-slot cache, 4096-cell/frame, 64-objects/scan and 1024-alpha-check/frame
+bounds remain; incomplete cells and covered ground are skipped conservatively.
+Editor-built MCP `guo_state.weather` is read-only evidence: `rainIntensity`,
+`wetness`, currently queued `puddles`/`rings`, `maxFill`, and `enabled`. Inspection
+does not create weather state. This diagnostic is absent from exported clients.
 
 Smoke: `res://src/Configuration/UoPlusProbe.tscn`; scenario:
 `client.uoplus.options`. The native panel proof uses `--uoplus-ui-probe` with
 `GUO_UOPLUS_PROOF` naming an existing private evidence folder. It writes top
 and bottom screenshots and uses an unsaved fixture profile. No external
-dependency or doctor launcher is required; Labs weather's README retains its
-build/dependency doctor.
+dependency or doctor launcher is required. `client.weather` and normal smoke
+run `src/Render/Weather/WeatherProbe.tscn`; live acceptance is documented in
+`tools/scenarios/client/weather.md`.

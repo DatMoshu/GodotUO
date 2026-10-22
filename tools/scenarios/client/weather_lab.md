@@ -3,7 +3,7 @@
 Requires a Debug `GuoLabs=true` build. Contract smoke has no shard/install needs:
 
 ```text
-godot-console --headless --path godot/GUO --quit-after 60 res://src/Labs/Weather/WeatherProbe.tscn
+godot-console --headless --path godot/GUO --quit-after 60 res://src/Render/Weather/WeatherProbe.tscn
 ```
 
 Expected log: `[weather] PASS`. The synthetic surface scene

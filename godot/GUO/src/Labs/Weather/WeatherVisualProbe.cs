@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 #if GUO_LABS
 using System;
+using GUO.Renderer.Weather;
 using Godot;
 using GUO.Renderer;
 

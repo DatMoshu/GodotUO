@@ -2365,6 +2365,11 @@ namespace GUO.Network
                 return;
             }
 
+            // PORT DEVIATION (GUO): UO+ observes all weather packets without changing
+            // classic's same-type suppression. Copy the reader, leaving its path intact.
+            var weatherPacket = p;
+            WeatherType plusType = (WeatherType)weatherPacket.ReadUInt8();
+            byte plusCount = weatherPacket.ReadUInt8();
             WeatherType type = (WeatherType)p.ReadUInt8();
 
             if (world.Weather.CurrentWeather != type)
@@ -2374,6 +2379,7 @@ namespace GUO.Network
 
                 world.Weather.Generate(type, count, temp);
             }
+            GUO.Renderer.Weather.WeatherLab.Observe(world.Weather, plusType, plusCount, Time.Ticks);
         }
 
         private static void BookData(World world, ref StackDataReader p)
