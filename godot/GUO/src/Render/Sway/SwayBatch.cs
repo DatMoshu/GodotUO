@@ -17,12 +17,15 @@ public sealed partial class UltimaBatcher2D
     private static readonly float[] SwayHeights = { 0, 0.25f, 0.5f, 0.7f, 1 };
     private int _swayFrame;
     private int _swayUniformFrame = -1;
+    private Rid _swayBoundsItem;
+    private Rect2 _swayBounds;
     internal int SwayDraws { get; private set; }
     internal int SwayCacheCount => _swayMeshes.Count;
 
     private void NextSwayFrame()
     {
         StaticSway = default;
+        _swayBoundsItem = default;
         SwayDraws = 0;
         _swayFrame++;
         // Dispose only after the previous frame's canvas commands are cleared.
@@ -60,6 +63,13 @@ public sealed partial class UltimaBatcher2D
         }
         EnsureMaterial(_swayMaterial);
         FlushRun();
+        // Godot's canvas culling uses the mesh's local AABB without this
+        // command's translation. World-offset items would cull visible crowns.
+        // This item contains sway meshes only; include every submitted sprite.
+        var bounds = new Rect2(position, size).Grow(8);
+        _swayBounds = _swayBoundsItem == _current ? _swayBounds.Merge(bounds) : bounds;
+        _swayBoundsItem = _current;
+        RenderingServer.CanvasItemSetCustomRect(_current, true, _swayBounds);
         Commands++;
         Count(2, RidOf(texture));
         RenderingServer.CanvasItemAddMesh(_current, cached.Mesh.GetRid(),

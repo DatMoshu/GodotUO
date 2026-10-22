@@ -68,20 +68,22 @@ public partial class SwayProbe : Node
             var canvas = new Node2D { TextureFilter = CanvasItem.TextureFilterEnum.Nearest };
             viewport.AddChild(canvas);
             batcher = new UltimaBatcher2D(canvas.GetCanvasItem());
-            using var pattern = Image.CreateEmpty(32, 96, false, Image.Format.Rgba8);
+            using var pattern = Image.CreateEmpty(256, 256, false, Image.Format.Rgba8);
             for (int y = 0; y < 96; y++) for (int x = 0; x < 32; x++)
-                pattern.SetPixel(x, y, (x + y) % 5 == 0 ? Colors.Yellow : Colors.DarkGreen);
+                pattern.SetPixel(x + 96, y + 64, (x + y) % 5 == 0 ? Colors.Yellow : Colors.DarkGreen);
             using var texture = ImageTexture.CreateFromImage(pattern);
             async System.Threading.Tasks.Task<Image> Frame(bool enabled, uint ticks)
             {
                 GUO.Time.Ticks = ticks;
                 batcher.BeginFrame();
                 batcher.Begin();
+                UltimaBatcher2D.BatchedWorld = true;
+                batcher.SetWorldOffset(1000, 2000);
                 batcher.StaticSway = enabled ? new SwayInstance(1, 0, 1) : default;
-                batcher.Draw(texture, new Vector2(32, 24), new GUO.Compat.Rectangle(0, 0, 32, 96),
+                batcher.Draw(texture, new Vector2(1032, 2024), new GUO.Compat.Rectangle(96, 64, 32, 96),
                     new Vector3(0, 0, 1), 0, Vector2.Zero, Vector2.One, SpriteEffects.None, 0);
                 batcher.StaticSway = default;
-                batcher.Draw(texture, new Vector2(128, 24), new GUO.Compat.Rectangle(0, 0, 32, 96),
+                batcher.Draw(texture, new Vector2(1128, 2024), new GUO.Compat.Rectangle(96, 64, 32, 96),
                     new Vector3(0, 0, 1), 0, Vector2.Zero, Vector2.One, SpriteEffects.None, 0);
                 batcher.End();
                 await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
@@ -90,6 +92,8 @@ public partial class SwayProbe : Node
             }
             using var baseline = await Frame(false, 0);
             using var neutral = await Frame(true, 0);
+            baseline.SavePng(System.IO.Path.Combine(folder, "sway-native.png"));
+            neutral.SavePng(System.IO.Path.Combine(folder, "sway-neutral-mesh.png"));
             Check(baseline.GetData().AsSpan().SequenceEqual(neutral.GetData()), "zero-displacement mesh preserves native colour, alpha, UV and nearest pixels");
             using var moving = await Frame(true, 1000);
             int changed = 0;
@@ -100,10 +104,8 @@ public partial class SwayProbe : Node
                 Check(x < 100 && y < 92, "base and neighboring non-static pixels remain fixed");
             }
             Check(changed > 0 && batcher.SwayDraws == 1, "shader moves classified crown only");
-            baseline.SavePng(System.IO.Path.Combine(folder, "sway-native.png"));
-            neutral.SavePng(System.IO.Path.Combine(folder, "sway-neutral-mesh.png"));
             moving.SavePng(System.IO.Path.Combine(folder, "sway-moving.png"));
-            GD.Print($"[sway visual] PASS: zero-displacement mesh 0 changed pixels; moving crown {changed} changed pixels; fixed base and neighbor");
+            GD.Print($"[sway visual] PASS: translated world canvas and atlas; zero-displacement mesh 0 changed pixels; moving crown {changed} changed pixels; fixed base and neighbor");
             GetTree().Quit(0);
         }
         catch (Exception e) { GD.PrintErr("[sway visual] FAIL: " + e); GetTree().Quit(1); }

@@ -31,6 +31,12 @@ animation on the GPU and bounds the geometry cache. Unused meshes are evicted at
 frame boundary after prior canvas commands have been cleared. At the hard limit,
 uncached sprites remain still.
 
+Each sway canvas item also receives the union of its translated sprite bounds,
+with eight pixels of wind allowance. On the pinned engine, a cached mesh's local
+AABB alone culls visible sprites when the canvas has the game's world offset;
+the standalone, origin-centred editor view does not expose this. The rendered
+regression therefore uses an atlas region, batched sprites and a world offset.
+
 ## ADR Dependencies
 
 ADR-0001/0002/0004: existing scene seam, canvas batcher and CUSTOM0 meshes.

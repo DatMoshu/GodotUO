@@ -5,6 +5,10 @@ Toggle: Video → UO+ effects → Tree and plant sway; default off. Density is a
 
 1. Run `godot-console --headless --path godot/GUO res://src/Render/Sway/SwayProbe.tscn`.
    Expect `[sway] PASS`. The smoke launcher runs this line too.
+   For synthetic pixel proof, set `GUO_SWAY_VISUAL` to an evidence folder and
+   run the same scene with a headed renderer. It compares an atlas region on
+   a translated world canvas: zero displacement must be identical; the crown
+   moves while the base and neighboring sprite stay fixed.
 2. In the running client, enter Yew forest and Britain gardens. With the same
    camera, record ten seconds off and ten seconds on at density 50. Inspect tree
    bases and nearby walls, roofs, signs and characters: only classified statics
