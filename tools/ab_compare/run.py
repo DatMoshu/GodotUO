@@ -292,7 +292,7 @@ def last_played(cfg: Config) -> str | None:
 
 
 def write_cuo_config(
-    cfg: Config, character: str, size: tuple[int, int]
+    cfg: Config, character: str, size: tuple[int, int], fps: int = 60
 ) -> Path:
     """settings.json plus a copy of GUO's profile for the same character."""
     conf = cfg.build / "cuo-config"
@@ -310,7 +310,9 @@ def write_cuo_config(
         "lang": "ENU",
         "lastservernum": 1,
         "last_server_name": cfg.shard_name,
-        "fps": 60,
+        # ClassicUO paces its draw at this rate (Constants.MAX_FPS caps it at
+        # 250); a timing run asks for the cap so the pacing is not what it measures.
+        "fps": fps,
         # Cancels the display scaling out of ClassicUO's DpiScale, so it
         # draws one pixel per pixel of its window -- see display_scale().
         "screen_scale": round(1.0 / display_scale(), 6),

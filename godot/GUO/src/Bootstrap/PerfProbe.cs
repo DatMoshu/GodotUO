@@ -79,6 +79,7 @@ internal static class PerfProbe
     private const int Settle = 180;
     private static string _outDir, _label;
     private static bool _parity;
+    private static string _profilePreset = "", _profileSummary = "";
 
     /// <summary>
     /// The switch --perf-parity flips: the experimental path under test,
@@ -146,8 +147,11 @@ internal static class PerfProbe
         }
     }
 
-    public static async System.Threading.Tasks.Task Run(Node host, string outDir, string label, float zoom = 0, bool parity = false)
+    public static async System.Threading.Tasks.Task Run(Node host, string outDir, string label, float zoom = 0, bool parity = false,
+        string profilePreset = null)
     {
+        _profilePreset = profilePreset ?? "";
+        _profileSummary = "";
         _outDir = string.IsNullOrWhiteSpace(outDir) ? ProjectSettings.GlobalizePath("user://perf") : outDir;
         _label = label;
         _parity = parity;
@@ -223,6 +227,12 @@ internal static class PerfProbe
         }
 
         GD.Print($"[GUO] perf probe: in the world as {identity}");
+
+        // --perf-profile NAME: the loaded profile set to a preset (plain, as
+        // ClassicUO draws; uoplus-max, everything on) before any scene is timed.
+        _profileSummary = string.IsNullOrWhiteSpace(_profilePreset)
+            ? PerfProfilePreset.Describe(GUO.Configuration.ProfileManager.CurrentProfile)
+            : PerfProfilePreset.Apply(_profilePreset, world);
 
         // --perf-zoom Z: the camera at Z (clamped to its range) for every world
         // scene. Zoomed out is where the sorted world costs most (ADR-0007).
@@ -650,7 +660,8 @@ internal static class PerfProbe
         md.AppendLine($"{System.DateTime.Now:yyyy-MM-dd HH:mm}, {OS.GetName()}, {RenderingServer.GetVideoAdapterName()}, "
                       + $"window {size.X}x{size.Y}, zoom {Client.Game?.Scene?.Camera?.Zoom:F1}, vsync and frame cap off, "
                       + $"{Frames} frames per scene ({WalkMs / 1000:0} s for a run) after {Settle} to settle, "
-                      + (optimized ? "optimised build" : "UNOPTIMISED build (Debug, Optimize=false)") + $", post-processing {look}.");
+                      + (optimized ? "optimised build" : "UNOPTIMISED build (Debug, Optimize=false)") + $", post-processing {look}, "
+                      + $"profile {(string.IsNullOrWhiteSpace(_profilePreset) ? "as saved" : "preset " + _profilePreset)}: {_profileSummary}.");
         md.AppendLine();
         md.AppendLine("| Scene | mean ms | p95 ms | p99 ms | FPS | alloc KB/frame | draws/frame | draw calls | batcher items | texture switches | draw commands | world prepare ms | world draw ms | render CPU ms | GPU ms |");
         md.AppendLine("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
@@ -711,7 +722,8 @@ internal static class PerfProbe
             JsonSerializer.Serialize(new Dictionary<string, object>
                 {
                     ["label"] = label, ["window"] = $"{size.X}x{size.Y}", ["zoom"] = System.Math.Round(Client.Game?.Scene?.Camera?.Zoom ?? 0, 2),
-                    ["optimized"] = optimized, ["postfx"] = look, ["system"] = SystemInfo(), ["scenes"] = results,
+                    ["optimized"] = optimized, ["postfx"] = look, ["profile_preset"] = _profilePreset, ["profile"] = _profileSummary,
+                    ["system"] = SystemInfo(), ["scenes"] = results,
                 },
                 new JsonSerializerOptions { WriteIndented = true }));
         GD.Print($"[GUO] perf probe: wrote {Path.Combine(dir, stem + ".md")}");
