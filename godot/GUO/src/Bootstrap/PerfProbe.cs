@@ -63,6 +63,16 @@ internal static class PerfProbe
     /// <summary>--perf-scene NAME, repeatable: these world scenes only (all when empty).</summary>
     public static readonly List<string> Only = new();
 
+    /// <summary>
+    /// --perf-expect-character NAME and --perf-expect-map N: the run measures
+    /// nothing unless it is in the world as that character on that map, and
+    /// never creates a character to get there. A scene whose [go did not
+    /// land within three tiles of its target is not captured either.
+    /// </summary>
+    public static string ExpectCharacter { get; set; }
+    public static int ExpectMap { get; set; } = -1;
+    private const int ArriveTolerance = 3;
+
     private const int Settle = 180;
     private static string _outDir, _label;
     private static bool _parity;
@@ -170,6 +180,27 @@ internal static class PerfProbe
             return;
         }
 
+        // The preflight: the expected character on the expected map, or no
+        // scene is visited and nothing is captured (the login row is kept).
+        string identity = $"{world.Player?.Name} on map {world.MapIndex} at {world.Player?.X},{world.Player?.Y},{world.Player?.Z}";
+        if (ExpectCharacter != null && !string.Equals(world.Player?.Name, ExpectCharacter, System.StringComparison.Ordinal))
+        {
+            GD.PrintErr($"[GUO] perf probe: expected character {ExpectCharacter}, in the world as {identity}; measuring nothing.");
+            GUO.Utility.Profiler.Enabled = profiling;
+            Write(outDir, label, results);
+            return;
+        }
+
+        if (ExpectMap >= 0 && world.MapIndex != ExpectMap)
+        {
+            GD.PrintErr($"[GUO] perf probe: expected map {ExpectMap}, in the world as {identity}; measuring nothing.");
+            GUO.Utility.Profiler.Enabled = profiling;
+            Write(outDir, label, results);
+            return;
+        }
+
+        GD.Print($"[GUO] perf probe: in the world as {identity}");
+
         // --perf-zoom Z: the camera at Z (clamped to its range) for every world
         // scene. Zoomed out is where the sorted world costs most (ADR-0007).
         if (zoom > 0)
@@ -187,12 +218,20 @@ internal static class PerfProbe
             GD.PrintErr($"[GUO] perf probe: no scene named {string.Join(", ", unknown)}; the scenes are {string.Join(", ", Scenes.Select(s => s.Name))}");
         }
 
+        bool arrivedEverywhere = true;
         foreach (Scene scene in scenes)
         {
             await InputProbe.Say(host, scene.Go);
             // Chunks newly in view load and build their meshes first; that is a
             // one-off, not what a player standing still pays every frame.
             await InputProbe.Wait(host, Settle);
+            if (!Arrived(world, scene, out string where))
+            {
+                GD.PrintErr($"[GUO] perf probe: {scene.Name}: {scene.Go} did not arrive ({where}); not captured.");
+                arrivedEverywhere = false;
+                continue;
+            }
+
             results.Add(await Measure(host, viewport, scene.Name, scene.What, scene.Walks));
 
             // With --perf-parity, the same spot again with the path under test
@@ -225,7 +264,27 @@ internal static class PerfProbe
             GD.PrintErr($"[GUO] perf probe: frames that drew nothing in {string.Join(", ", idle)}; fewer than {MinDrawsPerFrame} draws per frame");
         }
 
-        Passed = unknown.Count == 0 && idle.Count == 0 && results.Count == (_parity ? 2 : 1) * scenes.Length + 1;
+        Passed = unknown.Count == 0 && idle.Count == 0 && arrivedEverywhere && results.Count == (_parity ? 2 : 1) * scenes.Length + 1;
+    }
+
+    /// <summary>The player stands within three tiles of the scene's [go target, on the expected map when one is set.</summary>
+    private static bool Arrived(World world, Scene scene, out string where)
+    {
+        var player = world.Player;
+        where = player == null ? "no player" : $"{player.X},{player.Y},{player.Z} map {world.MapIndex}";
+        if (player == null)
+        {
+            return false;
+        }
+
+        string[] parts = scene.Go.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 3 || !int.TryParse(parts[1], out int x) || !int.TryParse(parts[2], out int y))
+        {
+            return true; // not a [go X Y: nothing to check against
+        }
+
+        bool map = ExpectMap < 0 || world.MapIndex == ExpectMap;
+        return map && System.Math.Abs(player.X - x) <= ArriveTolerance && System.Math.Abs(player.Y - y) <= ArriveTolerance;
     }
 
     private static async System.Threading.Tasks.Task<Dictionary<string, object>> Measure(Node host, Rid viewport, string name, string what,
@@ -439,11 +498,24 @@ internal static class PerfProbe
     private static async System.Threading.Tasks.Task<Dictionary<string, object>> Parity(Node host, string name)
     {
         bool was = ParityState();
+        // PORT DEVIATION (GUO): --gpu-world. Each test capture is taken from
+        // the frame just drawn; whether that frame went through the pass is
+        // read then (GpuWorld.LastFrameOnPass), not inferred from counters.
+        int testCaptures = 0, testOnPass = 0;
         async System.Threading.Tasks.Task<Image> Frame(bool batched)
         {
             ParityToggle(batched);
             await host.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
             await host.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            if (batched)
+            {
+                testCaptures++;
+                if (GpuWorld.LastFrameOnPass)
+                {
+                    testOnPass++;
+                }
+            }
+
             return host.GetViewport().GetTexture().GetImage();
         }
 
@@ -516,11 +588,12 @@ internal static class PerfProbe
         }
 
         GD.Print($"[GUO] perf probe: parity {name}: {violations} of {stable} stable pixels differ, {strict} repeatably (max channel delta {strictMaxDelta})"
-            + (GpuWorld.Enabled ? $"; gpu-world frames drawn {gpuDrawn}, fallback {gpuFallback}{(gpuFallback > 0 ? " (" + GpuWorld.LastFallback + ")" : "")}" : ""));
+            + (GpuWorld.Enabled ? $"; gpu-world: {testOnPass} of {testCaptures} test captures on the pass; over the five captures {gpuDrawn} frames drawn, {gpuFallback} fallback{(gpuFallback > 0 ? " (" + GpuWorld.LastFallback + ")" : "")}" : ""));
         return new Dictionary<string, object>
         {
             ["parity_stable_px"] = stable, ["parity_violations"] = violations, ["parity_strict"] = strict,
             ["parity_strict_max_delta"] = strictMaxDelta,
+            ["gpu_test_captures"] = testCaptures, ["gpu_test_on_pass"] = testOnPass,
             ["gpu_frames_drawn"] = gpuDrawn, ["gpu_frames_fallback"] = gpuFallback,
             ["gpu_last_fallback"] = gpuFallback > 0 ? GpuWorld.LastFallback ?? "" : "",
         };
@@ -595,12 +668,12 @@ internal static class PerfProbe
         if (results.Any(r => r.ContainsKey("parity_violations")))
         {
             md.AppendLine();
-            md.AppendLine("| Scene | parity: stable pixels | test differs | repeatably (strict) | strict max delta | gpu-world frames drawn | fallback | last fallback |");
+            md.AppendLine("| Scene | parity: stable pixels | test differs | repeatably (strict) | strict max delta | test captures on the pass | frames drawn / fallback over the captures | last fallback |");
             md.AppendLine("|---|---:|---:|---:|---:|---:|---:|---|");
             foreach (var r in results.Where(r => r.ContainsKey("parity_violations")))
             {
                 md.AppendLine($"| {r["scene"]} | {r["parity_stable_px"]} | {r["parity_violations"]} | {r["parity_strict"]} | {r.GetValueOrDefault("parity_strict_max_delta", "")}"
-                    + $" | {r.GetValueOrDefault("gpu_frames_drawn", "")} | {r.GetValueOrDefault("gpu_frames_fallback", "")} | {r.GetValueOrDefault("gpu_last_fallback", "")} |");
+                    + $" | {r.GetValueOrDefault("gpu_test_on_pass", "")} of {r.GetValueOrDefault("gpu_test_captures", "")} | {r.GetValueOrDefault("gpu_frames_drawn", "")} / {r.GetValueOrDefault("gpu_frames_fallback", "")} | {r.GetValueOrDefault("gpu_last_fallback", "")} |");
             }
         }
 

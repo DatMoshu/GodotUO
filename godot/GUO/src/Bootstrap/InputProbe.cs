@@ -131,6 +131,14 @@ internal static class InputProbe
     public static string ProbeCharacter { get; set; }
 
     /// <summary>
+    /// PORT DEVIATION (GUO): a measuring run (--perf-expect-character) must
+    /// never make a character: a wrong account would otherwise be given one
+    /// and the run would measure the wrong world. On, the character has to be
+    /// named and on the list, or the run stops before the world.
+    /// </summary>
+    public static bool NeverCreate { get; set; }
+
+    /// <summary>
     /// Every expectation the run has checked, in order.
     /// </summary>
     private static readonly System.Collections.Generic.List<(string What, bool Ok)> Checks =
@@ -287,10 +295,24 @@ internal static class InputProbe
             return;
         }
 
+        if (NeverCreate && (creating || !byName))
+        {
+            Check("the expected character is on the list (no creation allowed)", false,
+                creating ? "the client went to character creation" : "no character name was expected");
+            return;
+        }
+
         if (!creating)
         {
             Game.Scenes.LoginScene loginScene = Client.Game.GetScene<Game.Scenes.LoginScene>();
             int slot = System.Array.IndexOf(loginScene?.Characters ?? System.Array.Empty<string>(), character);
+
+            if (NeverCreate && slot < 0)
+            {
+                Check($"the account has {character} (no creation allowed)", false,
+                    "the list is " + string.Join(", ", loginScene?.Characters ?? System.Array.Empty<string>()));
+                return;
+            }
 
             if (!byName)
             {

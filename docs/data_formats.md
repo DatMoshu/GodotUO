@@ -3266,9 +3266,15 @@ sorted-list stages only, absent when none). Scenes `cave-roof` and
 scene also carries `parity_stable_px`, `parity_violations`,
 `parity_strict`, `parity_strict_max_delta` (pixels: stable across the plain
 frames, differing in the first test frame, differing repeatably, and the
-largest channel delta of those), and since GPU-02 `gpu_frames_drawn`,
-`gpu_frames_fallback` (the `--gpu-world` pass's frame counters over the
-test frames) and `gpu_last_fallback` (the reason, or empty).
+largest channel delta of those), and since GPU-02 `gpu_test_captures`,
+`gpu_test_on_pass` (how many of the test captures were taken from a frame
+the `--gpu-world` pass drew, read per capture), `gpu_frames_drawn`,
+`gpu_frames_fallback` (the pass's frame counters over the whole five-capture
+interval, which spans more render frames than captures) and
+`gpu_last_fallback` (the reason, or empty). With `--perf-expect-character`
+and `--perf-expect-map` the run writes only the `login` row unless it is in
+the world as that character on that map, and a scene whose `[go` did not
+arrive within three tiles has no row.
 Since PERF-01, `system` is `{gpu, gpu_vendor, gpu_api, driver,
 driver_version, rendering_method, cpu, cpu_threads, ram_gib, os, os_version,
 screen "WxH", refresh_hz, engine}`, from Godot's `RenderingServer`, `OS`

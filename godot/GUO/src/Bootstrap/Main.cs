@@ -2085,6 +2085,16 @@ public partial class Main : Node
                     case "--perf-scene":
                         GUO.Host.PerfProbe.Only.Add(Next());
                         break;
+                    case "--perf-expect-character":
+                        // The run measures nothing unless it is in the world as
+                        // this character, and never creates one to get there.
+                        GUO.Host.PerfProbe.ExpectCharacter = Next();
+                        GUO.Host.InputProbe.ProbeCharacter = GUO.Host.PerfProbe.ExpectCharacter;
+                        GUO.Host.InputProbe.NeverCreate = true;
+                        break;
+                    case "--perf-expect-map":
+                        GUO.Host.PerfProbe.ExpectMap = int.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture);
+                        break;
                     case "--perf-zoom":
                         o.PerfZoom = float.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture);
                         break;

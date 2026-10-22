@@ -581,6 +581,7 @@ namespace GUO.Game.Scenes
             // plan cannot know (the pages) is checked at End, and a frame
             // refused there is drawn again on the canvas.
             WorldDepthPass pass = GpuWorld.Pass;
+            GpuWorld.LastFrameOnPass = false;
             if (pass != null && pass.Began)
             {
                 if (!pass.Failed)
@@ -597,6 +598,7 @@ namespace GUO.Game.Scenes
                     if (!pass.Failed)
                     {
                         GpuWorld.FramesDrawn++;
+                        GpuWorld.LastFrameOnPass = true;
                         return captured;
                     }
                 }

@@ -30,6 +30,9 @@ namespace GUO.Renderer
         public static long FramesDrawn, FramesFallback;
         public static string LastFallback;
 
+        /// <summary>True when the last sorted world pass went through the pass; false when the canvas drew it or the switch is off.</summary>
+        public static bool LastFrameOnPass;
+
         private static bool _unavailableLogged;
         private static string _lastLogged;
 
