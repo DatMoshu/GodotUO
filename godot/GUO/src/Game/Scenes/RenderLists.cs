@@ -72,9 +72,9 @@ namespace GUO.Game.Scenes
         /// keep the order the render list put them in -- upstream's depth test
         /// is a less-than, so the first one queued wins -- and an unstable sort
         /// without this would shuffle a pile of objects on one tile from frame
-        /// to frame and shimmer. Seq is also the index into the list (every
-        /// Add queues one and counts one), which is what the key sort in
-        /// DrawWorld relies on to find a drawable from its sorted key.
+        /// to frame and shimmer. Seq is the drawable's index in the list by
+        /// construction (every Add passes the list's count), which is what the
+        /// key sort in DrawWorld relies on to find a drawable from its key.
         /// </remarks>
         private readonly struct Drawable(GameObject obj, float depth, int seq, MeshLayer mesh = null,
             Mobile.DrawPass pass = Mobile.DrawPass.All)
@@ -110,11 +110,9 @@ namespace GUO.Game.Scenes
 
         private readonly List<GameObject> _transparentObjects = [];
 
-        private int _queued;
-
         /// <summary>
-        /// The frame stamp a land tile carries once CoverFromBelow has queued
-        /// it into <see cref="_world"/> this frame (<see cref="Land.CoverStamp"/>).
+        /// Marks the land CoverFromBelow has queued into <see cref="_world"/>
+        /// this frame, on the tile itself (<see cref="Land.CoverStamp"/>).
         /// </summary>
         /// <remarks>
         /// PORT DEVIATION (GUO): was a HashSet of the tiles. A dungeon frame
@@ -122,9 +120,10 @@ namespace GUO.Game.Scenes
         /// each ask hashed and probed; one integer on the tile answers the
         /// same question. The stamp advances in <see cref="Clear"/>, so last
         /// frame's tiles are never mistaken for this frame's, and no per-frame
-        /// clearing of the tiles themselves is needed.
+        /// clearing of the tiles themselves is needed. See CoverStamp for why
+        /// two owners and a fresh tile can never collide.
         /// </remarks>
-        private int _coverStamp = 1;
+        private CoverStamp _coverStamp;
 
         /// <summary>The keys of <see cref="_world"/>, sorted in place by DrawWorld (<see cref="DepthKey"/>).</summary>
         private ulong[] _keys = new ulong[1024];
@@ -215,8 +214,7 @@ namespace GUO.Game.Scenes
 
             // The square is walked a row at a time, so eight neighbours in a
             // row share a chunk: look it up when the chunk changes, not per tile.
-            Chunk chunk = null;
-            int chunkX = -1, chunkY = -1;
+            ChunkCursor<Chunk> cursor = default;
 
             for (int dy = 0; dy <= far; dy++)
             {
@@ -228,9 +226,9 @@ namespace GUO.Game.Scenes
                         continue;
                     }
 
-                    Land land = dx == 0 && dy == 0 ? ground : LandAt(map, obj.X + dx, obj.Y + dy, ref chunk, ref chunkX, ref chunkY);
+                    Land land = dx == 0 && dy == 0 ? ground : LandAt(map, obj.X + dx, obj.Y + dy, ref cursor);
 
-                    if (land == null || land.AlphaHue == 0 || land.CoverStamp == _coverStamp)
+                    if (land == null || land.AlphaHue == 0 || _coverStamp.Marked(land.CoverStamp))
                     {
                         continue;
                     }
@@ -253,8 +251,8 @@ namespace GUO.Game.Scenes
                             continue;
                         }
 
-                        land.CoverStamp = _coverStamp;
-                        _world.Add(new Drawable(land, landDepth, _queued++));
+                        _coverStamp.Mark(ref land.CoverStamp);
+                        _world.Add(new Drawable(land, landDepth, _world.Count));
                     }
                 }
             }
@@ -309,32 +307,18 @@ namespace GUO.Game.Scenes
 
         private static Land LandAt(Map.Map map, int x, int y)
         {
-            Chunk chunk = null;
-            int chunkX = -1, chunkY = -1;
+            ChunkCursor<Chunk> cursor = default;
 
-            return LandAt(map, x, y, ref chunk, ref chunkX, ref chunkY);
+            return LandAt(map, x, y, ref cursor);
         }
 
         /// <summary>
-        /// The land at (x, y), through a caller-held chunk that is only looked
-        /// up again when (x, y) leaves it. A null chunk with a matching
-        /// position is remembered too: an unloaded chunk is asked once.
+        /// The land at (x, y), through a caller-held <see cref="ChunkCursor{T}"/>
+        /// that looks the chunk up again only when (x, y) leaves it.
         /// </summary>
-        private static Land LandAt(Map.Map map, int x, int y, ref Chunk chunk, ref int chunkX, ref int chunkY)
+        private static Land LandAt(Map.Map map, int x, int y, ref ChunkCursor<Chunk> cursor)
         {
-            if (x < 0 || y < 0)
-            {
-                return null;
-            }
-
-            int cx = x >> 3, cy = y >> 3;
-
-            if (cx != chunkX || cy != chunkY)
-            {
-                chunk = map.GetChunk2(cx, cy, false);
-                chunkX = cx;
-                chunkY = cy;
-            }
+            Chunk chunk = cursor.At(x, y, map);
 
             if (chunk == null)
             {
@@ -380,10 +364,9 @@ namespace GUO.Game.Scenes
             _tiles.Clear();
             _stretchedTiles.Clear();
             _world.Clear();
-            _coverStamp++;
+            _coverStamp.NextFrame();
             LastCover = (CoverQueued, CoverOverlapping); // PORT DEVIATION (GUO): B4 fix 2 counters
             CoverQueued = CoverOverlapping = 0;
-            _queued = 0;
             _transparentObjects.Clear();
             _gumps.Clear();
         }
@@ -441,12 +424,12 @@ namespace GUO.Game.Scenes
                         // (ADR-0004's amendment): the body wins against what is
                         // up to half a step deeper -- a swimmer over the water
                         // statics in front of it -- and the shadow loses.
-                        _world.Add(new Drawable(toRender, depth, _queued++, null, Mobile.DrawPass.Shadow));
-                        _world.Add(new Drawable(toRender, depth + 0.5f, _queued++, null, Mobile.DrawPass.Body));
+                        _world.Add(new Drawable(toRender, depth, _world.Count, null, Mobile.DrawPass.Shadow));
+                        _world.Add(new Drawable(toRender, depth + 0.5f, _world.Count, null, Mobile.DrawPass.Body));
                     }
                     else
                     {
-                        _world.Add(new Drawable(toRender, depth, _queued++));
+                        _world.Add(new Drawable(toRender, depth, _world.Count));
                     }
 
                     CoverFromBelow(toRender, depth);
@@ -462,7 +445,7 @@ namespace GUO.Game.Scenes
         public void AddMeshStatic(GameObject obj, MeshLayer layer)
         {
             float depth = obj.CalculateDepthZ();
-            _world.Add(new Drawable(obj, depth, _queued++, layer));
+            _world.Add(new Drawable(obj, depth, _world.Count, layer));
             CoverFromBelow(obj, depth);
         }
 
@@ -626,7 +609,8 @@ namespace GUO.Game.Scenes
 
             for (int i = 0; i < span.Length; i++)
             {
-                _keys[i] = DepthKey.Of(span[i].Depth, i);
+                System.Diagnostics.Debug.Assert(span[i].Seq == i, "a drawable's Seq must be its index");
+                _keys[i] = DepthKey.Of(span[i].Depth, span[i].Seq);
             }
 
             Array.Sort(_keys, 0, span.Length);
@@ -663,7 +647,7 @@ namespace GUO.Game.Scenes
                     continue;
                 }
 
-                if (next.Object is Land land && land.CoverStamp == _coverStamp)
+                if (next.Object is Land land && _coverStamp.Marked(land.CoverStamp))
                 {
                     done += DrawCovering(batcher, land, next.Depth);
                     continue;
