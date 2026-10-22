@@ -12,6 +12,7 @@ internal sealed class UoPlusOptionsGump : Gump
     private readonly Profile _profile;
     private readonly Dictionary<UoPlusFeature, (Checkbox Toggle, HSliderBar Density)> _rows = new();
     private readonly HSliderBar _cap;
+    private readonly HSliderBar _hour;
     private bool _defaultsStaged;
 #if GUO_LABS
     private readonly StbTextBox _tiles;
@@ -58,6 +59,11 @@ internal sealed class UoPlusOptionsGump : Gump
             _rows[feature.Id] = (toggle, density);
             y += 80;
         }
+        area.Add(new Label("Time-of-day hour (-1 follows the shard clock)", true, 0xFFFF, font: 1) { X = 4, Y = y });
+        _hour = new HSliderBar(4, y + 26, 430, -1, 23, System.Math.Clamp(_profile.RealtimeLightsHour, -1, 23),
+            HSliderBarStyle.MetalWidgetRecessedBar, true, 1, 0xFFFF);
+        area.Add(_hour);
+        y += 66;
         area.Add(new Label("Ambient particles per frame (shared cap)", true, 0xFFFF, font: 1) { X = 4, Y = y });
         _cap = new HSliderBar(4, y + 26, 430, 0, 512, System.Math.Clamp(_profile.AmbientParticleCap, 0, 512),
             HSliderBarStyle.MetalWidgetRecessedBar, true, 1, 0xFFFF);
@@ -100,6 +106,7 @@ internal sealed class UoPlusOptionsGump : Gump
         if (_defaultsStaged) UoPlusOptions.ResetDefaults(_profile);
         foreach (var (id, row) in _rows) UoPlusOptions.Set(_profile, id, row.Toggle.IsChecked, row.Density.Value);
         _profile.AmbientParticleCap = _cap.Value;
+        _profile.RealtimeLightsHour = _hour.Value;
         _defaultsStaged = false;
         if (save && World.InGame) _profile.Save(World, ProfileManager.ProfilePath);
         return true;
@@ -110,6 +117,7 @@ internal sealed class UoPlusOptionsGump : Gump
         _defaultsStaged = true;
         foreach (var row in _rows.Values) { row.Toggle.IsChecked = false; row.Density.Value = 50; }
         _cap.Value = 128;
+        _hour.Value = -1;
 #if GUO_LABS
         _cobblestone.IsChecked = true; _tiles.SetText(""); _error.Text = "";
 #endif

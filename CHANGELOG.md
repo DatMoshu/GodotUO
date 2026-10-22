@@ -203,6 +203,15 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   says what it needs. ADR-0008.
 
 ### Playing
+- **UO+ time-of-day light** (UO+ effects, off by default, needs Realtime
+  lights): the light takes the colour of the shard's hour, warm at dawn,
+  white at noon, orange-pink at dusk and blue at night, and torches read
+  weaker under the sun. The hour follows the shard's clock, or a fixed hour
+  from the panel's slider; the shard's light level still sets how dark it is.
+- Realtime lights: a torch in daylight no longer leaves a brown ring darker
+  than the sunlit ground around it.
+- Realtime lights free their light target when you log out, so the canvas
+  item no longer outlives the game scene.
 - **Realtime lights** (Options > Video, off by default): torches and lamps
   light the tiles around them and walls block them, so a lit room stays lit
   and the one next door stays dark; day and night follow the shard's light

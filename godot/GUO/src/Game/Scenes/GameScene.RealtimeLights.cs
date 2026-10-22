@@ -114,6 +114,16 @@ namespace GUO.Game.Scenes
             if (renderTargets != null) renderTargets.LightOverride = null;
         }
 
+        /// <summary>The scene is going: free the light target's canvas item, material and textures (also the editor's World tab, which never unloads its scene).</summary>
+        internal void ReleaseRealtimeLights()
+        {
+            if (_rtTarget == null) return;
+            ResetRealtimeLights(null);
+            string line = $"[realtime-lights] released the light target (live canvas items {RealtimeLightTarget.LiveItems})";
+            Log.Trace(line);
+            if (Engine.IsEditorHint()) GD.Print(line);
+        }
+
         /// <summary>After the world draw: consume this frame's offers and draw the field.</summary>
         private void DrawRealtimeLights(RenderTargets renderTargets, ref Transform2D matrix)
         {
@@ -153,7 +163,16 @@ namespace GUO.Game.Scenes
                     SpellLighting.Enabled(ProfileManager.CurrentProfile));
                 _rtSourceCount += temporary;
                 var sources = new ReadOnlySpan<RealtimeLightField.Source>(_rtSources, 0, _rtSourceCount);
-                _rtField.Compute(RealtimeAmbientLevel(), sources);
+                float level = RealtimeAmbientLevel();
+                if (RealtimeTimeOfDayStrength(out float hour, out float strength))
+                {
+                    _rtField.Compute(level, RealtimeTimeOfDay.Ambient(level, hour, strength),
+                        RealtimeTimeOfDay.LightScale(level, hour, strength), sources);
+                }
+                else
+                {
+                    _rtField.Compute(level, sources);
+                }
                 long t2 = RealtimeLightsDebug.Stamp();
                 DrawRealtimeGeometry(ref matrix);
                 long t3 = RealtimeLightsDebug.Stamp();
@@ -175,7 +194,8 @@ namespace GUO.Game.Scenes
                     _rtLogAt = Time.Ticks;
                     string line = $"[realtime-lights] grid={_rtField.Width}x{_rtField.Height} lights={_rtSourceCount} " +
                               $"computed={_rtField.LastComputed} cached={_rtField.CacheCount} " +
-                              $"quads={_rtTarget.LastQuads} sprites={_rtTarget.LastSprites} roofs={_rtRoofs} above={_rtAbove} darkQuads={_rtDarkQuads} faces={_rtWallFaces} fine={_rtField.FineScale} ambient={_rtField.Ambient}";
+                              $"quads={_rtTarget.LastQuads} sprites={_rtTarget.LastSprites} roofs={_rtRoofs} above={_rtAbove} darkQuads={_rtDarkQuads} faces={_rtWallFaces} fine={_rtField.FineScale} ambient={_rtField.Ambient}" +
+                              (RealtimeTimeOfDayStrength(out float todHour, out float todStrength) ? $" hour={todHour:0.00} tod={todStrength:0.00}" : "");
                     Log.Trace(line);
                     // The editor's World tab has no client log file: its console gets the line.
                     if (Engine.IsEditorHint()) GD.Print(line);
@@ -262,8 +282,32 @@ namespace GUO.Game.Scenes
                 overall = profile.LightLevelType == 1 ? Math.Min(overall, profile.LightLevel) : profile.LightLevel;
             }
 
+            // A fixed time-of-day hour stands in for the shard's level, unless Light level is set.
+            else if (RealtimeTimeOfDayStrength(out float hour, out _) && profile.RealtimeLightsHour >= 0)
+            {
+                overall = RealtimeTimeOfDay.LevelForHour(hour);
+            }
+
             // IsometricLight.Recalculate: 0 is full light, 30 the darkest, with a remainder.
             return Math.Max(personal, 32 - overall) * 0.03125f;
+        }
+
+        /// <summary>
+        /// The UO+ time-of-day light (ADR-0039 addendum): on, the hour (the
+        /// profile's fixed hour, or the shard's clock at the player's map and
+        /// column) and the colour strength 0..1. Off: the level-only ramp.
+        /// </summary>
+        private bool RealtimeTimeOfDayStrength(out float hour, out float strength)
+        {
+            hour = 12f;
+            strength = 0f;
+            var profile = ProfileManager.CurrentProfile;
+            if (!UoPlusOptions.Enabled(profile, UoPlusFeature.TimeOfDay)) return false;
+            strength = UoPlusOptions.Density(profile, UoPlusFeature.TimeOfDay) / 100f;
+            hour = profile.RealtimeLightsHour >= 0
+                ? Math.Min(profile.RealtimeLightsHour, 23) + 0.5f
+                : RealtimeTimeOfDay.ShardHour(DateTime.UtcNow, _world.Map?.Index ?? 0, _world.Player?.X ?? 0);
+            return true;
         }
 
         /// <summary>Ground, blockers and roofs from the visible chunks (plus a margin).</summary>

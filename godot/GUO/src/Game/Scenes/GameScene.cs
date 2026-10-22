@@ -297,6 +297,7 @@ namespace GUO.Game.Scenes
         public override void Unload()
         {
             ResetAmbientParticles(); // PORT DEVIATION (GUO): ADR-0042 resource lifetime
+            ReleaseRealtimeLights(); // PORT DEVIATION (GUO): ADR-0039 resource lifetime
             IO.Audio.ZoneAudio.Music.Reset();
             IO.Audio.ZoneAudio.Sfx.Reset();
             IO.Audio.PackVoice.Update(null);
