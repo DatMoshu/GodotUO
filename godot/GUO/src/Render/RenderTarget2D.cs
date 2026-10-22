@@ -85,6 +85,9 @@ namespace GUO.Renderer
 
         public Texture2D Texture => _viewport.GetTexture();
 
+        /// <summary>The viewport itself: --gpu-world's pass is a child of it, so it renders first (ADR-0007).</summary>
+        internal SubViewport ViewportNode => _viewport;
+
         /// <summary>The node the viewport hangs under; the post-processing stack
         /// (ADR-0023) puts its own viewport beside it.</summary>
         public Node Parent => _viewport.GetParent();

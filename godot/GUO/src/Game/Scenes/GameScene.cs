@@ -628,6 +628,7 @@ namespace GUO.Game.Scenes
             }
 
             GetViewPort();
+            BeginGpuFrame(); // PORT DEVIATION (GUO): --gpu-world (ADR-0007)
 
             var ctrlShiftHeld = Keyboard.Ctrl && Keyboard.Shift;
             var useObjectHandles = _world.NameOverHeadManager.IsToggled || ctrlShiftHeld;
@@ -688,12 +689,24 @@ namespace GUO.Game.Scenes
                     if (chunk == null || chunk.IsDestroyed)
                         continue;
 
+                    // PORT DEVIATION (GUO): --gpu-world (ADR-0007). A chunk built
+                    // for the other path, or for a pass that is gone, rebuilds.
+                    if (chunk.Mesh.Instanced != GpuWorld.Building || chunk.Mesh.InstancesStale)
+                    {
+                        chunk.Mesh.IsDirty = true;
+                    }
+
                     // Build chunk mesh if dirty
                     if (chunk.Mesh.IsDirty)
                     {
                         stageAt = PerfStages.Add(PerfStages.Stage.Gather, stageAt);
                         chunk.Mesh.Build(chunk, _world);
                         stageAt = PerfStages.Add(PerfStages.Stage.MeshBuild, stageAt);
+                    }
+
+                    if (chunk.Mesh.Instanced)
+                    {
+                        chunk.Mesh.Instances.Show(); // PORT DEVIATION (GUO): --gpu-world
                     }
 
                     // Reset visibility and alpha for this frame
@@ -1017,6 +1030,7 @@ namespace GUO.Game.Scenes
             batcher.SetRenderTarget(renderTargets.WorldRenderTarget);
             SelectedObject.Object = null;
             Profiler.EnterContext(Profiler.ProfilerContext.RENDER_FRAME_WORLD_PREPARE);
+            PrepareGpuWorld(batcher, matrix, renderTargets); // PORT DEVIATION (GUO): --gpu-world (ADR-0007)
             FillGameObjectList();
 
             // PORT DEVIATION (GUO): while the pad's interact radar is up, the
@@ -1047,6 +1061,11 @@ namespace GUO.Game.Scenes
                         // which writes every sprite's own hue.
                         prevChunk.Mesh.IsDirty = true;
                     }
+                    else if (_prevMeshHighlight is not Land && prevChunk.Mesh.Instanced)
+                    {
+                        // PORT DEVIATION (GUO): --gpu-world keeps the static's hue in its instance.
+                        ApplyInstanceHue(_prevMeshHighlight, prevChunk.Mesh, ref GUO.Game.Map.ChunkMesh.ItemDataOf(_prevMeshHighlight));
+                    }
                     else
                     {
                         var prevLayer = _prevMeshHighlight is Land ? prevChunk.Mesh.Land : prevChunk.Mesh.Statics;
@@ -1069,6 +1088,16 @@ namespace GUO.Game.Scenes
                     float shaderType = selObj is Land land && land.IsStretched
                         ? ShaderHueTranslator.SHADER_LAND_HUED
                         : ShaderHueTranslator.SHADER_HUED;
+                    if (selObj is not Land && chunk.Mesh.Instanced)
+                    {
+                        // PORT DEVIATION (GUO): --gpu-world keeps the static's hue in its instance.
+                        chunk.Mesh.Instances.SetHue(
+                            selObj.MeshSpriteIndex,
+                            Constants.HIGHLIGHT_CURRENT_OBJECT_HUE - 1,
+                            shaderType + GUO.Renderer.Water.WaterRender.Flag(GUO.Game.Map.ChunkMesh.ItemDataOf(selObj).IsWet)
+                        );
+                    }
+                    else
                     layer.SetHue(
                         selObj.MeshSpriteIndex,
                         Constants.HIGHLIGHT_CURRENT_OBJECT_HUE - 1,

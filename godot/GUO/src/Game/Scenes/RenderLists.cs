@@ -75,13 +75,15 @@ namespace GUO.Game.Scenes
         /// from frame to frame and shimmer.
         /// </remarks>
         private readonly struct Drawable(GameObject obj, float depth, int seq, MeshLayer mesh = null,
-            Mobile.DrawPass pass = Mobile.DrawPass.All)
+            Mobile.DrawPass pass = Mobile.DrawPass.All, int slot = 0)
         {
             public readonly GameObject Object = obj;
             public readonly float Depth = depth;
             public readonly int Seq = seq;
             public readonly MeshLayer Mesh = mesh;
             public readonly Mobile.DrawPass Pass = pass;
+            /// <summary>PORT DEVIATION (GUO): --gpu-world's tile slot (WorldDepthKey), from the walk's chain position.</summary>
+            public readonly int Slot = slot;
         }
 
         private readonly List<GameObject> _tiles = [];
@@ -349,7 +351,7 @@ namespace GUO.Game.Scenes
         /// answer; a sprite that blends is still blended over whatever the
         /// sort already drew beneath it.
         /// </remarks>
-        public void Add(GameObject toRender, bool isTransparent = false)
+        public void Add(GameObject toRender, bool isTransparent = false, int slot = 0)
         {
             if (isTransparent && toRender is Land)
             {
@@ -392,12 +394,12 @@ namespace GUO.Game.Scenes
                         // (ADR-0004's amendment): the body wins against what is
                         // up to half a step deeper -- a swimmer over the water
                         // statics in front of it -- and the shadow loses.
-                        _world.Add(new Drawable(toRender, depth, _queued++, null, Mobile.DrawPass.Shadow));
-                        _world.Add(new Drawable(toRender, depth + 0.5f, _queued++, null, Mobile.DrawPass.Body));
+                        _world.Add(new Drawable(toRender, depth, _queued++, null, Mobile.DrawPass.Shadow, slot));
+                        _world.Add(new Drawable(toRender, depth + 0.5f, _queued++, null, Mobile.DrawPass.Body, slot));
                     }
                     else
                     {
-                        _world.Add(new Drawable(toRender, depth, _queued++));
+                        _world.Add(new Drawable(toRender, depth, _queued++, null, Mobile.DrawPass.All, slot));
                     }
 
                     CoverFromBelow(toRender, depth);
@@ -566,17 +568,171 @@ namespace GUO.Game.Scenes
         {
             long stageAt = PerfStages.Now();
             _world.Sort(ByDepth);
-            stageAt = PerfStages.Add(PerfStages.Stage.Sort, stageAt);
+            PerfStages.Add(PerfStages.Stage.Sort, stageAt);
+
+            var span = CollectionsMarshal.AsSpan(_world);
+
+            // PORT DEVIATION (GUO): --gpu-world (ADR-0007, GPU-02). The sorted
+            // list is drawn through the world depth pass: every sprite the
+            // batcher would put on the canvas becomes an instance with the
+            // key its Drawable gives it, and the pass's depth buffer orders
+            // them with the chunks' persistent statics. The keys are planned
+            // first, so a frame the key cannot carry never starts; what the
+            // plan cannot know (the pages) is checked at End, and a frame
+            // refused there is drawn again on the canvas.
+            WorldDepthPass pass = GpuWorld.Pass;
+            if (pass != null && pass.Began)
+            {
+                if (!pass.Failed)
+                {
+                    PlanGpuKeys(pass, span);
+                }
+
+                if (!pass.Failed)
+                {
+                    batcher.BeginCapture(pass, pass.Viewport.Size.X, pass.Viewport.Size.Y);
+                    int captured = DrawSorted(batcher, span, maxGroundZ, true);
+                    batcher.EndCapture();
+                    pass.End();
+                    if (!pass.Failed)
+                    {
+                        GpuWorld.FramesDrawn++;
+                        return captured;
+                    }
+                }
+                else
+                {
+                    pass.End();
+                }
+
+                GpuWorld.FellBack(pass.FailedWhy);
+            }
+
+            return DrawSorted(batcher, span, maxGroundZ, false);
+        }
+
+        // The key parts of each Drawable in the sorted span, for the capture.
+        private uint[] _gpuDepthAbs = Array.Empty<uint>();
+        private uint[] _gpuTieAbs = Array.Empty<uint>();
+        private int[] _gpuS = Array.Empty<int>();
+
+        /// <summary>
+        /// PORT DEVIATION (GUO): --gpu-world. The key parts of every Drawable
+        /// (WorldDepthKey): the depth part from the Drawable's own depth, the
+        /// tile from the tile CalculateDepthZ counted it on, the slot from
+        /// the walk. Abandons the frame when something in the list has no
+        /// key, when a key is outside the frame's range, or when the keys do
+        /// not follow the sort.
+        /// </summary>
+        private void PlanGpuKeys(WorldDepthPass pass, ReadOnlySpan<Drawable> span)
+        {
+            if (_gpuDepthAbs.Length < span.Length)
+            {
+                int capacity = Math.Max(1024, Math.Max(span.Length, _gpuDepthAbs.Length * 2));
+                Array.Resize(ref _gpuDepthAbs, capacity);
+                Array.Resize(ref _gpuTieAbs, capacity);
+                Array.Resize(ref _gpuS, capacity);
+            }
+
+            uint previous = 0;
+            for (int i = 0; i < span.Length; i++)
+            {
+                ref readonly Drawable next = ref span[i];
+                GameObject obj = next.Object;
+
+                if (next.Mesh != null)
+                {
+                    pass.Abandon("a baked static is in the sorted list");
+                    return;
+                }
+
+                if (obj is Game.GameObjects.SplatObject || obj is Game.GameObjects.LayerObject
+#if GUO_LABS
+                    || obj is GUO.Labs.Weather.WeatherSurface
+#endif
+                    )
+                {
+                    pass.Abandon("staged content is in the sorted list");
+                    return;
+                }
+
+                DepthTile(obj, out int x, out int y);
+                int slot = obj is Land ? 0 : next.Slot;
+                uint depthAbs = WorldDepthKey.DepthAbs(next.Depth);
+                uint tieAbs = WorldDepthKey.TieAbs(x, y, slot);
+                int s = x + y;
+                if (!WorldDepthKey.Relative(depthAbs, tieAbs, s, pass.FrameDepthOrigin, pass.FrameMinDiff, out uint key))
+                {
+                    pass.Abandon("a queued sprite's key is outside the frame's range");
+                    return;
+                }
+
+                if (i > 0 && key < previous)
+                {
+                    pass.Abandon("the key does not reproduce the sort");
+                    return;
+                }
+
+                previous = key;
+                _gpuDepthAbs[i] = depthAbs;
+                _gpuTieAbs[i] = tieAbs;
+                _gpuS[i] = s;
+            }
+        }
+
+        /// <summary>
+        /// The tile CalculateDepthZ counts an object on: its own, or the one
+        /// ahead of it while it walks (the same Offset cases, without z).
+        /// </summary>
+        private static void DepthTile(GameObject obj, out int x, out int y)
+        {
+            x = obj.X;
+            y = obj.Y;
+            Vector3 offset = obj.Offset;
+            if (offset.X > 0 && offset.Y == 0)
+            {
+                x++; // Northeast
+            }
+            else if (offset.X > 0 && offset.Y > 0)
+            {
+                x++; // East
+            }
+            else if (offset.X == 0 && offset.Y > 0)
+            {
+                x++; // Southeast
+                y++;
+            }
+            else if (offset.X < 0 && offset.Y > 0)
+            {
+                y++; // South
+            }
+            else if (offset.X < 0 && offset.Y == 0)
+            {
+                y++; // Southwest
+            }
+        }
+
+        /// <summary>
+        /// The sorted list, back to front. Capturing, each Drawable's key
+        /// parts are set on the batcher before it draws (--gpu-world).
+        /// </summary>
+        private int DrawSorted(UltimaBatcher2D batcher, ReadOnlySpan<Drawable> span, sbyte maxGroundZ, bool capturing)
+        {
+            long stageAt = PerfStages.Now();
             bool timing = PerfStages.Enabled;
             PerfStages.Stage kind = PerfStages.Stage.Other;
 
             int done = 0;
 
-            var span = CollectionsMarshal.AsSpan(_world);
-
             for (int i = 0; i < span.Length; i++)
             {
                 ref readonly Drawable next = ref span[i];
+                if (capturing)
+                {
+                    batcher.CaptureDepthAbs = _gpuDepthAbs[i];
+                    batcher.CaptureTieAbs = _gpuTieAbs[i];
+                    batcher.CaptureS = _gpuS[i];
+                }
                 if (timing)
                 {
                     PerfStages.Stage now = StageOf(next.Object);

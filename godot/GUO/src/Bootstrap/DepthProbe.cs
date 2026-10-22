@@ -176,6 +176,32 @@ public partial class DepthProbe : Node
             GD.Print($"[depth-probe] info ties at {key:0.00}, one page: {winner}");
         }
 
+        // All ties (GPU-02): equal integer keys, planned as a frame's are. In
+        // one page the buffer's own order decides and the depth test has to
+        // pass the tie, so the later quad wins; a tie that leaves its page is
+        // planned into the ordered pass, which draws after the opaque one, so
+        // the later holder wins there too, and so does the one after it.
+        {
+            uint tie = 1u << 20;
+            var red = (redBlue, new Rect2(0, 0, 4, 4));
+            var blue = (redBlue, new Rect2(4, 0, 4, 4));
+            var grn = (green, new Rect2(0, 0, 4, 4));
+
+            bool onePage = await TiedWinner(pass, tie, red, blue) == 'B';
+            Check("all ties, one page: later wins", onePage, "the depth test rejects an equal depth; SamePageTiesInOrder cannot be on");
+            if (!onePage)
+            {
+                pass.SamePageTiesInOrder = false;
+                Check("all ties, one page, every later holder ordered: later wins", await TiedWinner(pass, tie, red, blue) == 'B', "the ordered pass lost a tie");
+            }
+
+            Check("all ties, two pages: later wins", await TiedWinner(pass, tie, red, grn) == 'G', "the later holder of the key lost");
+            Check("all ties, two pages reversed: later wins", await TiedWinner(pass, tie, grn, red) == 'R', "the later holder of the key lost");
+            Check("all ties, three across two pages: last wins", await TiedWinner(pass, tie, red, grn, blue) == 'B', "the last holder of the key lost");
+            Check("all ties, three reversed: last wins", await TiedWinner(pass, tie, blue, grn, red) == 'R', "the last holder of the key lost");
+            GD.Print($"[depth-probe] info all ties: same-page ties in order {(pass.SamePageTiesInOrder ? "yes" : "NO")}");
+        }
+
         GD.Print($"[depth-probe] original step-1 {_checks - _failures}/{_checks} checks passed");
 
         // Instance upload / vertex reconstruction at every exponent transition
@@ -360,6 +386,28 @@ public partial class DepthProbe : Node
             Dump($"pair_{keyA:0.########}_{keyB:0.########}_{(bFirst ? "bfirst" : "afirst")}{(a == b ? "" : "_2p")}", null, image);
 
         return new Color8((byte)c.R8, (byte)c.G8, (byte)c.B8, (byte)c.A8);
+    }
+
+    /// <summary>
+    /// Quads with one planned key, submitted in order, all covering (22, 22):
+    /// which one's colour is there, R, G or B.
+    /// </summary>
+    private async System.Threading.Tasks.Task<char> TiedWinner(WorldDepthPass pass, uint key, params (Texture2D Page, Rect2 Source)[] quads)
+    {
+        pass.Begin(Transform2D.Identity);
+        for (int i = 0; i < quads.Length; i++)
+        {
+            pass.AddPlannedQuad(quads[i].Page, new Rect2(10 + 2 * i, 10 + 2 * i, 20, 20), quads[i].Source, key);
+        }
+
+        pass.End();
+        await Frames(2);
+
+        Image image = pass.Viewport.GetTexture().GetImage();
+        image.Convert(Image.Format.Rgba8);
+        Color c = image.GetPixel(22, 22);
+        if (pass.Failed) GD.Print($"[depth-probe] all ties: the pass refused the frame: {pass.FailedWhy}");
+        return c.R8 > 100 ? 'R' : c.G8 > 100 ? 'G' : c.B8 > 100 ? 'B' : '-';
     }
 
     private async System.Threading.Tasks.Task Frames(int count)

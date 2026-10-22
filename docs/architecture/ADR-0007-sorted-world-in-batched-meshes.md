@@ -454,3 +454,90 @@ gathered and sorted every frame, so it removes only the submit cost.
 | canvas and 3D rasterise fractional zoom differently | step 1's pixel test at 0.5-2.5 |
 | a per-frame look this list missed | parity at the eight places; a miss sends that class of static back to the sprite path |
 | a chunk change costs a buffer rebuild | measured on a walk that crosses chunks (`walk` scene) |
+
+### Implemented 2026-10-22: the pass in the frame (GPU-01, GPU-02)
+
+Behind `--gpu-world` (off by default, Forward+ only; `--gpu-world-raw` for the
+raw-bytes output experiment), the world's sorted pass draws through the
+depth pass. What was built, and what was decided while building it:
+
+**The key.** 28 bits, `depth(15) | tile(9) | slot(4)` (`WorldDepthKey`).
+The depth part is `round(100 * CalculateDepthZ())` relative to the first
+diagonal the frame's top edge admits; `CalculateDepthZ()` is the only depth
+source and its adjustments to x, y and z are integers, so the part is exact.
+The tile part is the tile's position in the walk order of its diagonal
+(chunk x, chunk y, x within the chunk), relative to the first chunk column
+the frame's left edge admits, so equal depths across tiles order as `Seq`
+does. The slot is the chain position within the tile: an instanced static
+of rank r takes `2r + 1`; an object the walk queues after k instanced
+statics takes `2k`; covering land takes 0. Statics never tie dynamics;
+dynamics that tie (one tile, same chain position: a mobile's layers, two
+items on one tile) keep submission order, which is the sort's order. The
+parts are carried absolute in the instance and the shader rebuilds the key
+from the frame's origins in uint arithmetic; nothing is masked or
+truncated, an out-of-range part collapses the quad or abandons the frame.
+Below diagonal 32 (the void corner) float and integer order disagree, so a
+frame that shows it stays on the canvas.
+
+**Persistent statics (GPU-01).** `ChunkMesh.Build` applies upstream's mesh
+eligibility rule again when the switch is on and writes each eligible
+static as one instance of a MultiMesh per (chunk, atlas page)
+(`ChunkInstances`), at the index the texture buckets give it. The walk
+still visits every tile (lights, selection, alpha, roof and height culls),
+but an instanced static costs it a hue write and a drawn flag; a page is
+re-uploaded at the pass's End only when one of its instances changed. The
+walk's pixel cull is repeated in the shader, so a static the walk never
+reaches collapses as the walk would have skipped it. Seven instanced
+statics per tile at most (the slot field); the rest stay queued.
+
+**Dynamic sprites (GPU-02).** Inside the sorted draw, every sprite the
+batcher would put on the canvas is captured as an instance with its
+Drawable's key (`UltimaBatcher2D.BeginCapture`); one buffer per page is
+uploaded once per frame. A sprite that blends (alpha, shadow, spectral,
+circle of transparency) or that holds a key another sprite already holds
+on another page goes to the ordered pass: one MultiMesh per run of one page,
+drawn in submission order by Godot's transparency sort through
+`GeometryInstance3D.sorting_offset` (measured: a larger offset draws later).
+Equal keys in one page buffer keep their order on their own, because the
+buffer draws its instances in order and Forward+'s reverse-Z compare passes
+a tie (the depth probe's all-ties scene, 6 checks, verifies both the
+compare and the segment direction). The keys are planned before anything
+draws, so a frame the key cannot carry never starts on the pass.
+
+**Composite.** The pass's texture is drawn onto the world target under the
+inverse view transform as the first item of the sorted pass, so the land
+bake, loose land and underlays stay beneath it and what the canvas draws
+afterwards lands above it.
+
+**What stays on the canvas, per frame.** The id mirror (ADR-0023),
+Enhanced HD art, the void corner, a view taller than the depth field, staged
+splats, terrain layers and the weather lab, and a sorted list whose keys do
+not reproduce the sort (a walking mobile that ties a static on the diagonal
+it is counted on). Each is a logged reason (`GpuWorld.FellBack`) and a
+counted frame; nothing is silently wrong.
+
+**Deviations recorded.**
+
+- A custom blend (ADR-0003's read-back equations) cannot run inside the 3D
+  pass; those sprites keep the canvas and land after the composite, so they
+  are not occluded by what the pass drew.
+- Translucent statics, Wet statics under upstream's water wobble, themed
+  variants and HD art are not instanced: the sprite path draws them with
+  their key, so order is unchanged, only the saving is smaller.
+- An instanced static fading in, fading out, under the circle of
+  transparency, or hidden as vegetation is queued as a sprite that frame
+  with its own slot; its instance is off.
+- A covering tile whose texture has no land-array page is left to the bake
+  and counted (`CoverSkipped`).
+- The pass blends in linear light; the canvas blends sRGB bytes. Opaque
+  pixels round-trip exactly (measured); blended pixels may differ by
+  rounding until the raw-output experiment is measured.
+- The multi placement preview, the weather and the selection draw on the
+  canvas after the composite, as before, on top.
+
+**Measured.** `launchers\dev\depth_probe.bat` 46/46 on Forward+ (RTX 4090):
+pixel parity at 11 scales x 3 origins with the restructured shaders, 24-bit
+adjacent keys, the exact 28-bit sweep, and the all-ties scene. The parity
+probe on the gate scenes (0 px outside labels and the radar) and the perf
+probe are the next step and need a shard session; no frame-time claim is
+made here.

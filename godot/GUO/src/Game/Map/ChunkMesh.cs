@@ -99,12 +99,34 @@ namespace GUO.Game.Map
             // Should never happen if pass 1 counted correctly
             return -1;
         }
+
+        public ReadOnlySpan<Texture2D> Textures => _textures.AsSpan(0, _bucketCount);
+        public ReadOnlySpan<int> Counts => _counts.AsSpan(0, _bucketCount);
     }
 
     internal sealed class ChunkMesh
     {
         public readonly MeshLayer Land = new();
         public readonly MeshLayer Statics = new();
+
+        /// <summary>PORT DEVIATION (GUO): --gpu-world keeps the chunk's statics as instances of the world depth pass (ADR-0007, GPU-01).</summary>
+        public readonly ChunkInstances Instances = new();
+        private bool _instanced;
+        private int _tileRank;
+
+        /// <summary>Built with instances for a pass that no longer exists: rebuild.</summary>
+        public bool InstancesStale => _instanced && !Instances.Valid;
+
+        /// <summary>Built with its statics as instances of the world depth pass.</summary>
+        public bool Instanced => _instanced;
+
+        /// <summary>The tiledata of a meshed static or multi (the only things the statics layer holds).</summary>
+        public static ref StaticTiles ItemDataOf(GameObject obj)
+        {
+            if (obj is Static s)
+                return ref s.ItemData;
+            return ref Unsafe.As<Multi>(obj).ItemData;
+        }
 
         public bool IsDirty = true;
 
@@ -169,6 +191,7 @@ namespace GUO.Game.Map
             {
                 for (int y = 0; y < 8; y++)
                 {
+                    _tileRank = 0;
                     for (var obj = chunk.GetHeadObject(x, y); obj != null; obj = obj.TNext)
                     {
                         obj.InChunkMesh = false;
@@ -213,11 +236,26 @@ namespace GUO.Game.Map
             Statics.EnsureCapacity(staticsTotal);
             Statics.Count = staticsTotal;
 
+            // PORT DEVIATION (GUO): --gpu-world. The statics' quads go into the
+            // pass's instance buffers, one per page, at the same indices the
+            // texture buckets gave them; the MeshLayer stays empty.
+            _instanced = GpuWorld.Building;
+            if (_instanced)
+            {
+                Instances.Begin(GpuWorld.Pass, _staticsBuckets.Textures, _staticsBuckets.Counts, staticsTotal);
+                Statics.Count = 0;
+            }
+            else
+            {
+                Instances.Clear();
+            }
+
             // Pass 2: write sprites at their final sorted positions
             for (int x = 0; x < 8; x++)
             {
                 for (int y = 0; y < 8; y++)
                 {
+                    _tileRank = 0;
                     for (var obj = chunk.GetHeadObject(x, y); obj != null; obj = obj.TNext)
                     {
                         switch (obj)
@@ -245,6 +283,8 @@ namespace GUO.Game.Map
             Land.Dispose();
             Statics.Reset();
             Statics.Dispose();
+            Instances.Clear();
+            _instanced = false;
             IsDirty = true;
         }
 
@@ -257,6 +297,8 @@ namespace GUO.Game.Map
             Statics.SoftReset();
             _landOrder.Clear();
             _staticsBuckets.Clear();
+            Instances.Clear();
+            _instanced = false;
             IsDirty = true;
         }
 
@@ -312,7 +354,7 @@ namespace GUO.Game.Map
             if (!staticObj.AllowedToDraw || staticObj.IsDestroyed)
                 return;
 
-            CountStaticLike(ref staticObj.ItemData, staticObj.Graphic);
+            CountStaticLike(staticObj, ref staticObj.ItemData, staticObj.Graphic);
         }
 
         private void CountMulti(Multi multi)
@@ -323,19 +365,67 @@ namespace GUO.Game.Map
             if (multi.State != 0)
                 return;
 
-            CountStaticLike(ref multi.ItemData, multi.Graphic);
+            CountStaticLike(multi, ref multi.ItemData, multi.Graphic);
         }
 
-        private void CountStaticLike(ref StaticTiles itemData, ushort graphic)
+        private void CountStaticLike(GameObject obj, ref StaticTiles itemData, ushort graphic)
         {
-            if (IsStaticExcludedFromMesh(graphic, ref itemData))
+            if (!TakeInstanceRank(obj, ref itemData, graphic))
                 return;
 
             ref readonly var artInfo = ref Client.Game.UO.Arts.GetArt(graphic);
-            if (artInfo.Texture == null)
-                return;
-
             _staticsBuckets.Count(artInfo.Texture);
+        }
+
+        /// <summary>
+        /// PORT DEVIATION (GUO): whether this static is instanced, taking the
+        /// next rank in its tile when it is. Both passes walk the chains in
+        /// the same order, so the ranks agree. Past the slot field's seven
+        /// per tile, a static stays queued (WorldDepthKey.MaxInstancedPerTile).
+        /// </summary>
+        private bool TakeInstanceRank(GameObject obj, ref StaticTiles itemData, ushort graphic)
+        {
+            if (!Instanceable(obj, ref itemData, graphic))
+                return false;
+
+            if (_tileRank >= WorldDepthKey.MaxInstancedPerTile)
+                return false;
+
+            _tileRank++;
+            return true;
+        }
+
+        /// <summary>
+        /// PORT DEVIATION (GUO): upstream's mesh rule, then what the sprite
+        /// path draws as something other than one plain quad of the art:
+        /// a translucent static (blended), a wet one under upstream's water
+        /// wobble (two scaled draws), a themed one (its variant PNG) and an
+        /// HD one (another texture under another filter). Those stay queued.
+        /// </summary>
+        private bool Instanceable(GameObject obj, ref StaticTiles itemData, ushort graphic)
+        {
+            if (IsStaticExcludedFromMesh(graphic, ref itemData))
+                return false;
+
+            if (itemData.IsTranslucent)
+                return false;
+
+            var profile = ProfileManager.CurrentProfile;
+            if (itemData.IsWet && GUO.Renderer.Water.WaterRender.UpstreamWobble(profile))
+                return false;
+
+            if (obj.ThemedVariant != null)
+                return false;
+
+            // A house preview draws at half alpha, and a multi being placed
+            // moves with its Offset: both are the sprite path's.
+            if (obj is Multi { IsHousePreview: true } || obj.Offset != Vector3.Zero)
+                return false;
+
+            if (Client.Game.UO.Arts.TryGetHd(false, graphic, out _, out _, out _, out _))
+                return false;
+
+            return Client.Game.UO.Arts.GetArt(graphic).Texture != null;
         }
 
         #endregion
@@ -512,11 +602,12 @@ namespace GUO.Game.Map
             //
             // The way to have both is a depth buffer, which on Godot means
             // drawing the world through a 3D pass rather than the 2D canvas.
-            // That is a bigger change than a correctness fix should be, and it
-            // is written up in ADR-0001 rather than attempted here.
-            return true;
+            // That is ADR-0007's amendment: under --gpu-world (GpuWorld.Building)
+            // the rules below apply again and the statics become instances of
+            // the world depth pass, ordered by its depth buffer.
+            if (!GpuWorld.Building)
+                return true;
 
-#pragma warning disable CS0162 // unreachable while the above stands
             if (itemData.IsInternal)
                 return true;
 
@@ -533,7 +624,6 @@ namespace GUO.Game.Map
                 return true;
 
             return false;
-#pragma warning restore CS0162
         }
 
         /// <summary>
@@ -594,7 +684,8 @@ namespace GUO.Game.Map
 
         private void TryAddStaticLike(GameObject obj, ref StaticTiles itemData, ushort graphic, ushort hue)
         {
-            if (IsStaticExcludedFromMesh(graphic, ref itemData))
+            int rank = _tileRank;
+            if (!TakeInstanceRank(obj, ref itemData, graphic))
                 return;
 
             Vector3 hueVec = ShaderHueTranslator.GetHueVector(hue, itemData.IsPartialHue, 1f);
@@ -616,7 +707,24 @@ namespace GUO.Game.Map
 
             int idx = _staticsBuckets.GetNextIndex(artInfo.Texture);
             obj.MeshSpriteIndex = idx;
-            Statics.WriteQuadAt(idx, artInfo.Texture, artInfo.UV, posX, posY, hueVec, depth);
+            if (_instanced)
+            {
+                // PORT DEVIATION (GUO): the instance, as Static.Draw would
+                // have drawn the sprite: the same corners, source rect and
+                // hue vector (a wet static carries the water bit, ADR-0037),
+                // plus the key parts (WorldDepthKey) and the tile slot.
+                if (_waterStyled && itemData.IsWet)
+                {
+                    hueVec.Y += GUO.Renderer.Water.WaterRender.ModeBit;
+                }
+                Instances.Write(idx, posX, posY, artInfo.UV.Width, artInfo.UV.Height, artInfo.UV, hueVec,
+                    obj.X, obj.Y, obj.Z, 2 * rank + 1, WorldDepthKey.DepthAbs(obj.CalculateDepthZ()));
+            }
+            else
+            {
+                Statics.WriteQuadAt(idx, artInfo.Texture, artInfo.UV, posX, posY, hueVec, depth);
+            }
+
             obj.InChunkMesh = true;
         }
 

@@ -82,4 +82,55 @@ internal static class WorldDepthOrder
         }
         return count;
     }
+
+    /// <summary>
+    /// Which queued draws need the ordered pass. Keys arrive in submission
+    /// order and must not decrease (the sort put them there). A draw goes to
+    /// the ordered pass when it blends, or when it shares its key with the
+    /// draw before it: equal keys cannot order themselves across page buffers,
+    /// so every later holder of a key is drawn after the first one, in
+    /// submission order. Returns false when a key decreases, which means the
+    /// key no longer reproduces the sort and the frame must not use it.
+    /// </summary>
+    internal static bool Plan(ReadOnlySpan<uint> keys, ReadOnlySpan<bool> blended, Span<bool> ordered)
+    {
+        if (blended.Length != keys.Length || ordered.Length < keys.Length)
+            throw new ArgumentException("One blended flag in and one ordered flag out per key.", nameof(ordered));
+        for (int i = 0; i < keys.Length; i++)
+        {
+            if (i > 0 && keys[i] < keys[i - 1])
+            {
+                ordered[..keys.Length].Clear();
+                return false;
+            }
+            ordered[i] = blended[i] || (i > 0 && keys[i] == keys[i - 1]);
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Plan with each draw's page known. Equal keys in one page buffer keep
+    /// their submission order on their own: a buffer draws its instances in
+    /// order and the depth test passes a tie (the depth probe's all-ties scene
+    /// verifies it; WorldDepthPass.SamePageTiesInOrder). So a later holder of
+    /// a key is ordered once its run has left the first page, or once the
+    /// draw before it is ordered (it has to land over that one), and from
+    /// then on every later holder is. Returns false when a key decreases.
+    /// </summary>
+    internal static bool Plan(ReadOnlySpan<uint> keys, ReadOnlySpan<bool> blended, ReadOnlySpan<int> pages, Span<bool> ordered)
+    {
+        if (blended.Length != keys.Length || pages.Length != keys.Length || ordered.Length < keys.Length)
+            throw new ArgumentException("One blended flag and one page in and one ordered flag out per key.", nameof(ordered));
+        for (int i = 0; i < keys.Length; i++)
+        {
+            if (i > 0 && keys[i] < keys[i - 1])
+            {
+                ordered[..keys.Length].Clear();
+                return false;
+            }
+            bool tie = i > 0 && keys[i] == keys[i - 1];
+            ordered[i] = blended[i] || (tie && (ordered[i - 1] || pages[i] != pages[i - 1]));
+        }
+        return true;
+    }
 }

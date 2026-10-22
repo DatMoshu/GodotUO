@@ -1992,6 +1992,22 @@ public partial class Main : Node
                     case "--merged-land=off":
                         MergedLandMode(false, false, false);
                         break;
+                    case "--gpu-world":
+                    case "--gpu-world=on":
+                        // ADR-0007 amendment: the world's statics as instances of
+                        // the world depth pass, the sorted pass ordered by its
+                        // depth buffer. Off by default; Forward+ only.
+                        GUO.Renderer.GpuWorld.Enabled = true;
+                        GUO.Host.PerfProbe.ParityToggle = on => GUO.Renderer.GpuWorld.Enabled = on;
+                        GUO.Host.PerfProbe.ParityState = () => GUO.Renderer.GpuWorld.Enabled;
+                        break;
+                    case "--gpu-world=off":
+                        GUO.Renderer.GpuWorld.Enabled = false;
+                        break;
+                    case "--gpu-world-raw":
+                        // The experimental raw-bytes output (WorldDepthPass.RawOutput).
+                        GUO.Renderer.GpuWorld.RawOutput = true;
+                        break;
                     case "--cover-cull":
                         // Epic B, B4 fix 2b: covering land only where it overlaps its object.
                         GUO.Game.Scenes.RenderLists.CoverCull = true;

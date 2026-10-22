@@ -366,6 +366,7 @@ namespace GUO.Renderer
 
         private void SetOnAllMaterials(string name, Variant value)
         {
+            GpuWorld.Pass?.SetShared(name, value); // PORT DEVIATION (GUO): --gpu-world's materials share the hue uniforms
             _material.SetShaderParameter(name, value);
             _meshMaterial.SetShaderParameter(name, value);
             _landArrayMaterial.SetShaderParameter(name, value);
@@ -455,6 +456,7 @@ namespace GUO.Renderer
             EnsureNotStarted();
 
             RenderingServer.CanvasItemSetTransform(_target, viewTransform);
+            _viewTransform = viewTransform; // PORT DEVIATION (GUO): --gpu-world's composite
             if (_mirroring)
             {
                 RenderingServer.CanvasItemSetTransform(_idItem, viewTransform); // PORT DEVIATION (GUO): ADR-0023
@@ -509,6 +511,9 @@ namespace GUO.Renderer
         /// (land that covers an object).
         /// </summary>
         public int CurrentObjectId { get; set; }
+
+        /// <summary>The id mirror is on for the current target (ADR-0023); --gpu-world leaves the frame to the canvas then.</summary>
+        public bool Mirroring => _mirroring;
 
         private bool _mirroring;
         private Rid _idItem;
@@ -815,6 +820,24 @@ void fragment() {
 
             var offset = new Vector2(-offsetX, -offsetY);
 
+            // PORT DEVIATION (GUO): --gpu-world draws covering land in the
+            // pass, keyed; a tile whose texture has no land-array page (HD,
+            // themed) is left to the bake, counted as a known deviation.
+            if (_capture != null)
+            {
+                Texture2D coverTexture = layer.Textures[index];
+                int coverPage = LandPages.LayerOf(coverTexture);
+                if (coverPage < 0)
+                {
+                    CoverSkipped++;
+                    return 0;
+                }
+
+                _capture.AddCoverTile(layer, index, coverPage, LandPages.ScaleOf(coverTexture), offset,
+                    CaptureDepthAbs, CaptureTieAbs, CaptureS);
+                return 1;
+            }
+
             // B4 fix 2c: held back and drawn with the tiles that follow it as
             // one mesh, unless the id mirror needs each tile's own texture.
             if (MergedCover && !_mirroring)
@@ -969,6 +992,67 @@ void fragment() {
 
         private Vector2 _itemOffset;
 
+        // PORT DEVIATION (GUO): --gpu-world (ADR-0007, GPU-02). While the
+        // sorted world pass is captured, every sprite the batcher would put
+        // on the canvas becomes an instance of the world depth pass instead,
+        // with the key RenderLists set for the object being drawn. A custom
+        // blend (ADR-0003's read-back equations) cannot run inside the 3D
+        // pass; those sprites keep the canvas, and land after the pass's
+        // composite because the composite item was opened first.
+        private WorldDepthPass _capture;
+        private bool _captureSuspended;
+        private Transform2D _viewTransform = Transform2D.Identity;
+        private static CanvasItemMaterial _compositeMaterial;
+
+        /// <summary>The key parts of the object being drawn, set by RenderLists before each Draw.</summary>
+        public uint CaptureDepthAbs, CaptureTieAbs;
+        public int CaptureS;
+
+        /// <summary>Covering tiles the pass could not take (no land-array page); a known deviation, counted.</summary>
+        public static int CoverSkipped;
+
+        public bool Capturing => _capture != null;
+
+        /// <summary>
+        /// Opens the composite item for the pass's texture, then routes the
+        /// sprites that follow into the pass. The item is a child of the
+        /// view-transformed target item under the inverse view, so the
+        /// texture lands on the target's own pixels; the view is a scale and
+        /// a translation, and the round trip is well under a pixel.
+        /// </summary>
+        public void BeginCapture(WorldDepthPass pass, int width, int height)
+        {
+            EnsureStarted();
+            FlushRun();
+            _compositeMaterial ??= new CanvasItemMaterial { BlendMode = CanvasItemMaterial.BlendModeEnum.PremultAlpha };
+
+            Rid item = NewItem(CurrentParent);
+            RenderingServer.CanvasItemSetMaterial(item, _compositeMaterial.GetRid());
+            RenderingServer.CanvasItemSetTransform(item, _viewTransform.AffineInverse());
+            RenderingServer.CanvasItemAddTextureRect(item, new Rect2(0, 0, width, height), pass.Texture.GetRid());
+            Commands++;
+
+            Cut();
+            _capture = pass;
+            _captureSuspended = false;
+        }
+
+        public void EndCapture()
+        {
+            FlushRun();
+            _capture = null;
+            _captureSuspended = false;
+        }
+
+        private void CaptureQuad(Texture2D texture, Vector3 color)
+        {
+            Vector2 uv0 = _quadUVs[0], uv1 = _quadUVs[1], uv2 = _quadUVs[2];
+            _capture.AddSprite(texture, _quadPoints[0], _quadPoints[1], _quadPoints[2], _quadPoints[3],
+                new Vector4(uv0.X, uv0.Y, uv1.X - uv0.X, uv2.Y - uv0.Y), false, color,
+                CaptureDepthAbs, CaptureTieAbs, CaptureS);
+        }
+        // END PORT DEVIATION (GUO)
+
         public void SetWorldOffset(int offsetX, int offsetY)
         {
             _worldOffset = new Vector2(-offsetX, -offsetY);
@@ -999,6 +1083,10 @@ void fragment() {
         public void SetBlendState(BlendState blend)
         {
             blend = blend ?? BlendState.AlphaBlend;
+
+            // PORT DEVIATION (GUO): --gpu-world draws custom blends on the
+            // canvas, after the composite (see BeginCapture).
+            _captureSuspended = _capture != null && !blend.IsPremultipliedAlpha;
 
             if (blend.IsPremultipliedAlpha)
             {
@@ -1905,11 +1993,33 @@ void fragment() {
                 return;
             }
 
-            SelectSpriteSampler(texture);
-            EnsureMaterial(_currentMaterial);
-
             int textureWidth = WidthOf(texture);
             int textureHeight = HeightOf(texture);
+
+            // PORT DEVIATION (GUO): --gpu-world captures the sprite as an
+            // instance: the rect path's corners and texel source rect, or the
+            // rotated path's corners and normalised UVs, as the canvas would
+            // have had them.
+            if (_capture != null && !_captureSuspended)
+            {
+                if (rotationSin == 0f && rotationCos == 1f && effects == 0)
+                {
+                    float x0 = destinationX - originX * destinationW, y0 = destinationY - originY * destinationH;
+                    float x1 = x0 + destinationW, y1 = y0 + destinationH;
+                    _capture.AddSprite(texture, new Vector2(x0, y0), new Vector2(x1, y0), new Vector2(x0, y1), new Vector2(x1, y1),
+                        new Vector4(sourceX * textureWidth, sourceY * textureHeight, sourceW * textureWidth, sourceH * textureHeight),
+                        true, color, CaptureDepthAbs, CaptureTieAbs, CaptureS);
+                    return;
+                }
+
+                SetQuadPoints(destinationX, destinationY, destinationW, destinationH, originX, originY, rotationSin, rotationCos);
+                SetQuadUVs(sourceX, sourceY, sourceW, sourceH, sourceH, effects);
+                CaptureQuad(texture, color);
+                return;
+            }
+
+            SelectSpriteSampler(texture);
+            EnsureMaterial(_currentMaterial);
 
             // PORT DEVIATION (GUO): the id mirror (ADR-0023) follows the plain path only.
             if (rotationSin == 0f && rotationCos == 1f && effects == 0 && BatchedWorld && !_mirroring)
@@ -1958,6 +2068,16 @@ void fragment() {
             // Rotated or mirrored. The corner maths is upstream's SetVertex,
             // component for component, so a rotated sprite lands on the same
             // pixels it does there.
+            SetQuadPoints(destinationX, destinationY, destinationW, destinationH, originX, originY, rotationSin, rotationCos);
+            SetQuadUVs(sourceX, sourceY, sourceW, sourceH, sourceH, effects);
+
+            AddQuad(texture, color);
+        }
+
+        /// <summary>Upstream's SetVertex for the four corners of a rotated or mirrored sprite.</summary>
+        private void SetQuadPoints(float destinationX, float destinationY, float destinationW, float destinationH,
+            float originX, float originY, float rotationSin, float rotationCos)
+        {
             float cornerX = -originX * destinationW;
             float cornerY = -originY * destinationH;
             _quadPoints[0] = new Vector2(
@@ -1981,10 +2101,6 @@ void fragment() {
             _quadPoints[3] = new Vector2(
                 (-rotationSin * cornerY) + (rotationCos * cornerX) + destinationX,
                 (rotationCos * cornerY) + (rotationSin * cornerX) + destinationY);
-
-            SetQuadUVs(sourceX, sourceY, sourceW, sourceH, sourceH, effects);
-
-            AddQuad(texture, color);
         }
 
         /// <summary>
@@ -2024,6 +2140,14 @@ void fragment() {
 
             if (texture == null)
             {
+                return;
+            }
+
+            // PORT DEVIATION (GUO): --gpu-world captures the quad (a shadow's
+            // parallelogram, a mirror, a sitted section) as an instance.
+            if (_capture != null && !_captureSuspended)
+            {
+                CaptureQuad(texture, color);
                 return;
             }
 
