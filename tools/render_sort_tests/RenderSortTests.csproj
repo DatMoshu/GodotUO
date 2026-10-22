@@ -9,5 +9,6 @@
     <Compile Include="../../godot/GUO/src/Game/Scenes/DepthKey.cs" Link="DepthKey.cs" />
     <Compile Include="../../godot/GUO/src/Game/Scenes/CoverStamp.cs" Link="CoverStamp.cs" />
     <Compile Include="../../godot/GUO/src/Game/Scenes/ChunkCursor.cs" Link="ChunkCursor.cs" />
+    <Compile Include="../../godot/GUO/src/Game/Scenes/CoverOwner.cs" Link="CoverOwner.cs" />
   </ItemGroup>
 </Project>

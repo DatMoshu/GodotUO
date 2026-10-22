@@ -7,8 +7,13 @@ the real one (shadow/body pairs, meshed statics, covering land, Seq == index);
 the per-frame cover mark (`CoverStamp`) is void after a frame, idempotent
 within one, never shared between two owners or with a fresh tile, and
 answers exactly as the set per owner it replaced over random frames under
-the supported lifecycle (one owner's frame at a time; an interleaving is
-stated as unsupported and asserted in debug builds); the
+the supported lifecycle (between a list's first cover mark and its draw no
+other list marks; an interleaving is stated as unsupported); the
+ownership check (`CoverOwner`) passes the client's real sequence (world
+Clear, gather, draw; the UI manager's two lists cleared and drawn after,
+and UI child lists drawn without a Clear, also mid-world-frame), reports
+the interleaved case at the first list's draw, and lets an abandoned list
+give way; the
 chunk cursor (`ChunkCursor`) looks a chunk up once per chunk a walk passes
 through, never for a negative tile, and remembers an unloaded chunk.
 

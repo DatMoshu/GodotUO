@@ -19,12 +19,14 @@ namespace GUO.Game.Scenes
     ///
     /// A tile holds one stamp, so this is not a set per owner: if owner B
     /// marked a tile between owner A's gather and A's draw, A would no
-    /// longer see its own mark. The supported lifecycle is therefore that an
-    /// owner's frame (Clear, gather, DrawWorld) completes before another
-    /// owner touches the same land, which is how the client runs (one
-    /// RenderLists, one frame at a time, on the main thread); RenderLists
-    /// asserts it in debug builds, and tools/render_sort_tests compares
-    /// against a set per owner under that lifecycle.
+    /// longer see its own mark. The supported lifecycle is therefore that
+    /// between a list's first cover mark and the DrawWorld that reads its
+    /// marks, no other list marks cover land. Only the world scene's list
+    /// marks any (UI lists, and the child lists UI controls draw without a
+    /// Clear, queue no land), so that is how the client runs; <see
+    /// cref="CoverOwner"/> records who marked last and DrawWorld checks it in
+    /// debug builds, and tools/render_sort_tests compares against a set per
+    /// owner under that lifecycle.
     /// </remarks>
     internal struct CoverStamp
     {

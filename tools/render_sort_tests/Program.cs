@@ -118,13 +118,77 @@ Check(DepthKey.Seq(DepthKey.Of(12.5f, 123456)) == 123456, "the sequence survives
 
     // What a single stamp per tile cannot do, stated so nobody relies on it:
     // a mark by B between A's gather and A's draw hides A's own mark. That
-    // is why the supported lifecycle is one owner's frame at a time
-    // (RenderLists asserts it in debug builds).
+    // is why the supported lifecycle is one marking list at a time between
+    // its first mark and its draw (CoverOwner, checked below).
     owner.NextFrame();
     owner.Mark(ref tile);
     other.NextFrame();
     other.Mark(ref tile);
     Check(!owner.Marked(tile), "interleaved owners are not expected to keep both marks; if they now do, update CoverStamp's remarks");
+}
+
+// CoverOwner: the check that the lifecycle holds, against the client's real
+// sequence of lists. Clear = Release, a cover mark = Marked, DrawWorld =
+// Intact then Release. Lists are plain objects here; RenderLists passes this.
+{
+    object world = new(), ui = new(), uiSecond = new(), child = new();
+    CoverOwner worldOwner = default, uiOwner = default, uiSecondOwner = default, childOwner = default;
+
+    // One client frame: world Clear, gather (cover marks), world draw; then the
+    // UI manager clears and draws its two lists, and controls draw child lists
+    // they never cleared. Repeated, every DrawWorld is intact.
+    for (int frame = 0; frame < 3; frame++)
+    {
+        worldOwner.Release(world);
+        for (int m = 0; m < 50; m++) worldOwner.Marked(world);
+        Check(worldOwner.Marks == 50 && worldOwner.Intact(world), $"frame {frame}: the world list's own marks are not intact at its draw");
+        worldOwner.Release(world);
+        Check(worldOwner.Marks == 0, "DrawWorld did not void the marks");
+
+        uiOwner.Release(ui);
+        Check(uiOwner.Intact(ui), $"frame {frame}: a UI list that marked nothing is not intact");
+        uiOwner.Release(ui);
+        Check(childOwner.Intact(child), $"frame {frame}: a child list drawn without a Clear is not intact");
+        childOwner.Release(child);
+        uiSecondOwner.Release(uiSecond);
+        Check(uiSecondOwner.Intact(uiSecond), $"frame {frame}: the second UI list is not intact");
+        uiSecondOwner.Release(uiSecond);
+    }
+
+    // UI lists between the world's gather and its draw (a gump drawn from
+    // inside the world pass): they mark nothing, so the world stays intact.
+    worldOwner.Release(world);
+    worldOwner.Marked(world);
+    uiOwner.Release(ui);
+    Check(uiOwner.Intact(ui), "a UI list drawn mid-world-frame is not intact");
+    uiOwner.Release(ui);
+    Check(childOwner.Intact(child), "a child list drawn mid-world-frame is not intact");
+    Check(worldOwner.Intact(world), "a UI list's Clear and draw voided the world's marks");
+    worldOwner.Release(world);
+
+    // The unsupported case, reported where the loss would show: a second list
+    // marks cover land before the first has drawn. The first's draw is not
+    // intact; the second's is (its marks are the live ones).
+    object probe = new();
+    CoverOwner probeOwner = default;
+    worldOwner.Release(world);
+    worldOwner.Marked(world);
+    probeOwner.Release(probe);
+    probeOwner.Marked(probe);
+    Check(!worldOwner.Intact(world), "the interleaved first list reads as intact");
+    Check(probeOwner.Intact(probe), "the second list (whose marks are live) reads as broken");
+    probeOwner.Release(probe);
+    Check(!worldOwner.Intact(world), "the first list reads as intact once the second has drawn");
+    worldOwner.Release(world);
+    Check(worldOwner.Intact(world), "a Clear did not restore the first list");
+
+    // A list that marks and is abandoned (a scene replaced before it drew)
+    // gives way: the next list that marks is intact.
+    worldOwner.Marked(world);
+    probeOwner.Release(probe);
+    probeOwner.Marked(probe);
+    Check(probeOwner.Intact(probe), "an abandoned list's marks blocked the next one");
+    probeOwner.Release(probe);
 }
 
 // CoverStamp against the HashSet-per-owner it replaced, under the supported

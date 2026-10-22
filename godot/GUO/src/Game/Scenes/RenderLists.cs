@@ -122,13 +122,14 @@ namespace GUO.Game.Scenes
         /// frame's tiles are never mistaken for this frame's, and no per-frame
         /// clearing of the tiles themselves is needed. See CoverStamp for why
         /// two owners and a fresh tile can never collide, and for the one
-        /// lifecycle it supports: a frame of one owner at a time, which
-        /// <see cref="_gathering"/> asserts in debug builds.
+        /// lifecycle it supports: between this list's first cover mark and
+        /// the DrawWorld that reads it, no other list marks cover land, which
+        /// <see cref="_coverOwner"/> checks in debug builds.
         /// </remarks>
         private CoverStamp _coverStamp;
 
-        /// <summary>The owner whose frame is in progress (its Clear was the last one); see CoverStamp.</summary>
-        private static RenderLists _gathering;
+        /// <summary>Whether this list's cover marks are still the live ones; see <see cref="CoverOwner"/>.</summary>
+        private CoverOwner _coverOwner;
 
         /// <summary>The keys of <see cref="_world"/>, sorted in place by DrawWorld (<see cref="DepthKey"/>).</summary>
         private ulong[] _keys = new ulong[1024];
@@ -166,8 +167,6 @@ namespace GUO.Game.Scenes
             {
                 return;
             }
-
-            System.Diagnostics.Debug.Assert(ReferenceEquals(_gathering, this), "another RenderLists cleared since this one did: cover marks are per frame of one owner");
 
             Map.Map map = obj.World?.Map;
 
@@ -259,6 +258,7 @@ namespace GUO.Game.Scenes
                         }
 
                         _coverStamp.Mark(ref land.CoverStamp);
+                        _coverOwner.Marked(this);
                         _world.Add(new Drawable(land, landDepth, _world.Count));
                     }
                 }
@@ -372,7 +372,7 @@ namespace GUO.Game.Scenes
             _stretchedTiles.Clear();
             _world.Clear();
             _coverStamp.NextFrame();
-            _gathering = this;
+            _coverOwner.Release(this);
             LastCover = (CoverQueued, CoverOverlapping); // PORT DEVIATION (GUO): B4 fix 2 counters
             CoverQueued = CoverOverlapping = 0;
             _transparentObjects.Clear();
@@ -605,7 +605,7 @@ namespace GUO.Game.Scenes
         private int DrawWorld(UltimaBatcher2D batcher, sbyte maxGroundZ)
         {
             long stageAt = PerfStages.Now();
-            System.Diagnostics.Debug.Assert(ReferenceEquals(_gathering, this), "another RenderLists cleared since this one did: cover marks are per frame of one owner");
+            System.Diagnostics.Debug.Assert(_coverOwner.Intact(this), "another RenderLists queued cover land after this one did and before it drew; cover marks are one world list at a time (CoverOwner)");
             var span = CollectionsMarshal.AsSpan(_world);
 
             // PORT DEVIATION (GUO): sort 8-byte keys, not the drawables. Seq is
@@ -697,6 +697,7 @@ namespace GUO.Game.Scenes
             }
 
             batcher.CurrentObjectId = 0; // PORT DEVIATION (GUO): ADR-0023
+            _coverOwner.Release(this);
             PerfStages.Add(kind, stageAt);
             return done;
         }
