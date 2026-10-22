@@ -118,6 +118,30 @@ namespace GUO.Renderer
         private readonly List<Rid> _items = new List<Rid>();
         private int _itemCount;
 
+        // PERF (2026-10-22 traces): NewItem sent eight RenderingServer calls
+        // per pooled item per frame (parent, transform, clip, custom rect,
+        // material, back-buffer copy, filter, draw index) and Cut a ninth,
+        // 8-11% of the main thread at ~430 items a frame (1800 zoomed out).
+        // Items come back in the same order frame to frame, so each one
+        // remembers the state the server holds for it and only a change is
+        // sent. The draw index is the pool index and is set once, at creation.
+        private struct ItemState
+        {
+            public Rid Parent;
+            public Transform2D Transform;
+            public bool Clip;
+            public bool CustomRect;
+            public Rect2 CustomRectValue;
+            public Material Material;
+            public bool CopyToBackbuffer;
+            public RenderingServer.CanvasItemTextureFilter Filter;
+        }
+
+        private ItemState[] _itemStates = new ItemState[64];
+
+        /// <summary>A filter no item has been given, so the first frame sends one.</summary>
+        private const RenderingServer.CanvasItemTextureFilter NoFilter = (RenderingServer.CanvasItemTextureFilter)(-1);
+
         private readonly List<Rid> _clipStack = new List<Rid>();
         private Rid _current;
 
@@ -314,6 +338,7 @@ namespace GUO.Renderer
             }
 
             _items.Clear();
+            System.Array.Clear(_itemStates);
 
             foreach (ShaderMaterial material in _blendMaterials.Values)
             {
@@ -1073,9 +1098,8 @@ void fragment() {
             FlushRun();
             _compositeMaterial ??= new CanvasItemMaterial { BlendMode = CanvasItemMaterial.BlendModeEnum.PremultAlpha };
 
-            Rid item = NewItem(CurrentParent);
-            RenderingServer.CanvasItemSetMaterial(item, _compositeMaterial.GetRid());
-            RenderingServer.CanvasItemSetTransform(item, _viewTransform.AffineInverse());
+            Rid item = NewItem(CurrentParent, _viewTransform.AffineInverse());
+            ItemSetMaterial(item, _compositeMaterial);
             RenderingServer.CanvasItemAddTextureRect(item, new Rect2(0, 0, width, height), pass.Texture.GetRid());
             Commands++;
 
@@ -1158,8 +1182,8 @@ void fragment() {
             // The copy has to be its own item, submitted between what is
             // already drawn and what is about to read it. An empty rect means
             // the whole visible area.
-            Rid copier = NewItem(CurrentParent);
-            RenderingServer.CanvasItemSetCopyToBackbuffer(copier, true, new Rect2());
+            Rid copier = NewItem(CurrentParent, Transform2D.Identity);
+            ItemSetCopyToBackbuffer(copier, true);
 
             Cut();
         }
@@ -1264,8 +1288,7 @@ void fragment() {
         /// <summary>Scoped UI transform; clip children inherit it. Pop with ClipEnd.</summary>
         public void PushUiTransform(Transform2D transform)
         {
-            Rid parent = NewItem(CurrentParent);
-            RenderingServer.CanvasItemSetTransform(parent, transform);
+            Rid parent = NewItem(CurrentParent, transform);
             _clipStack.Add(parent);
             Cut();
         }
@@ -1282,10 +1305,10 @@ void fragment() {
             // scissor by hand. Neither is needed here: these items already sit
             // under the node carrying the camera transform, and nesting the
             // clip item inside the enclosing one is what intersects them.
-            Rid clip = NewItem(CurrentParent);
+            Rid clip = NewItem(CurrentParent, Transform2D.Identity);
 
-            RenderingServer.CanvasItemSetCustomRect(clip, true, new Rect2(x, y, width, height));
-            RenderingServer.CanvasItemSetClip(clip, true);
+            ItemSetCustomRect(clip, new Rect2(x, y, width, height));
+            ItemSetClip(clip, true);
 
             _clipStack.Add(clip);
 
@@ -2380,63 +2403,142 @@ void fragment() {
         /// </summary>
         private void Cut()
         {
-            _current = NewItem(CurrentParent);
             _itemOffset = _worldOffset;
-
-            if (_worldOffset != Vector2.Zero)
-            {
-                RenderingServer.CanvasItemSetTransform(
-                    _current, new Transform2D(0f, _worldOffset));
-            }
+            _current = NewItem(CurrentParent,
+                _worldOffset != Vector2.Zero ? new Transform2D(0f, _worldOffset) : Transform2D.Identity);
         }
 
-        private Rid NewItem(Rid parent)
+        /// <summary>The pool index of the item NewItem handed out last; the ItemSet helpers act on it.</summary>
+        private int _lastItem = -1;
+
+        private Rid NewItem(Rid parent, in Transform2D transform)
         {
             FlushRun();
             Rid item;
+            int index = _itemCount;
 
-            if (_itemCount < _items.Count)
+            if (index < _items.Count)
             {
-                item = _items[_itemCount];
+                item = _items[index];
             }
             else
             {
                 item = RenderingServer.CanvasItemCreate();
-                RenderingServer.CanvasItemSetMaterial(item, _nextMaterial.GetRid());
-
                 _items.Add(item);
+                if (_itemStates.Length < _items.Count)
+                {
+                    System.Array.Resize(ref _itemStates, _itemStates.Length * 2);
+                }
+
+                // Siblings paint in draw-index order, and the pool index only
+                // ever goes up within a frame, so a later item paints over an
+                // earlier one. The index is the item's for life.
+                RenderingServer.CanvasItemSetDrawIndex(item, index);
+                _itemStates[index] = new ItemState { Transform = Transform2D.Identity, Filter = NoFilter };
             }
 
-            RenderingServer.CanvasItemSetParent(item, parent);
-            RenderingServer.CanvasItemSetTransform(item, Transform2D.Identity);
-            RenderingServer.CanvasItemSetClip(item, false);
-            RenderingServer.CanvasItemSetCustomRect(item, false);
+            ref ItemState state = ref _itemStates[index];
+            if (state.Parent != parent)
+            {
+                RenderingServer.CanvasItemSetParent(item, parent);
+                state.Parent = parent;
+            }
 
-            // Reset every time, not only on creation: a pooled item was very
-            // likely last used under a different blend, or as a back-buffer
-            // copier, and either would carry over into this frame.
-            RenderingServer.CanvasItemSetMaterial(item, _nextMaterial.GetRid());
-            RenderingServer.CanvasItemSetCopyToBackbuffer(item, false, new Rect2());
+            if (state.Transform != transform)
+            {
+                RenderingServer.CanvasItemSetTransform(item, transform);
+                state.Transform = transform;
+            }
+
+            if (state.Clip)
+            {
+                RenderingServer.CanvasItemSetClip(item, false);
+                state.Clip = false;
+            }
+
+            if (state.CustomRect)
+            {
+                RenderingServer.CanvasItemSetCustomRect(item, false);
+                state.CustomRect = false;
+            }
+
+            // Reset whenever it differs, not only on creation: a pooled item
+            // may have last been used under a different blend, or as a
+            // back-buffer copier, and either would carry over into this frame.
+            if (!ReferenceEquals(state.Material, _nextMaterial))
+            {
+                RenderingServer.CanvasItemSetMaterial(item, _nextMaterial.GetRid());
+                state.Material = _nextMaterial;
+            }
+
+            if (state.CopyToBackbuffer)
+            {
+                RenderingServer.CanvasItemSetCopyToBackbuffer(item, false, new Rect2());
+                state.CopyToBackbuffer = false;
+            }
 
             _itemMaterial = _nextMaterial;
 
-            // Set every time, and never left to the project setting: a canvas
-            // item made through RenderingServer does NOT pick up
-            // default_texture_filter, it starts on linear. Measured by
-            // launchers/dev/batcher_probe.bat, which read brightness 8 back
-            // as 7 -- a 0.875/0.125 blend with the dark texel next door. Every
-            // sprite in the client was being smeared, and the only visible
-            // symptom would have been slightly soft art. Project rule 7.
-            RenderingServer.CanvasItemSetDefaultTextureFilter(item, _sampler.Filter);
+            // Never left to the project setting: a canvas item made through
+            // RenderingServer does NOT pick up default_texture_filter, it
+            // starts on linear. Measured by launchers/dev/batcher_probe.bat,
+            // which read brightness 8 back as 7 -- a 0.875/0.125 blend with
+            // the dark texel next door. Every sprite in the client was being
+            // smeared, and the only visible symptom would have been slightly
+            // soft art. Project rule 7. (NoFilter on a new item sends it.)
+            if (state.Filter != _sampler.Filter)
+            {
+                RenderingServer.CanvasItemSetDefaultTextureFilter(item, _sampler.Filter);
+                state.Filter = _sampler.Filter;
+            }
 
-            // Siblings paint in draw-index order, and the pool index only ever
-            // goes up within a frame, so a later item paints over an earlier one.
-            RenderingServer.CanvasItemSetDrawIndex(item, _itemCount);
-
+            _lastItem = index;
             _itemCount++;
             FlushesDone++;
 
             return item;
+        }
+
+        // The pooled item's state the server holds, kept beside every change
+        // so NewItem can skip what is already set. Only the item NewItem gave
+        // out last is ever changed after the fact.
+        private ref ItemState StateOf(Rid item)
+        {
+            System.Diagnostics.Debug.Assert(_lastItem >= 0 && _items[_lastItem] == item, "only the newest pooled item is changed after NewItem");
+            return ref _itemStates[_lastItem];
+        }
+
+        private void ItemSetMaterial(Rid item, Material material)
+        {
+            ref ItemState state = ref StateOf(item);
+            if (ReferenceEquals(state.Material, material)) return;
+            RenderingServer.CanvasItemSetMaterial(item, material.GetRid());
+            state.Material = material;
+        }
+
+        private void ItemSetCopyToBackbuffer(Rid item, bool copy)
+        {
+            ref ItemState state = ref StateOf(item);
+            if (state.CopyToBackbuffer == copy) return;
+            RenderingServer.CanvasItemSetCopyToBackbuffer(item, copy, new Rect2());
+            state.CopyToBackbuffer = copy;
+        }
+
+        private void ItemSetClip(Rid item, bool clip)
+        {
+            ref ItemState state = ref StateOf(item);
+            if (state.Clip == clip) return;
+            RenderingServer.CanvasItemSetClip(item, clip);
+            state.Clip = clip;
+        }
+
+        private void ItemSetCustomRect(Rid item, Rect2 rect)
+        {
+            ref ItemState state = ref StateOf(item);
+            if (state.CustomRect && state.CustomRectValue == rect) return;
+            RenderingServer.CanvasItemSetCustomRect(item, true, rect);
+            state.CustomRect = true;
+            state.CustomRectValue = rect;
         }
 
 
