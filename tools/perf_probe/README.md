@@ -52,8 +52,13 @@ launchers/dev/perf_gate.bat --fixture dev-world-v1
 ```
 
 Use the `.sh` twin on Linux/macOS. Configure `UO_BUILD_DIR` outside the
-checkout first. The launcher runs the optimized real probe, then compares
+checkout first. The launcher runs the optimized real probe with the gate's
+own flags in front of yours (`--perf-static-world`, then `--perf-scene` for
+each of its five stationary/walk scenes, so the probe measures a map-only
+world and only the six scenes the gate binds on), then compares
 against `<UO_BUILD_DIR>/perf/gate/<machine-tag>/<name>.baseline.json`.
+The baseline also records the measured head, whether the tree was dirty
+and the client DLL hash; comparisons print both heads.
 There is no committed live baseline. Use `--name` for separate configurations;
 `--replace-baseline` deliberately replaces an existing baseline only after
 a successful probe. Missing or mismatched baselines fail before launching

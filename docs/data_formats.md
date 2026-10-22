@@ -3288,9 +3288,14 @@ name. A change to `columns` bumps `format`.
 
 ### Count comparison and local baselines (PERF-02)
 
-`tools/perf_probe/gate.py` accepts two probe reports. Each must be optimized
-and contain exactly one `login`, `open-field`, `britain-bank`, `dense-forest`,
-`dungeon`, and `walk`. Stationary scenes need at least 360 measured frames;
+`tools/perf_probe/gate.py` accepts two probe reports. Each must be optimized,
+measured with `--perf-static-world` (`static_world: true`, so no mobile other
+than the player, no item and no effect reaches the render lists and a
+passer-by cannot move a count), and contain exactly one `login`, `open-field`,
+`britain-bank`, `dense-forest`, `dungeon`, and `walk`. Rows for any other
+probe scene are ignored, so a report that also carries the extra scenes
+(`britain-docks`, `trinsic-bay`, ...) still compares (PERF-V5). Every row
+must be an object with a string `scene`. Stationary scenes need at least 360 measured frames;
 the timed walk needs at least one measured frame and one tile moved. Counts
 and mean/p95/p99 times must be finite positive numbers, draws per frame must
 be at least 0.95, and p95 cannot exceed p99. Window and postfx must match.
@@ -3318,9 +3323,15 @@ by `|`; the name itself is not written. The baseline object is:
 | `context.fixture` | required user label for the shard world/data fixture |
 | `context.shard` | first 16 hex digits of SHA-256 of `host:port` |
 | `context.args` | exact extra client flag string, default empty |
+| `context.gate_flags` | the flags the gate itself adds before `args`: `--perf-static-world` and `--perf-scene` for each bound scene but `login` |
+| `provenance.head` | full git head of the checkout that was measured, or `unknown` |
+| `provenance.dirty` | whether that checkout had uncommitted changes (`null` when the head is unknown) |
+| `provenance.client_dll_sha256` | SHA-256 of the built client `GUO.dll`, or `unknown` |
 | `report` | complete validated probe JSON |
 
-Context equality is binding before comparison. The tool does not validate
+Context equality is binding before comparison; `provenance` is recorded
+beside it and printed (baseline head against measured head) but never
+binding, since a comparison is about settings, not a commit. The tool does not validate
 world contents or freeze live entities: fixture consistency is the operator's
 responsibility. `--record-baseline` creates exclusively and refuses an
 existing file. `--replace-baseline` requires an existing baseline and replaces

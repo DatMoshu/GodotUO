@@ -8,7 +8,7 @@ from gate import SCENES, compare, main
 
 
 def report():
-    return {"optimized": True, "window": "1280x720", "postfx": "Classic (0 pass(es), --postfx)",
+    return {"optimized": True, "static_world": True, "window": "1280x720", "postfx": "Classic (0 pass(es), --postfx)",
             "scenes": [{"scene": s, "frames": 360, "draws_per_frame": 1.0,
                         "draw_calls": 100.0, "batcher_items": 20.0, "mean_ms": 10.0,
                         "p95_ms": 12.0, "p99_ms": 15.0, "tiles_moved": 30 if s == "walk" else 0}
@@ -50,8 +50,8 @@ def test_invalid_document_rejected(bad):
 
 
 @pytest.mark.parametrize("side", ["baseline", "report"])
-@pytest.mark.parametrize("mutation", ["missing", "duplicate", "extra", "idle", "short", "stationary",
-                                      "unoptimized", "window", "postfx"])
+@pytest.mark.parametrize("mutation", ["missing", "duplicate", "malformed", "idle", "short", "stationary",
+                                      "unoptimized", "dynamic", "window", "postfx"])
 def test_incomplete_or_incomparable_measurement_rejected(side, mutation):
     baseline, measured = report(), report()
     doc = baseline if side == "baseline" else measured
@@ -59,8 +59,10 @@ def test_incomplete_or_incomparable_measurement_rejected(side, mutation):
         doc["scenes"].pop()
     elif mutation == "duplicate":
         doc["scenes"].append(copy.deepcopy(doc["scenes"][0]))
-    elif mutation == "extra":
-        doc["scenes"].append({"scene": "unknown"})
+    elif mutation == "malformed":
+        doc["scenes"].append({"frames": 360})
+    elif mutation == "dynamic":
+        doc["static_world"] = False
     elif mutation == "idle":
         doc["scenes"][0]["draws_per_frame"] = 0.94
     elif mutation == "short":
@@ -73,6 +75,18 @@ def test_incomplete_or_incomparable_measurement_rejected(side, mutation):
         doc[mutation] = "different"
     with pytest.raises(ValueError):
         compare(baseline, measured)
+
+
+def test_extra_probe_scenes_are_ignored():
+    """A stock probe report carries scenes the gate does not bind on (PERF-V5)."""
+    baseline, measured = report(), report()
+    for doc in (baseline, measured):
+        doc["scenes"].append({"scene": "britain-docks", "frames": 360, "draws_per_frame": 1.0,
+                              "draw_calls": 500.0, "batcher_items": 90.0, "mean_ms": 30.0, "p95_ms": 40.0, "p99_ms": 50.0})
+    measured["scenes"][-1]["batcher_items"] = 900.0
+    passed, summary = compare(baseline, measured)
+    assert passed
+    assert "britain-docks" not in summary
 
 
 @pytest.mark.parametrize("metric", ["draw_calls", "batcher_items", "mean_ms", "p95_ms", "p99_ms", "draws_per_frame"])

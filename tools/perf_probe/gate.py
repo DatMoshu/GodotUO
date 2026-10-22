@@ -8,6 +8,9 @@ import sys
 from decimal import Decimal
 from pathlib import Path
 
+# The six scenes the gate binds on. The probe measures more (the water
+# scenes, the crypt, the open sea); a report that carries them is complete,
+# and their rows are ignored here (PERF-V5).
 SCENES = ("login", "open-field", "britain-bank", "dense-forest", "dungeon", "walk")
 COUNTS = ("draw_calls", "batcher_items")
 TIMES = ("mean_ms", "p95_ms", "p99_ms")
@@ -19,6 +22,11 @@ def validate(report: object) -> dict[str, dict]:
         raise ValueError("report must be an object")
     if report.get("optimized") is not True:
         raise ValueError("report must come from an optimized build")
+    # Counts bind, so what is counted must depend on the map alone: the
+    # probe's --perf-static-world leaves out every mobile but the player,
+    # every item and every effect (PERF-V6).
+    if report.get("static_world") is not True:
+        raise ValueError("report must be measured with --perf-static-world")
     for key in ("window", "postfx"):
         if not isinstance(report.get(key), str) or not report[key].strip():
             raise ValueError(f"report needs {key}")
@@ -27,9 +35,11 @@ def validate(report: object) -> dict[str, dict]:
         raise ValueError("report needs a scenes array")
     indexed = {}
     for row in rows:
-        if not isinstance(row, dict) or row.get("scene") not in SCENES:
-            raise ValueError("report contains an unknown scene")
+        if not isinstance(row, dict) or not isinstance(row.get("scene"), str):
+            raise ValueError("report contains a malformed scene row")
         scene = row["scene"]
+        if scene not in SCENES:
+            continue
         if scene in indexed:
             raise ValueError(f"duplicate scene: {scene}")
         frames = row.get("frames")

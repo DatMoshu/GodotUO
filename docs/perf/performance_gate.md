@@ -42,7 +42,13 @@ the scene-by-scene count and timing tables. The gate pins a 1280x720 window,
 zoom 1.0, Forward+ renderer, postfx off, vsync off and no frame cap by default.
 `--size WIDTH,HEIGHT`, `--zoom`, `--renderer`, `--port`, and `--args` can select
 another configuration. The renderer is passed to Godot before its `--`
-separator. `--args` holds extra client flags and must match exactly.
+separator. `--args` holds extra client flags and must match exactly. The
+gate adds its own flags in front of them: `--perf-static-world`, so the
+world is measured without mobiles (other than the player), items or
+effects and a wandering NPC or a dropped loot pile cannot move a count
+between two identical runs; and `--perf-scene` for its five stationary and
+walk scenes, so the probe spends no time on scenes the gate does not bind
+on. A probe report without `static_world: true` cannot record or compare.
 
 `--fixture` is your label for a stable shard world and data fixture. Change
 it when the world or content changes. The tool does not freeze NPCs, verify
@@ -64,7 +70,9 @@ Baselines are stored at
 is a hash, not the computer name. Comparisons require the same machine tag,
 fixture label, shard endpoint hash, client version, window, zoom, renderer
 and extra flags. Each run uses a fresh label, preventing reuse of stale
-reports. The baseline embeds the probe report, and summaries are written
+reports. The baseline records what was measured (git head, dirty tree,
+client DLL hash); a comparison prints the baseline head beside the
+measured head so a number can always be traced to its build. The baseline embeds the probe report, and summaries are written
 beside it. The raw probe JSON and log stay under `<UO_BUILD_DIR>/perf/`.
 The format is specified in [section 41](../data_formats.md#41-perf-probe-and-perf-lab-reports-buildperf-toolsperf_probe-toolsperf_lab).
 

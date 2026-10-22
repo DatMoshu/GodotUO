@@ -63,6 +63,17 @@ internal static class PerfProbe
     /// <summary>--perf-scene NAME, repeatable: these world scenes only (all when empty).</summary>
     public static readonly List<string> Only = new();
 
+    /// <summary>
+    /// <c>--perf-static-world</c>: the tile walk leaves out every mobile but
+    /// the player, every item and every effect, so a scene's counts depend on
+    /// the map alone. The count gate (tools/perf_probe/gate.py) measures with
+    /// it: a passer-by walking through the Britain bank, or a spawn and its
+    /// loot at the mouth of Despise, moved the dungeon's batcher items between
+    /// identical runs (158 to 160) and failed a stock gate (PERF-V6). Frame
+    /// times under this flag are lower than play; they are advisory there.
+    /// </summary>
+    public static bool StaticWorld;
+
     private const int Settle = 180;
     private static string _outDir, _label;
     private static bool _parity;
@@ -602,7 +613,7 @@ internal static class PerfProbe
             JsonSerializer.Serialize(new Dictionary<string, object>
                 {
                     ["label"] = label, ["window"] = $"{size.X}x{size.Y}", ["zoom"] = System.Math.Round(Client.Game?.Scene?.Camera?.Zoom ?? 0, 2),
-                    ["optimized"] = optimized, ["postfx"] = look, ["system"] = SystemInfo(), ["scenes"] = results,
+                    ["optimized"] = optimized, ["postfx"] = look, ["static_world"] = StaticWorld, ["system"] = SystemInfo(), ["scenes"] = results,
                 },
                 new JsonSerializerOptions { WriteIndented = true }));
         GD.Print($"[GUO] perf probe: wrote {Path.Combine(dir, stem + ".md")}");

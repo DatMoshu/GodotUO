@@ -2069,6 +2069,9 @@ public partial class Main : Node
                     case "--perf-scene":
                         GUO.Host.PerfProbe.Only.Add(Next());
                         break;
+                    case "--perf-static-world":
+                        GUO.Host.PerfProbe.StaticWorld = true;
+                        break;
                     case "--perf-zoom":
                         o.PerfZoom = float.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture);
                         break;
