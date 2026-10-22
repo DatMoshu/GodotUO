@@ -81,6 +81,27 @@ internal static class LoginPreflight
     }
 
     /// <summary>
+    /// The startup decision of a strict (measuring) run: whether anything
+    /// may connect at all. Upstream's autologin (-autologin, -skiploginscreen)
+    /// is its own connect route and is refused outright; otherwise the
+    /// allocated account and the configured one are compared as they were
+    /// given (the parser never copies one into the other) and the credential
+    /// is resolved. False means zero connects, whatever the route.
+    /// </summary>
+    public static bool Decide(string expectedAccount, string configuredAccount, bool autoLoginRequested,
+        Func<string, string> env, out string secret, out string why)
+    {
+        if (autoLoginRequested)
+        {
+            secret = null;
+            why = "a strict run cannot use autologin (its own connect route); drop --autologin";
+            return false;
+        }
+
+        return ResolveCredential(expectedAccount, configuredAccount, env, out secret, out why);
+    }
+
+    /// <summary>
     /// What typing leaves in a field that already holds text: the saved
     /// login plus the typed one. This is the hazard the strict path avoids
     /// by not typing at all (one guarded Connect).

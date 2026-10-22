@@ -467,8 +467,12 @@ namespace GUO.Game.Scenes
         internal int GumpTextsCount => _gumps.Count;
         internal NoAtlasGumpCommand PeekGumpText(int index) => _gumps[index];
 
+        /// <summary>Calls of the UI's overload below (UIManager, child lists), for the capture-marker regression.</summary>
+        public static int ListDraws;
+
         public int DrawRenderLists(UltimaBatcher2D batcher, sbyte maxGroundZ)
         {
+            ListDraws++;
             int result = DrawRenderList(batcher, _tiles, maxGroundZ) +
                    DrawRenderList(batcher, _stretchedTiles, maxGroundZ) +
                    DrawWorld(batcher, maxGroundZ);

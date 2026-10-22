@@ -138,6 +138,17 @@ public partial class Main : Node
             InputProbe.AutoLogin = true;
         }
 
+        // A strict (measuring) run decides here, before any scene exists,
+        // whether anything may connect: the allocated account against the
+        // configured one, the credential, and no autologin. Refused, nothing
+        // starts, so no route (typed, strict or upstream's) can connect.
+        if (InputProbe.Strict && !StrictStartup(_options, System.Environment.GetEnvironmentVariable, out _, out string refused))
+        {
+            GD.PrintErr($"[GUO] perf probe: not starting: {refused}");
+            Quit(1);
+            return;
+        }
+
         GameController.PinnedWindowPosition = _options.WindowPosition;
         GameController.PinnedWindowSize = _options.WindowSize;
 
@@ -862,7 +873,7 @@ public partial class Main : Node
     /// <summary>Shard-free keyboard checks: key-ups on focus loss, AltGr text; see KeyboardProbe.</summary>
     private void KeyboardProbeThenQuit() => Quit(KeyboardProbe.Run() ? 0 : 1);
     /// <summary>Shard-free login preflight rules; see LoginPreflightProbe.</summary>
-    private void LoginPreflightProbeThenQuit() => Quit(LoginPreflightProbe.Run() ? 0 : 1);
+    private async void LoginPreflightProbeThenQuit() => Quit(await LoginPreflightProbe.Run(this) ? 0 : 1);
 
     /// <summary>The menu wheel, the interact radar, the new buttons and "Set controls"; see PadWheelsProbe.</summary>
     private async void PadWheelsProbeThenQuit()
@@ -1399,6 +1410,18 @@ public partial class Main : Node
         Quit(1);
     }
 
+    /// <summary>
+    /// The strict run's startup decision, from the parsed options as _Ready
+    /// applies them: the configured account is --account or the probe's
+    /// default, the allocated one is --perf-expect-account, autologin is
+    /// --autologin. LoginPreflightProbe runs this on real parses.
+    /// </summary>
+    public static bool StrictStartup(Options options, Func<string, string> env, out string secret, out string why)
+    {
+        string configured = string.IsNullOrWhiteSpace(options.Account) ? InputProbe.DefaultAccountName : options.Account;
+        return LoginPreflight.Decide(options.ExpectAccount, configured, options.AutoLogin, env, out secret, out why);
+    }
+
     private void Quit(int code)
     {
         GetTree().Quit(code);
@@ -1731,6 +1754,9 @@ public partial class Main : Node
 
         /// <summary>--login-preflight-probe: the measuring run's login and arrival rules without a shard; see LoginPreflightProbe.</summary>
         public bool LoginPreflightProbe { get; private set; }
+
+        /// <summary>--perf-expect-account NAME: the allocated account of a strict run, as given.</summary>
+        public string ExpectAccount { get; private set; }
 
         /// <summary>--one-screen-probe: the one-screen drawer in the world; see OneScreenProbe.</summary>
         public bool OneScreenProbe { get; private set; }
@@ -2106,10 +2132,12 @@ public partial class Main : Node
                         GUO.Host.PerfProbe.ExpectMap = int.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture);
                         break;
                     case "--perf-expect-account":
-                        // The allocated account: one guarded Connect with its
-                        // configured credential, no typing, no creation.
-                        GUO.Host.PerfProbe.ExpectAccount = Next();
-                        GUO.Host.InputProbe.ProbeAccount = GUO.Host.PerfProbe.ExpectAccount;
+                        // The allocated account, recorded as given: the
+                        // configured account (--account, or the default) is
+                        // never overwritten with it, so StrictStartup compares
+                        // two independent values in whatever order the flags came.
+                        o.ExpectAccount = Next();
+                        GUO.Host.PerfProbe.ExpectAccount = o.ExpectAccount;
                         GUO.Host.InputProbe.Strict = true;
                         break;
                     case "--login-preflight-probe":

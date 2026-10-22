@@ -161,9 +161,36 @@ internal static class InputProbe
     /// <summary>Connects issued by the strict path; a measuring run issues exactly one.</summary>
     public static int ConnectCalls { get; private set; }
 
-    /// <summary>The strict path's credential for <paramref name="expectedAccount"/>, or the reason there is none.</summary>
+    /// <summary>Characters typed into any field by <see cref="Type"/>; the strict login types none.</summary>
+    public static int FieldInputs { get; private set; }
+
+    /// <summary>The account the probe logs in with when none is configured.</summary>
+    public static string DefaultAccountName => DefaultAccount;
+
+    /// <summary>The strict path's decision for <paramref name="expectedAccount"/> against the configured account and autologin.</summary>
     public static bool StrictCredential(string expectedAccount, System.Func<string, string> env, out string secret, out string why)
-        => LoginPreflight.ResolveCredential(expectedAccount, ProbeAccount, env, out secret, out why);
+        => LoginPreflight.Decide(expectedAccount, ProbeAccount, AutoLogin, env, out secret, out why);
+
+    /// <summary>
+    /// The strict login: LoginPreflight.Decide, then one call of
+    /// <paramref name="connect"/> with the allocated account and its
+    /// credential, or none. Nothing is typed. The connect is injected so the
+    /// headless probe can count it without reaching a shard.
+    /// </summary>
+    public static bool StrictLogin(string expectedAccount, bool autoLogin, System.Func<string, string> env,
+        System.Action<string, string> connect, out string why)
+    {
+        if (!LoginPreflight.Decide(expectedAccount, ProbeAccount, autoLogin, env, out string secret, out why))
+        {
+            Check("strict login: the allocated account may connect", false, why);
+            return false;
+        }
+
+        GD.Print($"[GUO] input probe: strict connect as the allocated account ({expectedAccount}); no field typed");
+        ConnectCalls++;
+        connect(expectedAccount, secret);
+        return true;
+    }
 
     /// <summary>
     /// Every expectation the run has checked, in order.
@@ -245,15 +272,10 @@ internal static class InputProbe
 
         await Frames(host, settleFrames);
 
-        if (Strict && !AutoLogin)
+        if (Strict)
         {
-            // One guarded Connect: the login fields are never touched.
-            if (!StrictCredential(account, System.Environment.GetEnvironmentVariable, out string secret, out string why))
-            {
-                Check("the allocated account has a configured credential", false, why);
-                return;
-            }
-
+            // One guarded Connect: the login fields are never touched, and
+            // autologin (upstream's own route) is refused by the decision.
             Game.Scenes.LoginScene strictScene = Client.Game.GetScene<Game.Scenes.LoginScene>();
             if (strictScene == null)
             {
@@ -261,9 +283,10 @@ internal static class InputProbe
                 return;
             }
 
-            GD.Print($"[GUO] input probe: strict connect as the allocated account ({account}); no field typed");
-            ConnectCalls++;
-            strictScene.Connect(account, secret);
+            if (!StrictLogin(account, AutoLogin, System.Environment.GetEnvironmentVariable, strictScene.Connect, out _))
+            {
+                return;
+            }
 
             await Frames(host, 120);
             GD.Print("[GUO] input probe: selecting the shard");
@@ -4076,6 +4099,7 @@ internal static class InputProbe
 
     private static async System.Threading.Tasks.Task Type(Node host, string text)
     {
+        FieldInputs += text.Length;
         foreach (char c in text)
         {
             // Keycode is the capital because that is how Godot names a letter

@@ -3275,7 +3275,10 @@ interval, which spans more render frames than captures) and
 `--perf-expect-character` and `--perf-expect-map` the run writes only the
 `login` row unless it connected with one guarded login as that account (its
 configured credential; never typed, never the account text), entered the
-world with a profile for that account and character, on that map; a scene
+world with a profile for that account and character, on that map; the
+allocated account and the configured one (`--account`, or the probe's
+default) are compared as given, in either flag order, and a strict run with
+`--autologin` (upstream's own connect route) does not start at all; a scene
 whose `[go` did not arrive within three tiles in x and y, and two in z when
 the `[go` names one, has no row. A parity row whose test captures did not
 all come from the pass fails the run.

@@ -79,4 +79,18 @@ void Require(bool ok, string what)
     Require(LoginPreflight.ArrivedAt(1, 2, 3, 0, "say hello", 0, out _), "not a [go: nothing to check");
 }
 
+// The startup decision: autologin is its own connect route and is refused;
+// otherwise the credential rules, with the two accounts as given.
+{
+    var env = new Dictionary<string, string> { ["UO_SHARD_OWNER"] = "owneracct", ["UO_SHARD_OWNER_PASSWORD"] = "s3cret-owner" };
+    string Env(string key) => env.GetValueOrDefault(key);
+    Require(!LoginPreflight.Decide("owneracct", "owneracct", true, Env, out string secret, out string why) && secret == null && why.Contains("autologin"),
+        "strict with autologin is refused before the credential is even resolved");
+    Require(LoginPreflight.Decide("owneracct", "owneracct", false, Env, out secret, out _) && secret == "s3cret-owner",
+        "strict without autologin resolves the allocated account's secret");
+    Require(!LoginPreflight.Decide("owneracct", "guoprobe", false, Env, out _, out _), "the configured account must be the allocated one");
+    Require(!LoginPreflight.Decide("guoprobe", "owneracct", false, Env, out _, out _), "and the other way round");
+    Require(!LoginPreflight.Decide(null, "owneracct", false, Env, out _, out _), "no allocation, no connect");
+}
+
 Console.WriteLine($"PASS probe rules: {checks} checks; CPU only, no login");

@@ -166,8 +166,11 @@ internal static class PerfProbe
         await InputProbe.Wait(host, Settle);
         results.Add(await Measure(host, viewport, "login", "the login screen over the background"));
 
-        // The allocated account's credential has to exist before anything
-        // connects; a run without it stops here with the login row only.
+        // The allocated account's credential has to exist, the configured
+        // account has to be the allocated one and autologin has to be off
+        // before anything connects (LoginPreflight.Decide, the decision Main
+        // already took at startup); a run that fails it stops here with the
+        // login row only.
         if (ExpectAccount != null
             && !InputProbe.StrictCredential(ExpectAccount, System.Environment.GetEnvironmentVariable, out _, out string noCredential))
         {

@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: BSD-2-Clause
-// The preflight rules inside the client, headless, no shard: the same
-// negative cases tools/probe_rules_tests runs, plus the strict login path's
-// own invariants (no typing, no creation, one Connect).
+// The measuring run's login and capture rules inside the client, headless,
+// no shard: the real argument parser and the real startup decision, the
+// strict login's connect count with an injected connect, and the capture
+// marker across the UI's own list draws.
 using System;
 using System.Collections.Generic;
 using Godot;
+using GUO.Game.Scenes;
+using GUO.Renderer;
 
 namespace GUO.Host;
 
@@ -19,50 +22,156 @@ internal static class LoginPreflightProbe
         GD.Print($"[GUO] login preflight probe: {(ok ? "ok" : "FAIL")} {name}{(detail.Length > 0 ? " -- " + detail : "")}");
     }
 
-    public static bool Run()
+    public static async System.Threading.Tasks.Task<bool> Run(Node host)
     {
         _failed = _checks = 0;
+        string account = InputProbe.ProbeAccount;
+        bool strict = InputProbe.Strict, autoLogin = InputProbe.AutoLogin, neverCreate = InputProbe.NeverCreate;
+        string expect = PerfProbe.ExpectAccount;
         try
         {
-            var env = new Dictionary<string, string>
-            {
-                ["UO_SHARD_OWNER"] = "owneracct", ["UO_SHARD_OWNER_PASSWORD"] = "s3cret-owner",
-                ["UO_SHARD_GM_ACCOUNTS"] = "gmone,gmtwo", ["UO_SHARD_GM_PASSWORD"] = "s3cret-gm",
-            };
-            string Env(string key) => env.GetValueOrDefault(key);
-
-            Check("missing allocation refused", !LoginPreflight.ResolveCredential(null, "owneracct", Env, out _, out _));
-            Check("other configured account refused", !LoginPreflight.ResolveCredential("owneracct", "guoprobe", Env, out _, out _));
-            Check("owner secret resolves", LoginPreflight.ResolveCredential("owneracct", "owneracct", Env, out string s, out _) && s == "s3cret-owner");
-            Check("unlisted account has no credential", !LoginPreflight.ResolveCredential("someone", "someone", Env, out s, out _) && s == null);
-            env["UO_SHARD_OWNER_PASSWORD"] = "";
-            Check("empty secret refused, no account-text fallback", !LoginPreflight.ResolveCredential("owneracct", "owneracct", Env, out s, out _) && s == null);
-            Check("prefilled field doubles when typed into", LoginPreflight.TypedInto("guoprobe", "guoprobe") == "guoprobeguoprobe");
-            Check("right character, wrong account refused", !LoginPreflight.IdentityMatches("other", "Guoprobe", "owneracct", "Guoprobe", out _));
-            Check("crypt roof is the wrong floor", !LoginPreflight.ArrivedAt(1010, 760, 0, 0, "[go 1010 760 -60", 0, out _));
-            Check("pier land is the wrong floor", !LoginPreflight.ArrivedAt(1499, 1761, 0, 0, "[go 1499 1761 -3", 0, out _));
-            Check("crypt floor arrives", LoginPreflight.ArrivedAt(1011, 761, -61, 0, "[go 1010 760 -60", 0, out _));
-
-            // The strict path's invariants, as the perf probe sets them up.
-            InputProbe.Strict = true;
-            InputProbe.ProbeAccount = "guoprobe";
-            Check("strict mode never creates", InputProbe.NeverCreate);
-            Check("strict mode with no allocation refuses before connecting",
-                !InputProbe.StrictCredential(null, Env, out _, out string why) && why.Contains("no account"));
-            Check("strict mode with the wrong configured account refuses",
-                !InputProbe.StrictCredential("owneracct", Env, out _, out _));
-            InputProbe.ProbeAccount = "owneracct";
-            env["UO_SHARD_OWNER_PASSWORD"] = "s3cret-owner";
-            Check("strict mode resolves the allocated account's secret", InputProbe.StrictCredential("owneracct", Env, out s, out _) && s == "s3cret-owner");
-            Check("no Connect was issued by the rules", InputProbe.ConnectCalls == 0);
-            InputProbe.Strict = false;
+            Rules();
+            Startup();
+            ConnectCount();
+            await Marker(host);
         }
         catch (Exception e)
         {
             Check($"unexpected exception {e}", false);
         }
+        finally
+        {
+            InputProbe.ProbeAccount = account;
+            InputProbe.Strict = strict;
+            InputProbe.AutoLogin = autoLogin;
+            InputProbe.NeverCreate = neverCreate;
+            PerfProbe.ExpectAccount = expect;
+        }
 
         GD.Print($"[GUO] login preflight probe: {(_failed == 0 ? "PASS" : "FAIL")} ({_checks - _failed}/{_checks})");
         return _failed == 0;
+    }
+
+    private static Func<string, string> Env(string owner = "owneracct", string ownerSecret = "s3cret-owner")
+    {
+        var env = new Dictionary<string, string>
+        {
+            ["UO_SHARD_OWNER"] = owner, ["UO_SHARD_OWNER_PASSWORD"] = ownerSecret,
+            ["UO_SHARD_GM_ACCOUNTS"] = "gmone,gmtwo", ["UO_SHARD_GM_PASSWORD"] = "s3cret-gm",
+        };
+        return key => env.GetValueOrDefault(key);
+    }
+
+    /// <summary>The engine-free rules, as tools/probe_rules_tests runs them.</summary>
+    private static void Rules()
+    {
+        Func<string, string> env = Env();
+        Check("missing allocation refused", !LoginPreflight.ResolveCredential(null, "owneracct", env, out _, out _));
+        Check("other configured account refused", !LoginPreflight.ResolveCredential("owneracct", "guoprobe", env, out _, out _));
+        Check("owner secret resolves", LoginPreflight.ResolveCredential("owneracct", "owneracct", env, out string s, out _) && s == "s3cret-owner");
+        Check("unlisted account has no credential", !LoginPreflight.ResolveCredential("someone", "someone", env, out s, out _) && s == null);
+        Check("empty secret refused, no account-text fallback", !LoginPreflight.ResolveCredential("owneracct", "owneracct", Env(ownerSecret: ""), out s, out _) && s == null);
+        Check("prefilled field doubles when typed into", LoginPreflight.TypedInto("guoprobe", "guoprobe") == "guoprobeguoprobe");
+        Check("right character, wrong account refused", !LoginPreflight.IdentityMatches("other", "Guoprobe", "owneracct", "Guoprobe", out _));
+        Check("crypt roof is the wrong floor", !LoginPreflight.ArrivedAt(1010, 760, 0, 0, "[go 1010 760 -60", 0, out _));
+        Check("pier land is the wrong floor", !LoginPreflight.ArrivedAt(1499, 1761, 0, 0, "[go 1499 1761 -3", 0, out _));
+        Check("crypt floor arrives", LoginPreflight.ArrivedAt(1011, 761, -61, 0, "[go 1010 760 -60", 0, out _));
+        Check("strict with autologin refused", !LoginPreflight.Decide("owneracct", "owneracct", true, env, out _, out _));
+    }
+
+    /// <summary>The real parser and the real startup decision (Main.StrictStartup), both flag orders.</summary>
+    private static void Startup()
+    {
+        Func<string, string> env = Env();
+
+        foreach (string[] args in new[]
+        {
+            new[] { "--account", "guoprobe", "--perf-expect-account", "owneracct" },
+            new[] { "--perf-expect-account", "owneracct", "--account", "guoprobe" },
+        })
+        {
+            Main.Options o = Main.Options.Parse(args);
+            Check($"parse keeps the two accounts apart ({string.Join(" ", args)})",
+                o.Account == "guoprobe" && o.ExpectAccount == "owneracct" && InputProbe.Strict);
+            Check("startup refuses a configured account other than the allocated one",
+                !Main.StrictStartup(o, env, out _, out string why) && why.Contains("another account"));
+        }
+
+        {
+            Main.Options o = Main.Options.Parse(new[] { "--perf-expect-account", "owneracct", "--account", "owneracct", "--autologin" });
+            Check("startup refuses strict with autologin before any connect",
+                !Main.StrictStartup(o, env, out _, out string why) && why.Contains("autologin"));
+        }
+
+        {
+            Main.Options o = Main.Options.Parse(new[] { "--perf-expect-account", "owneracct", "--account", "owneracct" });
+            Check("startup allows the allocated account with its configured secret",
+                Main.StrictStartup(o, env, out string secret, out _) && secret == "s3cret-owner");
+        }
+
+        {
+            Main.Options o = Main.Options.Parse(new[] { "--perf-expect-account", "owneracct" });
+            Check("without --account the configured account is the probe's default, and it is not the allocated one",
+                !Main.StrictStartup(o, env, out _, out string why) && why.Contains("another account"));
+            Main.Options d = Main.Options.Parse(new[] { "--perf-expect-account", InputProbe.DefaultAccountName });
+            Check("the default configured account can be the allocated one",
+                Main.StrictStartup(d, Env(owner: InputProbe.DefaultAccountName), out _, out _));
+        }
+
+        {
+            Main.Options o = Main.Options.Parse(new[] { "--perf-expect-account", "nobody", "--account", "nobody" });
+            Check("startup refuses an account with no configured credential",
+                !Main.StrictStartup(o, env, out string secret, out string why) && secret == null && why.Contains("not used as one"));
+        }
+    }
+
+    /// <summary>The strict login's connect count: zero when refused, one when allowed, never a field input.</summary>
+    private static void ConnectCount()
+    {
+        int connects = 0;
+        void Connect(string a, string p) => connects++;
+        int fieldInputs = InputProbe.FieldInputs;
+        int before = InputProbe.ConnectCalls;
+
+        InputProbe.Strict = true;
+        Check("strict implies never create", InputProbe.NeverCreate);
+
+        InputProbe.ProbeAccount = "guoprobe";
+        Check("refused: the configured account is not the allocated one, zero connects",
+            !InputProbe.StrictLogin("owneracct", false, Env(), Connect, out _) && connects == 0);
+        Check("refused: no allocation, zero connects", !InputProbe.StrictLogin(null, false, Env(), Connect, out _) && connects == 0);
+
+        InputProbe.ProbeAccount = "owneracct";
+        Check("refused: strict with autologin, zero connects", !InputProbe.StrictLogin("owneracct", true, Env(), Connect, out _) && connects == 0);
+        Check("refused: empty configured secret, zero connects", !InputProbe.StrictLogin("owneracct", false, Env(ownerSecret: ""), Connect, out _) && connects == 0);
+        Check("no connect was counted by the refusals", InputProbe.ConnectCalls == before);
+
+        Check("allowed: exactly one connect with the allocated account",
+            InputProbe.StrictLogin("owneracct", false, Env(), Connect, out _) && connects == 1 && InputProbe.ConnectCalls == before + 1);
+        Check("no field input across the strict path", InputProbe.FieldInputs == fieldInputs);
+    }
+
+    /// <summary>
+    /// The capture marker survives the UI's own list draws, which go
+    /// through RenderLists.DrawRenderLists after the world every frame: a
+    /// world frame drawn on the pass stays marked at capture time.
+    /// </summary>
+    private static async System.Threading.Tasks.Task Marker(Node host)
+    {
+        async System.Threading.Tasks.Task Frame()
+        {
+            await host.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        }
+
+        int draws = RenderLists.ListDraws;
+        GpuWorld.LastFrameOnPass = true;
+        await Frame();
+        await Frame();
+        Check("the UI drew its lists in between", RenderLists.ListDraws > draws, $"{RenderLists.ListDraws - draws} list draws");
+        Check("a world frame marked as drawn on the pass stays marked across the UI's list draws", GpuWorld.LastFrameOnPass);
+
+        GpuWorld.LastFrameOnPass = false;
+        await Frame();
+        Check("and an unmarked one stays unmarked", !GpuWorld.LastFrameOnPass);
     }
 }
