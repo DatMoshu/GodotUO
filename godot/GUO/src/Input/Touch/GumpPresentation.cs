@@ -28,7 +28,7 @@ internal static class GumpPresentation
     /// dev toggle "Mobile window controls". Otherwise the client is exactly
     /// ClassicUO: no handles, and a scale saved on mobile is drawn at 100%.
     /// </summary>
-    public static bool Active => TouchInput.Enabled || DualScreen.ShelfOn
+    public static bool Active => TouchInventory.Active || TouchInput.Enabled || DualScreen.ShelfOn
         || (Configuration.ProfileManager.CurrentProfile?.MobileWindowControls ?? false);
 
     // Keep arbitrary shard dialogs and content-zoom maps on their existing paths.
@@ -241,7 +241,7 @@ internal static class GumpPresentation
 
         foreach (Gump g in UIManager.Gumps)
         {
-            if (g is not PaperDollGump || g.IsDisposed || g.Height <= 0)
+            if (g is not PaperDollGump || g is PaperDollGump { IsTouchLayout: true } || g.IsDisposed || g.Height <= 0)
             {
                 continue;
             }
@@ -444,7 +444,9 @@ internal static class GumpPresentation
     /// tall as the screen was pushed up under the top bar.
     /// </summary>
     private static Rectangle Room(Gump g, bool second) =>
-        !second && TouchInput.Enabled && IsFullHeight(g)
+        TouchInventory.Active && !second && g is PaperDollGump { IsTouchLayout: true } or GridContainerGump
+          ? TouchInventory.Room(g)
+          : !second && TouchInput.Enabled && IsFullHeight(g)
           ? AdaptiveLayout.Active ? DisplayBounds(false) : Client.Game?.ClientBounds ?? new Rectangle(0, 0, 640, 480)
             : DisplayBounds(second);
 
@@ -487,7 +489,10 @@ internal static class GumpPresentation
     {
         Rectangle b = Room(g, second);
         g.X = Math.Clamp(g.X, b.X, b.X + Math.Max(0, b.Width - Width(g)));
-        g.Y = Math.Clamp(g.Y, 0, Math.Max(0, b.Height - Height(g)));
+        if (TouchInventory.Active && g is PaperDollGump { IsTouchLayout: true } or GridContainerGump)
+            g.Y = Math.Clamp(g.Y, b.Y, Math.Max(b.Y, b.Bottom - Height(g)));
+        else
+            g.Y = Math.Clamp(g.Y, 0, Math.Max(0, b.Height - Height(g)));
     }
 
     public static bool SetScale(Gump g, float requested, Point anchor)
@@ -502,7 +507,9 @@ internal static class GumpPresentation
         Rectangle b = Room(g, second);
         float fit = Math.Min(b.Width / (float)g.Width, b.Height / (float)g.Height);
         // If the original gump is too large even at minimum, retain a reachable origin/reset.
-        float next = Math.Clamp(requested, MinScale, Math.Max(MinScale, Math.Min(MaxScale, fit)));
+        // UX-03 keeps 44-client-pixel inventory targets usable after a pinch.
+        float minimum = g is PaperDollGump { IsTouchLayout: true } or GridContainerGump { IsTouchLayout: true } ? 1f : MinScale;
+        float next = Math.Clamp(requested, minimum, Math.Max(minimum, Math.Min(MaxScale, fit)));
         float ratio = next / g.PresentationScale;
         g.X = (int)Math.Round(anchor.X - (anchor.X - g.X) * ratio);
         g.Y = (int)Math.Round(anchor.Y - (anchor.Y - g.Y) * ratio);
