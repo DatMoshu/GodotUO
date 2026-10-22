@@ -3271,10 +3271,14 @@ largest channel delta of those), and since GPU-02 `gpu_test_captures`,
 the `--gpu-world` pass drew, read per capture), `gpu_frames_drawn`,
 `gpu_frames_fallback` (the pass's frame counters over the whole five-capture
 interval, which spans more render frames than captures) and
-`gpu_last_fallback` (the reason, or empty). With `--perf-expect-character`
-and `--perf-expect-map` the run writes only the `login` row unless it is in
-the world as that character on that map, and a scene whose `[go` did not
-arrive within three tiles has no row.
+`gpu_last_fallback` (the reason, or empty). With `--perf-expect-account`,
+`--perf-expect-character` and `--perf-expect-map` the run writes only the
+`login` row unless it connected with one guarded login as that account (its
+configured credential; never typed, never the account text), entered the
+world with a profile for that account and character, on that map; a scene
+whose `[go` did not arrive within three tiles in x and y, and two in z when
+the `[go` names one, has no row. A parity row whose test captures did not
+all come from the pass fails the run.
 Since PERF-01, `system` is `{gpu, gpu_vendor, gpu_api, driver,
 driver_version, rendering_method, cpu, cpu_threads, ram_gib, os, os_version,
 screen "WxH", refresh_hz, engine}`, from Godot's `RenderingServer`, `OS`

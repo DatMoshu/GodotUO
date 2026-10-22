@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using Godot;
+using GUO.Configuration;
 using GUO.Game;
 using GUO.Renderer;
 
@@ -71,7 +72,9 @@ internal static class PerfProbe
     /// </summary>
     public static string ExpectCharacter { get; set; }
     public static int ExpectMap { get; set; } = -1;
-    private const int ArriveTolerance = 3;
+
+    /// <summary>--perf-expect-account NAME: the allocated account; InputProbe.Strict logs in as it and nothing else.</summary>
+    public static string ExpectAccount { get; set; }
 
     private const int Settle = 180;
     private static string _outDir, _label;
@@ -163,6 +166,17 @@ internal static class PerfProbe
         await InputProbe.Wait(host, Settle);
         results.Add(await Measure(host, viewport, "login", "the login screen over the background"));
 
+        // The allocated account's credential has to exist before anything
+        // connects; a run without it stops here with the login row only.
+        if (ExpectAccount != null
+            && !InputProbe.StrictCredential(ExpectAccount, System.Environment.GetEnvironmentVariable, out _, out string noCredential))
+        {
+            GD.PrintErr($"[GUO] perf probe: not connecting: {noCredential}");
+            GUO.Utility.Profiler.Enabled = profiling;
+            Write(outDir, label, results);
+            return;
+        }
+
         // On a device, logged in as DualProbe does: the touch layer would
         // swallow the probe's clicks, which aim in client pixels.
         bool touch = GUO.Input.Touch.TouchInput.Enabled;
@@ -180,12 +194,18 @@ internal static class PerfProbe
             return;
         }
 
-        // The preflight: the expected character on the expected map, or no
-        // scene is visited and nothing is captured (the login row is kept).
-        string identity = $"{world.Player?.Name} on map {world.MapIndex} at {world.Player?.X},{world.Player?.Y},{world.Player?.Z}";
-        if (ExpectCharacter != null && !string.Equals(world.Player?.Name, ExpectCharacter, System.StringComparison.Ordinal))
+        // The preflight: the world entered as the allocated account (the one
+        // the client connected with and the shard let in, as the loaded
+        // profile records it; the shard's own record is not read) and the
+        // expected character, on the expected map, or no scene is visited
+        // and nothing is captured (the login row is kept).
+        var profile = ProfileManager.CurrentProfile;
+        string identity = $"account {profile?.Username}, character {profile?.CharacterName} (player {world.Player?.Name}),"
+            + $" map {world.MapIndex} at {world.Player?.X},{world.Player?.Y},{world.Player?.Z}, connects {InputProbe.ConnectCalls}";
+        if (!LoginPreflight.IdentityMatches(profile?.Username, profile?.CharacterName, ExpectAccount, ExpectCharacter, out string wrongIdentity)
+            || (ExpectCharacter != null && !string.Equals(world.Player?.Name, ExpectCharacter, System.StringComparison.Ordinal)))
         {
-            GD.PrintErr($"[GUO] perf probe: expected character {ExpectCharacter}, in the world as {identity}; measuring nothing.");
+            GD.PrintErr($"[GUO] perf probe: {wrongIdentity ?? "the player is not the expected character"}; in the world as {identity}; measuring nothing.");
             GUO.Utility.Profiler.Enabled = profiling;
             Write(outDir, label, results);
             return;
@@ -264,27 +284,31 @@ internal static class PerfProbe
             GD.PrintErr($"[GUO] perf probe: frames that drew nothing in {string.Join(", ", idle)}; fewer than {MinDrawsPerFrame} draws per frame");
         }
 
-        Passed = unknown.Count == 0 && idle.Count == 0 && arrivedEverywhere && results.Count == (_parity ? 2 : 1) * scenes.Length + 1;
+        // A parity row whose test captures did not all come from the pass is
+        // not a result for it; the reviewer reads gpu_test_on_pass in the
+        // report, and the run does not pass with such a row either.
+        bool capturesValid = !GpuWorld.Enabled || results.Where(r => r.ContainsKey("gpu_test_on_pass"))
+            .All(r => (int)r["gpu_test_on_pass"] == (int)r["gpu_test_captures"]);
+        if (!capturesValid)
+        {
+            GD.PrintErr("[GUO] perf probe: a parity row has test captures the --gpu-world pass did not draw; see gpu_test_on_pass");
+        }
+
+        Passed = unknown.Count == 0 && idle.Count == 0 && arrivedEverywhere && capturesValid
+            && results.Count == (_parity ? 2 : 1) * scenes.Length + 1;
     }
 
-    /// <summary>The player stands within three tiles of the scene's [go target, on the expected map when one is set.</summary>
+    /// <summary>The player stands at the scene's [go target: x, y, z and map, by LoginPreflight.ArrivedAt.</summary>
     private static bool Arrived(World world, Scene scene, out string where)
     {
         var player = world.Player;
-        where = player == null ? "no player" : $"{player.X},{player.Y},{player.Z} map {world.MapIndex}";
         if (player == null)
         {
+            where = "no player";
             return false;
         }
 
-        string[] parts = scene.Go.Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length < 3 || !int.TryParse(parts[1], out int x) || !int.TryParse(parts[2], out int y))
-        {
-            return true; // not a [go X Y: nothing to check against
-        }
-
-        bool map = ExpectMap < 0 || world.MapIndex == ExpectMap;
-        return map && System.Math.Abs(player.X - x) <= ArriveTolerance && System.Math.Abs(player.Y - y) <= ArriveTolerance;
+        return LoginPreflight.ArrivedAt(player.X, player.Y, player.Z, world.MapIndex, scene.Go, ExpectMap, out where);
     }
 
     private static async System.Threading.Tasks.Task<Dictionary<string, object>> Measure(Node host, Rid viewport, string name, string what,

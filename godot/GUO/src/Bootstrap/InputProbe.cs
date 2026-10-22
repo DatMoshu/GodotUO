@@ -139,6 +139,33 @@ internal static class InputProbe
     public static bool NeverCreate { get; set; }
 
     /// <summary>
+    /// PORT DEVIATION (GUO): --perf-expect-account. A measuring run logs in
+    /// with one guarded LoginScene.Connect for the allocated account and its
+    /// configured credential (LoginPreflight.ResolveCredential): nothing is
+    /// typed into the login fields (a prefilled field would double), a
+    /// missing allocation or credential stops at the login screen, and no
+    /// character is created. Implies NeverCreate.
+    /// </summary>
+    public static bool Strict
+    {
+        get => _strict;
+        set
+        {
+            _strict = value;
+            if (value) NeverCreate = true;
+        }
+    }
+
+    private static bool _strict;
+
+    /// <summary>Connects issued by the strict path; a measuring run issues exactly one.</summary>
+    public static int ConnectCalls { get; private set; }
+
+    /// <summary>The strict path's credential for <paramref name="expectedAccount"/>, or the reason there is none.</summary>
+    public static bool StrictCredential(string expectedAccount, System.Func<string, string> env, out string secret, out string why)
+        => LoginPreflight.ResolveCredential(expectedAccount, ProbeAccount, env, out secret, out why);
+
+    /// <summary>
     /// Every expectation the run has checked, in order.
     /// </summary>
     private static readonly System.Collections.Generic.List<(string What, bool Ok)> Checks =
@@ -218,7 +245,32 @@ internal static class InputProbe
 
         await Frames(host, settleFrames);
 
-        if (!AutoLogin)
+        if (Strict && !AutoLogin)
+        {
+            // One guarded Connect: the login fields are never touched.
+            if (!StrictCredential(account, System.Environment.GetEnvironmentVariable, out string secret, out string why))
+            {
+                Check("the allocated account has a configured credential", false, why);
+                return;
+            }
+
+            Game.Scenes.LoginScene strictScene = Client.Game.GetScene<Game.Scenes.LoginScene>();
+            if (strictScene == null)
+            {
+                Check("the login scene is up for the strict connect", false, OpenLoginGumps());
+                return;
+            }
+
+            GD.Print($"[GUO] input probe: strict connect as the allocated account ({account}); no field typed");
+            ConnectCalls++;
+            strictScene.Connect(account, secret);
+
+            await Frames(host, 120);
+            GD.Print("[GUO] input probe: selecting the shard");
+            await Click(host, ShardEntry);
+            await Frames(host, 180);
+        }
+        else if (!AutoLogin)
         {
             GD.Print("[GUO] input probe: typing the account");
 

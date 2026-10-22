@@ -370,6 +370,10 @@ public partial class Main : Node
                 {
                     CallDeferred(nameof(KeyboardProbeThenQuit));
                 }
+                else if (_options.LoginPreflightProbe)
+                {
+                    CallDeferred(nameof(LoginPreflightProbeThenQuit));
+                }
                 else if (_options.PadWheelsProbe)
                 {
                     PadWheelsProbeThenQuit();
@@ -730,6 +734,7 @@ public partial class Main : Node
         || _options.TouchGestureProbe
         || _options.UoPlusUiProbe
         || _options.KeyboardProbe
+        || _options.LoginPreflightProbe
         || _options.OneScreenProbe
         || _options.GlyphShots
         || _options.AssetProbe.Length > 0
@@ -856,6 +861,8 @@ public partial class Main : Node
     private async void TouchGesturesThenQuit() => Quit(await TouchGestureProbe.Run(this) ? 0 : 1);
     /// <summary>Shard-free keyboard checks: key-ups on focus loss, AltGr text; see KeyboardProbe.</summary>
     private void KeyboardProbeThenQuit() => Quit(KeyboardProbe.Run() ? 0 : 1);
+    /// <summary>Shard-free login preflight rules; see LoginPreflightProbe.</summary>
+    private void LoginPreflightProbeThenQuit() => Quit(LoginPreflightProbe.Run() ? 0 : 1);
 
     /// <summary>The menu wheel, the interact radar, the new buttons and "Set controls"; see PadWheelsProbe.</summary>
     private async void PadWheelsProbeThenQuit()
@@ -1722,6 +1729,9 @@ public partial class Main : Node
         /// <summary>--keyboard-probe: the keyboard layer without a shard; see KeyboardProbe.</summary>
         public bool KeyboardProbe { get; private set; }
 
+        /// <summary>--login-preflight-probe: the measuring run's login and arrival rules without a shard; see LoginPreflightProbe.</summary>
+        public bool LoginPreflightProbe { get; private set; }
+
         /// <summary>--one-screen-probe: the one-screen drawer in the world; see OneScreenProbe.</summary>
         public bool OneScreenProbe { get; private set; }
 
@@ -2094,6 +2104,16 @@ public partial class Main : Node
                         break;
                     case "--perf-expect-map":
                         GUO.Host.PerfProbe.ExpectMap = int.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture);
+                        break;
+                    case "--perf-expect-account":
+                        // The allocated account: one guarded Connect with its
+                        // configured credential, no typing, no creation.
+                        GUO.Host.PerfProbe.ExpectAccount = Next();
+                        GUO.Host.InputProbe.ProbeAccount = GUO.Host.PerfProbe.ExpectAccount;
+                        GUO.Host.InputProbe.Strict = true;
+                        break;
+                    case "--login-preflight-probe":
+                        o.LoginPreflightProbe = true;
                         break;
                     case "--perf-zoom":
                         o.PerfZoom = float.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture);

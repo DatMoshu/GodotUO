@@ -70,6 +70,8 @@ dotnet build "$UO_ROOT/docs/modding/samples/announce/Announce.csproj" -nologo -v
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Network/Mods/ModsProbe.tscn || FAIL=1
 
 echo "[smoke] keyboard: key-ups on focus loss, AltGr text (synthetic; no shard)"
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" -- --login-preflight-probe --pregame-classic --silent || FAIL=1
+dotnet run --project "$UO_ROOT/tools/probe_rules_tests/ProbeRulesTests.csproj" --artifacts-path "$UO_BUILD_DIR/probe-rules-tests" --nologo || FAIL=1
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" -- --keyboard-probe --pregame-classic --silent || FAIL=1
 echo "[smoke] controller regressions and Set controls (synthetic pad; no shard)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" -- --pad-regression-probe --pregame-classic --silent || FAIL=1

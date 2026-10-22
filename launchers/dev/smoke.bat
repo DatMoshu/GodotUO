@@ -82,6 +82,9 @@ echo [smoke] packet mods (synthetic; builds the sample mod, ADR-0038)
 dotnet build "%UO_ROOT%\docs\modding\samples\announce\Announce.csproj" -nologo -v q || set "FAIL=1"
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Network/Mods/ModsProbe.tscn || set "FAIL=1"
 
+echo [smoke] login preflight: allocated account, no typing, no creation, arrival with z (synthetic; no shard)
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" -- --login-preflight-probe --pregame-classic --silent || set "FAIL=1"
+dotnet run --project "%UO_ROOT%\tools\probe_rules_tests\ProbeRulesTests.csproj" --artifacts-path "%UO_BUILD_DIR%\probe-rules-tests" --nologo || set "FAIL=1"
 echo [smoke] keyboard: key-ups on focus loss, AltGr text (synthetic; no shard)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" -- --keyboard-probe --pregame-classic --silent || set "FAIL=1"
 echo [smoke] controller regressions and Set controls (synthetic pad; no shard)

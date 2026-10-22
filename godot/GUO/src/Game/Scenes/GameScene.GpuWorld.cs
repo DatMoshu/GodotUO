@@ -26,6 +26,10 @@ namespace GUO.Game.Scenes
         /// </summary>
         private void PrepareGpuWorld(UltimaBatcher2D batcher, in Transform2D matrix, RenderTargets renderTargets)
         {
+            // The world frame starts: whether it goes through the pass is
+            // decided in RenderLists.DrawWorld; until then, and when the
+            // switch is off, it did not.
+            GpuWorld.LastFrameOnPass = false;
             if (!GpuWorld.Enabled)
             {
                 if (GpuWorld.Pass != null)

@@ -580,8 +580,11 @@ namespace GUO.Game.Scenes
             // first, so a frame the key cannot carry never starts; what the
             // plan cannot know (the pages) is checked at End, and a frame
             // refused there is drawn again on the canvas.
+            // GpuWorld.LastFrameOnPass is the world frame's: GameScene clears
+            // it when the world frame starts, and only the pass's success sets
+            // it. The UI draws its own lists through this method after the
+            // world (UIManager, child lists) and must not touch it.
             WorldDepthPass pass = GpuWorld.Pass;
-            GpuWorld.LastFrameOnPass = false;
             if (pass != null && pass.Began)
             {
                 if (!pass.Failed)

@@ -30,7 +30,13 @@ namespace GUO.Renderer
         public static long FramesDrawn, FramesFallback;
         public static string LastFallback;
 
-        /// <summary>True when the last sorted world pass went through the pass; false when the canvas drew it or the switch is off.</summary>
+        /// <summary>
+        /// True when the current world frame's sorted pass went through the
+        /// pass. GameScene.PrepareGpuWorld clears it as the world frame
+        /// starts; RenderLists.DrawWorld sets it when the pass drew; nothing
+        /// drawn after the world (the UI's lists) writes it, so a capture
+        /// taken after the frame reads the world's answer.
+        /// </summary>
         public static bool LastFrameOnPass;
 
         private static bool _unavailableLogged;
