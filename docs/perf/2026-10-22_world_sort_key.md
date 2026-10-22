@@ -30,9 +30,12 @@ per frame at 2560x1440.
    UI manager's two, child lists that UI controls draw without a Clear),
    but only the world scene's queues cover land, so the rest clear and
    draw freely, before, after or in the middle of a world frame.
-   `CoverOwner` records who marked last; DrawWorld checks in debug builds
-   that it was itself, and the proof runs that exact sequence, the
-   interleaved case, an abandoned list, and the set-per-owner comparison.
+   `CoverOwner` counts cover marks process-wide and each list remembers
+   the count after its own last mark, so any mark it did not make shows,
+   and stays shown until that list's own Clear or DrawWorld; DrawWorld
+   checks it in debug builds, and the proof runs that exact sequence, the
+   interleaved cases (A/B, A/B/A, B drawing before A resumes), an
+   abandoned list, and the set-per-owner comparison.
 3. **`CoverFromBelow` looks a chunk up when it changes, not per tile.** The
    cover square is walked a row at a time, so eight neighbours share a
    chunk. `LandAt` walks through a `ChunkCursor` that goes to `Map` (as an

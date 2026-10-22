@@ -258,7 +258,7 @@ namespace GUO.Game.Scenes
                         }
 
                         _coverStamp.Mark(ref land.CoverStamp);
-                        _coverOwner.Marked(this);
+                        _coverOwner.Marked();
                         _world.Add(new Drawable(land, landDepth, _world.Count));
                     }
                 }
@@ -372,7 +372,7 @@ namespace GUO.Game.Scenes
             _stretchedTiles.Clear();
             _world.Clear();
             _coverStamp.NextFrame();
-            _coverOwner.Release(this);
+            _coverOwner.Release();
             LastCover = (CoverQueued, CoverOverlapping); // PORT DEVIATION (GUO): B4 fix 2 counters
             CoverQueued = CoverOverlapping = 0;
             _transparentObjects.Clear();
@@ -605,7 +605,7 @@ namespace GUO.Game.Scenes
         private int DrawWorld(UltimaBatcher2D batcher, sbyte maxGroundZ)
         {
             long stageAt = PerfStages.Now();
-            System.Diagnostics.Debug.Assert(_coverOwner.Intact(this), "another RenderLists queued cover land after this one did and before it drew; cover marks are one world list at a time (CoverOwner)");
+            System.Diagnostics.Debug.Assert(_coverOwner.Intact, "another RenderLists queued cover land after this one did and before it drew; cover marks are one world list at a time (CoverOwner)");
             var span = CollectionsMarshal.AsSpan(_world);
 
             // PORT DEVIATION (GUO): sort 8-byte keys, not the drawables. Seq is
@@ -697,7 +697,7 @@ namespace GUO.Game.Scenes
             }
 
             batcher.CurrentObjectId = 0; // PORT DEVIATION (GUO): ADR-0023
-            _coverOwner.Release(this);
+            _coverOwner.Release();
             PerfStages.Add(kind, stageAt);
             return done;
         }

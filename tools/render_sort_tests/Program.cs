@@ -129,66 +129,93 @@ Check(DepthKey.Seq(DepthKey.Of(12.5f, 123456)) == 123456, "the sequence survives
 
 // CoverOwner: the check that the lifecycle holds, against the client's real
 // sequence of lists. Clear = Release, a cover mark = Marked, DrawWorld =
-// Intact then Release. Lists are plain objects here; RenderLists passes this.
+// Intact then Release. One struct per list, as RenderLists holds one.
 {
-    object world = new(), ui = new(), uiSecond = new(), child = new();
-    CoverOwner worldOwner = default, uiOwner = default, uiSecondOwner = default, childOwner = default;
+    CoverOwner world = default, ui = default, uiSecond = default, child = default;
 
     // One client frame: world Clear, gather (cover marks), world draw; then the
     // UI manager clears and draws its two lists, and controls draw child lists
     // they never cleared. Repeated, every DrawWorld is intact.
     for (int frame = 0; frame < 3; frame++)
     {
-        worldOwner.Release(world);
-        for (int m = 0; m < 50; m++) worldOwner.Marked(world);
-        Check(worldOwner.Marks == 50 && worldOwner.Intact(world), $"frame {frame}: the world list's own marks are not intact at its draw");
-        worldOwner.Release(world);
-        Check(worldOwner.Marks == 0, "DrawWorld did not void the marks");
+        world.Release();
+        for (int m = 0; m < 50; m++) world.Marked();
+        Check(world.Marks == 50 && world.Intact, $"frame {frame}: the world list's own marks are not intact at its draw");
+        world.Release();
+        Check(world.Marks == 0, "DrawWorld did not void the marks");
 
-        uiOwner.Release(ui);
-        Check(uiOwner.Intact(ui), $"frame {frame}: a UI list that marked nothing is not intact");
-        uiOwner.Release(ui);
-        Check(childOwner.Intact(child), $"frame {frame}: a child list drawn without a Clear is not intact");
-        childOwner.Release(child);
-        uiSecondOwner.Release(uiSecond);
-        Check(uiSecondOwner.Intact(uiSecond), $"frame {frame}: the second UI list is not intact");
-        uiSecondOwner.Release(uiSecond);
+        ui.Release();
+        Check(ui.Intact, $"frame {frame}: a UI list that marked nothing is not intact");
+        ui.Release();
+        Check(child.Intact, $"frame {frame}: a child list drawn without a Clear is not intact");
+        child.Release();
+        uiSecond.Release();
+        Check(uiSecond.Intact, $"frame {frame}: the second UI list is not intact");
+        uiSecond.Release();
     }
 
     // UI lists between the world's gather and its draw (a gump drawn from
     // inside the world pass): they mark nothing, so the world stays intact.
-    worldOwner.Release(world);
-    worldOwner.Marked(world);
-    uiOwner.Release(ui);
-    Check(uiOwner.Intact(ui), "a UI list drawn mid-world-frame is not intact");
-    uiOwner.Release(ui);
-    Check(childOwner.Intact(child), "a child list drawn mid-world-frame is not intact");
-    Check(worldOwner.Intact(world), "a UI list's Clear and draw voided the world's marks");
-    worldOwner.Release(world);
+    world.Release();
+    world.Marked();
+    ui.Release();
+    Check(ui.Intact, "a UI list drawn mid-world-frame is not intact");
+    ui.Release();
+    Check(child.Intact, "a child list drawn mid-world-frame is not intact");
+    Check(world.Intact, "a UI list's Clear and draw voided the world's marks");
+    world.Release();
 
     // The unsupported case, reported where the loss would show: a second list
-    // marks cover land before the first has drawn. The first's draw is not
-    // intact; the second's is (its marks are the live ones).
-    object probe = new();
-    CoverOwner probeOwner = default;
-    worldOwner.Release(world);
-    worldOwner.Marked(world);
-    probeOwner.Release(probe);
-    probeOwner.Marked(probe);
-    Check(!worldOwner.Intact(world), "the interleaved first list reads as intact");
-    Check(probeOwner.Intact(probe), "the second list (whose marks are live) reads as broken");
-    probeOwner.Release(probe);
-    Check(!worldOwner.Intact(world), "the first list reads as intact once the second has drawn");
-    worldOwner.Release(world);
-    Check(worldOwner.Intact(world), "a Clear did not restore the first list");
+    // (B) marks cover land before the first (A) has drawn. A's draw is not
+    // intact; B's is (its marks are the live ones).
+    CoverOwner a = default, b = default;
+    a.Release();
+    a.Marked();
+    b.Release();
+    b.Marked();
+    Check(!a.Intact, "the interleaved first list reads as intact");
+    Check(b.Intact, "the second list (whose marks are live) reads as broken");
+    b.Release();
+    Check(!a.Intact, "the first list reads as intact once the second has drawn");
+    a.Release();
+    Check(a.Intact, "a Clear did not restore the first list");
+
+    // A/B/A: A marks tile 1, B marks tile 1, A marks tile 2. A lost tile 1
+    // and must stay broken until its own Clear or draw, however many marks it
+    // makes after B's.
+    a.Marked();
+    b.Release();
+    b.Marked();
+    a.Marked();
+    Check(!a.Intact, "A/B/A: A reads as intact after marking again");
+    for (int m = 0; m < 10; m++) a.Marked();
+    Check(!a.Intact, "A/B/A: A became intact again by marking more");
+    Check(!b.Intact, "A/B/A: B reads as intact although A marked after it");
+    b.Release();
+    Check(!a.Intact, "A/B/A: B's release restored A");
+    a.Release();
+    Check(a.Intact, "A/B/A: A's own Clear did not restore it");
+
+    // A marks, B marks and draws (releases), A resumes marking: B's release
+    // does not hide what happened to A's first mark.
+    a.Marked();
+    b.Marked();
+    b.Release();
+    a.Marked();
+    Check(!a.Intact, "A/B-release/A: A reads as intact");
+    a.Release();
+    Check(a.Intact, "A/B-release/A: A's Clear did not restore it");
 
     // A list that marks and is abandoned (a scene replaced before it drew)
-    // gives way: the next list that marks is intact.
-    worldOwner.Marked(world);
-    probeOwner.Release(probe);
-    probeOwner.Marked(probe);
-    Check(probeOwner.Intact(probe), "an abandoned list's marks blocked the next one");
-    probeOwner.Release(probe);
+    // gives way: the next list that marks is intact, and stays so while the
+    // abandoned one never marks again.
+    a.Marked();
+    b.Release();
+    b.Marked();
+    b.Marked();
+    Check(b.Intact, "an abandoned list's marks blocked the next one");
+    b.Release();
+    a.Release();
 }
 
 // CoverStamp against the HashSet-per-owner it replaced, under the supported

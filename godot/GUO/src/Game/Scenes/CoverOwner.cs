@@ -17,43 +17,58 @@ namespace GUO.Game.Scenes
     /// a list that marked nothing is always intact, so UI lists clear and draw
     /// between the world's gather and its draw freely, and a child list drawn
     /// without a Clear is unaffected. Only a second list that marks cover land
-    /// while another's marks are still unread breaks the invariant, and that
-    /// list's DrawWorld reports it (debug builds). A list that marks and is
-    /// then abandoned without drawing gives way to the next one that marks.
-    /// Main thread only, like the lists themselves.
+    /// while another's marks are still unread breaks the invariant, and the
+    /// first list's DrawWorld reports it (debug builds). The break is sticky:
+    /// once another list has marked, the first list stays broken until its own
+    /// Clear or DrawWorld, however many marks it makes afterwards and whether
+    /// or not the other list has drawn or cleared in between. A list that
+    /// marks and is then abandoned without drawing gives way to the next one
+    /// that marks. Main thread only, like the lists themselves.
+    ///
+    /// The mechanism is one process-wide count of cover marks: a list
+    /// remembers the count after its own last mark, and any mark it did not
+    /// make moves the count past what it remembers.
     /// </remarks>
     internal struct CoverOwner
     {
-        /// <summary>The list that marked cover land most recently, while its marks may still be unread.</summary>
-        private static object s_latest;
+        /// <summary>Cover marks made by any list, ever.</summary>
+        private static long s_total;
 
         /// <summary>This list's cover marks since its last Clear or DrawWorld.</summary>
         private int _marks;
 
+        /// <summary><see cref="s_total"/> right after this list's last mark.</summary>
+        private long _afterMine;
+
+        /// <summary>Another list marked while this one's marks were unread; set until Release.</summary>
+        private bool _broken;
+
         public readonly int Marks => _marks;
 
         /// <summary>This list has just marked a cover tile.</summary>
-        public void Marked(object list)
+        public void Marked()
         {
-            s_latest = list;
+            if (_marks > 0 && s_total != _afterMine)
+            {
+                _broken = true;
+            }
+
+            s_total++;
+            _afterMine = s_total;
             _marks++;
         }
 
         /// <summary>
         /// True when this list's cover marks can still be read: it has none,
-        /// or nobody marked since it did.
+        /// or no other list has marked since its first one.
         /// </summary>
-        public readonly bool Intact(object list) => _marks == 0 || ReferenceEquals(s_latest, list);
+        public readonly bool Intact => _marks == 0 || (!_broken && s_total == _afterMine);
 
         /// <summary>This list's marks are void (Clear, or DrawWorld has read them).</summary>
-        public void Release(object list)
+        public void Release()
         {
             _marks = 0;
-
-            if (ReferenceEquals(s_latest, list))
-            {
-                s_latest = null;
-            }
+            _broken = false;
         }
     }
 }

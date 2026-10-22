@@ -12,8 +12,9 @@ other list marks; an interleaving is stated as unsupported); the
 ownership check (`CoverOwner`) passes the client's real sequence (world
 Clear, gather, draw; the UI manager's two lists cleared and drawn after,
 and UI child lists drawn without a Clear, also mid-world-frame), reports
-the interleaved case at the first list's draw, and lets an abandoned list
-give way; the
+the interleaved case at the first list's draw and keeps it reported until
+that list's own Clear or draw (A/B/A, and B releasing before A resumes),
+and lets an abandoned list give way; the
 chunk cursor (`ChunkCursor`) looks a chunk up once per chunk a walk passes
 through, never for a negative tile, and remembers an unloaded chunk.
 
