@@ -121,6 +121,21 @@ namespace GUO.Renderer
         /// <paramref name="key"/> in 0..1, larger nearer.
         /// </summary>
         public void AddQuad(Texture2D texture, Rect2 dest, Rect2 source, float key)
+            => AddQuad(texture, dest, source, key, null);
+
+        /// <summary>
+        /// Full 28-bit key, split into exactly representable 19/9-bit floats
+        /// for the instance buffer; the shader reconstructs the uint before
+        /// the bit cast. For example, AddKeyedQuad(page, dest, source, 512u).
+        /// </summary>
+        public void AddKeyedQuad(Texture2D texture, Rect2 dest, Rect2 source, uint key)
+        {
+            if (key >= WorldDepthKey.Count)
+                throw new ArgumentOutOfRangeException(nameof(key));
+            AddQuad(texture, dest, source, 0f, key);
+        }
+
+        private void AddQuad(Texture2D texture, Rect2 dest, Rect2 source, float key, uint? integerKey)
         {
             // texpixel_size and the region product exactly as the canvas
             // renderer computes them (renderer_canvas_render_rd.cpp).
@@ -135,7 +150,7 @@ namespace GUO.Renderer
                 _order.Add(page);
             }
 
-            page.Append(dest, uv, key);
+            page.Append(dest, uv, key, integerKey);
         }
 
         public void End()
@@ -194,7 +209,7 @@ namespace GUO.Renderer
                 root.AddChild(_instance);
             }
 
-            public void Append(Rect2 dest, Vector4 uv, float key)
+            public void Append(Rect2 dest, Vector4 uv, float key, uint? integerKey)
             {
                 int at = Count * Stride;
 
@@ -212,6 +227,12 @@ namespace GUO.Renderer
                 f[5] = dest.Size.Y;
                 f[7] = dest.Position.Y;
                 f[11] = key;
+                if (integerKey.HasValue)
+                {
+                    f[8] = integerKey.Value >> 9;
+                    f[9] = integerKey.Value & 511u;
+                    f[10] = 1f;
+                }
                 f[12] = 1f;
                 f[13] = 1f;
                 f[14] = 1f;
