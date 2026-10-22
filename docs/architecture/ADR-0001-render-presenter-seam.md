@@ -160,6 +160,46 @@ Upstream's own comment calls this *"an intermediate, crappy solution"*.
 
 We ship one presenter. We do not stub a second.
 
+### Amendment 2026-10-22: cached statics and the world depth test
+
+**Status:** Accepted 2026-10-22 (owner). Moshu approved the ADR-0007 amendment
+of 2026-10-19 and this companion amendment in the exec-fable terminal at
+06:40Z ("I approve").
+
+ADR-0007's world depth pass keeps one presenter and strict pixel parity.
+The depth viewport is an implementation of the existing world pass, not a
+second presenter or an alternate look. Today that presenter is
+`RenderLists.DrawWorld` plus `UltimaBatcher2D`; the proposed
+`IScenePresenter` interface was never written. No presenter registry or
+alternate presenter is introduced. `--gpu-world` is an off-by-default
+fallback and parity switch until the owner decides the default.
+
+This amends two statements in the original decision:
+
+1. **The presenter consumes what the per-frame queue holds.** Eligible
+   statics may instead come from persistent per-chunk instance buffers,
+   rebuilt when a chunk changes, extending ADR-0004's existing exception
+   for cached land. Non-instanced objects remain in the queue.
+2. **"The order IS the draw order."** Between instanced statics and queued
+   objects, the depth test may establish order instead of submission order.
+   It must reproduce the current sort, including equal-depth insertion
+   order (`_queued`). Queued objects keep that order within their page
+   buffer; cached statics carry the equivalent tile and diagonal tie field.
+   Any static class whose tie order cannot be preserved stays queued.
+
+`CalculateDepthZ()` remains the only source of depth for both drawing and
+picking. The GPU key is its integer rescale,
+`D = round(100 * (CalculateDepthZ() - d0))`, where `d0` is the first visible
+diagonal; the mobile body's existing `+ 0.5` becomes `+ 50` in hundredths.
+The key and tie field must preserve the sort's ordering exactly.
+
+Picking still takes the highest `CalculateDepthZ()` under the mouse,
+combining queued objects with a pixel-checked query over the instanced
+statics in the chunks under the mouse. It never reads GPU depth. The
+original separation between traversal, selection and rendering remains
+binding. Precision and parity validation are specified in ADR-0007; its
+fallback remains the sorted canvas path.
+
 ### Architecture
 
 ```
