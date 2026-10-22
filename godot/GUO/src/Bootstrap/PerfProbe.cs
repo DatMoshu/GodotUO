@@ -76,6 +76,23 @@ internal static class PerfProbe
     /// <summary>--perf-expect-account NAME: the allocated account; InputProbe.Strict logs in as it and nothing else.</summary>
     public static string ExpectAccount { get; set; }
 
+    /// <c>--perf-static-world</c>: the tile walk leaves out every mobile but
+    /// the player, every item and every effect, so a scene's counts depend on
+    /// the map alone. The count gate (tools/perf_probe/gate.py) measures with
+    /// it: the dungeon's batcher items moved between two identical runs (158
+    /// to 160) and failed a stock gate (PERF-V6); the working hypothesis is
+    /// dynamic content (a passer-by, a spawn and its loot at the mouth of
+    /// Despise), not yet reproduced under control, and a map-only world is
+    /// the proposed stabilisation. Frame times under this flag are lower
+    /// than play; they are advisory there.
+    ///
+    /// Set by <see cref="Run"/> for the probe's lifetime and cleared when it
+    /// ends, never by argument parsing: the flag is refused without
+    /// <c>--perf-probe</c> (<see cref="PerfProbeFlags.ProbeOnlyError"/>), so
+    /// ordinary play can never run with a thinned world.
+    /// </summary>
+    public static bool StaticWorld { get; private set; }
+
     private const int Settle = 180;
     private static string _outDir, _label;
     private static bool _parity;
@@ -148,7 +165,20 @@ internal static class PerfProbe
     }
 
     public static async System.Threading.Tasks.Task Run(Node host, string outDir, string label, float zoom = 0, bool parity = false,
-        string profilePreset = null)
+        string profilePreset = null, bool staticWorld = false)
+    {
+        StaticWorld = staticWorld;
+        try
+        {
+            await RunProbe(host, outDir, label, zoom, parity, profilePreset);
+        }
+        finally
+        {
+            StaticWorld = false;
+        }
+    }
+
+    private static async System.Threading.Tasks.Task RunProbe(Node host, string outDir, string label, float zoom, bool parity, string profilePreset)
     {
         _profilePreset = profilePreset ?? "";
         _profileSummary = "";
@@ -722,7 +752,7 @@ internal static class PerfProbe
             JsonSerializer.Serialize(new Dictionary<string, object>
                 {
                     ["label"] = label, ["window"] = $"{size.X}x{size.Y}", ["zoom"] = System.Math.Round(Client.Game?.Scene?.Camera?.Zoom ?? 0, 2),
-                    ["optimized"] = optimized, ["postfx"] = look, ["profile_preset"] = _profilePreset, ["profile"] = _profileSummary,
+                    ["optimized"] = optimized, ["postfx"] = look, ["profile_preset"] = _profilePreset, ["profile"] = _profileSummary, ["static_world"] = StaticWorld,
                     ["system"] = SystemInfo(), ["scenes"] = results,
                 },
                 new JsonSerializerOptions { WriteIndented = true }));

@@ -67,6 +67,15 @@ public partial class Main : Node
     public override void _EnterTree()
     {
         _options = Options.Parse(OS.GetCmdlineUserArgs());
+
+        string probeOnly = PerfProbeFlags.ProbeOnlyError(_options.PerfProbe, _options.PerfStaticWorld);
+        if (probeOnly != null)
+        {
+            GD.PrintErr("[GUO] " + probeOnly);
+            Quit(2);
+            return;
+        }
+
         NoFocus = _options.NoFocus;
 
         if (NoFocus)
@@ -817,7 +826,7 @@ public partial class Main : Node
     /// <summary>Frame time in the five fixed scenes, then quit; see PerfProbe.</summary>
     private async void PerfProbeThenQuit()
     {
-        await PerfProbe.Run(this, _options.PerfOut, _options.PerfLabel, _options.PerfZoom, _options.PerfParity, _options.PerfProfile);
+        await PerfProbe.Run(this, _options.PerfOut, _options.PerfLabel, _options.PerfZoom, _options.PerfParity, _options.PerfProfile, _options.PerfStaticWorld);
         Quit(PerfProbe.Passed ? 0 : 1);
     }
 
@@ -1730,6 +1739,9 @@ public partial class Main : Node
         /// <summary>--perf-parity: per scene, compare --batched-world with the plain path pixel for pixel.</summary>
         public bool PerfParity { get; private set; }
 
+        /// <summary>--perf-static-world: the probe measures the map alone (PerfProbe.StaticWorld); refused without --perf-probe.</summary>
+        public bool PerfStaticWorld { get; private set; }
+
         public bool DoorProbe { get; private set; }
 
         public bool LayerShot { get; private set; }
@@ -2175,6 +2187,9 @@ public partial class Main : Node
                         break;
                     case "--login-preflight-probe":
                         o.LoginPreflightProbe = true;
+                        break;
+                    case "--perf-static-world":
+                        o.PerfStaticWorld = true;
                         break;
                     case "--perf-zoom":
                         o.PerfZoom = float.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture);

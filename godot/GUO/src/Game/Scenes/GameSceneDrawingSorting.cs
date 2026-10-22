@@ -1164,6 +1164,12 @@ namespace GUO.Game.Scenes
 
                     case Mobile mobile:
                         {
+                            // PORT DEVIATION (GUO): --perf-static-world (PerfProbe.StaticWorld).
+                            if (GUO.Host.PerfProbe.StaticWorld && !ReferenceEquals(mobile, _world.Player))
+                            {
+                                continue;
+                            }
+
                             UpdateObjectHandles(mobile, useObjectHandles);
 
                             maxObjectZ += Constants.DEFAULT_CHARACTER_HEIGHT;
@@ -1203,6 +1209,12 @@ namespace GUO.Game.Scenes
 
                     case Item item:
                         {
+                            // PORT DEVIATION (GUO): --perf-static-world (PerfProbe.StaticWorld).
+                            if (GUO.Host.PerfProbe.StaticWorld)
+                            {
+                                continue;
+                            }
+
                             ref StaticTiles itemData = ref (
                                 item.IsMulti
                                     ? ref Client.Game.UO.FileManager.TileData.StaticData[item.MultiGraphic]
@@ -1293,6 +1305,12 @@ namespace GUO.Game.Scenes
                         }
 
                     case GameEffect effect:
+                        // PORT DEVIATION (GUO): --perf-static-world (PerfProbe.StaticWorld).
+                        if (GUO.Host.PerfProbe.StaticWorld)
+                        {
+                            continue;
+                        }
+
                         if (effect is not LightningEffect &&
                             !ProcessAlpha(
                                 obj,
