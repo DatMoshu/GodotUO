@@ -253,7 +253,10 @@ def run_cuo(cfg: Config, out: Path, scene: tuple, size: tuple[int, int], s: str,
 
 def sheets(out: Path) -> list[str]:
     """Per scene and shot: the four side by side, and each GUO variant's difference from plain GUO."""
-    from PIL import Image, ImageChops, ImageDraw
+    from PIL import Image, ImageDraw
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import diff
 
     lines = []
     for scene in SCENES:
@@ -278,14 +281,16 @@ def sheets(out: Path) -> list[str]:
                 if "guo" not in pics or n not in pics or pics[n].size != pics["guo"].size:
                     row.append("-")
                     continue
-                diff = ImageChops.difference(pics["guo"], pics[n]).convert("L").point(lambda v: 255 if v > 0 else 0)
-                count = sum(1 for v in diff.tobytes() if v)
+                mask = diff.differing(pics["guo"], pics[n])
+                total, isolated, _ = diff.count(mask)
                 marked = pics["guo"].copy()
-                marked.paste((255, 0, 0), mask=diff)
+                marked.paste((255, 0, 0), mask=mask)
                 marked.save(folder / f"{shot}_diff_{n}.png")
-                row.append(f"{count} px")
+                row.append(diff.describe(total, isolated))
             lines.append("| " + " | ".join(row) + " |")
-    return ["| scene/shot | guo-array vs guo | guo-cover vs guo |", "|---|---:|---:|", *lines]
+    return ["| scene/shot | guo-array vs guo | guo-cover vs guo |", "|---|---:|---:|", *lines,
+            "", "An isolated pixel has no differing neighbour: a single texel of a stretched tile",
+            "sampled from the land array (PERF-V7), not a sprite, label or tile that moved."]
 
 
 def main() -> int:

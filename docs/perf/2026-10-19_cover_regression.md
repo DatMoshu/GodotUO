@@ -74,12 +74,39 @@ river-north and river-west. They are drawn with ClassicUO, GUO plain
 
 | Scene | new defaults vs plain GUO | what differs |
 |---|---:|---|
-| river-west | 0 px | |
+| river-west | 3 px (3 isolated) | three single texels on stretched riverbank tiles, see below |
 | river-north | 20 px | five mobile dots on the radar gump |
 | river-healers | 554 px | an animal that walked off between the shots (518), radar dots (36) |
 
-The world, water edges included, is the same pixel for pixel. The riverbank
-fix still covers what it covers; it is only drawn in runs.
+The riverbank fix still covers what it covers; it is only drawn in runs. The
+world is the same pixel for pixel except for the three texels below.
+
+**Correction, 2026-10-22 (PERF-V7).** This table first said river-west was
+0 px. The main validation of 2026-10-22 (Codex perf seat, run
+`20261022_guo-codex-perf-20261022_main-live`, `river-exact-diff.json`)
+compared one sequential plain/merged-cover pair at 1600x900 exactly, with
+the name labels and chat excluded by rectangle and no radar in a fresh
+profile, and found three world pixels:
+
+| pixel | plain | merged | the tile |
+|---|---|---|---|
+| (802, 16) | 35 2d 1e | 35 26 1e | a stretched bank tile at the top edge |
+| (575, 233) | 33 2b 19 | 44 3b 2b | a stretched bank tile |
+| (1334, 264) | 3d 42 0f | 3d 48 1a | a stretched bank tile |
+
+Each takes the colour of a texel next to it in the same tile. None has a
+differing neighbour. Plain GUO samples each tile's own texture; the merged
+cover path draws a run as one mesh over the land `Texture2DArray`, with the
+tile's UVs scaled by `w / Size` into the page and back by `Size` in the
+shader. On a stretched tile, whose corners are pulled to its z, that
+rescaling rounds a nearest-sampled UV at a texel edge to the other side for
+a few fragments; the per-tile draw rounds the same fragments the other way.
+It is a real difference of the cover path, one texel wide, not a label, the
+radar, water or motion, and exact equality is not available to this path
+short of giving every page the tile's own size. It is accepted as the one
+kind of difference a variant may show; `tools/visual_ab` now counts such
+isolated pixels apart from everything else so a run can tell them from a
+regression without a human at the sheet.
 
 ## The switches
 
