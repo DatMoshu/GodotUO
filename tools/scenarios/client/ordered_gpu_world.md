@@ -18,6 +18,10 @@ code is included in exports. See ADR-0043 and the feature README for the doctor.
    --rd-world`, matching size and zoom. Measure bank, forest, dungeon and docks.
    Require zero repeatable pixel differences and `rd_test_on_pass == 2` for
    every world scene. Inspect non-repeatable differences separately.
+   Retain all five files listed by `parity_frames`; recompute the stable mask
+   from the three plain frames and the strict mask from both test frames.
+   With sample window version 2, an uninterrupted RD scene must report exactly
+   the measured `frames` in `rd_frames_drawn`, without the former extra interval.
 3. Repeat with moving actors and with fractional zoom. Exercise the runtime
    toggle, resize, relog, circle transparency and scene unloading. Custom
    blends/clips, styled water and HD art must preserve the complete canvas

@@ -386,11 +386,28 @@ internal static class PerfProbe
         }
 
         await InputProbe.Wait(host, 30);
-        long drawsBefore = UltimaBatcher2D.FramesBegun;
 
         var ms = new List<double>(walks ? 20000 : n);
         double kRect = 0, kAffine = 0, kMesh = 0, kTri = 0, kBatches = 0, kCover = 0, kCoverRuns = 0, coverQueued = 0, coverOverlapping = 0;
         double calls = 0, items = 0, switches = 0, commands = 0, prepare = 0, world = 0, cpu = 0, gpu = 0, objects = 0;
+        // Allocate the probe's own storage before the measured interval.
+        var uploadMs = new List<double>();
+        bool uploadedLast = false;
+        int stages = (int)PerfStages.Stage.Count;
+        double[] stageMs = new double[stages], frameStageMs = new double[stages];
+        long[] stageDrawn = new long[stages];
+        int[] frameDrawn = new int[stages];
+        double renderFrame = 0, ui = 0, update = 0;
+        PerfStages.Enabled = true;
+        // Align cumulative counters, stage reset and the wall clock to the
+        // same ProcessFrame boundary. Previously counters also included this
+        // unmeasured interval, and the first Take contained two intervals.
+        await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
+        PerfStages.Take(frameStageMs, frameDrawn);
+        long drawsBefore = UltimaBatcher2D.FramesBegun;
+        // An upload lands in the frame after the one that drew it: its cost
+        // is in the next frame's time. Keep upload frames and their successors
+        // apart, since a p99 over thousands of frames can hide a few dozen.
         int uploadsBefore = LandPages.Uploads, uploadsMax = 0, uploadFrames = 0, uploadsLast = LandPages.Uploads;
         int rebuildsBefore = LandPages.Rebuilds, bumpsBefore = LandPages.Bumps;
         long terrainRebuildsBefore = CachedLand.TotalRebuilds;
@@ -411,22 +428,8 @@ internal static class PerfProbe
         long rdEvictionsBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.CacheEvictions;
 #endif
         int landOntoBefore = GUO.Renderer.Arts.Art.LandOntoLandLayer, staticOntoBefore = GUO.Renderer.Arts.Art.StaticOntoLandLayer;
-        // An upload lands in the frame after the one that drew it: its cost is
-        // in the next frame's time. Kept apart, since a p99 over thousands of
-        // frames never sees a few dozen.
-        var uploadMs = new List<double>();
-        bool uploadedLast = false;
-        // Stage by stage (PERF-03): summed over the frames, read back per frame.
-        int stages = (int)PerfStages.Stage.Count;
-        double[] stageMs = new double[stages], frameStageMs = new double[stages];
-        long[] stageDrawn = new long[stages];
-        int[] frameDrawn = new int[stages];
-        double renderFrame = 0, ui = 0, update = 0;
-        PerfStages.Enabled = true;
-        PerfStages.Take(frameStageMs, frameDrawn);
         long allocatedBefore = System.GC.GetTotalAllocatedBytes();
         System.TimeSpan pausedBefore = System.GC.GetTotalPauseDuration();
-        await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
         long last = System.Diagnostics.Stopwatch.GetTimestamp();
         double elapsed = 0;
         for (int i = 0; walks ? elapsed < WalkMs : i < n; i++)
@@ -595,9 +598,9 @@ internal static class PerfProbe
 
     /// <summary>
     /// Pixel parity of --batched-world against the plain path in this scene:
-    /// three frames in a row, plain, batched, plain. A pixel the two plain
-    /// frames agree on is stable (nothing animated there); the batched frame
-    /// must match it. Violations are stable pixels it does not match.
+    /// five frames in order, plain, test, plain, test, plain. A pixel the three
+    /// plain frames agree on is stable; both test frames agreeing on another
+    /// value is a repeatable violation. Save every input for independent review.
     /// </summary>
     private static async System.Threading.Tasks.Task<Dictionary<string, object>> Parity(Node host, string name)
     {
@@ -640,7 +643,7 @@ internal static class PerfProbe
         long gpuDrawnBefore = GpuWorld.FramesDrawn, gpuFallbackBefore = GpuWorld.FramesFallback;
         long gpuSuspendedBefore = GpuWorld.FramesSuspended;
         int coverSkippedBefore = UltimaBatcher2D.CoverSkipped;
-        Image a = await Frame(false), b = await Frame(true), c = await Frame(false), b2 = await Frame(true), c2 = await Frame(false);
+        using Image a = await Frame(false), b = await Frame(true), c = await Frame(false), b2 = await Frame(true), c2 = await Frame(false);
         ParityToggle(was);
         long gpuDrawn = GpuWorld.FramesDrawn - gpuDrawnBefore, gpuFallback = GpuWorld.FramesFallback - gpuFallbackBefore;
         // GPU-03: covering tiles the pass left to the bake (no land-array
@@ -653,7 +656,7 @@ internal static class PerfProbe
         // The largest channel difference of a repeatable pixel: 1 is rounding
         // (fp16 math, ADR-0023's identity pass); tens is a different texel.
         int strictMaxDelta = 0;
-        var mask = Image.CreateEmpty(a.GetWidth(), a.GetHeight(), false, Image.Format.Rgba8);
+        using var mask = Image.CreateEmpty(a.GetWidth(), a.GetHeight(), false, Image.Format.Rgba8);
         bool Eq(byte[] x, byte[] y, int at)
         {
             for (int k = 0; k < bpp; k++)
@@ -696,11 +699,24 @@ internal static class PerfProbe
 
         Directory.CreateDirectory(_outDir);
         string stem = Path.Combine(_outDir, $"parity_{_label}_{name}");
-        b.SavePng(stem + "_batched.png");
-        a.SavePng(stem + "_plain.png");
+        void Save(Image image, string suffix)
+        {
+            string path = stem + suffix;
+            Error error = image.SavePng(path);
+            if (error != Error.Ok)
+            {
+                throw new IOException($"Could not save parity evidence {path}: {error}");
+            }
+        }
+
+        Save(a, "_plain.png");
+        Save(b, "_batched.png");
+        Save(c, "_plain2.png");
+        Save(b2, "_batched2.png");
+        Save(c2, "_plain3.png");
         if (violations > 0)
         {
-            mask.SavePng(stem + "_violations.png");
+            Save(mask, "_violations.png");
         }
 
         GD.Print($"[GUO] perf probe: parity {name}: {violations} of {stable} stable pixels differ, {strict} repeatably (max channel delta {strictMaxDelta})"
@@ -708,6 +724,8 @@ internal static class PerfProbe
         return new Dictionary<string, object>
         {
             ["parity_stable_px"] = stable, ["parity_violations"] = violations, ["parity_strict"] = strict,
+            ["parity_frames"] = new[] { "_plain.png", "_batched.png", "_plain2.png", "_batched2.png", "_plain3.png" }
+                .Select(suffix => Path.GetFileName(stem + suffix)).ToArray(),
 #if GUO_LABS
             ["rd_test_on_pass"] = rdTestOnPass,
 #endif
@@ -809,6 +827,7 @@ internal static class PerfProbe
             JsonSerializer.Serialize(new Dictionary<string, object>
                 {
                     ["label"] = label, ["window"] = $"{size.X}x{size.Y}", ["zoom"] = System.Math.Round(Client.Game?.Scene?.Camera?.Zoom ?? 0, 2),
+                    ["sample_window_version"] = 2,
                     ["optimized"] = optimized, ["postfx"] = look, ["profile_preset"] = _profilePreset, ["profile"] = _profileSummary, ["static_world"] = StaticWorld,
                     ["godot_api_jit_optimized"] = apiOptimized, ["godot_api_mvid"] = godotApi.ManifestModule.ModuleVersionId.ToString(),
                     ["engine_debug_build"] = OS.IsDebugBuild(),

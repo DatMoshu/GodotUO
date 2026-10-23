@@ -8,6 +8,23 @@ into view, and writes `build/perf/perf_<label>.md` and `.json`. Frame times
 compare only on one machine; draw calls and batcher counts compare anywhere.
 On Android, the Deck or the web run the client with the same flags.
 
+`sample_window_version: 2` aligns cumulative counters, stage reset, allocation
+and wall time after the same initial `ProcessFrame` boundary. Older reports
+omit this field: their cumulative counters and first stage sample included one
+extra, unmeasured interval. Compare timing stages using the same window version;
+do not interpret that correction as a renderer speedup. The wall-clock sample
+count itself remains unchanged.
+This does not remove publication latency from existing engine monitors or
+`LastFrame`/`LastKinds`, which still describe the previously published draw.
+
+With `--perf-parity`, `parity_frames` lists all five saved PNG filenames in
+capture order: plain, test, plain, test, plain. The original `_plain.png` and
+`_batched.png` names remain; `_plain2.png`, `_batched2.png` and `_plain3.png`
+permit independent reconstruction of stable and repeatable differences. These
+are private runtime captures in the configured output folder, not test assets
+to commit. Capture and PNG encoding happen outside the timed measurement.
+PNG save errors fail the probe instead of publishing a list of missing evidence.
+
 ## Run
 
 ```

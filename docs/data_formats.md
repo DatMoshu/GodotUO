@@ -3292,6 +3292,13 @@ Each scene object carries the probe's columns (`scene`, `what`, `at`,
 `batcher_items`, `texture_switches`, `world_prepare_ms`, `world_draw_ms`,
 `render_cpu_ms`, `render_gpu_ms` and the land, cover and allocation counts);
 readers must ignore keys they do not know, and older runs lack the newer ones.
+`sample_window_version: 2` starts cumulative counters, stage reset, allocation
+and wall time after the same initial `ProcessFrame` boundary. Earlier reports
+omit it and include that extra interval in cumulative/stage counters; use the
+same version when interpreting those comparisons. Wall-clock sample count is
+unchanged. Parity rows also carry `parity_frames`, five PNG filenames in capture
+order (plain, test, plain, test, plain), including all inputs to the stability
+and repeatability classification. The first two retain the original filenames.
 `optimized` describes GUO's assembly only. `godot_api_jit_optimized` records
 the loaded GodotSharp assembly's JIT setting, `godot_api_mvid` identifies that
 assembly without publishing its filesystem path, and `engine_debug_build`
