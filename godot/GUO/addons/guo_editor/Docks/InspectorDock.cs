@@ -13,6 +13,7 @@ using Godot;
 public partial class InspectorDock : EditorDock
 {
     private TextureRect _preview;
+    private Image _scaledFrame;
     private OptionButton _zoom;
     private HBoxContainer _player;
     private Button _play;
@@ -190,6 +191,7 @@ public partial class InspectorDock : EditorDock
         if (img == null)
         {
             _preview.Texture = null;
+            ReleaseScaledFrame();
             return;
         }
 
@@ -198,11 +200,39 @@ public partial class InspectorDock : EditorDock
         int z = _zoom.Selected + 1;
         if (z > 1)
         {
-            img = (Image)img.Duplicate();
+            // Queued uploads can retain the Image object. Reuse scratch only
+            // on the render thread, where creation consumes it synchronously.
+            if (RenderingServer.IsOnRenderThread())
+            {
+                _scaledFrame ??= new Image();
+                _scaledFrame.CopyFrom(img);
+                img = _scaledFrame;
+            }
+            else
+            {
+                ReleaseScaledFrame();
+                img = (Image)img.Duplicate();
+            }
             img.Resize(img.GetWidth() * z, img.GetHeight() * z, Image.Interpolation.Nearest);
+        }
+        else
+        {
+            ReleaseScaledFrame();
         }
 
         _preview.Texture = ImageTexture.CreateFromImage(img);
+    }
+
+    private void ReleaseScaledFrame()
+    {
+        _scaledFrame?.Dispose();
+        _scaledFrame = null;
+    }
+
+    public override void _ExitTree()
+    {
+        ReleaseScaledFrame();
+        base._ExitTree();
     }
 
     public override void _Process(double delta)
