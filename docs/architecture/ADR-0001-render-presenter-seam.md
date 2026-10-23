@@ -200,7 +200,32 @@ original separation between traversal, selection and rendering remains
 binding. Precision and parity validation are specified in ADR-0007; its
 fallback remains the sorted canvas path.
 
-### Architecture
+### Parity correction 2026-10-23: world raster sample origin
+
+The world view passed to the batcher and light targets includes a translation
+of **(-0.25, -0.25) render-target pixels**, independent of camera zoom. This
+reproduces the upstream `IsometricWorld.fx` vertex shader's final clip-space
+offset `(-0.5 / ViewportSize.x, +0.5 / ViewportSize.y)`. Conversion from clip
+space to a top-left screen origin halves those values again. The upstream
+commented-out CPU half-pixel adjustment is inactive and must not be added.
+
+Apply the correction to the local `GameScene.Draw` matrix before preparing
+lights. Terrain, sprites, classic/realtime light geometry, water and the
+batcher's selection-ID target then share one transform. Leave the camera and
+its inverse used for CPU picking unchanged, as upstream does. This is an L0
+parity repair, with no new render option or art filtering. Do not apply a
+second correction in the RD shader, or change every UI batcher's origin.
+
+Omitting it exposes atlas-edge lines and selects different nearest texels at
+some zooms. Independent CUO/GUO screenshots at zoom 1, 1.5 and 2 establish
+exact sampled water/grass equality after the correction. Equality between two
+GUO backends alone cannot prove this: both previously shared the omission.
+The bounded comparison and additional lighting/selection checks are described
+in `tools/scenarios/client/world_raster_origin.md`; it is not a claim of global
+world-image parity. Parent-canvas clipping also follows this transform, so a
+future world feature with child clips must test its boundary explicitly.
+
+### Architecture diagram
 
 ```
   Game world  (GameObjects; ported verbatim/shim from ClassicUO)

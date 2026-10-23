@@ -1015,6 +1015,12 @@ namespace GUO.Game.Scenes
             // screen afterwards. Camera.GetViewportRect() is what the saved
             // value would have been set to, and nothing else reads it.
             Transform2D matrix = Camera.ViewTransform;
+            // PORT DEVIATION (GUO): match IsometricWorld.fx's clip-space
+            // (-0.5 / width, +0.5 / height) offset: -0.25 target pixels on
+            // each Godot screen axis, independent of zoom. Apply to both the
+            // world and its light target; Camera/picking retain upstream math.
+            // Without this offset, nearest sampling exposes atlas-edge seams.
+            matrix.Origin -= new Vector2(0.25f, 0.25f);
 
             bool can_draw_lights = false;
 
