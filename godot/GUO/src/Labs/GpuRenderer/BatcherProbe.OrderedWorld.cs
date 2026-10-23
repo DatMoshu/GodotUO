@@ -254,6 +254,7 @@ public partial class BatcherProbe
             CheckThat("RD resident resize restores both buffers", OrderedWorldDevice.GeometryBytes > geometry && OrderedWorldDevice.OrderBytes > order,
                 $"geometry={OrderedWorldDevice.GeometryBytes-geometry}, order={OrderedWorldDevice.OrderBytes-order}");
             viewport.Size = new Vector2I(8,8);
+            await VerifyOrderedStates(batcher, viewport, palette);
         }
         finally { OrderedWorldCapture.Enabled=old; OrderedWorldCapture.InjectFailure=0; }
     }

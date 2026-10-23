@@ -65,7 +65,8 @@ record bytes decide equality. Existing hits are pinned before misses allocate
 or evict, so an early miss cannot overwrite a later reference in the same frame.
 Handles are private to the current frame, not persistent gameplay identifiers.
 Buffer growth/resize invalidates the affected GPU contents; failed partial
-updates invalidate both streams for retry, even when the next IDs are identical.
+updates invalidate geometry, order and transform state for retry, even when the
+next IDs are identical.
 Capacity refusal falls back to the complete current canvas frame.
 
 This removes redundant GPU transfers, not the CPU capture/hash traversal.
@@ -81,9 +82,43 @@ claim atlas lifetime or device-loss recovery.
 `rd_upload_calls_per_frame`, `rd_dirty_quads_per_frame`, `rd_cached_quads`,
 `rd_peak_cached_quads`, `rd_buffer_growths` and `rd_cache_evictions` distinguish
 data reuse from draw-call reduction. Upload counters include successful writes
-before a later transaction failure. The 136-check synthetic RD stage covers
+before a later transaction failure. The resident synthetic controls cover
 unchanged zero-upload frames, one dirty quad, order-only alpha reversal, growth,
 partial-upload retry and resize with identical IDs, as well as replay parity.
+
+The transform stage stores one exact 32-byte composed matrix per ordered
+occurrence, including duplicates that share a geometry slot. Adjacent identical
+art/hue/light tuples share one draw regardless of transform; A/B/A remains three
+runs. Original triangle and alpha order stay intact. The shader uses absolute
+occurrence indexing. Brightness/radius stay in the original global push block.
+Up to 262,144 occurrences use at most 8 MiB of GPU transform rows, plus a reusable
+CPU capture list and applied-byte snapshot. This is additional memory, not a
+replacement for resident geometry/order or the fallback command stream.
+
+An exact byte comparison skips unchanged valid state uploads. Any changed
+nonempty stream uploads all active rows in one call; this first version does
+not calculate dirty subranges. All three streams finish uploading before a draw
+list opens. State allocation/growth or failed updates invalidate applied state;
+the storage set is rebuilt whenever a dependency changes. Shrink leaves an
+unused tail; empty passes clear the target without storage binding or upload;
+regrowth reuploads. GPU allocation/capacity failure keeps whole-frame canvas fallback.
+
+`rd_state_bytes_per_frame`, `rd_state_upload_calls_per_frame` and
+`rd_changed_state_streams_per_frame` count successful bulk writes, including
+writes preceding a later failure; uploaded rows are not individually dirty rows.
+`rd_state_buffer_growths` counts new state allocations. `rd_active_state_bytes`
+and `rd_state_capacity_bytes` are last-reported device gauges, not a sum across
+instances; failed preparation can leave an older value.
+`rd_occurrences_per_frame` and `rd_texture_runs_per_frame`
+count prepared streams, including attempts whose drawing later fails. Actual
+issued draws remain `rd_draw_calls_per_frame`. Total uploaded bytes/calls include
+state. No counter is a GPU timer or a promise of higher FPS.
+
+The RD stage includes exact same-texture transform batching, A/B/A
+overlap order, an active-RD negative control omitting absolute run offsets,
+zero warm state writes, one/far/camera changes, global brightness and circle
+changes, state-only capacity growth, shrink/empty/regrow, resize, failure before
+and after state upload with identical retries, and canceled-frame replacement.
 
 The initial PC experiment passed 54 synthetic RD checks and four static-world
 scene comparisons at 2560x1440, zoom 2, with both captures on RD and zero
@@ -95,5 +130,5 @@ off; the exported terrain optimization does not depend on this experiment.
 
 `rd_record_cpu_ms` covers the render callback, including initialization and
 fallback handling, but excludes capture, queued waiting and GPU execution.
-Draw counters count successfully completed recording transactions, including
-an injected failure afterward. They are diagnostic counters, not GPU timers.
+Draw counters count actual issued draw commands, including commands before a
+later failure. Successful presentation is counted separately by `rd_frames_drawn`.

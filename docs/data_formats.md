@@ -3545,8 +3545,9 @@ canvas monitors, which do not count this custom pass. Recording CPU occurs
 outside the existing world-draw profiler context and must be reported in
 comparisons. `rd_test_on_pass` must match both test captures for active proof.
 Recording time includes callback initialization/fallback but excludes capture,
-queued waiting and GPU execution. Draw/upload counts cover completed recording
-transactions; partial failures can do work before these counters advance.
+queued waiting and GPU execution. Draw counts cover actual issued commands;
+upload counts cover successful writes. Both can precede a later transaction
+failure, so successful presentation requires the separate frame counters.
 Ordinary terrain rows add `terrain_dirty_chunks_per_frame` and
 `terrain_rebuilt_sprites_per_frame`, measured as counter deltas.
 
@@ -3556,3 +3557,16 @@ a Labs build. It excludes private replay children, the ID mirror and GPU target
 clears. With RD enabled, only the preceding frame's active items need clearing;
 the retained unused tail was already cleared on its first idle frame. The item
 pool is retained, and RD-off keeps the ordinary full-pool clearing policy.
+
+Ordered transforms use a 32-byte two-row record per occurrence, capped at
+262,144 occurrences. Adjacent equal complete texture tuples share a draw;
+ordering and duplicate occurrences are preserved. Changed nonempty state
+streams upload all active rows once before drawing, while exact unchanged
+valid state uploads nothing. `rd_state_bytes_per_frame`,
+`rd_state_upload_calls_per_frame`, `rd_changed_state_streams_per_frame` and
+`rd_state_buffer_growths` expose that work; total upload bytes/calls include it.
+`rd_active_state_bytes` and `rd_state_capacity_bytes` are last-reported device
+gauges, possibly stale after a failed preparation and not summed across devices.
+`rd_occurrences_per_frame` and `rd_texture_runs_per_frame` count
+prepared streams even if drawing later fails; `rd_draw_calls_per_frame` counts
+issued commands. None measures GPU duration or individually dirty state rows.

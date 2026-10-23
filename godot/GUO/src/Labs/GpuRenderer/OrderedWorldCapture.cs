@@ -18,10 +18,12 @@ internal sealed class OrderedWorldCapture : IDisposable
     internal static long SuppressedCommands;
     internal static string LastFallback;
     internal static bool LastFrameOnPass;
-    internal static int InjectFailure; // Probe only: 1 before upload, 2 after recording, 3/4 during geometry/order upload.
+    internal static int InjectFailure; // Probe only: 1 before upload, 2 after recording, 3/4 geometry/order, 5/6 before/after state upload.
+    internal static bool InjectStateIndexFault; // Probe-only oracle negative control; no runtime option.
     private readonly OrderedWorldDevice _device = new();
     private readonly OrderedWorldCanvas _fallback;
     private readonly List<OrderedWorldDevice.Vertex> _vertices = new(32768);
+    private readonly List<OrderedWorldDevice.State> _states = new(8192);
     private readonly List<OrderedWorldDevice.Segment> _segments = new(1024);
     private readonly List<OrderedWorldCanvas.Command> _commands = new(8192);
     private readonly Dictionary<Texture2D, OrderedWorldDevice.Textures> _textures = new(ReferenceEqualityComparer.Instance);
@@ -66,7 +68,7 @@ internal sealed class OrderedWorldCapture : IDisposable
             return false;
         }
         if (hue == null) { Fallback("missing hue table"); return false; }
-        _vertices.Clear(); _segments.Clear(); _textures.Clear(); _commands.Clear();
+        _vertices.Clear(); _states.Clear(); _segments.Clear(); _textures.Clear(); _commands.Clear();
         _canvas = default;
         _hue = hue; _light = light ?? hue;
         _hueRid = _hue?.GetRid() ?? default;
@@ -101,13 +103,21 @@ internal sealed class OrderedWorldCapture : IDisposable
         if (texture == null) { Reject("missing texture"); return false; }
         if (!SupportedMode(q.Hue0) || !SupportedMode(q.Hue1) || !SupportedMode(q.Hue2) || !SupportedMode(q.Hue3))
         { Reject("unsupported shader mode"); return false; }
+        if (_states.Count == OrderedWorldDevice.MaxOccurrences)
+        { Reject("ordered occurrence capacity exceeded"); return false; }
         if (!_textures.TryGetValue(texture, out var textures))
         {
             if (GUO.Renderer.Arts.Art.IsHdTexture(texture)) { Reject("HD texture"); return false; }
             textures = new OrderedWorldDevice.Textures(texture.GetRid(), _hueRid, _lightRid);
             _textures.Add(texture, textures); // Strong owner reference held until the ticket retires.
         }
-        uint first = (uint)(_vertices.Count / 4 * 6);
+        // Reserve before mutating any stream. A rejected command leaves the
+        // captured geometry, original replay commands and occurrence rows aligned.
+        _vertices.EnsureCapacity(checked(_vertices.Count + 4));
+        _states.EnsureCapacity(checked(_states.Count + 1));
+        _commands.EnsureCapacity(checked(_commands.Count + 1));
+        _segments.EnsureCapacity(checked(_segments.Count + 1));
+        uint first = checked((uint)(_vertices.Count / 4) * 6);
         // Almost every quad in a world frame shares this transform. The sampled
         // prototype spent substantial CPU time in Godot's matrix operators.
         if (!_haveOffset || _lastOffset != offset)
@@ -129,17 +139,23 @@ internal sealed class OrderedWorldCapture : IDisposable
             Color3 = meshColor ? UltimaBatcher2D.Encode(q.Hue3) : default,
         });
         offset = Vector2.Zero; // Match the canvas's composed model transform, not CPU-translated vertices.
-        if (_segments.Count != 0 && _segments[^1].Textures == textures && _segments[^1].Transform == transform)
+        if (_segments.Count != 0 && _segments[^1].Textures == textures)
         {
             var last = _segments[^1];
-            _segments[^1] = last with { VertexCount = last.VertexCount + 6 };
+            _segments[^1] = last with { VertexCount = checked(last.VertexCount + 6) };
         }
-        else _segments.Add(new OrderedWorldDevice.Segment(first, 6, textures, transform));
+        else _segments.Add(new OrderedWorldDevice.Segment(first, 6, textures));
         // Four corners per quad; the GPU emits the six triangle vertices in the correct order.
         Vertex(q.Position0, q.TextureCoordinate0, q.Hue0, q.Normal0, offset, meshColor, rectangle);
         Vertex(q.Position1, q.TextureCoordinate1, q.Hue1, q.Normal1, offset, meshColor, rectangle);
         Vertex(q.Position2, q.TextureCoordinate2, q.Hue2, q.Normal2, offset, meshColor, rectangle);
         Vertex(q.Position3, q.TextureCoordinate3, q.Hue3, q.Normal3, offset, meshColor, rectangle);
+        _states.Add(new OrderedWorldDevice.State
+        {
+            Xx = transform.X.X, Yx = transform.Y.X, OriginX = transform.Origin.X,
+            Xy = transform.X.Y, Yy = transform.Y.Y, OriginY = transform.Origin.Y,
+            Pad0 = 0, Pad1 = 0,
+        });
         SuppressedCommands++;
         return true;
     }
@@ -207,8 +223,8 @@ internal sealed class OrderedWorldCapture : IDisposable
                 _device.InitializeRT(size, _vertexSource, _fragmentSource);
             }
             if (InjectFailure == 1) throw new InvalidOperationException("injected before upload");
-            _device.RenderRT(CollectionsMarshal.AsSpan(_vertices), CollectionsMarshal.AsSpan(_segments), _push, true);
-            DrawCalls += _segments.Count;
+            _device.RenderRT(CollectionsMarshal.AsSpan(_vertices), CollectionsMarshal.AsSpan(_states),
+                CollectionsMarshal.AsSpan(_segments), _push, true);
             if (InjectFailure == 2) throw new InvalidOperationException("injected after recording");
             FramesDrawn++;
             success = true;

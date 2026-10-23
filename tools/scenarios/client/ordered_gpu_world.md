@@ -17,13 +17,21 @@ code is included in exports. See ADR-0043 and the feature README for the doctor.
    identical small-frame pixels, backend counts and native clear counts across
    repeated RD frames, toggle-off, early rejection with a large native suffix,
    and a canceled capture. The idle tail must be cleared once, not every frame.
+   Ordered-transform controls require one draw for adjacent equal textures with
+   different exact transforms, three for A/B/A, and a failing pixel oracle when
+   a probe-only fault deliberately omits the absolute run offset on active RD.
+   Require zero unchanged state writes; one full active-stream write for one,
+   distant or camera changes; brightness/radius pixel changes without state
+   writes; state-only capacity growth; shrink/empty/regrow; resize; identical
+   retries after failures before/after upload; and canceled-ticket replacement.
 2. Use the authorized GM account and scratch profile to run `tools/perf_probe`
    with `--as-built`, `--perf-profile plain --perf-static-world --perf-parity
    --rd-world`, matching size and zoom. Measure bank, forest, dungeon and docks.
    Require zero repeatable pixel differences and `rd_test_on_pass == 2` for
    every world scene. Inspect non-repeatable differences separately.
    Retain all five files listed by `parity_frames`; recompute the stable mask
-   from the three plain frames and the strict mask from both test frames.
+   from the three plain frames. Check each test independently against that mask,
+   in addition to repeatable strict differences shared by both test frames.
    With sample window version 2, an uninterrupted RD scene must report exactly
    the measured `frames` in `rd_frames_drawn`, without the former extra interval.
 3. Repeat with moving actors and with fractional zoom. Exercise the runtime

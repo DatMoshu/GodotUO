@@ -11,7 +11,7 @@ namespace GUO.Labs.GpuRenderer;
 internal sealed class OrderedWorldDevice
 {
     // Four 48-byte corners per quad. The vertex shader expands the selected diagonal.
-    // Position is batcher-local AFTER its applicable item/world offset.
+    // Position is batcher-local; the occurrence state supplies its exact transform.
     [StructLayout(LayoutKind.Sequential, Pack = 4)]
     public struct Vertex
     {
@@ -19,6 +19,19 @@ internal sealed class OrderedWorldDevice
         public Vector4 PackedHue;  // existing encoded modulate RGBA, transport precision matched
         public Vector4 Normal;     // xyz interpolated land normal; w selects the canvas-rect diagonal
     }
+
+    // One exact composed transform per ordered occurrence, never per resident
+    // geometry slot. Plain floats avoid per-quad GodotSharp value constructors.
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
+    public struct State
+    {
+        public float Xx, Yx, OriginX, Pad0;
+        public float Xy, Yy, OriginY, Pad1;
+    }
+
+    // The geometry cache has a separate unique-quad bound. Repeated geometry
+    // may appear more often, but the occurrence buffers must remain bounded too.
+    internal const int MaxOccurrences = 262144;
 
     // Four 16-byte blocks, 64 bytes total; exactly matches the shader push block.
     [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -34,17 +47,23 @@ internal sealed class OrderedWorldDevice
     // These are RenderingServer texture RIDs, not RD RIDs. Hold their Texture2D
     // owners alive in the immutable frame ticket. All three textures must exist.
     public readonly record struct Textures(Rid ArtRs, Rid HueRs, Rid LightRs);
-    public readonly record struct Segment(uint FirstVertex, uint VertexCount, Textures Textures, Transform2D Transform);
+    public readonly record struct Segment(uint FirstVertex, uint VertexCount, Textures Textures);
 
     // Create the wrapper on the main thread. The API's C# spelling is Texture2Drd.
     public Texture2Drd Presenter { get; } = new();
     public Vector2I Size { get; private set; }
     private RD _rd;
-    private Rid _shader, _pipeline, _color, _framebuffer, _sampler, _storage, _orderStorage, _storageSet;
+    private Rid _shader, _pipeline, _color, _framebuffer, _sampler, _storage, _orderStorage, _stateStorage, _storageSet;
     private Rid _retiredColor;
-    private uint _capacityBytes, _orderCapacityBytes;
+    private uint _capacityBytes, _orderCapacityBytes, _stateCapacityBytes;
+    private byte[] _appliedStates = Array.Empty<byte>();
+    private int _appliedStateBytes;
+    private bool _statesValid;
     private readonly OrderedWorldResidency _resident = new();
     internal static long GeometryBytes, OrderBytes, UploadCalls, DirtyQuads, BufferGrowths, CacheEvictions;
+    internal static long StateBytes, StateUploadCalls, ChangedStateStreams, StateBufferGrowths, TextureRuns, Occurrences;
+    // Latest transaction for this diagnostic device, not a sum over instances.
+    internal static uint ActiveStateBytes, StateCapacityBytes;
     internal static int CachedQuads, PeakCachedQuads;
     private readonly Dictionary<(Rid, Rid, Rid), Rid> _textureSets = new();
     private readonly Dictionary<Textures, (Rid, Rid, Rid)> _resolvedTextures = new();
@@ -62,7 +81,8 @@ internal sealed class OrderedWorldDevice
         if (size.X <= 0 || size.Y <= 0) throw new ArgumentOutOfRangeException(nameof(size));
         _rd = RenderingServer.GetRenderingDevice()
             ?? throw new NotSupportedException("No main RenderingDevice; keep canvas fallback.");
-        if (Marshal.SizeOf<Vertex>() != 48 || Marshal.SizeOf<Push>() != 64)
+        if (Marshal.SizeOf<Vertex>() != 48 || Marshal.SizeOf<Push>() != 64
+            || Marshal.SizeOf<State>() != 32 || Marshal.OffsetOf<State>(nameof(State.Xy)).ToInt32() != 16)
             throw new InvalidOperationException("CPU/shader layout mismatch.");
         Size = size;
         try
@@ -155,9 +175,9 @@ internal sealed class OrderedWorldDevice
         if (!rid.IsValid) throw new InvalidOperationException("Could not create/resolve " + name);
     }
 
-    private void EnsureStorageRT(uint neededBytes, uint neededOrderBytes)
+    private void EnsureStorageRT(uint neededBytes, uint neededOrderBytes, uint neededStateBytes)
     {
-        if (neededBytes > _capacityBytes || neededOrderBytes > _orderCapacityBytes)
+        if (neededBytes > _capacityBytes || neededOrderBytes > _orderCapacityBytes || neededStateBytes > _stateCapacityBytes)
             Free(ref _storageSet);
         if (neededBytes > _capacityBytes)
         {
@@ -169,12 +189,21 @@ internal sealed class OrderedWorldDevice
             _resident.InvalidateOrder(); // Identical IDs still need upload into a new buffer.
             GrowBuffer(ref _orderStorage, ref _orderCapacityBytes, neededOrderBytes);
         }
+        if (neededStateBytes > _stateCapacityBytes)
+        {
+            _statesValid = false;
+            GrowBuffer(ref _stateStorage, ref _stateCapacityBytes, neededStateBytes);
+            StateBufferGrowths++;
+        }
+        StateCapacityBytes = _stateCapacityBytes;
         if (_storageSet.IsValid) return;
         using var u = new RDUniform { UniformType = RD.UniformType.StorageBuffer, Binding = 0 };
         u.AddId(_storage);
         using var order = new RDUniform { UniformType = RD.UniformType.StorageBuffer, Binding = 1 };
         order.AddId(_orderStorage);
-        var uniforms = new Godot.Collections.Array<RDUniform> { u, order };
+        using var state = new RDUniform { UniformType = RD.UniformType.StorageBuffer, Binding = 2 };
+        state.AddId(_stateStorage);
+        var uniforms = new Godot.Collections.Array<RDUniform> { u, order, state };
         _storageSet = _rd.UniformSetCreate(uniforms, _shader, 0);
         Require(_storageSet, "storage set");
     }
@@ -192,7 +221,7 @@ internal sealed class OrderedWorldDevice
         BufferGrowths++;
     }
 
-    private void UploadResidentRT(ReadOnlySpan<Vertex> vertices)
+    private void UploadResidentRT(ReadOnlySpan<Vertex> vertices, ReadOnlySpan<State> states)
     {
         long evictions = _resident.Evictions;
         try
@@ -200,7 +229,8 @@ internal sealed class OrderedWorldDevice
             _resident.Prepare(vertices);
             CachedQuads = _resident.Count;
             PeakCachedQuads = Math.Max(PeakCachedQuads, CachedQuads);
-            EnsureStorageRT(checked((uint)_resident.Count * 192), checked((uint)_resident.Order.Length * 4));
+            if (_resident.Order.Length != states.Length) throw new InvalidOperationException("State/order length mismatch.");
+            EnsureStorageRT(checked((uint)_resident.Count * 192), checked((uint)_resident.Order.Length * 4), checked((uint)states.Length * 32));
             int cursor = 0;
             while (_resident.NextDirty(ref cursor, out int start, out int count))
             {
@@ -222,12 +252,29 @@ internal sealed class OrderedWorldDevice
                 if (OrderedWorldCapture.InjectFailure == 4) throw new InvalidOperationException("injected during order upload");
                 _resident.AppliedOrder();
             }
+            ReadOnlySpan<byte> stateBytes = MemoryMarshal.AsBytes(states);
+            if (!_statesValid || stateBytes.Length != _appliedStateBytes
+                || !stateBytes.SequenceEqual(_appliedStates.AsSpan(0, _appliedStateBytes)))
+            {
+                if (_appliedStates.Length < stateBytes.Length)
+                    Array.Resize(ref _appliedStates, checked((int)_stateCapacityBytes));
+                if (OrderedWorldCapture.InjectFailure == 5) throw new InvalidOperationException("injected before state upload");
+                Error error = _rd.BufferUpdate(_stateStorage, 0, (uint)stateBytes.Length, stateBytes);
+                if (error != Error.Ok) throw new InvalidOperationException("State BufferUpdate: " + error);
+                StateBytes += stateBytes.Length; StateUploadCalls++; UploadCalls++; ChangedStateStreams++;
+                OrderedWorldCapture.UploadedBytes += stateBytes.Length;
+                if (OrderedWorldCapture.InjectFailure == 6) throw new InvalidOperationException("injected after state upload");
+                stateBytes.CopyTo(_appliedStates);
+                _appliedStateBytes = stateBytes.Length;
+                _statesValid = true;
+            }
         }
         catch
         {
             // A partial failure never advances a validity claim. Retry all data
             // next time, even if the next frame's ordered IDs compare equal.
             _resident.InvalidateGpu();
+            _statesValid = false;
             throw;
         }
         finally { CacheEvictions += _resident.Evictions - evictions; }
@@ -270,11 +317,13 @@ internal sealed class OrderedWorldDevice
     // Each call records exactly one target image for one immutable frame ticket.
     // opaqueBackdrop=true for ALL world content; false is diagnostic sorted-only
     // compositing and is not generally byte-exact for translucent pixels.
-    public void RenderRT(ReadOnlySpan<Vertex> vertices, ReadOnlySpan<Segment> segments,
+    public void RenderRT(ReadOnlySpan<Vertex> vertices, ReadOnlySpan<State> states, ReadOnlySpan<Segment> segments,
         in Push frame, bool opaqueBackdrop)
     {
         if (frame.Screen.X != Size.X || frame.Screen.Y != Size.Y)
             throw new InvalidOperationException("Stale target dimensions.");
+        if (states.Length > MaxOccurrences || states.Length != vertices.Length / 4)
+            throw new InvalidOperationException("Invalid ordered state stream.");
         _frameTextureSets.Clear();
         _usedTextureSets.Clear();
         _resolvedTextures.Clear();
@@ -290,8 +339,18 @@ internal sealed class OrderedWorldDevice
         if (vertices.Length % 4 != 0 || next / 6 * 4 != (uint)vertices.Length) throw new InvalidOperationException("Incomplete command stream.");
         if (!vertices.IsEmpty)
         {
-            UploadResidentRT(vertices);
+            UploadResidentRT(vertices, states);
         }
+        else
+        {
+            // No storage binding or zero-length BufferUpdate is needed. The
+            // target still clears below. Regrowth must upload the active stream.
+            _appliedStateBytes = 0;
+            _statesValid = true;
+        }
+        ActiveStateBytes = checked((uint)states.Length * 32);
+        Occurrences += states.Length;
+        TextureRuns += segments.Length;
 
         // No uploads, allocations or texture discovery inside the open draw list.
         _clear[0] = opaqueBackdrop ? Colors.Black : Colors.Transparent;
@@ -307,15 +366,16 @@ internal sealed class OrderedWorldDevice
                 for (int i = 0; i < segments.Length; i++)
                 {
                     push[0] = frame;
-                    Transform2D transform = segments[i].Transform;
-                    push[0].Row0 = new Vector4(transform.X.X, transform.Y.X, transform.Origin.X, frame.Row0.W);
-                    push[0].Row1 = new Vector4(transform.X.Y, transform.Y.Y, transform.Origin.Y, frame.Row1.W);
                     push[0].FirstVertex = segments[i].FirstVertex;
+                    // Probe-only negative control: the pixel oracle must catch
+                    // draw-local indexing on a later texture run.
+                    if (OrderedWorldCapture.InjectStateIndexFault) push[0].FirstVertex = 0;
                     _rd.DrawListBindUniformSet(list, _frameTextureSets[i], 1);
                     _rd.DrawListSetPushConstant(list, MemoryMarshal.AsBytes(push), 64);
                     // Fourth argument is a procedural VERTEX COUNT, not an offset.
                     // Base vertex is our push constant. No index/vertex array is bound.
                     _rd.DrawListDraw(list, false, 1, segments[i].VertexCount);
+                    OrderedWorldCapture.DrawCalls++;
                 }
             }
         }
@@ -353,7 +413,9 @@ internal sealed class OrderedWorldDevice
         Free(ref _storageSet);
         Free(ref _storage);
         Free(ref _orderStorage);
+        Free(ref _stateStorage);
         _resident.InvalidateGpu();
+        _statesValid = false;
         Free(ref _pipeline);
         Free(ref _shader);
         Free(ref _framebuffer);
@@ -368,7 +430,8 @@ internal sealed class OrderedWorldDevice
             _color = default;
         }
         Free(ref _sampler);
-        _capacityBytes = _orderCapacityBytes = 0;
+        _capacityBytes = _orderCapacityBytes = _stateCapacityBytes = 0;
+        ActiveStateBytes = StateCapacityBytes = 0;
         Size = default;
         // Dispose Presenter on the owning thread after this transaction completes.
         // Never free atlas/hue/light RIDs borrowed through TextureGetRdTexture.

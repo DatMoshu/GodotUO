@@ -58,6 +58,23 @@ frame, so subsequent RD frames need not clear that tail again. Retain the pool
 for reuse, preserve private fallback-child cleanup and cancel pending tickets
 before recycling items. Ordinary toggle-off and non-Labs clearing stay unchanged.
 
+Each ordered occurrence also carries the exact already-composed transform in
+two four-float rows (32 bytes), separate from resident geometry and slot IDs.
+Merge only adjacent commands with equal complete art/hue/light texture tuples;
+never sort or merge across an intervening texture. The vertex shader indexes
+state by absolute ordered occurrence, not resident slot or draw-local index.
+Brightness, circle radius and target dimensions retain the existing push block.
+Keep at most 262,144 occurrences per captured frame; overflow uses canvas.
+
+The first state-buffer implementation compares exact active bytes with an
+applied snapshot. Unchanged valid frames upload nothing; a changed nonempty
+stream uploads all active rows once before DrawListBegin. New allocations and
+uncertain uploads invalidate applied state. Empty passes clear the target with
+zero draws, and regrowth uploads the new active stream. Preserve the frozen
+ticket and complete canvas replay independently of all three GPU buffers.
+Measure added capture/comparison and bandwidth costs against actual texture
+runs, issued draws and matched wall times; fewer draws alone are not acceptance.
+
 The implementation belongs to `src/Labs/GpuRenderer`, compiled only with
 `GuoLabs=true` in Debug. The shared Labs command/options registry supplies
 the runtime toggle. Compatibility and exported clients retain the existing

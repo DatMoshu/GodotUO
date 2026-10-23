@@ -4,6 +4,10 @@
 struct Vertex { vec4 position_uv; vec4 packed_hue; vec4 normal; };
 layout(set = 0, binding = 0, std430) readonly buffer Vertices { Vertex vertices[]; };
 layout(set = 0, binding = 1, std430) readonly buffer Order { uint ordered_slots[]; };
+// One exact CPU-composed matrix per occurrence. Duplicate geometry can have
+// different transforms. Forward+/Mobile RD, two vec4 reads per vertex, no samples.
+struct State { vec4 row0; vec4 row1; };
+layout(set = 0, binding = 2, std430) readonly buffer States { State states[]; };
 layout(push_constant, std430) uniform Frame {
     vec4 row0;
     vec4 row1;
@@ -16,14 +20,15 @@ layout(location = 2) out vec3 land_normal;
 
 void main() {
     uint output_vertex = pc.draw.x + uint(gl_VertexIndex);
-    uint base = ordered_slots[output_vertex / 6u] * 4u;
+    uint occurrence = output_vertex / 6u;
+    uint base = ordered_slots[occurrence] * 4u;
     const uint mesh_order[6] = uint[](0u,1u,2u,1u,3u,2u);
     const uint rect_order[6] = uint[](0u,2u,3u,0u,3u,1u);
     uint corner = vertices[base].normal.w > 0.5
         ? rect_order[output_vertex % 6u] : mesh_order[output_vertex % 6u];
     Vertex v = vertices[base + corner];
     vec3 p = vec3(v.position_uv.xy, 1.0);
-    vec2 pixel = vec2(dot(pc.row0.xyz, p), dot(pc.row1.xyz, p));
+    vec2 pixel = vec2(dot(states[occurrence].row0.xyz, p), dot(states[occurrence].row1.xyz, p));
     // Native RD clip convention. The shared world matrix already includes
     // CUO's quarter-target-pixel raster offset; do not apply it a second time.
     gl_Position = vec4(pixel * (2.0 / pc.screen.xy) - 1.0, 0.0, 1.0);
