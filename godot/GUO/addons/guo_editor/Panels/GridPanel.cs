@@ -278,7 +278,9 @@ public abstract partial class GridPanel : AssetPanel
     }
 
     /// <summary>Runs the search box again, as if Enter were pressed.</summary>
-    protected int? Refresh()
+    protected int? Refresh() => Refresh(showResults: true);
+
+    private int? Refresh(bool showResults)
     {
         _results.Clear();
         if (Data == null || !Data.IsLoaded)
@@ -291,16 +293,19 @@ public abstract partial class GridPanel : AssetPanel
         {
             _results.AddRange(Ids());
             int at = _results.BinarySearch(id);
-            ShowPage(at >= 0 ? at / PageSize : Math.Max(0, ~at) / PageSize);
+            if (showResults) ShowPage(at >= 0 ? at / PageSize : Math.Max(0, ~at) / PageSize);
             if (at >= 0)
             {
-                _list.Select(at % PageSize);
-                _list.EnsureCurrentIsVisible();
+                if (showResults)
+                {
+                    _list.Select(at % PageSize);
+                    _list.EnsureCurrentIsVisible();
+                }
                 Pick(id);
                 return id;
             }
 
-            _status.Text = $"0x{id:X4} ({id}) does not exist";
+            if (showResults) _status.Text = $"0x{id:X4} ({id}) does not exist";
             return null;
         }
 
@@ -312,10 +317,10 @@ public abstract partial class GridPanel : AssetPanel
             }
         }
 
-        ShowPage(0);
+        if (showResults) ShowPage(0);
         if (q.Length > 0 && _results.Count > 0)
         {
-            _list.Select(0);
+            if (showResults) _list.Select(0);
             Pick(_results[0]);
             return _results[0];
         }
@@ -376,7 +381,9 @@ public abstract partial class GridPanel : AssetPanel
         ForgetIds();
         int page = _page;
         int? selected = Selected;
-        Refresh();
+        // Preserve search/inspection notifications, but do not build a transient
+        // search page that is immediately replaced by the saved page below.
+        Refresh(showResults: false);
         ShowPage(page);
         Selected = selected;
         Reinspect();
