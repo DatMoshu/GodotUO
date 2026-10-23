@@ -151,8 +151,37 @@ namespace GUO.Game.GameObjects
             }
         }
 
+        // PORT DEVIATION (GUO): remembered membership is independent of XYZ,
+        // which SetInWorldTile changes BEFORE unlinking the previous cell.
+        private Chunk _tileChunk;
+        private byte _tileCell;
+
+        internal void SetTileMembership(Chunk chunk, int x, int y)
+        {
+            _tileChunk = chunk;
+            _tileCell = (byte)(x + (y << 3));
+        }
+
+        internal bool HasTileMembership(Chunk chunk, int x, int y) =>
+            ReferenceEquals(_tileChunk, chunk) && _tileCell == x + (y << 3);
+
+        internal void InvalidateTileLand() =>
+            _tileChunk?.InvalidateFirstLand(_tileCell & 7, _tileCell >> 3);
+
+        internal void ClearTileMembership()
+        {
+            InvalidateTileLand();
+            _tileChunk = null;
+            _tileCell = 0;
+        }
+        // END PORT DEVIATION (GUO)
+
         public void RemoveFromTile()
         {
+            // PORT DEVIATION (GUO): direct callers bypass Chunk.RemoveGameObject.
+            TPrevious?.InvalidateTileLand();
+            TNext?.InvalidateTileLand();
+            ClearTileMembership();
             if (TPrevious != null)
             {
                 TPrevious.TNext = TNext;

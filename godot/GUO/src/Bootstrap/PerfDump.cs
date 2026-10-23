@@ -158,6 +158,7 @@ internal static class PerfDump
     private static int _uploadsAtFade, _bumpsAtFade, _staticOntoAtFade;
     private static long _framesAtFade;
     private static long _samplersAtFade;
+    private static long _landLookupsAtFade, _landScansAtFade, _landNodesAtFade;
     private static ulong _processFramesAtFade;
 #endif
 
@@ -212,6 +213,9 @@ internal static class PerfDump
             _staticOntoAtFade = GUO.Renderer.Arts.Art.StaticOntoLandLayer;
             _framesAtFade = GUO.Renderer.UltimaBatcher2D.FramesBegun;
             _samplersAtFade = GUO.Renderer.UltimaBatcher2D.SamplerCalls;
+            _landLookupsAtFade = GUO.Game.Map.Chunk.FirstLandLookups;
+            _landScansAtFade = GUO.Game.Map.Chunk.FirstLandScans;
+            _landNodesAtFade = GUO.Game.Map.Chunk.FirstLandNodes;
             _processFramesAtFade = Godot.Engine.GetProcessFrames();
 #endif
             Console.WriteLine($"[perf_dump] {ClientName}: {fading} fading after {_fadeWaitMs} ms more; averaging");
@@ -285,6 +289,9 @@ internal static class PerfDump
             r["engine_debug_build"] = Godot.OS.IsDebugBuild();
             int uploads = GUO.Renderer.LandPages.Uploads - _uploadsAtFade;
             long frames = GUO.Renderer.UltimaBatcher2D.FramesBegun - _framesAtFade;
+            r["first_land_lookups_per_frame"] = frames > 0 ? Math.Round((double)(GUO.Game.Map.Chunk.FirstLandLookups - _landLookupsAtFade) / frames, 1) : 0;
+            r["first_land_scans_per_frame"] = frames > 0 ? Math.Round((double)(GUO.Game.Map.Chunk.FirstLandScans - _landScansAtFade) / frames, 1) : 0;
+            r["first_land_nodes_per_frame"] = frames > 0 ? Math.Round((double)(GUO.Game.Map.Chunk.FirstLandNodes - _landNodesAtFade) / frames, 1) : 0;
             r["land_layers"] = GUO.Renderer.LandPages.Layers;
             r["land_uploads"] = uploads;
             r["land_uploads_per_frame"] = frames > 0 ? Math.Round((double)uploads / frames, 3) : 0.0;

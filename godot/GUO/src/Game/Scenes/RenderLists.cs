@@ -338,15 +338,9 @@ namespace GUO.Game.Scenes
                 return null;
             }
 
-            for (GameObject o = chunk.GetHeadObject(x % 8, y % 8); o != null; o = o.TNext)
-            {
-                if (o is Land land)
-                {
-                    return land;
-                }
-            }
-
-            return null;
+            // PORT DEVIATION (GUO): cache only the original linked traversal's
+            // first-Land identity. All cover decisions above remain live.
+            return chunk.GetFirstLand(x % 8, y % 8);
         }
 
         // The sort itself: see DepthKey. The order it gives is the one

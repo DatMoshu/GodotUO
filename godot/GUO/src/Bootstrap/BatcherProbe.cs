@@ -128,6 +128,8 @@ public partial class BatcherProbe : Node
         Stage("persistent ordered terrain");
         await VerifyAtlasMetadata(batcher, viewport);
         Stage("atlas page metadata");
+        VerifyFirstLandCache();
+        Stage("first-land identity cache");
 #if GUO_LABS
         await VerifyOrderedWorld(batcher, viewport, palette);
         Stage("ordered RenderingDevice world");

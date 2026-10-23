@@ -405,6 +405,9 @@ internal static class PerfProbe
         await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
         PerfStages.Take(frameStageMs, frameDrawn);
         long drawsBefore = UltimaBatcher2D.FramesBegun;
+        long landLookupsBefore = GUO.Game.Map.Chunk.FirstLandLookups;
+        long landScansBefore = GUO.Game.Map.Chunk.FirstLandScans;
+        long landNodesBefore = GUO.Game.Map.Chunk.FirstLandNodes;
         // An upload lands in the frame after the one that drew it: its cost
         // is in the next frame's time. Keep upload frames and their successors
         // apart, since a p99 over thousands of frames can hide a few dozen.
@@ -527,6 +530,9 @@ internal static class PerfProbe
             ["texture_switches"] = System.Math.Round(switches / n, 1),
             ["draw_commands"] = System.Math.Round(commands / n, 1),
             ["world_prepare_ms"] = System.Math.Round(prepare / n, 3),
+            ["first_land_lookups_per_frame"] = System.Math.Round((double)(GUO.Game.Map.Chunk.FirstLandLookups - landLookupsBefore) / n, 1),
+            ["first_land_scans_per_frame"] = System.Math.Round((double)(GUO.Game.Map.Chunk.FirstLandScans - landScansBefore) / n, 1),
+            ["first_land_nodes_per_frame"] = System.Math.Round((double)(GUO.Game.Map.Chunk.FirstLandNodes - landNodesBefore) / n, 1),
             ["world_draw_ms"] = System.Math.Round(world / n, 3),
             ["render_cpu_ms"] = System.Math.Round(cpu / n, 3),
             ["render_gpu_ms"] = System.Math.Round(gpu / n, 3),
