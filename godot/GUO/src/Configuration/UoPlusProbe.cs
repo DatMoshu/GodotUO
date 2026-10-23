@@ -77,7 +77,7 @@ public partial class UoPlusProbe : Node
                 "Labs reads shared flags and individual densities");
 #else
             copy.UoPlusFlags |= UoPlusFeature.RainRings | UoPlusFeature.Sway;
-            Check(!UoPlusOptions.Enabled(copy, UoPlusFeature.RainRings) && !UoPlusOptions.Enabled(copy, UoPlusFeature.Sway), "unavailable renderers stay off even in edited profiles");
+            Check(!UoPlusOptions.Enabled(copy, UoPlusFeature.RainRings) && UoPlusOptions.Enabled(copy, UoPlusFeature.Sway), "normal builds include sway; Labs renderers remain unavailable");
 #endif
             UoPlusOptions.DisableAll(copy);
             Check(UoPlusOptions.Flags(copy) == UoPlusFeature.None && !AmbientParticles.Enabled(copy), "disable all restores off state");

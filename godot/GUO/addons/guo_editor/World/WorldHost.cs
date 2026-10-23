@@ -296,8 +296,13 @@ internal sealed class WorldHost : IDisposable
         SelectedObject.TranslatedMousePositionByViewport = _scene.Camera.MouseToWorldPosition();
 
         EnforceLayers();
+        long swayAt = MeasureDrawCost ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
         _game.DrawEmbedded(host, new Rectangle(0, 0, size.X, size.Y));
+        if (MeasureDrawCost) DrawCostMs = System.Diagnostics.Stopwatch.GetElapsedTime(swayAt).TotalMilliseconds;
     }
+
+    internal bool MeasureDrawCost { get; set; }
+    internal double DrawCostMs { get; private set; }
 
     /// <summary>
     /// Brings every loaded object's AllowedToDraw in line with the layer

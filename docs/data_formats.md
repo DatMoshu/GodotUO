@@ -3444,7 +3444,7 @@ its checkbox selected. Parent Options Apply does not overwrite panel edits.
 
 | Profile field | Type | Default | Meaning |
 |---|---|---|---|
-| `UoPlusFlags` (`uo_plus_flags`) | integer bit mask | 0 | 8 rain rings, 16 puddles, 32 wet player, 64 reserved sway, 256 water ripples |
+| `UoPlusFlags` (`uo_plus_flags`) | integer bit mask | 0 | 8 rain rings, 16 puddles, 32 wet player, 64 sway, 256 water ripples |
 | `UoPlusDensities` (`uo_plus_densities`) | object of feature-name → integer | `{}` | Independent 0–100 values, clamped at use; names `Fog`, `Leaves`, `Dust`, `RainRings`, `Puddles`, `WetPlayer`, `Sway`, `SpellLights`, `WaterRipples` |
 
 Fog/leaves/dust flags remain authoritative in `AmbientFog`, `AmbientLeaves`
@@ -3460,7 +3460,31 @@ lowered. Generic hooks and the total 100-source cap are preserved; Realtime
 lights remains a prerequisite. Water ripple density scales disturbance strength and
 requires a non-Classic water style. Off skips ripple simulation and object scans,
 clears stale waves and disables their shader contribution without changing the
-style. Sway is unavailable until its renderer ships.
+style. Sway is available in normal and export builds (ADR-uoplus-sway).
+
+**Static sway catalogue:** `src/Render/Sway/sway_ranges.json` is a version-1
+object with `version: 1` and `ranges`. Each range has hexadecimal string `first`
+and `last` inclusive item IDs, and `kind`: `tree`, `bush`, `plant`, `grass` or
+`hanging`. Overlaps, unknown kinds, reversed/out-of-range IDs and unsupported
+versions reject the catalogue; missing/broken data disables sway. Unlisted IDs
+remain still. These are classifications, never client pixels or executable code.
+The JSON file is embedded in the client assembly as `sway_ranges.json`, so all
+exports include it regardless of platform resource include filters.
+Tree trunks/stumps are deliberately excluded where art is split. Walls, roofs
+and wet statics are rejected even if included by a mistaken range; mobiles,
+multis and dynamic items never enter this renderer.
+
+Density 50 gives a dry tree crown nominal amplitude of one native pixel
+(two at density 100), multiplied by gentle gusts and a secondary 22% oscillation.
+Bush/hanging, plant and grass nominal maxima are 1.2, 1 and 0.65 pixels at
+density 100. The bottom 30% remains fixed; hanging ornaments anchor at their top.
+World X/Y hash into 32 stable phases, unaffected by camera travel. Shared upstream
+rain/storm intensity (Count/70 clamped 0–1) multiplies wind from 1 to 2.5;
+`WeatherLab.RainIntensity` delegates to the same normal-build `WeatherSignal`.
+Native art stays nearest, shadows and picking retain their original silhouettes.
+No new profile fields: `Sway` uses the existing flag/density dictionary.
+Off/zero/Defaults retain the original draw submission path. See
+`tools/scenarios/client/sway.md` for rendered, persistence and frame-cost proof.
 
 Loading a legacy styled-water profile without `uo_plus_flags` preserves its
 existing ripples/wakes by setting bit 256. An explicit saved zero stays off;

@@ -527,7 +527,11 @@ public partial class EditorSmoke : Node
                 break;
 
             case 31:
-                if (_demoFrames > 0)
+                if (_swayProofFrames > 0)
+                {
+                    StepSwayProof();
+                }
+                else if (_demoFrames > 0)
                 {
                     StepLightsDemo();
                 }
@@ -1080,6 +1084,7 @@ public partial class EditorSmoke : Node
         {
             StartLightsDemo(facet, x, y);
         }
+        if (ArgValue(SwayProofFlag) != null) StartSwayProof();
     }
 
     /// <summary>

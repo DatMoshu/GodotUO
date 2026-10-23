@@ -597,7 +597,9 @@ namespace GUO.Game.Scenes
                 if (next.Mesh != null)
                 {
                     if (next.Object.Z <= maxGroundZ)
-                        done += batcher.DrawStaticMeshSprite(next.Mesh, next.Object.MeshSpriteIndex, _meshOffsetX, _meshOffsetY);
+                        // PORT DEVIATION (GUO): cached statics use the same UO+ sway as individual art.
+                        done += batcher.DrawStaticMeshSprite(next.Mesh, next.Object.MeshSpriteIndex, _meshOffsetX, _meshOffsetY,
+                            Renderer.Sway.SwayRender.For(next.Object as Static, next.Object.Graphic));
                     continue;
                 }
 

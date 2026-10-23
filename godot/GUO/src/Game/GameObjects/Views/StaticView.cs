@@ -76,19 +76,25 @@ namespace GUO.Game.GameObjects
                 graphic = Constants.TREE_REPLACE_GRAPHIC;
             }
 
-            DrawStaticAnimated(
-                batcher,
-                graphic,
-                posX,
-                posY,
-                hueVec,
-                ProfileManager.CurrentProfile.ShadowsEnabled
-                    && ProfileManager.CurrentProfile.ShadowsStatics
-                    && (isTree || ItemData.IsFoliage || StaticFilters.IsRock(graphic)),
-                depth,
-                GUO.Renderer.Water.WaterRender.UpstreamWobble(ProfileManager.CurrentProfile) && ItemData.IsWet,
-                ThemedVariant
-            );
+            // PORT DEVIATION (GUO): UO+ static-only sway (ADR-uoplus-sway).
+            batcher.StaticSway = GUO.Renderer.Sway.SwayRender.For(this, graphic);
+            try
+            {
+                DrawStaticAnimated(
+                    batcher,
+                    graphic,
+                    posX,
+                    posY,
+                    hueVec,
+                    ProfileManager.CurrentProfile.ShadowsEnabled
+                        && ProfileManager.CurrentProfile.ShadowsStatics
+                        && (isTree || ItemData.IsFoliage || StaticFilters.IsRock(graphic)),
+                    depth,
+                    GUO.Renderer.Water.WaterRender.UpstreamWobble(ProfileManager.CurrentProfile) && ItemData.IsWet,
+                    ThemedVariant
+                );
+            }
+            finally { batcher.StaticSway = default; }
 
             // PORT DEVIATION (GUO): not when the sort already added it.
             if (ItemData.IsLight && !InChunkMesh && !GUO.Game.Map.ChunkMesh.UpstreamWouldMesh(this, ref ItemData))
