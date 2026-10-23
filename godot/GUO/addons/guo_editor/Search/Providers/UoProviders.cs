@@ -47,6 +47,8 @@ public sealed class UoArtProvider : UoProvider
 
     public override string Name => "art names";
 
+    public override bool CanStep => DataReady;
+
     public override bool Done => _done;
 
     public override double Progress => _done ? 1 : (double)_next / _total;
@@ -152,6 +154,8 @@ public sealed class UoHueProvider : UoProvider
 
     public override string Name => "hues";
 
+    public override bool CanStep => DataReady && Panel != null;
+
     public override bool Done => _done;
 
     public override IEnumerable<SearchEntry> Entries => _entries;
@@ -217,6 +221,8 @@ public sealed class UoSoundProvider : UoProvider
     }
 
     public override string Name => "sounds";
+
+    public override bool CanStep => DataReady;
 
     public override bool Done => _done;
 
@@ -475,6 +481,8 @@ public sealed class UoClilocProvider : UoProvider
     }
 
     public override string Name => "cliloc text";
+
+    public override bool CanStep => DataReady;
 
     public override bool Done => _done;
 
