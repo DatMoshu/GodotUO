@@ -420,6 +420,7 @@ internal static class PerfProbe
         long rdTicksBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.RecordTicks;
         long rdSuppressedBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.SuppressedCommands;
         long rdReplayBefore = GUO.Labs.GpuRenderer.OrderedWorldCanvas.CommandsDrawn;
+        long rdCanvasClearsBefore = UltimaBatcher2D.OrderedCanvasItemsCleared;
         long rdGeometryBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.GeometryBytes;
         long rdOrderBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.OrderBytes;
         long rdUploadsBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.UploadCalls;
@@ -531,6 +532,7 @@ internal static class PerfProbe
             ["rd_last_fallback"] = GUO.Labs.GpuRenderer.OrderedWorldCapture.LastFallback ?? "",
             ["rd_deferred_quads_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.SuppressedCommands - rdSuppressedBefore) / n, 1),
             ["rd_canvas_replay_quads_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCanvas.CommandsDrawn - rdReplayBefore) / n, 1),
+            ["rd_canvas_items_cleared_per_frame"] = System.Math.Round((double)(UltimaBatcher2D.OrderedCanvasItemsCleared - rdCanvasClearsBefore) / n, 1),
             ["rd_geometry_bytes_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.GeometryBytes - rdGeometryBefore) / n, 1),
             ["rd_order_bytes_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.OrderBytes - rdOrderBefore) / n, 1),
             ["rd_upload_calls_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.UploadCalls - rdUploadsBefore) / n, 3),

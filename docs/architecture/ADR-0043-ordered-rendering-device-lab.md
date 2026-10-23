@@ -52,6 +52,12 @@ force a retry. This stage retains per-frame CPU capture and comparison, and
 does not yet promise persistent gameplay IDs or camera-independent sprites.
 Measure CPU cache cost and actual upload bytes separately from GPU draw count.
 
+When the RD toggle is enabled, clear every canvas item used by the preceding
+frame once. The unused pool tail already has no commands after its first idle
+frame, so subsequent RD frames need not clear that tail again. Retain the pool
+for reuse, preserve private fallback-child cleanup and cancel pending tickets
+before recycling items. Ordinary toggle-off and non-Labs clearing stay unchanged.
+
 The implementation belongs to `src/Labs/GpuRenderer`, compiled only with
 `GuoLabs=true` in Debug. The shared Labs command/options registry supplies
 the runtime toggle. Compatibility and exported clients retain the existing

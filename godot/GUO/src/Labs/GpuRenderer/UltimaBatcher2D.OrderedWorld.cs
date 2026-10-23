@@ -11,6 +11,7 @@ public sealed partial class UltimaBatcher2D
     private Rid _orderedCanvas, _orderedPresenter;
     private int _orderedStackDepth;
     private ShaderMaterial _orderedPresentMaterial;
+    internal static long OrderedCanvasItemsCleared;
     internal bool OrderedWorldRecording => _orderedWorld?.Recording == true;
 
     internal void BeginOrderedWorld(bool supported, Vector2I probeSize = default)

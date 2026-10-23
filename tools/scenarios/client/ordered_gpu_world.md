@@ -13,6 +13,10 @@ code is included in exports. See ADR-0043 and the feature README for the doctor.
    Resident cases require zero writes on an unchanged frame, exactly one
    dirty quad for a single addition, order-only alpha reversal, storage growth,
    identical-ID recovery after partial geometry/order failure and resize.
+   Pool controls enlarge a visible canvas frame by 256 items, then require
+   identical small-frame pixels, backend counts and native clear counts across
+   repeated RD frames, toggle-off, early rejection with a large native suffix,
+   and a canceled capture. The idle tail must be cleared once, not every frame.
 2. Use the authorized GM account and scratch profile to run `tools/perf_probe`
    with `--as-built`, `--perf-profile plain --perf-static-world --perf-parity
    --rd-world`, matching size and zoom. Measure bank, forest, dungeon and docks.
@@ -28,7 +32,10 @@ code is included in exports. See ADR-0043 and the feature README for the doctor.
    image when unsupported. Never interpret fallback as proof of RD parity.
 4. Build without Labs and run the normal smoke and deterministic performance
    gate. Compare identical frozen inputs for default-state parity.
-5. Benchmark only after correctness, under an exclusive host timing lease.
+5. Benchmark only after correctness. Prefer an exclusive host timing lease;
+   when the owner authorizes measurements alongside other projects, use an
+   ordinary runtime lease, preserve their work and label every timing as
+   shared-load evidence. Do not claim a clean speedup from those timings.
    Compare the same CPU contexts against optimized CUO and report RD recording
    CPU separately. Record whole-frame p95/p99, allocation, actual viewport,
    backend, uploaded bytes and RD draw calls. Godot's canvas counters omit

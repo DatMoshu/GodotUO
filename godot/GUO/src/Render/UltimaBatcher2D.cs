@@ -456,7 +456,11 @@ namespace GUO.Renderer
         /// </remarks>
         public void BeginFrame()
         {
+            int itemsToClear = _items.Count;
 #if GUO_LABS
+            // ADR-0043: every item used last frame must be cleared once. The
+            // unused tail was cleared on its first idle frame and is still empty.
+            if (GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled) itemsToClear = _itemCount;
             ResetOrderedWorldItems();
 #endif
             EnsureNotStarted();
@@ -481,13 +485,15 @@ namespace GUO.Renderer
             // what the alternative costs.
             TextureAtlas.FlushAll();
 
-            // Everything in the pool, not just what this frame ends up using:
-            // an item left over from a busier frame would otherwise keep
-            // painting last frame's sprites.
-            for (int i = 0; i < _items.Count; i++)
+            // Include every item that could still hold previous commands,
+            // even when this frame ends up using fewer items.
+            for (int i = 0; i < itemsToClear; i++)
             {
                 RenderingServer.CanvasItemClear(_items[i]);
             }
+#if GUO_LABS
+            OrderedCanvasItemsCleared += itemsToClear;
+#endif
         }
 
         public void Begin()

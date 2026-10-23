@@ -36,6 +36,12 @@ There is no GPU readback, Submit/Sync call or intentional frame of latency.
 This remains a correctness prototype, not a claim of faster rendering.
 `rd_deferred_quads_per_frame` and `rd_canvas_replay_quads_per_frame` expose the
 removed and fallback primitive work; empty canvas containers still exist.
+With the RD toggle enabled, the batcher clears only items used in the previous
+frame. A busier frame's full active range is cleared once; its unused tail is
+already empty on later frames. The allocated pool is retained for reuse. Replay
+children still have their own clearing/hiding path, and toggle-off keeps ordinary
+full-pool clearing. `rd_canvas_items_cleared_per_frame` counts native batcher clear
+calls in both RD-on and RD-off measurements, excluding private replay children.
 Godot's normal draw-call and
 GPU-time monitors do not include this custom RD pass. Use the explicit RD
 draw/upload/recording counters and whole-frame measurements.

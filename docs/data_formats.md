@@ -3549,3 +3549,10 @@ queued waiting and GPU execution. Draw/upload counts cover completed recording
 transactions; partial failures can do work before these counters advance.
 Ordinary terrain rows add `terrain_dirty_chunks_per_frame` and
 `terrain_rebuilt_sprites_per_frame`, measured as counter deltas.
+
+`rd_canvas_items_cleared_per_frame` counts the batcher's native canvas-item
+clear calls over the measured interval, including ordinary canvas/off rows in
+a Labs build. It excludes private replay children, the ID mirror and GPU target
+clears. With RD enabled, only the preceding frame's active items need clearing;
+the retained unused tail was already cleared on its first idle frame. The item
+pool is retained, and RD-off keeps the ordinary full-pool clearing policy.

@@ -38,7 +38,7 @@ public partial class BatcherProbe
         try
         {
             async Task<byte[]> Render(bool rd, int mode, bool slope = false, bool unsupported = false, bool empty = false, bool fractional = false, bool present = true,
-                int residentCount = 0, int residentSeed = 0, bool reverse = false)
+                int residentCount = 0, int residentSeed = 0, bool reverse = false, int poolItems = 0)
             {
                 OrderedWorldCapture.Enabled = rd;
                 batcher.BeginFrame();
@@ -95,6 +95,11 @@ public partial class BatcherProbe
                         batcher.ClipEnd();
                     }
                     if (mode == 103) batcher.SetBrightlight(0.7f);
+                }
+                for (int i = 0; i < poolItems; i++)
+                {
+                    batcher.SetWorldOffset(i % 3, i % 2);
+                    batcher.Draw(colored, new Rectangle(i % 5, i % 7, 3, 3), new Rectangle(0,0,1,1), new Vector3(0,0,0.5f), 0);
                 }
                 batcher.EndOrderedWorld();
                 batcher.End();
@@ -161,6 +166,35 @@ public partial class BatcherProbe
             for (int i=0;i<afterFailure.Length;i++) if(afterFailure[i]!=afterFailureReference[i]) stale++;
             CheckThat("RD fallback children hidden after toggle off", stale==0, $"{stale} stale channels after pool reuse");
             await Parity("RD recovery uses current frame",2);
+            // Enlarge the native pool with visible commands, then stop using
+            // its tail. Every previous active item must be cleared exactly once.
+            byte[] poolReference = await Render(false, 1);
+            async Task CheckPoolFrame(string label, bool rd, int expectedClears, bool exact = true)
+            {
+                long clears = UltimaBatcher2D.OrderedCanvasItemsCleared;
+                long drawn = OrderedWorldCapture.FramesDrawn;
+                byte[] actual = await Render(rd, 1);
+                int differences = 0;
+                for (int i = 0; i < actual.Length; i++) if (actual[i] != poolReference[i]) differences++;
+                long cleared = UltimaBatcher2D.OrderedCanvasItemsCleared - clears;
+                CheckThat(label + " pixels", differences == 0, $"{differences} stale channels");
+                CheckThat(label + " native clears", exact ? cleared == expectedClears : cleared >= expectedClears,
+                    $"cleared={cleared}, expected{(exact ? "=" : ">=")}{expectedClears}");
+                CheckThat(label + " backend", OrderedWorldCapture.FramesDrawn == drawn + (rd ? 1 : 0),
+                    $"RD delta={OrderedWorldCapture.FramesDrawn-drawn}");
+            }
+            await Render(false, 4, poolItems:256);
+            int busyItems = batcher.FlushesDone;
+            await CheckPoolFrame("RD clears previous busy canvas", true, busyItems);
+            int smallItems = batcher.FlushesDone;
+            CheckThat("RD pool fixture has an unused tail", busyItems > smallItems + 200,
+                $"busy={busyItems}, small={smallItems}");
+            await CheckPoolFrame("RD does not reclear idle tail", true, smallItems);
+            await CheckPoolFrame("RD toggle off keeps ordinary pool clearing", false, busyItems, exact:false);
+            await Render(true, 4, unsupported:true, poolItems:256);
+            await CheckPoolFrame("RD clears rejected native suffix and replay children", true, batcher.FlushesDone);
+            await Render(true, 4, present:false, poolItems:256);
+            await CheckPoolFrame("RD cancelled ticket clears previous active items", true, batcher.FlushesDone);
             await Parity("RD empty world",0,empty:true);
             viewport.Size=new Vector2I(16,12);
             await Parity("RD resize",1);
