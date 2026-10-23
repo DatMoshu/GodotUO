@@ -33,6 +33,7 @@ namespace GUO.Renderer
             public int[] Pages;
             public MeshQuad[] Quads;
             public ArrayMesh Mesh;
+            public Rid MeshRid;
             public long Frame;
         }
 
@@ -66,7 +67,7 @@ namespace GUO.Renderer
             }
         }
 
-        public ArrayMesh Get(List<(MeshLayer Layer, int Index, int Page, Vector2 Scale)> run)
+        public Rid Get(List<(MeshLayer Layer, int Index, int Page, Vector2 Scale)> run)
         {
             int hash = 17;
             foreach ((MeshLayer layer, int index, int page, _) in run)
@@ -90,7 +91,7 @@ namespace GUO.Renderer
                 if (SameQuads(e, run))
                 {
                     e.Frame = _frame;
-                    return e.Mesh;
+                    return e.MeshRid;
                 }
 
                 stale = e;
@@ -117,8 +118,12 @@ namespace GUO.Renderer
 
             entry.Frame = _frame;
             Build(entry.Mesh, run);
+            // The entry owns this mesh and only Build changes its surfaces.
+            // Resolve the native handle after a build, not on every cache hit:
+            // Resource.GetRid is a virtual native call for each covering run.
+            entry.MeshRid = entry.Mesh.GetRid();
             Builds++;
-            return entry.Mesh;
+            return entry.MeshRid;
         }
 
         private static bool SameTiles(Entry e, List<(MeshLayer Layer, int Index, int Page, Vector2 Scale)> run)

@@ -1033,7 +1033,7 @@ void fragment() {
                 _coverSynced = FramesBegun;
             }
 
-            ArrayMesh mesh = _coverRuns.Get(_cover);
+            Rid mesh = _coverRuns.Get(_cover);
             _cover.Clear();
 
             // The item state is put back as it was found. A caller checks its
@@ -1057,7 +1057,7 @@ void fragment() {
             BindLandPages(LandPages.Array);
             Commands++;
             Count(4, default);
-            RenderingServer.CanvasItemAddMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, default);
+            RenderingServer.CanvasItemAddMesh(_current, mesh, Transform2D.Identity, Colors.White, default);
 
             if (cut)
             {

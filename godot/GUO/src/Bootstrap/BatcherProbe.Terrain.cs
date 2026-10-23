@@ -70,6 +70,40 @@ public partial class BatcherProbe
                     cache.LastFallback ?? "persistent route");
             }
 
+            async Task<byte[]> RenderCover(bool merged)
+            {
+                bool previous = UltimaBatcher2D.MergedCover;
+                try
+                {
+                    UltimaBatcher2D.MergedCover = merged;
+                    batcher.BeginFrame();
+                    batcher.Begin();
+                    batcher.SetBrightlight(0.3f);
+                    foreach (Chunk c in chunks)
+                        batcher.DrawMeshSprite(c.Mesh.Land, 0, 0, 0);
+                    batcher.End();
+                    await ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
+                    using Image image = viewport.GetTexture().GetImage();
+                    return image.GetData();
+                }
+                finally
+                {
+                    UltimaBatcher2D.MergedCover = previous;
+                }
+            }
+
+            async Task CoverParity(string name)
+            {
+                byte[] reference = await RenderCover(false);
+                byte[] built = await RenderCover(true);
+                int builds = CoverRuns.Builds;
+                byte[] reused = await RenderCover(true);
+                CheckThat(name, reference.AsSpan().SequenceEqual(built) && built.AsSpan().SequenceEqual(reused),
+                    "built and cached covering meshes equal the original per-tile pixels");
+                CheckThat(name + " reuses mesh", CoverRuns.Builds == builds, $"{CoverRuns.Builds - builds} rebuilds");
+            }
+
+            await CoverParity("cover handles preserve overlapping translucent slopes");
             await Parity("terrain chunk boundaries preserve overlapping translucent slopes");
             CheckThat("terrain uses five cached chunks in one draw", cache.CachedChunks == 5, $"{cache.CachedChunks}");
             long built = cache.Rebuilds;
@@ -81,6 +115,7 @@ public partial class BatcherProbe
 
             chunks[1].Mesh.Land.SetVisible(0, 64);
             chunks[1].Mesh.Land.BuildVisibleIndices();
+            await CoverParity("cover handles refresh after alpha rebuild");
             await Parity("terrain alpha change preserves pixels");
             CheckThat("one changed chunk rebuilds only its chunk", cache.Rebuilds == built + 1, $"{cache.Rebuilds - built}");
 
@@ -141,6 +176,7 @@ public partial class BatcherProbe
             replacement.Mesh.Land.Textures[0] = movedTexture;
             replacement.Mesh.Land.SetVisible(0, 180);
             replacement.Mesh.Land.BuildVisibleIndices();
+            await CoverParity("cover handles refresh after pooled layer geometry changes");
             await Parity("same pooled layer reload updates geometry and bounds");
 
             // Standalone art in one cache must retain ordered texture runs.
