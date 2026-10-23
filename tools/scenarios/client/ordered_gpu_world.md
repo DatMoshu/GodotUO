@@ -30,6 +30,11 @@ code is included in exports. See ADR-0043 and the feature README for the doctor.
    fallback, selector-only state updates without geometry/order writes, palette
    replacement, complete post-record replay, resize and canceled bindings.
    Require the emitted shader layout/literal-binding contract check to pass.
+   CPU packing must match every byte of the former 48-byte packet across the
+   IEEE and hue/alpha boundary fixture, and its changed-bit negative control
+   must fail equality. Confirm the 16-byte transport / 48-byte vertex ABI.
+   Repeat mesh fallback and half-alpha pixel controls so reusing encoded colors
+   cannot accidentally quantize the original replay colors twice.
 2. Use the authorized GM account and scratch profile to run `tools/perf_probe`
    with `--as-built`, `--perf-profile plain --perf-static-world --perf-parity
    --rd-world`, matching size and zoom. Measure bank, forest, dungeon and docks.

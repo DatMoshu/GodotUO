@@ -133,25 +133,28 @@ internal sealed class OrderedWorldCapture : IDisposable
         }
         Transform2D transform = _offsetTransform;
         if (local.HasValue) transform *= local.Value;
+        // Reuse each original encoded color for both complete canvas replay and
+        // GPU packing. Mesh replay must retain the value before UNORM8 conversion.
+        Color color0 = UltimaBatcher2D.Encode(q.Hue0), color1 = UltimaBatcher2D.Encode(q.Hue1);
+        Color color2 = UltimaBatcher2D.Encode(q.Hue2), color3 = UltimaBatcher2D.Encode(q.Hue3);
         _commands.Add(new OrderedWorldCanvas.Command
         {
             Type = meshColor ? OrderedWorldCanvas.Kind.Mesh : rectangle ? OrderedWorldCanvas.Kind.Rect : OrderedWorldCanvas.Kind.Triangles,
             FirstCorner = _vertices.Count, Texture = textures.ArtRs, Offset = offset,
             Local = local ?? Transform2D.Identity, Destination = destination, Source = source,
-            Color0 = meshColor ? UltimaBatcher2D.Encode(q.Hue0) : default,
-            Color1 = meshColor ? UltimaBatcher2D.Encode(q.Hue1) : default,
-            Color2 = meshColor ? UltimaBatcher2D.Encode(q.Hue2) : default,
-            Color3 = meshColor ? UltimaBatcher2D.Encode(q.Hue3) : default,
+            Color0 = meshColor ? color0 : default,
+            Color1 = meshColor ? color1 : default,
+            Color2 = meshColor ? color2 : default,
+            Color3 = meshColor ? color3 : default,
         });
-        offset = Vector2.Zero; // Match the canvas's composed model transform, not CPU-translated vertices.
         if (_textureRuns == 0 || _lastTextures != textures) _textureRuns++;
         _lastTextures = textures;
         uint artSlot = AppendTextureBatch(first, textures);
         // Four corners per quad; the GPU emits the six triangle vertices in the correct order.
-        Vertex(q.Position0, q.TextureCoordinate0, q.Hue0, q.Normal0, offset, meshColor, rectangle);
-        Vertex(q.Position1, q.TextureCoordinate1, q.Hue1, q.Normal1, offset, meshColor, rectangle);
-        Vertex(q.Position2, q.TextureCoordinate2, q.Hue2, q.Normal2, offset, meshColor, rectangle);
-        Vertex(q.Position3, q.TextureCoordinate3, q.Hue3, q.Normal3, offset, meshColor, rectangle);
+        _vertices.Add(PackVertex(q.Position0, q.TextureCoordinate0, color0, q.Normal0, meshColor, rectangle));
+        _vertices.Add(PackVertex(q.Position1, q.TextureCoordinate1, color1, q.Normal1, meshColor, rectangle));
+        _vertices.Add(PackVertex(q.Position2, q.TextureCoordinate2, color2, q.Normal2, meshColor, rectangle));
+        _vertices.Add(PackVertex(q.Position3, q.TextureCoordinate3, color3, q.Normal3, meshColor, rectangle));
         _states.Add(new OrderedWorldDevice.State
         {
             Xx = transform.X.X, Yx = transform.Y.X, OriginX = transform.Origin.X,
@@ -195,18 +198,23 @@ internal sealed class OrderedWorldCapture : IDisposable
         return mode <= 10 || mode is >= 20 and <= 30;
     }
 
-    private void Vertex(Vector2 p, Vector2 uv, Vector3 hue, Vector3 normal, Vector2 offset, bool meshColor, bool rectangle)
+    internal static OrderedWorldDevice.Vertex PackVertex(Vector2 p, Vector2 uv, Color color,
+        Vector3 normal, bool meshColor, bool rectangle)
     {
-        Color c = UltimaBatcher2D.Encode(hue);
         // ArrayMesh colors travel through UNORM8; rect/triangle canvas colors are floats.
-        if (meshColor) c = new Color(ByteColor(c.R), ByteColor(c.G), ByteColor(c.B), ByteColor(c.A));
-        p += offset;
-        _vertices.Add(new OrderedWorldDevice.Vertex
+        if (meshColor)
         {
-            PositionUv = new Vector4(p.X, p.Y, uv.X, uv.Y),
-            PackedHue = new Vector4(c.R, c.G, c.B, c.A),
-            Normal = new Vector4(normal.X, normal.Y, normal.Z, rectangle ? 1 : 0)
-        });
+            color.R = ByteColor(color.R); color.G = ByteColor(color.G);
+            color.B = ByteColor(color.B); color.A = ByteColor(color.A);
+        }
+        // Keep the original addition of positive zero, including signed-zero/NaN
+        // arithmetic, without calling the Debug GodotSharp Vector2 operator.
+        return new OrderedWorldDevice.Vertex
+        {
+            PositionUv = new OrderedWorldDevice.Float4(p.X + 0f, p.Y + 0f, uv.X, uv.Y),
+            PackedHue = new OrderedWorldDevice.Float4(color.R, color.G, color.B, color.A),
+            Normal = new OrderedWorldDevice.Float4(normal.X, normal.Y, normal.Z, rectangle ? 1 : 0)
+        };
     }
 
     // Godot's ArrayMesh packer truncates channel*255; Color.ToRgba32 rounds instead.

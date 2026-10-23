@@ -13,6 +13,7 @@ public partial class BatcherProbe
 {
     private async Task VerifyOrderedWorld(UltimaBatcher2D batcher, SubViewport viewport, Texture2D palette)
     {
+        VerifyOrderedPacking();
         VerifyOrderedResidency();
         bool old = OrderedWorldCapture.Enabled;
         using var background = BuildSolid(new byte[] { 3, 80, 137 });

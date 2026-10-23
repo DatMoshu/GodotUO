@@ -10,14 +10,27 @@ namespace GUO.Labs.GpuRenderer;
 
 internal sealed class OrderedWorldDevice
 {
+    // Transport-only values live in the optimized GUO assembly. GodotSharp's
+    // editor Debug value constructors need not run for every captured corner.
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
+    internal struct Float4 : IEquatable<Float4>
+    {
+        public float X, Y, Z, W;
+        public Float4(float x, float y, float z, float w) { X = x; Y = y; Z = z; W = w; }
+        public readonly bool Equals(Float4 other) => X.Equals(other.X) && Y.Equals(other.Y)
+            && Z.Equals(other.Z) && W.Equals(other.W);
+        public override readonly bool Equals(object obj) => obj is Float4 other && Equals(other);
+        public override readonly int GetHashCode() => HashCode.Combine(X, Y, Z, W);
+    }
+
     // Four 48-byte corners per quad. The vertex shader expands the selected diagonal.
     // Position is batcher-local; the occurrence state supplies its exact transform.
     [StructLayout(LayoutKind.Sequential, Pack = 4)]
     public struct Vertex
     {
-        public Vector4 PositionUv; // xy position, zw normalized UV
-        public Vector4 PackedHue;  // existing encoded modulate RGBA, transport precision matched
-        public Vector4 Normal;     // xyz interpolated land normal; w selects the canvas-rect diagonal
+        public Float4 PositionUv; // xy position, zw normalized UV
+        public Float4 PackedHue;  // existing encoded modulate RGBA, transport precision matched
+        public Float4 Normal;     // xyz interpolated land normal; w selects the canvas-rect diagonal
     }
 
     // One exact composed transform per ordered occurrence, never per resident
@@ -115,7 +128,11 @@ internal sealed class OrderedWorldDevice
         if (size.X <= 0 || size.Y <= 0) throw new ArgumentOutOfRangeException(nameof(size));
         _rd = RenderingServer.GetRenderingDevice()
             ?? throw new NotSupportedException("No main RenderingDevice; keep canvas fallback.");
-        if (Marshal.SizeOf<Vertex>() != 48 || Marshal.SizeOf<Push>() != 64
+        if (Marshal.SizeOf<Vertex>() != 48 || Marshal.SizeOf<Float4>() != 16
+            || Marshal.OffsetOf<Vertex>(nameof(Vertex.PositionUv)).ToInt32() != 0
+            || Marshal.OffsetOf<Vertex>(nameof(Vertex.PackedHue)).ToInt32() != 16
+            || Marshal.OffsetOf<Vertex>(nameof(Vertex.Normal)).ToInt32() != 32
+            || Marshal.SizeOf<Push>() != 64
             || Marshal.SizeOf<State>() != 32 || Marshal.OffsetOf<State>(nameof(State.Xy)).ToInt32() != 16
             || Marshal.OffsetOf<State>(nameof(State.ArtSlot)).ToInt32() != 12
             || Marshal.OffsetOf<State>(nameof(State.Xx)).ToInt32() != 0

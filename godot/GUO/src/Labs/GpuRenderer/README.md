@@ -69,6 +69,15 @@ updates invalidate geometry, order and transform state for retry, even when the
 next IDs are identical.
 Capacity refusal falls back to the complete current canvas frame.
 
+Capture encodes each corner once, retaining that original color for mesh
+replay before making the GPU's UNORM8 copy. The 48-byte vertex uses plain float
+transport in the optimized GUO assembly; offsets and shader interpretation stay
+unchanged. Scalar positive-zero position additions retain the previous arithmetic.
+An independent byte oracle compares the old Godot value expressions with the
+new packet over finite, signed-zero, nonfinite and hue/alpha boundary inputs;
+this supplements the full GPU and fallback pixel controls. It does not remove
+the per-frame capture or establish a performance gain by itself.
+
 This removes redundant GPU transfers, not the CPU capture/hash traversal.
 Terrain retains world-space geometry while ordinary sprite positions can
 change with camera movement. New animation/alpha/hue variants consume cache

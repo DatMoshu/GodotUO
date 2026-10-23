@@ -93,6 +93,13 @@ draw measurement nor a speed prediction. Test later-batch absolute addressing,
 wrong-slot negative controls, edge UVs, overlapping alpha and resource lifetime
 before comparing actual draws and matched CPU/wall measurements against CUO.
 
+CPU capture may reuse each encoded corner color for both the original replay
+command and its separately quantized GPU value. Plain float transport may replace
+Godot value constructors only while preserving every packet byte and the existing
+48-byte vertex layout. Retain positive-zero arithmetic and original color packing;
+use an old-expression byte oracle and full GPU/fallback tests before measuring.
+This does not change the cache key's exact-byte identity or remove frame traversal.
+
 The implementation belongs to `src/Labs/GpuRenderer`, compiled only with
 `GuoLabs=true` in Debug. The shared Labs command/options registry supplies
 the runtime toggle. Compatibility and exported clients retain the existing

@@ -13,8 +13,8 @@ public partial class BatcherProbe
     {
         OrderedWorldResidency.Quad Quad(float x) => new()
         {
-            A = new OrderedWorldDevice.Vertex { PositionUv = new Vector4(x, 0, 0, 0) },
-            D = new OrderedWorldDevice.Vertex { PositionUv = new Vector4(x + 1, 1, 1, 1) }
+            A = new OrderedWorldDevice.Vertex { PositionUv = new OrderedWorldDevice.Float4(x, 0, 0, 0) },
+            D = new OrderedWorldDevice.Vertex { PositionUv = new OrderedWorldDevice.Float4(x + 1, 1, 1, 1) }
         };
         var a = Quad(1); var b = Quad(2); var c = Quad(3); var d = Quad(4);
         var cache = new OrderedWorldResidency(3);
