@@ -41,6 +41,22 @@ public static class PerfStages
         Other,
         /// <summary>Transparent objects and world gumps, after the sorted list.</summary>
         Transparent,
+        /// <summary>Socket collection, including decrypt/decompress (inclusive).</summary>
+        NetworkReceive,
+        /// <summary>Huffman decode only; nested inside NetworkReceive.</summary>
+        NetworkDecompress,
+        /// <summary>Packet framing, plugin receive callbacks and dispatch (inclusive).</summary>
+        NetworkParse,
+        /// <summary>Receive plugin callbacks; nested inside NetworkParse.</summary>
+        PluginReceive,
+        /// <summary>Game/mod packet dispatch; nested inside NetworkParse.</summary>
+        NetworkDispatch,
+        /// <summary>Queued sends and network statistics update.</summary>
+        NetworkFlush,
+        /// <summary>Plugin tick callbacks, outside world simulation.</summary>
+        PluginTick,
+        /// <summary>UI update, outside world simulation.</summary>
+        UiUpdate,
         Count,
     }
 
@@ -55,6 +71,27 @@ public static class PerfStages
     private static readonly double ToMs = 1000.0 / Stopwatch.Frequency;
 
     public static long Now() => Enabled ? Stopwatch.GetTimestamp() : 0;
+
+    /// <summary>Allocation-free, exception-safe main-thread timing scope.</summary>
+    public readonly struct Scope : System.IDisposable
+    {
+        private readonly Stage _stage;
+        private readonly long _start;
+        private readonly bool _enabled;
+
+        public Scope(Stage stage)
+        {
+            _stage = stage;
+            _enabled = Enabled;
+            _start = _enabled ? Stopwatch.GetTimestamp() : 0;
+        }
+
+        public void Dispose()
+        {
+            if (_enabled && Enabled)
+                Add(_stage, _start);
+        }
+    }
 
     /// <summary>Adds the time since <paramref name="since"/> to the stage and returns now.</summary>
     public static long Add(Stage stage, long since)

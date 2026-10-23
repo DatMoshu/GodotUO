@@ -2,6 +2,10 @@
 
 Checks for the client's packet parse loop that run without the engine.
 
+The linked production `PerfStages` also checks disabled scopes, gate transitions,
+exception unwinding, nested inclusive totals and reset/export behavior. These
+checks do not exercise live socket/plugin dispatch or measure observer overhead.
+
 ```
 dotnet run --project tools/network_tests
 ```

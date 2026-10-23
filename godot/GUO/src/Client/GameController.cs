@@ -993,13 +993,20 @@ namespace GUO
 
             Mouse.Refresh();
 
+            // PORT DEVIATION (GUO): opt-in diagnostics for work outside UPDATE_WORLD.
+            // Receive and parse are inclusive; nested network stages must not be added.
+            long networkStage = PerfStages.Now();
             var data = NetClient.Socket.CollectAvailableData();
+            networkStage = PerfStages.Add(PerfStages.Stage.NetworkReceive, networkStage);
             var packetsCount = PacketHandlers.Handler.ParsePackets(NetClient.Socket, UO.World, data);
+            networkStage = PerfStages.Add(PerfStages.Stage.NetworkParse, networkStage);
 
             NetClient.Socket.Statistics.TotalPacketsReceived += (uint)packetsCount;
             NetClient.Socket.Flush();
+            networkStage = PerfStages.Add(PerfStages.Stage.NetworkFlush, networkStage);
 
             Plugin.Tick();
+            PerfStages.Add(PerfStages.Stage.PluginTick, networkStage);
 
             if (Scene != null && Scene.IsLoaded && !Scene.IsDestroyed)
             {
@@ -1008,7 +1015,9 @@ namespace GUO
                 Profiler.ExitContext(Profiler.ProfilerContext.UPDATE_WORLD);
             }
 
+            long uiStage = PerfStages.Now();
             UIManager.Update();
+            PerfStages.Add(PerfStages.Stage.UiUpdate, uiStage);
 
             _totalElapsed += elapsedMilliseconds;
             _currentFpsTime += elapsedMilliseconds;
