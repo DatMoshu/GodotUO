@@ -1005,14 +1005,21 @@ namespace GUO
             Mouse.Refresh();
             runtimeAt = RuntimeTimings.Add(RuntimeTimings.Stage.Input, runtimeAt);
 
+            // PORT DEVIATION (GUO): opt-in diagnostics for work outside UPDATE_WORLD.
+            // Receive and parse are inclusive; nested network stages must not be added.
+            long networkStage = PerfStages.Now();
             var data = NetClient.Socket.CollectAvailableData();
+            networkStage = PerfStages.Add(PerfStages.Stage.NetworkReceive, networkStage);
             var packetsCount = PacketHandlers.Handler.ParsePackets(NetClient.Socket, UO.World, data);
+            networkStage = PerfStages.Add(PerfStages.Stage.NetworkParse, networkStage);
 
             NetClient.Socket.Statistics.TotalPacketsReceived += (uint)packetsCount;
             NetClient.Socket.Flush();
+            networkStage = PerfStages.Add(PerfStages.Stage.NetworkFlush, networkStage);
             runtimeAt = RuntimeTimings.Add(RuntimeTimings.Stage.Packets, runtimeAt);
 
             Plugin.Tick();
+            PerfStages.Add(PerfStages.Stage.PluginTick, networkStage);
             runtimeAt = RuntimeTimings.Add(RuntimeTimings.Stage.Plugins, runtimeAt);
 
             if (Scene != null && Scene.IsLoaded && !Scene.IsDestroyed)
@@ -1023,7 +1030,9 @@ namespace GUO
             }
             runtimeAt = RuntimeTimings.Add(RuntimeTimings.Stage.SceneUpdate, runtimeAt);
 
+            long uiStage = PerfStages.Now();
             UIManager.Update();
+            PerfStages.Add(PerfStages.Stage.UiUpdate, uiStage);
             runtimeAt = RuntimeTimings.Add(RuntimeTimings.Stage.UiUpdate, runtimeAt);
 
             _totalElapsed += elapsedMilliseconds;
