@@ -47,7 +47,7 @@ namespace GUO.Renderer
     /// order is the sorted order and the argument is accepted and ignored.
     /// </para>
     /// </remarks>
-    public sealed class UltimaBatcher2D : IDisposable
+    public sealed partial class UltimaBatcher2D : IDisposable
     {
         private const string SHADER_PATH = "res://src/Render/shaders/uo_hue.gdshader";
         private const string BLEND_SHADER_PATH = "res://src/Render/shaders/uo_hue_blend.gdshader";
@@ -332,6 +332,10 @@ namespace GUO.Renderer
 
         public void Dispose()
         {
+#if GUO_LABS
+            _orderedWorld?.Dispose();
+            _orderedPresentMaterial?.Dispose();
+#endif
             for (int i = 0; i < _items.Count; i++)
             {
                 RenderingServer.FreeRid(_items[i]);
@@ -446,6 +450,9 @@ namespace GUO.Renderer
         /// </remarks>
         public void BeginFrame()
         {
+#if GUO_LABS
+            ResetOrderedWorldItems();
+#endif
             EnsureNotStarted();
 
             LastFrame = (TextureSwitches, _itemCount, Commands);
@@ -763,6 +770,9 @@ void fragment() {
         /// </summary>
         public void DrawSplatMesh(ArrayMesh mesh)
         {
+#if GUO_LABS
+            _orderedWorld?.Reject("splat");
+#endif
             EnsureStarted();
             SelectSpriteSampler(null);
             EnsureMaterial(_splatMaterial);
@@ -779,6 +789,9 @@ void fragment() {
         /// </summary>
         public void DrawLayerMesh(ArrayMesh mesh, Texture2D texture)
         {
+#if GUO_LABS
+            _orderedWorld?.Reject("terrain layer");
+#endif
             EnsureStarted();
             SelectSpriteSampler(null);
             EnsureMaterial(_layerMaterial);
@@ -891,6 +904,9 @@ void fragment() {
             }
 
             var offset = new Vector2(-offsetX, -offsetY);
+#if GUO_LABS
+            if (OrderedWorldRecording) _orderedWorld.Quad(layer.Textures[index], layer.Vertices[index], offset, true);
+#endif
 
             // PORT DEVIATION (GUO): --gpu-world draws covering land in the
             // pass, keyed; a tile whose texture has no land-array page (HD,
@@ -1154,6 +1170,9 @@ void fragment() {
         public void SetBlendState(BlendState blend)
         {
             blend = blend ?? BlendState.AlphaBlend;
+#if GUO_LABS
+            if (!blend.IsPremultipliedAlpha) _orderedWorld?.Reject("custom blend");
+#endif
 
             // PORT DEVIATION (GUO): --gpu-world draws custom blends on the
             // canvas, after the composite (see BeginCapture).
@@ -1288,6 +1307,9 @@ void fragment() {
         /// <summary>Scoped UI transform; clip children inherit it. Pop with ClipEnd.</summary>
         public void PushUiTransform(Transform2D transform)
         {
+#if GUO_LABS
+            _orderedWorld?.Reject("nested transform");
+#endif
             Rid parent = NewItem(CurrentParent, transform);
             _clipStack.Add(parent);
             Cut();
@@ -1295,6 +1317,9 @@ void fragment() {
 
         public bool ClipBegin(int x, int y, int width, int height)
         {
+#if GUO_LABS
+            _orderedWorld?.Reject("clip");
+#endif
             if (width <= 0 || height <= 0)
             {
                 return false;
@@ -2065,6 +2090,14 @@ void fragment() {
 
             int textureWidth = WidthOf(texture);
             int textureHeight = HeightOf(texture);
+#if GUO_LABS
+            if (OrderedWorldRecording && rotationSin == 0f && rotationCos == 1f && effects == 0)
+            {
+                SetQuadPoints(destinationX, destinationY, destinationW, destinationH, originX, originY, rotationSin, rotationCos);
+                SetQuadUVs(sourceX, sourceY, sourceW, sourceH, sourceH, effects);
+                CaptureOrderedQuad(texture, color, !BatchedWorld);
+            }
+#endif
 
             // PORT DEVIATION (GUO): --gpu-world captures the sprite as an
             // instance: the rect path's corners and texel source rect, or the
@@ -2229,17 +2262,23 @@ void fragment() {
 
             if (BatchedWorld && !_mirroring)
             {
+#if GUO_LABS
+                CaptureOrderedQuad(texture, color);
+#endif
                 AppendToRun(texture, _quadPoints[0], _quadPoints[1], _quadPoints[2], _quadPoints[3],
                     _quadUVs[0], _quadUVs[1], _quadUVs[2], _quadUVs[3], modulate);
                 return;
             }
 
-            if (TryAddAffineQuad(texture, modulate))
+            if (TryAddAffineQuad(texture, modulate, color))
             {
                 return;
             }
 
             _quadColors[0] = modulate;
+#if GUO_LABS
+            CaptureOrderedQuad(texture, color);
+#endif
             _quadColors[1] = modulate;
             _quadColors[2] = modulate;
             _quadColors[3] = modulate;
@@ -2278,7 +2317,7 @@ void fragment() {
         /// the UVs have to span an axis-aligned region, or the quad goes the
         /// old way.
         /// </remarks>
-        private bool TryAddAffineQuad(Texture2D texture, Color modulate)
+        private bool TryAddAffineQuad(Texture2D texture, Color modulate, Vector3 hue)
         {
             var size = new Vector2(WidthOf(texture), HeightOf(texture));
 
@@ -2324,6 +2363,9 @@ void fragment() {
             }
 
             var region = new Rect2(left, top, right - left, bottom - top);
+#if GUO_LABS
+            CaptureOrderedAffine(texture, hue, region, size, new Transform2D(axisX, axisY, origin));
+#endif
 
             FlushRun();
             RenderingServer.CanvasItemAddSetTransform(_current, new Transform2D(axisX, axisY, origin));

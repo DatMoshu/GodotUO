@@ -395,6 +395,13 @@ internal static class PerfProbe
         int rebuildsBefore = LandPages.Rebuilds, bumpsBefore = LandPages.Bumps;
         long terrainRebuildsBefore = CachedLand.TotalRebuilds;
         long terrainSpritesBefore = CachedLand.TotalRebuiltSprites;
+#if GUO_LABS
+        long rdBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.FramesDrawn;
+        long rdFallbackBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.FramesFallback;
+        long rdBytesBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.UploadedBytes;
+        long rdCallsBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.DrawCalls;
+        long rdTicksBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.RecordTicks;
+#endif
         int landOntoBefore = GUO.Renderer.Arts.Art.LandOntoLandLayer, staticOntoBefore = GUO.Renderer.Arts.Art.StaticOntoLandLayer;
         // An upload lands in the frame after the one that drew it: its cost is
         // in the next frame's time. Kept apart, since a p99 over thousands of
@@ -504,6 +511,14 @@ internal static class PerfProbe
             ["alloc_kb_per_frame"] = System.Math.Round(allocatedKb, 1),
             ["terrain_dirty_chunks_per_frame"] = System.Math.Round((double)(CachedLand.TotalRebuilds - terrainRebuildsBefore) / n, 3),
             ["terrain_rebuilt_sprites_per_frame"] = System.Math.Round((double)(CachedLand.TotalRebuiltSprites - terrainSpritesBefore) / n, 1),
+#if GUO_LABS
+            ["rd_frames_drawn"] = GUO.Labs.GpuRenderer.OrderedWorldCapture.FramesDrawn - rdBefore,
+            ["rd_frames_fallback"] = GUO.Labs.GpuRenderer.OrderedWorldCapture.FramesFallback - rdFallbackBefore,
+            ["rd_upload_bytes_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.UploadedBytes - rdBytesBefore) / n, 1),
+            ["rd_draw_calls_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.DrawCalls - rdCallsBefore) / n, 1),
+            ["rd_record_cpu_ms"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.RecordTicks - rdTicksBefore) * 1000 / System.Diagnostics.Stopwatch.Frequency / n, 3),
+            ["rd_last_fallback"] = GUO.Labs.GpuRenderer.OrderedWorldCapture.LastFallback ?? "",
+#endif
             ["cmd_rects"] = System.Math.Round(kRect / n, 1),
             ["cmd_affine_rects"] = System.Math.Round(kAffine / n, 1),
             ["cmd_meshes"] = System.Math.Round(kMesh / n, 1),
@@ -573,6 +588,9 @@ internal static class PerfProbe
         // the frame just drawn; whether that frame went through the pass is
         // read then (GpuWorld.LastFrameOnPass), not inferred from counters.
         int testCaptures = 0, testOnPass = 0;
+#if GUO_LABS
+        int rdTestOnPass = 0;
+#endif
         async System.Threading.Tasks.Task<Image> Frame(bool batched)
         {
             ParityToggle(batched);
@@ -581,6 +599,9 @@ internal static class PerfProbe
             if (batched)
             {
                 testCaptures++;
+#if GUO_LABS
+                if (GUO.Labs.GpuRenderer.OrderedWorldCapture.LastFrameOnPass) rdTestOnPass++;
+#endif
                 if (GpuWorld.LastFrameOnPass)
                 {
                     testOnPass++;
@@ -669,6 +690,9 @@ internal static class PerfProbe
         return new Dictionary<string, object>
         {
             ["parity_stable_px"] = stable, ["parity_violations"] = violations, ["parity_strict"] = strict,
+#if GUO_LABS
+            ["rd_test_on_pass"] = rdTestOnPass,
+#endif
             ["parity_strict_max_delta"] = strictMaxDelta,
             ["gpu_test_captures"] = testCaptures, ["gpu_test_on_pass"] = testOnPass,
             ["gpu_frames_drawn"] = gpuDrawn, ["gpu_frames_fallback"] = gpuFallback,

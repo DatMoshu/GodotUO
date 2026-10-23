@@ -3516,3 +3516,29 @@ Smoke: `res://src/Configuration/UoPlusProbe.tscn`; scenario:
 and bottom screenshots and uses an unsaved fixture profile. No external
 dependency or doctor launcher is required; Labs weather's README retains its
 build/dependency doctor.
+
+## 48. Ordered GPU world lab (ADR-0043)
+
+`--rd-world` and the shared Labs `-rdworld`/Options action select a session-only
+experimental world backend in Debug builds compiled with `GuoLabs=true`.
+The default is off; no profile field, packet, asset format or export behavior
+changes. Its README supplies the dependency/pixel doctor and the scenario is
+`client.renderer.ordered-rd`.
+
+The prototype retains a complete canvas rollback while recording ordered
+quads for Godot's main RenderingDevice. Unsupported states keep canvas for
+the entire pass. The render thread selects the current frame only after
+recording succeeds. Four corners become six vertices on the GPU, with the
+original rect/mesh diagonals, nearest sampling and raw UO color arithmetic.
+
+Labs PerfProbe rows add `rd_frames_drawn`, `rd_frames_fallback`,
+`rd_upload_bytes_per_frame`, `rd_draw_calls_per_frame`, `rd_record_cpu_ms`,
+`rd_last_fallback`, and parity field `rd_test_on_pass`. These supplement the
+canvas monitors, which do not count this custom pass. Recording CPU occurs
+outside the existing world-draw profiler context and must be reported in
+comparisons. `rd_test_on_pass` must match both test captures for active proof.
+Recording time includes callback initialization/fallback but excludes capture,
+queued waiting and GPU execution. Draw/upload counts cover completed recording
+transactions; partial failures can do work before these counters advance.
+Ordinary terrain rows add `terrain_dirty_chunks_per_frame` and
+`terrain_rebuilt_sprites_per_frame`, measured as counter deltas.

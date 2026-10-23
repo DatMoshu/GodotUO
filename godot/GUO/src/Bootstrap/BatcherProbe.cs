@@ -126,6 +126,10 @@ public partial class BatcherProbe : Node
 
         await VerifyMergedLand(batcher, viewport);
         Stage("persistent ordered terrain");
+#if GUO_LABS
+        await VerifyOrderedWorld(batcher, viewport, palette);
+        Stage("ordered RenderingDevice world");
+#endif
 
         await VerifyUiTransform(batcher, viewport, ramp);
         Stage("gump transform and clipping");

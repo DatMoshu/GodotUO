@@ -1,0 +1,140 @@
+// SPDX-License-Identifier: BSD-2-Clause
+#if GUO_LABS
+using System;
+using System.Threading.Tasks;
+using Godot;
+using GUO.Labs.GpuRenderer;
+using GUO.Renderer;
+using Rectangle = GUO.Compat.Rectangle;
+
+namespace GUO.Host;
+
+public partial class BatcherProbe
+{
+    private async Task VerifyOrderedWorld(UltimaBatcher2D batcher, SubViewport viewport, Texture2D palette)
+    {
+        bool old = OrderedWorldCapture.Enabled;
+        using var background = BuildSolid(new byte[] { 3, 80, 137 });
+        using var black = BuildSolid(new byte[] { 0, 0, 0 });
+        using var gray = BuildSolid(new byte[] { 123, 123, 123 });
+        using var colored = BuildSolid(new byte[] { 177, 103, 51 });
+        byte[] pixels = new byte[2048*2048*4];
+        for(int i=0;i<2048*2048;i++) { int x=i%2048,y=i/2048; pixels[i*4]=(byte)(x*23+y*47); pixels[i*4+1]=(byte)(x*137+y*13); pixels[i*4+2]=(byte)(x*47+y*173); pixels[i*4+3]=255; }
+        using var patternImage = Image.CreateFromData(2048,2048,false,Image.Format.Rgba8,pixels);
+        using var pattern = ImageTexture.CreateFromImage(patternImage);
+        using var land = new MeshLayerDisposable();
+        MeshLayer layer = land.Layer;
+        layer.Count = 1;
+        layer.WriteQuadAt(0, colored, new Rectangle(0,0,1,1), 0,0, new Vector3(0,5,1),0);
+        MeshQuad q = layer.Vertices[0];
+        q.Position0 = new Vector2(0,0); q.Position1 = new Vector2(8,1);
+        q.Position2 = new Vector2(1,7); q.Position3 = new Vector2(8,8);
+        q.Normal0 = new Vector3(0,1,1); q.Normal1 = new Vector3(0,-1,1);
+        q.Normal2 = new Vector3(1,0,0.2f); q.Normal3 = new Vector3(0,0,1);
+        layer.Vertices[0] = q;
+        layer.SetVisible(0,137); layer.BuildVisibleIndices();
+        batcher.HueTexture = batcher.LightTexture = palette;
+        try
+        {
+            async Task<byte[]> Render(bool rd, int mode, bool slope = false, bool unsupported = false, bool empty = false, bool fractional = false, bool present = true)
+            {
+                OrderedWorldCapture.Enabled = rd;
+                batcher.BeginFrame();
+                batcher.Begin(mode==99 ? new Transform2D(new Vector2(0.5f,0),new Vector2(0,0.5f),Vector2.Zero)
+                    : fractional ? new Transform2D(new Vector2(0.75f,0),new Vector2(0,0.75f),new Vector2(0.375f,0.625f)) : Transform2D.Identity);
+                batcher.SetBrightlight(0.3f);
+                batcher.SetCircleOfTransparencyRadius(mode == 128 ? 4 : 0);
+                batcher.CircleOfTransparencyCenter = new Vector2(4,4);
+                // The live WorldRenderTarget clears opaque black; this probe's default clear is grey.
+                batcher.Draw(black,new Rectangle(-16384,-16384,32768,32768),new Rectangle(0,0,1,1),new Vector3(0,0,1),0);
+                batcher.BeginOrderedWorld(true, viewport.Size);
+                if (!empty)
+                {
+                    batcher.Draw(background, new Rectangle(-4,-4,24,24), new Rectangle(0,0,1,1), new Vector3(0,0,1), 0);
+                    if (mode == 99)
+                        batcher.Draw(pattern,new Rectangle(1,3,101,133),new Rectangle(1117,139,101,133),new Vector3(0,0,1),0);
+                    else if (slope)
+                    {
+                        batcher.CaptureOrderedLand(layer);
+                        batcher.DrawMeshLayer(layer);
+                    }
+                    else
+                    {
+                        batcher.Draw(mode == 0 ? black : gray, new Rectangle(0,0,7,8), new Rectangle(0,0,1,1),
+                            new Vector3(33, mode == 128 ? 0 : mode, mode == 128 ? 2 : 64 / 255f), 0);
+                        batcher.Draw(black, new Rectangle(2,1,6,7), new Rectangle(0,0,1,1), new Vector3(0,0,64 / 255f), 0);
+                    }
+                    if (unsupported)
+                    {
+                        batcher.ClipBegin(1,1,4,4);
+                        batcher.Draw(colored,new Rectangle(0,0,8,8),new Rectangle(0,0,1,1),new Vector3(0,0,1), 0);
+                        batcher.ClipEnd();
+                    }
+                }
+                batcher.EndOrderedWorld();
+                batcher.End();
+                // Synchronously build the next frame without yielding to native FramePreDraw.
+                if (!present) return Array.Empty<byte>();
+                await ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
+                using Image image = viewport.GetTexture().GetImage();
+                return image.GetData();
+            }
+            async Task Parity(string label,int mode,bool slope=false,bool unsupported=false,bool empty=false,bool fractional=false)
+            {
+                byte[] reference = await Render(false,mode,slope,unsupported,empty,fractional);
+                long before = OrderedWorldCapture.FramesDrawn;
+                byte[] actual = await Render(true,mode,slope,unsupported,empty,fractional);
+                int differences = 0;
+                for(int i=0;i<reference.Length;i++) if(reference[i]!=actual[i]) differences++;
+                CheckThat(label,differences==0,$"{differences} differing channels; fallback={OrderedWorldCapture.LastFallback}");
+                bool expectFallback = unsupported || OrderedWorldCapture.InjectFailure != 0;
+                CheckThat(label+" backend",expectFallback ? OrderedWorldCapture.FramesDrawn==before : OrderedWorldCapture.FramesDrawn==before+1,
+                    $"RD delta={OrderedWorldCapture.FramesDrawn-before}, fallback={OrderedWorldCapture.LastFallback}");
+            }
+            foreach(int mode in new[]{0,1,2,3,4,7,8,9,10,20,21,22,128}) await Parity("RD mode "+mode,mode);
+            await Parity("RD slopes and alpha",0,slope:true);
+            layer.SetVisible(0,128); // Marks the layer dirty; then exercise exact 0.5, not 128/255.
+            layer.Vertices[0].Hue0.Z = layer.Vertices[0].Hue1.Z = layer.Vertices[0].Hue2.Z = layer.Vertices[0].Hue3.Z = 0.5f;
+            layer.BuildVisibleIndices();
+            await Parity("RD exact half-alpha mesh quantization",0,slope:true);
+            await Parity("RD fractional camera",1,fractional:true);
+            await Parity("RD nearest texture at half scale",99);
+            viewport.Size=new Vector2I(2560,1440);
+            await Parity("RD atlas at full target half scale",99);
+            viewport.Size=new Vector2I(8,8);
+            await Parity("RD whole-frame unsupported clip rollback",0,unsupported:true);
+            OrderedWorldCapture.InjectFailure=1;
+            await Parity("RD rollback before upload",0);
+            OrderedWorldCapture.InjectFailure=2;
+            await Parity("RD rollback after recorded pass",0);
+            OrderedWorldCapture.InjectFailure=0;
+            await Parity("RD recovery uses current frame",2);
+            await Parity("RD empty world",0,empty:true);
+            viewport.Size=new Vector2I(16,12);
+            await Parity("RD resize",1);
+            viewport.Size=new Vector2I(8,8);
+            await Parity("RD resize back",2);
+            foreach (bool resumeRd in new[] { false, true })
+            {
+                byte[] reference = await Render(false, 1);
+                long before = OrderedWorldCapture.FramesDrawn;
+                await Render(true, 4, present:false);
+                byte[] actual = await Render(resumeRd, 1);
+                int differences = 0;
+                for (int i = 0; i < reference.Length; i++) if (reference[i] != actual[i]) differences++;
+                string label = "RD skipped pre-draw resumes " + (resumeRd ? "RD" : "canvas");
+                CheckThat(label, differences == 0, $"{differences} differing channels after pool reuse");
+                CheckThat(label + " backend", OrderedWorldCapture.FramesDrawn == before + (resumeRd ? 1 : 0),
+                    $"RD delta={OrderedWorldCapture.FramesDrawn-before}; stale ticket must never submit");
+            }
+        }
+        finally { OrderedWorldCapture.Enabled=old; OrderedWorldCapture.InjectFailure=0; }
+    }
+
+    private sealed class MeshLayerDisposable : IDisposable
+    {
+        internal readonly MeshLayer Layer = new();
+        public void Dispose() => Layer.Dispose();
+    }
+}
+#endif

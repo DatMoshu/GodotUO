@@ -1159,6 +1159,10 @@ namespace GUO.Game.Scenes
 #endif
             DrawUnderlays(batcher);
 
+#if GUO_LABS
+            // PORT DEVIATION (GUO): ADR-0043, complete-world experimental backend.
+            batcher.BeginOrderedWorld(_splatObjects.Count == 0 && (_terrainLayers == null || _terrainLayers.Count == 0));
+#endif
             RenderedObjectsCount = _renderLists.DrawRenderLists(
                 batcher,
                 _maxGroundZ,
@@ -1167,6 +1171,9 @@ namespace GUO.Game.Scenes
                 _offset.Y
             );
 
+#if GUO_LABS
+            batcher.EndOrderedWorld();
+#endif
             RedrawWorldOnCanvas(batcher); // PORT DEVIATION (GUO): --gpu-world (GPU-03)
 
             if (

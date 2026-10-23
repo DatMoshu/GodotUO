@@ -2073,6 +2073,13 @@ public partial class Main : Node
                     case "--merged-land=off":
                         MergedLandMode(false, false, false);
                         break;
+#if GUO_LABS
+                    case "--rd-world":
+                        GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled = true;
+                        GUO.Host.PerfProbe.ParityToggle = on => GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled = on;
+                        GUO.Host.PerfProbe.ParityState = () => GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled;
+                        break;
+#endif
                     case "--gpu-world":
                     case "--gpu-world=on":
                         // ADR-0007 amendment: the world's statics as instances of

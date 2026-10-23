@@ -546,6 +546,10 @@ namespace GUO.Game.Scenes
 
             // Draw chunk mesh land tiles from GPU buffers with per-frame visibility
             batcher.SetWorldOffset(offsetX, offsetY);
+#if GUO_LABS
+            // ADR-0043: keep the original order and a complete canvas rollback.
+            foreach (var chunk in visibleChunks) batcher.CaptureOrderedLand(chunk.Mesh.Land);
+#endif
             // PORT DEVIATION (GUO): --merged-land (Epic B, B4) draws every
             // visible chunk's land as one mesh per texture; see MergedLand.
             if (MergedLand.Enabled)

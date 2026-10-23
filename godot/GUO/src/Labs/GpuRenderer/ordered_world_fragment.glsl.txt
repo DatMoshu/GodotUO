@@ -1,0 +1,108 @@
+// SPDX-License-Identifier: BSD-2-Clause
+#version 450
+// GUO L4 adapter of GUO's uo_hue_core.gdshaderinc, itself ported from
+// ClassicUO IsometricWorld.fx (BSD-2-Clause). Preserve upstream provenance
+// and headers when incorporating into production. Classic mode only.
+layout(set = 1, binding = 0) uniform sampler2D art_texture;
+layout(set = 1, binding = 1) uniform sampler2D hue_texture;
+layout(set = 1, binding = 2) uniform sampler2D light_texture;
+layout(push_constant, std430) uniform Frame {
+    vec4 row0;
+    vec4 row1;
+    vec4 screen;
+    uvec4 draw;
+} pc;
+layout(location = 0) in vec2 uv;
+layout(location = 1) in vec4 packed_hue;
+layout(location = 2) in vec3 land_normal;
+layout(location = 0) out vec4 out_color;
+
+const int NONE = 0;
+const int HUED = 1;
+const int PARTIAL_HUED = 2;
+const int HUE_TEXT_NO_BLACK = 3;
+const int HUE_TEXT = 4;
+const int LAND = 5;
+const int LAND_COLOR = 6;
+const int SPECTRAL = 7;
+const int SHADOW = 8;
+const int LIGHTS = 9;
+const int EFFECT_HUED = 10;
+const int GUMP = 20;
+const float HUE_ROWS = 1024.0;
+const float HUE_COLUMNS = 16.0;
+const float HUE_WIDTH = 32.0;
+const float HUES_PER_TEXTURE = HUE_ROWS * HUE_COLUMNS;
+
+vec3 get_rgb(float gray, float hue) {
+    float half_pixel_x = (1.0 / (HUE_COLUMNS * HUE_WIDTH)) * 0.5;
+    float hue_column_width = 1.0 / HUE_COLUMNS;
+    float hue_start = fract(hue / HUE_COLUMNS);
+    float x_pos = hue_start + gray / HUE_COLUMNS;
+    x_pos = clamp(x_pos, hue_start + half_pixel_x,
+        hue_start + hue_column_width - half_pixel_x);
+    float y_pos = mod(hue, HUES_PER_TEXTURE) / (HUES_PER_TEXTURE - 1.0);
+    return texture(hue_texture, vec2(x_pos, y_pos)).rgb;
+}
+
+float get_light() {
+    vec3 light = normalize(vec3(0.0, 1.0, 1.0));
+    vec3 normal = normalize(land_normal);
+    float base = (max(dot(normal, light), 0.0) / 2.0) + 0.5;
+    float brightlight = pc.row0.w;
+    return base + ((brightlight * (base - 0.85355339)) - (base - 0.85355339));
+}
+
+void main() {
+    vec4 color = texture(art_texture, uv);
+    if (color.a == 0.0) discard;
+    float hue = floor(packed_hue.r * 255.0 + 0.5) * 256.0
+        + floor(packed_hue.g * 255.0 + 0.5);
+    int raw_mode = int(floor(packed_hue.b * 255.0 + 0.5));
+    float alpha = packed_hue.a;
+    bool use_trans = (raw_mode & 0x80) != 0;
+    int mode = raw_mode & 0x3F;
+    // CPU rejects styled water, unsupported modes and non-premultiplied states
+    // for the WHOLE frame before this shader is used. No silent shader fallback.
+    if (alpha == 0.0) discard;
+    if (mode >= GUMP) {
+        mode -= GUMP;
+        if (color.r < 0.02) hue = 0.0;
+    }
+    if (mode == HUED || (mode == PARTIAL_HUED && color.r == color.g && color.r == color.b)) {
+        color.rgb = get_rgb(color.r, hue);
+    } else if (mode == HUE_TEXT_NO_BLACK) {
+        if (color.r > 0.04 || color.g > 0.04 || color.b > 0.04) color.rgb = get_rgb(1.0, hue);
+    } else if (mode == HUE_TEXT) {
+        color.rgb = get_rgb(1.0, hue);
+    } else if (mode == LAND) {
+        color.rgb *= get_light();
+    } else if (mode == LAND_COLOR) {
+        color.rgb = get_rgb(color.r, hue) * get_light();
+    } else if (mode == SPECTRAL) {
+        alpha = 1.0 - (color.r * 1.5);
+        color.rgb = vec3(0.0);
+    } else if (mode == SHADOW) {
+        alpha = 0.4;
+        color.rgb = vec3(0.0);
+    } else if (mode == LIGHTS) {
+        color.rgb = texture(light_texture, vec2(color.r, ((hue - 1.0) - 0.5) / 63.0)).rgb;
+    } else if (mode == EFFECT_HUED) {
+        color.rgb = get_rgb(color.g, hue);
+    }
+    float radius = pc.row1.w;
+    if (use_trans && radius > 0.0) {
+        // Match SCREEN_UV * (1 / SCREEN_PIXEL_SIZE) evaluation before comparing;
+        // direct gl_FragCoord is mathematically equal but can round differently.
+        vec2 screen_pixel_size = 1.0 / pc.screen.xy;
+        vec2 screen_uv = gl_FragCoord.xy * screen_pixel_size;
+        float ratio = length(screen_uv * (1.0 / screen_pixel_size) - pc.screen.zw) / radius;
+        if (ratio < 0.85) discard;
+        if (ratio < 1.0) {
+            float t = (ratio - 0.85) / 0.15;
+            alpha *= t * t * t;
+            if (alpha < 0.02) discard;
+        }
+    }
+    out_color = color * alpha;
+}
