@@ -550,10 +550,7 @@ namespace GUO.Game.Scenes
             // visible chunk's land as one mesh per texture; see MergedLand.
             if (MergedLand.Enabled)
             {
-                _mergedLayers.Clear();
-                foreach (var chunk in visibleChunks)
-                    _mergedLayers.Add(chunk.Mesh.Land);
-                result += _mergedLand.Draw(batcher, _mergedLayers);
+                result += (_mergedLand ??= new CachedLand()).Draw(batcher, visibleChunks);
             }
             else
             foreach (var chunk in visibleChunks)
@@ -967,8 +964,15 @@ namespace GUO.Game.Scenes
         }
 
         private int _meshOffsetX, _meshOffsetY;
-        private readonly MergedLand _mergedLand = new MergedLand(); // PORT DEVIATION (GUO): --merged-land
-        private readonly List<MeshLayer> _mergedLayers = new List<MeshLayer>(); // PORT DEVIATION (GUO): --merged-land
+        // PORT DEVIATION (GUO): UI controls also create RenderLists per draw;
+        // allocate the persistent terrain cache only for the actual world pass.
+        private CachedLand _mergedLand;
+
+        internal void ReleaseTerrain()
+        {
+            _mergedLand?.Dispose(); // PORT DEVIATION (GUO): scene-owned mesh lifetime
+            _mergedLand = null;
+        }
 
         private static int DrawRenderList(UltimaBatcher2D batcher, List<GameObject> renderList, sbyte maxGroundZ)
         {

@@ -124,6 +124,9 @@ public partial class BatcherProbe : Node
         await VerifyLandLight(batcher, viewport);
         Stage("land light");
 
+        await VerifyMergedLand(batcher, viewport);
+        Stage("persistent ordered terrain");
+
         await VerifyUiTransform(batcher, viewport, ramp);
         Stage("gump transform and clipping");
 

@@ -306,6 +306,8 @@ namespace GUO.Game.Scenes
                 return;
             }
 
+            _renderLists.ReleaseTerrain(); // PORT DEVIATION (GUO): release cached terrain meshes with their scene.
+
             ProfileManager.CurrentProfile.GameWindowPosition = new Point(
                 Camera.Bounds.X,
                 Camera.Bounds.Y

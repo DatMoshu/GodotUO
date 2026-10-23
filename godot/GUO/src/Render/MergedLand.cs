@@ -32,7 +32,7 @@ namespace GUO.Renderer
     /// texture.</item>
     /// </list>
     /// </remarks>
-    internal sealed class MergedLand
+    internal sealed class MergedLand : System.IDisposable
     {
         public static bool Enabled;
         public static bool Ordered;
@@ -51,6 +51,8 @@ namespace GUO.Renderer
         private readonly List<(Texture2D Texture, List<(MeshLayer Layer, int Index)> Sprites)> _segments = new();
         private readonly List<ArrayMesh> _meshes = new();
         private bool _keyOrdered;
+        private bool _keyArray;
+        private int _pageGeneration = -1;
         private int _sprites;
 
         public int Rebuilds { get; private set; }
@@ -61,6 +63,16 @@ namespace GUO.Renderer
         /// <summary>Draws the land of these layers; returns how many sprites, as DrawMeshLayer does.</summary>
         public int Draw(UltimaBatcher2D batcher, List<MeshLayer> layers)
         {
+            Prepare(layers);
+            if (_arrayBuilt)
+                LandPages.Sync();
+            return DrawPrepared(batcher);
+        }
+
+        // Complete preparation before synchronizing the atlas and drawing.
+        // Registering a new page can grow the array.
+        internal void Prepare(List<MeshLayer> layers)
+        {
             _now.Clear();
             foreach (MeshLayer layer in layers)
             {
@@ -70,24 +82,25 @@ namespace GUO.Renderer
                 }
             }
 
-            if (Array)
-            {
-                LandPages.Sync();
-            }
-
-            if (!Same() || _keyOrdered != Ordered)
+            if (!Same() || _keyOrdered != Ordered || _keyArray != Array
+                || (Array && _pageGeneration != LandPages.Generation))
             {
                 Rebuild();
                 _key.Clear();
                 _key.AddRange(_now);
                 _keyOrdered = Ordered;
+                _keyArray = Array;
+                _pageGeneration = LandPages.Generation;
             }
+        }
 
+        internal int DrawPrepared(UltimaBatcher2D batcher)
+        {
             if (_arrayBuilt)
             {
-                LandPages.Sync();
-                batcher.DrawLandArrayMesh(_meshes[0], LandPages.Array);
-                LastSegments = 1;
+                if (_sprites > 0)
+                    batcher.DrawLandArrayMesh(_meshes[0], LandPages.Array);
+                LastSegments = _sprites > 0 ? 1 : 0;
                 return _sprites;
             }
 
@@ -143,7 +156,7 @@ namespace GUO.Renderer
                     }
 
                     _sprites++;
-                    if (Ordered)
+                    if (Ordered || Array)
                     {
                         if (_segments.Count == 0 || !ReferenceEquals(_segments[^1].Texture, t))
                         {
@@ -233,6 +246,8 @@ namespace GUO.Renderer
             }
 
             _sprites = sprites.Count;
+            if (_sprites == 0)
+                return true;
             int v = sprites.Count * 6;
             var points = new Vector2[v];
             var uvs = new Vector2[v];
@@ -267,6 +282,19 @@ namespace GUO.Renderer
             mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays, null, null,
                 (Mesh.ArrayFormat)((ulong)Mesh.ArrayCustomFormat.RgbaFloat << (int)Mesh.ArrayFormat.FormatCustom0Shift));
             return true;
+        }
+
+        public void Dispose()
+        {
+            foreach (ArrayMesh mesh in _meshes)
+                mesh.Dispose();
+            _meshes.Clear();
+            _segments.Clear();
+            _key.Clear();
+            _now.Clear();
+            _sprites = 0;
+            _arrayBuilt = false;
+            _pageGeneration = -1;
         }
 
         internal static void Put(Vector2[] p, Vector2[] uv, Color[] c, float[] custom, int at, Vector2 position, Vector2 texture,

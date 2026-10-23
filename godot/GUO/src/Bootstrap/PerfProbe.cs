@@ -393,6 +393,8 @@ internal static class PerfProbe
         double calls = 0, items = 0, switches = 0, commands = 0, prepare = 0, world = 0, cpu = 0, gpu = 0, objects = 0;
         int uploadsBefore = LandPages.Uploads, uploadsMax = 0, uploadFrames = 0, uploadsLast = LandPages.Uploads;
         int rebuildsBefore = LandPages.Rebuilds, bumpsBefore = LandPages.Bumps;
+        long terrainRebuildsBefore = CachedLand.TotalRebuilds;
+        long terrainSpritesBefore = CachedLand.TotalRebuiltSprites;
         int landOntoBefore = GUO.Renderer.Arts.Art.LandOntoLandLayer, staticOntoBefore = GUO.Renderer.Arts.Art.StaticOntoLandLayer;
         // An upload lands in the frame after the one that drew it: its cost is
         // in the next frame's time. Kept apart, since a p99 over thousands of
@@ -500,6 +502,8 @@ internal static class PerfProbe
             ["render_cpu_ms"] = System.Math.Round(cpu / n, 3),
             ["render_gpu_ms"] = System.Math.Round(gpu / n, 3),
             ["alloc_kb_per_frame"] = System.Math.Round(allocatedKb, 1),
+            ["terrain_dirty_chunks_per_frame"] = System.Math.Round((double)(CachedLand.TotalRebuilds - terrainRebuildsBefore) / n, 3),
+            ["terrain_rebuilt_sprites_per_frame"] = System.Math.Round((double)(CachedLand.TotalRebuiltSprites - terrainSpritesBefore) / n, 1),
             ["cmd_rects"] = System.Math.Round(kRect / n, 1),
             ["cmd_affine_rects"] = System.Math.Round(kAffine / n, 1),
             ["cmd_meshes"] = System.Math.Round(kMesh / n, 1),

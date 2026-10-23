@@ -41,6 +41,8 @@ namespace GUO.Renderer
         private const int MinCapacity = 4;
 
         public static Texture2DArray Array { get; private set; }
+        // Page contents keep their indices; Reset starts a new index space.
+        internal static int Generation { get; private set; }
 
         /// <summary>A page was added since the last <see cref="Sync"/>.</summary>
         public static bool Dirty => _rebuild;
@@ -155,6 +157,7 @@ namespace GUO.Renderer
         /// </summary>
         public static void Reset()
         {
+            Generation++;
             _layers.Clear();
             _versions.Clear();
             _index.Clear();

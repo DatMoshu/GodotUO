@@ -108,6 +108,7 @@ namespace GUO.Renderer
         // an ArrayMesh cannot be edited in place, so a rebuild clears its
         // surfaces and adds a new one, which is cheaper than a new resource.
         private ArrayMesh[] _runMeshes = new ArrayMesh[16];
+        private int _runMeshStamp = -1;
 
         // Scratch for a rebuild, grown to the largest run seen. Six vertices
         // per sprite: the quad's two triangles, written out, because the canvas
@@ -350,7 +351,9 @@ namespace GUO.Renderer
 
             CloseRun(curTexture, runStart);
 
-            BuildRunMeshes();
+            // PORT DEVIATION (GUO): merged terrain consumes the visible
+            // quads directly. Build run meshes only if a caller draws them.
+            BuildStamp++;
 
             return VisibleSpriteCount > 0;
         }
@@ -387,7 +390,7 @@ namespace GUO.Renderer
         /// </remarks>
         private void BuildRunMeshes()
         {
-            BuildStamp++;
+            _runMeshStamp = BuildStamp;
             // Walk the visible sprites in the same order the runs were closed
             // in: runs are contiguous stretches of the visible subset, so run
             // N's sprites are simply the next r.Count of them.
@@ -588,7 +591,12 @@ namespace GUO.Renderer
         /// <summary>
         /// Returns the mesh for a visible run, for the batcher to draw.
         /// </summary>
-        public ArrayMesh GetRunMesh(int run) => _runMeshes[run];
+        public ArrayMesh GetRunMesh(int run)
+        {
+            if (_runMeshStamp != BuildStamp)
+                BuildRunMeshes();
+            return _runMeshes[run];
+        }
 
         /// <remarks>
         /// PORT DEVIATION (GUO): upstream frees its vertex buffer here. The
@@ -600,6 +608,7 @@ namespace GUO.Renderer
         /// </remarks>
         public void Dispose()
         {
+            _runMeshStamp = -1;
             for (int i = 0; i < _runMeshes.Length; i++)
             {
                 _runMeshes[i]?.Dispose();
