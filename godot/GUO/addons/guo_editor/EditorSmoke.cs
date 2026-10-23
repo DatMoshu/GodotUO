@@ -243,6 +243,7 @@ public partial class EditorSmoke : Node
                     CheckGumpStudio();
                     CheckAssetFields();
                     CheckGridRefreshWork();
+                    CheckSearchIndexWork();
                     if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-gump-studio-only") >= 0)
                     {
                         if (!Headless && Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-gump-studio-visual") >= 0 && _failures.Count == 0)
