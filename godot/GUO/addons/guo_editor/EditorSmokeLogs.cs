@@ -113,6 +113,7 @@ public partial class EditorSmoke
         }
 
         Directory.CreateDirectory(dir);
+        await CheckLogIdleWorkAsync(dir);
 
         // The real dock first: it exists, is in the tree and found its sources by itself.
         LogsCheck("dock_in_tree", Logs.IsInsideTree() && Logs.Panel != null);
@@ -236,7 +237,7 @@ public partial class EditorSmoke
         string utcLog = Path.Combine(dir, "client.log");
         File.WriteAllText(utcLog, "2026-10-02 12:00:00 | Info | connected\nno stamp here\n");
         LogView utc = panel.AddSource("utc", "utc", new LogTailer(utcLog) { PollMilliseconds = 50 }, utc: true);
-        LogsCheck("utc_local_time", await LogWait(() => utc.BufferCount >= 2) && utc.Lines.First().Text.Contains(" local] 2026-10-02 12:00:00", StringComparison.Ordinal) && utc.Lines.Last().Text == "no stamp here" && utc.StatusText.Contains("UTC", StringComparison.Ordinal), utc.Lines.FirstOrDefault()?.Text);
+        LogsCheck("utc_local_time", await LogWait(() => utc.BufferCount >= 2) && utc.Lines.First().Text.Contains(" local] 2026-10-02 12:00:00", StringComparison.Ordinal) && utc.Lines.Last().Text == "no stamp here" && utc.StatusText.Contains("UTC", StringComparison.Ordinal), utc.Lines.FirstOrDefault().Text);
 
         // --- the user's extra files are remembered -----------------------------------------------------------------
         string extra = Path.Combine(dir, "extra.log");
@@ -261,6 +262,110 @@ public partial class EditorSmoke
         LogsCheck("tailers_started", during > baseline, $"{during} live, baseline {baseline}");
         LogsCheck("disposed_cleanly", LogTailer.Live == baseline && tailers.All(t => !t.Running), $"{LogTailer.Live} live, baseline {baseline}");
         _logsReport["views"] = string.Join(",", Logs.Panel?.Views.Keys ?? Enumerable.Empty<string>());
+    }
+
+    private async Task CheckLogIdleWorkAsync(string dir)
+    {
+        string file = Path.Combine(dir, "idle-work.log");
+        File.WriteAllText(file, "");
+        var view = new LogView();
+        AddChild(view);
+        view.SetProcess(false);
+        var tailer = new LogTailer(file) { PollMilliseconds = 50 };
+        view.Attach(tailer);
+        try
+        {
+            LogsCheck("idle_tailer_ready", await LogWait(() => tailer.State == "following"));
+            view.SetCap(200000);
+            view.SetFilter("not present in fixture");
+            foreach (int count in new[] { 0, 5000, 200000 })
+            {
+                view.ClearView();
+                for (int i = 0; i < count; i++)
+                {
+                    tailer.Queue.Enqueue(new TailItem(false, "synthetic idle line"));
+                    if ((i + 1) % 3000 == 0) view.Pump();
+                }
+                view.Pump();
+                LogsCheck($"idle_buffer_{count}", view.BufferCount == count && view.ShownCount == 0);
+                foreach (bool visible in new[] { true, false })
+                {
+                    view.Visible = visible;
+                    for (int i = 0; i < 10; i++) view.Pump();
+                    string status = view.StatusText;
+                    long allocated = GC.GetAllocatedBytesForCurrentThread();
+                    long start = Stopwatch.GetTimestamp();
+                    for (int i = 0; i < 120; i++) view.Pump();
+                    double ms = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+                    long bytes = GC.GetAllocatedBytesForCurrentThread() - allocated;
+                    string key = $"idle_{count}_{(visible ? "visible" : "hidden")}";
+                    _logsReport[key + "_120_pumps_ms"] = ms;
+                    _logsReport[key + "_120_pumps_bytes"] = bytes;
+                    LogsCheck(key + "_no_idle_allocations", bytes == 0, $"{bytes} bytes");
+                    LogsCheck(key + "_stable", view.StatusText == status && view.BufferCount == count
+                        && view.ShownCount == view.Lines.Count(l => l.Shown));
+                }
+            }
+
+            // Mixed retained/filtered lines and notices exercise every count mutation.
+            view.ClearView();
+            view.SetFilter("");
+            view.SetCap(100);
+            for (int i = 0; i < 150; i++)
+                tailer.Queue.Enqueue(new TailItem(i % 11 == 0, i % 2 == 0 ? "ERROR: match" : "plain"));
+            view.Pump();
+            void CheckCount(string name)
+            {
+                view.Pump();
+                LogsCheck(name, view.ShownCount == view.Lines.Count(l => l.Shown)
+                    && view.StatusText.Contains($"{view.ShownCount}/{view.BufferCount} lines", StringComparison.Ordinal));
+            }
+            CheckCount("count_after_trim");
+            LogLine original = view.Lines.First();
+            LogLine changedCopy = original with { Shown = !original.Shown, Text = "changed copy" };
+            LogsCheck("lines_value_copy_isolated", changedCopy != original && view.Lines.First() == original);
+            LogsCheck("lines_hide_mutable_list", view.Lines is not List<LogLine>);
+            var readOnly = (IList<LogLine>)view.Lines;
+            bool replaceRejected = false, clearRejected = false, addRejected = false, removeRejected = false;
+            try { readOnly[0] = changedCopy; } catch (NotSupportedException) { replaceRejected = true; }
+            try { readOnly.Clear(); } catch (NotSupportedException) { clearRejected = true; }
+            try { readOnly.Add(changedCopy); } catch (NotSupportedException) { addRejected = true; }
+            try { readOnly.RemoveAt(0); } catch (NotSupportedException) { removeRejected = true; }
+            LogsCheck("lines_mutation_rejected", readOnly.IsReadOnly && replaceRejected && clearRejected
+                && addRejected && removeRejected && view.Lines.First() == original && view.BufferCount == 100);
+            CheckCount("count_after_rejected_mutation");
+            view.SetFilter("match"); CheckCount("count_after_filter");
+            view.SetMinLevel(LogLevel.Error); CheckCount("count_after_level");
+            view.SetCap(200);
+            for (int i = 0; i < 50; i++) tailer.Queue.Enqueue(new TailItem(false, "plain"));
+            CheckCount("count_after_filtered_append");
+            view.SetCap(100); CheckCount("count_after_cap_change");
+            view.SetFind("match"); CheckCount("count_after_find");
+            view.SetPaused(true);
+            tailer.Queue.Enqueue(new TailItem(false, "ERROR: match"));
+            view.Pump();
+            LogsCheck("idle_pause_status", view.StatusText.Contains("paused, 1 waiting", StringComparison.Ordinal));
+            tailer.Queue.Enqueue(new TailItem(false, "plain"));
+            view.Pump();
+            LogsCheck("idle_pause_queue_change", view.StatusText.Contains("paused, 2 waiting", StringComparison.Ordinal));
+            view.Note = "synthetic note";
+            view.Utc = true;
+            view.Pump();
+            LogsCheck("idle_metadata_status", view.StatusText.Contains("synthetic note", StringComparison.Ordinal)
+                && view.StatusText.Contains("UTC", StringComparison.Ordinal));
+            view.SetPaused(false); CheckCount("count_after_resume");
+            view.ClearView(); CheckCount("count_after_clear");
+            LogsCheck("lines_readonly_view_stays_live", readOnly.Count == 0);
+            RemoveChild(view);
+            LogsCheck("idle_exit_stops_tailer", !tailer.Running);
+            AddChild(view);
+            CheckCount("count_after_reparent");
+        }
+        finally
+        {
+            view.Release();
+            view.Free();
+        }
     }
 
     private static bool ProcessGone(int pid)
