@@ -776,6 +776,9 @@ namespace GUO.Game.Map
             vertex.Hue0 = vertex.Hue1 = vertex.Hue2 = vertex.Hue3 = hue;
 
             Land.Textures[index] = texture;
+            // PORT DEVIATION (GUO): notify the optional resident-record cache
+            // after this direct stretched-quad write (ADR-0043).
+            Land.InvalidateQuadRecord(index);
         }
 
         #endregion

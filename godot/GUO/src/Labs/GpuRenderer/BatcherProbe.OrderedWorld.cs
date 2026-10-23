@@ -257,6 +257,7 @@ public partial class BatcherProbe
             viewport.Size = new Vector2I(8,8);
             await VerifyOrderedStates(batcher, viewport, palette);
         await VerifyOrderedTextures(batcher, viewport, palette);
+            await VerifyOrderedRecords(batcher, viewport, palette);
         }
         finally { OrderedWorldCapture.Enabled=old; OrderedWorldCapture.InjectFailure=0; }
     }

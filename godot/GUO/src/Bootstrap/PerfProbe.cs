@@ -432,6 +432,9 @@ internal static class PerfProbe
         long rdOccurrencesBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.Occurrences;
         long rdUploadsBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.UploadCalls;
         long rdDirtyBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.DirtyQuads;
+        long rdRecordHitsBefore = GUO.Labs.GpuRenderer.OrderedWorldRecords.Hits;
+        long rdRecordsPackedBefore = GUO.Labs.GpuRenderer.OrderedWorldRecords.Packed;
+        long rdRecordChecksBefore = GUO.Labs.GpuRenderer.OrderedWorldRecords.DirtyChecks;
         long rdGrowthBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.BufferGrowths;
         long rdEvictionsBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.CacheEvictions;
 #endif
@@ -553,6 +556,9 @@ internal static class PerfProbe
             ["rd_state_capacity_bytes"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.StateCapacityBytes,
             ["rd_upload_calls_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.UploadCalls - rdUploadsBefore) / n, 3),
             ["rd_dirty_quads_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.DirtyQuads - rdDirtyBefore) / n, 1),
+            ["rd_source_record_hits_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldRecords.Hits - rdRecordHitsBefore) / n, 1),
+            ["rd_source_records_packed_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldRecords.Packed - rdRecordsPackedBefore) / n, 1),
+            ["rd_source_dirty_checks_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldRecords.DirtyChecks - rdRecordChecksBefore) / n, 1),
             ["rd_cached_quads"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.CachedQuads,
             ["rd_peak_cached_quads"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.PeakCachedQuads,
             ["rd_buffer_growths"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.BufferGrowths - rdGrowthBefore,

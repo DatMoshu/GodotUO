@@ -285,12 +285,12 @@ internal sealed class OrderedWorldDevice
         BufferGrowths++;
     }
 
-    private void UploadResidentRT(ReadOnlySpan<Vertex> vertices, ReadOnlySpan<State> states)
+    private void UploadResidentRT(ReadOnlySpan<Vertex> vertices, ReadOnlySpan<State> states, ReadOnlySpan<ulong> recordIds)
     {
         long evictions = _resident.Evictions;
         try
         {
-            _resident.Prepare(vertices);
+            _resident.Prepare(vertices, recordIds);
             CachedQuads = _resident.Count;
             PeakCachedQuads = Math.Max(PeakCachedQuads, CachedQuads);
             if (_resident.Order.Length != states.Length) throw new InvalidOperationException("State/order length mismatch.");
@@ -390,7 +390,7 @@ internal sealed class OrderedWorldDevice
     // opaqueBackdrop=true for ALL world content; false is diagnostic sorted-only
     // compositing and is not generally byte-exact for translucent pixels.
     public void RenderRT(ReadOnlySpan<Vertex> vertices, ReadOnlySpan<State> states, ReadOnlySpan<Segment> segments, int textureRuns,
-        in Push frame, bool opaqueBackdrop)
+        in Push frame, bool opaqueBackdrop, ReadOnlySpan<ulong> recordIds = default)
     {
         if (frame.Screen.X != Size.X || frame.Screen.Y != Size.Y)
             throw new InvalidOperationException("Stale target dimensions.");
@@ -415,7 +415,7 @@ internal sealed class OrderedWorldDevice
         if (vertices.Length % 4 != 0 || next / 6 * 4 != (uint)vertices.Length) throw new InvalidOperationException("Incomplete command stream.");
         if (!vertices.IsEmpty)
         {
-            UploadResidentRT(vertices, states);
+            UploadResidentRT(vertices, states, recordIds);
         }
         else
         {

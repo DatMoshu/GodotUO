@@ -35,6 +35,13 @@ code is included in exports. See ADR-0043 and the feature README for the doctor.
    must fail equality. Confirm the 16-byte transport / 48-byte vertex ABI.
    Repeat mesh fallback and half-alpha pixel controls so reusing encoded colors
    cannot accidentally quantize the original replay colors twice.
+   Source-record controls require per-index invalidation, visibility-only reuse,
+   zero packing/upload for unchanged draws and a reset/restored fade, static and
+   covering-land pixel identity, current hue/circle/normal changes, exact camera
+   subtraction, two revisions of one source in a frame, pooled reuse, and early
+   and late canvas replay. ID-based residency must avoid vertex comparisons on
+   unchanged/reordered source streams and coexist with dynamic content slots.
+   `--rd-content-cache` under `--rd-world` disables source reuse for diagnostics.
 2. Use the authorized GM account and scratch profile to run `tools/perf_probe`
    with `--as-built`, `--perf-profile plain --perf-static-world --perf-parity
    --rd-world`, matching size and zoom. Measure bank, forest, dungeon and docks.

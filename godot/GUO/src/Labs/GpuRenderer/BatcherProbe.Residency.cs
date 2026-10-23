@@ -56,6 +56,29 @@ public partial class BatcherProbe
         CheckThat("resident cap refuses overwriting current ticket",exhausted,"over-capacity frame accepted");
         Prepare(d,a);
         CheckThat("resident bounded cache recovers after capacity refusal",cache.Count==3 && cache.Slots[(int)cache.Order[0]].Equals(d) && cache.Slots[(int)cache.Order[1]].Equals(a),"cache did not recover");
+
+        cache = new OrderedWorldResidency(3);
+        void Records(ulong[] ids, params OrderedWorldResidency.Quad[] quads) =>
+            cache.Prepare(MemoryMarshal.Cast<OrderedWorldResidency.Quad, OrderedWorldDevice.Vertex>(quads.AsSpan()), ids);
+        Records(new ulong[] { 1, 2, 1 }, a,b,a);
+        CheckThat("source records preserve repeated occurrences", cache.Count == 2 && cache.Order[0] == cache.Order[2] && Apply() == 2, "two immutable IDs");
+        long comparisons = cache.ContentComparisons;
+        Records(new ulong[] { 1, 2, 1 }, a,b,a);
+        CheckThat("unchanged source records skip vertex comparison and upload",
+            cache.ContentComparisons == comparisons && !cache.OrderDirty && Apply() == 0, "ID-only validation");
+        Records(new ulong[] { 2, 1, 2 }, b,a,b);
+        CheckThat("source reorder skips vertex hashing and upload",
+            cache.ContentComparisons == comparisons && cache.OrderDirty && Apply() == 0, "order changes alone");
+        Records(new ulong[] { 1, 3, 2 }, a,changed,b);
+        CheckThat("source revision keeps old and new occurrences distinct", cache.Order[0] != cache.Order[1] && Apply() == 1, "new immutable ID for changed packet");
+        Records(new ulong[] { 4, 1, 3 }, c,a,changed);
+        CheckThat("source eviction pins later records", cache.Slots[(int)cache.Order[1]].Equals(a) && cache.Slots[(int)cache.Order[2]].Equals(changed) && cache.Evictions == 1, "all hits pinned first");
+        Apply();
+        cache.InvalidateGpu();
+        Records(new ulong[] { 4, 1, 3 }, c,a,changed);
+        CheckThat("source IDs retry invalidated buffers", cache.OrderDirty && Apply() == 3, "resize and failed upload retry");
+        Records(new ulong[] { 0, 1, 0 }, d,a,d);
+        CheckThat("dynamic content coexists with source IDs", cache.Order[0] == cache.Order[2] && cache.Slots[(int)cache.Order[1]].Equals(a), "dynamic fallback and source record");
     }
 }
 #endif

@@ -3538,6 +3538,16 @@ the entire pass. The render thread selects the current frame only after
 recording succeeds. Four corners become six vertices on the GPU, with the
 original rect/mesh diagonals, nearest sampling and raw UO color arithmetic.
 
+Chunk statics and terrain additionally keep bounded source records with per-quad
+dirty revisions. `rd_source_record_hits_per_frame` counts reused occurrences,
+`rd_source_records_packed_per_frame` counts rebuilt records, and
+`rd_source_dirty_checks_per_frame` counts exact source comparisons after a dirty
+notification (including reset/restored alpha). These are work counters, not
+frame or GPU times. Source revisions are private runtime state, not serialized
+IDs. The diagnostic flag `--rd-content-cache` under `--rd-world` disables this
+source reuse while retaining the original exact-content resident GPU cache.
+It has no effect outside Labs and does not enable the RD toggle by itself.
+
 Labs PerfProbe rows add `rd_frames_drawn`, `rd_frames_fallback`,
 `rd_upload_bytes_per_frame`, `rd_draw_calls_per_frame`, `rd_record_cpu_ms`,
 `rd_last_fallback`, and parity field `rd_test_on_pass`. These supplement the

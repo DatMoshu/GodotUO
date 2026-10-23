@@ -917,7 +917,7 @@ void fragment() {
 
             var offset = new Vector2(-offsetX, -offsetY);
 #if GUO_LABS
-            if (OrderedWorldRecording && _orderedWorld.Quad(layer.Textures[index], layer.Vertices[index], offset, true)) return 1;
+            if (OrderedWorldRecording && _orderedWorld.MeshRecord(layer, index, offset)) return 1;
 #endif
 
             // PORT DEVIATION (GUO): --gpu-world draws covering land in the
@@ -1079,6 +1079,10 @@ void fragment() {
         {
             if (index < 0 || index >= layer.Count || !layer.Visible[index] || layer.Textures[index] == null)
                 return 0;
+
+#if GUO_LABS
+            if (OrderedWorldRecording && CaptureOrderedStatic(layer, index, offsetX, offsetY)) return 1;
+#endif
 
             ref var quad = ref layer.Vertices[index];
             var uvSize = quad.TextureCoordinate3 - quad.TextureCoordinate0;

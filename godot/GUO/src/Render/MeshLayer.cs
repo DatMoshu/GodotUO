@@ -73,7 +73,7 @@ namespace GUO.Renderer
     /// <c>UploadVisibleIndices</c> and <c>FlushAlphaChanges</c> are gone with
     /// the buffers; the mesh rebuild is when all three used to happen.
     /// </remarks>
-    public sealed class MeshLayer
+    public sealed partial class MeshLayer
     {
         private const int INITIAL_CAPACITY = 64;
 
@@ -188,6 +188,7 @@ namespace GUO.Renderer
             v.Hue1.Z = alpha;
             v.Hue2.Z = alpha;
             v.Hue3.Z = alpha;
+            RecordVertexChanged(index);
 
             if (_alphaDirtyCount >= _alphaDirtyIndices.Length)
                 Array.Resize(ref _alphaDirtyIndices, _alphaDirtyIndices.Length * 2);
@@ -212,6 +213,7 @@ namespace GUO.Renderer
                 v.Hue1.Z = 1f;
                 v.Hue2.Z = 1f;
                 v.Hue3.Z = 1f;
+                RecordVertexChanged(_alphaDirtyIndices[i]);
             }
 
             _alphaDirty = true;
@@ -231,6 +233,7 @@ namespace GUO.Renderer
             float alpha = v.Hue0.Z;
             var h = new Vector3(hueX, hueY, alpha);
             v.Hue0 = v.Hue1 = v.Hue2 = v.Hue3 = h;
+            RecordVertexChanged(index);
 
             MarkVertexDirty();
         }
@@ -287,6 +290,7 @@ namespace GUO.Renderer
             vertex.Hue0 = vertex.Hue1 = vertex.Hue2 = vertex.Hue3 = hue;
 
             Textures[index] = texture;
+            RecordVertexChanged(index);
 
             MarkVertexDirty();
         }
@@ -563,6 +567,7 @@ namespace GUO.Renderer
 
         public void Reset()
         {
+            RecordLayerReset();
             Count = 0;
             VisibleSpriteCount = 0;
             VisibleRunCount = 0;
@@ -576,6 +581,7 @@ namespace GUO.Renderer
         /// </summary>
         public void SoftReset()
         {
+            RecordLayerReset();
             Count = 0;
             VisibleSpriteCount = 0;
             VisibleRunCount = 0;
@@ -608,6 +614,7 @@ namespace GUO.Renderer
         /// </remarks>
         public void Dispose()
         {
+            RecordLayerReset();
             _runMeshStamp = -1;
             for (int i = 0; i < _runMeshes.Length; i++)
             {
@@ -622,5 +629,13 @@ namespace GUO.Renderer
 
             Array.Clear(_spriteMeshes);
         }
+
+        // PORT DEVIATION (GUO): ADR-0043's optional record invalidation seam.
+        // Unimplemented partial calls disappear completely outside Debug Labs.
+        partial void RecordVertexChanged(int index);
+        partial void RecordLayerReset();
+
+        [System.Diagnostics.Conditional("GUO_LABS")]
+        internal void InvalidateQuadRecord(int index) => RecordVertexChanged(index);
     }
 }

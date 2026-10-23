@@ -25,6 +25,8 @@ internal sealed class OrderedWorldCapture : IDisposable
     private readonly OrderedWorldDevice _device = new();
     private readonly OrderedWorldCanvas _fallback;
     private readonly List<OrderedWorldDevice.Vertex> _vertices = new(32768);
+    private readonly List<ulong> _recordIds = new(8192);
+    internal readonly OrderedWorldRecords Records = new();
     private readonly List<OrderedWorldDevice.State> _states = new(8192);
     private readonly List<OrderedWorldDevice.Segment> _segments = new(1024);
     private readonly List<OrderedWorldCanvas.Command> _commands = new(8192);
@@ -72,7 +74,8 @@ internal sealed class OrderedWorldCapture : IDisposable
             return false;
         }
         if (hue == null) { Fallback("missing hue table"); return false; }
-        _vertices.Clear(); _states.Clear(); _segments.Clear(); _textures.Clear(); _commands.Clear();
+        _vertices.Clear(); _recordIds.Clear(); _states.Clear(); _segments.Clear(); _textures.Clear(); _commands.Clear();
+        Records.Begin();
         _batchArtCount = _textureRuns = 0;
         _canvas = default;
         _hue = hue; _light = light ?? hue;
@@ -101,12 +104,23 @@ internal sealed class OrderedWorldCapture : IDisposable
         Fallback(reason);
     }
 
+    internal bool MeshRecord(MeshLayer layer, int index, Vector2 offset)
+    {
+        if (!Deferring) return false;
+        if (!OrderedWorldRecords.Enabled) return Quad(layer.Textures[index], layer.Vertices[index], offset, true);
+        var record = Records.Find(layer, index, false)
+            ?? Records.Store(layer, index, false, layer.Vertices[index]);
+        return Quad(layer.Textures[index], layer.Vertices[index], offset, true, record: record);
+    }
+
     internal bool Quad(Texture2D texture, in MeshQuad q, Vector2 offset, bool meshColor, bool rectangle = false,
-        Transform2D? local = null, Rect2 destination = default, Rect2 source = default)
+        Transform2D? local = null, Rect2 destination = default, Rect2 source = default,
+        OrderedWorldRecords.Record record = null)
     {
         if (!Recording || _unsupported != null) return false;
         if (texture == null) { Reject("missing texture"); return false; }
-        if (!SupportedMode(q.Hue0) || !SupportedMode(q.Hue1) || !SupportedMode(q.Hue2) || !SupportedMode(q.Hue3))
+        if (record != null ? !record.Supported
+            : !SupportedMode(q.Hue0) || !SupportedMode(q.Hue1) || !SupportedMode(q.Hue2) || !SupportedMode(q.Hue3))
         { Reject("unsupported shader mode"); return false; }
         if (_states.Count == OrderedWorldDevice.MaxOccurrences)
         { Reject("ordered occurrence capacity exceeded"); return false; }
@@ -119,6 +133,7 @@ internal sealed class OrderedWorldCapture : IDisposable
         // Reserve before mutating any stream. A rejected command leaves the
         // captured geometry, original replay commands and occurrence rows aligned.
         _vertices.EnsureCapacity(checked(_vertices.Count + 4));
+        _recordIds.EnsureCapacity(checked(_recordIds.Count + 1));
         _states.EnsureCapacity(checked(_states.Count + 1));
         _commands.EnsureCapacity(checked(_commands.Count + 1));
         _segments.EnsureCapacity(checked(_segments.Count + 1));
@@ -135,8 +150,8 @@ internal sealed class OrderedWorldCapture : IDisposable
         if (local.HasValue) transform *= local.Value;
         // Reuse each original encoded color for both complete canvas replay and
         // GPU packing. Mesh replay must retain the value before UNORM8 conversion.
-        Color color0 = UltimaBatcher2D.Encode(q.Hue0), color1 = UltimaBatcher2D.Encode(q.Hue1);
-        Color color2 = UltimaBatcher2D.Encode(q.Hue2), color3 = UltimaBatcher2D.Encode(q.Hue3);
+        Color color0 = record?.Color0 ?? UltimaBatcher2D.Encode(q.Hue0), color1 = record?.Color1 ?? UltimaBatcher2D.Encode(q.Hue1);
+        Color color2 = record?.Color2 ?? UltimaBatcher2D.Encode(q.Hue2), color3 = record?.Color3 ?? UltimaBatcher2D.Encode(q.Hue3);
         _commands.Add(new OrderedWorldCanvas.Command
         {
             Type = meshColor ? OrderedWorldCanvas.Kind.Mesh : rectangle ? OrderedWorldCanvas.Kind.Rect : OrderedWorldCanvas.Kind.Triangles,
@@ -151,10 +166,11 @@ internal sealed class OrderedWorldCapture : IDisposable
         _lastTextures = textures;
         uint artSlot = AppendTextureBatch(first, textures);
         // Four corners per quad; the GPU emits the six triangle vertices in the correct order.
-        _vertices.Add(PackVertex(q.Position0, q.TextureCoordinate0, color0, q.Normal0, meshColor, rectangle));
-        _vertices.Add(PackVertex(q.Position1, q.TextureCoordinate1, color1, q.Normal1, meshColor, rectangle));
-        _vertices.Add(PackVertex(q.Position2, q.TextureCoordinate2, color2, q.Normal2, meshColor, rectangle));
-        _vertices.Add(PackVertex(q.Position3, q.TextureCoordinate3, color3, q.Normal3, meshColor, rectangle));
+        _vertices.Add(record?.Quad.A ?? PackVertex(q.Position0, q.TextureCoordinate0, color0, q.Normal0, meshColor, rectangle));
+        _vertices.Add(record?.Quad.B ?? PackVertex(q.Position1, q.TextureCoordinate1, color1, q.Normal1, meshColor, rectangle));
+        _vertices.Add(record?.Quad.C ?? PackVertex(q.Position2, q.TextureCoordinate2, color2, q.Normal2, meshColor, rectangle));
+        _vertices.Add(record?.Quad.D ?? PackVertex(q.Position3, q.TextureCoordinate3, color3, q.Normal3, meshColor, rectangle));
+        _recordIds.Add(record?.Id ?? 0);
         _states.Add(new OrderedWorldDevice.State
         {
             Xx = transform.X.X, Yx = transform.Y.X, OriginX = transform.Origin.X,
@@ -192,7 +208,7 @@ internal sealed class OrderedWorldCapture : IDisposable
         return 0;
     }
 
-    private static bool SupportedMode(Vector3 hue)
+    internal static bool SupportedMode(Vector3 hue)
     {
         int mode = ((int)hue.Y) & 0x3f;
         return mode <= 10 || mode is >= 20 and <= 30;
@@ -261,7 +277,7 @@ internal sealed class OrderedWorldCapture : IDisposable
             }
             if (InjectFailure == 1) throw new InvalidOperationException("injected before upload");
             _device.RenderRT(CollectionsMarshal.AsSpan(_vertices), CollectionsMarshal.AsSpan(_states),
-                CollectionsMarshal.AsSpan(_segments), _textureRuns, _push, true);
+                CollectionsMarshal.AsSpan(_segments), _textureRuns, _push, true, CollectionsMarshal.AsSpan(_recordIds));
             if (InjectFailure == 2) throw new InvalidOperationException("injected after recording");
             FramesDrawn++;
             success = true;
@@ -301,6 +317,7 @@ internal sealed class OrderedWorldCapture : IDisposable
             _device.DisposeRT();
             _device.Presenter.Dispose();
             _fallback.Dispose();
+            Records.Clear();
         }));
     }
 }

@@ -105,6 +105,27 @@ The implementation belongs to `src/Labs/GpuRenderer`, compiled only with
 the runtime toggle. Compatibility and exported clients retain the existing
 renderer. Promotion requires a separate decision.
 
+The owner next authorized persistent sprite records and incremental preparation.
+Start with the stable `(MeshLayer, index, draw kind)` identity of chunk statics
+and terrain, including covering-land occurrences. Track writes, hue/alpha
+changes and pooled resets through a partial invalidation seam that disappears
+outside Labs. Visibility and order remain independently evaluated every frame.
+Assign a new immutable content ID only when rebuilding a source record; earlier
+occurrences retain their copied packet and ID even if the same source changes
+later in the frame. Unchanged revisions skip packing and vertex hashing. Compare
+only dirty sources to handle ResetAlpha/SetVisible restoring the same final alpha.
+Preserve the exact existing static rectangle arithmetic, including camera
+subtraction; do not move it into a matrix under this change.
+
+Bound the source cache to 65,536 entries, expire unused sources between frames,
+and retain exact-content capture when a source cannot be cached. Dynamic sprites
+also retain that path. Source IDs and dynamic content share bounded GPU slots;
+pin all hits before eviction and invalidate GPU contents after allocation or
+uncertain writes. Keep full frozen vertex copies for canvas replay. This stage
+does not remove those copies, gameplay traversal, covering-candidate discovery
+or sorting. `--rd-content-cache` is a diagnostic control under `--rd-world`
+that disables source-record reuse; it is not a shipping renderer selection.
+
 Acceptance: synthetic material/full-presentation pixel comparisons; zero
 unexpected differences for deterministic scene inputs; resize/unload and
 unsupported-command fallback checks; explicit active/fallback counters;

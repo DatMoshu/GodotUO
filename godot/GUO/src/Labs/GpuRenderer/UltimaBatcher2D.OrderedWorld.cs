@@ -96,7 +96,7 @@ public sealed partial class UltimaBatcher2D
         for (int i = 0; i < layer.Count; i++)
         {
             if (!layer.Visible[i]) continue;
-            if (OrderedWorldRecording && _orderedWorld.Quad(layer.Textures[i], layer.Vertices[i], _worldOffset, true)) count++;
+            if (OrderedWorldRecording && _orderedWorld.MeshRecord(layer, i, _worldOffset)) count++;
             else count += DrawMeshSprite(layer, i, (int)-_worldOffset.X, (int)-_worldOffset.Y);
         }
         return count;
@@ -106,14 +106,47 @@ public sealed partial class UltimaBatcher2D
         Rect2 destination = default, Rect2 source = default)
     {
         if (!OrderedWorldRecording) return false;
-        var q = new MeshQuad
+        MeshQuad q = OrderedScratchQuad(hue);
+        return _orderedWorld.Quad(texture, q, _worldOffset, false, rectangle, destination: destination, source: source);
+    }
+
+    private MeshQuad OrderedScratchQuad(Vector3 hue) => new()
         {
             Position0 = _quadPoints[0], Position1 = _quadPoints[1], Position2 = _quadPoints[2], Position3 = _quadPoints[3],
             TextureCoordinate0 = _quadUVs[0], TextureCoordinate1 = _quadUVs[1], TextureCoordinate2 = _quadUVs[2], TextureCoordinate3 = _quadUVs[3],
             Hue0 = hue, Hue1 = hue, Hue2 = hue, Hue3 = hue,
             Normal0 = new Vector3(0,0,1), Normal1 = new Vector3(0,0,1), Normal2 = new Vector3(0,0,1), Normal3 = new Vector3(0,0,1)
         };
-        return _orderedWorld.Quad(texture, q, _worldOffset, false, rectangle, destination: destination, source: source);
+
+    private bool CaptureOrderedStatic(MeshLayer layer, int index, int offsetX, int offsetY)
+    {
+        if (!_orderedWorld.Deferring || !OrderedWorldRecords.Enabled) return false;
+        EnsureStarted();
+        Texture2D texture = layer.Textures[index];
+        int width = WidthOf(texture), height = HeightOf(texture);
+        var record = _orderedWorld.Records.Find(layer, index, true, offsetX, offsetY, width, height);
+        MeshQuad q = default;
+        Rect2 destination, source;
+        if (record != null)
+        {
+            destination = record.Destination; source = record.Source;
+        }
+        else
+        {
+            ref var original = ref layer.Vertices[index];
+            var uvSize = original.TextureCoordinate3 - original.TextureCoordinate0;
+            var size = original.Position3 - original.Position0;
+            float x = original.Position0.X - offsetX, y = original.Position0.Y - offsetY;
+            // Keep AddSprite's exact expressions and rectangle diagonal. Moving
+            // the camera subtraction into a matrix could change rasterization.
+            SetQuadPoints(x, y, size.X, size.Y, 0f, 0f, 0f, 1f);
+            SetQuadUVs(original.TextureCoordinate0.X, original.TextureCoordinate0.Y, uvSize.X, uvSize.Y, uvSize.Y, 0);
+            q = OrderedScratchQuad(original.Hue0);
+            destination = new Rect2(x - 0f * size.X, y - 0f * size.Y, size.X, size.Y);
+            source = new Rect2(original.TextureCoordinate0.X * width, original.TextureCoordinate0.Y * height, uvSize.X * width, uvSize.Y * height);
+            record = _orderedWorld.Records.Store(layer, index, true, q, offsetX, offsetY, width, height, destination, source);
+        }
+        return _orderedWorld.Quad(texture, q, _worldOffset, false, true, destination: destination, source: source, record: record);
     }
 
     private bool CaptureOrderedAffine(Texture2D texture, Vector3 hue, Rect2 rect, Vector2 textureSize, Transform2D local)

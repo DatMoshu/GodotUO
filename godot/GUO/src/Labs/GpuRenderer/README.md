@@ -55,7 +55,7 @@ Smoke/pixel doctor: `godot-console --path godot/GUO -- --batcher-probe` after
 that build. Requires a real GPU, not `--headless`. The normal smoke command
 still applies. Scenario: `tools/scenarios/client/ordered_gpu_world.md`.
 Report live parity and speed separately; a passing fallback is not active RD
-parity. Stable world-object identity and GPU culling remain subsequent work.
+parity. Dynamic-object identity and GPU culling remain subsequent work.
 
 Resident geometry uses an exact-content cache of at most 65,536 quad records.
 Only changed contiguous slot ranges are uploaded. A separate ordered slot-ID
@@ -78,7 +78,27 @@ new packet over finite, signed-zero, nonfinite and hue/alpha boundary inputs;
 this supplements the full GPU and fallback pixel controls. It does not remove
 the per-frame capture or establish a performance gain by itself.
 
-This removes redundant GPU transfers, not the CPU capture/hash traversal.
+Chunk statics and terrain now additionally retain CPU source records keyed by
+layer/index/draw kind. Per-quad revisions invalidate writes, hue/alpha changes,
+direct stretched-land writes and pooled resets. Unchanged source records skip
+corner construction, color packing and full vertex hashing/comparison. Sources
+marked dirty are compared once before repacking: resetting and restoring the
+same final alpha retains the old immutable ID. A content change gets a new ID,
+so old/new occurrences in one frame cannot alias. Visibility, order and transforms
+are still captured each frame. The source cache is capped at 65,536 records;
+entries unused for two frames are swept every 60 frames or at the cap. Missing
+cache capacity uses ordinary exact-content capture. The cache retains texture
+and layer owners until expiry or capture disposal. GPU slots keep their existing
+65,536 bound and current-frame pinning rules.
+
+`--rd-world --rd-content-cache` is a diagnostic control that keeps the old
+per-frame content route. The main toggle still defaults off, and all new source
+tracking code is excluded from exports. `rd_source_record_hits_per_frame`,
+`rd_source_records_packed_per_frame` and `rd_source_dirty_checks_per_frame`
+distinguish reuse, rebuilding and final-alpha comparisons.
+
+Dynamic draws still use per-frame CPU capture/hash traversal. Frozen vertex
+copies remain for complete canvas replay, including cached source occurrences.
 Terrain retains world-space geometry while ordinary sprite positions can
 change with camera movement. New animation/alpha/hue variants consume cache
 entries until eviction. The bounded high-water cache does not shrink on camera
