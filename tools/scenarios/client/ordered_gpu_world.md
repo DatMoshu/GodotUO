@@ -18,12 +18,18 @@ code is included in exports. See ADR-0043 and the feature README for the doctor.
    repeated RD frames, toggle-off, early rejection with a large native suffix,
    and a canceled capture. The idle tail must be cleared once, not every frame.
    Ordered-transform controls require one draw for adjacent equal textures with
-   different exact transforms, three for A/B/A, and a failing pixel oracle when
-   a probe-only fault deliberately omits the absolute run offset on active RD.
+   different exact transforms, one for A/B/A with preserved alpha order, and a
+   failing pixel oracle when a probe-only fault deliberately omits the absolute
+   offset in a later batch with more than four textures on active RD.
    Require zero unchanged state writes; one full active-stream write for one,
    distant or camera changes; brightness/radius pixel changes without state
    writes; state-only capacity growth; shrink/empty/regrow; resize; identical
    retries after failures before/after upload; and canceled-ticket replacement.
+   Four-texture controls require exact different-size/edge-UV sampling, correct
+   fifth-view/repeated flushes, a visibly failing wrong-slot oracle, invalid-slot
+   fallback, selector-only state updates without geometry/order writes, palette
+   replacement, complete post-record replay, resize and canceled bindings.
+   Require the emitted shader layout/literal-binding contract check to pass.
 2. Use the authorized GM account and scratch profile to run `tools/perf_probe`
    with `--as-built`, `--perf-profile plain --perf-static-world --perf-parity
    --rd-world`, matching size and zoom. Measure bank, forest, dungeon and docks.

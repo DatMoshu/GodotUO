@@ -15,6 +15,10 @@ public partial class BatcherProbe
     {
         using var a = BuildSolid(new byte[] { 177, 103, 51 });
         using var b = BuildSolid(new byte[] { 30, 140, 210 });
+        using var c = BuildSolid(new byte[] { 220, 50, 140 });
+        using var d = BuildSolid(new byte[] { 30, 220, 60 });
+        using var e = BuildSolid(new byte[] { 200, 190, 30 });
+        Texture2D[] fiveTextures = { a, b, c, d, e };
         using var black = BuildSolid(new byte[] { 0, 0, 0 });
         using var slope = new MeshLayerDisposable();
         slope.Layer.Count = 1;
@@ -34,7 +38,7 @@ public partial class BatcherProbe
         }
         async Task<byte[]> Render(bool rd, int count = 3, bool aba = false, int change = 0,
             bool camera = false, float brightness = 0.3f, float radius = 0, bool present = true,
-            bool unsupported = false, bool lighting = false)
+            bool unsupported = false, bool lighting = false, bool five = false)
         {
             OrderedWorldCapture.Enabled = rd;
             batcher.BeginFrame();
@@ -49,7 +53,7 @@ public partial class BatcherProbe
             {
                 int offset = change == 1 && i == 0 || change == 2 && (i == 0 || i == count - 1) ? 1 : 0;
                 batcher.SetWorldOffset((i % 3) * 2 + offset, i % 2);
-                Texture2D texture = aba && i % 3 == 1 ? b : a;
+                Texture2D texture = five ? fiveTextures[i % fiveTextures.Length] : aba && i % 3 == 1 ? b : a;
                 // Repeated identical geometry under independent offsets and
                 // local matrices. Alpha makes the original order observable.
                 var hue = new Vector3(0, lighting ? 5 : 0, lighting ? 0.5f : 1.5f);
@@ -79,32 +83,33 @@ public partial class BatcherProbe
             return image.GetData();
         }
         async Task Parity(string label, int count = 3, bool aba = false, int change = 0,
-            bool camera = false, float brightness = 0.3f, float radius = 0, bool unsupported = false, bool lighting = false)
+            bool camera = false, float brightness = 0.3f, float radius = 0, bool unsupported = false, bool lighting = false, bool five = false)
         {
-            byte[] reference = await Render(false,count,aba,change,camera,brightness,radius,unsupported:unsupported,lighting:lighting);
+            byte[] reference = await Render(false,count,aba,change,camera,brightness,radius,unsupported:unsupported,lighting:lighting,five:five);
             long drawn = OrderedWorldCapture.FramesDrawn, calls = OrderedWorldCapture.DrawCalls;
-            byte[] actual = await Render(true,count,aba,change,camera,brightness,radius,unsupported:unsupported,lighting:lighting);
+            byte[] actual = await Render(true,count,aba,change,camera,brightness,radius,unsupported:unsupported,lighting:lighting,five:five);
             int differences = Differences(reference, actual);
             bool fallback = OrderedWorldCapture.InjectFailure != 0 || unsupported;
             CheckThat(label + " pixels", differences == 0, $"{differences} differing channels");
             CheckThat(label + " backend", OrderedWorldCapture.FramesDrawn == drawn + (fallback ? 0 : 1),
                 $"RD delta={OrderedWorldCapture.FramesDrawn-drawn}, fallback={OrderedWorldCapture.LastFallback}");
             if (!fallback)
-                CheckThat(label + " draws", OrderedWorldCapture.DrawCalls - calls == (count == 0 ? 0 : aba ? count : 1),
+                CheckThat(label + " draws", OrderedWorldCapture.DrawCalls - calls == (count == 0 ? 0 : five ? (count + 3) / 4 : 1),
                     $"draws={OrderedWorldCapture.DrawCalls-calls}, occurrences={count}");
         }
         try
         {
             await Parity("RD occurrence transforms merge adjacent texture");
             await Parity("RD occurrence A/B/A retains alpha order",aba:true);
-            byte[] reference = await Render(false,aba:true);
+            byte[] reference = await Render(false,count:5,five:true);
             long drawn = OrderedWorldCapture.FramesDrawn;
             OrderedWorldCapture.InjectStateIndexFault = true;
-            byte[] wrong = await Render(true,aba:true);
+            byte[] wrong = await Render(true,count:5,five:true);
             CheckThat("RD occurrence oracle catches draw-local index", Differences(reference,wrong) > 0
                 && OrderedWorldCapture.FramesDrawn == drawn + 1,"negative control did not expose indexing error on active RD");
             OrderedWorldCapture.InjectStateIndexFault = false;
-            await Parity("RD occurrence absolute index restored",aba:true);
+            await Parity("RD occurrence absolute index restored",count:5,five:true);
+            await Parity("RD occurrence A/B/A warm baseline",aba:true);
             long bytes = OrderedWorldDevice.StateBytes, uploads = OrderedWorldDevice.StateUploadCalls;
             await Parity("RD occurrence unchanged stream",aba:true);
             CheckThat("RD occurrence unchanged uploads zero",OrderedWorldDevice.StateBytes == bytes && OrderedWorldDevice.StateUploadCalls == uploads,"redundant state write");

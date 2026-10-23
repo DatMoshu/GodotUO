@@ -428,6 +428,7 @@ internal static class PerfProbe
         long rdStateChangesBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.ChangedStateStreams;
         long rdStateGrowthBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.StateBufferGrowths;
         long rdTextureRunsBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.TextureRuns;
+        long rdTextureBatchesBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.TextureBatches;
         long rdOccurrencesBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.Occurrences;
         long rdUploadsBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.UploadCalls;
         long rdDirtyBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.DirtyQuads;
@@ -546,6 +547,7 @@ internal static class PerfProbe
             ["rd_changed_state_streams_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.ChangedStateStreams - rdStateChangesBefore) / n, 3),
             ["rd_state_buffer_growths"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.StateBufferGrowths - rdStateGrowthBefore,
             ["rd_texture_runs_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.TextureRuns - rdTextureRunsBefore) / n, 1),
+            ["rd_texture_batches_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.TextureBatches - rdTextureBatchesBefore) / n, 1),
             ["rd_occurrences_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.Occurrences - rdOccurrencesBefore) / n, 1),
             ["rd_active_state_bytes"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.ActiveStateBytes,
             ["rd_state_capacity_bytes"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.StateCapacityBytes,

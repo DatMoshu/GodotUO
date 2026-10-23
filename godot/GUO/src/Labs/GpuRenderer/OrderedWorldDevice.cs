@@ -25,7 +25,8 @@ internal sealed class OrderedWorldDevice
     [StructLayout(LayoutKind.Sequential, Pack = 4)]
     public struct State
     {
-        public float Xx, Yx, OriginX, Pad0;
+        public float Xx, Yx, OriginX;
+        public uint ArtSlot;
         public float Xy, Yy, OriginY, Pad1;
     }
 
@@ -47,7 +48,40 @@ internal sealed class OrderedWorldDevice
     // These are RenderingServer texture RIDs, not RD RIDs. Hold their Texture2D
     // owners alive in the immutable frame ticket. All three textures must exist.
     public readonly record struct Textures(Rid ArtRs, Rid HueRs, Rid LightRs);
-    public readonly record struct Segment(uint FirstVertex, uint VertexCount, Textures Textures);
+    internal const int ArtSlots = 4;
+
+    // Original views only. Unused slots repeat Art0, so every descriptor is valid.
+    // The same shape keys both captured RS bindings and their validated raw RD views.
+    public readonly record struct TextureSet(Rid Art0, Rid Art1, Rid Art2, Rid Art3, Rid Hue, Rid Light)
+    {
+        public TextureSet(Textures textures) : this(textures.ArtRs, textures.ArtRs, textures.ArtRs,
+            textures.ArtRs, textures.HueRs, textures.LightRs) { }
+
+        public int FindArt(Rid art, int count)
+        {
+            if (Art0 == art) return 0;
+            if (count > 1 && Art1 == art) return 1;
+            if (count > 2 && Art2 == art) return 2;
+            if (count > 3 && Art3 == art) return 3;
+            return -1;
+        }
+
+        public TextureSet WithArt(int slot, Rid art) => slot switch
+        {
+            1 => this with { Art1 = art },
+            2 => this with { Art2 = art },
+            3 => this with { Art3 = art },
+            _ => throw new ArgumentOutOfRangeException(nameof(slot)),
+        };
+    }
+
+    public struct Segment
+    {
+        public uint FirstVertex, VertexCount;
+        public TextureSet Textures;
+        public Segment(uint firstVertex, uint vertexCount, TextureSet textures)
+        { FirstVertex = firstVertex; VertexCount = vertexCount; Textures = textures; }
+    }
 
     // Create the wrapper on the main thread. The API's C# spelling is Texture2Drd.
     public Texture2Drd Presenter { get; } = new();
@@ -61,14 +95,14 @@ internal sealed class OrderedWorldDevice
     private bool _statesValid;
     private readonly OrderedWorldResidency _resident = new();
     internal static long GeometryBytes, OrderBytes, UploadCalls, DirtyQuads, BufferGrowths, CacheEvictions;
-    internal static long StateBytes, StateUploadCalls, ChangedStateStreams, StateBufferGrowths, TextureRuns, Occurrences;
+    internal static long StateBytes, StateUploadCalls, ChangedStateStreams, StateBufferGrowths, TextureRuns, TextureBatches, Occurrences;
     // Latest transaction for this diagnostic device, not a sum over instances.
     internal static uint ActiveStateBytes, StateCapacityBytes;
     internal static int CachedQuads, PeakCachedQuads;
-    private readonly Dictionary<(Rid, Rid, Rid), Rid> _textureSets = new();
-    private readonly Dictionary<Textures, (Rid, Rid, Rid)> _resolvedTextures = new();
-    private readonly HashSet<(Rid, Rid, Rid)> _usedTextureSets = new();
-    private readonly List<(Rid, Rid, Rid)> _expiredTextureSets = new();
+    private readonly Dictionary<TextureSet, Rid> _textureSets = new();
+    private readonly Dictionary<TextureSet, TextureSet> _resolvedTextures = new();
+    private readonly HashSet<TextureSet> _usedTextureSets = new();
+    private readonly List<TextureSet> _expiredTextureSets = new();
     private readonly List<Rid> _frameTextureSets = new();
     private readonly Color[] _clear = new Color[1];
 
@@ -82,8 +116,20 @@ internal sealed class OrderedWorldDevice
         _rd = RenderingServer.GetRenderingDevice()
             ?? throw new NotSupportedException("No main RenderingDevice; keep canvas fallback.");
         if (Marshal.SizeOf<Vertex>() != 48 || Marshal.SizeOf<Push>() != 64
-            || Marshal.SizeOf<State>() != 32 || Marshal.OffsetOf<State>(nameof(State.Xy)).ToInt32() != 16)
+            || Marshal.SizeOf<State>() != 32 || Marshal.OffsetOf<State>(nameof(State.Xy)).ToInt32() != 16
+            || Marshal.OffsetOf<State>(nameof(State.ArtSlot)).ToInt32() != 12
+            || Marshal.OffsetOf<State>(nameof(State.Xx)).ToInt32() != 0
+            || Marshal.OffsetOf<State>(nameof(State.Yx)).ToInt32() != 4
+            || Marshal.OffsetOf<State>(nameof(State.OriginX)).ToInt32() != 8
+            || Marshal.OffsetOf<State>(nameof(State.Yy)).ToInt32() != 20
+            || Marshal.OffsetOf<State>(nameof(State.OriginY)).ToInt32() != 24)
             throw new InvalidOperationException("CPU/shader layout mismatch.");
+        // Four literal art bindings plus hue/light. No descriptor-indexing extension.
+        if (_rd.LimitGet(RD.Limit.MaxTexturesPerUniformSet) < ArtSlots + 2
+            || _rd.LimitGet(RD.Limit.MaxSamplersPerUniformSet) < ArtSlots + 2
+            || _rd.LimitGet(RD.Limit.MaxTexturesPerShaderStage) < ArtSlots + 2
+            || _rd.LimitGet(RD.Limit.MaxSamplersPerShaderStage) < ArtSlots + 2)
+            throw new NotSupportedException("Six texture/sampler descriptors are required; use canvas.");
         Size = size;
         try
         {
@@ -128,6 +174,7 @@ internal sealed class OrderedWorldDevice
             if (!string.IsNullOrEmpty(spirv.CompileErrorVertex)
                 || !string.IsNullOrEmpty(spirv.CompileErrorFragment))
                 throw new InvalidOperationException(spirv.CompileErrorVertex + "\n" + spirv.CompileErrorFragment);
+            OrderedWorldShaderContract.Validate(spirv.BytecodeVertex, spirv.BytecodeFragment);
             _shader = _rd.ShaderCreateFromSpirV(spirv, "guo_ordered_world_lab");
             Require(_shader, "shader");
 
@@ -280,27 +327,35 @@ internal sealed class OrderedWorldDevice
         finally { CacheEvictions += _resident.Evictions - evictions; }
     }
 
-    private Rid TextureSetRT(Textures textures)
+    private Rid ResolveTextureRT(Rid texture)
+    {
+        Rid raw = RenderingServer.TextureGetRdTexture(texture, false);
+        if (!_rd.TextureIsValid(raw))
+            throw new InvalidOperationException("Borrowed texture unavailable; use canvas for the entire frame.");
+        return raw;
+    }
+
+    private Rid TextureSetRT(TextureSet textures)
     {
         // false selects the raw view: palette/art bytes must not be sRGB-decoded.
         if (!_resolvedTextures.TryGetValue(textures, out var key))
         {
-            Rid art = RenderingServer.TextureGetRdTexture(textures.ArtRs, false);
-            Rid hue = RenderingServer.TextureGetRdTexture(textures.HueRs, false);
-            Rid light = RenderingServer.TextureGetRdTexture(textures.LightRs, false);
-            if (!_rd.TextureIsValid(art) || !_rd.TextureIsValid(hue) || !_rd.TextureIsValid(light))
-                throw new InvalidOperationException("Borrowed texture unavailable; use canvas for the entire frame.");
-            key = (art, hue, light);
+            key = new TextureSet(ResolveTextureRT(textures.Art0), ResolveTextureRT(textures.Art1),
+                ResolveTextureRT(textures.Art2), ResolveTextureRT(textures.Art3),
+                ResolveTextureRT(textures.Hue), ResolveTextureRT(textures.Light));
             _resolvedTextures.Add(textures, key);
         }
         _usedTextureSets.Add(key);
         if (_textureSets.TryGetValue(key, out Rid existing) && _rd.UniformSetIsValid(existing))
             return existing;
         // An invalid existing set may already have been destroyed with its dependency.
-        using var a = SamplerUniform(new RDUniform { UniformType = RD.UniformType.SamplerWithTexture, Binding = 0 }, key.Item1);
-        using var h = SamplerUniform(new RDUniform { UniformType = RD.UniformType.SamplerWithTexture, Binding = 1 }, key.Item2);
-        using var l = SamplerUniform(new RDUniform { UniformType = RD.UniformType.SamplerWithTexture, Binding = 2 }, key.Item3);
-        var uniforms = new Godot.Collections.Array<RDUniform> { a, h, l };
+        using var a0 = SamplerUniform(new RDUniform { UniformType = RD.UniformType.SamplerWithTexture, Binding = 0 }, key.Art0);
+        using var a1 = SamplerUniform(new RDUniform { UniformType = RD.UniformType.SamplerWithTexture, Binding = 1 }, key.Art1);
+        using var a2 = SamplerUniform(new RDUniform { UniformType = RD.UniformType.SamplerWithTexture, Binding = 2 }, key.Art2);
+        using var a3 = SamplerUniform(new RDUniform { UniformType = RD.UniformType.SamplerWithTexture, Binding = 3 }, key.Art3);
+        using var h = SamplerUniform(new RDUniform { UniformType = RD.UniformType.SamplerWithTexture, Binding = 4 }, key.Hue);
+        using var l = SamplerUniform(new RDUniform { UniformType = RD.UniformType.SamplerWithTexture, Binding = 5 }, key.Light);
+        var uniforms = new Godot.Collections.Array<RDUniform> { a0, a1, a2, a3, h, l };
         Rid set = _rd.UniformSetCreate(uniforms, _shader, 1);
         Require(set, "texture set");
         _textureSets[key] = set;
@@ -317,13 +372,17 @@ internal sealed class OrderedWorldDevice
     // Each call records exactly one target image for one immutable frame ticket.
     // opaqueBackdrop=true for ALL world content; false is diagnostic sorted-only
     // compositing and is not generally byte-exact for translucent pixels.
-    public void RenderRT(ReadOnlySpan<Vertex> vertices, ReadOnlySpan<State> states, ReadOnlySpan<Segment> segments,
+    public void RenderRT(ReadOnlySpan<Vertex> vertices, ReadOnlySpan<State> states, ReadOnlySpan<Segment> segments, int textureRuns,
         in Push frame, bool opaqueBackdrop)
     {
         if (frame.Screen.X != Size.X || frame.Screen.Y != Size.Y)
             throw new InvalidOperationException("Stale target dimensions.");
         if (states.Length > MaxOccurrences || states.Length != vertices.Length / 4)
             throw new InvalidOperationException("Invalid ordered state stream.");
+        if (textureRuns < segments.Length || textureRuns > states.Length)
+            throw new InvalidOperationException("Invalid ordered texture-run count.");
+        foreach (State state in states)
+            if (state.ArtSlot >= ArtSlots) throw new InvalidOperationException("Invalid ordered art selector; use canvas.");
         _frameTextureSets.Clear();
         _usedTextureSets.Clear();
         _resolvedTextures.Clear();
@@ -350,7 +409,8 @@ internal sealed class OrderedWorldDevice
         }
         ActiveStateBytes = checked((uint)states.Length * 32);
         Occurrences += states.Length;
-        TextureRuns += segments.Length;
+        TextureRuns += textureRuns;
+        TextureBatches += segments.Length;
 
         // No uploads, allocations or texture discovery inside the open draw list.
         _clear[0] = opaqueBackdrop ? Colors.Black : Colors.Transparent;

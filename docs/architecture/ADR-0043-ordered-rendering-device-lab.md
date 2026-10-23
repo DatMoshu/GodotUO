@@ -58,10 +58,10 @@ frame, so subsequent RD frames need not clear that tail again. Retain the pool
 for reuse, preserve private fallback-child cleanup and cancel pending tickets
 before recycling items. Ordinary toggle-off and non-Labs clearing stay unchanged.
 
-Each ordered occurrence also carries the exact already-composed transform in
-two four-float rows (32 bytes), separate from resident geometry and slot IDs.
-Merge only adjacent commands with equal complete art/hue/light texture tuples;
-never sort or merge across an intervening texture. The vertex shader indexes
+Each ordered occurrence also carries the exact already-composed transform and
+an art selector in a 32-byte record, separate from resident geometry and slot IDs.
+The six transform floats keep offsets 0/4/8 and 16/20/24; a uint selector uses
+offset 12. The vertex shader indexes
 state by absolute ordered occurrence, not resident slot or draw-local index.
 Brightness, circle radius and target dimensions retain the existing push block.
 Keep at most 262,144 occurrences per captured frame; overflow uses canvas.
@@ -74,6 +74,24 @@ zero draws, and regrowth uploads the new active stream. Preserve the frozen
 ticket and complete canvas replay independently of all three GPU buffers.
 Measure added capture/comparison and bandwidth costs against actual texture
 runs, issued draws and matched wall times; fewer draws alone are not acceptance.
+
+Permit an ordered draw to bind up to four original art views with one hue/light
+pair. Preserve the original triangle stream: assign slots in first-seen order,
+never reuse a slot within that batch, and start a new batch for a fifth distinct
+view or a palette change. Cache by the ordered complete binding tuple, retaining
+all original texture owners. Use four literal sampler bindings and explicit
+LOD 0 selection with the existing nearest/clamp/fixed-LOD sampler. Require six
+sampled-image and sampler descriptors per stage and set; no optional nonuniform
+indexing feature is assumed. Validate emitted state layout, flat uint selector,
+direct sampler bindings and capabilities, as well as every input selector and
+borrowed view. Keep the original complete canvas replay on any failure.
+
+The motivating four-scene diagnostic found four original art views per frame,
+constant hue/light and no RS-to-RD aliases. Greedy four/eight/sixteen-slot dry
+counts all gave one batch. This justifies testing four slots; it is neither a
+draw measurement nor a speed prediction. Test later-batch absolute addressing,
+wrong-slot negative controls, edge UVs, overlapping alpha and resource lifetime
+before comparing actual draws and matched CPU/wall measurements against CUO.
 
 The implementation belongs to `src/Labs/GpuRenderer`, compiled only with
 `GuoLabs=true` in Debug. The shared Labs command/options registry supplies

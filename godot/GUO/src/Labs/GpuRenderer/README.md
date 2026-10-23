@@ -86,11 +86,24 @@ before a later transaction failure. The resident synthetic controls cover
 unchanged zero-upload frames, one dirty quad, order-only alpha reversal, growth,
 partial-upload retry and resize with identical IDs, as well as replay parity.
 
-The transform stage stores one exact 32-byte composed matrix per ordered
-occurrence, including duplicates that share a geometry slot. Adjacent identical
-art/hue/light tuples share one draw regardless of transform; A/B/A remains three
-runs. Original triangle and alpha order stay intact. The shader uses absolute
-occurrence indexing. Brightness/radius stay in the original global push block.
+The state stage stores one exact 32-byte record per ordered occurrence,
+including duplicates that share a geometry slot. Six floats retain the composed
+transform; a uint art selector occupies offset 12, and the second row starts at
+offset 16. The shader uses absolute occurrence indexing. Brightness/radius stay
+in the original global push block.
+
+An ordered batch holds up to four original art views and one hue/light pair.
+First-seen art views receive immutable slots; a fifth distinct art view or a
+palette change starts the next batch. A/B/A therefore keeps three texture runs
+but issues one draw, with the original triangle and alpha order intact. Every
+unused descriptor repeats the first valid view. No atlas repacking, filtering,
+texture sorting or nonuniform descriptor indexing is used. Four literal sampler
+branches sample LOD 0, matching the existing nearest sampler's fixed LOD range.
+All borrowed views and selector ranges are validated before opening a draw list.
+The device must support six textures and samplers per stage and uniform set.
+At shader creation, the emitted SPIR-V is checked for the state offsets/stride,
+flat uint interface, direct sampler bindings and core Shader capability only;
+contract failure preserves whole-frame canvas fallback.
 Up to 262,144 occurrences use at most 8 MiB of GPU transform rows, plus a reusable
 CPU capture list and applied-byte snapshot. This is additional memory, not a
 replacement for resident geometry/order or the fallback command stream.
@@ -109,16 +122,20 @@ writes preceding a later failure; uploaded rows are not individually dirty rows.
 `rd_state_buffer_growths` counts new state allocations. `rd_active_state_bytes`
 and `rd_state_capacity_bytes` are last-reported device gauges, not a sum across
 instances; failed preparation can leave an older value.
-`rd_occurrences_per_frame` and `rd_texture_runs_per_frame`
+`rd_occurrences_per_frame`, `rd_texture_runs_per_frame` and `rd_texture_batches_per_frame`
 count prepared streams, including attempts whose drawing later fails. Actual
 issued draws remain `rd_draw_calls_per_frame`. Total uploaded bytes/calls include
 state. No counter is a GPU timer or a promise of higher FPS.
 
 The RD stage includes exact same-texture transform batching, A/B/A
-overlap order, an active-RD negative control omitting absolute run offsets,
+overlap order, active-RD negative controls for a wrong art slot and omitting the
+absolute offset in a later batch with more than four textures,
 zero warm state writes, one/far/camera changes, global brightness and circle
 changes, state-only capacity growth, shrink/empty/regrow, resize, failure before
 and after state upload with identical retries, and canceled-frame replacement.
+Texture controls also cover different image sizes and edge UVs, fifth-view and
+repeated flushes, selector-only uploads, palette replacement, invalid-selector
+fallback, post-record replay, resize and canceled binding replacement.
 
 The initial PC experiment passed 54 synthetic RD checks and four static-world
 scene comparisons at 2560x1440, zoom 2, with both captures on RD and zero

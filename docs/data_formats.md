@@ -3558,15 +3558,21 @@ clears. With RD enabled, only the preceding frame's active items need clearing;
 the retained unused tail was already cleared on its first idle frame. The item
 pool is retained, and RD-off keeps the ordinary full-pool clearing policy.
 
-Ordered transforms use a 32-byte two-row record per occurrence, capped at
-262,144 occurrences. Adjacent equal complete texture tuples share a draw;
-ordering and duplicate occurrences are preserved. Changed nonempty state
+Ordered state uses a 32-byte record per occurrence, capped at
+262,144 occurrences: transform floats at offsets 0/4/8 and 16/20/24, a uint art
+selector at offset 12 and zero padding at 28. Ordered batches bind at most four
+original art views plus hue/light, with immutable first-seen slots; a fifth view
+or palette change starts a new draw. Ordering and duplicate occurrences are
+preserved. Changed nonempty state
 streams upload all active rows once before drawing, while exact unchanged
 valid state uploads nothing. `rd_state_bytes_per_frame`,
 `rd_state_upload_calls_per_frame`, `rd_changed_state_streams_per_frame` and
 `rd_state_buffer_growths` expose that work; total upload bytes/calls include it.
 `rd_active_state_bytes` and `rd_state_capacity_bytes` are last-reported device
 gauges, possibly stale after a failed preparation and not summed across devices.
-`rd_occurrences_per_frame` and `rd_texture_runs_per_frame` count
+`rd_occurrences_per_frame`, `rd_texture_runs_per_frame` and
+`rd_texture_batches_per_frame` count
 prepared streams even if drawing later fails; `rd_draw_calls_per_frame` counts
-issued commands. None measures GPU duration or individually dirty state rows.
+issued commands. Runs count adjacent original complete texture tuples; batches
+count the prepared bounded descriptor groups. A/B/A has three runs and one
+batch. None measures GPU duration or individually dirty state rows.
