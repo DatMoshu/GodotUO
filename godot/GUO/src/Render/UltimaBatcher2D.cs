@@ -198,6 +198,8 @@ namespace GUO.Renderer
         }
 
         public int TextureSwitches, FlushesDone;
+        public int NativeTextureMeasurements;
+        public static int LastNativeTextureMeasurements;
 
         /// <summary>Canvas draw commands added this frame: one per sprite, mesh or triangle list.</summary>
         public int Commands;
@@ -466,6 +468,7 @@ namespace GUO.Renderer
             EnsureNotStarted();
 
             LastFrame = (TextureSwitches, _itemCount, Commands);
+            LastNativeTextureMeasurements = NativeTextureMeasurements;
             LastKinds = (Kinds[0], Kinds[1], Kinds[2], Kinds[3], EstimatedBatches, Kinds[4], CoverRuns);
             System.Array.Clear(Kinds);
             EstimatedBatches = 0;
@@ -476,6 +479,7 @@ namespace GUO.Renderer
             _itemCount = 0;
             _sizedTexture = null;
             TextureSwitches = 0;
+            NativeTextureMeasurements = 0;
             FlushesDone = 0;
             Commands = 0;
 
@@ -2047,9 +2051,19 @@ void fragment() {
             {
                 TextureSwitches++;
                 _sizedTexture = texture;
-                _sizedWidth = texture.GetWidth();
-                _sizedHeight = texture.GetHeight();
-                _sizedRid = texture.GetRid();
+                if (TextureAtlas.TryGetMetadata(texture, out var page))
+                {
+                    _sizedWidth = page.Width;
+                    _sizedHeight = page.Height;
+                    _sizedRid = page.Rid;
+                }
+                else
+                {
+                    NativeTextureMeasurements++;
+                    _sizedWidth = texture.GetWidth();
+                    _sizedHeight = texture.GetHeight();
+                    _sizedRid = texture.GetRid();
+                }
             }
         }
 

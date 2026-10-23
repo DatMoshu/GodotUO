@@ -227,6 +227,52 @@ public partial class BatcherProbe
         }
     }
 
+    private async System.Threading.Tasks.Task VerifyAtlasMetadata(UltimaBatcher2D batcher, SubViewport viewport)
+    {
+        using var atlas = new TextureAtlas(16, 8);
+        Texture2D page = atlas.AddSprite(new uint[] { 0xFF0000FF }, 1, 1, out var region);
+        var green = new uint[15 * 7]; System.Array.Fill(green, 0xFF00FF00u);
+        Texture2D dedicated = atlas.AddSprite(green, 15, 7, out var largeRegion);
+        CheckThat("page metadata is rectangular and keeps its RID",
+            TextureAtlas.TryGetMetadata(page, out var metadata) && metadata.Width == 16 && metadata.Height == 8 && metadata.Rid == page.GetRid(), "16x8");
+        CheckThat("dedicated sprite metadata uses actual dimensions",
+            TextureAtlas.TryGetMetadata(dedicated, out var large) && large.Width == 15 && large.Height == 7 && large.Rid == dedicated.GetRid(), "15x7");
+        atlas.Flush();
+        CheckThat("upload preserves page metadata", TextureAtlas.TryGetMetadata(page, out var uploaded) && uploaded == metadata, "content-only update");
+        batcher.BeginFrame(); batcher.Begin();
+        batcher.Draw(page, Vector2.Zero, region, new Vector3(0, 0, 1), 0);
+        batcher.Draw(dedicated, new Vector2(2, 0), largeRegion, new Vector3(0, 0, 1), 0);
+        batcher.Draw(page, new Vector2(4, 0), region, new Vector3(0, 0, 1), 0);
+        batcher.End();
+        CheckThat("A/B/A atlas draws query no native dimensions or RID", batcher.NativeTextureMeasurements == 0, $"{batcher.NativeTextureMeasurements}");
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using (var pixels = viewport.GetTexture().GetImage())
+        {
+            Check("cached first page keeps UVs", new byte[] { 255, 0, 0 }, pixels.GetPixel(0, 0));
+            Check("cached dedicated page keeps UVs", new byte[] { 0, 255, 0 }, pixels.GetPixel(2, 0));
+            Check("cached returning page keeps UVs", new byte[] { 255, 0, 0 }, pixels.GetPixel(4, 0));
+        }
+        using var image = Image.CreateEmpty(3, 5, false, Image.Format.Rgba8); image.Fill(Colors.White);
+        using var resized = Image.CreateEmpty(7, 9, false, Image.Format.Rgba8); resized.Fill(Colors.Green);
+        using var standalone = ImageTexture.CreateFromImage(image);
+        CheckThat("standalone images are not registered", !TextureAtlas.TryGetMetadata(standalone, out _), "fresh query path");
+        batcher.BeginFrame(); batcher.Begin();
+        batcher.Draw(standalone, Vector2.Zero, null, new Vector3(0, 0, 1), 0); batcher.End();
+        CheckThat("standalone first draw measures once", batcher.NativeTextureMeasurements == 1, $"{batcher.NativeTextureMeasurements}");
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        standalone.SetImage(resized);
+        batcher.BeginFrame(); batcher.Begin();
+        batcher.Draw(standalone, Vector2.Zero, null, new Vector3(0, 0, 1), 0); batcher.End();
+        CheckThat("resized standalone measures again next frame", batcher.NativeTextureMeasurements == 1, $"{batcher.NativeTextureMeasurements}");
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using (var pixels = viewport.GetTexture().GetImage())
+            Check("standalone resize changes drawn extent", new byte[] { 0, 255, 0 }, pixels.GetPixel(6, 6));
+        batcher.BeginFrame();
+        atlas.Dispose();
+        CheckThat("dispose removes normal and dedicated metadata",
+            !TextureAtlas.TryGetMetadata(page, out _) && !TextureAtlas.TryGetMetadata(dedicated, out _), "no stale owners or RIDs");
+    }
+
     private void VerifyLandPageScales()
     {
         using var atlas = new TextureAtlas(16, 8);

@@ -246,6 +246,9 @@ internal static class PerfDump
                 ["render_ui_ms"] = Math.Round(Avg(Profiler.ProfilerContext.RENDER_FRAME_UI), 3),
                 ["update_world_ms"] = Math.Round(Avg(Profiler.ProfilerContext.UPDATE_WORLD), 3),
                 ["frames_averaged"] = Profiler.ProfileTimeCount,
+#if !PERF_DUMP_CUO
+                ["native_texture_measurements_last_frame"] = GUO.Renderer.UltimaBatcher2D.LastNativeTextureMeasurements,
+#endif
                 // The whole frame as the profiler's own clock saw it: wall time
                 // between its BeginFrame and EndFrame, averaged over the same
                 // last frames. Upstream paces its draw at Settings.FPS, so this

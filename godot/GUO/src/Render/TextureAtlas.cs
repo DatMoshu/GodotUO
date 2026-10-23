@@ -66,6 +66,15 @@ namespace GUO.Renderer
         // not one.
         private static readonly List<TextureAtlas> _live = new List<TextureAtlas>();
 
+        // Main-thread only, like page creation and disposal. Atlas pages never
+        // resize: content uploads preserve these values. Keep other textures
+        // on the caller's fresh-query path (viewports and standalone images can resize).
+        internal readonly record struct PageMetadata(int Width, int Height, Rid Rid);
+        private static readonly Dictionary<Texture2D, PageMetadata> _metadata = new(ReferenceEqualityComparer.Instance);
+
+        internal static bool TryGetMetadata(Texture2D texture, out PageMetadata metadata)
+            => _metadata.TryGetValue(texture, out metadata);
+
         private readonly int _width;
         private readonly int _height;
 
@@ -259,6 +268,7 @@ namespace GUO.Renderer
                 var texture = ImageTexture.CreateFromImage(page);
                 _pages.Add(page);
                 _textures.Add(texture);
+                _metadata.Add(texture, new PageMetadata(width, height, texture.GetRid()));
                 _dirty.Add(false);
                 _versions.Add(0);
                 pr = new Rectangle(0, 0, width, height);
@@ -308,6 +318,8 @@ namespace GUO.Renderer
 
             _pages.Add(page);
             _textures.Add(ImageTexture.CreateFromImage(page));
+            var texture = _textures[^1];
+            _metadata.Add(texture, new PageMetadata(_width, _height, texture.GetRid()));
             _dirty.Add(false);
             _versions.Add(0);
             _packingPageIndex = _textures.Count - 1;
@@ -361,7 +373,10 @@ namespace GUO.Renderer
             // finalised; dispose them so the pages are freed now rather than at
             // some later collection.
             for (int i = 0; i < _textures.Count; i++)
+            {
+                _metadata.Remove(_textures[i]);
                 _textures[i]?.Dispose();
+            }
             for (int i = 0; i < _pages.Count; i++)
                 _pages[i]?.Dispose();
             _pages.Clear();
