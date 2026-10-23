@@ -13,6 +13,7 @@ public partial class BatcherProbe
 {
     private async Task VerifyOrderedWorld(UltimaBatcher2D batcher, SubViewport viewport, Texture2D palette)
     {
+        VerifyOrderedResidency();
         bool old = OrderedWorldCapture.Enabled;
         using var background = BuildSolid(new byte[] { 3, 80, 137 });
         using var black = BuildSolid(new byte[] { 0, 0, 0 });
@@ -36,7 +37,8 @@ public partial class BatcherProbe
         batcher.HueTexture = batcher.LightTexture = palette;
         try
         {
-            async Task<byte[]> Render(bool rd, int mode, bool slope = false, bool unsupported = false, bool empty = false, bool fractional = false, bool present = true)
+            async Task<byte[]> Render(bool rd, int mode, bool slope = false, bool unsupported = false, bool empty = false, bool fractional = false, bool present = true,
+                int residentCount = 0, int residentSeed = 0, bool reverse = false)
             {
                 OrderedWorldCapture.Enabled = rd;
                 batcher.BeginFrame();
@@ -51,7 +53,19 @@ public partial class BatcherProbe
                 if (!empty)
                 {
                     batcher.Draw(background, new Rectangle(-4,-4,24,24), new Rectangle(0,0,1,1), new Vector3(0,0,1), 0);
-                    if (mode == 104)
+                    if (residentCount > 0)
+                    {
+                        for (int n = 0; n < residentCount; n++)
+                        {
+                            int i = reverse ? residentCount - 1 - n : n;
+                            // Overlapping translucent quads make order observable. Additional
+                            // offscreen quads force storage growth without changing the fixture.
+                            batcher.Draw(i % 2 == 0 ? colored : gray,
+                                new Rectangle(i, residentSeed, 7, 8), new Rectangle(0,0,1,1),
+                                new Vector3(0,0,0.5f), 0);
+                        }
+                    }
+                    else if (mode == 104)
                     {
                         batcher.SetSampler(SamplerState.LinearClamp);
                         batcher.Draw(pattern,new Rectangle(0,0,8,8),new Rectangle(19,71,6,6),new Vector3(0,0,1),0);
@@ -165,6 +179,47 @@ public partial class BatcherProbe
                 CheckThat(label + " backend", OrderedWorldCapture.FramesDrawn == before + (resumeRd ? 1 : 0),
                     $"RD delta={OrderedWorldCapture.FramesDrawn-before}; stale ticket must never submit");
             }
+            async Task ResidentParity(string label, int count, int seed = 0, bool reverse = false)
+            {
+                byte[] reference = await Render(false, 0, residentCount:count, residentSeed:seed, reverse:reverse);
+                long before = OrderedWorldCapture.FramesDrawn;
+                byte[] actual = await Render(true, 0, residentCount:count, residentSeed:seed, reverse:reverse);
+                int differences = 0;
+                for (int i=0;i<reference.Length;i++) if (reference[i]!=actual[i]) differences++;
+                CheckThat(label, differences == 0, $"{differences} differing channels");
+                CheckThat(label + " backend", OrderedWorldCapture.FramesDrawn == before + (OrderedWorldCapture.InjectFailure == 0 ? 1 : 0),
+                    $"RD delta={OrderedWorldCapture.FramesDrawn-before}; fallback={OrderedWorldCapture.LastFallback}");
+            }
+            await ResidentParity("RD resident warm", 4);
+            long geometry = OrderedWorldDevice.GeometryBytes, order = OrderedWorldDevice.OrderBytes;
+            await ResidentParity("RD resident unchanged", 4);
+            CheckThat("RD resident unchanged uploads zero", OrderedWorldDevice.GeometryBytes == geometry && OrderedWorldDevice.OrderBytes == order,
+                $"geometry={OrderedWorldDevice.GeometryBytes-geometry}, order={OrderedWorldDevice.OrderBytes-order}");
+            await ResidentParity("RD resident alpha order reversal", 4, reverse:true);
+            CheckThat("RD resident order-only upload", OrderedWorldDevice.GeometryBytes == geometry && OrderedWorldDevice.OrderBytes > order,
+                $"geometry={OrderedWorldDevice.GeometryBytes-geometry}, order={OrderedWorldDevice.OrderBytes-order}");
+            geometry = OrderedWorldDevice.GeometryBytes;
+            await ResidentParity("RD resident one new quad", 5, reverse:true);
+            CheckThat("RD resident one dirty quad", OrderedWorldDevice.GeometryBytes-geometry == 192,
+                $"geometry={OrderedWorldDevice.GeometryBytes-geometry}");
+            long growths = OrderedWorldDevice.BufferGrowths;
+            await ResidentParity("RD resident storage growth", 512);
+            CheckThat("RD resident storage grew", OrderedWorldDevice.BufferGrowths > growths, $"growths={OrderedWorldDevice.BufferGrowths-growths}");
+            await ResidentParity("RD resident old slots after growth", 4);
+            OrderedWorldCapture.InjectFailure = 3;
+            await ResidentParity("RD resident failed partial geometry upload", 4, seed:1);
+            OrderedWorldCapture.InjectFailure = 0;
+            await ResidentParity("RD resident retries identical IDs after geometry failure", 4, seed:1);
+            OrderedWorldCapture.InjectFailure = 4;
+            await ResidentParity("RD resident failed order upload", 4, seed:1, reverse:true);
+            OrderedWorldCapture.InjectFailure = 0;
+            await ResidentParity("RD resident retries identical IDs after order failure", 4, seed:1, reverse:true);
+            viewport.Size = new Vector2I(12,10);
+            geometry = OrderedWorldDevice.GeometryBytes; order = OrderedWorldDevice.OrderBytes;
+            await ResidentParity("RD resident resize with identical IDs", 4, seed:1, reverse:true);
+            CheckThat("RD resident resize restores both buffers", OrderedWorldDevice.GeometryBytes > geometry && OrderedWorldDevice.OrderBytes > order,
+                $"geometry={OrderedWorldDevice.GeometryBytes-geometry}, order={OrderedWorldDevice.OrderBytes-order}");
+            viewport.Size = new Vector2I(8,8);
         }
         finally { OrderedWorldCapture.Enabled=old; OrderedWorldCapture.InjectFailure=0; }
     }

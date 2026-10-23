@@ -10,6 +10,9 @@ code is included in exports. See ADR-0043 and the feature README for the doctor.
    before upload and after command recording. It also skips native pre-draw
    between two captures, reuses the canvas pool, then requires current-frame
    pixels and backend counts when resuming either canvas or RD.
+   Resident cases require zero writes on an unchanged frame, exactly one
+   dirty quad for a single addition, order-only alpha reversal, storage growth,
+   identical-ID recovery after partial geometry/order failure and resize.
 2. Use the authorized GM account and scratch profile to run `tools/perf_probe`
    with `--as-built`, `--perf-profile plain --perf-static-world --perf-parity
    --rd-world`, matching size and zoom. Measure bank, forest, dungeon and docks.

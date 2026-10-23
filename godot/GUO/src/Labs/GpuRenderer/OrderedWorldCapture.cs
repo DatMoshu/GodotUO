@@ -18,7 +18,7 @@ internal sealed class OrderedWorldCapture : IDisposable
     internal static long SuppressedCommands;
     internal static string LastFallback;
     internal static bool LastFrameOnPass;
-    internal static int InjectFailure; // Probe only: 1 before upload, 2 after recording.
+    internal static int InjectFailure; // Probe only: 1 before upload, 2 after recording, 3/4 during geometry/order upload.
     private readonly OrderedWorldDevice _device = new();
     private readonly OrderedWorldCanvas _fallback;
     private readonly List<OrderedWorldDevice.Vertex> _vertices = new(32768);
@@ -45,7 +45,7 @@ internal sealed class OrderedWorldCapture : IDisposable
     internal OrderedWorldCapture(ShaderMaterial spriteMaterial, ShaderMaterial meshMaterial)
     {
         _fallback = new OrderedWorldCanvas(spriteMaterial, meshMaterial);
-        _vertexSource = FileAccess.GetFileAsString("res://src/Labs/GpuRenderer/ordered_world_vertex.glsl.txt");
+        _vertexSource = FileAccess.GetFileAsString("res://src/Labs/GpuRenderer/resident_world_vertex.glsl.txt");
         _fragmentSource = FileAccess.GetFileAsString("res://src/Labs/GpuRenderer/ordered_world_fragment.glsl.txt");
         _render = Callable.From(RenderThread);
         RenderingServer.FramePreDraw += BeforeDraw;
@@ -208,7 +208,6 @@ internal sealed class OrderedWorldCapture : IDisposable
             }
             if (InjectFailure == 1) throw new InvalidOperationException("injected before upload");
             _device.RenderRT(CollectionsMarshal.AsSpan(_vertices), CollectionsMarshal.AsSpan(_segments), _push, true);
-            UploadedBytes += _vertices.Count * 48L;
             DrawCalls += _segments.Count;
             if (InjectFailure == 2) throw new InvalidOperationException("injected after recording");
             FramesDrawn++;

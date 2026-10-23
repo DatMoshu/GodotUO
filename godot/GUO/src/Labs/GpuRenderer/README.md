@@ -11,7 +11,7 @@ chat command, or the shared Labs Options action. The toggle is session-only.
 Do not combine it with the older `--gpu-world` experiment.
 
 The CPU retains the ordinary gameplay traversal and painter order. Four
-corners per quad are uploaded to a persistent storage buffer; the GPU expands
+corners per quad are cached in a persistent storage buffer; the GPU expands
 them into triangles and applies the same camera, hues, normals and alpha blend.
 Canvas rectangles and meshes retain their distinct triangle diagonals. Affine
 sprites retain the canvas model transform. The complete world target starts
@@ -49,7 +49,35 @@ Smoke/pixel doctor: `godot-console --path godot/GUO -- --batcher-probe` after
 that build. Requires a real GPU, not `--headless`. The normal smoke command
 still applies. Scenario: `tools/scenarios/client/ordered_gpu_world.md`.
 Report live parity and speed separately; a passing fallback is not active RD
-parity. Static residency and GPU culling remain subsequent work.
+parity. Stable world-object identity and GPU culling remain subsequent work.
+
+Resident geometry uses an exact-content cache of at most 65,536 quad records.
+Only changed contiguous slot ranges are uploaded. A separate ordered slot-ID
+stream preserves every occurrence, including repeated translucent geometry;
+reordering does not rebuild geometry. Hashes narrow candidates, and all 192
+record bytes decide equality. Existing hits are pinned before misses allocate
+or evict, so an early miss cannot overwrite a later reference in the same frame.
+Handles are private to the current frame, not persistent gameplay identifiers.
+Buffer growth/resize invalidates the affected GPU contents; failed partial
+updates invalidate both streams for retry, even when the next IDs are identical.
+Capacity refusal falls back to the complete current canvas frame.
+
+This removes redundant GPU transfers, not the CPU capture/hash traversal.
+Terrain retains world-space geometry while ordinary sprite positions can
+change with camera movement. New animation/alpha/hue variants consume cache
+entries until eviction. The bounded high-water cache does not shrink on camera
+movement. Geometry storage is at most 16 MiB after power-of-two growth; CPU
+records, dictionary keys and ordered occurrence arrays also consume memory.
+Atlas/texture bindings are resolved each frame; geometry residency does not
+claim atlas lifetime or device-loss recovery.
+
+`rd_geometry_bytes_per_frame`, `rd_order_bytes_per_frame`,
+`rd_upload_calls_per_frame`, `rd_dirty_quads_per_frame`, `rd_cached_quads`,
+`rd_peak_cached_quads`, `rd_buffer_growths` and `rd_cache_evictions` distinguish
+data reuse from draw-call reduction. Upload counters include successful writes
+before a later transaction failure. The 136-check synthetic RD stage covers
+unchanged zero-upload frames, one dirty quad, order-only alpha reversal, growth,
+partial-upload retry and resize with identical IDs, as well as replay parity.
 
 The initial PC experiment passed 54 synthetic RD checks and four static-world
 scene comparisons at 2560x1440, zoom 2, with both captures on RD and zero
@@ -61,6 +89,5 @@ off; the exported terrain optimization does not depend on this experiment.
 
 `rd_record_cpu_ms` covers the render callback, including initialization and
 fallback handling, but excludes capture, queued waiting and GPU execution.
-Draw/upload counters count successfully completed recording transactions,
-including an injected failure afterward; partially failed transactions may
-have performed additional work. They are diagnostic counters, not GPU timers.
+Draw counters count successfully completed recording transactions, including
+an injected failure afterward. They are diagnostic counters, not GPU timers.

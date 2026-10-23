@@ -403,6 +403,12 @@ internal static class PerfProbe
         long rdTicksBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.RecordTicks;
         long rdSuppressedBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.SuppressedCommands;
         long rdReplayBefore = GUO.Labs.GpuRenderer.OrderedWorldCanvas.CommandsDrawn;
+        long rdGeometryBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.GeometryBytes;
+        long rdOrderBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.OrderBytes;
+        long rdUploadsBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.UploadCalls;
+        long rdDirtyBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.DirtyQuads;
+        long rdGrowthBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.BufferGrowths;
+        long rdEvictionsBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.CacheEvictions;
 #endif
         int landOntoBefore = GUO.Renderer.Arts.Art.LandOntoLandLayer, staticOntoBefore = GUO.Renderer.Arts.Art.StaticOntoLandLayer;
         // An upload lands in the frame after the one that drew it: its cost is
@@ -522,6 +528,14 @@ internal static class PerfProbe
             ["rd_last_fallback"] = GUO.Labs.GpuRenderer.OrderedWorldCapture.LastFallback ?? "",
             ["rd_deferred_quads_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.SuppressedCommands - rdSuppressedBefore) / n, 1),
             ["rd_canvas_replay_quads_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCanvas.CommandsDrawn - rdReplayBefore) / n, 1),
+            ["rd_geometry_bytes_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.GeometryBytes - rdGeometryBefore) / n, 1),
+            ["rd_order_bytes_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.OrderBytes - rdOrderBefore) / n, 1),
+            ["rd_upload_calls_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.UploadCalls - rdUploadsBefore) / n, 3),
+            ["rd_dirty_quads_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.DirtyQuads - rdDirtyBefore) / n, 1),
+            ["rd_cached_quads"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.CachedQuads,
+            ["rd_peak_cached_quads"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.PeakCachedQuads,
+            ["rd_buffer_growths"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.BufferGrowths - rdGrowthBefore,
+            ["rd_cache_evictions"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.CacheEvictions - rdEvictionsBefore,
 #endif
             ["cmd_rects"] = System.Math.Round(kRect / n, 1),
             ["cmd_affine_rects"] = System.Math.Round(kAffine / n, 1),

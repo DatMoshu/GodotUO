@@ -40,9 +40,12 @@ internal sealed class OrderedWorldDevice
     public Texture2Drd Presenter { get; } = new();
     public Vector2I Size { get; private set; }
     private RD _rd;
-    private Rid _shader, _pipeline, _color, _framebuffer, _sampler, _storage, _storageSet;
+    private Rid _shader, _pipeline, _color, _framebuffer, _sampler, _storage, _orderStorage, _storageSet;
     private Rid _retiredColor;
-    private uint _capacityBytes;
+    private uint _capacityBytes, _orderCapacityBytes;
+    private readonly OrderedWorldResidency _resident = new();
+    internal static long GeometryBytes, OrderBytes, UploadCalls, DirtyQuads, BufferGrowths, CacheEvictions;
+    internal static int CachedQuads, PeakCachedQuads;
     private readonly Dictionary<(Rid, Rid, Rid), Rid> _textureSets = new();
     private readonly Dictionary<Textures, (Rid, Rid, Rid)> _resolvedTextures = new();
     private readonly HashSet<(Rid, Rid, Rid)> _usedTextureSets = new();
@@ -152,23 +155,82 @@ internal sealed class OrderedWorldDevice
         if (!rid.IsValid) throw new InvalidOperationException("Could not create/resolve " + name);
     }
 
-    private void EnsureStorageRT(uint neededBytes)
+    private void EnsureStorageRT(uint neededBytes, uint neededOrderBytes)
     {
-        if (neededBytes <= _capacityBytes) return;
-        uint capacity = Math.Max(4096u, _capacityBytes);
-        while (capacity < neededBytes) capacity = checked(capacity * 2);
-        Free(ref _storageSet);
-        Free(ref _storage);
-        _capacityBytes = 0;
-        _storage = _rd.StorageBufferCreate(capacity, ReadOnlySpan<byte>.Empty,
-            (RD.StorageBufferUsage)0, (RD.BufferCreationBits)0);
-        Require(_storage, "storage buffer");
+        if (neededBytes > _capacityBytes || neededOrderBytes > _orderCapacityBytes)
+            Free(ref _storageSet);
+        if (neededBytes > _capacityBytes)
+        {
+            _resident.InvalidateGeometry(); // A new allocation has no applied slots.
+            GrowBuffer(ref _storage, ref _capacityBytes, neededBytes);
+        }
+        if (neededOrderBytes > _orderCapacityBytes)
+        {
+            _resident.InvalidateOrder(); // Identical IDs still need upload into a new buffer.
+            GrowBuffer(ref _orderStorage, ref _orderCapacityBytes, neededOrderBytes);
+        }
+        if (_storageSet.IsValid) return;
         using var u = new RDUniform { UniformType = RD.UniformType.StorageBuffer, Binding = 0 };
         u.AddId(_storage);
-        var uniforms = new Godot.Collections.Array<RDUniform> { u };
+        using var order = new RDUniform { UniformType = RD.UniformType.StorageBuffer, Binding = 1 };
+        order.AddId(_orderStorage);
+        var uniforms = new Godot.Collections.Array<RDUniform> { u, order };
         _storageSet = _rd.UniformSetCreate(uniforms, _shader, 0);
         Require(_storageSet, "storage set");
-        _capacityBytes = capacity;
+    }
+
+    private void GrowBuffer(ref Rid buffer, ref uint capacity, uint needed)
+    {
+        uint next = Math.Max(4096u, capacity);
+        while (next < needed) next = checked(next * 2);
+        Free(ref buffer);
+        capacity = 0;
+        buffer = _rd.StorageBufferCreate(next, ReadOnlySpan<byte>.Empty,
+            (RD.StorageBufferUsage)0, (RD.BufferCreationBits)0);
+        Require(buffer, "resident storage buffer");
+        capacity = next;
+        BufferGrowths++;
+    }
+
+    private void UploadResidentRT(ReadOnlySpan<Vertex> vertices)
+    {
+        long evictions = _resident.Evictions;
+        try
+        {
+            _resident.Prepare(vertices);
+            CachedQuads = _resident.Count;
+            PeakCachedQuads = Math.Max(PeakCachedQuads, CachedQuads);
+            EnsureStorageRT(checked((uint)_resident.Count * 192), checked((uint)_resident.Order.Length * 4));
+            int cursor = 0;
+            while (_resident.NextDirty(ref cursor, out int start, out int count))
+            {
+                ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(_resident.Slots.Slice(start, count));
+                Error error = _rd.BufferUpdate(_storage, checked((uint)start * 192), (uint)bytes.Length, bytes);
+                if (error != Error.Ok) throw new InvalidOperationException("Geometry BufferUpdate: " + error);
+                GeometryBytes += bytes.Length; UploadCalls++; DirtyQuads += count;
+                OrderedWorldCapture.UploadedBytes += bytes.Length;
+                _resident.AppliedRange(start, count);
+                if (OrderedWorldCapture.InjectFailure == 3) throw new InvalidOperationException("injected during resident upload");
+            }
+            if (_resident.OrderDirty)
+            {
+                ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(_resident.Order);
+                Error error = _rd.BufferUpdate(_orderStorage, 0, (uint)bytes.Length, bytes);
+                if (error != Error.Ok) throw new InvalidOperationException("Order BufferUpdate: " + error);
+                OrderBytes += bytes.Length; UploadCalls++;
+                OrderedWorldCapture.UploadedBytes += bytes.Length;
+                if (OrderedWorldCapture.InjectFailure == 4) throw new InvalidOperationException("injected during order upload");
+                _resident.AppliedOrder();
+            }
+        }
+        catch
+        {
+            // A partial failure never advances a validity claim. Retry all data
+            // next time, even if the next frame's ordered IDs compare equal.
+            _resident.InvalidateGpu();
+            throw;
+        }
+        finally { CacheEvictions += _resident.Evictions - evictions; }
     }
 
     private Rid TextureSetRT(Textures textures)
@@ -228,10 +290,7 @@ internal sealed class OrderedWorldDevice
         if (vertices.Length % 4 != 0 || next / 6 * 4 != (uint)vertices.Length) throw new InvalidOperationException("Incomplete command stream.");
         if (!vertices.IsEmpty)
         {
-            ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(vertices);
-            EnsureStorageRT((uint)bytes.Length);
-            Error error = _rd.BufferUpdate(_storage, 0, (uint)bytes.Length, bytes);
-            if (error != Error.Ok) throw new InvalidOperationException("BufferUpdate: " + error);
+            UploadResidentRT(vertices);
         }
 
         // No uploads, allocations or texture discovery inside the open draw list.
@@ -293,6 +352,8 @@ internal sealed class OrderedWorldDevice
         _resolvedTextures.Clear();
         Free(ref _storageSet);
         Free(ref _storage);
+        Free(ref _orderStorage);
+        _resident.InvalidateGpu();
         Free(ref _pipeline);
         Free(ref _shader);
         Free(ref _framebuffer);
@@ -307,7 +368,7 @@ internal sealed class OrderedWorldDevice
             _color = default;
         }
         Free(ref _sampler);
-        _capacityBytes = 0;
+        _capacityBytes = _orderCapacityBytes = 0;
         Size = default;
         // Dispose Presenter on the owning thread after this transaction completes.
         // Never free atlas/hue/light RIDs borrowed through TextureGetRdTexture.

@@ -43,6 +43,15 @@ does not promise recovery after native device loss or explicitly disposed art.
 Keep performance stages separately measurable against the original prototype
 and CUO, without changing the parity or export requirements.
 
+The next stage separates resident quad records from the ordered occurrence
+stream. Cache exact full vertex content in bounded slots, pin current hits
+before eviction, coalesce dirty slot uploads and update order independently.
+Never deduplicate ordered occurrences or reorder by texture. A new GPU
+allocation is invalid regardless of unchanged CPU IDs; partial failures must
+force a retry. This stage retains per-frame CPU capture and comparison, and
+does not yet promise persistent gameplay IDs or camera-independent sprites.
+Measure CPU cache cost and actual upload bytes separately from GPU draw count.
+
 The implementation belongs to `src/Labs/GpuRenderer`, compiled only with
 `GuoLabs=true` in Debug. The shared Labs command/options registry supplies
 the runtime toggle. Compatibility and exported clients retain the existing
