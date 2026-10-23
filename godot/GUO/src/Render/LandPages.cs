@@ -27,7 +27,8 @@ namespace GUO.Renderer
 
         private static readonly List<Texture2D> _layers = new();
         private static readonly List<int> _versions = new();
-        private static readonly Dictionary<Texture2D, int> _index = new();
+        private readonly record struct Page(int Layer, Vector2 Scale);
+        private static readonly Dictionary<Texture2D, Page> _index = new();
         private static bool _rebuild;
 
         /// <summary>
@@ -72,9 +73,9 @@ namespace GUO.Renderer
         /// <summary>The layer of an atlas page, adding it if new; -1 when it is not an atlas page that fits.</summary>
         public static int LayerOf(Texture2D texture)
         {
-            if (_index.TryGetValue(texture, out int layer))
+            if (_index.TryGetValue(texture, out Page existing))
             {
-                return layer;
+                return existing.Layer;
             }
 
             if (!TextureAtlas.TryGetPage(texture, out Image page, out _) || page.GetWidth() > Size || page.GetHeight() > Size)
@@ -82,15 +83,22 @@ namespace GUO.Renderer
                 return -1;
             }
 
-            layer = _layers.Count;
+            int layer = _layers.Count;
             _layers.Add(texture);
             _versions.Add(-1);
-            _index[texture] = layer;
+            // Atlas pages never resize: later uploads replace their contents.
+            // Keep dimensions with the layer, including dedicated oversized
+            // sprites whose dimensions differ from their atlas's page size.
+            _index[texture] = new Page(layer, TextureScale(texture));
             _rebuild = true;
             return layer;
         }
 
         public static Vector2 ScaleOf(Texture2D texture) =>
+            _index.TryGetValue(texture, out Page page) ? page.Scale : TextureScale(texture);
+
+        // Standalone textures are not registered here and may change size.
+        private static Vector2 TextureScale(Texture2D texture) =>
             new((float)texture.GetWidth() / Size, (float)texture.GetHeight() / Size);
 
         /// <summary>Brings the array up to date with its pages; once a frame, before land draws.</summary>

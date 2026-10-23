@@ -13,6 +13,7 @@ public partial class BatcherProbe
 {
     private async Task VerifyMergedLand(UltimaBatcher2D batcher, SubViewport viewport)
     {
+        VerifyLandPageScales();
         bool oldArray = MergedLand.Array, oldOrdered = MergedLand.Ordered;
         MergedLand.Array = MergedLand.Ordered = true;
         using var atlas = new TextureAtlas(16, 16);
@@ -223,6 +224,46 @@ public partial class BatcherProbe
             LandPages.Reset();
             MergedLand.Array = oldArray;
             MergedLand.Ordered = oldOrdered;
+        }
+    }
+
+    private void VerifyLandPageScales()
+    {
+        using var atlas = new TextureAtlas(16, 8);
+        using var image = Image.CreateEmpty(3, 5, false, Image.Format.Rgba8);
+        using var resized = Image.CreateEmpty(7, 9, false, Image.Format.Rgba8);
+        using var standalone = ImageTexture.CreateFromImage(image);
+        try
+        {
+            Texture2D page = atlas.AddSprite(new uint[] { 0xFFFFFFFF }, 1, 1, out _);
+            LandPages.LayerOf(page);
+            var expected = new Vector2(16f / TextureAtlas.MaxPageSize, 8f / TextureAtlas.MaxPageSize);
+            CheckThat("atlas scale uses rectangular page dimensions", LandPages.ScaleOf(page) == expected, "16x8 page");
+            atlas.AddSprite(new uint[] { 0xFF808080 }, 1, 1, out _);
+            atlas.Flush();
+            CheckThat("atlas content upload preserves cached scale", LandPages.ScaleOf(page) == expected, "dimensions stay fixed");
+
+            // The padding makes a 15x7 sprite a dedicated texture, not a 16x8 page.
+            Texture2D dedicated = atlas.AddSprite(new uint[15 * 7], 15, 7, out _);
+            var dedicatedScale = new Vector2(15f / TextureAtlas.MaxPageSize, 7f / TextureAtlas.MaxPageSize);
+            LandPages.LayerOf(dedicated);
+            CheckThat("dedicated atlas sprite keeps its own dimensions", LandPages.ScaleOf(dedicated) == dedicatedScale, "15x7 texture");
+            LandPages.Reset();
+            LandPages.LayerOf(dedicated);
+            LandPages.LayerOf(page);
+            CheckThat("atlas reset and reordered registration preserve scales",
+                LandPages.ScaleOf(page) == expected && LandPages.ScaleOf(dedicated) == dedicatedScale, "new layer indices");
+
+            Vector2 before = LandPages.ScaleOf(standalone);
+            standalone.SetImage(resized);
+            CheckThat("unregistered texture scale follows resize without registering",
+                before == new Vector2(3f / TextureAtlas.MaxPageSize, 5f / TextureAtlas.MaxPageSize)
+                && LandPages.ScaleOf(standalone) == new Vector2(7f / TextureAtlas.MaxPageSize, 9f / TextureAtlas.MaxPageSize)
+                && !LandPages.Holds(standalone), "standalone 3x5 -> 7x9");
+        }
+        finally
+        {
+            LandPages.Reset();
         }
     }
 }
