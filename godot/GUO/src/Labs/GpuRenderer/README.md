@@ -97,8 +97,21 @@ tracking code is excluded from exports. `rd_source_record_hits_per_frame`,
 `rd_source_records_packed_per_frame` and `rd_source_dirty_checks_per_frame`
 distinguish reuse, rebuilding and final-alpha comparisons.
 
-Dynamic draws still use per-frame CPU capture/hash traversal. Frozen vertex
-copies remain for complete canvas replay, including cached source occurrences.
+Captured source occurrences now hold a packet reference instead of copying four
+vertices and an ID every frame. Each packet is immutable while its frame ticket
+is live. A second revision of the same source retains the earlier packet until
+ticket retirement; later frames can rewrite the current packet or reuse bounded
+spares. Expiration also returns packets to the spare pool. IDs remain monotonically
+increasing even when packet objects are reused. Pending rendering callbacks
+prevent the next capture from clearing or reusing their owners.
+
+Dynamic draws still use per-frame CPU capture/hash traversal. Complete canvas
+replay reads the ordered packet/dynamic references directly, constructing native
+canvas commands only on failure; no second expanded vertex buffer is retained.
+The spare pool is capped at 65,536 packets. That is not a total live packet cap:
+same-frame revisions can retain up to the bounded occurrence demand, and churn
+above the spare cap can allocate again. Source objects, dynamic capture, state
+rows and replay commands still consume CPU memory and work.
 Terrain retains world-space geometry while ordinary sprite positions can
 change with camera movement. New animation/alpha/hue variants consume cache
 entries until eviction. The bounded high-water cache does not shrink on camera
@@ -106,6 +119,14 @@ movement. Geometry storage is at most 16 MiB after power-of-two growth; CPU
 records, dictionary keys and ordered occurrence arrays also consume memory.
 Atlas/texture bindings are resolved each frame; geometry residency does not
 claim atlas lifetime or device-loss recovery.
+
+`rd_referenced_quads_per_frame`, `rd_dynamic_capture_bytes_per_frame`,
+`rd_replayed_quads_per_frame` and `rd_source_packet_allocations_per_frame`
+separate reference capture, dynamic vertex copies, fallback replay and packet
+allocation. They do not count all managed allocations or retained capacity.
+PerfDump additionally records active/fallback frames during its counter window
+and whether the last frame used the pass, so an enabled toggle alone cannot be
+mistaken for successful GPU rendering.
 
 `rd_geometry_bytes_per_frame`, `rd_order_bytes_per_frame`,
 `rd_upload_calls_per_frame`, `rd_dirty_quads_per_frame`, `rd_cached_quads`,

@@ -2,6 +2,8 @@
 #if GUO_LABS
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Godot;
 
 namespace GUO.Labs.GpuRenderer;
@@ -57,7 +59,8 @@ internal sealed class OrderedWorldCanvas : IDisposable
         }
     }
 
-    internal void Render(Rid parent, ReadOnlySpan<OrderedWorldDevice.Vertex> vertices, ReadOnlySpan<Command> commands)
+    internal void Render(Rid parent, ReadOnlySpan<OrderedWorldResidency.Occurrence> occurrences,
+        ReadOnlySpan<OrderedWorldResidency.Quad> dynamic, ReadOnlySpan<Command> commands)
     {
         if (!RenderingServer.IsOnRenderThread()) throw new InvalidOperationException("Canvas replay requires the rendering thread.");
         Clear();
@@ -73,6 +76,10 @@ internal sealed class OrderedWorldCanvas : IDisposable
         for (int i = 0; i < commands.Length; i++)
         {
             ref readonly Command command = ref commands[i];
+            ref readonly var quad = ref occurrences[command.FirstCorner / 4].Get(dynamic);
+            // A read-only view of this packet; no expanded frame buffer.
+            ReadOnlySpan<OrderedWorldDevice.Vertex> vertices = MemoryMarshal.Cast<OrderedWorldResidency.Quad, OrderedWorldDevice.Vertex>(
+                MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in quad), 1));
             Rid item;
             if (i < _items.Count) item = _items[i];
             else
@@ -92,7 +99,7 @@ internal sealed class OrderedWorldCanvas : IDisposable
             {
                 // Match the original item-offset / command-local transform composition exactly.
                 RenderingServer.CanvasItemAddSetTransform(item, command.Local);
-                ref readonly var v = ref vertices[command.FirstCorner];
+                ref readonly var v = ref vertices[0];
                 var color = new Color(v.PackedHue.X, v.PackedHue.Y, v.PackedHue.Z, v.PackedHue.W);
                 RenderingServer.CanvasItemAddTextureRectRegion(item, command.Destination, command.Texture, command.Source, color, false, false);
             }
@@ -100,7 +107,7 @@ internal sealed class OrderedWorldCanvas : IDisposable
             {
                 for (int c = 0; c < 4; c++)
                 {
-                    ref readonly var v = ref vertices[command.FirstCorner + c];
+                    ref readonly var v = ref vertices[c];
                     _points[c] = new Vector2(v.PositionUv.X, v.PositionUv.Y);
                     _uv[c] = new Vector2(v.PositionUv.Z, v.PositionUv.W);
                     _colors[c] = new Color(v.PackedHue.X, v.PackedHue.Y, v.PackedHue.Z, v.PackedHue.W);

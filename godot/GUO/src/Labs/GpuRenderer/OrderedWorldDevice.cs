@@ -285,12 +285,12 @@ internal sealed class OrderedWorldDevice
         BufferGrowths++;
     }
 
-    private void UploadResidentRT(ReadOnlySpan<Vertex> vertices, ReadOnlySpan<State> states, ReadOnlySpan<ulong> recordIds)
+    private void UploadResidentRT(ReadOnlySpan<OrderedWorldResidency.Occurrence> occurrences, ReadOnlySpan<OrderedWorldResidency.Quad> dynamic, ReadOnlySpan<State> states)
     {
         long evictions = _resident.Evictions;
         try
         {
-            _resident.Prepare(vertices, recordIds);
+            _resident.Prepare(occurrences, dynamic);
             CachedQuads = _resident.Count;
             PeakCachedQuads = Math.Max(PeakCachedQuads, CachedQuads);
             if (_resident.Order.Length != states.Length) throw new InvalidOperationException("State/order length mismatch.");
@@ -389,12 +389,12 @@ internal sealed class OrderedWorldDevice
     // Each call records exactly one target image for one immutable frame ticket.
     // opaqueBackdrop=true for ALL world content; false is diagnostic sorted-only
     // compositing and is not generally byte-exact for translucent pixels.
-    public void RenderRT(ReadOnlySpan<Vertex> vertices, ReadOnlySpan<State> states, ReadOnlySpan<Segment> segments, int textureRuns,
-        in Push frame, bool opaqueBackdrop, ReadOnlySpan<ulong> recordIds = default)
+    public void RenderRT(ReadOnlySpan<OrderedWorldResidency.Occurrence> occurrences, ReadOnlySpan<OrderedWorldResidency.Quad> dynamic,
+        ReadOnlySpan<State> states, ReadOnlySpan<Segment> segments, int textureRuns, in Push frame, bool opaqueBackdrop)
     {
         if (frame.Screen.X != Size.X || frame.Screen.Y != Size.Y)
             throw new InvalidOperationException("Stale target dimensions.");
-        if (states.Length > MaxOccurrences || states.Length != vertices.Length / 4)
+        if (states.Length > MaxOccurrences || states.Length != occurrences.Length)
             throw new InvalidOperationException("Invalid ordered state stream.");
         if (textureRuns < segments.Length || textureRuns > states.Length)
             throw new InvalidOperationException("Invalid ordered texture-run count.");
@@ -409,13 +409,13 @@ internal sealed class OrderedWorldDevice
             if (segment.FirstVertex != next || segment.VertexCount == 0 || segment.VertexCount % 6 != 0)
                 throw new InvalidOperationException("Segments must partition the original ordered triangle stream.");
             next = checked(next + segment.VertexCount);
-            if (next / 6 * 4 > (uint)vertices.Length) throw new InvalidOperationException("Out-of-range draw.");
+            if (next / 6 > (uint)occurrences.Length) throw new InvalidOperationException("Out-of-range draw.");
             _frameTextureSets.Add(TextureSetRT(segment.Textures));
         }
-        if (vertices.Length % 4 != 0 || next / 6 * 4 != (uint)vertices.Length) throw new InvalidOperationException("Incomplete command stream.");
-        if (!vertices.IsEmpty)
+        if (next / 6 != (uint)occurrences.Length) throw new InvalidOperationException("Incomplete command stream.");
+        if (!occurrences.IsEmpty)
         {
-            UploadResidentRT(vertices, states, recordIds);
+            UploadResidentRT(occurrences, dynamic, states);
         }
         else
         {
@@ -435,7 +435,7 @@ internal sealed class OrderedWorldDevice
         if (list == RD.InvalidId) throw new InvalidOperationException("DrawListBegin failed.");
         try
         {
-            if (!vertices.IsEmpty)
+            if (!occurrences.IsEmpty)
             {
                 _rd.DrawListBindRenderPipeline(list, _pipeline);
                 _rd.DrawListBindUniformSet(list, _storageSet, 0);

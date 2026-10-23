@@ -16,6 +16,7 @@ internal sealed class OrderedWorldCapture : IDisposable
     internal static long FramesDrawn, FramesFallback, UploadedBytes;
     internal static long DrawCalls, RecordTicks;
     internal static long SuppressedCommands;
+    internal static long ReferencedQuads, DynamicCaptureBytes, ReplayedQuads;
     internal static string LastFallback;
     internal static bool LastFrameOnPass;
     internal static int InjectFailure; // Probe only: 1 before upload, 2 after recording, 3/4 geometry/order, 5/6 before/after state upload.
@@ -24,8 +25,8 @@ internal sealed class OrderedWorldCapture : IDisposable
     internal static bool InjectInvalidTextureSlot; // Probe-only fail-closed range control.
     private readonly OrderedWorldDevice _device = new();
     private readonly OrderedWorldCanvas _fallback;
-    private readonly List<OrderedWorldDevice.Vertex> _vertices = new(32768);
-    private readonly List<ulong> _recordIds = new(8192);
+    private readonly List<OrderedWorldResidency.Occurrence> _occurrences = new(8192);
+    private readonly List<OrderedWorldResidency.Quad> _dynamic = new(256);
     internal readonly OrderedWorldRecords Records = new();
     private readonly List<OrderedWorldDevice.State> _states = new(8192);
     private readonly List<OrderedWorldDevice.Segment> _segments = new(1024);
@@ -74,7 +75,7 @@ internal sealed class OrderedWorldCapture : IDisposable
             return false;
         }
         if (hue == null) { Fallback("missing hue table"); return false; }
-        _vertices.Clear(); _recordIds.Clear(); _states.Clear(); _segments.Clear(); _textures.Clear(); _commands.Clear();
+        _occurrences.Clear(); _dynamic.Clear(); _states.Clear(); _segments.Clear(); _textures.Clear(); _commands.Clear();
         Records.Begin();
         _batchArtCount = _textureRuns = 0;
         _canvas = default;
@@ -100,7 +101,7 @@ internal sealed class OrderedWorldCapture : IDisposable
         _unsupported = reason;
         // The triggering operation has not emitted canvas work yet. This prefix
         // uses its own arrays and does not overwrite the batcher's current quad.
-        _fallback.Render(_canvas, CollectionsMarshal.AsSpan(_vertices), CollectionsMarshal.AsSpan(_commands));
+        ReplayCanvas();
         Fallback(reason);
     }
 
@@ -132,12 +133,12 @@ internal sealed class OrderedWorldCapture : IDisposable
         }
         // Reserve before mutating any stream. A rejected command leaves the
         // captured geometry, original replay commands and occurrence rows aligned.
-        _vertices.EnsureCapacity(checked(_vertices.Count + 4));
-        _recordIds.EnsureCapacity(checked(_recordIds.Count + 1));
+        _occurrences.EnsureCapacity(checked(_occurrences.Count + 1));
+        if (record == null) _dynamic.EnsureCapacity(checked(_dynamic.Count + 1));
         _states.EnsureCapacity(checked(_states.Count + 1));
         _commands.EnsureCapacity(checked(_commands.Count + 1));
         _segments.EnsureCapacity(checked(_segments.Count + 1));
-        uint first = checked((uint)(_vertices.Count / 4) * 6);
+        uint first = checked((uint)_occurrences.Count * 6);
         // Almost every quad in a world frame shares this transform. The sampled
         // prototype spent substantial CPU time in Godot's matrix operators.
         if (!_haveOffset || _lastOffset != offset)
@@ -155,7 +156,7 @@ internal sealed class OrderedWorldCapture : IDisposable
         _commands.Add(new OrderedWorldCanvas.Command
         {
             Type = meshColor ? OrderedWorldCanvas.Kind.Mesh : rectangle ? OrderedWorldCanvas.Kind.Rect : OrderedWorldCanvas.Kind.Triangles,
-            FirstCorner = _vertices.Count, Texture = textures.ArtRs, Offset = offset,
+            FirstCorner = checked(_occurrences.Count * 4), Texture = textures.ArtRs, Offset = offset,
             Local = local ?? Transform2D.Identity, Destination = destination, Source = source,
             Color0 = meshColor ? color0 : default,
             Color1 = meshColor ? color1 : default,
@@ -165,12 +166,23 @@ internal sealed class OrderedWorldCapture : IDisposable
         if (_textureRuns == 0 || _lastTextures != textures) _textureRuns++;
         _lastTextures = textures;
         uint artSlot = AppendTextureBatch(first, textures);
-        // Four corners per quad; the GPU emits the six triangle vertices in the correct order.
-        _vertices.Add(record?.Quad.A ?? PackVertex(q.Position0, q.TextureCoordinate0, color0, q.Normal0, meshColor, rectangle));
-        _vertices.Add(record?.Quad.B ?? PackVertex(q.Position1, q.TextureCoordinate1, color1, q.Normal1, meshColor, rectangle));
-        _vertices.Add(record?.Quad.C ?? PackVertex(q.Position2, q.TextureCoordinate2, color2, q.Normal2, meshColor, rectangle));
-        _vertices.Add(record?.Quad.D ?? PackVertex(q.Position3, q.TextureCoordinate3, color3, q.Normal3, meshColor, rectangle));
-        _recordIds.Add(record?.Id ?? 0);
+        if (record != null)
+        {
+            _occurrences.Add(new OrderedWorldResidency.Occurrence(Records.Capture(record)));
+            ReferencedQuads++;
+        }
+        else
+        {
+            _occurrences.Add(new OrderedWorldResidency.Occurrence(_dynamic.Count));
+            _dynamic.Add(new OrderedWorldResidency.Quad
+            {
+                A = PackVertex(q.Position0, q.TextureCoordinate0, color0, q.Normal0, meshColor, rectangle),
+                B = PackVertex(q.Position1, q.TextureCoordinate1, color1, q.Normal1, meshColor, rectangle),
+                C = PackVertex(q.Position2, q.TextureCoordinate2, color2, q.Normal2, meshColor, rectangle),
+                D = PackVertex(q.Position3, q.TextureCoordinate3, color3, q.Normal3, meshColor, rectangle),
+            });
+            DynamicCaptureBytes += 192;
+        }
         _states.Add(new OrderedWorldDevice.State
         {
             Xx = transform.X.X, Yx = transform.Y.X, OriginX = transform.Origin.X,
@@ -179,6 +191,15 @@ internal sealed class OrderedWorldCapture : IDisposable
         });
         SuppressedCommands++;
         return true;
+    }
+
+    private void ReplayCanvas()
+    {
+        // Read the same immutable revisions directly on rejection. No second
+        // full vertex buffer is retained after a large failed frame.
+        ReplayedQuads += _occurrences.Count;
+        _fallback.Render(_canvas, CollectionsMarshal.AsSpan(_occurrences),
+            CollectionsMarshal.AsSpan(_dynamic), CollectionsMarshal.AsSpan(_commands));
     }
 
     private uint AppendTextureBatch(uint first, OrderedWorldDevice.Textures textures)
@@ -276,8 +297,8 @@ internal sealed class OrderedWorldCapture : IDisposable
                 _device.InitializeRT(size, _vertexSource, _fragmentSource);
             }
             if (InjectFailure == 1) throw new InvalidOperationException("injected before upload");
-            _device.RenderRT(CollectionsMarshal.AsSpan(_vertices), CollectionsMarshal.AsSpan(_states),
-                CollectionsMarshal.AsSpan(_segments), _textureRuns, _push, true, CollectionsMarshal.AsSpan(_recordIds));
+            _device.RenderRT(CollectionsMarshal.AsSpan(_occurrences), CollectionsMarshal.AsSpan(_dynamic),
+                CollectionsMarshal.AsSpan(_states), CollectionsMarshal.AsSpan(_segments), _textureRuns, _push, true);
             if (InjectFailure == 2) throw new InvalidOperationException("injected after recording");
             FramesDrawn++;
             success = true;
@@ -285,7 +306,7 @@ internal sealed class OrderedWorldCapture : IDisposable
         catch (Exception e)
         {
             Fallback(e.Message);
-            _fallback.Render(_canvas, CollectionsMarshal.AsSpan(_vertices), CollectionsMarshal.AsSpan(_commands));
+            ReplayCanvas();
         }
         finally
         {

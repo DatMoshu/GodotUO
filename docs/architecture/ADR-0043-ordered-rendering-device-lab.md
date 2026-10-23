@@ -132,3 +132,20 @@ unsupported-command fallback checks; explicit active/fallback counters;
 repeated matching CPU metrics against CUO plus GUO wall-frame/allocation
 measurements. A prototype that fails parity remains opt-in and is reported as
 an experiment, even if faster. Do not claim a CUO FPS ratio from unlike clocks.
+
+The owner then authorized removal of the remaining per-frame vertex copies.
+Replace cached-source copies with ordered references to frame-immutable packets;
+retain compact dynamic packets for uncached draws. Do not reorder occurrences.
+Residency resolves geometry only on a miss or dynamic-content comparison, while
+canvas rollback reads those same packet revisions directly. Keep original
+per-command colors and rectangle arithmetic. Do not allocate or retain a second
+expanded vertex stream merely to support a failed frame.
+
+A successful Begin retires the previous ticket before packet reuse. A submitted
+callback blocks that Begin until it has consumed capture/replay data. Multiple
+source revisions in one frame must coexist; recycle superseded and expired
+packets only after retirement, with fresh monotonic IDs. Bound the spare pool
+and document that it is separate from the maximum live occurrence demand.
+Exercise repeated same-frame revisions, expiration, camera changes and both
+early/late rollback. Keep ordinary Release/CUO comparisons separate from the
+optimized Debug/Labs experiment and label shared-load observations explicitly.

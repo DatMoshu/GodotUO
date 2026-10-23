@@ -3548,6 +3548,16 @@ IDs. The diagnostic flag `--rd-content-cache` under `--rd-world` disables this
 source reuse while retaining the original exact-content resident GPU cache.
 It has no effect outside Labs and does not enable the RD toggle by itself.
 
+Cached sources are captured as references to frame-immutable packets. Diagnostics
+`rd_referenced_quads_per_frame`, `rd_dynamic_capture_bytes_per_frame`,
+`rd_replayed_quads_per_frame` and `rd_source_packet_allocations_per_frame` count
+reference occurrences, uncached vertex bytes, fallback occurrences and new packet
+objects respectively. Reused packets receive fresh content IDs when changed;
+these fields are not retained-memory or total-allocation measurements. PerfDump
+also supplies `rd_frames_drawn_in_counter_window`,
+`rd_frames_fallback_in_counter_window` and `rd_last_frame_on_pass` to verify that
+timed observations actually used the pass.
+
 Labs PerfProbe rows add `rd_frames_drawn`, `rd_frames_fallback`,
 `rd_upload_bytes_per_frame`, `rd_draw_calls_per_frame`, `rd_record_cpu_ms`,
 `rd_last_fallback`, and parity field `rd_test_on_pass`. These supplement the

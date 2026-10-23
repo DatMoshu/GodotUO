@@ -28,6 +28,22 @@ internal sealed class OrderedWorldResidency
         public override readonly int GetHashCode() => HashCode.Combine(A.PositionUv, A.PackedHue, A.Normal, D.PositionUv);
     }
 
+    // A small per-frame reference, or an index into that frame's dynamic data.
+    // Stable packets are neither copied nor hashed on the capture path.
+    internal readonly struct Occurrence
+    {
+        private readonly OrderedWorldRecords.Packet _packet;
+        private readonly int _dynamicIndex;
+        internal ulong Id => _packet?.Id ?? 0;
+        internal Occurrence(OrderedWorldRecords.Packet packet) { _packet = packet; _dynamicIndex = -1; }
+        internal Occurrence(int dynamicIndex) { _packet = null; _dynamicIndex = dynamicIndex; }
+        internal ref readonly Quad Get(ReadOnlySpan<Quad> dynamic)
+        {
+            if (_packet != null) return ref _packet.Quad;
+            return ref dynamic[_dynamicIndex];
+        }
+    }
+
     private readonly int _limit;
     private readonly Dictionary<Quad, int> _lookup = new();
     private readonly Dictionary<ulong, int> _records = new();
@@ -56,59 +72,56 @@ internal sealed class OrderedWorldResidency
         _slotRecords = new ulong[capacity];
     }
 
-    internal void Prepare(ReadOnlySpan<OrderedWorldDevice.Vertex> vertices, ReadOnlySpan<ulong> records = default)
+    internal void Prepare(ReadOnlySpan<Occurrence> occurrences, ReadOnlySpan<Quad> dynamic)
     {
-        if (vertices.Length % 4 != 0) throw new ArgumentException("Incomplete quad.");
-        ReadOnlySpan<Quad> quads = MemoryMarshal.Cast<OrderedWorldDevice.Vertex, Quad>(vertices);
-        if (!records.IsEmpty && records.Length != quads.Length) throw new ArgumentException("Incomplete record IDs.");
         // Common idle frame: validate the previous occurrence-to-slot mapping
         // directly, avoiding dictionary hashes/probes for every unchanged quad.
         // This is CPU-plan validity only; GPU invalidation/dirty bits still apply.
-        if (_prepared && quads.Length == _orderCount)
+        if (_prepared && occurrences.Length == _orderCount)
         {
             int i = 0;
-            while (i < quads.Length)
+            while (i < occurrences.Length)
             {
-                ulong id = records.IsEmpty ? 0 : records[i];
+                ulong id = occurrences[i].Id;
                 int slot = (int)_order[i];
                 if (id != _slotRecords[slot]) break;
                 if (id == 0)
                 {
                     ContentComparisons++;
-                    if (!quads[i].Equals(_slots[slot])) break;
+                    if (!occurrences[i].Get(dynamic).Equals(_slots[slot])) break;
                 }
                 i++;
             }
-            if (i == quads.Length) return;
+            if (i == occurrences.Length) return;
         }
         _prepared = false; // A failed rebuild must never reuse a partial plan.
         _frame = checked(_frame + 1);
-        _orderCount = quads.Length;
+        _orderCount = occurrences.Length;
         if (_order.Length < _orderCount) Array.Resize(ref _order, Math.Max(_orderCount, _order.Length * 2));
         // Pin ALL hits before allocating misses: otherwise a miss early in the
         // stream could evict a slot referenced later by this same transaction.
-        for (int i = 0; i < quads.Length; i++)
+        for (int i = 0; i < occurrences.Length; i++)
         {
-            ulong id = records.IsEmpty ? 0 : records[i];
-            if (Find(quads[i], id, out int slot))
+            ulong id = occurrences[i].Id;
+            if (Find(occurrences[i], dynamic, out int slot))
             {
                 _pinned[slot] = _frame;
                 _order[i] = (uint)slot;
             }
             else _order[i] = uint.MaxValue;
         }
-        for (int i = 0; i < quads.Length; i++)
+        for (int i = 0; i < occurrences.Length; i++)
         {
             if (_order[i] != uint.MaxValue) continue;
             // Repeated misses become hits after the first occurrence; retain
             // both ordered references, including overlapping translucent cover.
-            ulong id = records.IsEmpty ? 0 : records[i];
-            if (!Find(quads[i], id, out int slot))
+            ulong id = occurrences[i].Id;
+            if (!Find(occurrences[i], dynamic, out int slot))
             {
                 slot = Allocate();
-                _slots[slot] = quads[i];
+                _slots[slot] = occurrences[i].Get(dynamic);
                 _slotRecords[slot] = id;
-                if (id == 0) _lookup.Add(quads[i], slot);
+                if (id == 0) _lookup.Add(_slots[slot], slot);
                 else _records.Add(id, slot);
                 _dirty[slot] = true;
             }
@@ -118,11 +131,11 @@ internal sealed class OrderedWorldResidency
         _prepared = true;
     }
 
-    private bool Find(in Quad quad, ulong record, out int slot)
+    private bool Find(in Occurrence occurrence, ReadOnlySpan<Quad> dynamic, out int slot)
     {
-        if (record != 0) return _records.TryGetValue(record, out slot);
+        if (occurrence.Id != 0) return _records.TryGetValue(occurrence.Id, out slot);
         ContentComparisons++;
-        return _lookup.TryGetValue(quad, out slot);
+        return _lookup.TryGetValue(occurrence.Get(dynamic), out slot);
     }
 
     private int Allocate()

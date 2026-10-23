@@ -11,6 +11,63 @@ namespace GUO.Host;
 
 public partial class BatcherProbe
 {
+    private void VerifyOrderedPacketLifetime(MeshLayer layer)
+    {
+        var records = new OrderedWorldRecords();
+        MeshQuad original = layer.Vertices[1];
+        long allocations = OrderedWorldRecords.PacketAllocations;
+        bool frozen = true, reused = true;
+        try
+        {
+            OrderedWorldRecords.Packet previous = null;
+            for (int frame = 0; frame < 64; frame++)
+            {
+                records.Begin(); // The preceding synthetic ticket has retired.
+                layer.Vertices[1].Position0.X += 1;
+                layer.InvalidateQuadRecord(1);
+                var first = records.Capture(records.Store(layer, 1, false, layer.Vertices[1]));
+                if (previous != null) reused &= ReferenceEquals(first, previous);
+                ulong firstId = first.Id;
+                var firstQuad = first.Quad;
+                layer.Vertices[1].Position0.X += 1;
+                layer.InvalidateQuadRecord(1);
+                var second = records.Capture(records.Store(layer, 1, false, layer.Vertices[1]));
+                frozen &= !ReferenceEquals(first, second) && first.Id == firstId
+                    && first.Quad.Equals(firstQuad) && second.Id != firstId;
+                previous = second;
+            }
+            CheckThat("captured revisions survive repeated same-frame mutation", frozen,
+                "64 tickets preserve each earlier packet and ID");
+            CheckThat("retired current packets can be updated in place", reused,
+                "no captured ticket retains a mutable reused packet");
+            CheckThat("revision churn reuses bounded spare packets", OrderedWorldRecords.PacketAllocations == allocations + 2,
+                "128 revisions use two packets after warm-up");
+            bool expired = true, freshIds = true;
+            ulong lastId = 0;
+            for (int cycle = 0; cycle < 16; cycle++)
+            {
+                for (int frame = 0; frame < 60; frame++) records.Begin();
+                for (int index = 0; index < 2; index++)
+                {
+                    expired &= records.Find(layer, index, false) == null;
+                    var packet = records.Capture(records.Store(layer, index, false, layer.Vertices[index]));
+                    freshIds &= packet.Id > lastId;
+                    lastId = packet.Id;
+                }
+            }
+            CheckThat("expired source packets serve replacement keys", expired && OrderedWorldRecords.PacketAllocations == allocations + 2,
+                "16 expired batches reuse two packets without new allocations");
+            CheckThat("recycled packets receive fresh content IDs", freshIds,
+                "old GPU identities cannot alias replacement sources");
+        }
+        finally
+        {
+            layer.Vertices[1] = original;
+            layer.InvalidateQuadRecord(1);
+            records.Clear();
+        }
+    }
+
     private async Task VerifyOrderedRecords(UltimaBatcher2D batcher, SubViewport viewport, Texture2D palette)
     {
         bool oldEnabled = OrderedWorldRecords.Enabled;
@@ -56,6 +113,11 @@ public partial class BatcherProbe
                 // Every ordered occurrence survives even when it reuses a record.
                 batcher.DrawStaticMeshSprite(layer, 0, offset, -offset);
                 batcher.DrawMeshSprite(layer, 1, offset, -offset);
+                if (mutate)
+                {
+                    layer.SetHue(0, 37, 2);
+                    batcher.DrawStaticMeshSprite(layer, 0, offset, -offset);
+                }
                 if (clip)
                 {
                     batcher.ClipBegin(1, 1, 3, 3);
@@ -78,7 +140,12 @@ public partial class BatcherProbe
             }
             await Parity("source records retain rectangle and covering mesh arithmetic");
             long packed = OrderedWorldRecords.Packed, hits = OrderedWorldRecords.Hits, bytes = OrderedWorldDevice.GeometryBytes;
+            long references = OrderedWorldCapture.ReferencedQuads, dynamicBytes = OrderedWorldCapture.DynamicCaptureBytes,
+                replayedQuads = OrderedWorldCapture.ReplayedQuads;
             await Render(true);
+            CheckThat("unchanged source capture only retains packet references",
+                OrderedWorldCapture.ReferencedQuads == references + 4 && OrderedWorldCapture.DynamicCaptureBytes == dynamicBytes
+                && OrderedWorldCapture.ReplayedQuads == replayedQuads, "no copied or replayed vertex stream");
             CheckThat("unchanged source draws pack and upload no geometry", OrderedWorldRecords.Packed == packed && OrderedWorldDevice.GeometryBytes == bytes && OrderedWorldRecords.Hits == hits + 4, "four occurrences reused");
             layer.ResetAlpha(); layer.SetVisible(0, 128); layer.BuildVisibleIndices();
             await Render(true);
@@ -92,11 +159,14 @@ public partial class BatcherProbe
             layer.Vertices[1].Position1.Y += 1;
             layer.InvalidateQuadRecord(1);
             await Parity("source direct stretched geometry refresh");
+            long packetAllocations = OrderedWorldRecords.PacketAllocations;
             await Parity("source camera subtraction", offset: 2);
+            CheckThat("camera changes reuse retired source packets", OrderedWorldRecords.PacketAllocations == packetAllocations,
+                "changed camera does not allocate a new packet per source");
             await Parity("source immutable revisions within one frame", mutate: true);
-            await Parity("source early prefix replay", clip: true);
+            await Parity("source early prefix replay", mutate: true, clip: true);
             OrderedWorldCapture.InjectFailure = 2;
-            await Parity("source late whole-frame replay");
+            await Parity("source late whole-frame replay", mutate: true);
             OrderedWorldCapture.InjectFailure = 0;
             await Parity("source recovery after failed pass");
             var q0 = layer.Vertices[0]; var q1 = layer.Vertices[1];
@@ -106,6 +176,7 @@ public partial class BatcherProbe
             layer.Textures[0] = other; layer.Textures[1] = art;
             layer.SetVisible(0, 0); layer.SetVisible(1, 0); layer.BuildVisibleIndices();
             await Parity("source pooled layer replacement");
+            VerifyOrderedPacketLifetime(layer);
             OrderedWorldRecords.Enabled = false;
             await Parity("source diagnostic content-cache control");
         }

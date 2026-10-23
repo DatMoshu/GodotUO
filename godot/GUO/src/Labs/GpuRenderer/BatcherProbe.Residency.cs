@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 #if GUO_LABS
 using System;
-using System.Runtime.InteropServices;
 using Godot;
 using GUO.Labs.GpuRenderer;
 
@@ -18,7 +17,16 @@ public partial class BatcherProbe
         };
         var a = Quad(1); var b = Quad(2); var c = Quad(3); var d = Quad(4);
         var cache = new OrderedWorldResidency(3);
-        void Prepare(params OrderedWorldResidency.Quad[] quads) => cache.Prepare(MemoryMarshal.Cast<OrderedWorldResidency.Quad, OrderedWorldDevice.Vertex>(quads.AsSpan()));
+        void Submit(OrderedWorldResidency.Quad[] quads, ulong[] ids = null)
+        {
+            var occurrences = new OrderedWorldResidency.Occurrence[quads.Length];
+            for (int i = 0; i < quads.Length; i++)
+                occurrences[i] = ids == null || ids[i] == 0
+                    ? new OrderedWorldResidency.Occurrence(i)
+                    : new OrderedWorldResidency.Occurrence(new OrderedWorldRecords.Packet(ids[i], quads[i]));
+            cache.Prepare(occurrences, quads);
+        }
+        void Prepare(params OrderedWorldResidency.Quad[] quads) => Submit(quads);
         int Apply()
         {
             int cursor = 0, total = 0;
@@ -59,7 +67,7 @@ public partial class BatcherProbe
 
         cache = new OrderedWorldResidency(3);
         void Records(ulong[] ids, params OrderedWorldResidency.Quad[] quads) =>
-            cache.Prepare(MemoryMarshal.Cast<OrderedWorldResidency.Quad, OrderedWorldDevice.Vertex>(quads.AsSpan()), ids);
+            Submit(quads, ids);
         Records(new ulong[] { 1, 2, 1 }, a,b,a);
         CheckThat("source records preserve repeated occurrences", cache.Count == 2 && cache.Order[0] == cache.Order[2] && Apply() == 2, "two immutable IDs");
         long comparisons = cache.ContentComparisons;
