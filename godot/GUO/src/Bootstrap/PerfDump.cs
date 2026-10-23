@@ -12,12 +12,14 @@ using ClassicUO.Game;
 using ClassicUO.Game.Scenes;
 using ClassicUO.Utility;
 using ClientRoot = ClassicUO.Client;
+using GameObject = ClassicUO.Game.GameObjects.GameObject;
 #else
 using GUO.Configuration;
 using GUO.Game;
 using GUO.Game.Scenes;
 using GUO.Utility;
 using ClientRoot = GUO.Client;
+using GameObject = GUO.Game.GameObjects.GameObject;
 #endif
 
 using System;
@@ -149,6 +151,9 @@ internal static class PerfDump
     private const long FadeCapMs = 60_000;
     private static long _fadeStart = -1, _fadeWaitMs;
     private static int _fadingAtEnd = -1;
+    private static long _stableSince = -1;
+    private static ulong _alphaSignature;
+    private static bool _stableAlpha;
 #if !PERF_DUMP_CUO
     private static int _uploadsAtFade, _bumpsAtFade, _staticOntoAtFade;
     private static long _framesAtFade;
@@ -160,6 +165,27 @@ internal static class PerfDump
         Field(ClientRoot.Game.Scene, "_renderLists") is object lists
         && Field(lists, "_transparentObjects") is System.Collections.ICollection c ? c.Count : -1;
 
+    // Translucent foliage and effects may stay in this list permanently.
+    // Observe object identity and alpha across several samples instead of
+    // treating every transparent object as an unfinished login/teleport fade.
+    private static ulong AlphaSignature()
+    {
+        ulong signature = 14695981039346656037UL;
+        if (Field(ClientRoot.Game.Scene, "_renderLists") is object lists
+            && Field(lists, "_transparentObjects") is System.Collections.IEnumerable objects)
+        {
+            foreach (object item in objects)
+            {
+                if (item is GameObject obj)
+                {
+                    signature = unchecked((signature ^ (uint)RuntimeHelpers.GetHashCode(obj)) * 1099511628211UL);
+                    signature = unchecked((signature ^ obj.AlphaHue) * 1099511628211UL);
+                }
+            }
+        }
+        return signature;
+    }
+
     private static void WaitForFade()
     {
         long now = Environment.TickCount64;
@@ -169,7 +195,14 @@ internal static class PerfDump
         }
 
         int fading = Fading();
-        if (fading <= FadeLeft || now - _fadeStart >= FadeCapMs)
+        ulong signature = AlphaSignature();
+        if (_stableSince < 0 || signature != _alphaSignature)
+        {
+            _stableSince = now;
+            _alphaSignature = signature;
+        }
+        _stableAlpha = now - _stableSince >= 2000;
+        if (fading <= FadeLeft || _stableAlpha || now - _fadeStart >= FadeCapMs)
         {
             _fadingAtEnd = fading;
             _fadeWaitMs = now - _fadeStart;
@@ -241,7 +274,12 @@ internal static class PerfDump
             r["fading_when_averaging"] = _fadingAtEnd;
             r["fade_wait_ms"] = _fadeWaitMs;
             r["fade_timed_out"] = _fadeWaitMs >= FadeCapMs;
+            r["transparent_alpha_stable"] = _stableAlpha;
 #if !PERF_DUMP_CUO
+            var godotApi = typeof(Godot.GodotObject).Assembly;
+            r["godot_api_jit_optimized"] = !(godotApi.GetCustomAttribute<System.Diagnostics.DebuggableAttribute>()?.IsJITOptimizerDisabled ?? false);
+            r["godot_api_mvid"] = godotApi.ManifestModule.ModuleVersionId.ToString();
+            r["engine_debug_build"] = Godot.OS.IsDebugBuild();
             int uploads = GUO.Renderer.LandPages.Uploads - _uploadsAtFade;
             long frames = GUO.Renderer.UltimaBatcher2D.FramesBegun - _framesAtFade;
             r["land_layers"] = GUO.Renderer.LandPages.Layers;

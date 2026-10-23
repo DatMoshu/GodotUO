@@ -3292,6 +3292,11 @@ Each scene object carries the probe's columns (`scene`, `what`, `at`,
 `batcher_items`, `texture_switches`, `world_prepare_ms`, `world_draw_ms`,
 `render_cpu_ms`, `render_gpu_ms` and the land, cover and allocation counts);
 readers must ignore keys they do not know, and older runs lack the newer ones.
+`optimized` describes GUO's assembly only. `godot_api_jit_optimized` records
+the loaded GodotSharp assembly's JIT setting, `godot_api_mvid` identifies that
+assembly without publishing its filesystem path, and `engine_debug_build`
+records the native engine build. An optimized project run through the editor
+executable can still load Debug GodotSharp; distinguish it from an export.
 Since PERF-03 each scene also carries `render_frame_ms`, `ui_ms`,
 `update_world_ms`, `stage_<stage>_ms` for every `PerfStages.Stage`
 (`gather`, `mesh_build`, `gather_tail`, `land_mesh`, `land_loose`, `sort`,

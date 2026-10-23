@@ -8,6 +8,18 @@ and writes its last 60 frames' averages to `build/perf_dump/<scene>/`. No
 keystrokes and no focus. Numbers compare only on one machine at one window
 size and zoom. Needs a shard.
 
+Settling accepts either the existing small transparent-object count or an
+unchanged identity/alpha signature for two seconds. Permanently translucent
+foliage must not force a 60-second fade timeout. Reports retain the timeout,
+wait duration and `transparent_alpha_stable` result for validation. Reject
+timed-out, wrong-position, wrong-viewport or unoptimized samples.
+
+The GUO report also records `godot_api_jit_optimized`, `godot_api_mvid` and
+`engine_debug_build`. Project optimization does not imply that the engine's
+loaded managed API is optimized. The shared render/update contexts are CPU
+measurements, not uncapped throughput or GPU time; report custom RD recording
+work separately when comparing the experimental renderer.
+
 ## Run
 
 ```

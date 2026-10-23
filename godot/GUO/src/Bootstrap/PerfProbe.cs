@@ -686,6 +686,8 @@ internal static class PerfProbe
         // Debug builds (the editor's) have the JIT optimiser off; every
         // absolute number depends on it, so it is written down.
         bool optimized = !(System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Diagnostics.DebuggableAttribute>(typeof(PerfProbe).Assembly)?.IsJITOptimizerDisabled ?? false);
+        var godotApi = typeof(GodotObject).Assembly;
+        bool apiOptimized = !(System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Diagnostics.DebuggableAttribute>(godotApi)?.IsJITOptimizerDisabled ?? false);
         // The post-processing look timed with the world: a saved look adds
         // full-screen passes to every number (Ink Outline on the Thor, 2026-09-28).
         var postFx = GUO.Renderer.PostFx.PostFxStack.Instance.Preset;
@@ -700,6 +702,7 @@ internal static class PerfProbe
                       + (optimized ? "optimised build" : "UNOPTIMISED build (Debug, Optimize=false)") + $", post-processing {look}, "
                       + $"profile {(string.IsNullOrWhiteSpace(_profilePreset) ? "as saved" : "preset " + _profilePreset)}: {_profileSummary}.");
         md.AppendLine();
+        md.AppendLine($"Loaded Godot managed API JIT optimized: {apiOptimized}; engine debug build: {OS.IsDebugBuild()}.");
         md.AppendLine("| Scene | mean ms | p95 ms | p99 ms | FPS | alloc KB/frame | draws/frame | draw calls | batcher items | texture switches | draw commands | world prepare ms | world draw ms | render CPU ms | GPU ms |");
         md.AppendLine("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
         foreach (var r in results)
@@ -761,6 +764,8 @@ internal static class PerfProbe
                 {
                     ["label"] = label, ["window"] = $"{size.X}x{size.Y}", ["zoom"] = System.Math.Round(Client.Game?.Scene?.Camera?.Zoom ?? 0, 2),
                     ["optimized"] = optimized, ["postfx"] = look, ["profile_preset"] = _profilePreset, ["profile"] = _profileSummary, ["static_world"] = StaticWorld,
+                    ["godot_api_jit_optimized"] = apiOptimized, ["godot_api_mvid"] = godotApi.ManifestModule.ModuleVersionId.ToString(),
+                    ["engine_debug_build"] = OS.IsDebugBuild(),
                     ["system"] = SystemInfo(), ["scenes"] = results,
                 },
                 new JsonSerializerOptions { WriteIndented = true }));
