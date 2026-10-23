@@ -260,7 +260,7 @@ public sealed class UoSoundProvider : UoProvider
 
     private SearchEntry Effect(int id)
     {
-        if (!Data.Files.Sounds.TryGetSound(id, out byte[] data, out string name) || data == null || data.Length == 0)
+        if (!Data.Files.Sounds.TryGetSoundMetadata(id, out string name, out int bytes) || bytes == 0)
         {
             return null;
         }

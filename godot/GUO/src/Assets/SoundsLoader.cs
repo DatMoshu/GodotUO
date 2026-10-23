@@ -317,6 +317,42 @@ namespace GUO.Assets
             return null;
         }
 
+#if TOOLS
+        // PORT DEVIATION (GUO): editor catalogs need names and lengths, not PCM bodies.
+        // Playback and exported clients retain TryGetSound unchanged. Keep overrides and
+        // malformed entries on that path so their precedence and failure behavior agree.
+        internal bool TryGetSoundMetadata(int sound, out string name, out int bytes)
+        {
+            bool ReadOriginal(out string originalName, out int originalBytes)
+            {
+                bool found = TryGetSound(sound, out byte[] data, out originalName);
+                originalBytes = data?.Length ?? 0;
+                return found;
+            }
+
+            if ((FileManager.Content != null && FileManager.Content.TrySound(sound, out _))
+                || _ours.ContainsKey(sound)) return ReadOriginal(out name, out bytes);
+
+            name = null;
+            bytes = 0;
+            if (sound < 0) return false;
+            ref var entry = ref _file.GetValidRefEntry(sound);
+            if (entry.Length <= 0) return false;
+            long streamLength = _file.Reader.BaseStream.Length;
+            if (entry.Length < 40 || entry.Offset > streamLength - entry.Length)
+                return ReadOriginal(out name, out bytes);
+
+            _file.Seek(entry.Offset, SeekOrigin.Begin);
+            Span<byte> header = stackalloc byte[40];
+            _file.Read(header);
+            name = Encoding.UTF8.GetString(header);
+            bytes = entry.Length - 40;
+            _file.Seek(entry.Offset + entry.Length, SeekOrigin.Begin);
+            return true;
+        }
+        // END PORT DEVIATION (GUO)
+#endif
+
         public unsafe bool TryGetSound(int sound, out byte[] data, out string name)
         {
             // PORT DEVIATION (GUO): original pack WAVE decoded and verified at startup.
