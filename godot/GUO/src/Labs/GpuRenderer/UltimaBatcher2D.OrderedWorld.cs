@@ -17,9 +17,14 @@ public sealed partial class UltimaBatcher2D
     {
         OrderedWorldCapture.LastFrameOnPass = false;
         if (!OrderedWorldCapture.Enabled) return;
-        if (!supported || _mirroring || GpuWorld.Enabled)
+        if (!RenderingServer.IsOnRenderThread())
         {
-            OrderedWorldCapture.Fallback("unsupported underlay, mirroring or legacy GPU pass");
+            OrderedWorldCapture.Fallback("separate render thread unsupported by deferred canvas replay");
+            return;
+        }
+        if (!supported || _mirroring || GpuWorld.Enabled || BatchedWorld || _sampler != SamplerState.PointClamp)
+        {
+            OrderedWorldCapture.Fallback("unsupported underlay, mirroring, sampler, batched world or legacy GPU pass");
             return;
         }
         Vector2I size = _currentTarget != null
@@ -30,17 +35,21 @@ public sealed partial class UltimaBatcher2D
             return;
         }
         _orderedProbeSize = size;
-        _orderedWorld ??= new OrderedWorldCapture();
+        if (_material.GetShaderParameter("water_model").AsInt32() != 0)
+        {
+            OrderedWorldCapture.Fallback("styled water");
+            return;
+        }
+        _orderedWorld ??= new OrderedWorldCapture(_material, _meshMaterial);
         if (!_orderedWorld.Begin(size, _viewTransform,
             _material.GetShaderParameter("hue_texture").AsGodotObject() as Texture2D,
             _material.GetShaderParameter("light_texture").AsGodotObject() as Texture2D,
             _material.GetShaderParameter("brightlight").AsSingle(),
             _material.GetShaderParameter("circle_of_transparency_center").AsVector2(),
             _material.GetShaderParameter("circle_of_transparency_radius").AsSingle())) return;
-        if (_material.GetShaderParameter("water_model").AsInt32() != 0)
-            _orderedWorld.Reject("styled water");
         FlushRun();
         _orderedCanvas = NewItem(CurrentParent, Transform2D.Identity);
+        _orderedWorld.SetCanvas(_orderedCanvas);
         // This item is only a container; no commands inherit its material.
         RenderingServer.CanvasItemSetVisible(_orderedCanvas, true);
         _orderedStackDepth = _clipStack.Count;
@@ -73,22 +82,29 @@ public sealed partial class UltimaBatcher2D
     private void ResetOrderedWorldItems()
     {
         _orderedWorld?.CancelUnsubmittedFrame();
+        _orderedWorld?.ClearCanvas();
         // Pool roles can change next frame: undo the previous late visibility election.
         if (_orderedCanvas.IsValid) RenderingServer.CanvasItemSetVisible(_orderedCanvas, true);
         if (_orderedPresenter.IsValid) RenderingServer.CanvasItemSetVisible(_orderedPresenter, true);
         _orderedCanvas = _orderedPresenter = default;
     }
 
-    internal void CaptureOrderedLand(MeshLayer layer)
+    internal int DrawOrderedLand(MeshLayer layer)
     {
-        if (!OrderedWorldRecording) return;
+        int count = 0;
         for (int i = 0; i < layer.Count; i++)
-            if (layer.Visible[i]) _orderedWorld.Quad(layer.Textures[i], layer.Vertices[i], _worldOffset, true);
+        {
+            if (!layer.Visible[i]) continue;
+            if (OrderedWorldRecording && _orderedWorld.Quad(layer.Textures[i], layer.Vertices[i], _worldOffset, true)) count++;
+            else count += DrawMeshSprite(layer, i, (int)-_worldOffset.X, (int)-_worldOffset.Y);
+        }
+        return count;
     }
 
-    private void CaptureOrderedQuad(Texture2D texture, Vector3 hue, bool rectangle = false)
+    private bool CaptureOrderedQuad(Texture2D texture, Vector3 hue, bool rectangle = false,
+        Rect2 destination = default, Rect2 source = default)
     {
-        if (!OrderedWorldRecording) return;
+        if (!OrderedWorldRecording) return false;
         var q = new MeshQuad
         {
             Position0 = _quadPoints[0], Position1 = _quadPoints[1], Position2 = _quadPoints[2], Position3 = _quadPoints[3],
@@ -96,12 +112,12 @@ public sealed partial class UltimaBatcher2D
             Hue0 = hue, Hue1 = hue, Hue2 = hue, Hue3 = hue,
             Normal0 = new Vector3(0,0,1), Normal1 = new Vector3(0,0,1), Normal2 = new Vector3(0,0,1), Normal3 = new Vector3(0,0,1)
         };
-        _orderedWorld.Quad(texture, q, _worldOffset, false, rectangle);
+        return _orderedWorld.Quad(texture, q, _worldOffset, false, rectangle, destination: destination, source: source);
     }
 
-    private void CaptureOrderedAffine(Texture2D texture, Vector3 hue, Rect2 rect, Vector2 textureSize, Transform2D local)
+    private bool CaptureOrderedAffine(Texture2D texture, Vector3 hue, Rect2 rect, Vector2 textureSize, Transform2D local)
     {
-        if (!OrderedWorldRecording) return;
+        if (!OrderedWorldRecording) return false;
         Vector2 tl = rect.Position, br = rect.End;
         var q = new MeshQuad
         {
@@ -111,7 +127,7 @@ public sealed partial class UltimaBatcher2D
             Hue0=hue,Hue1=hue,Hue2=hue,Hue3=hue,
             Normal0=new Vector3(0,0,1),Normal1=new Vector3(0,0,1),Normal2=new Vector3(0,0,1),Normal3=new Vector3(0,0,1)
         };
-        _orderedWorld.Quad(texture,q,_worldOffset,false,true,local);
+        return _orderedWorld.Quad(texture,q,_worldOffset,false,true,local,rect,rect);
     }
 }
 #endif

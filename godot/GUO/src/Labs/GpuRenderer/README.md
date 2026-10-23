@@ -17,16 +17,26 @@ Canvas rectangles and meshes retain their distinct triangle diagonals. Affine
 sprites retain the canvas model transform. The complete world target starts
 opaque black, avoiding another translucent blend/rounding boundary.
 
-This first version also prepares the complete canvas world. At FramePreDraw,
+Accepted world commands now skip ordinary canvas primitives. At FramePreDraw,
 the render-thread callback records RD commands and shows exactly one current
-frame branch. Unsupported materials, clips, HD art, styled water and failed
-recording use canvas. Initialization and resize preserve the presenter RID;
+frame branch. A low-level replay plan retains exact rectangle coordinates,
+affine transforms, original mesh colors and normals. An unsupported command
+replays the accepted prefix before the ordinary suffix; a late recording failure
+replays the complete plan. Gameplay drawing is never invoked twice. Private
+replay children are hidden before pooled parents are reused, including toggle
+off and skipped native frames. Each child explicitly uses nearest sampling.
+Unsupported materials, clips, HD art, styled water, shared material changes,
+batched-world mode and separate rendering threads use canvas. This initial
+deferred replay implementation requires the caller to be on the rendering thread.
+Initialization and resize preserve the presenter RID;
 retired source textures remain alive until its dependent view is replaced.
 An unsubmitted capture is cancelled before canvas-item pool reuse when a
 native draw is skipped. Data for an already submitted callback stays intact.
 There is no GPU readback, Submit/Sync call or intentional frame of latency.
-Prepared canvas work is measurable CPU overhead; this version is a correctness
-prototype and is not a claim of faster rendering. Godot's normal draw-call and
+This remains a correctness prototype, not a claim of faster rendering.
+`rd_deferred_quads_per_frame` and `rd_canvas_replay_quads_per_frame` expose the
+removed and fallback primitive work; empty canvas containers still exist.
+Godot's normal draw-call and
 GPU-time monitors do not include this custom RD pass. Use the explicit RD
 draw/upload/recording counters and whole-frame measurements.
 
@@ -39,8 +49,7 @@ Smoke/pixel doctor: `godot-console --path godot/GUO -- --batcher-probe` after
 that build. Requires a real GPU, not `--headless`. The normal smoke command
 still applies. Scenario: `tools/scenarios/client/ordered_gpu_world.md`.
 Report live parity and speed separately; a passing fallback is not active RD
-parity. Static residency, GPU culling and removal of duplicate canvas submission
-remain subsequent work.
+parity. Static residency and GPU culling remain subsequent work.
 
 The initial PC experiment passed 54 synthetic RD checks and four static-world
 scene comparisons at 2560x1440, zoom 2, with both captures on RD and zero

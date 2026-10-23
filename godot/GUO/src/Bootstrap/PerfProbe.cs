@@ -401,6 +401,8 @@ internal static class PerfProbe
         long rdBytesBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.UploadedBytes;
         long rdCallsBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.DrawCalls;
         long rdTicksBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.RecordTicks;
+        long rdSuppressedBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.SuppressedCommands;
+        long rdReplayBefore = GUO.Labs.GpuRenderer.OrderedWorldCanvas.CommandsDrawn;
 #endif
         int landOntoBefore = GUO.Renderer.Arts.Art.LandOntoLandLayer, staticOntoBefore = GUO.Renderer.Arts.Art.StaticOntoLandLayer;
         // An upload lands in the frame after the one that drew it: its cost is
@@ -518,6 +520,8 @@ internal static class PerfProbe
             ["rd_draw_calls_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.DrawCalls - rdCallsBefore) / n, 1),
             ["rd_record_cpu_ms"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.RecordTicks - rdTicksBefore) * 1000 / System.Diagnostics.Stopwatch.Frequency / n, 3),
             ["rd_last_fallback"] = GUO.Labs.GpuRenderer.OrderedWorldCapture.LastFallback ?? "",
+            ["rd_deferred_quads_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.SuppressedCommands - rdSuppressedBefore) / n, 1),
+            ["rd_canvas_replay_quads_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCanvas.CommandsDrawn - rdReplayBefore) / n, 1),
 #endif
             ["cmd_rects"] = System.Math.Round(kRect / n, 1),
             ["cmd_affine_rects"] = System.Math.Round(kAffine / n, 1),

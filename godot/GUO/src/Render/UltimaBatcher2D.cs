@@ -417,6 +417,12 @@ namespace GUO.Renderer
         private void SetOnAllMaterials(string name, Variant value)
         {
             StringName param = UniformName(name);
+#if GUO_LABS
+            // Canvas materials are shared: a changed global must also affect the
+            // already captured prefix instead of leaving an older RD snapshot.
+            if (_orderedWorld?.Deferring == true && !_material.GetShaderParameter(param).Equals(value))
+                _orderedWorld.Reject("shared material changed during world capture");
+#endif
             GpuWorld.Pass?.SetShared(param, value); // PORT DEVIATION (GUO): --gpu-world's materials share the hue uniforms
             _material.SetShaderParameter(param, value);
             _meshMaterial.SetShaderParameter(param, value);
@@ -905,7 +911,7 @@ void fragment() {
 
             var offset = new Vector2(-offsetX, -offsetY);
 #if GUO_LABS
-            if (OrderedWorldRecording) _orderedWorld.Quad(layer.Textures[index], layer.Vertices[index], offset, true);
+            if (OrderedWorldRecording && _orderedWorld.Quad(layer.Textures[index], layer.Vertices[index], offset, true)) return 1;
 #endif
 
             // PORT DEVIATION (GUO): --gpu-world draws covering land in the
@@ -1281,6 +1287,10 @@ void fragment() {
         /// </summary>
         public void SetSampler(SamplerState sampler)
         {
+#if GUO_LABS
+            if ((sampler ?? SamplerState.PointClamp) != SamplerState.PointClamp)
+                _orderedWorld?.Reject("non-nearest sampler");
+#endif
             if (TraceSamplerCalls) SamplerCalls++;
             _hdSpriteSampler = false;
             _sampler = sampler ?? SamplerState.PointClamp;
@@ -2095,7 +2105,9 @@ void fragment() {
             {
                 SetQuadPoints(destinationX, destinationY, destinationW, destinationH, originX, originY, rotationSin, rotationCos);
                 SetQuadUVs(sourceX, sourceY, sourceW, sourceH, sourceH, effects);
-                CaptureOrderedQuad(texture, color, !BatchedWorld);
+                if (CaptureOrderedQuad(texture, color, true,
+                    new Rect2(destinationX - originX * destinationW, destinationY - originY * destinationH, destinationW, destinationH),
+                    new Rect2(sourceX * textureWidth, sourceY * textureHeight, sourceW * textureWidth, sourceH * textureHeight))) return;
             }
 #endif
 
@@ -2121,8 +2133,13 @@ void fragment() {
                 return;
             }
 
-            SelectSpriteSampler(texture);
-            EnsureMaterial(_currentMaterial);
+#if GUO_LABS
+            if (_orderedWorld?.Deferring != true)
+#endif
+            {
+                SelectSpriteSampler(texture);
+                EnsureMaterial(_currentMaterial);
+            }
 
             // PORT DEVIATION (GUO): the id mirror (ADR-0023) follows the plain path only.
             if (rotationSin == 0f && rotationCos == 1f && effects == 0 && BatchedWorld && !_mirroring)
@@ -2254,8 +2271,13 @@ void fragment() {
                 return;
             }
 
-            SelectSpriteSampler(texture);
-            EnsureMaterial(_currentMaterial);
+#if GUO_LABS
+            if (_orderedWorld?.Deferring != true)
+#endif
+            {
+                SelectSpriteSampler(texture);
+                EnsureMaterial(_currentMaterial);
+            }
 
             Color modulate = Encode(color);
             MirrorQuad(texture); // PORT DEVIATION (GUO): ADR-0023's id mirror, before any path returns
@@ -2263,7 +2285,7 @@ void fragment() {
             if (BatchedWorld && !_mirroring)
             {
 #if GUO_LABS
-                CaptureOrderedQuad(texture, color);
+                if (CaptureOrderedQuad(texture, color)) return;
 #endif
                 AppendToRun(texture, _quadPoints[0], _quadPoints[1], _quadPoints[2], _quadPoints[3],
                     _quadUVs[0], _quadUVs[1], _quadUVs[2], _quadUVs[3], modulate);
@@ -2277,7 +2299,13 @@ void fragment() {
 
             _quadColors[0] = modulate;
 #if GUO_LABS
-            CaptureOrderedQuad(texture, color);
+            if (CaptureOrderedQuad(texture, color)) return;
+            // A rejection emitted the captured prefix; prepare this original suffix draw.
+            if (OrderedWorldRecording)
+            {
+                SelectSpriteSampler(texture);
+                EnsureMaterial(_currentMaterial);
+            }
 #endif
             _quadColors[1] = modulate;
             _quadColors[2] = modulate;
@@ -2364,7 +2392,12 @@ void fragment() {
 
             var region = new Rect2(left, top, right - left, bottom - top);
 #if GUO_LABS
-            CaptureOrderedAffine(texture, hue, region, size, new Transform2D(axisX, axisY, origin));
+            if (CaptureOrderedAffine(texture, hue, region, size, new Transform2D(axisX, axisY, origin))) return true;
+            if (OrderedWorldRecording)
+            {
+                SelectSpriteSampler(texture);
+                EnsureMaterial(_currentMaterial);
+            }
 #endif
 
             FlushRun();

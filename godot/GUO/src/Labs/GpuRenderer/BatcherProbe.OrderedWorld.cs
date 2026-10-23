@@ -51,12 +51,22 @@ public partial class BatcherProbe
                 if (!empty)
                 {
                     batcher.Draw(background, new Rectangle(-4,-4,24,24), new Rectangle(0,0,1,1), new Vector3(0,0,1), 0);
-                    if (mode == 99)
+                    if (mode == 104)
+                    {
+                        batcher.SetSampler(SamplerState.LinearClamp);
+                        batcher.Draw(pattern,new Rectangle(0,0,8,8),new Rectangle(19,71,6,6),new Vector3(0,0,1),0);
+                    }
+                    else if (mode == 99)
                         batcher.Draw(pattern,new Rectangle(1,3,101,133),new Rectangle(1117,139,101,133),new Vector3(0,0,1),0);
+                    else if (mode == 100)
+                        batcher.DrawShadow(pattern, new Vector2(0,6), new Rectangle(1117,139,8,8), true, 0);
+                    else if (mode == 101)
+                        batcher.Draw(pattern, new Vector2(1,1), new Rectangle(19,71,6,6), new Vector3(0,0,0.5f),
+                            0.33f, Vector2.Zero, 0.9f, SpriteEffects.FlipHorizontally, 0);
                     else if (slope)
                     {
-                        batcher.CaptureOrderedLand(layer);
-                        batcher.DrawMeshLayer(layer);
+                        if (batcher.OrderedWorldRecording) batcher.DrawOrderedLand(layer);
+                        else batcher.DrawMeshLayer(layer);
                     }
                     else
                     {
@@ -70,6 +80,7 @@ public partial class BatcherProbe
                         batcher.Draw(colored,new Rectangle(0,0,8,8),new Rectangle(0,0,1,1),new Vector3(0,0,1), 0);
                         batcher.ClipEnd();
                     }
+                    if (mode == 103) batcher.SetBrightlight(0.7f);
                 }
                 batcher.EndOrderedWorld();
                 batcher.End();
@@ -83,13 +94,17 @@ public partial class BatcherProbe
             {
                 byte[] reference = await Render(false,mode,slope,unsupported,empty,fractional);
                 long before = OrderedWorldCapture.FramesDrawn;
+                long replayBefore = OrderedWorldCanvas.CommandsDrawn;
                 byte[] actual = await Render(true,mode,slope,unsupported,empty,fractional);
                 int differences = 0;
                 for(int i=0;i<reference.Length;i++) if(reference[i]!=actual[i]) differences++;
                 CheckThat(label,differences==0,$"{differences} differing channels; fallback={OrderedWorldCapture.LastFallback}");
-                bool expectFallback = unsupported || OrderedWorldCapture.InjectFailure != 0;
+                bool expectFallback = unsupported || mode is 102 or 103 or 104 || OrderedWorldCapture.InjectFailure != 0;
                 CheckThat(label+" backend",expectFallback ? OrderedWorldCapture.FramesDrawn==before : OrderedWorldCapture.FramesDrawn==before+1,
                     $"RD delta={OrderedWorldCapture.FramesDrawn-before}, fallback={OrderedWorldCapture.LastFallback}");
+                if (!expectFallback)
+                    CheckThat(label+" no duplicate canvas", batcher.Commands == 1 && OrderedWorldCanvas.CommandsDrawn == replayBefore,
+                        $"canvas commands={batcher.Commands} (only backdrop expected), replay={OrderedWorldCanvas.CommandsDrawn-replayBefore}");
             }
             foreach(int mode in new[]{0,1,2,3,4,7,8,9,10,20,21,22,128}) await Parity("RD mode "+mode,mode);
             await Parity("RD slopes and alpha",0,slope:true);
@@ -99,15 +114,38 @@ public partial class BatcherProbe
             await Parity("RD exact half-alpha mesh quantization",0,slope:true);
             await Parity("RD fractional camera",1,fractional:true);
             await Parity("RD nearest texture at half scale",99);
+            await Parity("RD affine mirrored shadow",100,fractional:true);
+            await Parity("RD rotated mirrored sprite",101,fractional:true);
             viewport.Size=new Vector2I(2560,1440);
             await Parity("RD atlas at full target half scale",99);
             viewport.Size=new Vector2I(8,8);
             await Parity("RD whole-frame unsupported clip rollback",0,unsupported:true);
+            await Parity("RD shared material mutation replay",103,slope:true);
+            await Parity("RD sampler mutation preserves prefix and suffix",104);
             OrderedWorldCapture.InjectFailure=1;
             await Parity("RD rollback before upload",0);
             OrderedWorldCapture.InjectFailure=2;
             await Parity("RD rollback after recorded pass",0);
+            await Parity("RD deferred mesh replay",0,slope:true,fractional:true);
+            await Parity("RD deferred affine shadow replay",100,fractional:true);
+            await Parity("RD deferred rotated sprite replay",101,fractional:true);
+            await Parity("RD deferred full atlas replay",99);
             OrderedWorldCapture.InjectFailure=0;
+            // A partial land prefix must not be replayed and then drawn again by the old all-land path.
+            layer.Count = 2;
+            layer.WriteQuadAt(1,colored,new Rectangle(0,0,1,1),0,0,new Vector3(0,11,0.5f),0);
+            MeshQuad second = layer.Vertices[0];
+            second.Hue0.Y = second.Hue1.Y = second.Hue2.Y = second.Hue3.Y = 11;
+            layer.Vertices[1] = second;
+            layer.SetVisible(1,128); layer.BuildVisibleIndices();
+            await Parity("RD reject midway through land",102,slope:true);
+            layer.Count = 1; layer.SetVisible(1,0); layer.BuildVisibleIndices();
+            byte[] afterFailureReference = await Render(false,1);
+            await Render(true,4,unsupported:true);
+            byte[] afterFailure = await Render(false,1);
+            int stale = 0;
+            for (int i=0;i<afterFailure.Length;i++) if(afterFailure[i]!=afterFailureReference[i]) stale++;
+            CheckThat("RD fallback children hidden after toggle off", stale==0, $"{stale} stale channels after pool reuse");
             await Parity("RD recovery uses current frame",2);
             await Parity("RD empty world",0,empty:true);
             viewport.Size=new Vector2I(16,12);

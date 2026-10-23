@@ -33,6 +33,16 @@ complete canvas world. Never present a partial or previous frame as success.
 Cancel an unsubmitted capture before recycling its canvas items if native
 FramePreDraw was skipped; submitted callbacks retain their data until retirement.
 
+The owner subsequently authorized removal of duplicate canvas work and resident
+world data with dirty updates. Capture commands atomically and preserve a cold
+canvas replay plan at the same per-quad granularity. Early rejection emits the
+captured prefix, then resumes ordinary drawing; late failure emits the whole
+plan. Do not repeat gameplay traversal. The initial replay path requires the
+same rendering thread; separate-thread mode falls back before capture. This
+does not promise recovery after native device loss or explicitly disposed art.
+Keep performance stages separately measurable against the original prototype
+and CUO, without changing the parity or export requirements.
+
 The implementation belongs to `src/Labs/GpuRenderer`, compiled only with
 `GuoLabs=true` in Debug. The shared Labs command/options registry supplies
 the runtime toggle. Compatibility and exported clients retain the existing

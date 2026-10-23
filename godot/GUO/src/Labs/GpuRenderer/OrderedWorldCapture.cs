@@ -9,18 +9,21 @@ using GUO.Renderer;
 
 namespace GUO.Labs.GpuRenderer;
 
-/// <summary>Correctness prototype: collect once while retaining a complete canvas rollback.</summary>
+/// <summary>Capture once; construct canvas commands only when the GPU transaction cannot be used.</summary>
 internal sealed class OrderedWorldCapture : IDisposable
 {
     internal static bool Enabled = Array.IndexOf(OS.GetCmdlineUserArgs(), "--rd-world") >= 0;
     internal static long FramesDrawn, FramesFallback, UploadedBytes;
     internal static long DrawCalls, RecordTicks;
+    internal static long SuppressedCommands;
     internal static string LastFallback;
     internal static bool LastFrameOnPass;
     internal static int InjectFailure; // Probe only: 1 before upload, 2 after recording.
     private readonly OrderedWorldDevice _device = new();
+    private readonly OrderedWorldCanvas _fallback;
     private readonly List<OrderedWorldDevice.Vertex> _vertices = new(32768);
     private readonly List<OrderedWorldDevice.Segment> _segments = new(1024);
+    private readonly List<OrderedWorldCanvas.Command> _commands = new(8192);
     private readonly Dictionary<Texture2D, OrderedWorldDevice.Textures> _textures = new(ReferenceEqualityComparer.Instance);
     private readonly Callable _render;
     private OrderedWorldDevice.Push _push;
@@ -36,10 +39,12 @@ internal sealed class OrderedWorldCapture : IDisposable
     private int _pending;
     private readonly string _vertexSource, _fragmentSource;
     internal bool Recording { get; private set; }
+    internal bool Deferring => Recording && _unsupported == null;
     internal Texture2Drd Texture => _device.Presenter;
 
-    internal OrderedWorldCapture()
+    internal OrderedWorldCapture(ShaderMaterial spriteMaterial, ShaderMaterial meshMaterial)
     {
+        _fallback = new OrderedWorldCanvas(spriteMaterial, meshMaterial);
         _vertexSource = FileAccess.GetFileAsString("res://src/Labs/GpuRenderer/ordered_world_vertex.glsl.txt");
         _fragmentSource = FileAccess.GetFileAsString("res://src/Labs/GpuRenderer/ordered_world_fragment.glsl.txt");
         _render = Callable.From(RenderThread);
@@ -60,11 +65,13 @@ internal sealed class OrderedWorldCapture : IDisposable
             Fallback("RenderingDevice unavailable on Compatibility");
             return false;
         }
-        _vertices.Clear(); _segments.Clear(); _textures.Clear();
+        if (hue == null) { Fallback("missing hue table"); return false; }
+        _vertices.Clear(); _segments.Clear(); _textures.Clear(); _commands.Clear();
+        _canvas = default;
         _hue = hue; _light = light ?? hue;
         _hueRid = _hue?.GetRid() ?? default;
         _lightRid = _light?.GetRid() ?? default;
-        _unsupported = hue == null ? "missing hue table" : null;
+        _unsupported = null;
         _view = transform;
         _haveOffset = false;
         _push = new OrderedWorldDevice.Push
@@ -79,16 +86,24 @@ internal sealed class OrderedWorldCapture : IDisposable
 
     internal void Reject(string reason)
     {
-        if (Recording) _unsupported ??= reason;
+        if (!Recording || _unsupported != null) return;
+        _unsupported = reason;
+        // The triggering operation has not emitted canvas work yet. This prefix
+        // uses its own arrays and does not overwrite the batcher's current quad.
+        _fallback.Render(_canvas, CollectionsMarshal.AsSpan(_vertices), CollectionsMarshal.AsSpan(_commands));
+        Fallback(reason);
     }
 
-    internal void Quad(Texture2D texture, in MeshQuad q, Vector2 offset, bool meshColor, bool rectangle = false, Transform2D? local = null)
+    internal bool Quad(Texture2D texture, in MeshQuad q, Vector2 offset, bool meshColor, bool rectangle = false,
+        Transform2D? local = null, Rect2 destination = default, Rect2 source = default)
     {
-        if (!Recording || _unsupported != null) return;
-        if (texture == null) { Reject("missing texture"); return; }
+        if (!Recording || _unsupported != null) return false;
+        if (texture == null) { Reject("missing texture"); return false; }
+        if (!SupportedMode(q.Hue0) || !SupportedMode(q.Hue1) || !SupportedMode(q.Hue2) || !SupportedMode(q.Hue3))
+        { Reject("unsupported shader mode"); return false; }
         if (!_textures.TryGetValue(texture, out var textures))
         {
-            if (GUO.Renderer.Arts.Art.IsHdTexture(texture)) { Reject("HD texture"); return; }
+            if (GUO.Renderer.Arts.Art.IsHdTexture(texture)) { Reject("HD texture"); return false; }
             textures = new OrderedWorldDevice.Textures(texture.GetRid(), _hueRid, _lightRid);
             _textures.Add(texture, textures); // Strong owner reference held until the ticket retires.
         }
@@ -103,6 +118,16 @@ internal sealed class OrderedWorldCapture : IDisposable
         }
         Transform2D transform = _offsetTransform;
         if (local.HasValue) transform *= local.Value;
+        _commands.Add(new OrderedWorldCanvas.Command
+        {
+            Type = meshColor ? OrderedWorldCanvas.Kind.Mesh : rectangle ? OrderedWorldCanvas.Kind.Rect : OrderedWorldCanvas.Kind.Triangles,
+            FirstCorner = _vertices.Count, Texture = textures.ArtRs, Offset = offset,
+            Local = local ?? Transform2D.Identity, Destination = destination, Source = source,
+            Color0 = meshColor ? UltimaBatcher2D.Encode(q.Hue0) : default,
+            Color1 = meshColor ? UltimaBatcher2D.Encode(q.Hue1) : default,
+            Color2 = meshColor ? UltimaBatcher2D.Encode(q.Hue2) : default,
+            Color3 = meshColor ? UltimaBatcher2D.Encode(q.Hue3) : default,
+        });
         offset = Vector2.Zero; // Match the canvas's composed model transform, not CPU-translated vertices.
         if (_segments.Count != 0 && _segments[^1].Textures == textures && _segments[^1].Transform == transform)
         {
@@ -115,13 +140,19 @@ internal sealed class OrderedWorldCapture : IDisposable
         Vertex(q.Position1, q.TextureCoordinate1, q.Hue1, q.Normal1, offset, meshColor, rectangle);
         Vertex(q.Position2, q.TextureCoordinate2, q.Hue2, q.Normal2, offset, meshColor, rectangle);
         Vertex(q.Position3, q.TextureCoordinate3, q.Hue3, q.Normal3, offset, meshColor, rectangle);
+        SuppressedCommands++;
+        return true;
+    }
+
+    private static bool SupportedMode(Vector3 hue)
+    {
+        int mode = ((int)hue.Y) & 0x3f;
+        return mode <= 10 || mode is >= 20 and <= 30;
     }
 
     private void Vertex(Vector2 p, Vector2 uv, Vector3 hue, Vector3 normal, Vector2 offset, bool meshColor, bool rectangle)
     {
         Color c = UltimaBatcher2D.Encode(hue);
-        int mode = ((int)hue.Y) & 0x3f;
-        if (mode > 10 && (mode < 20 || mode > 30)) Reject("unsupported shader mode");
         // ArrayMesh colors travel through UNORM8; rect/triangle canvas colors are floats.
         if (meshColor) c = new Color(ByteColor(c.R), ByteColor(c.G), ByteColor(c.B), ByteColor(c.A));
         p += offset;
@@ -140,8 +171,11 @@ internal sealed class OrderedWorldCapture : IDisposable
     {
         Recording = false;
         _canvas = canvas; _presenter = presenter;
-        _queued = true;
+        _queued = _unsupported == null;
     }
+
+    internal void SetCanvas(Rid canvas) => _canvas = canvas;
+    internal void ClearCanvas() => _fallback.Clear();
 
     internal void CancelUnsubmittedFrame()
     {
@@ -180,7 +214,11 @@ internal sealed class OrderedWorldCapture : IDisposable
             FramesDrawn++;
             success = true;
         }
-        catch (Exception e) { Fallback(e.Message); }
+        catch (Exception e)
+        {
+            Fallback(e.Message);
+            _fallback.Render(_canvas, CollectionsMarshal.AsSpan(_vertices), CollectionsMarshal.AsSpan(_commands));
+        }
         finally
         {
             // These branches contain this frame only. GameObject.Draw is never replayed.
@@ -210,6 +248,7 @@ internal sealed class OrderedWorldCapture : IDisposable
         {
             _device.DisposeRT();
             _device.Presenter.Dispose();
+            _fallback.Dispose();
         }));
     }
 }
