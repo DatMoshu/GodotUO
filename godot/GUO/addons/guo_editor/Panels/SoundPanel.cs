@@ -79,9 +79,9 @@ public partial class SoundPanel : GridPanel
         {
             for (int i = 0; i < MaxSound; i++)
             {
-                if (Data.Files.Sounds.TryGetSound(i, out byte[] data, out string name) && data?.Length > 0)
+                if (Data.Files.Sounds.TryGetSoundMetadata(i, out string name, out int bytes) && bytes > 0)
                 {
-                    _effects[i] = (name.TrimEnd('\0', ' '), data.Length);
+                    _effects[i] = (name.TrimEnd('\0', ' '), bytes);
                     list.Add(i);
                 }
             }
