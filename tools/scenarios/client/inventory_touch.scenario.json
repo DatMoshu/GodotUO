@@ -1,0 +1,23 @@
+{
+  "id": "client.ui.inventory_touch",
+  "title": "Touch inventory: equipment drag, grid context and pinch",
+  "surface": "client",
+  "requires": { "shard": "dev", "account": "$account", "build": "debug" },
+  "timeouts": { "step_s": 240, "run_s": 300 },
+  "steps": [
+    {
+      "id": "inventory_contract",
+      "do": {
+        "kind": "launch",
+        "args": ["--inventory-touch-probe", "--pregame-classic", "--window-size", "1920x1080", "--screen-scale", "2", "--account", "$account", "--character", "$character", "--screenshot-dir", "$shots"],
+        "settings": { "autologin": false, "saveaccount": false }
+      },
+      "say": "Open touch inventory and exercise item gestures on a scratch profile.",
+      "expect": { "log.contains": "[GUO] inventory touch probe: PASS", "within_s": 240 }
+    },
+    {
+      "id": "coverage",
+      "do": { "kind": "note", "text": "Synthetic desktop fingers. Repeat at 640x480 (scale 1) and 1080x2340 (scale 2); physical phone and dual-screen checks are separate." }
+    }
+  ]
+}
