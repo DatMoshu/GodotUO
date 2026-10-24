@@ -309,6 +309,9 @@ public partial class BatcherProbe : Node
             ("plain view", Transform2D.Identity),
             ("zoom 1.37 offset", new Transform2D(new Vector2(1.37f, 0), new Vector2(0, 1.37f), new Vector2(-3.5f, 2.25f))),
             ("zoom 0.5", new Transform2D(new Vector2(0.5f, 0), new Vector2(0, 0.5f), new Vector2(7, 7))),
+            ("zoom 2 half-pixel offset", new Transform2D(new Vector2(2f, 0), new Vector2(0, 2f), new Vector2(-40.5f, -30.5f))),
+            ("zoom 0.8", new Transform2D(new Vector2(0.8f, 0), new Vector2(0, 0.8f), new Vector2(1.3f, 0.7f))),
+            ("zoom 0.66", new Transform2D(new Vector2(0.66f, 0), new Vector2(0, 0.66f), new Vector2(11, 3))),
         };
 
         foreach ((string name, Transform2D view) in views)

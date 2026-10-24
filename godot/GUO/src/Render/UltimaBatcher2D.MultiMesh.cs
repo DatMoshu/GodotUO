@@ -141,10 +141,15 @@ namespace GUO.Renderer
             i[10] = modulate.B;
             i[11] = modulate.A;
 
-            i[12] = sourceX;
-            i[13] = sourceY;
-            i[14] = sourceW;
-            i[15] = sourceH;
+            // The rect path hands the server a texel rect (source times size)
+            // and the server scales it back by 1 / size; the same two float
+            // steps here, so a texel boundary rounds the same way.
+            int textureWidth = WidthOf(texture), textureHeight = HeightOf(texture);
+            float pixelW = 1f / textureWidth, pixelH = 1f / textureHeight;
+            i[12] = sourceX * textureWidth * pixelW;
+            i[13] = sourceY * textureHeight * pixelH;
+            i[14] = sourceW * textureWidth * pixelW;
+            i[15] = sourceH * textureHeight * pixelH;
 
             _mmCount++;
             MultiMeshInstances++;
@@ -197,15 +202,18 @@ namespace GUO.Renderer
         {
             if (!_mmQuad.IsValid)
             {
-                // The unit quad, corners TL, TR, BL, BR in upstream's winding;
-                // UV equals position, so the instance's rect maps it.
+                // The unit quad, corners TL, TR, BL, BR; UV equals position, so
+                // the instance's rect maps it. Split on the diagonal the
+                // server's rect command uses, TL-BR, with its vertex order
+                // ((TL, BL, BR), (TR, TL, BR)): interpolated UVs then land on
+                // texel ties the same way when the view minifies.
                 var corners = new[] { new Vector2(0, 0), new Vector2(1, 0), new Vector2(0, 1), new Vector2(1, 1) };
                 var arrays = new Godot.Collections.Array();
                 arrays.Resize((int)Mesh.ArrayType.Max);
                 arrays[(int)Mesh.ArrayType.Vertex] = corners;
                 arrays[(int)Mesh.ArrayType.TexUV] = corners;
                 arrays[(int)Mesh.ArrayType.Color] = new[] { Colors.White, Colors.White, Colors.White, Colors.White };
-                arrays[(int)Mesh.ArrayType.Index] = _quadIndices;
+                arrays[(int)Mesh.ArrayType.Index] = new[] { 0, 2, 3, 1, 0, 3 };
                 _mmQuad = RenderingServer.MeshCreate();
                 RenderingServer.MeshAddSurfaceFromArrays(_mmQuad, RenderingServer.PrimitiveType.Triangles, arrays);
             }
