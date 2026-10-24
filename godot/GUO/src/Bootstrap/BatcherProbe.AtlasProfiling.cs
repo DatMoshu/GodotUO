@@ -96,10 +96,12 @@ public partial class BatcherProbe
             var totals = TextureAtlas.UploadReport();
             CheckThat("atlas page counts agree with interval totals",
                 totals.Sum(r => (long)r["updates"]) == TextureAtlas.ObservedUpdates
-                && totals.Sum(r => (long)r["creations"]) == TextureAtlas.ObservedCreations, "all observed owners");
+                && totals.Sum(r => (long)r["creations"]) == TextureAtlas.ObservedCreations
+                && totals.Sum(r => (long)r["rgba_bytes_submitted"]) == TextureAtlas.ObservedBytes, "all observed owners and bytes");
             TextureAtlas.BeginObservations();
             CheckThat("second observation resets still-live page totals",
                 TextureAtlas.ObservedUpdates == 0 && TextureAtlas.ObservedCreations == 0
+                && TextureAtlas.ObservedBytes == 0
                 && TextureAtlas.UploadReport().All(r => (long)r["updates"] == 0 && (long)r["creations"] == 0),
                 "fresh interval with resident pages");
 

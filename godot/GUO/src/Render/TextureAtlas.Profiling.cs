@@ -18,13 +18,13 @@ public sealed partial class TextureAtlas
     private readonly int _atlasId = ++_nextAtlasId;
     private List<PageObservation> _pageObservations;
     private static readonly List<PageObservation> _observedPages = new();
-    internal static long ObservedUpdates, ObservedCreations;
+    internal static long ObservedUpdates, ObservedCreations, ObservedBytes;
 
     // Called before the allocation/time baseline. Retain observations even if
     // an atlas is disposed during the measured interval; no resource refs.
     internal static void BeginObservations()
     {
-        ObservedUpdates = ObservedCreations = 0;
+        ObservedUpdates = ObservedCreations = ObservedBytes = 0;
         _observedPages.Clear();
         foreach (TextureAtlas atlas in _live)
         {
@@ -50,6 +50,7 @@ public sealed partial class TextureAtlas
         if (!RuntimeTimings.Enabled) return;
         EnsureObservations();
         PageObservation page = _pageObservations[index];
+        ObservedBytes += (long)page.Width * page.Height * 4;
         if (creation)
         {
             page.Creations++; page.CreationTicks += ticks; ObservedCreations++;

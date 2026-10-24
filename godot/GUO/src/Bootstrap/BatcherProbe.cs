@@ -129,6 +129,8 @@ public partial class BatcherProbe : Node
         await VerifyAtlasMetadata(batcher, viewport);
         Stage("atlas page metadata");
         VerifyAtlasProfiling();
+        VerifyPerfIntervals();
+        VerifyPerfWalkReplay();
         Stage("atlas upload attribution");
         VerifyFirstLandCache();
         Stage("first-land identity cache");

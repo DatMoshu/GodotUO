@@ -99,6 +99,8 @@ internal static partial class PerfProbe
     private static bool _retainedCanvasParity;
     private static bool _coverCandidatesParity;
     private static bool _runtimeAttribution;
+    private static bool _intervalCounters;
+    private static PerfWalkRoute _walkRoute;
     private static int _warmupSeconds, _measureSeconds, _walkSeconds = 12;
     private static string _walkOrigin = "field";
     private static string _profilePreset = "", _profileSummary = "";
@@ -205,7 +207,8 @@ internal static partial class PerfProbe
         bool previousCoverCandidates = Game.Scenes.RenderLists.RetainCoverCandidates;
         bool previousRuntimeTimings = GUO.Utility.RuntimeTimings.Enabled;
         bool previousProfiling = GUO.Utility.Profiler.Enabled;
-        _runtimeAttribution = System.Environment.GetEnvironmentVariable("GUO_PERF_RUNTIME_ATTRIBUTION") == "1";
+        _intervalCounters = System.Environment.GetEnvironmentVariable("GUO_PERF_INTERVAL_COUNTERS") == "1";
+        _runtimeAttribution = _intervalCounters || System.Environment.GetEnvironmentVariable("GUO_PERF_RUNTIME_ATTRIBUTION") == "1";
         _retainedCanvasParity = System.Environment.GetEnvironmentVariable("GUO_PERF_PARITY_CANVAS") == "1";
         _coverCandidatesParity = System.Environment.GetEnvironmentVariable("GUO_PERF_PARITY_COVER_CANDIDATES") == "1";
         try
@@ -214,6 +217,10 @@ internal static partial class PerfProbe
             _measureSeconds = DiagnosticSeconds("GUO_PERF_MEASURE_SECONDS", 0, 0);
             _walkSeconds = DiagnosticSeconds("GUO_PERF_WALK_SECONDS", 12, 1);
             _walkOrigin = System.Environment.GetEnvironmentVariable("GUO_PERF_WALK_ORIGIN") ?? "field";
+            string routePath = System.Environment.GetEnvironmentVariable("GUO_PERF_WALK_ROUTE");
+            _walkRoute = string.IsNullOrWhiteSpace(routePath) ? null : PerfWalkRoute.Load(routePath);
+            if (_walkRoute != null && (parity || Only.Count != 1 || Only[0] != "walk"))
+                throw new System.ArgumentException("GUO_PERF_WALK_ROUTE requires only --perf-scene walk, without --perf-parity.");
             if (_walkOrigin is not ("field" or "bank" or "docks"))
                 throw new System.ArgumentException("GUO_PERF_WALK_ORIGIN must be field, bank or docks.");
             if (_retainedCanvasParity || _coverCandidatesParity)
@@ -246,6 +253,7 @@ internal static partial class PerfProbe
             Game.Scenes.RenderLists.RetainCoverCandidates = previousCoverCandidates;
             _retainedCanvasParity = false;
             _coverCandidatesParity = false;
+            _walkRoute = null;
             GUO.Utility.RuntimeTimings.Enabled = previousRuntimeTimings;
             GUO.Utility.Profiler.Enabled = previousProfiling;
         }
@@ -365,7 +373,9 @@ internal static partial class PerfProbe
         foreach (Scene configuredScene in scenes)
         {
             Scene scene = configuredScene;
-            if (scene.Walks && _walkOrigin != "field")
+            if (scene.Walks && _walkRoute != null)
+                scene = scene with { Go = _walkRoute.Go, What = "fixed 46-tile acknowledged walk; no detours or recovery teleport" };
+            else if (scene.Walks && _walkOrigin != "field")
                 scene = scene with { Go = Scenes.Single(s => s.Name == "britain-" + _walkOrigin).Go,
                     What = $"running from Britain {_walkOrigin}, turning where blocked" };
             await InputProbe.Say(host, scene.Go);
@@ -379,6 +389,7 @@ internal static partial class PerfProbe
                 continue;
             }
 
+            if (scene.Walks && _walkRoute != null) await PrepareReplayOrigin(host, _walkRoute);
             results.Add(await Measure(host, viewport, scene.Name, scene.What, scene.Walks));
 
             // With --perf-parity, the same spot again with the path under test
@@ -421,12 +432,13 @@ internal static partial class PerfProbe
             GD.PrintErr("[GUO] perf probe: a parity row has test captures the --gpu-world pass did not draw; see gpu_test_on_pass");
         }
 
-        bool coverCapturesValid = !_coverCandidatesParity || results.Where(r => r.ContainsKey("parity_target_exercised"))
+        bool diagnosticCapturesValid = !(_coverCandidatesParity || _retainedCanvasParity) || results.Where(r => r.ContainsKey("parity_target_exercised"))
             .All(r => (bool)r["parity_target_exercised"]);
-        if (!coverCapturesValid)
-            GD.PrintErr("[GUO] perf probe: a world parity capture did not replay cover candidates; see parity_target_exercised");
+        if (!diagnosticCapturesValid)
+            GD.PrintErr("[GUO] perf probe: a world parity capture did not exercise its diagnostic target; see parity_target_exercised");
 
-        Passed = unknown.Count == 0 && idle.Count == 0 && arrivedEverywhere && capturesValid && coverCapturesValid
+        bool replayValid = results.All(r => r.GetValueOrDefault("walk_replay_valid") is not false);
+        Passed = unknown.Count == 0 && idle.Count == 0 && arrivedEverywhere && capturesValid && diagnosticCapturesValid && replayValid
             && results.Count == (_parity ? 2 : 1) * scenes.Length + 1;
     }
 
@@ -453,7 +465,7 @@ internal static partial class PerfProbe
         bool worldMeasurement = name != "login";
         if (worldMeasurement) await WarmUp(host);
         int n = Frames;
-        Runner runner = walks ? new Runner() : null;
+        Runner runner = walks && _walkRoute == null ? new Runner() : null;
 
         // Uncapped: with vsync or a frame cap every frame below the cap reads as
         // the cap, and a renderer change that saves 4 ms would not show.
@@ -468,7 +480,8 @@ internal static partial class PerfProbe
         // draws; put back after.
         await InputProbe.Wait(host, 30);
 
-        double measureMs = walks ? WalkMs : worldMeasurement ? _measureSeconds * 1000.0 : 0;
+        using var replay = walks && _walkRoute != null ? new PerfWalkReplay(_walkRoute) : null;
+        double measureMs = replay != null ? 180000 : walks ? WalkMs : worldMeasurement ? _measureSeconds * 1000.0 : 0;
         int sampleCapacity = measureMs > 0 ? System.Math.Max(20000, (int)measureMs * 2) : n;
         var ms = new List<double>(sampleCapacity);
         double kRect = 0, kAffine = 0, kMesh = 0, kTri = 0, kBatches = 0, kCover = 0, kCoverRuns = 0, coverQueued = 0, coverOverlapping = 0;
@@ -476,6 +489,7 @@ internal static partial class PerfProbe
         // Allocate the probe's own storage before the measured interval.
         var uploadMs = new List<double>(sampleCapacity);
         var atlasUploadMs = new List<double>(_runtimeAttribution ? sampleCapacity : 0);
+        var intervals = _intervalCounters ? new PerfIntervalSampler((int)(measureMs / 1000) + 32) : null;
         bool atlasUploadedLast = false;
         long atlasUploadsLast = 0, atlasUploadsMax = 0, atlasUploadFrames = 0;
         bool uploadedLast = false;
@@ -549,12 +563,33 @@ internal static partial class PerfProbe
         long allocatedBefore = System.GC.GetTotalAllocatedBytes();
         System.TimeSpan pausedBefore = System.GC.GetTotalPauseDuration();
         int gc0Before = System.GC.CollectionCount(0), gc1Before = System.GC.CollectionCount(1), gc2Before = System.GC.CollectionCount(2);
+        intervals?.Begin(PerfIntervalSampler.Counts.Capture());
         long last = System.Diagnostics.Stopwatch.GetTimestamp();
         double elapsed = 0;
-        for (int i = 0; measureMs > 0 ? elapsed < measureMs : i < n; i++)
+        long replayDoneDraw = -1;
+        ParityDrawFence? replayDrain = null;
+        bool replayDrained = false;
+        async System.Threading.Tasks.Task NextReplayDrainFrame()
+        { await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame); }
+        for (int i = 0; replay != null
+            ? !replay.Done || !replayDrained
+            : measureMs > 0 ? elapsed < measureMs : i < n; i++)
         {
             runner?.Step();
-            await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
+            replay?.Step();
+            if (replay?.Done == true && replayDoneDraw < 0)
+            {
+                replayDoneDraw = UltimaBatcher2D.FramesBegun;
+                replayDrain = new ParityDrawFence(replayDoneDraw, Godot.Time.GetTicksMsec() + 10000);
+            }
+            if (replayDrain.HasValue)
+            {
+                await replayDrain.Value.WaitForSignal(NextReplayDrainFrame(), Godot.Time.GetTicksMsec());
+                // Observe checks the post-await deadline BEFORE draw success.
+                replayDrained = replayDrain.Value.Observe(UltimaBatcher2D.FramesBegun,
+                    Godot.Time.GetTicksMsec(), true, true);
+            }
+            else await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
             long now = System.Diagnostics.Stopwatch.GetTimestamp();
             double frameMs = (now - last) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
             ms.Add(frameMs);
@@ -611,8 +646,10 @@ internal static partial class PerfProbe
             ui += GUO.Utility.Profiler.GetContext(GUO.Utility.Profiler.ProfilerContext.RENDER_FRAME_UI).LastTime;
             update += GUO.Utility.Profiler.GetContext(GUO.Utility.Profiler.ProfilerContext.UPDATE_WORLD).LastTime;
             gpu += RenderingServer.ViewportGetMeasuredRenderTimeGpu(viewport);
+            intervals?.Observe(elapsed, ms.Count, replay?.Tiles ?? runner?.Tiles ?? 0);
         }
 
+        intervals?.Observe(elapsed, ms.Count, replay?.Tiles ?? runner?.Tiles ?? 0, finish: true);
         PerfStages.Enabled = false;
         n = ms.Count;
         long draws = UltimaBatcher2D.FramesBegun - drawsBefore;
@@ -624,6 +661,9 @@ internal static partial class PerfProbe
         GUO.Utility.RuntimeTimings.Enabled = false;
         runner?.ObservePosition();
         measurementState.Dispose();
+        // Dispose validates the endpoint and observer ownership, then restores
+        // the prior observer. Snapshot acceptance only after those checks.
+        replay?.Dispose();
         double[] sorted = ms.OrderBy(v => v).ToArray();
         double P(double q) => sorted[System.Math.Min(sorted.Length - 1, (int)System.Math.Ceiling(q * sorted.Length) - 1)];
         var player = Client.Game.UO.World?.Player;
@@ -639,10 +679,14 @@ internal static partial class PerfProbe
             ["elapsed_seconds"] = elapsed / 1000.0,
             ["drawn_frames"] = draws,
             ["draw_fps"] = draws * 1000.0 / elapsed,
-            ["walk_route_map_xyz"] = runner?.Route(),
-            ["walk_route_dropped"] = runner?.RouteDropped ?? 0,
+            ["walk_route_map_xyz"] = replay?.Route() ?? runner?.Route(),
+            ["walk_route_dropped"] = replay?.RouteDropped ?? runner?.RouteDropped ?? 0,
+            ["walk_replay"] = replay?.Report(),
+            ["walk_replay_valid"] = replay == null || replay.Valid,
+            ["walk_replay_drain_draws"] = replayDoneDraw < 0 ? 0 : UltimaBatcher2D.FramesBegun - replayDoneDraw,
             ["draws_per_frame"] = System.Math.Round((double)draws / n, 2),
             ["mean_ms"] = System.Math.Round(ms.Average(), 3),
+            ["p50_ms"] = System.Math.Round(P(0.5), 3),
             ["p95_ms"] = System.Math.Round(P(0.95), 3),
             ["p99_ms"] = System.Math.Round(P(0.99), 3),
             ["fps"] = System.Math.Round(1000.0 / ms.Average(), 1),
@@ -706,7 +750,7 @@ internal static partial class PerfProbe
             ["cmd_triangles"] = System.Math.Round(kTri / n, 1),
             ["estimated_batches"] = System.Math.Round(kBatches / n, 1),
             ["gc_ms_per_frame"] = System.Math.Round(gcMs, 3),
-            ["tiles_moved"] = runner?.Tiles ?? 0,
+            ["tiles_moved"] = replay?.Tiles ?? runner?.Tiles ?? 0,
             ["land_layers"] = LandPages.Layers,
             ["land_capacity"] = LandPages.Capacity,
             ["land_array_mib"] = System.Math.Round((double)LandPages.Capacity * LandPages.LayerBytes / (1 << 20), 1),
@@ -732,6 +776,10 @@ internal static partial class PerfProbe
             ["gather_input_mismatches"] = GUO.Game.Scenes.GameScene.GatherInputMismatches,
             ["gc0"] = gc0, ["gc1"] = gc1, ["gc2"] = gc2,
             ["runtime_attribution"] = _runtimeAttribution,
+            ["retained_canvas_enabled"] = UltimaBatcher2D.RetainCanvas,
+            ["counter_intervals"] = intervals?.Report(ms),
+            ["counter_intervals_dropped"] = intervals?.Dropped ?? 0,
+            ["counter_interval_thread_changed"] = intervals?.ThreadChanged ?? false,
             ["cover_candidate_hits"] = GUO.Game.Scenes.CoverCandidates.Hits - candidateHitsBefore,
             ["cover_candidate_misses"] = GUO.Game.Scenes.CoverCandidates.Misses - candidateMissesBefore,
             ["cover_candidate_builds"] = GUO.Game.Scenes.CoverCandidates.Builds - candidateBuildsBefore,
@@ -785,7 +833,7 @@ internal static partial class PerfProbe
         // the frame just drawn; whether that frame went through the pass is
         // read then (GpuWorld.LastFrameOnPass), not inferred from counters.
         int testCaptures = 0, testOnPass = 0;
-        int coverHitCaptures = 0;
+        int coverHitCaptures = 0, canvasHitCaptures = 0;
         var captureEvidence = new List<Dictionary<string, object>>(5);
 #if GUO_LABS
         int rdTestOnPass = 0;
@@ -798,6 +846,7 @@ internal static partial class PerfProbe
         {
             ParityToggle(batched);
             long hitsBefore = Game.Scenes.CoverCandidates.Hits;
+            long comparedBefore = RetainedCanvasCommands.Compared, reusedBefore = RetainedCanvasCommands.Reused;
             var fence = new ParityDrawFence(UltimaBatcher2D.FramesBegun, Godot.Time.GetTicksMsec() + 10000);
             int engineSignals = 0;
             do
@@ -807,15 +856,18 @@ internal static partial class PerfProbe
             }
             while (!fence.Observe(UltimaBatcher2D.FramesBegun, Godot.Time.GetTicksMsec(), ParityState(), batched));
             long coverHits = Game.Scenes.CoverCandidates.Hits - hitsBefore;
+            long compared = RetainedCanvasCommands.Compared - comparedBefore, reused = RetainedCanvasCommands.Reused - reusedBefore;
             captureEvidence.Add(new Dictionary<string, object>
             {
                 ["test_state"] = batched, ["actual_client_draws"] = fence.DrawsSince(UltimaBatcher2D.FramesBegun),
                 ["engine_post_draw_signals"] = engineSignals, ["cover_candidate_hits"] = coverHits,
+                ["retained_compared"] = compared, ["retained_prefix_matches"] = reused,
             });
             if (batched)
             {
                 testCaptures++;
                 if (coverHits > 0) coverHitCaptures++;
+                if (compared > 0 && reused > 0) canvasHitCaptures++;
 #if GUO_LABS
                 if (GUO.Labs.GpuRenderer.OrderedWorldCapture.LastFrameOnPass) rdTestOnPass++;
 #endif
@@ -921,7 +973,8 @@ internal static partial class PerfProbe
         {
             ["parity_stable_px"] = stable, ["parity_violations"] = violations, ["parity_strict"] = strict,
             ["parity_capture_evidence"] = captureEvidence,
-            ["parity_target_exercised"] = !_coverCandidatesParity || name == "login" || coverHitCaptures == 2,
+            ["parity_target_exercised"] = name == "login" ||
+                ((!_coverCandidatesParity || coverHitCaptures == 2) && (!_retainedCanvasParity || canvasHitCaptures == 2)),
             ["parity_frames"] = new[] { "_plain.png", "_batched.png", "_plain2.png", "_batched2.png", "_plain3.png" }
                 .Select(suffix => Path.GetFileName(stem + suffix)).ToArray(),
 #if GUO_LABS

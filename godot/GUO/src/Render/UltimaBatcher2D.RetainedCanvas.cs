@@ -8,6 +8,8 @@ public sealed partial class UltimaBatcher2D
     // Diagnostic opt-in during the parity/performance experiment. The RD Labs
     // path remains independent and disables this ordinary-canvas optimization.
     internal static bool RetainCanvas = System.Environment.GetEnvironmentVariable("GUO_RETAIN_CANVAS") == "1";
+    // Main-thread scalar diagnostics; distinguish ownership clears from retained rewrites.
+    internal static long CanvasOwnerClears, CanvasHides, CanvasReveals;
     private bool _retainCanvasFrame;
     private RetainedCanvasCommands.Budget _canvasBudget;
     private RetainedCanvasCommands _canvasCommands;
@@ -26,11 +28,13 @@ public sealed partial class UltimaBatcher2D
         if (!_retainCanvasFrame && state.Commands?.HasCommands == true)
         {
             RenderingServer.CanvasItemClear(item);
+            CanvasOwnerClears++;
             state.Commands.Reset();
         }
         if (state.RetainedHidden)
         {
             RenderingServer.CanvasItemSetVisible(item, true);
+            CanvasReveals++;
             state.RetainedHidden = false;
         }
         if (!_retainCanvasFrame) return;

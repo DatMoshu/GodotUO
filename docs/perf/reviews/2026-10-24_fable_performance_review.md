@@ -439,3 +439,24 @@ fallback retries recording each frame; test recovery after shrink and bounded
 budget behavior before changing admission. Only then choose the next MultiMesh
 pilot. Smaller art/animation atlas pages and a dedicated minimap texture remain
 separate measured candidates; no upload deferral or visual changes are implied.
+
+## Retained travel and allocation follow-up
+
+The [travel attribution report](../2026-10-24_retained_travel_attribution.md)
+records the next exact 46-tile bank/docks cohort, per-interval native work and
+allocation traces. It uses 60-second warmups and 250 ms idle between completed
+walk requests, so it is controlled interrupted travel, not continuous running.
+First shared-load observations favor retention, but atlas upload counts and host
+load differ. That cohort predates three diagnostic acceptance fixes and remains
+provisional. Corrected reverse-order runs completed: bank 77.649 off / 67.624 on,
+docks 93.376 off / 79.505 on FPS. Retention was slower, with worse tails and higher
+per-frame allocation, in those runs. The conflicting outcomes establish no
+general gain. All exact routes and pair conditions passed the hardened checks;
+794 Release checks and four zero-difference pixel scenes passed. No default change follows.
+
+Retention still makes roughly 3,130–3,270 native visibility calls per drawn frame
+across those routes/cohorts. Allocation traces place 88.3%/89.1% of sampled bytes
+in bank/docks UI drawing and 4.0%/3.8% in cover-run expiry; these are allocation weights, not CPU
+percentages. The next bounded source targets are unnecessary debug closures and
+expiry delegates/scratch storage, followed by measured UI command construction.
+Keep those changes separate from the diagnostic work and the GPU experiments.

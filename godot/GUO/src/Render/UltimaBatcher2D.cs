@@ -510,12 +510,14 @@ namespace GUO.Renderer
                     if (!state.RetainedHidden)
                     {
                         RenderingServer.CanvasItemSetVisible(_items[i], false);
+                        CanvasHides++;
                         state.RetainedHidden = true;
                     }
                 }
                 else
                 {
                     RenderingServer.CanvasItemClear(_items[i]);
+                    CanvasOwnerClears++;
                     state.Commands?.Reset();
                 }
             }

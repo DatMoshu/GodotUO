@@ -165,6 +165,7 @@ public partial class BatcherProbe
 
     private void VerifyRetainedStreams()
     {
+        VerifyRetainedRecovery();
         var sink = new CanvasOracle();
         var budget = new RetainedCanvasCommands.Budget();
         var cache = new RetainedCanvasCommands(budget, sink, default);

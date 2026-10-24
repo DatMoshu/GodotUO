@@ -3368,6 +3368,9 @@ The five saved frames alternate retention off/on/off/on/off; JSON reports
 player animation/light states as renderer differences. Existing stable-pixel
 and repeated-difference rules still apply. The diagnostic rejects GPU-world
 or RD mode and restores the prior retention state when the probe ends.
+Capture evidence includes retained comparison and prefix-match deltas; both
+world test captures must exercise retention as well as pass the actual-draw
+fence. `parity_target_exercised` gates acceptance for this diagnostic too.
 
 **Probe JSON**, `perf_<label>.json`, written by the client's `--perf-probe`
 (`src/Bootstrap/PerfProbe.cs`): `{label, window "WxH", zoom, optimized,
@@ -3417,6 +3420,49 @@ CPU or GPU times. `Process` includes `Draw` and update stages; `Draw`
 includes the existing world/UI scopes. Do not add overlapping totals.
 `Input` contains two scopes per process callback. With attribution disabled,
 `runtime_wall_times` and `atlas_pages` are null.
+
+`GUO_PERF_INTERVAL_COUNTERS=1` also enables runtime attribution and records
+`counter_intervals` per scene. Storage is allocated before measurement and
+serialized afterward. Each row records actual start/end/duration, process and
+drawn frame counts, route progress, frame p50/p95/p99/max, and interval deltas
+for retained comparisons, prefix matches, submitted records, rewrite clears,
+uncached items, ordinary owner clears, visibility hides/reveals, land uploads
+and rebuilds, atlas updates/creations/submitted RGBA bytes, process/main-thread
+allocated bytes, and GC collection counts. Owner clears exclude retained
+rewrites and the picking mirror; submitted records exclude raw bypasses.
+The process allocation counter is approximate; its delta may be slightly below
+the exact current-thread counter. Neither is a per-object allocation census.
+Per-draw ratios are null when no draw occurred. A delayed boundary produces one
+long interval; a final remainder is labeled partial. Counts are not cumulative
+since warmup, unlike the older PerfDump retention ratios. Prefix matches can
+still be resubmitted after a later mismatch. Submitted bytes estimate CPU image
+submission, not GPU traffic. `counter_intervals_dropped` and
+`counter_interval_thread_changed` must be zero/false for allocation claims.
+The scene records `retained_canvas_enabled`; ordinary retention remains off.
+
+For diagnostic replay, `GUO_PERF_WALK_ROUTE` points to a private JSON artifact
+`{version:1, run:bool, initial_direction:0..7, points:[[map,x,y,z],...]}` with
+exactly 47 adjacent same-map points (46 tile moves), at most 64 KiB. This requires
+only `--perf-scene walk` without `--perf-parity`. The artifact is loaded once,
+hashed, and never alters map data. GM positioning and an optional real turn
+occur before warmup; exact origin/facing and drained movement queues are then
+required. A setup turn needs its matching ACK and rejects denial/reset/bad ACK;
+local facing and drained queues alone do not establish success. Replay calls the real walk path, allows one request in flight, waits
+for matching acknowledgement and completed animation, and separates turn-only
+requests from moved tiles. Its fixed 250 ms release delay follows completion;
+it never sends catch-up bursts. Denial, reset, bad/unexpected ACK, wrong route,
+direction/run changes or timeout invalidate the result without replanning or
+teleporting. The external test driver must also enforce a hard process deadline
+if engine frame signals cease. `walk_replay` records its hash, completed points,
+requests/ACKs/turns and timing/failure evidence. `walk_replay_valid` must be true;
+`walk_replay_drain_draws` requires two actual client draws after completion.
+The drain has an independently bounded signal wait and rejects a late second
+draw. Before copying acceptance fields, replay finalization rechecks the exact
+endpoint/facing, healthy world, drained queues, movement conditions and observer
+ownership, then restores the previous observer. A failed finalization invalidates
+the row. This narrow diagnostic witness is not a packet-wide correction trace.
+Each OFF/ON performance leg still needs its own explicit 60-second warmup.
+The older timed walker remains the default and is not deterministic replay.
 
 `atlas_pages` contains numeric page identities, owner labels, actual
 `width/height`, `updates/creations`, `rgba_bytes_submitted`, and
