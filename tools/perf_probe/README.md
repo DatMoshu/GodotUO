@@ -23,17 +23,19 @@ python tools/perf_probe/gate.py --baseline <baseline-report.json> --report <meas
 
 The comparator accepts the client's existing PerfProbe JSON format. Draw calls
 may rise by **at most 5%** in each scene; batcher items may **not rise at all**.
-Mean, p95 and p99 frame times appear in a separate advisory table and cannot
-fail the count comparison. `--summary` appends Markdown, suitable for a CI
+p50, p95, p99 and mean frame times (in that order; no FPS) and the
+sampled seconds' other-process CPU appear in a separate advisory table and
+cannot fail the count comparison; a row above 10% other CPU is marked shared. `--summary` appends Markdown, suitable for a CI
 step summary. Exit 0 means the count comparison passed, 1 means a count
 regressed, and 2 means an input was invalid or incomparable.
 
-Both documents must contain `optimized: true`, matching nonempty `window`
+Both documents must contain `optimized: true`, `export_template: "release"`,
+`engine_debug_build: false`, `quiet_fixture: true`, matching nonempty `window`
 and `postfx` strings, and a `scenes` array containing exactly one each of
 `login`, `open-field`, `britain-bank`, `dense-forest`, `dungeon`, and `walk`.
 Each scene needs positive finite numbers for `draw_calls`, `batcher_items`,
-`mean_ms`, `p95_ms`, `p99_ms` and `draws_per_frame`; draws per frame must be
-at least 0.95, and p95 must not exceed p99. `frames` must be an integer of
+`p50_ms`, `mean_ms`, `p95_ms`, `p99_ms` and `draws_per_frame`; draws per frame
+must be at least 0.95, and p50 <= p95 <= p99. `frames` must be an integer of
 at least 360 for stationary scenes. The clock-timed `walk` needs at least
 one measured frame and a positive integer `tiles_moved`. Missing, duplicate,
 extra, idle or unoptimized scenes fail validation. Additional probe fields
@@ -47,13 +49,17 @@ a shard or a private runner. A login-only report cannot pass the comparator.
 
 ```
 launchers/dev/perf_gate.bat --doctor
-launchers/dev/perf_gate.bat --fixture dev-world-v1 --record-baseline
-launchers/dev/perf_gate.bat --fixture dev-world-v1
+launchers/dev/perf_gate.bat --fixture dev-world-v1 --exe EXPORT/GUO.exe --record-baseline
+launchers/dev/perf_gate.bat --fixture dev-world-v1 --exe EXPORT/GUO.exe
+launchers/dev/perf_gate.bat --fixture dev-world-v1 --exe EXPORT/GUO.exe --dry-run --from-report REPORT.json
 ```
+
+`--exe` (required for a measurement) is a Release export; `run.py --exe` runs
+the probe on it without rebuilding. `--dry-run` launches nothing.
 
 Use the `.sh` twin on Linux/macOS. Configure `UO_BUILD_DIR` outside the
 checkout first. The launcher runs the optimized real probe with the gate's
-own flags in front of yours (`--perf-static-world`, then `--perf-scene` for
+own flags in front of yours (`--perf-static-world`, `--perf-quiet`, then `--perf-scene` for
 each of its five stationary/walk scenes, so the probe measures a map-only
 world and only the six scenes the gate binds on; the flag is refused without
 `--perf-probe` and is live only while the probe runs), then compares

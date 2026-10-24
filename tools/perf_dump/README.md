@@ -8,6 +8,12 @@ and writes its last 60 frames' averages to `build/perf_dump/<scene>/`. No
 keystrokes and no focus. Numbers compare only on one machine at one window
 size and zoom. Needs a shard.
 
+`--quiet` (GUO only) sets `GUO_PERF_QUIET=1`: the weather stays off and
+incoming messages are dropped, so captures of two launches can match
+(`docs/perf/2026-10-24_cross_launch_pixel_variance.md`). Receipts record
+`export_template` and `engine_debug_build`; only a Release export times what
+players run.
+
 ## Run
 
 ```
