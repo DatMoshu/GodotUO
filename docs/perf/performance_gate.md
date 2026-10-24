@@ -1,8 +1,16 @@
 # Performance count gate (PERF-02)
 
 The gate fails when any scene has more than **5% extra draw calls** or **any
-increase in batcher items**. Mean, p95 and p99 frame times are advisory and
-appear in their own table. No FPS improvement is implied by passing.
+increase in batcher items**. p50, p95, p99 and mean frame times are advisory
+and appear in their own table, frame times first; FPS is not shown. No FPS
+improvement is implied by passing.
+
+Since PERF-LANE-01 the gate measures only an **exported Release build**
+(`--exe`), always with the **quiet fixture** (`--perf-quiet`: weather off,
+incoming messages dropped), and every scene row carries the host CPU of its
+sampled seconds only, apart from launch and warm-up. A report from the editor
+or a debug export (`export_template` not `release`, or `engine_debug_build`
+true) or without `quiet_fixture` cannot record or compare.
 
 ## Hosted CI
 
@@ -32,9 +40,21 @@ doctor is not proof that the shard is running or the account is a GM.
 ## Record and compare
 
 ```
-launchers/dev/perf_gate.bat --fixture dev-world-v1 --record-baseline
-launchers/dev/perf_gate.bat --fixture dev-world-v1
+launchers/dev/perf_gate.bat --fixture dev-world-v1 --exe EXPORT/GUO.exe --record-baseline
+launchers/dev/perf_gate.bat --fixture dev-world-v1 --exe EXPORT/GUO.exe
+launchers/dev/perf_gate.bat --fixture dev-world-v1 --exe EXPORT/GUO.exe --dry-run [--from-report REPORT.json]
 ```
+
+`--exe` names a Release export (`launchers/windows/export`; a build exported
+with `--export-debug` is refused by the report check). `--dry-run` launches
+nothing: it checks the export, prints the probe command, and with
+`--from-report` prints that report's frame-time table and whether it could
+bind.
+
+The advisory table's "other CPU" column is the host load the client did not
+cause, mean/max over the sampled seconds (`host_other_cpu_sample_*_pct`).
+Above 10% the row is marked `shared`: its frame times were taken on a busy
+host and are not quotable as a gain or a loss.
 
 The first command runs the optimized probe and records a new local baseline.
 It refuses an existing baseline. The second runs the probe again and prints
@@ -43,7 +63,8 @@ zoom 1.0, Forward+ renderer, postfx off, vsync off and no frame cap by default.
 `--size WIDTH,HEIGHT`, `--zoom`, `--renderer`, `--port`, and `--args` can select
 another configuration. The renderer is passed to Godot before its `--`
 separator. `--args` holds extra client flags and must match exactly. The
-gate adds its own flags in front of them: `--perf-static-world`, so the
+gate adds its own flags in front of them: `--perf-quiet` (see
+`2026-10-24_cross_launch_pixel_variance.md`), `--perf-static-world`, so the
 world is measured without mobiles (other than the player), items or
 effects and a wandering NPC or a dropped loot pile cannot move a count
 between two identical runs; and `--perf-scene` for its five stationary and
@@ -78,7 +99,8 @@ fixture label, shard endpoint hash, client version, window, zoom, renderer
 and extra flags. Each run uses a fresh label, preventing reuse of stale
 reports. The baseline records what was measured (git head, dirty tree,
 client DLL hash); a comparison prints the baseline head beside the
-measured head so a number can always be traced to its build. The baseline embeds the probe report, and summaries are written
+measured head so a number can always be traced to its build; the DLL hash
+is the export's `data_*/GUO.dll`. The baseline embeds the probe report, and summaries are written
 beside it. The raw probe JSON and log stay under `<UO_BUILD_DIR>/perf/`.
 The format is specified in [section 41](../data_formats.md#41-perf-probe-and-perf-lab-reports-buildperf-toolsperf_probe-toolsperf_lab).
 

@@ -9,16 +9,18 @@ from gate import SCENES, compare, main
 
 def report():
     return {"optimized": True, "static_world": True, "window": "1280x720", "postfx": "Classic (0 pass(es), --postfx)",
+            "export_template": "release", "engine_debug_build": False, "quiet_fixture": True,
             "scenes": [{"scene": s, "frames": 360, "draws_per_frame": 1.0,
-                        "draw_calls": 100.0, "batcher_items": 20.0, "mean_ms": 10.0,
-                        "p95_ms": 12.0, "p99_ms": 15.0, "tiles_moved": 30 if s == "walk" else 0}
+                        "draw_calls": 100.0, "batcher_items": 20.0, "p50_ms": 9.0, "mean_ms": 10.0,
+                        "p95_ms": 12.0, "p99_ms": 15.0, "tiles_moved": 30 if s == "walk" else 0,
+                        "host_other_cpu_sample_mean_pct": 2.0, "host_other_cpu_sample_max_pct": 4.0}
                        for s in SCENES]}
 
 
 def test_count_boundaries_and_advisory_times():
     baseline, measured = report(), report()
     for row in measured["scenes"]:
-        row.update(draw_calls=105.0, mean_ms=100, p95_ms=120, p99_ms=150)
+        row.update(draw_calls=105.0, p50_ms=90, mean_ms=100, p95_ms=120, p99_ms=150)
     passed, summary = compare(baseline, measured)
     assert passed
     assert "Frame times are advisory" in summary
@@ -51,7 +53,8 @@ def test_invalid_document_rejected(bad):
 
 @pytest.mark.parametrize("side", ["baseline", "report"])
 @pytest.mark.parametrize("mutation", ["missing", "duplicate", "malformed", "idle", "short", "stationary",
-                                      "unoptimized", "dynamic", "window", "postfx"])
+                                      "unoptimized", "dynamic", "window", "postfx", "editor", "debug_export",
+                                      "debug_engine", "noisy", "percentiles"])
 def test_incomplete_or_incomparable_measurement_rejected(side, mutation):
     baseline, measured = report(), report()
     doc = baseline if side == "baseline" else measured
@@ -71,6 +74,16 @@ def test_incomplete_or_incomparable_measurement_rejected(side, mutation):
         doc["scenes"][-1]["tiles_moved"] = 0
     elif mutation == "unoptimized":
         doc["optimized"] = False
+    elif mutation == "editor":
+        doc["export_template"] = "editor"
+    elif mutation == "debug_export":
+        doc["export_template"] = "debug"
+    elif mutation == "debug_engine":
+        doc["engine_debug_build"] = True
+    elif mutation == "noisy":
+        doc["quiet_fixture"] = False
+    elif mutation == "percentiles":
+        doc["scenes"][0]["p50_ms"] = 13.0
     else:
         doc[mutation] = "different"
     with pytest.raises(ValueError):
@@ -82,14 +95,14 @@ def test_extra_probe_scenes_are_ignored():
     baseline, measured = report(), report()
     for doc in (baseline, measured):
         doc["scenes"].append({"scene": "britain-docks", "frames": 360, "draws_per_frame": 1.0,
-                              "draw_calls": 500.0, "batcher_items": 90.0, "mean_ms": 30.0, "p95_ms": 40.0, "p99_ms": 50.0})
+                              "draw_calls": 500.0, "batcher_items": 90.0, "p50_ms": 29.0, "mean_ms": 30.0, "p95_ms": 40.0, "p99_ms": 50.0})
     measured["scenes"][-1]["batcher_items"] = 900.0
     passed, summary = compare(baseline, measured)
     assert passed
     assert "britain-docks" not in summary
 
 
-@pytest.mark.parametrize("metric", ["draw_calls", "batcher_items", "mean_ms", "p95_ms", "p99_ms", "draws_per_frame"])
+@pytest.mark.parametrize("metric", ["draw_calls", "batcher_items", "p50_ms", "mean_ms", "p95_ms", "p99_ms", "draws_per_frame"])
 @pytest.mark.parametrize("value", [None, True, "100", -1, 0, float("nan"), float("inf"), 10**400])
 def test_invalid_metric_rejected(metric, value):
     measured = report()
@@ -123,3 +136,14 @@ def test_cli_oversized_integer_is_invalid_input(tmp_path, capsys):
 
     assert main(["--baseline", str(baseline), "--report", str(measured)]) == 2
     assert "**INVALID**" in capsys.readouterr().out
+
+
+def test_frame_times_lead_and_shared_host_is_marked():
+    baseline, measured = report(), report()
+    measured["scenes"][2]["host_other_cpu_sample_max_pct"] = 37.5
+    del measured["scenes"][3]["host_other_cpu_sample_max_pct"]
+    _, summary = compare(baseline, measured)
+    assert "| Scene | p50 ms | p95 ms | p99 ms | mean ms |" in summary
+    assert "FPS" not in summary
+    assert "2.0/37.5% shared" in summary
+    assert "2.0/4.0% -> n/a" in summary

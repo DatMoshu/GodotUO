@@ -3284,6 +3284,35 @@ game thread. An exception drops that packet and is logged
 (`[mods] <id>: dropped packet ...`).
 ## 41. Perf probe and perf lab reports (`build/perf`, `tools/perf_probe`, `tools/perf_lab`)
 
+**PERF-LANE-01 harness fields.** Probe JSON adds top-level
+`engine_debug_build`, `export_template` (`release` or `debug` for an exported
+template, `editor` for the editor binary), `quiet_fixture` (`--perf-quiet`:
+weather packets ignored and running weather reset, every incoming message
+dropped, for the probe's lifetime only), `warmup_seconds` and
+`measure_seconds` (environment `GUO_PERF_WARMUP_SECONDS` /
+`GUO_PERF_MEASURE_SECONDS`, 0-300, default 0: a world scene is timed after
+that much discarded play, and a standing world scene for that many seconds
+instead of 360 frames; login keeps 360 frames and no discard), and
+`host_load` (`host_load_source`, `host_cpu_launch_readings`,
+`host_cpu_launch_max_pct`, `host_other_cpu_launch_max_pct`: process start to
+the first sample). Each scene adds `p50_ms`, `warmup_seconds`,
+`elapsed_seconds`, `sample_storage_grew`, `host_cpu_sample_readings`,
+`host_cpu_sample_mean_pct`, `host_cpu_sample_max_pct`,
+`host_other_cpu_sample_mean_pct`, `host_other_cpu_sample_max_pct` (the
+measured interval only), `host_cpu_warmup_max_pct`,
+`host_other_cpu_warmup_max_pct`, and the atlas page uploads of the interval:
+`atlas_page_uploads` (whole pages re-sent by `TextureAtlas.Flush`),
+`atlas_page_creations`, `atlas_uploads_max_in_a_frame`,
+`frames_with_atlas_upload`, `atlas_upload_frames_mean_ms` and
+`atlas_upload_frames_max_ms` (those frames and the next). Host CPU is the
+whole machine's busy share; "other" subtracts this process's own CPU, read
+twice a second on a timer thread from Windows `GetSystemTimes` /
+`GetProcessTimes`; elsewhere the source is `unavailable` and the values null.
+The count gate requires `export_template: release`, `engine_debug_build:
+false`, `quiet_fixture: true` and `p50_ms`. PerfDump receipts add
+`engine_debug_build`, `export_template` and `quiet_fixture`
+(`GUO_PERF_QUIET=1`, `tools/perf_dump --only guo --quiet`).
+
 **Probe JSON**, `perf_<label>.json`, written by the client's `--perf-probe`
 (`src/Bootstrap/PerfProbe.cs`): `{label, window "WxH", zoom, optimized,
 postfx, system, scenes[]}`. `zoom` is the camera's at the end of the run.

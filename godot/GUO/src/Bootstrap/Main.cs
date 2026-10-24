@@ -76,6 +76,14 @@ public partial class Main : Node
             return;
         }
 
+        string quietOnly = PerfProbeFlags.QuietOnlyError(_options.PerfProbe, _options.PerfQuiet);
+        if (quietOnly != null)
+        {
+            GD.PrintErr("[GUO] " + quietOnly);
+            Quit(2);
+            return;
+        }
+
         NoFocus = _options.NoFocus;
 
         if (NoFocus)
@@ -826,7 +834,7 @@ public partial class Main : Node
     /// <summary>Frame time in the five fixed scenes, then quit; see PerfProbe.</summary>
     private async void PerfProbeThenQuit()
     {
-        await PerfProbe.Run(this, _options.PerfOut, _options.PerfLabel, _options.PerfZoom, _options.PerfParity, _options.PerfProfile, _options.PerfStaticWorld);
+        await PerfProbe.Run(this, _options.PerfOut, _options.PerfLabel, _options.PerfZoom, _options.PerfParity, _options.PerfProfile, _options.PerfStaticWorld, _options.PerfQuiet);
         Quit(PerfProbe.Passed ? 0 : 1);
     }
 
@@ -1742,6 +1750,9 @@ public partial class Main : Node
         /// <summary>--perf-static-world: the probe measures the map alone (PerfProbe.StaticWorld); refused without --perf-probe.</summary>
         public bool PerfStaticWorld { get; private set; }
 
+        /// <summary>--perf-quiet: weather frozen and incoming messages dropped while the probe runs (PerfFixture); refused without --perf-probe.</summary>
+        public bool PerfQuiet { get; private set; }
+
         public bool DoorProbe { get; private set; }
 
         public bool LayerShot { get; private set; }
@@ -2190,6 +2201,9 @@ public partial class Main : Node
                         break;
                     case "--perf-static-world":
                         o.PerfStaticWorld = true;
+                        break;
+                    case "--perf-quiet":
+                        o.PerfQuiet = true;
                         break;
                     case "--perf-zoom":
                         o.PerfZoom = float.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture);

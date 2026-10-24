@@ -75,10 +75,10 @@ def end(proc: subprocess.Popen) -> None:
         proc.kill()
 
 
-def run_guo(cfg: Config, out: Path, scene: tuple, size: str, spec: str, timeout: float) -> bool:
+def run_guo(cfg: Config, out: Path, scene: tuple, size: str, spec: str, timeout: float, quiet: bool = False) -> bool:
     log = out / scene[0] / "guo.log"
     log.parent.mkdir(parents=True, exist_ok=True)
-    env = {**ab.guo_environment(cfg), "GUO_PERF_DUMP": spec}
+    env = {**ab.guo_environment(cfg), "GUO_PERF_DUMP": spec, "GUO_PERF_QUIET": "1" if quiet else "0"}
     proc = subprocess.Popen(
         # --play logs in only with something scripted to do: one shard
         # command (the daylight ab_compare pins too), then --stay.
@@ -149,12 +149,16 @@ def main() -> int:
                     help="per client and scene; covers login, SECONDS, and PerfDump's fade wait (up to 60 s)")
     ap.add_argument("--build", action="store_true", help="build ClassicUO first (tools/ab_compare)")
     ap.add_argument("--only", choices=["cuo", "guo"], help="run one client")
+    ap.add_argument("--quiet", action="store_true",
+                    help="GUO only: freeze the weather and drop incoming messages (GUO_PERF_QUIET) for comparable captures")
     ap.add_argument("--scene", action="append", choices=[s[0] for s in SCENES], help="run these scenes only")
     ap.add_argument("--report", action="store_true", help="print the table of results already written")
     ap.add_argument("--as-built", action="store_true",
                     help="run GUO as it is built, instead of rebuilding it optimised first (tools/guo/build.py)")
     args = ap.parse_args()
 
+    if args.quiet and args.only != "guo":
+        ap.error("--quiet requires --only guo")
     cfg = load_config()
     if args.port:
         cfg = dataclasses.replace(cfg, shard_port=args.port)
@@ -177,7 +181,7 @@ def main() -> int:
                 continue
             (out / scene[0] / f"{client}.json").unlink(missing_ok=True)
             ok = (run_cuo(cfg, out, scene, size, spec, args.timeout) if client == "cuo"
-                  else run_guo(cfg, out, scene, args.size, spec, args.timeout))
+                  else run_guo(cfg, out, scene, args.size, spec, args.timeout, args.quiet))
             print(f"[perf_dump] {scene[0]} {client}: {'ok' if ok else 'NO RESULT (see its log)'}", flush=True)
             failed += not ok
     print(report(out))

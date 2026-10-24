@@ -86,6 +86,12 @@ internal static class PerfDump
             return;
         }
 
+#if !PERF_DUMP_CUO
+        // The quiet fixture (GUO.Host.PerfFixture): no weather and no incoming
+        // messages, from before login, so captures of two launches match.
+        if (Environment.GetEnvironmentVariable("GUO_PERF_QUIET") == "1")
+            GUO.Host.PerfFixture.Quiet = true;
+#endif
         _timer = new Timer(_ => Attach(), null, 1000, 1000);
     }
 
@@ -127,6 +133,10 @@ internal static class PerfDump
         float zoom = float.Parse(_args[5], System.Globalization.CultureInfo.InvariantCulture);
         var camera = ClientRoot.Game.Scene.Camera;
         camera.Zoom = Math.Clamp(zoom, camera.ZoomMin, camera.ZoomMax);
+#if !PERF_DUMP_CUO
+        if (GUO.Host.PerfFixture.Quiet)
+            (_attached as World)?.Weather.Reset();
+#endif
         GameActions.Say($"[go {_args[2]} {_args[3]} {_args[4]}");
         Console.WriteLine($"[perf_dump] {ClientName}: [go {_args[2]} {_args[3]} {_args[4]}, zoom {camera.Zoom:F1}");
         int seconds = int.Parse(_args[6]);
@@ -241,6 +251,11 @@ internal static class PerfDump
             r["fading_when_averaging"] = _fadingAtEnd;
             r["fade_wait_ms"] = _fadeWaitMs;
             r["fade_timed_out"] = _fadeWaitMs >= FadeCapMs;
+#if !PERF_DUMP_CUO
+            r["engine_debug_build"] = Godot.OS.IsDebugBuild();
+            r["export_template"] = PerfProbe.ExportTemplate();
+            r["quiet_fixture"] = GUO.Host.PerfFixture.Quiet;
+#endif
 #if !PERF_DUMP_CUO
             int uploads = GUO.Renderer.LandPages.Uploads - _uploadsAtFade;
             long frames = GUO.Renderer.UltimaBatcher2D.FramesBegun - _framesAtFade;

@@ -75,6 +75,17 @@ Check("--perf-static-world is refused without --perf-probe", () =>
     Require(Regex.IsMatch(bootstrap, @"PerfProbeFlags\.ProbeOnlyError\(_options\.PerfProbe, _options\.PerfStaticWorld\)"), "Main.cs does not check the combination after parsing");
 });
 
+// PERF-LANE-01: --perf-quiet drops every incoming message and the weather;
+// probe-only like the static world, and set only by PerfProbe.Run.
+Check("--perf-quiet is refused without --perf-probe", () =>
+{
+    Require(GUO.Host.PerfProbeFlags.QuietOnlyError(perfProbe: false, quiet: true) != null, "accepted without the probe");
+    Require(GUO.Host.PerfProbeFlags.QuietOnlyError(perfProbe: true, quiet: true) == null, "refused with the probe");
+    Require(GUO.Host.PerfProbeFlags.QuietOnlyError(perfProbe: false, quiet: false) == null, "refused when absent");
+    Require(Regex.IsMatch(bootstrap, @"PerfProbeFlags\.QuietOnlyError\(_options\.PerfProbe, _options\.PerfQuiet\)"), "Main.cs does not check the combination after parsing");
+    Require(!Regex.Match(bootstrap, @"case ""--perf-quiet"":\s*([^\n]*)").Groups[1].Value.Contains("PerfFixture"), "the arg loop sets the live switch");
+});
+
 Check("the arg loop never switches the static world on itself", () =>
 {
     var arm = Regex.Match(bootstrap, @"case ""--perf-static-world"":\s*([^\n]*)");

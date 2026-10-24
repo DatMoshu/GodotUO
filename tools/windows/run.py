@@ -4,7 +4,9 @@ r"""Export GUO as a Windows build, and prove the executable carries the brand.
                                    and what this machine has
     launchers\windows\export.bat   headless --export-debug "Windows Desktop"
                                    into build\windows\GUO.exe, then checks
-                                   the executable's icon
+                                   the executable's icon; --release uses
+                                   the Release template, the only build
+                                   the perf gate times
 
     python tools\windows\run.py <doctor|preset|export|icon> [...]
 
@@ -294,7 +296,7 @@ def ensure_solution(p: Paths) -> None:
         sys.exit("[windows] could not produce GUO.sln")
 
 
-def export(p: Paths, exe: Path) -> int:
+def export(p: Paths, exe: Path, release: bool = False) -> int:
     console = p.godot_console()
     if not console.exists():
         sys.exit(f"[windows] Godot console not found at {console}; run doctor")
@@ -307,7 +309,7 @@ def export(p: Paths, exe: Path) -> int:
     log = exe.parent / "export.log"
     with open(log, "w", encoding="utf-8") as f:
         result = run(
-            [console, "--headless", "--path", p.project, "--export-debug", PRESET_NAME, exe],
+            [console, "--headless", "--path", p.project, "--export-release" if release else "--export-debug", PRESET_NAME, exe],
             stdout=f, stderr=subprocess.STDOUT, text=True,
         )
     text = log.read_text(encoding="utf-8", errors="replace")
@@ -334,6 +336,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("preset", help="render export_presets.cfg from the template")
     ex = sub.add_parser("export", help="export the Windows build, headless, then check its icon")
     ex.add_argument("--out", default=None, help="executable path (default build\\windows\\GUO.exe)")
+    ex.add_argument("--release", action="store_true",
+                    help="export with the Release template: what players run, and the only build the perf gate times")
     ic = sub.add_parser("icon", help="extract the exported executable's icon and say whose it is")
     ic.add_argument("--exe", default=None, help="executable to inspect (default build\\windows\\GUO.exe)")
 
@@ -346,7 +350,7 @@ def main(argv: list[str] | None = None) -> int:
         render_preset(p, p.exe)
         return 0
     if args.command == "export":
-        return export(p, Path(args.out) if args.out else p.exe)
+        return export(p, Path(args.out) if args.out else p.exe, args.release)
     if args.command == "icon":
         return check_icon(p, Path(args.exe) if args.exe else None)
     return 2

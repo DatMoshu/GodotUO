@@ -2367,6 +2367,13 @@ namespace GUO.Network
 
             WeatherType type = (WeatherType)p.ReadUInt8();
 
+            // PORT DEVIATION (GUO): the quiet perf fixture (--perf-quiet,
+            // GUO.Host.PerfFixture) keeps the weather off for its captures.
+            if (GUO.Host.PerfFixture.Quiet)
+            {
+                return;
+            }
+
             if (world.Weather.CurrentWeather != type)
             {
                 byte count = p.ReadUInt8();
