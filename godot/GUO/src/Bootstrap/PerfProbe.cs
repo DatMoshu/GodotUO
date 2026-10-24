@@ -105,6 +105,14 @@ internal static class PerfProbe
     public static System.Action<bool> ParityToggle = on => UltimaBatcher2D.BatchedWorld = on;
     public static System.Func<bool> ParityState = () => UltimaBatcher2D.BatchedWorld;
     private const int Frames = 360;
+
+    /// <summary>
+    /// --perf-warmup-s and --perf-sample-s (PERF-MM-03): a standing scene
+    /// first runs uncapped this long unmeasured, then is timed by the clock
+    /// rather than for <see cref="Frames"/> frames. Zero keeps the frame count.
+    /// </summary>
+    public static double WarmupSeconds { get; set; }
+    public static double SampleSeconds { get; set; }
     private const double MinDrawsPerFrame = 0.95;
 
     /// <summary>
@@ -386,11 +394,21 @@ internal static class PerfProbe
         }
 
         await InputProbe.Wait(host, 30);
+        if (WarmupSeconds > 0 && !walks)
+        {
+            long warm = System.Diagnostics.Stopwatch.GetTimestamp();
+            while ((System.Diagnostics.Stopwatch.GetTimestamp() - warm) < WarmupSeconds * System.Diagnostics.Stopwatch.Frequency)
+            {
+                await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
+            }
+        }
+
+        double sampleMs = walks ? WalkMs : SampleSeconds * 1000.0;
         long drawsBefore = UltimaBatcher2D.FramesBegun;
 
         var ms = new List<double>(walks ? 20000 : n);
         double kRect = 0, kAffine = 0, kMesh = 0, kTri = 0, kBatches = 0, kCover = 0, kCoverRuns = 0, coverQueued = 0, coverOverlapping = 0;
-        double mmInstances = 0, mmRuns = 0, mmCalls = 0, mmFallbacks = 0; // --multimesh-sprites
+        double mmInstances = 0, mmRuns = 0, mmCalls = 0, mmFallbacks = 0, mmReplayed = 0; // --multimesh-sprites
         double calls = 0, items = 0, switches = 0, commands = 0, prepare = 0, world = 0, cpu = 0, gpu = 0, objects = 0;
         int uploadsBefore = LandPages.Uploads, uploadsMax = 0, uploadFrames = 0, uploadsLast = LandPages.Uploads;
         int rebuildsBefore = LandPages.Rebuilds, bumpsBefore = LandPages.Bumps;
@@ -413,7 +431,7 @@ internal static class PerfProbe
         await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
         long last = System.Diagnostics.Stopwatch.GetTimestamp();
         double elapsed = 0;
-        for (int i = 0; walks ? elapsed < WalkMs : i < n; i++)
+        for (int i = 0; sampleMs > 0 ? elapsed < sampleMs : i < n; i++)
         {
             runner?.Step();
             await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
@@ -451,6 +469,7 @@ internal static class PerfProbe
             mmRuns += mm.Runs;
             mmCalls += mm.Calls;
             mmFallbacks += mm.Fallbacks;
+            mmReplayed += mm.Replayed;
             var cq = GUO.Game.Scenes.RenderLists.LastCover;
             coverQueued += cq.Queued;
             coverOverlapping += cq.Overlapping;
@@ -493,7 +512,10 @@ internal static class PerfProbe
             ["frames"] = n,
             ["draws_per_frame"] = System.Math.Round((double)draws / n, 2),
             ["mean_ms"] = System.Math.Round(ms.Average(), 3),
+            ["p50_ms"] = System.Math.Round(P(0.50), 3),
             ["p95_ms"] = System.Math.Round(P(0.95), 3),
+            ["warmup_s"] = walks ? 0 : WarmupSeconds,
+            ["sample_s"] = walks ? 0 : SampleSeconds,
             ["p99_ms"] = System.Math.Round(P(0.99), 3),
             ["fps"] = System.Math.Round(1000.0 / ms.Average(), 1),
             ["draw_calls"] = System.Math.Round(calls / n, 1),
@@ -520,6 +542,8 @@ internal static class PerfProbe
             ["mm_runs"] = System.Math.Round(mmRuns / n, 1),
             ["mm_calls"] = System.Math.Round(mmCalls / n, 1),
             ["mm_fallbacks"] = System.Math.Round(mmFallbacks / n, 1),
+            ["mm_replayed"] = System.Math.Round(mmReplayed / n, 1),
+            ["mm_min_run"] = UltimaBatcher2D.MultiMeshMinRun,
             ["gc_ms_per_frame"] = System.Math.Round(gcMs, 3),
             ["tiles_moved"] = runner?.Tiles ?? 0,
             ["land_layers"] = LandPages.Layers,

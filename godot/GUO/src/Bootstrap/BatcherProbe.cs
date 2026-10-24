@@ -254,11 +254,11 @@ public partial class BatcherProbe : Node
 
     /// <summary>
     /// --multimesh-sprites (PERF-MM-01): the same scene drawn per sprite and
-    /// as MultiMesh runs must come back pixel for pixel, under a plain view
-    /// and under a fractional zoom with an offset. The scene interleaves two
-    /// textures, a mirrored sprite (which keeps the per-sprite path between
-    /// two runs), hued, unhued and translucent sprites and overlaps, so a run
-    /// drawn out of order, a wrong source rect or a lost hue all show.
+    /// as MultiMesh runs must come back pixel for pixel,
+    /// at six views. The scene interleaves two textures, a mirrored sprite
+    /// and a rotated one (instances through the transformed-rect route), hued, unhued and
+    /// translucent sprites and overlaps, so a run drawn out of order, a wrong
+    /// source rect, a wrong mirror or a lost hue all show.
     /// </summary>
     private async System.Threading.Tasks.Task VerifyMultiMesh(Texture2D palette)
     {
@@ -292,6 +292,8 @@ public partial class BatcherProbe : Node
                 SpriteEffects.FlipHorizontally, 0f);
             batcher.Draw(a, new Compat.Rectangle(52, 36, 24, 20), new Compat.Rectangle(0, 0, 24, 20), hued, 0f);
             batcher.Draw(b, new Compat.Rectangle(5, 50, 34, 46), new Compat.Rectangle(0, 0, 17, 23), half, 0f);
+            batcher.Draw(b, new Vector2(70, 60), new Compat.Rectangle(0, 0, 17, 23), hued, 0.35f, new Vector2(8, 11), 1f,
+                SpriteEffects.None, 0f);
             batcher.End();
         }
 
@@ -314,8 +316,13 @@ public partial class BatcherProbe : Node
             ("zoom 0.66", new Transform2D(new Vector2(0.66f, 0), new Vector2(0, 0.66f), new Vector2(11, 3))),
         };
 
-        foreach ((string name, Transform2D view) in views)
+        int keepMinRun = UltimaBatcher2D.MultiMeshMinRun;
+        // Every run instanced, then every run too short and replayed as rects.
+        foreach (int minRun in new[] { 1, 1000 })
+        foreach ((string viewName, Transform2D view) in views)
         {
+            UltimaBatcher2D.MultiMeshMinRun = minRun;
+            string name = $"{viewName}, {(minRun == 1 ? "instanced" : "replayed")}";
             Image canvas = await Frame(false, view);
             Image instanced = await Frame(true, view);
             batcher.BeginFrame();
@@ -323,8 +330,11 @@ public partial class BatcherProbe : Node
             batcher.Begin();
             batcher.End();
 
-            CheckThat($"multimesh {name}: instances drawn", counted.Sprites == 7 && counted.Runs == 4 && counted.Fallbacks == 1,
-                $"instances {counted.Sprites} runs {counted.Runs} fallbacks {counted.Fallbacks}");
+            bool countsRight = minRun == 1
+                ? counted.Sprites == 9 && counted.Runs == 4 && counted.Replayed == 0
+                : counted.Sprites == 0 && counted.Runs == 0 && counted.Replayed == 9;
+            CheckThat($"multimesh {name}: counts", countsRight && counted.Fallbacks == 0,
+                $"instances {counted.Sprites} runs {counted.Runs} replayed {counted.Replayed} fallbacks {counted.Fallbacks}");
 
             int differing = 0, inked = 0;
             for (int y = 0; y < size; y++)
@@ -348,6 +358,7 @@ public partial class BatcherProbe : Node
         }
 
         UltimaBatcher2D.MultiMeshSprites = was;
+        UltimaBatcher2D.MultiMeshMinRun = keepMinRun;
         batcher.Dispose();
         viewport.QueueFree();
     }

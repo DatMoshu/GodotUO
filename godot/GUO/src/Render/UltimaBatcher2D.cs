@@ -2337,6 +2337,12 @@ void fragment() {
 
             var region = new Rect2(left, top, right - left, bottom - top);
 
+            // PORT DEVIATION (GUO): --multimesh-sprites, the transformed rect as an instance.
+            if (MultiMeshSprites && TryAppendMultiMeshAffine(texture, axisX, axisY, origin, region, modulate))
+            {
+                return true;
+            }
+
             FlushRun();
             RenderingServer.CanvasItemAddSetTransform(_current, new Transform2D(axisX, axisY, origin));
             Commands++;

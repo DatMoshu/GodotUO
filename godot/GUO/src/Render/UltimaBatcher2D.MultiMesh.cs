@@ -29,21 +29,30 @@ namespace GUO.Renderer
         /// --batched-world run would: a texture change, a new canvas item,
         /// any other command on the item, and End -- FlushQuadRun flushes it,
         /// and every other path reaches FlushQuadRun first. Everything else
-        /// keeps its own path: rotated, mirrored or degenerate sprites, custom
-        /// and additive blends, the id mirror (ADR-0023), --gpu-world's
+        /// keeps its own path: degenerate sprites, quads no affine map fits,
+        /// custom and additive blends, the id mirror (ADR-0023), --gpu-world's
         /// capture, and --batched-world when both are on.
         /// </remarks>
         public static bool MultiMeshSprites = System.Environment.GetEnvironmentVariable("GUO_MULTIMESH_SPRITES") == "1";
 
         /// <summary>This frame's MultiMesh counters; <see cref="LastMultiMesh"/> keeps the previous frame's for the perf probe.</summary>
-        public static int MultiMeshInstances, MultiMeshRuns, MultiMeshCalls, MultiMeshFallbacks;
+        public static int MultiMeshInstances, MultiMeshRuns, MultiMeshCalls, MultiMeshFallbacks, MultiMeshReplayed;
+
+        /// <summary>
+        /// Runs shorter than this are sent as the commands they replaced: a
+        /// MultiMesh costs a buffer copy, an upload and a draw call of its own,
+        /// where consecutive rects share the canvas renderer's batch, so a run
+        /// of a few sprites is cheaper as rects. GUO_MULTIMESH_MIN_RUN sets it.
+        /// </summary>
+        public static int MultiMeshMinRun = int.TryParse(System.Environment.GetEnvironmentVariable("GUO_MULTIMESH_MIN_RUN"), out int minRun) ? minRun : 8;
 
         /// <summary>
         /// The previous frame's: sprites drawn as instances, runs (one
-        /// MultiMesh each), RenderingServer calls the runs took, and sprites
-        /// that kept the per-sprite path while the switch was on.
+        /// MultiMesh each), RenderingServer calls the runs took, sprites
+        /// that kept the per-sprite path while the switch was on, and sprites
+        /// of runs too short to instance, sent as their own commands.
         /// </summary>
-        public static (int Sprites, int Runs, int Calls, int Fallbacks) LastMultiMesh;
+        public static (int Sprites, int Runs, int Calls, int Fallbacks, int Replayed) LastMultiMesh;
 
         private const string MULTIMESH_SHADER_PATH = "res://src/Render/shaders/uo_hue_multimesh.gdshader";
 
@@ -67,6 +76,17 @@ namespace GUO.Renderer
 
         private readonly MmPool[] _mmPools = new MmPool[MmMaxShift - MmMinShift + 1];
         private readonly float[] _mmBuffer = new float[MmMaxInstances * MmStride];
+
+        // Each pending instance's own command, as the per-sprite path would
+        // have sent it, for a run too short to instance.
+        private struct MmCommand
+        {
+            public Rect2 Destination, Source;
+            public Transform2D Transform;
+            public bool Affine;
+        }
+
+        private readonly MmCommand[] _mmCommands = new MmCommand[MmMaxInstances];
         private ShaderMaterial _mmMaterial;
         private Rid _mmQuad;
         private Texture2D _mmTexture;
@@ -107,7 +127,13 @@ namespace GUO.Renderer
             float destinationX, float destinationY, float destinationW, float destinationH, Vector3 color,
             float originX, float originY, float rotationSin, float rotationCos, byte effects)
         {
-            if (rotationSin != 0f || rotationCos != 1f || effects != 0 || BatchedWorld || _mirroring
+            // Rotated or mirrored: AddQuad decides, through TryAppendMultiMeshAffine.
+            if (rotationSin != 0f || rotationCos != 1f || effects != 0)
+            {
+                return false;
+            }
+
+            if (BatchedWorld || _mirroring
                 || _mmMaterial == null || !ReferenceEquals(_itemMaterial, _mmMaterial)
                 || destinationW <= 0f || destinationH <= 0f || sourceW <= 0f || sourceH <= 0f)
             {
@@ -115,6 +141,46 @@ namespace GUO.Renderer
                 return false;
             }
 
+            // The rect path hands the server a texel rect (source times size)
+            // and the server scales it back by 1 / size; the same two float
+            // steps here, so a texel boundary rounds the same way.
+            int textureWidth = WidthOf(texture), textureHeight = HeightOf(texture);
+            float pixelW = 1f / textureWidth, pixelH = 1f / textureHeight;
+            var destination = new Rect2(destinationX - originX * destinationW, destinationY - originY * destinationH, destinationW, destinationH);
+            var source = new Rect2(sourceX * textureWidth, sourceY * textureHeight, sourceW * textureWidth, sourceH * textureHeight);
+            AppendInstance(texture, new Vector2(destinationW, 0f), new Vector2(0f, destinationH), destination.Position, Encode(color),
+                source.Position.X * pixelW, source.Position.Y * pixelH, source.Size.X * pixelW, source.Size.Y * pixelH);
+            _mmCommands[_mmCount - 1] = new MmCommand { Destination = destination, Source = source };
+            return true;
+        }
+
+        /// <summary>
+        /// TryAddAffineQuad's transformed rect (a shadow's parallelogram, a
+        /// mirror, a rotation, a sitted section) as an instance: the texel
+        /// region under the quad's affine map, folded into the instance
+        /// transform. False leaves it to the transformed rect command.
+        /// </summary>
+        private bool TryAppendMultiMeshAffine(Texture2D texture, Vector2 axisX, Vector2 axisY, Vector2 origin, Rect2 region, Color modulate)
+        {
+            if (BatchedWorld || _mirroring || _mmMaterial == null || !ReferenceEquals(_itemMaterial, _mmMaterial)
+                || region.Size.X <= 0f || region.Size.Y <= 0f)
+            {
+                MultiMeshFallbacks++;
+                return false;
+            }
+
+            float pixelW = 1f / WidthOf(texture), pixelH = 1f / HeightOf(texture);
+            AppendInstance(texture, axisX * region.Size.X, axisY * region.Size.Y,
+                origin + axisX * region.Position.X + axisY * region.Position.Y, modulate,
+                region.Position.X * pixelW, region.Position.Y * pixelH, region.Size.X * pixelW, region.Size.Y * pixelH);
+            _mmCommands[_mmCount - 1] = new MmCommand { Destination = region, Source = region, Transform = new Transform2D(axisX, axisY, origin), Affine = true };
+            return true;
+        }
+
+        /// <summary>Appends one instance to the run, starting a new run when it must.</summary>
+        private void AppendInstance(Texture2D texture, Vector2 basisX, Vector2 basisY, Vector2 origin, Color modulate,
+            float u, float v, float uw, float vh)
+        {
             FlushCover();
             if (!ReferenceEquals(texture, _mmTexture) || _mmItem != _current || _mmCount == MmMaxInstances)
             {
@@ -126,34 +192,26 @@ namespace GUO.Renderer
             Span<float> i = _mmBuffer.AsSpan(_mmCount * MmStride, MmStride);
 
             // Transform2D rows: (x.x, y.x, pad, origin.x), (x.y, y.y, pad, origin.y).
-            i[0] = destinationW;
-            i[1] = 0f;
+            i[0] = basisX.X;
+            i[1] = basisY.X;
             i[2] = 0f;
-            i[3] = destinationX - originX * destinationW;
-            i[4] = 0f;
-            i[5] = destinationH;
+            i[3] = origin.X;
+            i[4] = basisX.Y;
+            i[5] = basisY.Y;
             i[6] = 0f;
-            i[7] = destinationY - originY * destinationH;
+            i[7] = origin.Y;
 
-            Color modulate = Encode(color);
             i[8] = modulate.R;
             i[9] = modulate.G;
             i[10] = modulate.B;
             i[11] = modulate.A;
 
-            // The rect path hands the server a texel rect (source times size)
-            // and the server scales it back by 1 / size; the same two float
-            // steps here, so a texel boundary rounds the same way.
-            int textureWidth = WidthOf(texture), textureHeight = HeightOf(texture);
-            float pixelW = 1f / textureWidth, pixelH = 1f / textureHeight;
-            i[12] = sourceX * textureWidth * pixelW;
-            i[13] = sourceY * textureHeight * pixelH;
-            i[14] = sourceW * textureWidth * pixelW;
-            i[15] = sourceH * textureHeight * pixelH;
+            i[12] = u;
+            i[13] = v;
+            i[14] = uw;
+            i[15] = vh;
 
             _mmCount++;
-            MultiMeshInstances++;
-            return true;
         }
 
         /// <summary>Sends the pending run, if there is one, as one MultiMesh on its item.</summary>
@@ -162,6 +220,12 @@ namespace GUO.Renderer
             if (_mmCount == 0)
             {
                 _mmTexture = null;
+                return;
+            }
+
+            if (_mmCount < MultiMeshMinRun)
+            {
+                ReplayMultiMeshRun();
                 return;
             }
 
@@ -192,8 +256,41 @@ namespace GUO.Renderer
             RenderingServer.CanvasItemAddMultimesh(_mmItem, multimesh, RidOf(_mmTexture));
             MultiMeshCalls++;
             MultiMeshRuns++;
+            MultiMeshInstances += _mmCount;
             Commands++;
 
+            _mmCount = 0;
+            _mmTexture = null;
+        }
+
+        /// <summary>
+        /// Sends a short run as the commands it stood in for, exactly as
+        /// AddSprite's rect path and TryAddAffineQuad send them.
+        /// </summary>
+        private void ReplayMultiMeshRun()
+        {
+            Rid texture = RidOf(_mmTexture);
+            for (int n = 0; n < _mmCount; n++)
+            {
+                ref MmCommand command = ref _mmCommands[n];
+                int at = n * MmStride;
+                var modulate = new Color(_mmBuffer[at + 8], _mmBuffer[at + 9], _mmBuffer[at + 10], _mmBuffer[at + 11]);
+                Commands++;
+                if (command.Affine)
+                {
+                    RenderingServer.CanvasItemAddSetTransform(_mmItem, command.Transform);
+                    Count(1, texture);
+                    RenderingServer.CanvasItemAddTextureRectRegion(_mmItem, command.Destination, texture, command.Source, modulate, false, false);
+                    RenderingServer.CanvasItemAddSetTransform(_mmItem, Transform2D.Identity);
+                }
+                else
+                {
+                    Count(0, texture);
+                    RenderingServer.CanvasItemAddTextureRectRegion(_mmItem, command.Destination, texture, command.Source, modulate, false, false);
+                }
+            }
+
+            MultiMeshReplayed += _mmCount;
             _mmCount = 0;
             _mmTexture = null;
         }
@@ -232,8 +329,8 @@ namespace GUO.Renderer
         /// <summary>BeginFrame: keep the counters, reuse the pool from the start.</summary>
         private void NextMultiMeshFrame()
         {
-            LastMultiMesh = (MultiMeshInstances, MultiMeshRuns, MultiMeshCalls, MultiMeshFallbacks);
-            MultiMeshInstances = MultiMeshRuns = MultiMeshCalls = MultiMeshFallbacks = 0;
+            LastMultiMesh = (MultiMeshInstances, MultiMeshRuns, MultiMeshCalls, MultiMeshFallbacks, MultiMeshReplayed);
+            MultiMeshInstances = MultiMeshRuns = MultiMeshCalls = MultiMeshFallbacks = MultiMeshReplayed = 0;
             foreach (MmPool pool in _mmPools)
             {
                 if (pool != null)

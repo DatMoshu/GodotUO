@@ -2201,6 +2201,12 @@ public partial class Main : Node
                     case "--perf-static-world":
                         o.PerfStaticWorld = true;
                         break;
+                    case "--perf-warmup-s":
+                        GUO.Host.PerfProbe.WarmupSeconds = double.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture);
+                        break;
+                    case "--perf-sample-s":
+                        GUO.Host.PerfProbe.SampleSeconds = double.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture);
+                        break;
                     case "--perf-zoom":
                         o.PerfZoom = float.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture);
                         break;
