@@ -460,3 +460,27 @@ in bank/docks UI drawing and 4.0%/3.8% in cover-run expiry; these are allocation
 percentages. The next bounded source targets are unnecessary debug closures and
 expiry delegates/scratch storage, followed by measured UI command construction.
 Keep those changes separate from the diagnostic work and the GPU experiments.
+
+## Follow-up: incidental frame allocations
+
+The [allocation patch report](../2026-10-24_incidental_frame_allocations.md)
+records the unused debug-draw guard and reused cover-expiry scratch/predicate.
+Actual Release bank/docks allocation fell from 19.6 KB per frame to 14.1/14.0 KB
+in the 60-second-warmup, 30-second live samples. FPS was 61.778→79.899 at bank
+and 84.826→96.174 at docks, with unequal shared load and atlas uploads; those
+increases are not isolated speedup estimates. Separate allocation traces no
+longer sample either targeted allocation site, with zero lost events/stacks.
+
+798 Release checks passed. An unchanged-baseline control reproduced initial
+cross-build terrain-edge differences at exactly the same pixels. Its repeat
+matches the patch at bank, dungeon and docks; forest differs only in an inspected
+858-pixel rain message. The raw variation is retained, not discarded as noise.
+Final validation passes 798 Release / 1,137 optimized Debug/Labs checks, docs,
+114 launcher pairs, privacy and whitespace checks. Full smoke reports aggregate
+`OK` with the inherited `splat_lods_present` editor assertion still failing.
+
+Next source preparation targets the roughly 3,000 redundant native visibility
+calls in the retained-canvas experiment, with an explicit end-of-frame lifecycle
+and abort recovery. It remains behind the existing off-default experiment;
+ordinary Release and both GPU prototypes remain separate. Typed UI texture
+commands have a source design, but no implementation or FPS claim yet.

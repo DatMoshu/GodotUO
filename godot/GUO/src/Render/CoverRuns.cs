@@ -39,6 +39,12 @@ namespace GUO.Renderer
 
         private readonly Dictionary<int, List<Entry>> _entries = new();
         private long _frame;
+        // Reuse expiry scratch and its instance predicate, not a delegate per
+        // hash bucket each cleanup. The original age/order policy is unchanged.
+        private readonly List<int> _emptyHashes = new();
+        private readonly Predicate<Entry> _expired;
+
+        public CoverRuns() => _expired = entry => entry.Frame < _frame - 3;
 
         /// <summary>Run meshes built (not reused), for the perf probe.</summary>
         public static int Builds;
@@ -51,17 +57,17 @@ namespace GUO.Renderer
                 return;
             }
 
-            var empty = new List<int>();
+            _emptyHashes.Clear();
             foreach ((int hash, List<Entry> list) in _entries)
             {
-                list.RemoveAll(e => e.Frame < _frame - 3);
+                list.RemoveAll(_expired);
                 if (list.Count == 0)
                 {
-                    empty.Add(hash);
+                    _emptyHashes.Add(hash);
                 }
             }
 
-            foreach (int hash in empty)
+            foreach (int hash in _emptyHashes)
             {
                 _entries.Remove(hash);
             }

@@ -131,6 +131,7 @@ public partial class BatcherProbe : Node
         VerifyAtlasProfiling();
         VerifyPerfIntervals();
         VerifyPerfWalkReplay();
+        VerifyIncidentalAllocations();
         Stage("atlas upload attribution");
         VerifyFirstLandCache();
         Stage("first-land identity cache");
