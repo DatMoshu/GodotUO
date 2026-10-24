@@ -3372,6 +3372,19 @@ Capture evidence includes retained comparison and prefix-match deltas; both
 world test captures must exercise retention as well as pass the actual-draw
 fence. `parity_target_exercised` gates acceptance for this diagnostic too.
 
+`GUO_PERF_SORT_INPUT=1` additionally writes numeric
+`sort-input_<label>_<scene>.json` snapshots before each world measurement.
+The diagnostic waits for two fresh actual client draws, reads the completed
+queue synchronously, verifies queue-index sequence and exact full-ulong
+`Array.Sort` agreement with the active sorted keys, then exports the original
+queue-order keys. JSON includes count, scene, static-world status, verification
+and actual draw count. Parse keys as unsigned 64-bit integers (or Python ints),
+never JavaScript Number. There are no object or texture payloads. Probe rows
+name the file in `sort_input_capture`, otherwise null. Capture-enabled timing
+is diagnostic only: reflection, copies and serialization precede the measured
+interval but can influence subsequent GC/cache state. This does not change
+ordinary rendering or enable an experimental renderer.
+
 **Probe JSON**, `perf_<label>.json`, written by the client's `--perf-probe`
 (`src/Bootstrap/PerfProbe.cs`): `{label, window "WxH", zoom, optimized,
 postfx, system, scenes[]}`. `zoom` is the camera's at the end of the run.

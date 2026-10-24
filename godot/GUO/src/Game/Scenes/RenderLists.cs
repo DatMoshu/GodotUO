@@ -191,6 +191,9 @@ namespace GUO.Game.Scenes
         /// eager 8 KB here was 48 KB of garbage a frame at the login screen.
         /// </remarks>
         private ulong[] _keys = Array.Empty<ulong>();
+        // PORT DEVIATION (GUO): lazy bounded scratch; small UI world queues
+        // allocate none. The scene releases its high-water array with terrain.
+        private ulong[] _sortScratch;
 
         /// <summary>
         /// Land that has to be drawn over something below it, queued into the
@@ -726,7 +729,7 @@ namespace GUO.Game.Scenes
                 _keys[i] = DepthKey.Of(span[i].Depth, span[i].Seq);
             }
 
-            Array.Sort(_keys, 0, span.Length);
+            WorldDepthSort.SortQueueKeys(_keys, span.Length, ref _sortScratch);
             stageAt = PerfStages.Add(PerfStages.Stage.Sort, stageAt);
 
             // PORT DEVIATION (GUO): --gpu-world (ADR-0007, GPU-02). The sorted
@@ -1067,6 +1070,7 @@ namespace GUO.Game.Scenes
 
         internal void ReleaseTerrain()
         {
+            _sortScratch = null;
             _coverCandidates?.Clear();
             _coverCandidates = null;
             _mergedLand?.Dispose(); // PORT DEVIATION (GUO): scene-owned mesh lifetime

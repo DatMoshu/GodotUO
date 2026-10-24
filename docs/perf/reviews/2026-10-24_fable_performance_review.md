@@ -544,5 +544,29 @@ the report. This is a bounded allocation reduction, not an FPS success claim.
 Next work prepares a pinned production Godot build with native symbols in an
 isolated folder. It will support fresh CPU-versus-wait attribution; it does not
 replace the configured engine or rehabilitate the earlier lossy trace. A
-queue-order-preserving radix-sort candidate is prepared but not yet integrated
-or measured. No new isolated FPS claim will be made during our native build.
+queue-order-preserving radix-sort candidate was prepared separately. No new
+isolated FPS claim is made during our native build.
+
+## Follow-up: exact world-depth sort
+
+The [world sort report](../2026-10-24_world_depth_sort.md) records the integrated
+local candidate, exact ordering argument, byte-for-byte integer oracles and
+all scene observations. The measured Release sort stage falls from 0.447 to
+0.091 ms at bank and 0.328 to 0.082 ms at docks. Whole-frame samples are bank
+71.552 to 99.084 FPS and docks 100.422 to 101.568 under unequal shared load,
+atlas updates and live workloads; these are not isolated FPS gain estimates.
+
+Bank, forest and dungeon cross-build captures match exactly. Docks retains a
+3,695-pixel raw difference confined to inspected server-save text; every pixel
+outside that rectangle matches. The final Release build passes 1,182 checks,
+including 186 sort checks; optimized Debug/Labs passes 1,522. The hot sort code
+is unchanged from the measured candidate. Capture freshness was validated with
+two new completed draws and the full integer oracle. Full smoke's first attempt
+fails the editor pointer-picking fixture; the unchanged-source full repeat
+passes. Both outcomes are preserved, with no editor-fix claim.
+
+The pinned production native engine and matching PDB are built in an isolated
+folder. DIA resolves the canvas renderer, canvas cull and rendering-server draw
+functions to verified RVAs; a deliberately wrong PDB GUID is rejected. Fresh
+engine validation and native collection remain separate from that symbol proof.
+Do not reuse the old lossy trace as precise CPU attribution.

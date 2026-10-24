@@ -143,6 +143,8 @@ public partial class BatcherProbe : Node
         Stage("deferred retained visibility");
         await VerifyUiTextureCommands(batcher, viewport);
         Stage("typed UI texture commands");
+            VerifyWorldDepthSort();
+            Stage("world depth radix sort");
 #if GUO_LABS
         await VerifyOrderedWorld(batcher, viewport, palette);
         Stage("ordered RenderingDevice world");

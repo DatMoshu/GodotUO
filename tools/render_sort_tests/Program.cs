@@ -32,14 +32,18 @@ int[] ByKey((float Depth, int Seq)[] items)
 {
     var keys = new ulong[items.Length];
     for (int i = 0; i < items.Length; i++) keys[i] = DepthKey.Of(items[i].Depth, items[i].Seq);
-    Array.Sort(keys);
+    var expected = (ulong[])keys.Clone();
+    Array.Sort(expected);
+    ulong[] scratch = null;
+    WorldDepthSort.SortQueueKeys(keys, keys.Length, ref scratch);
+    Check(keys.AsSpan().SequenceEqual(expected), "production key sort differs from full ulong Array.Sort");
     return keys.Select(DepthKey.Seq).ToArray();
 }
 
 // Proof: every shape, several sizes, the two orders are identical.
 foreach (int shape in Enumerable.Range(0, 5))
 {
-    foreach (int n in new[] { 0, 1, 2, 7, 100, 5000, 40000 })
+    foreach (int n in new[] { 0, 1, 2, 7, 100, 1023, 1024, 1025, 5000, 40000, 65536, 65537 })
     {
         var items = Enumerable.Range(0, n).Select(i => (Depth: Depth(shape, i), Seq: i)).ToArray();
         int[] a = ByComparison(items), b = ByKey(items);
@@ -287,12 +291,13 @@ foreach (int n in new[] { 2000, 10000, 30000 })
     double comparison = sw.Elapsed.TotalMilliseconds / rounds;
 
     var keys = new ulong[n];
-    for (int r = 0; r < 5; r++) { for (int i = 0; i < n; i++) keys[i] = DepthKey.Of(items[i].Depth, i); Array.Sort(keys); }
+    ulong[] scratch = null;
+    for (int r = 0; r < 5; r++) { for (int i = 0; i < n; i++) keys[i] = DepthKey.Of(items[i].Depth, i); WorldDepthSort.SortQueueKeys(keys, n, ref scratch); }
     sw.Restart();
-    for (int r = 0; r < rounds; r++) { for (int i = 0; i < n; i++) keys[i] = DepthKey.Of(items[i].Depth, i); Array.Sort(keys); }
+    for (int r = 0; r < rounds; r++) { for (int i = 0; i < n; i++) keys[i] = DepthKey.Of(items[i].Depth, i); WorldDepthSort.SortQueueKeys(keys, n, ref scratch); }
     double key = sw.Elapsed.TotalMilliseconds / rounds;
 
-    Console.WriteLine($"[render_sort_tests] n={n,6}: List.Sort(comparison) {comparison,7:F3} ms, key sort {key,7:F3} ms, x{comparison / key:F1}");
+    Console.WriteLine($"[render_sort_tests] n={n,6}: List.Sort(comparison) {comparison,7:F3} ms, production key sort {key,7:F3} ms, x{comparison / key:F1}");
 }
 return 0;
 

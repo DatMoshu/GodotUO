@@ -480,6 +480,7 @@ internal static partial class PerfProbe
         // draws; put back after.
         await InputProbe.Wait(host, 30);
 
+        string sortInput = await CaptureWorldSortInput(host, name);
         using var replay = walks && _walkRoute != null ? new PerfWalkReplay(_walkRoute) : null;
         double measureMs = replay != null ? 180000 : walks ? WalkMs : worldMeasurement ? _measureSeconds * 1000.0 : 0;
         int sampleCapacity = measureMs > 0 ? System.Math.Max(20000, (int)measureMs * 2) : n;
@@ -796,6 +797,7 @@ internal static partial class PerfProbe
             ["atlas_upload_related_intervals"] = atlasUploadMs.Count,
             ["atlas_upload_related_mean_ms"] = atlasUploadMs.Count > 0 ? atlasUploadMs.Average() : 0,
             ["atlas_upload_related_max_ms"] = atlasUploadMs.Count > 0 ? atlasUploadMs.Max() : 0,
+            ["sort_input_capture"] = sortInput,
         };
         for (int s = 0; s < stages; s++)
         {
