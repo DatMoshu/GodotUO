@@ -64,7 +64,11 @@ flickers.
 dungeon 1,000 -> 40. Engine draw calls are unchanged (~1,600 at the bank):
 the renderer still breaks batches where the texture changes.
 
-## Release timing
+## Historical exploratory timing
+
+These pre-integration timings were taken on a busy host. They are not
+quotable performance gains under the current performance gate. The final
+desktop validation below supersedes them for acceptance.
 
 One Release export, `--shared-cover` off vs on, alternated twice, with a
 40 s warm-up, 20 s standing samples and the 12 s walk. Average host CPU
@@ -95,3 +99,60 @@ and docks at 1.4, 0.8 and 0.5. Not run yet:
 - phone, Deck and web
 
 Off by default until those are done and the owner decides.
+
+## Desktop validation after integration
+
+Measured code `b08783c0e53bfd2f31383cdf0d7dfa0b15a4e62e`, rebased onto
+`e88c46983e610f15b49da506d7e5a28e72a47d5b`. Release DLL SHA256:
+`90eb90e4a2b0ff53264ccdd9d40a0c5a577b9fb787d49dd17499463914c1c24d`.
+Evidence run: `20261024_guo-worker-astra-fps-20261024_desktop-gates`.
+This remains an off-by-default canvas renderer prototype; no player option
+or default renderer change is introduced.
+
+Correctness fixes reserve the marker size only under the shared material,
+route actual triangle-array commands through the original shader (their
+vertex format lacks CUSTOM0), and keep the previous item's offset until
+pending cover has flushed. Affine quads remain texture-rect commands under
+the shared shader. Cover uses the integrated canvas-command wrapper.
+Marker images and materials are disposed.
+
+Full smoke and Release export passed. Both exported renderer runs (default
+and `--shared-cover`) passed 1,243 checks, with zero renderer errors and the
+existing one CanvasItem / one ObjectDB leak warnings. The added checks cover
+real marker-sized sprites, following ordinary sprites, batched/mirrored
+fallbacks, transformed UI clipping and queued cover across an offset change.
+The perf tool tests passed 127 checks.
+
+At 2560x1440, zoom 2, Forward+, all six frozen scenes (login, open field,
+bank, forest, dungeon, docks) had **zero strict and zero repeatable pixel
+differences** in each of three separate comparisons:
+
+- Original versus new sprite shader, with cut submission on both sides.
+- Cut versus shared cover submission under the new shader.
+- Shared toggle with the Silhouettes postfx/id-mirror fallback active.
+
+One warmed Release off/on pair used the same DLL, plain profile, quiet
+static fixture, 40-second warm-up, 20-second standing samples and 12-second
+walk. The six-scene count gate passed; docks also passed its limits.
+
+| scene | items off -> on | draw calls off -> on | mean ms off -> on | p95 ms off -> on | p99 ms off -> on |
+|---|---:|---:|---:|---:|---:|
+| bank | 1608 -> 36 | 1568 -> 1629 | 6.907 -> 6.246 | 9.791 -> 8.442 | 12.735 -> 10.504 |
+| forest | 454 -> 36 | 468 -> 475 | 4.172 -> 3.832 | 5.614 -> 4.833 | 7.125 -> 5.862 |
+| dungeon | 1000 -> 40 | 1003 -> 1018 | 3.176 -> 2.713 | 4.539 -> 3.572 | 5.951 -> 4.238 |
+| docks | 1606 -> 36 | 1560 -> 1628 | 8.489 -> 5.488 | 14.450 -> 7.550 | 15.502 -> 9.564 |
+| walk | 416.4 -> 37.7 | 433.3 -> 438.6 | 2.463 -> 2.226 | 3.409 -> 3.088 | 4.332 -> 3.888 |
+
+**These times do not establish a gain or tail-latency acceptance.** Other
+process CPU averaged 17.5-58.5% across the measured scenes, exceeding the
+10% quiet-host threshold throughout. The full report includes host mean/max
+and all seven rows. A second alternating pair was deferred until a quiet
+window is available; repeating the noisy measurements cannot clear that gate.
+Draw calls rose slightly (up to 4.36% at docks), rather than falling.
+
+Promotion remains blocked. The dedicated interior-house roof/circle-of-
+transparency and live picking checks are still unproven. PR156 multimesh
+is absent from the merged baseline and its interaction is untested. Older
+zoom 1.4/0.8/0.5 captures do not validate this changed DLL; phone, Deck and
+web are also outside this evidence. No default enablement or subsequent
+bottleneck implementation is included.
