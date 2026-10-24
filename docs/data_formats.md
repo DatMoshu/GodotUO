@@ -3540,3 +3540,38 @@ Smoke: `res://src/Configuration/UoPlusProbe.tscn`; scenario:
 and bottom screenshots and uses an unsaved fixture profile. No external
 dependency or doctor launcher is required; Labs weather's README retains its
 build/dependency doctor.
+
+### Touch inventory (UX-03)
+
+`Profile.touch_ui` is `null` (Automatic), `true` (On) or `false` (Off).
+Absent in older profiles means Automatic. Automatic is inactive on mouse-only
+desktop startup and activates with the touch pointer. On/Off is an explicit
+override, persisted through the existing profile JSON source generator. The
+shared UO+ panel stages this selection until Apply/Okay; Cancel discards it,
+and Defaults stages Automatic. Reopen inventory after a setting or pointer
+change; an open grid keeps its original chrome layout.
+
+The touch paperdoll retains its original serial and `GumpType.PaperDoll`.
+The native avatar, item serials, `GameActions.Equip`/`PickUp`/`DropItem` paths,
+packet handling and saved gump identity stay shared with Classic. Equipment
+targets are 44x44 client pixels. Secondary actions are under More/Back.
+The existing grid backpack keeps `GumpType.Container`, stable item ordering,
+filter/sort/page state and its existing save/restore path. Touch UI selects
+it without rewriting `grid_containers`; Off retains that independent older
+preference. `grid_container_slot_size` still persists 32..80, but touch renders
+at least 44. World/server item coordinates are never rewritten by grid layout.
+
+In touch inventory a stationary long press on a filled grid slot requests the
+shard's item context menu. A moving finger starts the existing pickup/drop
+path. Pinch changes `ui_scale`, whose existing inverse transform also controls
+hit tests. A portrait single-screen grid reserves the open touch paperdoll's
+height and opens below it; a second display retains its existing shelf policy.
+No external dependency or doctor is needed.
+
+Smoke: shared `UoPlusProbe.tscn` checks Automatic/Off/On JSON persistence.
+Live scenario: `client.ui.inventory_touch` (`--inventory-touch-probe`, scratch
+profile, a dev-shard character with worn equipment and backpack contents).
+Native capture sizes: 640x480, 1920x1080 and desktop-simulated phone aspect
+1080x2340. Existing `--presentation-parity` is the desktop paperdoll pixel
+test; `client.input.touch` and the shard-free touch-gesture probe remain
+regression checks. Physical phone gesture proof is separate from simulation.

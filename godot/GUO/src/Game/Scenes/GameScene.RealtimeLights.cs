@@ -374,41 +374,10 @@ namespace GUO.Game.Scenes
             _rtWallFaces = 0;
             ref var statics = ref Client.Game.UO.FileManager.TileData.StaticData;
 
-            // PERF (2026-10-22 traces): this pass re-walked every visible
-            // chunk's tile lists, computed CalculateDepthZ per object and
-            // sorted, repeating what FillGameObjectList and the world sort
-            // had just produced (35-41% of the pass). The world's gathered,
-            // sorted list is read instead when it is there; the walk below
-            // remains for a frame whose world was not drawn.
-            if (_renderLists.WorldSorted)
-            {
-                foreach (GameObject tile in _renderLists.LandTiles)
-                {
-                    if (tile is Land land && RealtimeLandVisible(land, zoom)) AddRealtimeLand(land);
-                }
-
-                foreach (GameObject tile in _renderLists.StretchedLandTiles)
-                {
-                    if (tile is Land land && RealtimeLandVisible(land, zoom)) AddRealtimeLand(land);
-                }
-
-                // Back to front, in the world's draw order (the same objects
-                // the world drew, in the order it drew them; a mobile's two
-                // passes and effects are not light sprites and are skipped).
-                int count = _renderLists.WorldCount;
-                for (int i = 0; i < count; i++)
-                {
-                    GameObject obj = _renderLists.WorldObjectAt(i);
-                    if (!RealtimeSpriteCandidate(obj, zoom, statics)) continue;
-                    ref readonly SpriteInfo art = ref Client.Game.UO.Arts.GetArt(obj.Graphic);
-                    if (art.Texture == null) continue;
-                    AddRealtimeSprite(obj, in art, ref statics[obj.Graphic]);
-                }
-
-                _rtTarget.End();
-                return;
-            }
-
+            // Light receivers must include cached chunk terrain and GPU
+            // statics. Neither is guaranteed to appear in RenderLists' loose
+            // tile lists or sorted world queue. Keep this traversal independent
+            // of the world's submission backend and its cover-land duplicates.
             foreach (Chunk chunk in _visibleChunks)
             {
                 if (chunk == null || chunk.IsDestroyed) continue;

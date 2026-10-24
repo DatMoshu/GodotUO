@@ -32,13 +32,15 @@ internal static partial class TouchProbe
     public static bool Passed { get; private set; }
 
     private static readonly List<(string What, bool Ok)> Checks = new();
+    private static string _evidenceDirectory;
 
     /// <summary>The account field of the login gump, in client pixels (see InputProbe).</summary>
     private static readonly Vector2 AccountField = new(320, 297);
 
-    public static async System.Threading.Tasks.Task Run(Node host)
+    public static async System.Threading.Tasks.Task Run(Node host, string directory = null)
     {
         Checks.Clear();
+        _evidenceDirectory = directory;
 
         // The touch layer on one plain screen: the one-screen side panel,
         // on by default with touch, would shelve the paperdoll into its
@@ -112,6 +114,10 @@ internal static partial class TouchProbe
                 bar != null && (bar.IsMinimized || right <= room),
                 bar == null ? "no top bar" : $"bar {bar.X}..{right} x {bar.Height}, screen {room} wide, minimised {bar.IsMinimized}");
         }
+
+        // UX-03 inventory has its own bounded gesture contract; this suite
+        // retains the classic layout whose geometry it was written against.
+        Configuration.ProfileManager.CurrentProfile.TouchUi = false;
 
         // The checks that open Options mean the classic gump; Modern Options
         // (ADR-0024) has its own check, which turns it on.
@@ -1529,7 +1535,8 @@ internal static partial class TouchProbe
         await TapClient(host, view.CentreOf(view.Find(plate)));
         await Frames(host, 10);
         Check("a filter plate hides that kind of line and writes the classic journal's own profile field; a second tap shows them again",
-            before && !after && hidden < lines && Input.Touch.JournalReader.Shows(kind) && view.Reader.LineCount == lines,
+            // The shard may append messages while the filter is exercised.
+            before && !after && hidden < lines && Input.Touch.JournalReader.Shows(kind) && view.Reader.LineCount >= lines,
             $"{plate}: shown {before} -> {after} -> {Input.Touch.JournalReader.Shows(kind)}, lines {lines} -> {hidden} -> {view.Reader.LineCount}");
 
         await TapClient(host, view.CentreOf(view.Find("X")));
@@ -2115,17 +2122,20 @@ internal static partial class TouchProbe
             await Frames(host, 5);
             string padRow = WindowMenu.Prompts;
             bool tab = TouchInput.Bar != null && TouchInput.Bar.HandleShown;
-            string badge = TouchGumpBar.BadgeDrawn;
+            bool padHidden = TouchInput.Bar != null && !TouchInput.Bar.Visible;
             Input.InputMode.Note(new InputEventKey { Keycode = Key.Shift, Pressed = true });
             await Frames(host, 5);
             string keyRow = WindowMenu.Prompts;
+            bool mouseVisible = TouchInput.Bar?.Visible == true;
             Input.InputMode.Switch(Input.InputKind.Touch);
             await Frames(host, 5);
             string touchRow = WindowMenu.Prompts;
 
-            Check("the window menu's prompts swap on the last input: a pad's A, B and D-pad, then the click, then none for a finger; the bar's tab wears Y",
-                padRow == "pad_a pad_b dpad" && keyRow == "mouse_left" && touchRow == "" && tab && badge == "pad_y",
-                $"pad \"{padRow}\", key \"{keyRow}\", touch \"{touchRow}\", bar tab shown {tab}, badge {badge ?? "none"}");
+            // TouchGumpBar.ProcessBar hides the touch surface for a gamepad.
+            Check("window prompts follow the pointer and the touch bar hides for pad, returns for mouse/touch",
+                padRow == "pad_a pad_b dpad" && keyRow == "mouse_left" && touchRow == "" && tab
+                    && padHidden && mouseVisible && TouchInput.Bar?.Visible == true,
+                $"pad \"{padRow}\", key \"{keyRow}\", touch \"{touchRow}\", pad hidden {padHidden}, mouse visible {mouseVisible}");
         }
         finally
         {
@@ -2477,8 +2487,9 @@ internal static partial class TouchProbe
 
             // Leave a real rendered frame for visual QA of the transform, fonts and chrome.
             await host.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
-            string screenshotDir = System.IO.Path.GetFullPath(System.IO.Path.Combine(
-                ProjectSettings.GlobalizePath("res://"), "..", "..", "build", "screenshots"));
+            string screenshotDir = string.IsNullOrWhiteSpace(_evidenceDirectory)
+                ? System.IO.Path.Combine(System.IO.Path.GetTempPath(), "guo-touch-probe")
+                : _evidenceDirectory;
             System.IO.Directory.CreateDirectory(screenshotDir);
             using (Image frame = host.GetViewport().GetTexture().GetImage())
             using (Image region = frame.GetRegion(new Rect2I(0, 0, System.Math.Min(800, frame.GetWidth()), System.Math.Min(650, frame.GetHeight()))))

@@ -16,7 +16,7 @@ using System.Xml;
 
 namespace GUO.Game.UI.Gumps
 {
-    internal class PaperDollGump : TextContainerGump
+    internal partial class PaperDollGump : TextContainerGump
     {
         private static readonly ushort[] PeaceModeBtnGumps = { 0x07e5, 0x07e6, 0x07e7 };
         private static readonly ushort[] WarModeBtnGumps = { 0x07e8, 0x07e9, 0x07ea };
@@ -56,6 +56,8 @@ namespace GUO.Game.UI.Gumps
             get => _isMinimized;
             set
             {
+                // PORT DEVIATION (GUO): touch layout closes through its header.
+                if (IsTouchLayout) return;
                 if (_isMinimized != value)
                 {
                     _isMinimized = value;
@@ -108,6 +110,13 @@ namespace GUO.Game.UI.Gumps
 
         private void BuildGump()
         {
+            // PORT DEVIATION (GUO): UX-03 touch layout, same equipment actions.
+            if (GUO.Input.Touch.TouchInventory.Active)
+            {
+                BuildTouch();
+                return;
+            }
+
             _picBase?.Dispose();
             _hitBox?.Dispose();
 
@@ -393,7 +402,7 @@ namespace GUO.Game.UI.Gumps
             }
 
             // This is to update the state of the war mode button.
-            if (mobile != null && _isWarMode != mobile.InWarMode && LocalSerial == World.Player)
+            if (_warModeBtn != null && mobile != null && _isWarMode != mobile.InWarMode && LocalSerial == World.Player)
             {
                 _isWarMode = mobile.InWarMode;
                 ushort[] btngumps = _isWarMode ? WarModeBtnGumps : PeaceModeBtnGumps;
@@ -403,6 +412,9 @@ namespace GUO.Game.UI.Gumps
             }
 
             base.Update();
+
+            // PORT DEVIATION (GUO): place a newly opened touch inventory.
+            if (IsTouchLayout) GUO.Input.Touch.TouchInventory.Place(this);
 
             if (_paperDollInteractable != null && (CanLift || LocalSerial == World.Player.Serial))
             {
@@ -581,6 +593,9 @@ namespace GUO.Game.UI.Gumps
                 return;
             }
 
+            // PORT DEVIATION (GUO): touch-only auxiliary actions.
+            if (IsTouchLayout && TouchAction(buttonID)) return;
+
             switch ((Buttons)buttonID)
             {
                 case Buttons.Help:
@@ -704,26 +719,37 @@ namespace GUO.Game.UI.Gumps
         {
             private ItemGumpFixed _itemGump;
             private readonly PaperDollGump _paperDollGump;
+            private readonly Label _touchEmpty;
 
             public EquipmentSlot(
                 uint serial,
                 int x,
                 int y,
                 Layer layer,
-                PaperDollGump paperDollGump
+                PaperDollGump paperDollGump,
+                int size = 0
             )
             {
                 X = x;
                 Y = y;
                 LocalSerial = serial;
-                Width = 19;
-                Height = 20;
+                Width = size > 0 ? size : 19;
+                Height = size > 0 ? size : 20;
                 _paperDollGump = paperDollGump;
                 Layer = layer;
 
-                Add(new GumpPicTiled(0, 0, 19, 20, 0x243A) { AcceptMouseInput = false });
-
-                Add(new GumpPic(0, 0, 0x2344, 0) { AcceptMouseInput = false });
+                // PORT DEVIATION (GUO): full touch-sized frame, named when empty.
+                if (size > 0)
+                {
+                    Add(new ResizePic(0x0BB8) { Width = Width, Height = Height, AcceptMouseInput = false });
+                    Add(_touchEmpty = new Label(TouchSlotName(layer), true, 0x0386, Width - 4, 1)
+                        { X = 2, Y = 12, AcceptMouseInput = false });
+                }
+                else
+                {
+                    Add(new GumpPicTiled(0, 0, 19, 20, 0x243A) { AcceptMouseInput = false });
+                    Add(new GumpPic(0, 0, 0x2344, 0) { AcceptMouseInput = false });
+                }
 
                 AcceptMouseInput = true;
 
@@ -748,6 +774,7 @@ namespace GUO.Game.UI.Gumps
                 if (mobile != null)
                 {
                     Item it_at_layer = mobile.FindItemByLayer(Layer);
+                    if (_touchEmpty != null) _touchEmpty.IsVisible = it_at_layer == null;
 
                     if ((it_at_layer != null && _itemGump != null && _itemGump.LocalSerial != it_at_layer.Serial) || _itemGump == null)
                     {
@@ -764,12 +791,12 @@ namespace GUO.Game.UI.Gumps
                             LocalSerial = it_at_layer.Serial;
 
                             Add(
-                                _itemGump = new ItemGumpFixed(_paperDollGump, item, 18, 18)
+                                _itemGump = new ItemGumpFixed(_paperDollGump, item, Width - 1, Height - 2)
                                 {
                                     X = 0,
                                     Y = 0,
-                                    Width = 18,
-                                    Height = 18,
+                                    Width = Width - 1,
+                                    Height = Height - 2,
                                     HighlightOnMouseOver = false,
                                     CanPickUp =
                                         _paperDollGump.World.InGame

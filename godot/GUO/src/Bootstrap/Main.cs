@@ -1112,11 +1112,14 @@ public partial class Main : Node
     /// </summary>
     private async void TouchProbeThenQuit()
     {
-        if (_options.OptionsTouchProbe)
+        if (_options.InventoryTouchProbe)
+            await TouchProbe.RunInventory(this, _options.ScreenshotDir);
+        else if (_options.OptionsTouchProbe)
             await TouchProbe.RunOptions(this, _options.ScreenshotDir);
         else
-            await TouchProbe.Run(this);
-        await CaptureFrame();
+            await TouchProbe.Run(this, _options.ScreenshotDir);
+        // Failed inventory login must not capture partially typed credentials.
+        if (!_options.InventoryTouchProbe || TouchProbe.Passed) await CaptureFrame();
         Quit(TouchProbe.Passed ? 0 : 1);
     }
 
@@ -1841,6 +1844,7 @@ public partial class Main : Node
         /// <summary>Drive the touch layer with synthetic fingers and check the client reacted.</summary>
         public bool TouchProbe { get; private set; }
         public bool OptionsTouchProbe { get; private set; }
+        public bool InventoryTouchProbe { get; private set; }
 
         /// <summary>
         /// Run in a client home of its own, made fresh (<see cref="ScratchHome"/>):
@@ -2247,6 +2251,9 @@ public partial class Main : Node
                     case "--touch":
                         o.Touch = true;
                         break;
+                    case "--inventory-touch-probe":
+                        o.InventoryTouchProbe = true;
+                        goto case "--touch-probe";
                     case "--options-touch-probe":
                         o.OptionsTouchProbe = true;
                         goto case "--touch-probe";
