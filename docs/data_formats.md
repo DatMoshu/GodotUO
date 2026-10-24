@@ -3311,7 +3311,10 @@ twice a second on a timer thread from Windows `GetSystemTimes` /
 The count gate requires `export_template: release`, `engine_debug_build:
 false`, `quiet_fixture: true` and `p50_ms`. PerfDump receipts add
 `engine_debug_build`, `export_template` and `quiet_fixture`
-(`GUO_PERF_QUIET=1`, `tools/perf_dump --only guo --quiet`).
+(`GUO_PERF_QUIET=1`, `tools/perf_dump --only guo --quiet`). The report's
+top-level `minimap_texture` is true when `GUO_MINIMAP_TEXTURE=1` (off by
+default) gave the minimap its own texture instead of its gump atlas region
+(`docs/perf/2026-10-24_minimap_texture.md`).
 
 **Probe JSON**, `perf_<label>.json`, written by the client's `--perf-probe`
 (`src/Bootstrap/PerfProbe.cs`): `{label, window "WxH", zoom, optimized,
