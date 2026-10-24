@@ -21,11 +21,16 @@
 // the sequence in its 0x22 confirmation. If a confirmation arrives for an unknown
 // sequence, the client triggers a resync (0x22 "bad step" path).
 
+using System;
 using GUO.Game.GameObjects;
 using GUO.Network;
 
 namespace GUO.Game.Managers
 {
+    // PORT DEVIATION (GUO): opt-in main-thread probe witness only. No packet,
+    // queue or movement state changes; null in ordinary play.
+    internal enum WalkDiagnosticEvent { Confirmed, Denied, Reset, BadAck }
+
     internal struct StepInfo
     {
         public byte Direction;
@@ -86,6 +91,8 @@ namespace GUO.Game.Managers
     {
         private readonly PlayerMobile _player;
 
+        internal Action<WalkDiagnosticEvent, byte> DiagnosticObserver;
+
         public WalkerManager(PlayerMobile player)
         {
             _player = player;
@@ -107,6 +114,7 @@ namespace GUO.Game.Managers
 
         public void DenyWalk(byte sequence, int x, int y, sbyte z)
         {
+            DiagnosticObserver?.Invoke(WalkDiagnosticEvent.Denied, sequence);
             _player.ClearSteps();
 
             Reset();
@@ -184,10 +192,12 @@ namespace GUO.Game.Managers
                 StepsCount = 0;
                 CurrentWalkSequence = 0;
             }
+            DiagnosticObserver?.Invoke(isBadStep ? WalkDiagnosticEvent.BadAck : WalkDiagnosticEvent.Confirmed, sequence);
         }
 
         public void Reset()
         {
+            DiagnosticObserver?.Invoke(WalkDiagnosticEvent.Reset, 0);
             UnacceptedPacketsCount = 0;
             StepsCount = 0;
             WalkSequence = 0;

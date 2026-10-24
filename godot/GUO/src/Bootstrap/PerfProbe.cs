@@ -30,7 +30,7 @@ namespace GUO.Host;
 /// between runs on one machine at one window size; the draw calls and batcher
 /// counts are comparable anywhere.
 /// </remarks>
-internal static class PerfProbe
+internal static partial class PerfProbe
 {
     public static bool Passed { get; private set; }
 
@@ -103,13 +103,19 @@ internal static class PerfProbe
     // GUO_PERF_MEASURE_SECONDS times a stationary world scene by the clock
     // instead of 360 frames. Both 0-300, default 0: the original contract.
     private static int _warmupSeconds, _measureSeconds;
+    // Walk replay (measurement only): GUO_PERF_WALK_ROUTE pins the walk scene
+    // to a recorded, server-acknowledged route; GUO_PERF_WALK_SECONDS and
+    // GUO_PERF_WALK_ORIGIN lengthen and move the ordinary run.
+    private static PerfWalkRoute _walkRoute;
+    private static int _walkSeconds = 12;
+    private static string _walkOrigin = "field";
 
-    private static int DiagnosticSeconds(string name)
+    private static int DiagnosticSeconds(string name, int fallback = 0, int min = 0)
     {
         string value = System.Environment.GetEnvironmentVariable(name);
-        if (string.IsNullOrEmpty(value)) return 0;
-        if (int.TryParse(value, out int seconds) && seconds >= 0 && seconds <= 300) return seconds;
-        throw new System.ArgumentException($"{name} must be an integer from 0 to 300.");
+        if (string.IsNullOrEmpty(value)) return fallback;
+        if (int.TryParse(value, out int seconds) && seconds >= min && seconds <= 300) return seconds;
+        throw new System.ArgumentException($"{name} must be an integer from {min} to 300.");
     }
 
     private static async System.Threading.Tasks.Task WarmUp(Node host)
@@ -135,7 +141,7 @@ internal static class PerfProbe
     /// thousand frames and more a second, a handheld sixty, and the ground
     /// covered is what matters. Twelve seconds of running crosses several chunks.
     /// </summary>
-    private const double WalkMs = 12000;
+    private static double WalkMs => _walkSeconds * 1000.0;
 
     /// <summary>
     /// Runs the player on, a step whenever the walker takes one, turning to the
@@ -197,10 +203,21 @@ internal static class PerfProbe
         {
             _warmupSeconds = DiagnosticSeconds("GUO_PERF_WARMUP_SECONDS");
             _measureSeconds = DiagnosticSeconds("GUO_PERF_MEASURE_SECONDS");
+            _walkSeconds = DiagnosticSeconds("GUO_PERF_WALK_SECONDS", 12, 1);
+            _walkOrigin = System.Environment.GetEnvironmentVariable("GUO_PERF_WALK_ORIGIN") ?? "field";
+            string routePath = System.Environment.GetEnvironmentVariable("GUO_PERF_WALK_ROUTE");
+            _walkRoute = string.IsNullOrWhiteSpace(routePath) ? null : PerfWalkRoute.Load(routePath);
+            if (_walkRoute != null && (parity || Only.Count != 1 || Only[0] != "walk"))
+                throw new System.ArgumentException("GUO_PERF_WALK_ROUTE requires only --perf-scene walk, without --perf-parity.");
+            if (_walkOrigin is not ("field" or "bank" or "docks"))
+                throw new System.ArgumentException("GUO_PERF_WALK_ORIGIN must be field, bank or docks.");
             await RunProbe(host, outDir, label, zoom, parity, profilePreset);
         }
         finally
         {
+            _walkRoute = null;
+            _walkSeconds = 12;
+            _walkOrigin = "field";
             StaticWorld = false;
             PerfFixture.Quiet = false;
             PerfHostLoad.Stop();
@@ -309,6 +326,14 @@ internal static class PerfProbe
             GD.Print($"[GUO] perf probe: zoom {camera.Zoom:F1} (asked {zoom:F1}, range {camera.ZoomMin:F1}-{camera.ZoomMax:F1})");
         }
 
+        // GUO_PERF_MINIMAP=1 (measurement only): the minimap open for every
+        // scene, so a run times its repaints; whether it was open is reported.
+        if (System.Environment.GetEnvironmentVariable("GUO_PERF_MINIMAP") == "1"
+            && GUO.Game.Managers.UIManager.GetGump<GUO.Game.UI.Gumps.MiniMapGump>() == null)
+        {
+            GUO.Game.Managers.UIManager.Add(new GUO.Game.UI.Gumps.MiniMapGump(world));
+        }
+
         Scene[] scenes = Only.Count == 0 ? Scenes : System.Array.FindAll(Scenes, s => Only.Contains(s.Name));
         // A misspelt --perf-scene measured nothing and still passed (review M6).
         List<string> unknown = Only.Where(n => !Scenes.Any(s => s.Name == n)).ToList();
@@ -318,8 +343,14 @@ internal static class PerfProbe
         }
 
         bool arrivedEverywhere = true;
-        foreach (Scene scene in scenes)
+        foreach (Scene configuredScene in scenes)
         {
+            Scene scene = configuredScene;
+            if (scene.Walks && _walkRoute != null)
+                scene = scene with { Go = _walkRoute.Go, What = "fixed 46-tile acknowledged walk; no detours or recovery teleport" };
+            else if (scene.Walks && _walkOrigin != "field")
+                scene = scene with { Go = Scenes.Single(s => s.Name == "britain-" + _walkOrigin).Go,
+                    What = $"running from Britain {_walkOrigin}, turning where blocked" };
             await InputProbe.Say(host, scene.Go);
             // Chunks newly in view load and build their meshes first; that is a
             // one-off, not what a player standing still pays every frame.
@@ -331,6 +362,7 @@ internal static class PerfProbe
                 continue;
             }
 
+            if (scene.Walks && _walkRoute != null) await PrepareReplayOrigin(host, _walkRoute);
             results.Add(await Measure(host, viewport, scene.Name, scene.What, scene.Walks));
 
             // With --perf-parity, the same spot again with the path under test
@@ -373,7 +405,10 @@ internal static class PerfProbe
             GD.PrintErr("[GUO] perf probe: a parity row has test captures the --gpu-world pass did not draw; see gpu_test_on_pass");
         }
 
-        Passed = unknown.Count == 0 && idle.Count == 0 && arrivedEverywhere && capturesValid
+        bool replayValid = results.All(r => r.GetValueOrDefault("walk_replay_valid") is not false);
+        if (!replayValid)
+            GD.PrintErr("[GUO] perf probe: the pinned walk did not complete as recorded; see walk_replay");
+        Passed = unknown.Count == 0 && idle.Count == 0 && arrivedEverywhere && capturesValid && replayValid
             && results.Count == (_parity ? 2 : 1) * scenes.Length + 1;
     }
 
@@ -400,7 +435,8 @@ internal static class PerfProbe
         bool worldMeasurement = name != "login";
         if (worldMeasurement && _warmupSeconds > 0) await WarmUp(host);
         int n = Frames;
-        Runner runner = walks ? new Runner() : null;
+        Runner runner = walks && _walkRoute == null ? new Runner() : null;
+        using var replay = walks && _walkRoute != null ? new PerfWalkReplay(_walkRoute) : null;
 
         // Uncapped: with vsync or a frame cap every frame below the cap reads as
         // the cap, and a renderer change that saves 4 ms would not show.
@@ -428,7 +464,7 @@ internal static class PerfProbe
         await InputProbe.Wait(host, 30);
         long drawsBefore = UltimaBatcher2D.FramesBegun;
 
-        double measureMs = walks ? WalkMs : worldMeasurement ? _measureSeconds * 1000.0 : 0;
+        double measureMs = replay != null ? 180000 : walks ? WalkMs : worldMeasurement ? _measureSeconds * 1000.0 : 0;
         int sampleCapacity = measureMs > 0 ? System.Math.Max(20000, (int)measureMs * 2) : n;
         var ms = new List<double>(sampleCapacity);
         double kRect = 0, kAffine = 0, kMesh = 0, kTri = 0, kBatches = 0, kCover = 0, kCoverRuns = 0, coverQueued = 0, coverOverlapping = 0, chunksSkipped = 0;
@@ -444,6 +480,7 @@ internal static class PerfProbe
         // Atlas page uploads (review item G): whole pages re-sent by
         // TextureAtlas.Flush, and the frames they land in.
         long atlasUploadsBefore = TextureAtlas.PageUploads, atlasCreationsBefore = TextureAtlas.PageCreations;
+        long atlasBytesBefore = TextureAtlas.PageUploadBytes, atlasTicksBefore = TextureAtlas.PageUploadTicks;
         long atlasUploadsLast = atlasUploadsBefore, atlasUploadsMax = 0, atlasUploadFrames = 0;
         var atlasUploadMs = new List<double>(sampleCapacity);
         bool atlasUploadedLast = false;
@@ -461,10 +498,30 @@ internal static class PerfProbe
         PerfHostLoad.Enter(PerfHostLoad.Phase.Sample);
         long last = System.Diagnostics.Stopwatch.GetTimestamp();
         double elapsed = 0;
-        for (int i = 0; measureMs > 0 ? elapsed < measureMs : i < n; i++)
+        long replayDoneDraw = -1;
+        ParityDrawFence? replayDrain = null;
+        bool replayDrained = false;
+        async System.Threading.Tasks.Task NextReplayDrainFrame()
+        { await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame); }
+        // A pinned walk is timed from its first step until two client draws
+        // after its last acknowledged step (180 s at most), not by the clock.
+        for (int i = 0; replay != null
+            ? (!replay.Done || !replayDrained) && elapsed < measureMs
+            : measureMs > 0 ? elapsed < measureMs : i < n; i++)
         {
             runner?.Step();
-            await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
+            replay?.Step();
+            if (replay?.Done == true && replayDoneDraw < 0)
+            {
+                replayDoneDraw = UltimaBatcher2D.FramesBegun;
+                replayDrain = new ParityDrawFence(replayDoneDraw, Godot.Time.GetTicksMsec() + 10000);
+            }
+            if (replayDrain.HasValue)
+            {
+                await replayDrain.Value.WaitForSignal(NextReplayDrainFrame(), Godot.Time.GetTicksMsec());
+                replayDrained = replayDrain.Value.Observe(UltimaBatcher2D.FramesBegun, Godot.Time.GetTicksMsec(), true, true);
+            }
+            else await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
             long now = System.Diagnostics.Stopwatch.GetTimestamp();
             double frameMs = (now - last) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
             ms.Add(frameMs);
@@ -522,6 +579,8 @@ internal static class PerfProbe
 
         PerfHostLoad.Enter(PerfHostLoad.Phase.Between);
         PerfStages.Enabled = false;
+        // Dispose validates the endpoint and restores the walk observer.
+        replay?.Dispose();
         n = ms.Count;
         long draws = UltimaBatcher2D.FramesBegun - drawsBefore;
         int uploads = LandPages.Uploads - uploadsBefore;
@@ -572,7 +631,11 @@ internal static class PerfProbe
             ["cmd_triangles"] = System.Math.Round(kTri / n, 1),
             ["estimated_batches"] = System.Math.Round(kBatches / n, 1),
             ["gc_ms_per_frame"] = System.Math.Round(gcMs, 3),
-            ["tiles_moved"] = runner?.Tiles ?? 0,
+            ["tiles_moved"] = replay?.Tiles ?? runner?.Tiles ?? 0,
+            ["walk_route_map_xyz"] = replay?.Route(),
+            ["walk_replay"] = replay?.Report(),
+            ["walk_replay_valid"] = replay == null || replay.Valid,
+            ["walk_replay_drain_draws"] = replayDoneDraw < 0 ? 0 : UltimaBatcher2D.FramesBegun - replayDoneDraw,
             ["land_layers"] = LandPages.Layers,
             ["land_capacity"] = LandPages.Capacity,
             ["land_array_mib"] = System.Math.Round((double)LandPages.Capacity * LandPages.LayerBytes / (1 << 20), 1),
@@ -596,6 +659,10 @@ internal static class PerfProbe
             ["update_world_ms"] = System.Math.Round(update / n, 3),
             ["atlas_page_uploads"] = TextureAtlas.PageUploads - atlasUploadsBefore,
             ["atlas_page_creations"] = TextureAtlas.PageCreations - atlasCreationsBefore,
+            ["atlas_page_upload_mib"] = System.Math.Round((TextureAtlas.PageUploadBytes - atlasBytesBefore) / 1048576.0, 1),
+            ["atlas_page_upload_call_ms"] = System.Math.Round((TextureAtlas.PageUploadTicks - atlasTicksBefore) * 1000.0 / System.Diagnostics.Stopwatch.Frequency, 3),
+            ["atlas_live_pages"] = TextureAtlas.LivePages(),
+            ["minimap_open"] = GUO.Game.Managers.UIManager.GetGump<GUO.Game.UI.Gumps.MiniMapGump>() != null,
             ["atlas_uploads_max_in_a_frame"] = atlasUploadsMax,
             ["frames_with_atlas_upload"] = atlasUploadFrames,
             ["atlas_upload_frames_mean_ms"] = atlasUploadMs.Count > 0 ? System.Math.Round(atlasUploadMs.Average(), 3) : 0.0,
@@ -842,7 +909,8 @@ internal static class PerfProbe
                     ["label"] = label, ["window"] = $"{size.X}x{size.Y}", ["zoom"] = System.Math.Round(Client.Game?.Scene?.Camera?.Zoom ?? 0, 2),
                     ["optimized"] = optimized, ["postfx"] = look, ["profile_preset"] = _profilePreset, ["profile"] = _profileSummary, ["static_world"] = StaticWorld,
                     ["engine_debug_build"] = OS.IsDebugBuild(), ["export_template"] = ExportTemplate(), ["quiet_fixture"] = PerfFixture.Quiet,
-                    ["warmup_seconds"] = _warmupSeconds, ["measure_seconds"] = _measureSeconds, ["host_load"] = PerfHostLoad.Launch(),
+                    ["warmup_seconds"] = _warmupSeconds, ["measure_seconds"] = _measureSeconds,
+                    ["walk_seconds"] = _walkSeconds, ["walk_origin"] = _walkOrigin, ["walk_route"] = _walkRoute != null, ["host_load"] = PerfHostLoad.Launch(),
                     ["system"] = SystemInfo(), ["scenes"] = results,
                 },
                 new JsonSerializerOptions { WriteIndented = true }));

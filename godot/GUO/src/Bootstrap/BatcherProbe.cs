@@ -130,6 +130,8 @@ public partial class BatcherProbe : Node
         Stage("typed UI texture commands");
         VerifyWorldDepthSort();
         Stage("world depth radix sort");
+        VerifyPerfWalkReplay();
+        Stage("pinned walk replay");
 
         await VerifyUiTransform(batcher, viewport, ramp);
         Stage("gump transform and clipping");

@@ -106,6 +106,25 @@ namespace GUO.Renderer
         /// nothing has: the whole point is that it collapses a frame's worth of
         /// decoded sprites into one upload per page.
         /// </summary>
+        /// <summary>
+        /// PORT DEVIATION (GUO): bytes handed to <c>ImageTexture.Update</c> by
+        /// <see cref="Flush"/> and the Stopwatch ticks those calls took, since
+        /// start; the perf probe reports their deltas. Main thread only.
+        /// </summary>
+        internal static long PageUploadBytes, PageUploadTicks;
+
+        /// <summary>Pages (and dedicated oversized textures) held by every live atlas.</summary>
+        internal static int LivePages()
+        {
+            int pages = 0;
+            for (int i = 0; i < _live.Count; i++)
+            {
+                pages += _live[i]._textures.Count;
+            }
+
+            return pages;
+        }
+
         public static void FlushAll()
         {
             for (int i = 0; i < _live.Count; i++)
@@ -120,7 +139,10 @@ namespace GUO.Renderer
             {
                 if (_dirty[i])
                 {
+                    long uploadAt = System.Diagnostics.Stopwatch.GetTimestamp();
                     _textures[i].Update(_pages[i]);
+                    PageUploadTicks += System.Diagnostics.Stopwatch.GetTimestamp() - uploadAt;
+                    PageUploadBytes += (long)_pages[i].GetWidth() * _pages[i].GetHeight() * 4;
                     PageUploads++;
                     _dirty[i] = false;
                     _versions[i]++;
