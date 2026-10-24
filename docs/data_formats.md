@@ -3327,8 +3327,14 @@ PerfProbe additionally records interval totals as
 `cover_candidate_{hits,misses,builds,rejected,dependency_checks}` (without the
 `_per_frame` suffix), aligned to its draw/time interval. Ordinary chunk-slot
 changes invalidate plans that observed missing chunks; separate table/lifetime
-changes invalidate all plans. Dependencies still validate every chunk's broad
-membership version, including non-Land link mutations and pooled reuse.
+changes invalidate all plans. Every link mutation, including non-Land movement,
+still invalidates its first-Land cell. A previously certified cell retains its
+old identity only until the next full linked-chain certification. Before a
+dependency reads the chunk's membership version, pending cells are rescanned;
+the version advances if the first Land changed or ownership certification was
+lost. Benign mutations with the same certified identity can retain plans.
+Uncertified cells, full invalidation and pooled reuse remain conservative.
+The pending mask is bounded to the chunk's 64 cells; visual fields stay live.
 `GUO_VERIFY_COVER_CANDIDATES=1` checks each cache hit against a fresh raw
 head/TNext traversal and fails on different Land identities, duplicate order,
 columns or count. It does not change cover stamps or winners. Probe rows report

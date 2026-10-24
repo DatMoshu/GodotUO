@@ -570,3 +570,28 @@ folder. DIA resolves the canvas renderer, canvas cull and rendering-server draw
 functions to verified RVAs; a deliberately wrong PDB GUID is rejected. Fresh
 engine validation and native collection remain separate from that symbol proof.
 Do not reuse the old lossy trace as precise CPU attribution.
+
+## Follow-up: cover membership validation
+
+The [membership report](../2026-10-24_cover_membership.md) records a local
+candidate that revalidates changed tile chains before discarding covering-land
+plans. All mutation hooks remain active; retained identity and ownership
+certification must both still match. Roofs, lighting, alpha, order and picking
+remain live. Release passes 1,207 checks, optimized Debug/Labs 1,547 and full
+smoke passes. Live stationary and exact-route reference oracles report zero
+mismatches. An unchanged Release repeat reproduces the initial cross-launch
+pixel variation and then matches the candidate exactly in all five scenes.
+
+Walking plan rebuilds per draw fall about 76% at bank and 80% at docks.
+Bank FPS is 69.147 to 70.602; docks 97.999 to 95.762, with slightly worse p95
+and preparation timings. Atlas work and host load differ, and the report flags
+our native compilation overlap. The repeated bank standing sample is 72.513
+FPS under 49.8% mean host CPU load; docks standing is 117.449. These observations
+do not establish a general FPS improvement or justify a renderer default change.
+
+The elevated native collector was canceled by Windows before recording; no new
+ETL was obtained. A separate private engine now has bounded, default-disabled
+own-process elapsed/CPU scopes. Its source, production flags and matching PDB
+have been checked; runtime coverage and disabled/enabled pixels are still being
+validated. It does not change the configured engine or the ordinary Release
+comparisons, and it provides no GPU-time or ready-versus-blocked attribution.

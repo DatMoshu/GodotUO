@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: BSD-2-Clause
+// SPDX-License-Identifier: BSD-2-Clause
 
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
@@ -28,20 +28,41 @@ namespace GUO.Game.Map
         // depth or cover winners. Main-thread tile mutations invalidate cells.
         private readonly Land[] _firstLand = new Land[64];
         private ulong _firstLandValid;
-        internal long CoverMembershipVersion { get; private set; }
+        private long _coverMembershipVersion;
+        private ulong _coverMembershipDirty;
+        // PORT DEVIATION (GUO): resolve pending identity/certification checks
+        // before any retained plan compares its dependency. Main thread only.
+        internal long CoverMembershipVersion
+        {
+            get
+            {
+                while (_coverMembershipDirty != 0)
+                {
+                    int cell = System.Numerics.BitOperations.TrailingZeroCount(_coverMembershipDirty);
+                    GetFirstLand(cell & 7, cell >> 3);
+                }
+                return _coverMembershipVersion;
+            }
+        }
         internal static long FirstLandScans, FirstLandLookups, FirstLandNodes;
 
         internal void InvalidateFirstLand(int x, int y)
         {
-            CoverMembershipVersion++;
             int cell = x + (y << 3);
-            _firstLandValid &= ~(1UL << cell);
-            _firstLand[cell] = null;
+            ulong bit = 1UL << cell;
+            if ((_firstLandValid & bit) != 0)
+                _coverMembershipDirty |= bit;
+            else if ((_coverMembershipDirty & bit) == 0)
+                _coverMembershipVersion++; // no certified baseline: stay conservative
+            _firstLandValid &= ~bit;
+            // A pending cell keeps its prior identity until the next scan.
+            // Repeated invalidations must not overwrite that baseline.
         }
 
         private void InvalidateFirstLandCache()
         {
-            CoverMembershipVersion++;
+            _coverMembershipVersion++;
+            _coverMembershipDirty = 0;
             _firstLandValid = 0;
             Array.Clear(_firstLand, 0, _firstLand.Length);
         }
@@ -59,11 +80,21 @@ namespace GUO.Game.Map
             // mutation invalidates it, so hits need no anchor or owner query.
             if ((_firstLandValid & bit) != 0) return _firstLand[cell];
             Land first = ScanFirstLand(x, y, out bool cacheable);
+            if ((_coverMembershipDirty & bit) != 0)
+            {
+                // Non-Land moves can change a legacy anchor's reachable Land
+                // or introduce foreign ownership. Compare BOTH invariants;
+                // an unchanged identity alone does not certify a plan.
+                if (!cacheable || !ReferenceEquals(first, _firstLand[cell]))
+                    _coverMembershipVersion++;
+                _coverMembershipDirty &= ~bit;
+            }
             if (cacheable)
             {
                 _firstLand[cell] = first;
                 _firstLandValid |= bit;
             }
+            else _firstLand[cell] = null;
             return first;
         }
 

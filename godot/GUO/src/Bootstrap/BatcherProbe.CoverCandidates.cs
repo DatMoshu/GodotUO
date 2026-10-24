@@ -14,6 +14,7 @@ public partial class BatcherProbe
 {
     private void VerifyCoverCandidates()
     {
+        VerifyCoverMembershipStability();
         VerifyCoverCandidateAdmission();
         VerifyCoverCandidateVerifier();
         var world = FirstLandFixture<World>();
@@ -164,9 +165,11 @@ public partial class BatcherProbe
 
             cache.TryGet(map, epoch, key, out _);
             Observe(b, 0, 0, 0);
-            b.InvalidateFirstLand(0, 0);
+            var duringDiscovery = FirstLandFixture<Land>();
+            duringDiscovery.Z = -100;
+            b.AddGameObject(duringDiscovery, 0, 0);
             cache.Complete(epoch);
-            Check("mutation during discovery rejects publication", cache.Count == 0);
+            Check("identity mutation during discovery rejects publication", cache.Count == 0);
             cache.TryGet(map, epoch, key, out _);
             Observe(b, 0, 0, 0);
             cache.Complete(epoch + 1);
