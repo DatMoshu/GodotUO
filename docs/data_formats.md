@@ -3326,7 +3326,10 @@ Since PERF-03 each scene also carries `render_frame_ms`, `ui_ms`,
 (`gather`, `mesh_build`, `gather_tail`, `land_mesh`, `land_loose`, `sort`,
 `statics`, `mobiles`, `items`, `cover_land`, `multis`, `other`,
 `transparent`; per frame) and `drawn_<stage>` (objects drawn per frame, the
-sorted-list stages only, absent when none). Scenes `cave-roof` and
+sorted-list stages only, absent when none). Since review item B
+(2026-10-24) each scene also carries `chunks_skipped`: chunks per frame
+the tile walk skipped because no object anchor in them can reach the
+screen (0 with `--chunk-skip=off`). Scenes `cave-roof` and
 `open-sea` were added after `dungeon`. With `--perf-parity`, each standing
 scene also carries `parity_stable_px`, `parity_violations`,
 `parity_strict`, `parity_strict_max_delta` (pixels: stable across the plain
