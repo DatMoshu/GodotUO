@@ -3532,7 +3532,11 @@ Since PERF-03 each scene also carries `render_frame_ms`, `ui_ms`,
 sorted-list stages only, absent when none). Since review item B
 (2026-10-24) each scene also carries `chunks_skipped`: chunks per frame
 the tile walk skipped because no object anchor in them can reach the
-screen (0 with `--chunk-skip=off`). Scenes `cave-roof` and
+screen (0 with `--chunk-skip=off`), `items_allocated` (the batcher's
+pooled canvas items) and `cuts_total` with `cuts_cover`, `cuts_material`,
+`cuts_offset`, `cuts_sampler`, `cuts_clip`, `cuts_begin`, `cuts_other`
+(canvas items started per frame, by why; `UltimaBatcher2D.CutReason`).
+Scenes `cave-roof` and
 `open-sea` were added after `dungeon`. With `--perf-parity`, each standing
 scene also carries `parity_stable_px`, `parity_violations`,
 `parity_strict`, `parity_strict_max_delta` (pixels: stable across the plain
