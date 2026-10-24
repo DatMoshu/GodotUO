@@ -772,7 +772,7 @@ internal static class PerfProbe
                       + (optimized ? "optimised build" : "UNOPTIMISED build (Debug, Optimize=false)") + $", post-processing {look}, "
                       + $"profile {(string.IsNullOrWhiteSpace(_profilePreset) ? "as saved" : "preset " + _profilePreset)}: {_profileSummary}.");
         md.AppendLine();
-        md.AppendLine($"Engine debug build: {OS.IsDebugBuild()}; export template: {ExportTemplate()}; quiet fixture: {PerfFixture.Quiet}; "
+        md.AppendLine($"Engine debug build: {OS.IsDebugBuild()}; export template: {ExportTemplate()}; quiet fixture: {PerfFixture.Quiet}; minimap texture: {GUO.Game.UI.Gumps.MiniMapGump.OwnTexture}; "
                       + $"warm-up {_warmupSeconds} s, measured {(_measureSeconds > 0 ? _measureSeconds + " s" : Frames + " frames")} per standing scene; host load: {PerfHostLoad.Source}.");
         md.AppendLine();
         // Frame times first, FPS last (PERF-LANE-01): a mean hides the slow
@@ -842,6 +842,7 @@ internal static class PerfProbe
                     ["label"] = label, ["window"] = $"{size.X}x{size.Y}", ["zoom"] = System.Math.Round(Client.Game?.Scene?.Camera?.Zoom ?? 0, 2),
                     ["optimized"] = optimized, ["postfx"] = look, ["profile_preset"] = _profilePreset, ["profile"] = _profileSummary, ["static_world"] = StaticWorld,
                     ["engine_debug_build"] = OS.IsDebugBuild(), ["export_template"] = ExportTemplate(), ["quiet_fixture"] = PerfFixture.Quiet,
+                    ["minimap_texture"] = GUO.Game.UI.Gumps.MiniMapGump.OwnTexture,
                     ["warmup_seconds"] = _warmupSeconds, ["measure_seconds"] = _measureSeconds, ["host_load"] = PerfHostLoad.Launch(),
                     ["system"] = SystemInfo(), ["scenes"] = results,
                 },
