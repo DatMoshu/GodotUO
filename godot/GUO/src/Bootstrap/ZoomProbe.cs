@@ -141,6 +141,8 @@ internal static class ZoomProbe
         int Count(string field)
         {
             object list = lists.GetType().GetField(field, Private)?.GetValue(lists);
+            // PORT DEVIATION (GUO): these two known buckets are now lazy.
+            if (list == null && (field == "_tiles" || field == "_stretchedTiles")) return 0;
 
             return list?.GetType().GetProperty("Count")?.GetValue(list) is int n ? n : -1;
         }

@@ -126,6 +126,12 @@ public partial class BatcherProbe : Node
 
         VerifyAtlasV2();
         Stage("atlas uploads v2");
+        VerifyIncidentalAllocations();
+        Stage("incidental allocations");
+        await VerifyUiTextureCommands(batcher, viewport);
+        Stage("typed UI texture commands");
+        VerifyWorldDepthSort();
+        Stage("world depth radix sort");
 
         await VerifyUiTransform(batcher, viewport, ramp);
         Stage("gump transform and clipping");
