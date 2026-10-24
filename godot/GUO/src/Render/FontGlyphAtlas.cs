@@ -39,7 +39,8 @@ namespace GUO.Renderer
         public FontGlyphAtlas(FontsLoader fontsLoader)
         {
             _fontsLoader = fontsLoader;
-            _atlas = new TextureAtlas(2048, 2048);
+            // PORT DEVIATION (GUO): dynamicPages, for GUO_ATLAS_PAGE_1024 (TextureAtlas.SmallDynamicPages).
+            _atlas = new TextureAtlas(2048, 2048, dynamicPages: true);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -63,7 +63,8 @@ namespace GUO.Renderer.Arts
         {
             _artLoader = artLoader;
             _huesLoader = huesLoader;
-            _atlas = new TextureAtlas(4096, 4096);
+            // PORT DEVIATION (GUO): dynamicPages, for GUO_ATLAS_PAGE_1024 (TextureAtlas.SmallDynamicPages).
+            _atlas = new TextureAtlas(4096, 4096, dynamicPages: true);
             _spriteInfos = new SpriteInfo[_artLoader.File.Entries.Length];
             _realArtBounds = new Rectangle[_spriteInfos.Length];
         }

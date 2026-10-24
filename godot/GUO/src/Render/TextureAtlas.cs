@@ -60,6 +60,17 @@ namespace GUO.Renderer
         /// </summary>
         public const int MaxPageSize = 2048;
 
+        /// <summary>
+        /// PORT DEVIATION (GUO): atlas split B (docs/perf/2026-10-24_atlas_1024_pages.md).
+        /// With <c>GUO_ATLAS_PAGE_1024=1</c> (off by default) the dynamic atlases
+        /// (art, animation, gump, glyph) use <see cref="DynamicPageSize"/> pages,
+        /// a quarter of the bytes per whole-page upload. Read once at start;
+        /// the batcher probe flips it for atlases it makes itself.
+        /// </summary>
+        public static bool SmallDynamicPages { get; internal set; } = System.Environment.GetEnvironmentVariable("GUO_ATLAS_PAGE_1024") == "1";
+
+        public const int DynamicPageSize = 1024;
+
         // Every live atlas, so one call a frame can flush all of them without
         // each owner having to remember to. An atlas whose page is stale draws
         // sprites that are not there yet, which looks like a decode bug and is
@@ -81,18 +92,26 @@ namespace GUO.Renderer
         private Packer _packer;
         private int _packingPageIndex = -1;
 
-        public TextureAtlas(int width, int height)
+        public TextureAtlas(int width, int height) : this(width, height, false) { }
+
+        // PORT DEVIATION (GUO): dynamicPages marks an atlas that fills while
+        // walking (art, animation, gump, glyph), for SmallDynamicPages.
+        internal TextureAtlas(int width, int height, bool dynamicPages)
         {
             if (width <= 0 || height <= 0)
                 throw new ArgumentOutOfRangeException(nameof(width), "Atlas dimensions must be positive.");
 
-            _width = Math.Min(width, MaxPageSize);
-            _height = Math.Min(height, MaxPageSize);
+            int cap = dynamicPages && SmallDynamicPages ? DynamicPageSize : MaxPageSize;
+            _width = Math.Min(width, cap);
+            _height = Math.Min(height, cap);
 
             _live.Add(this);
         }
 
         public int TexturesCount => _textures.Count;
+
+        /// <summary>Page width after the cap; for the batcher probe.</summary>
+        internal int PageWidth => _width;
 
         /// <summary>
         /// PORT DEVIATION (GUO): whole pages re-sent to the GPU by
