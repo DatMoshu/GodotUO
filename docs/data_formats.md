@@ -3313,6 +3313,35 @@ false`, `quiet_fixture: true` and `p50_ms`. PerfDump receipts add
 `engine_debug_build`, `export_template` and `quiet_fixture`
 (`GUO_PERF_QUIET=1`, `tools/perf_dump --only guo --quiet`).
 
+Each scene also records `atlas_page_upload_mib` (RGBA bytes handed to
+`ImageTexture.Update` by whole-page flushes, not measured GPU traffic),
+`atlas_page_upload_call_ms` (the summed wall time of those calls),
+`atlas_live_pages` (pages and dedicated oversized textures held by every
+live atlas at the end of the interval) and `minimap_open`.
+`GUO_PERF_MINIMAP=1` opens the minimap before the first scene so its
+repaints are inside the measurement.
+
+The walk scene can be lengthened and moved: `GUO_PERF_WALK_SECONDS` (1-300,
+default 12) and `GUO_PERF_WALK_ORIGIN` (`field`, `bank` or `docks`). For a
+pinned walk, `GUO_PERF_WALK_ROUTE` points to a private JSON artifact
+`{version:1, run:bool, initial_direction:0..7, points:[[map,x,y,z],...]}` with
+exactly 47 adjacent same-map points (46 tile moves), at most 64 KiB. It
+requires only `--perf-scene walk` without `--perf-parity`. The artifact is
+loaded once, hashed, and never alters map data. GM positioning and an optional
+real turn occur before the warm-up; exact origin/facing and drained movement
+queues are then required, and a setup turn needs its matching ACK. Replay
+calls the real walk path, allows one request in flight, waits for the matching
+acknowledgement and completed animation, then a fixed 250 ms release delay; it
+never sends catch-up bursts. Denial, reset, a bad or unexpected ACK, a wrong
+route, direction/run changes or timeout invalidate the result without
+replanning or teleporting. The interval ends two actual client draws after the
+last step (`walk_replay_drain_draws`), at most 180 s. Rows add
+`walk_route_map_xyz`, `walk_replay` (hash, completed points, requests, ACKs,
+turns, timing and failure evidence) and `walk_replay_valid`, which must be
+true; the run fails otherwise. The report adds `walk_seconds`, `walk_origin`
+and `walk_route`. The only client seam is an opt-in observer on
+`WalkerManager` (`PORT DEVIATION (GUO)`), null in ordinary play.
+
 **Probe JSON**, `perf_<label>.json`, written by the client's `--perf-probe`
 (`src/Bootstrap/PerfProbe.cs`): `{label, window "WxH", zoom, optimized,
 postfx, system, scenes[]}`. `zoom` is the camera's at the end of the run.
