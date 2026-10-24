@@ -132,6 +132,8 @@ public partial class BatcherProbe : Node
         Stage("first-land identity cache");
         VerifyCoverCandidates();
         Stage("incremental cover candidates");
+        await VerifyRetainedCanvas(batcher, viewport);
+        Stage("retained canvas commands");
 #if GUO_LABS
         await VerifyOrderedWorld(batcher, viewport, palette);
         Stage("ordered RenderingDevice world");

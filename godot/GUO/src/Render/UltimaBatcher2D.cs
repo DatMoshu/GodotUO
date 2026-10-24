@@ -135,6 +135,8 @@ namespace GUO.Renderer
             public Material Material;
             public bool CopyToBackbuffer;
             public RenderingServer.CanvasItemTextureFilter Filter;
+            public RetainedCanvasCommands Commands;
+            public bool RetainedHidden;
         }
 
         private ItemState[] _itemStates = new ItemState[64];
@@ -322,6 +324,7 @@ namespace GUO.Renderer
 
             Commands++;
             Count(3, RidOf(_runTexture));
+            _canvasCommands?.Bypass();
             RenderingServer.CanvasItemAddTriangleArray(
                 _runItem, _runIndices.ToArray(), _runPoints.ToArray(), _runColors.ToArray(), _runUVs.ToArray(),
                 null, null, RidOf(_runTexture));
@@ -345,6 +348,8 @@ namespace GUO.Renderer
 
             _items.Clear();
             System.Array.Clear(_itemStates);
+            _canvasCommands = null;
+            _canvasBudget = null;
 
             foreach (ShaderMaterial material in _blendMaterials.Values)
             {
@@ -458,14 +463,17 @@ namespace GUO.Renderer
         /// </remarks>
         public void BeginFrame()
         {
+            _retainCanvasFrame = RetainCanvas;
             int itemsToClear = _items.Count;
 #if GUO_LABS
             // ADR-0043: every item used last frame must be cleared once. The
             // unused tail was cleared on its first idle frame and is still empty.
             if (GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled) itemsToClear = _itemCount;
+            if (GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled) _retainCanvasFrame = false;
             ResetOrderedWorldItems();
 #endif
             EnsureNotStarted();
+            FinishCanvasCommands();
 
             LastFrame = (TextureSwitches, _itemCount, Commands);
             LastNativeTextureMeasurements = NativeTextureMeasurements;
@@ -493,7 +501,23 @@ namespace GUO.Renderer
             // even when this frame ends up using fewer items.
             for (int i = 0; i < itemsToClear; i++)
             {
-                RenderingServer.CanvasItemClear(_items[i]);
+                ref ItemState state = ref _itemStates[i];
+                if (_retainCanvasFrame && state.Commands?.HasCommands == true)
+                {
+                    // No EndFrame seam exists across all batchers. Hide retained
+                    // items now; NewItem reveals only the items this frame uses,
+                    // so a shorter frame cannot leave a stale visible suffix.
+                    if (!state.RetainedHidden)
+                    {
+                        RenderingServer.CanvasItemSetVisible(_items[i], false);
+                        state.RetainedHidden = true;
+                    }
+                }
+                else
+                {
+                    RenderingServer.CanvasItemClear(_items[i]);
+                    state.Commands?.Reset();
+                }
             }
 #if GUO_LABS
             OrderedCanvasItemsCleared += itemsToClear;
@@ -548,6 +572,7 @@ namespace GUO.Renderer
         {
             EnsureStarted();
             FlushRun();
+            FinishCanvasCommands();
 
             _started = false;
         }
@@ -775,7 +800,7 @@ void fragment() {
             FlushRun();
             Commands++;
             Count(2, default);
-            RenderingServer.CanvasItemAddMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, default);
+            CanvasMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, default);
         }
 
         /// <summary>
@@ -795,7 +820,7 @@ void fragment() {
             FlushRun();
             Commands++;
             Count(2, default);
-            RenderingServer.CanvasItemAddMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, default);
+            CanvasMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, default);
         }
 
         /// <summary>
@@ -814,7 +839,7 @@ void fragment() {
             FlushRun();
             Commands++;
             Count(2, default);
-            RenderingServer.CanvasItemAddMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, texture.GetRid());
+            CanvasMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, texture.GetRid());
         }
 
         /// <summary>
@@ -829,7 +854,7 @@ void fragment() {
             FlushRun();
             Commands++;
             Count(2, default);
-            RenderingServer.CanvasItemAddMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, texture.GetRid());
+            CanvasMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, texture.GetRid());
         }
 
         /// <summary>
@@ -881,7 +906,7 @@ void fragment() {
                 Commands++;
                 Count(2, default);
 
-                RenderingServer.CanvasItemAddMesh(
+                CanvasMesh(
                     _current,
                     mesh.GetRid(),
                     Transform2D.Identity,
@@ -994,7 +1019,7 @@ void fragment() {
             Commands++;
             Count(4, default);
 
-            RenderingServer.CanvasItemAddMesh(
+            CanvasMesh(
                 _current,
                 mesh.GetRid(),
                 Transform2D.Identity,
@@ -1061,7 +1086,7 @@ void fragment() {
             BindLandPages(LandPages.Array);
             Commands++;
             Count(4, default);
-            RenderingServer.CanvasItemAddMesh(_current, mesh, Transform2D.Identity, Colors.White, default);
+            CanvasMesh(_current, mesh, Transform2D.Identity, Colors.White, default);
 
             if (cut)
             {
@@ -1135,6 +1160,7 @@ void fragment() {
             _compositeMaterial ??= new CanvasItemMaterial { BlendMode = CanvasItemMaterial.BlendModeEnum.PremultAlpha };
 
             Rid item = NewItem(CurrentParent, _viewTransform.AffineInverse());
+            _canvasCommands?.Bypass();
             ItemSetMaterial(item, _compositeMaterial);
             RenderingServer.CanvasItemAddTextureRect(item, new Rect2(0, 0, width, height), pass.Texture.GetRid());
             Commands++;
@@ -2193,16 +2219,13 @@ void fragment() {
                     sourceY * textureHeight,
                     sourceW * textureWidth,
                     sourceH * textureHeight);
-                RenderingServer.CanvasItemAddTextureRectRegion
+                CanvasRect
                 (
                     _current,
                     destinationRect,
                     RidOf(texture),
                     sourceRect,
-                    Encode(color),
-                    false,
-                    // Upstream clamps nothing, so neither does this.
-                    false
+                    Encode(color)
                 );
                 MirrorRect(destinationRect, texture, sourceRect); // PORT DEVIATION (GUO): ADR-0023
 
@@ -2339,6 +2362,7 @@ void fragment() {
             Commands++;
             Count(3, RidOf(texture));
 
+            _canvasCommands?.Bypass();
             RenderingServer.CanvasItemAddTriangleArray
             (
                 _current,
@@ -2425,11 +2449,9 @@ void fragment() {
 #endif
 
             FlushRun();
-            RenderingServer.CanvasItemAddSetTransform(_current, new Transform2D(axisX, axisY, origin));
             Commands++;
             Count(1, RidOf(texture));
-            RenderingServer.CanvasItemAddTextureRectRegion(_current, region, RidOf(texture), region, modulate, false, false);
-            RenderingServer.CanvasItemAddSetTransform(_current, Transform2D.Identity);
+            CanvasAffine(region, RidOf(texture), modulate, new Transform2D(axisX, axisY, origin));
 
             return true;
         }
@@ -2513,6 +2535,7 @@ void fragment() {
         private Rid NewItem(Rid parent, in Transform2D transform)
         {
             FlushRun();
+            FinishCanvasCommands();
             Rid item;
             int index = _itemCount;
 
@@ -2594,6 +2617,7 @@ void fragment() {
             _lastItem = index;
             _itemCount++;
             FlushesDone++;
+            StartCanvasCommands(index, item);
 
             return item;
         }

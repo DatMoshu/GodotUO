@@ -3306,6 +3306,26 @@ Candidate plans cache ordered neighboring Land identities with chunk/map
 invalidation; visibility, alpha, depth and cover winners remain live. These
 counters measure discovery work, not GPU execution or guaranteed FPS gains.
 
+`GUO_RETAIN_CANVAS=1` enables an off-default, ordinary-canvas diagnostic
+experiment (ADR-0002 amendment). PerfDump reports `retained_canvas_enabled`
+and `retained_canvas_{compared,prefix_matches,submitted_records,rewrite_clears,uncached_items}_per_frame`.
+These are cumulative deltas divided by drawn frames, across batchers. A
+matching prefix can subsequently be replayed if a later command changes, so
+`prefix_matches` is not a count of avoided native calls. A submitted affine
+record makes three native calls; a rectangle or mesh record makes one. Clear
+counts include only rewrites inside retained items, excluding ordinary pool
+clears and visibility changes. Unrepresented triangle/composite commands are
+drawn normally and are not included in submitted-record counts. The counters
+do not measure GPU draw calls or prove a whole-frame speedup. The separate
+RenderingDevice Labs mode disables retention at frame start.
+For a direct comparison within one running client, set
+`GUO_PERF_PARITY_CANVAS=1` with `--perf-parity` on ordinary canvas rendering.
+The five saved frames alternate retention off/on/off/on/off; JSON reports
+`parity_target: "retained-canvas"`. This avoids treating different login-time
+player animation/light states as renderer differences. Existing stable-pixel
+and repeated-difference rules still apply. The diagnostic rejects GPU-world
+or RD mode and restores the prior retention state when the probe ends.
+
 **Probe JSON**, `perf_<label>.json`, written by the client's `--perf-probe`
 (`src/Bootstrap/PerfProbe.cs`): `{label, window "WxH", zoom, optimized,
 postfx, system, scenes[]}`. `zoom` is the camera's at the end of the run.

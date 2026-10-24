@@ -319,3 +319,16 @@ Review branch: `codex/incremental-cover-candidates`, based on `393c50e8`.
 The change is a local review candidate, not a demonstrated general FPS win or an
 approved default change on the integration branch. Whole-project review by Fable
 is requested and remains separate from the source review already performed.
+
+## Follow-up: retained ordinary-canvas commands
+
+The next local experiment and all favorable/contrary measurements are in
+[retained canvas commands](../2026-10-24_retained_canvas_commands.md).
+It is off by default (`GUO_RETAIN_CANVAS=1`), independent of the GPU Labs mode.
+First 30-second live Release observations under heavy, unequal shared load
+were bank 78.384 off / 99.647 on FPS and docks 120.239 off / 138.473 on FPS.
+Do not interpret those as isolated gains. Short static windows were mixed and
+some retention-on allocation measurements were higher. Direct same-client
+off/on captures matched every world pixel in all four scenes. Expanded tests
+passed 573 Release and 912 optimized Debug/Labs checks; full smoke passed.
+Review steady-state allocations and moving/live-world cases before promotion.

@@ -17,6 +17,7 @@ using GameObject = ClassicUO.Game.GameObjects.GameObject;
 using GUO.Configuration;
 using GUO.Game;
 using GUO.Game.Scenes;
+using GUO.Renderer;
 using GUO.Utility;
 using ClientRoot = GUO.Client;
 using GameObject = GUO.Game.GameObjects.GameObject;
@@ -175,6 +176,8 @@ internal static class PerfDump
     private static long _landLookupsAtFade, _landScansAtFade, _landNodesAtFade;
     private static long _candidateHitsAtFade, _candidateMissesAtFade, _candidateBuildsAtFade,
         _candidateRejectedAtFade, _candidateChecksAtFade;
+    private static long _canvasComparedAtFade, _canvasReusedAtFade, _canvasSubmittedAtFade,
+        _canvasClearsAtFade, _canvasUncachedAtFade;
     private static ulong _processFramesAtFade;
 #endif
 
@@ -245,6 +248,11 @@ internal static class PerfDump
             _candidateBuildsAtFade = CoverCandidates.Builds;
             _candidateRejectedAtFade = CoverCandidates.Rejected;
             _candidateChecksAtFade = CoverCandidates.DependencyChecks;
+            _canvasComparedAtFade = RetainedCanvasCommands.Compared;
+            _canvasReusedAtFade = RetainedCanvasCommands.Reused;
+            _canvasSubmittedAtFade = RetainedCanvasCommands.Submitted;
+            _canvasClearsAtFade = RetainedCanvasCommands.Clears;
+            _canvasUncachedAtFade = RetainedCanvasCommands.Uncached;
             _processFramesAtFade = Godot.Engine.GetProcessFrames();
             _sampleStart = _samplePrevious = System.Diagnostics.Stopwatch.GetTimestamp();
             _samplePreviousDraws = _framesAtFade;
@@ -338,6 +346,12 @@ internal static class PerfDump
             r["cover_candidate_builds_per_frame"] = frames > 0 ? Math.Round((double)(CoverCandidates.Builds - _candidateBuildsAtFade) / frames, 1) : 0;
             r["cover_candidate_rejected_per_frame"] = frames > 0 ? Math.Round((double)(CoverCandidates.Rejected - _candidateRejectedAtFade) / frames, 1) : 0;
             r["cover_candidate_dependency_checks_per_frame"] = frames > 0 ? Math.Round((double)(CoverCandidates.DependencyChecks - _candidateChecksAtFade) / frames, 1) : 0;
+            r["retained_canvas_enabled"] = UltimaBatcher2D.RetainCanvas;
+            r["retained_canvas_compared_per_frame"] = frames > 0 ? Math.Round((double)(RetainedCanvasCommands.Compared - _canvasComparedAtFade) / frames, 1) : 0;
+            r["retained_canvas_prefix_matches_per_frame"] = frames > 0 ? Math.Round((double)(RetainedCanvasCommands.Reused - _canvasReusedAtFade) / frames, 1) : 0;
+            r["retained_canvas_submitted_records_per_frame"] = frames > 0 ? Math.Round((double)(RetainedCanvasCommands.Submitted - _canvasSubmittedAtFade) / frames, 1) : 0;
+            r["retained_canvas_rewrite_clears_per_frame"] = frames > 0 ? Math.Round((double)(RetainedCanvasCommands.Clears - _canvasClearsAtFade) / frames, 1) : 0;
+            r["retained_canvas_uncached_items_per_frame"] = frames > 0 ? Math.Round((double)(RetainedCanvasCommands.Uncached - _canvasUncachedAtFade) / frames, 1) : 0;
             r["land_layers"] = GUO.Renderer.LandPages.Layers;
             r["land_uploads"] = uploads;
             r["land_uploads_per_frame"] = frames > 0 ? Math.Round((double)uploads / frames, 3) : 0.0;

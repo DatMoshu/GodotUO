@@ -181,6 +181,34 @@ is `MeshLayer`'s job and a separate decision. They throw
 quietly. A renderer that silently draws nothing is the specific failure mode
 project rule 6 exists to prevent.
 
+## Diagnostic experiment, 2026-10-24: retain exact canvas commands
+
+The owner's performance iteration authorizes testing native submission
+reductions while preserving UO rendering. `GUO_RETAIN_CANVAS=1` opts into
+retaining each pooled canvas item's ordered rectangle, mesh and affine
+commands. It is off by default, separate from ADR-0043's RenderingDevice
+prototype, and is not a new player-facing render mode. Scene gathering,
+sorting, picking, hue/alpha calculation and resource updates still run.
+
+Each record compares every effective argument exactly, including float bits
+and resource RIDs. Unchanged streams require no resubmission. A changed or
+shorter stream clears the item and replays its matching prefix before the
+current suffix. Unsupported triangle/composite commands fall back to the
+ordinary path without dropping draws. Item state (parent, transform, material,
+clip, sampler and back-buffer copying) remains under the existing live setters.
+Retained items are hidden at frame start and revealed only when reused, so a
+shorter item pool cannot display a previous frame's tail. Existing commands
+reference live resources; texture and mesh content changes remain visible.
+
+Storage grows lazily, at most 8,192 records per item and 65,536 reserved records
+per batcher, retained until that batcher is disposed. Exhaustion falls back to
+ordinary drawing. This keeps bounded reusable storage but adds comparisons
+and visibility calls: fewer submissions alone do not establish an FPS win.
+The batcher probe covers exact command order, late mismatch replay, shortening,
+empty streams, unsupported commands, memory limits, warm allocations and
+engine pixels across changes to mode, transforms, clips, hues and textures.
+Release scene timing and frozen-world comparisons are required before promotion.
+
 ## Alternatives Rejected
 
 **One canvas item per distinct hue.** No shader needed. Rejected: UO uses

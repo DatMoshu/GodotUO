@@ -18,6 +18,11 @@ public sealed partial class UltimaBatcher2D
     {
         OrderedWorldCapture.LastFrameOnPass = false;
         if (!OrderedWorldCapture.Enabled) return;
+        if (_retainCanvasFrame)
+        {
+            OrderedWorldCapture.Fallback("retained canvas was enabled at frame start");
+            return;
+        }
         if (!RenderingServer.IsOnRenderThread())
         {
             OrderedWorldCapture.Fallback("separate render thread unsupported by deferred canvas replay");

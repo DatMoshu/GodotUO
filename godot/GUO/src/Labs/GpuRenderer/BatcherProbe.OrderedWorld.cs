@@ -196,6 +196,21 @@ public partial class BatcherProbe
             await CheckPoolFrame("RD clears rejected native suffix and replay children", true, batcher.FlushesDone);
             await Render(true, 4, present:false, poolItems:256);
             await CheckPoolFrame("RD cancelled ticket clears previous active items", true, batcher.FlushesDone);
+            bool oldRetained = UltimaBatcher2D.RetainCanvas;
+            try
+            {
+                UltimaBatcher2D.RetainCanvas = false;
+                byte[] longReference = await Render(false, 4, poolItems:256);
+                UltimaBatcher2D.RetainCanvas = true;
+                await Render(false, 4, poolItems:256);
+                await Render(false, 0, empty:true);
+                await Render(true, 0, empty:true);
+                byte[] reusedTail = await Render(true, 4, poolItems:256);
+                CheckThat("retained hidden tail reentered by RD", longReference.AsSpan().SequenceEqual(reusedTail), "no stale native tail");
+                byte[] canvasAgain = await Render(false, 4, poolItems:256);
+                CheckThat("RD returns to retained long canvas", longReference.AsSpan().SequenceEqual(canvasAgain), "same pooled items");
+            }
+            finally { UltimaBatcher2D.RetainCanvas = oldRetained; }
             await Parity("RD empty world",0,empty:true);
             viewport.Size=new Vector2I(16,12);
             await Parity("RD resize",1);

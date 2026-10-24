@@ -96,6 +96,7 @@ internal static class PerfProbe
     private const int Settle = 180;
     private static string _outDir, _label;
     private static bool _parity;
+    private static bool _retainedCanvasParity;
     private static string _profilePreset = "", _profileSummary = "";
 
     /// <summary>
@@ -168,13 +169,32 @@ internal static class PerfProbe
         string profilePreset = null, bool staticWorld = false)
     {
         StaticWorld = staticWorld;
+        var previousToggle = ParityToggle;
+        var previousState = ParityState;
+        bool previousRetained = UltimaBatcher2D.RetainCanvas;
+        _retainedCanvasParity = System.Environment.GetEnvironmentVariable("GUO_PERF_PARITY_CANVAS") == "1";
         try
         {
+            if (_retainedCanvasParity)
+            {
+                bool rd = false;
+#if GUO_LABS
+                rd = GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled;
+#endif
+                if (!parity || GpuWorld.Enabled || rd)
+                    throw new System.InvalidOperationException("GUO_PERF_PARITY_CANVAS requires --perf-parity and ordinary canvas rendering.");
+                ParityToggle = on => UltimaBatcher2D.RetainCanvas = on;
+                ParityState = () => UltimaBatcher2D.RetainCanvas;
+            }
             await RunProbe(host, outDir, label, zoom, parity, profilePreset);
         }
         finally
         {
             StaticWorld = false;
+            ParityToggle = previousToggle;
+            ParityState = previousState;
+            UltimaBatcher2D.RetainCanvas = previousRetained;
+            _retainedCanvasParity = false;
         }
     }
 
@@ -866,6 +886,7 @@ internal static class PerfProbe
                 {
                     ["label"] = label, ["window"] = $"{size.X}x{size.Y}", ["zoom"] = System.Math.Round(Client.Game?.Scene?.Camera?.Zoom ?? 0, 2),
                     ["sample_window_version"] = 2,
+                    ["parity_target"] = _retainedCanvasParity ? "retained-canvas" : "configured",
                     ["optimized"] = optimized, ["postfx"] = look, ["profile_preset"] = _profilePreset, ["profile"] = _profileSummary, ["static_world"] = StaticWorld,
                     ["godot_api_jit_optimized"] = apiOptimized, ["godot_api_mvid"] = godotApi.ManifestModule.ModuleVersionId.ToString(),
                     ["engine_debug_build"] = OS.IsDebugBuild(),
