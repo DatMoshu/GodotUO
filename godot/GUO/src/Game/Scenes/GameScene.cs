@@ -684,6 +684,10 @@ namespace GUO.Game.Scenes
             // one branch each while it is not measuring.
             long stageAt = PerfStages.Now();
 
+            // PORT DEVIATION (GUO): shared hue/CoT inputs are constant during
+            // this synchronous gather; object-dependent decisions stay live.
+            GatherInputs gatherInputs = CaptureGatherInputs();
+
             for (var chunkX = minChunkX; chunkX <= maxChunkX; chunkX++)
             {
                 for (var chunkY = minChunkY; chunkY <= maxChunkY; chunkY++)
@@ -733,7 +737,8 @@ namespace GUO.Game.Scenes
                                 firstObj,
                                 use_handles,
                                 150,
-                                chunk
+                                chunk,
+                                gatherInputs
                             );
                         }
                     }

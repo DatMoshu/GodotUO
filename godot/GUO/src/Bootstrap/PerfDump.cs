@@ -74,6 +74,8 @@ internal static class PerfDump
     // Opt-in diagnostics only. Keep the ordinary one-shot/CUO contract intact.
     private static int _sampleSeconds, _sampleIndex;
     private static long _sampleStart, _samplePrevious, _samplePreviousDraws;
+    private static long _sampleAllocatedPrevious;
+    private static int _sampleGc0Previous, _sampleGc1Previous, _sampleGc2Previous;
     private static ulong _samplePreviousProcesses;
 #endif
 
@@ -257,6 +259,10 @@ internal static class PerfDump
             _sampleStart = _samplePrevious = System.Diagnostics.Stopwatch.GetTimestamp();
             _samplePreviousDraws = _framesAtFade;
             _samplePreviousProcesses = _processFramesAtFade;
+            _sampleAllocatedPrevious = GC.GetTotalAllocatedBytes(false);
+            _sampleGc0Previous = GC.CollectionCount(0);
+            _sampleGc1Previous = GC.CollectionCount(1);
+            _sampleGc2Previous = GC.CollectionCount(2);
 #endif
             Console.WriteLine($"[perf_dump] {ClientName}: {fading} fading after {_fadeWaitMs} ms more; averaging");
             ClientRoot.Game.EnqueueAction(2000, Write);
@@ -347,6 +353,8 @@ internal static class PerfDump
             r["cover_candidate_rejected_per_frame"] = frames > 0 ? Math.Round((double)(CoverCandidates.Rejected - _candidateRejectedAtFade) / frames, 1) : 0;
             r["cover_candidate_dependency_checks_per_frame"] = frames > 0 ? Math.Round((double)(CoverCandidates.DependencyChecks - _candidateChecksAtFade) / frames, 1) : 0;
             r["retained_canvas_enabled"] = UltimaBatcher2D.RetainCanvas;
+            r["gather_input_checks"] = GameScene.GatherInputChecks;
+            r["gather_input_mismatches"] = GameScene.GatherInputMismatches;
             r["retained_canvas_compared_per_frame"] = frames > 0 ? Math.Round((double)(RetainedCanvasCommands.Compared - _canvasComparedAtFade) / frames, 1) : 0;
             r["retained_canvas_prefix_matches_per_frame"] = frames > 0 ? Math.Round((double)(RetainedCanvasCommands.Reused - _canvasReusedAtFade) / frames, 1) : 0;
             r["retained_canvas_submitted_records_per_frame"] = frames > 0 ? Math.Round((double)(RetainedCanvasCommands.Submitted - _canvasSubmittedAtFade) / frames, 1) : 0;
@@ -381,6 +389,16 @@ internal static class PerfDump
                 r["sample_draw_fps"] = Math.Round((drawsNow - _samplePreviousDraws) / interval, 3);
                 r["sample_process_fps"] = Math.Round((processesNow - _samplePreviousProcesses) / interval, 3);
                 r["sample_complete"] = sampleComplete;
+                // Whole-process estimate, including the diagnostic's own
+                // allocations. No forced GC or exact cross-thread rendezvous.
+                long allocatedNow = GC.GetTotalAllocatedBytes(false);
+                int gc0 = GC.CollectionCount(0), gc1 = GC.CollectionCount(1), gc2 = GC.CollectionCount(2);
+                r["sample_allocated_bytes_approx"] = allocatedNow - _sampleAllocatedPrevious;
+                r["sample_gc0"] = gc0 - _sampleGc0Previous;
+                r["sample_gc1"] = gc1 - _sampleGc1Previous;
+                r["sample_gc2"] = gc2 - _sampleGc2Previous;
+                _sampleAllocatedPrevious = allocatedNow;
+                _sampleGc0Previous = gc0; _sampleGc1Previous = gc1; _sampleGc2Previous = gc2;
                 _samplePrevious = now;
                 _samplePreviousDraws = drawsNow;
                 _samplePreviousProcesses = processesNow;

@@ -630,6 +630,8 @@ internal static class PerfProbe
             ["render_frame_ms"] = System.Math.Round(renderFrame / n, 3),
             ["ui_ms"] = System.Math.Round(ui / n, 3),
             ["update_world_ms"] = System.Math.Round(update / n, 3),
+            ["gather_input_checks"] = GUO.Game.Scenes.GameScene.GatherInputChecks,
+            ["gather_input_mismatches"] = GUO.Game.Scenes.GameScene.GatherInputMismatches,
         };
         for (int s = 0; s < stages; s++)
         {

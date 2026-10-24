@@ -2,7 +2,8 @@
 
 Owner: Moshu. Implementation/review: Codex, continuing Fable's 22 October
 handoff. This consolidates the rendering/performance lane through the local
-incremental-cover work. It distinguishes shipped-path Release work from the
+incremental-cover and retained-canvas work, with a gather-input candidate
+under validation. It distinguishes ordinary-path Release work from the
 off-by-default GPU experiment. It is a review record, not approval to merge or
 enable either GPU mode.
 
@@ -46,11 +47,13 @@ docks is approximately unchanged. Keep it as a local review candidate.
 | `496bedd8`, local | Atlas-owned dimensions and RID at batcher boundary | Repeated A/B/A native measurements | Actual Release; registry removed before atlas disposal |
 | `17147cfd`, local | First-Land identity cache | Repeated head/TNext scans per cover query | Mutations invalidate ownership-certified cells |
 | `393c50e8`, local | Immutable packet references through capture/replay | Copying four cached vertices per occurrence and expanding replay vertices | GPU prototype only; ticket lifetime and packet recycling tested |
-| Current local delta | Incremental covering-land candidate discovery | Repeating neighboring tile/chunk discovery for static objects | Live alpha/depth/overlap/stamps, roofs, lights and picking remain authoritative |
+| `ea594411`, local | Incremental covering-land candidate discovery | Repeating neighboring tile/chunk discovery for static objects | Live alpha/depth/overlap/stamps, roofs, lights and picking remain authoritative; no measured gain established |
+| `b2fa6237`, local | Retain ordinary canvas commands | Resubmitting identical native draw commands | Off-default experiment; exact stream comparison and fallback replay |
+| Gather-input candidate, local | Snapshot shared values during one synchronous gather | Repeated profile/player/CoT input reads | Object decisions stay live; timings and runtime invariants recorded separately |
 
 PR references identify the existing stack, not a fresh remote-state audit.
-Only the previously authorized pushes through PRs 152/153 were made. The three
-following commits and current delta require review; no new push or merge is
+Only the previously authorized pushes through PRs 152/153 were made. The
+following local commits and candidate require review; no new push or merge is
 implied by this document.
 
 ## Two GPU experiments must remain distinct
@@ -332,3 +335,48 @@ some retention-on allocation measurements were higher. Direct same-client
 off/on captures matched every world pixel in all four scenes. Expanded tests
 passed 573 Release and 912 optimized Debug/Labs checks; full smoke passed.
 Review steady-state allocations and moving/live-world cases before promotion.
+
+The follow-up 30-second live samples did not reproduce the short probe's
+large allocation difference: bank approximately 20,805 bytes/draw off versus
+20,409 on; docks 19,767 versus 19,746. Whole-process allocation includes
+diagnostics and background work. FPS was bank 68.442/97.062 and docks
+125.394/132.195, again with unequal shared load. The bank CPU maxima were
+98.7% off versus 85.4% on. This is further observation, not an isolated gain
+or proof of the earlier excess's cause. See the linked report for GC counts
+and bytes/second as well as bytes/frame.
+
+## Fable review received and next iteration
+
+Fable completed the whole-client source/profile review and returned it via
+fleet inbox messages 14031 and 14052. Its private review folder is
+`guo_perf_review_2026-10-24` under the shared handoffs area; files include
+`review.md`, `renderer_rd_cache_terrain.md`, `non_render_runtime.md` and
+`editor_build_startup.md`. This source review is distinct from runtime
+acceptance. The incremental candidate cache remains local and unpromoted;
+its measurements did not establish a gain.
+
+The bounded [gather-input candidate](../2026-10-24_gather_inputs.md) has
+completed Release pixel checks and live invariant checks. Following Fable's
+review, its measurements discarded 60 seconds after arriving rather than
+the earlier 15. Bank measured 71.285 before / 74.058 after FPS, docks
+121.416 / 123.827, with 96–100% host CPU maxima. These small differences do
+not establish a gain; bank's measured preparation phase was slightly worse.
+The candidate remains local. The report preserves all outcomes and limits.
+The Release harness already rejects a Debug engine or unoptimized Godot API;
+the shared count gate/export tool still needs an explicit Release workflow.
+
+Next priorities are per-stage attribution and atlas upload diagnostics on a
+longer moving run, then a separately flagged contiguous MultiMesh sprite-run
+pilot if those results justify it. Atlas `Flush` currently updates an entire
+dirty page, but the existing probe counts **LandPages array copies**, not all
+ordinary atlas uploads. New counters must distinguish those costs and record
+frame-time tails. Small pages or deferred uploads need measured tradeoffs;
+deferring a newly referenced page or omitting undecoded sprites can alter the
+visible frame, so those ideas are not automatically parity-safe.
+
+The cache's invalidation should be narrowed only with ownership, absent-chunk,
+detach/relink and movement coverage; do not trade correctness for a better
+hit-rate counter. RD source/command optimizations after Fable's reviewed
+snapshot remain separate and do not turn the prototype into a shipping path.
+No public push, merge, default-toggle change or fresh CUO run is authorized
+by this review exchange.

@@ -3298,6 +3298,24 @@ the latest 60 entries; this is not an individual-frame percentile or GPU timer.
 The CUO injected build ignores this diagnostic. `--guo-exe` selects an existing
 Release export; its runtime/API identity fields must confirm that build type.
 
+Sustained samples also include `sample_allocated_bytes_approx` and
+`sample_gc0`, `sample_gc1`, `sample_gc2`, each a delta over that sample's
+interval. Allocation uses `GC.GetTotalAllocatedBytes(false)` across the
+whole managed process, including measurement and background activity. It is
+an estimate, not retained memory, native/GPU allocation, or allocation by a
+particular thread/stage. Sum bytes divided by summed draw counts gives bytes
+per drawn frame; also report bytes per second when comparing differing FPS.
+The diagnostic does not force a collection or a precise cross-thread count.
+
+`GUO_VERIFY_GATHER_INPUTS=1` checks that shared hue/CoT inputs captured at the
+start of the synchronous world gather still equal their live values at mesh
+hue and CoT decisions. A mismatch fails immediately. PerfDump and PerfProbe
+report cumulative `gather_input_checks` and `gather_input_mismatches`; checks
+also include fresh highlight-restoration captures and do not establish
+coverage of every path. Leave this verifier disabled for performance runs:
+it deliberately repeats the reads being removed. Per-object hue, distance,
+visibility, roof, transparency, light and picking decisions remain live.
+
 Ordinary GUO PerfDump also reports `first_land_lookups_per_frame`,
 `first_land_scans_per_frame`, `first_land_nodes_per_frame` and
 `cover_candidate_{hits,misses,builds,rejected,dependency_checks}_per_frame`.

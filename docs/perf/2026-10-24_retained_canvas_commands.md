@@ -112,6 +112,40 @@ The 30-second live samples above are the primary throughput observations.
 Full repository smoke, four sampler-driver tests, docs lint, launcher lint
 and privacy scan passed.
 
+## Follow-up: steady allocation observations
+
+A read-only allocation review identified different warm-up histories in the
+short parity probe's first and second rows. Image allocations occur before
+the timing allocation baseline, so they cannot simply be subtracted from
+the measured bytes. The whole-process counter also includes profiler,
+network, update and probe work. No causal retention regression was identified.
+
+The subsequent frozen Release build adds sustained approximate process
+allocation and GC deltas, with no renderer changes from the tested retention
+implementation. DLL SHA-256:
+`a2530e68d8010d3c5731d99289f3347d833b9ca926a6efaecf0cdb98a1af5078`.
+Same live-world settings and settling/sample duration as above, no parity
+captures before timing. Order: bank/docks off, then bank/docks on.
+
+| Scene | Off / on FPS | Off / on bytes per draw, approximate | Off / on CPU maximum |
+|---|---:|---:|---:|
+| Bank | 68.442 / 97.062 | 20,805 / 20,409 | 98.7% / 85.4% |
+| Docks | 125.394 / 132.195 | 19,767 / 19,746 | 97.7% / 96.7% |
+
+These windows did not reproduce the earlier large per-frame allocation
+difference. They do not establish its cause or eliminate a cold-cache cost.
+Higher throughput means more bytes per second: bank approximately 1.424 MB/s
+off versus 1.981 MB/s on; docks 2.479 versus 2.610 MB/s. Off windows each had
+one generation-0 and one generation-1 collection; on windows each had two
+generation-0 and one generation-1 collection. None had a generation-2
+collection. Approximate counters include diagnostic allocations.
+
+All runs were under shared load, especially the bank off run, so the FPS
+difference is still not a causal improvement estimate. Next allocation work
+should attribute actual same-window candidate builds, array growth and mesh
+rebuilds before changing cache lifetimes or invalidation rules. Warm command
+cache calls remain allocation-free in the separate synchronous test.
+
 Private evidence run:
 `20261024_guo-codex-perf-implementation-20261022_retained-canvas`.
 Keep screenshots, UO artwork, credentials, client profiles and private logs
