@@ -50,8 +50,9 @@ branch, which reads `CUSTOM0` as `uo_hue_land_array.gdshader` does
 for line. Under any other material (blend states), the old cut path is
 used.
 
-**Parity at zoom 1.4** (asked 1.37, the nearest step): bank, dungeon and
-docks also show 0 repeatably differing pixels.
+**Parity at other zooms:** bank, dungeon and docks also show 0 repeatably
+differing pixels at 1.4 (asked 1.37, the nearest step), 0.8 and 0.5. At
+0.5, 18 bank pixels flickered once and none repeated.
 
 **Parity:** frozen world, `--perf-parity --shared-cover`, zoom 2. The
 toggle compares the cut path against the shared path, both under the new
@@ -82,10 +83,9 @@ carries no item switches. Engine-side render CPU is unchanged (~0.07 ms).
 
 ## Not yet covered (the prototype's gate)
 
-Proven: the six standing scenes and login at zoom 2, and three of them at
-1.4. Not run yet:
+Proven: the six standing scenes and login at zoom 2, and bank, dungeon
+and docks at 1.4, 0.8 and 0.5. Not run yet:
 
-- the probe's other zooms (0.5, 0.8)
 - the id mirror (post-processing on): it turns merged cover off, so it
   takes the old path
 - clipping (cover draws only in the world pass)
