@@ -22,6 +22,13 @@ public partial class UoPlusProbe : Node
         try
         {
             var p = JsonSerializer.Deserialize("{}", ProfileJsonContext.DefaultToUse.Profile);
+            Check(p.TouchUi == null, "legacy profiles use Automatic touch inventory");
+            foreach (bool? choice in new bool?[] { null, false, true })
+            {
+                p.TouchUi = choice;
+                var inventoryCopy = JsonSerializer.Deserialize(JsonSerializer.Serialize(p, ProfileJsonContext.DefaultToUse.Profile), ProfileJsonContext.DefaultToUse.Profile);
+                Check(inventoryCopy.TouchUi == choice, "Touch UI Automatic/Off/On survives profile reload");
+            }
             foreach (var feature in UoPlusOptions.Features)
                 Check(!UoPlusOptions.Enabled(p, feature.Id), feature.Name + " defaults off");
             Check(!AmbientParticles.Enabled(p) && !WaterRender.RipplesEnabled(p), "off paths skip work");

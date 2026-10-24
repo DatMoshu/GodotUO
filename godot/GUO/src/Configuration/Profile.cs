@@ -244,6 +244,9 @@ namespace GUO.Configuration
         // PORT DEVIATION (GUO): open containers as a grid of slots
         // (GridContainerGump); a mobile default. Slot size in client px.
         public bool GridContainers { get; set; }
+        // PORT DEVIATION (GUO): UX-03 UO+ inventory. Null follows the touch
+        // pointer; explicit false preserves Classic on touch, true opts in on desktop.
+        public bool? TouchUi { get; set; }
         public int GridContainerSlotSize { get; set; } = 44;
 
         // PORT DEVIATION (GUO): the command bar's handle and its rows 2 and 3,
