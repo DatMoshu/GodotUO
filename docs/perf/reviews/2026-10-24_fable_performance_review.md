@@ -623,3 +623,31 @@ system-message differences, retained as an unresolved strict comparison. The
 configured engine and ordinary Release exports are unchanged. Finer wall-only
 canvas/end-frame scopes and a private optimized Debug-binding experiment are
 the next investigations, with no default renderer or export-policy change.
+
+## Restart continuation: matched API and native-v3 measurements
+
+The [private optimized Debug API experiment](../2026-10-24_optimized_debug_api.md)
+is now built and measured with actual loaded core MVID/optimization receipts.
+Both matched sets retain DEBUG/TRACE, pass 1,557 checks, and match canvas/RD
+pixels in all four static scenes. Eight sustained GUO-only live windows use
+60-second warmup and 30-second measurement. Canvas normal/optimized API FPS is
+80.046/92.522 bank and 106.833/119.544 docks; RD is 53.541/77.295 bank and
+79.157/115.895 docks. Shared load varies substantially. Optimized RD is slower
+than optimized canvas in both observations. This corrects a private prototype
+measurement confounder; exported Release already has optimized bindings.
+
+[Native-v3 attribution](../2026-10-24_native_render_attribution_v3.md) now has
+231 isolated assertions, seven utility cases, matching EXE/PDB/DIA proof,
+1,207 frozen Release checks, pixel controls and two complete wall-only windows.
+Batch record/emit is 0.481/0.630 ms per draw at bank and 0.419/0.550 at docks.
+Graph end is 0.796/0.727 ms, within end-frame 0.826/0.756. These are inclusive
+elapsed scopes, not GPU or exclusive CPU time. The raw instance counter sums
+Godot's high-bit push-data flag and is invalid as an instance count; that
+preparation-note error is explicitly withdrawn. Raw values remain preserved.
+
+Current checkpoint full smoke passes. No renderer/source/default/export guard
+changed; no new CUO benchmark, computer use, push or merge occurred. Both GPU
+experiments remain off by default. Earlier terrain variation and slower results
+remain documented. Central private evidence is the `optimized-debug-api` run
+under the resumed performance seat; neither overall performance acceptance nor
+independent review is implied.
