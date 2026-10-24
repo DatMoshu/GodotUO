@@ -54,6 +54,7 @@ namespace GUO.Renderer
         private const string ADD_SHADER_PATH = "res://src/Render/shaders/uo_hue_add.gdshader";
         private const string MESH_SHADER_PATH = "res://src/Render/shaders/uo_hue_mesh.gdshader";
         private const string LAND_ARRAY_SHADER_PATH = "res://src/Render/shaders/uo_hue_land_array.gdshader";
+        private const string COVER_SHADER_PATH = "res://src/Render/shaders/uo_hue_cover.gdshader";
         private const string SPLAT_SHADER_PATH =
             "res://src/Render/shaders/splat_2d.gdshader";
         private const string LAYER_SHADER_PATH =
@@ -161,7 +162,9 @@ namespace GUO.Renderer
             _parent = parentCanvasItem;
             _target = parentCanvasItem;
 
-            var shader = GD.Load<Shader>(SHADER_PATH);
+            // PORT DEVIATION (GUO): --shared-cover loads the sprite shader
+            // that can also draw covering land (uo_hue_cover.gdshader).
+            var shader = GD.Load<Shader>(SharedCoverShader ? COVER_SHADER_PATH : SHADER_PATH);
 
             _material = new ShaderMaterial { Shader = shader };
             _meshMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(MESH_SHADER_PATH) };
@@ -245,6 +248,15 @@ namespace GUO.Renderer
         /// material, clip, target or blend), and draw commands.
         /// </summary>
         public static (int TextureSwitches, int Items, int Commands) LastFrame;
+
+        /// <summary>
+        /// PORT DEVIATION (GUO): perf counters (2026-10-24). Why each canvas
+        /// item was started last frame (Cut), and how many pooled items exist.
+        /// </summary>
+        public enum CutReason { Other, Cover, Material, Offset, Sampler, Clip, Begin, Count }
+        private readonly int[] _cuts = new int[(int)CutReason.Count];
+        public static int[] LastCuts = new int[(int)CutReason.Count];
+        public static int LastItemsAllocated;
 
         /// <summary>Frames begun since start: the perf probe checks every measured frame really drew.</summary>
         public static long FramesBegun;
@@ -449,6 +461,9 @@ namespace GUO.Renderer
             EnsureNotStarted();
 
             LastFrame = (TextureSwitches, _itemCount, Commands);
+            System.Array.Copy(_cuts, LastCuts, _cuts.Length);
+            System.Array.Clear(_cuts);
+            LastItemsAllocated = _items.Count;
             LastKinds = (Kinds[0], Kinds[1], Kinds[2], Kinds[3], EstimatedBatches, Kinds[4], CoverRuns);
             System.Array.Clear(Kinds);
             EstimatedBatches = 0;
@@ -518,7 +533,7 @@ namespace GUO.Renderer
 
             _hdSpriteSampler = false;
 
-            Cut();
+            Cut(CutReason.Begin);
         }
 
         public void End()
@@ -844,7 +859,7 @@ void fragment() {
                 if (_sampler != want)
                 {
                     _sampler = want;
-                    Cut();
+                    Cut(CutReason.Material);
                 }
 
                 FlushRun();
@@ -863,7 +878,7 @@ void fragment() {
             if (_sampler != SamplerState.PointClamp)
             {
                 _sampler = SamplerState.PointClamp;
-                Cut();
+                Cut(CutReason.Material);
             }
 
             return layer.VisibleSpriteCount;
@@ -953,7 +968,7 @@ void fragment() {
 
                 _worldOffset = offset;
                 _nextMaterial = _meshMaterial;
-                Cut();
+                Cut(CutReason.Cover);
                 _nextMaterial = _currentMaterial;
                 _worldOffset = keep;
             }
@@ -973,7 +988,7 @@ void fragment() {
             if (samplerSwap)
             {
                 _sampler = keepSampler;
-                Cut();
+                Cut(CutReason.Cover);
             }
 
             return 1;
@@ -990,6 +1005,48 @@ void fragment() {
         private Vector2 _coverOffset;
         private long _coverSynced = -1;
         private readonly CoverRuns _coverRuns = new();
+
+        /// <summary>
+        /// PORT DEVIATION (GUO): --shared-cover (prototype, off by default).
+        /// SharedCoverShader puts uo_hue_cover.gdshader on the sprite
+        /// material (set before a batcher is made); SharedCover then draws a
+        /// cover run on the current sprite item, as a command between the
+        /// sprites around it, instead of cutting to an item of its own and
+        /// back. The probe's parity toggle flips SharedCover only.
+        /// </summary>
+        public static bool SharedCoverShader, SharedCover;
+
+        private Texture2D _coverMarker;
+        private Rid _coverMarkerRid;
+        private Texture2DArray _spriteBoundPages;
+
+        private bool TryFlushCoverShared(Rid mesh)
+        {
+            if (!SharedCover || !SharedCoverShader || !ReferenceEquals(_itemMaterial, _material))
+            {
+                return false;
+            }
+
+            if (_coverMarker == null)
+            {
+                // 2 x 4096: the size uo_hue_cover.gdshader tells covering land by.
+                _coverMarker = ImageTexture.CreateFromImage(Image.CreateEmpty(2, 4096, false, Image.Format.Rgba8));
+                _coverMarkerRid = _coverMarker.GetRid();
+            }
+
+            if (!ReferenceEquals(_spriteBoundPages, LandPages.Array))
+            {
+                _material.SetShaderParameter(LandPagesParam, LandPages.Array);
+                _spriteBoundPages = LandPages.Array;
+            }
+
+            FlushQuadRun();
+            Commands++;
+            Count(4, default);
+            Transform2D at = _coverOffset == _itemOffset ? Transform2D.Identity : new Transform2D(0f, _coverOffset - _itemOffset);
+            RenderingServer.CanvasItemAddMesh(_current, mesh, at, Colors.White, _coverMarkerRid);
+            return true;
+        }
 
         private void FlushCover()
         {
@@ -1008,6 +1065,11 @@ void fragment() {
             Rid mesh = _coverRuns.Get(_cover);
             _cover.Clear();
 
+            if (TryFlushCoverShared(mesh))
+            {
+                return;
+            }
+
             // The item state is put back as it was found. A caller checks its
             // material and offset (EnsureMaterial, SetWorldOffset) before it
             // flushes, then draws into whatever item is current; left on the
@@ -1022,7 +1084,7 @@ void fragment() {
             {
                 _worldOffset = _coverOffset;
                 _nextMaterial = _landArrayMaterial;
-                Cut();
+                Cut(CutReason.Cover);
             }
 
             FlushQuadRun();
@@ -1035,7 +1097,7 @@ void fragment() {
             {
                 _worldOffset = itemOffset;
                 _nextMaterial = itemMaterial;
-                Cut();
+                Cut(CutReason.Cover);
             }
 
             _nextMaterial = next;
@@ -1128,14 +1190,14 @@ void fragment() {
         {
             _worldOffset = new Vector2(-offsetX, -offsetY);
 
-            Cut();
+            Cut(CutReason.Offset);
         }
 
         public void ResetWorldOffset()
         {
             _worldOffset = Vector2.Zero;
 
-            Cut();
+            Cut(CutReason.Offset);
         }
 
         /// <summary>
@@ -1162,7 +1224,7 @@ void fragment() {
             if (blend.IsPremultipliedAlpha)
             {
                 _currentMaterial = _nextMaterial = _material;
-                Cut();
+                Cut(CutReason.Material);
 
                 return;
             }
@@ -1174,7 +1236,7 @@ void fragment() {
             // read-back is not just slower here but wrong.
             if (blend.IsAdditive)
             {
-                Cut();
+                Cut(CutReason.Material);
 
                 return;
             }
@@ -1185,7 +1247,7 @@ void fragment() {
             Rid copier = NewItem(CurrentParent, Transform2D.Identity);
             ItemSetCopyToBackbuffer(copier, true);
 
-            Cut();
+            Cut(CutReason.Material);
         }
 
         private ShaderMaterial GetBlendMaterial(BlendState blend)
@@ -1266,7 +1328,7 @@ void fragment() {
             _hdSpriteSampler = false;
             _sampler = sampler ?? SamplerState.PointClamp;
 
-            Cut();
+            Cut(CutReason.Sampler);
         }
 
         // Diagnostic only: the existing perf dump pins the measurement window.
@@ -1290,7 +1352,7 @@ void fragment() {
         {
             Rid parent = NewItem(CurrentParent, transform);
             _clipStack.Add(parent);
-            Cut();
+            Cut(CutReason.Offset);
         }
 
         public bool ClipBegin(int x, int y, int width, int height)
@@ -1312,7 +1374,7 @@ void fragment() {
 
             _clipStack.Add(clip);
 
-            Cut();
+            Cut(CutReason.Clip);
 
             return true;
         }
@@ -1324,7 +1386,7 @@ void fragment() {
                 _clipStack.RemoveAt(_clipStack.Count - 1);
             }
 
-            Cut();
+            Cut(CutReason.Clip);
         }
 
 
@@ -2390,7 +2452,7 @@ void fragment() {
 
             _nextMaterial = material;
 
-            Cut();
+            Cut(CutReason.Material);
 
             _nextMaterial = _currentMaterial;
         }
@@ -2401,8 +2463,9 @@ void fragment() {
         /// Ends the current run of commands and starts a fresh item under the
         /// current clip. Called whenever ordering would otherwise be lost.
         /// </summary>
-        private void Cut()
+        private void Cut(CutReason reason = CutReason.Other)
         {
+            _cuts[(int)reason]++;
             _itemOffset = _worldOffset;
             _current = NewItem(CurrentParent,
                 _worldOffset != Vector2.Zero ? new Transform2D(0f, _worldOffset) : Transform2D.Identity);
