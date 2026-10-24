@@ -137,8 +137,10 @@ namespace GUO.Game.Scenes
             public readonly int Slot = slot;
         }
 
-        private readonly List<GameObject> _tiles = [];
-        private readonly List<GameObject> _stretchedTiles = [];
+        // PORT DEVIATION (GUO): short-lived UI child lists have no land.
+        // Allocate each bucket only when its first Land is actually queued.
+        private List<GameObject> _tiles;
+        private List<GameObject> _stretchedTiles;
 
         /// <summary>
         /// Statics, multis, items, mobiles, corpses and effects, together.
@@ -443,8 +445,8 @@ namespace GUO.Game.Scenes
         public void Clear()
         {
             _coverCandidates?.NextFrame();
-            _tiles.Clear();
-            _stretchedTiles.Clear();
+            _tiles?.Clear();
+            _stretchedTiles?.Clear();
             _world.Clear();
             _coverStamp.NextFrame();
             _coverOwner.Release();
@@ -480,11 +482,11 @@ namespace GUO.Game.Scenes
                 case Land land:
                     if (land.IsStretched)
                     {
-                        _stretchedTiles.Add(toRender);
+                        (_stretchedTiles ??= new List<GameObject>()).Add(toRender);
                     }
                     else
                     {
-                        _tiles.Add(toRender);
+                        (_tiles ??= new List<GameObject>()).Add(toRender);
                     }
                     break;
 
@@ -1081,6 +1083,8 @@ namespace GUO.Game.Scenes
         {
             int done = 0;
 
+            // Null is the same empty bucket, including the id reset below.
+            if (renderList != null)
             foreach (var obj in renderList)
             {
                 if (obj.Z <= maxGroundZ)

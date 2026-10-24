@@ -16,7 +16,20 @@ There is no established general 250 FPS result at 2560×1440, zoom 2. That targe
 requires the entire frame to fit within 4 ms. Callback timings, profiler CPU
 scopes and reduced draw counts cannot independently establish it.
 
-Latest standing observations are in [deferred retained visibility](../2026-10-24_deferred_retained_visibility.md).
+Latest completed ordinary Release observations are in
+[cover membership validation](../2026-10-24_cover_membership.md): bank standing
+72.513 FPS and docks 117.449 under unequal shared load. Walking before/after is
+69.147/70.602 at bank and 97.999/95.762 at docks; preparation and p95 slightly
+worsen despite about 76%/80% fewer covering-plan rebuilds per draw. These are
+not isolated speedup estimates. Exact world sorting and typed UI commands are
+also completed local candidates. The small [lazy land-bucket candidate](../2026-10-24_lazy_land_buckets.md)
+saves 64 bytes per fresh list and reduces live allocation to 5.1/5.0 KB/frame.
+Its loaded bank/docks FPS observations worsen (90.392→83.845 and
+102.995→96.301); no speedup is established. Private native attribution is
+being documented separately from these ordinary Release measurements.
+
+Earlier retained-canvas observations are in
+[deferred retained visibility](../2026-10-24_deferred_retained_visibility.md).
 The off-default retained experiment eliminates almost all of its roughly
 3,300 native hide/reveal calls per stationary frame. Previous retention versus
 deferred retention measured bank 74.292→102.272 FPS and docks 90.789→98.302,
@@ -97,7 +110,11 @@ than claiming another optimization.
 | `33e39408`, local | Per-entry missing-slot epochs, hard map lifetime epoch and full-cache admission guard | Unnecessary travel-time discovery and rejected-plan bookkeeping | Broad membership checks preserved; shared-load observations and exact same-client cached/live pixels |
 | `12ab861c`, local | Exact 46-tile replay, interval counters and allocation attribution | Ambiguous routes and unmeasured native visibility work | Corrected cohorts include contrary retention results; no default promotion |
 | `1381cae1`, local | Guard unused debug callbacks; reuse cover-expiry predicate and scratch | Incidental per-frame UI/expiry allocations | Actual Release allocation reduction; ordinary pixels and debug behavior preserved |
-| `codex/deferred-retained-visibility`, local candidate | Keep reused retained items visible until a complete frame ends; fix clipping transition | Redundant hide/reveal calls and clear-after-clip regression | Existing off-default experiment; explicit abort recovery and target/clip pixel checks |
+| `3ee23a5f`, local | Keep reused retained items visible until a complete frame ends; fix clipping transition | Redundant hide/reveal calls and clear-after-clip regression | Existing off-default experiment; explicit abort recovery and target/clip pixel checks |
+| `79a33c35`, local | Ordered typed UI texture commands | Repeated simple texture closures | Deferred dimensions, mixed order and clipping retained; 14.1/14.0 to 5.9/5.8 KB/frame in its cohort |
+| `419e7a7a`, local | Adaptive exact world-depth radix sort | General comparison sort for qualifying queues | Integer order oracle; bank/docks sort stage 0.447/0.328 to 0.091/0.082 ms |
+| `0c0e8a5b`, local | Revalidate first-Land identity and chain certification | Unnecessary plan rebuilds after benign mutations | Lower rebuild counts, mixed FPS; every mutation hook remains active |
+| Local lazy land-bucket candidate | Allocate two loose Land queues only on first use | Empty lists in short-lived UI owners | 64 bytes saved per fresh list; 1,217 Release / 1,557 optimized Debug/Labs checks; no FPS gain established |
 
 PR references identify the existing stack, not a fresh remote-state audit.
 Only the previously authorized pushes through PRs 152/153 were made. The
@@ -236,7 +253,7 @@ logical copies removed, not measured DRAM bandwidth or managed allocation
 savings. Warm geometry uploads, new packet allocations and canvas replay were
 zero in the measured static windows; overall allocation was still about 20 KB/frame.
 
-## Current incremental preparation change
+## Initial incremental preparation candidate
 
 The cache retains the ordered neighboring Land identities, including repeated
 occurrences, after the source object's ground/front, height and width checks.
@@ -257,7 +274,7 @@ expire; scene release/map change drops references. At capacity it preserves warm
 entries and skips new admissions rather than clearing/reallocating everything.
 This addresses the reviewer's initial capacity-thrashing concern.
 
-Actual Release currently passes **508 batcher checks**, including 50 new cache
+That candidate passed **508 batcher checks**, including 50 new cache
 checks and the existing 138 first-Land checks. New checks cover ordered duplicate
 identities, original live queue predicate/Seq/counters, alpha/depth/NaN/overlap,
 zero-allocation warm hits, direct unlink, null insertion, reload, alias rejection,
