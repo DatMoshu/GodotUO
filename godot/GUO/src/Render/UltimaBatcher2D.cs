@@ -2416,7 +2416,7 @@ void fragment() {
 #endif
             {
                 SelectSpriteSampler(texture);
-                EnsureSpriteMaterial(texture, triangle: true);
+                EnsureSpriteMaterial(texture);
             }
 
             Color modulate = Encode(color);
@@ -2447,6 +2447,9 @@ void fragment() {
                 EnsureSpriteMaterial(texture, triangle: true);
             }
 #endif
+            // Affine quads above use rect commands and support the shared
+            // shader. Only the actual triangle-array suffix lacks CUSTOM0.
+            EnsureSpriteMaterial(texture, triangle: true);
             _quadColors[1] = modulate;
             _quadColors[2] = modulate;
             _quadColors[3] = modulate;
