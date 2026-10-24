@@ -524,3 +524,25 @@ exactly. Independent source review found no new concrete defect, with no claim
 of independent runtime acceptance. Full smoke has aggregate OK plus the
 inherited editor `splat_lods_present` failure; docs, launchers and privacy pass.
 UI texture command allocation work is the next separate local candidate.
+
+## Follow-up: typed UI texture commands
+
+The [UI command report](../2026-10-24_ui_texture_commands.md) records the next
+local candidate. Three simple UI texture closures become ordered typed records;
+mixed command size, deferred dimension reads, clipping, captions and existing
+fallback semantics are preserved. Actual Release passes 996 checks and optimized
+Debug/Labs passes 1,336. Login and all four full world scenes match the preceding
+build pixel for pixel; the candidate also matches retained canvas off/on.
+
+Bank allocation falls from 14.1 to 5.9 KB/frame; docks from 14.0 to 5.8. The three
+targeted allocation sites disappear from separate loss-free trace samples.
+FPS is worse in both shared-load observations: bank 76.627 to 67.855 and docks
+103.247 to 92.428, with unequal atlas updates and no demonstrated CPU-time gain.
+Fresh short-lived lists also allocate more at some populations, documented in
+the report. This is a bounded allocation reduction, not an FPS success claim.
+
+Next work prepares a pinned production Godot build with native symbols in an
+isolated folder. It will support fresh CPU-versus-wait attribution; it does not
+replace the configured engine or rehabilitate the earlier lossy trace. A
+queue-order-preserving radix-sort candidate is prepared but not yet integrated
+or measured. No new isolated FPS claim will be made during our native build.

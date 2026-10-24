@@ -141,6 +141,8 @@ public partial class BatcherProbe : Node
         Stage("retained canvas commands");
         await VerifyDeferredVisibility(batcher, viewport);
         Stage("deferred retained visibility");
+        await VerifyUiTextureCommands(batcher, viewport);
+        Stage("typed UI texture commands");
 #if GUO_LABS
         await VerifyOrderedWorld(batcher, viewport, palette);
         Stage("ordered RenderingDevice world");

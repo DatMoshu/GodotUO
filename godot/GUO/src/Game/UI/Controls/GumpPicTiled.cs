@@ -81,20 +81,9 @@ namespace GUO.Game.UI.Controls
             if (texture != null)
             {                
                 var sourceRectangle = gumpInfo.UV;
-                renderLists.AddGumpWithAtlas
-                (
-                    (batcher) =>
-                    {
-                        batcher.DrawTiled(
-                            texture,
-                            new Rectangle(x, y, Width, Height),
-                            sourceRectangle,
-                            hueVector,
-                            layerDepth
-                        );
-                        return true;
-                    }
-                );
+                // PORT DEVIATION (GUO): use the same tiled batcher path,
+                // with snapshotted inputs and live Width/Height at flush.
+                renderLists.AddGumpWithAtlas(this, texture, x, y, sourceRectangle, hueVector, layerDepth, tiled: true);
             }
 
             return base.AddToRenderLists(renderLists, x, y, ref layerDepthRef);

@@ -2,6 +2,8 @@
 using GUO.Game;
 using GUO.Game.GameObjects;
 using GUO.Game.Map;
+using GUO.Game.UI.Controls;
+using GUO.Compat;
 using GUO.Renderer;
 using System;
 using System.Collections.Generic;
@@ -29,6 +31,25 @@ namespace GUO.Game.Scenes
         public readonly ushort Hue;
         public readonly Func<UltimaBatcher2D, bool> Callback;
 
+        // PORT DEVIATION (GUO): no new fields in this hot mixed-list element.
+        // When both references are null, Hue tags a side-list index in Y.
+        // X/LayerDepth keep their normal meanings; payloads hold destination Y.
+        // Text commands always have Text; queued callbacks always have Callback.
+        internal bool IsTexture => Text == null && Callback == null && Hue >= ushort.MaxValue - 1;
+        internal int TextureIndex => Y;
+        internal bool TextureTiled => Hue == ushort.MaxValue;
+
+        private NoAtlasGumpCommand(int textureIndex, int x, float layerDepth, bool tiled) : this()
+        {
+            X = x;
+            Y = textureIndex;
+            LayerDepth = layerDepth;
+            Hue = tiled ? ushort.MaxValue : (ushort)(ushort.MaxValue - 1);
+        }
+
+        internal static NoAtlasGumpCommand ForTexture(int index, int x, float depth, bool tiled)
+            => new(index, x, depth, tiled);
+
         public NoAtlasGumpCommand(RenderedText text, int x, int y, float layerDepth, float alpha, ushort hue)
         {
             Text = text;
@@ -49,6 +70,34 @@ namespace GUO.Game.Scenes
             Alpha = 0f;
             Hue = 0;
             Callback = callback;
+        }
+    }
+
+    // Payloads are allocated only by lists that actually queue these draws.
+    // Snapshot every lambda local, but keep owner dimensions live until flush.
+    internal readonly struct GumpTextureCommand
+    {
+        internal readonly Control SizeOwner;
+        internal readonly Texture2D Texture;
+        internal readonly int Y;
+        internal readonly Rectangle Source;
+        internal readonly Vector3 HueVector;
+
+        internal GumpTextureCommand(Control sizeOwner, Texture2D texture, int y,
+            Rectangle source, Vector3 hue)
+        {
+            SizeOwner = sizeOwner; Texture = texture; Y = y;
+            Source = source; HueVector = hue;
+        }
+
+        internal Rectangle Destination(int x) => new(x, Y, SizeOwner.Width, SizeOwner.Height);
+
+        internal void Draw(UltimaBatcher2D batcher, int x, float layerDepth, bool tiled)
+        {
+            // Do not add disposed/validity/geometry guards: the original
+            // callbacks attempted the draw and returned true on normal return.
+            if (tiled) batcher.DrawTiled(Texture, Destination(x), Source, HueVector, layerDepth);
+            else batcher.Draw(Texture, Destination(x), Source, HueVector, layerDepth);
         }
     }
 
@@ -386,6 +435,7 @@ namespace GUO.Game.Scenes
         /// draws arrive in already is the order upstream resolves them to.
         /// </remarks>
         private readonly List<NoAtlasGumpCommand> _gumps = [];
+        private List<GumpTextureCommand> _gumpTextures;
 
         public void Clear()
         {
@@ -399,6 +449,9 @@ namespace GUO.Game.Scenes
             CoverQueued = CoverOverlapping = 0;
             _transparentObjects.Clear();
             _gumps.Clear();
+            // List.Clear releases owner/texture references but retains capacity.
+            // Do not clear after flush: callers can draw a queued list again.
+            _gumpTextures?.Clear();
         }
 
         /// <remarks>
@@ -490,6 +543,21 @@ namespace GUO.Game.Scenes
         }
 
         /// <summary>
+        /// PORT DEVIATION (GUO): replaces simple texture closures without
+        /// changing the mixed queue's insertion order or live dimension reads.
+        /// Callers preserve their existing texture-selection/presence guards.
+        /// </summary>
+        public void AddGumpWithAtlas(Control sizeOwner, Texture2D texture, int x, int y,
+            Rectangle source, Vector3 hue, float layerDepth, bool tiled = false)
+        {
+            // Start at one for fresh child lists containing only one texture.
+            var payloads = _gumpTextures ??= new List<GumpTextureCommand>(1);
+            int index = payloads.Count;
+            payloads.Add(new GumpTextureCommand(sizeOwner, texture, y, source, hue));
+            _gumps.Add(NoAtlasGumpCommand.ForTexture(index, x, layerDepth, tiled));
+        }
+
+        /// <summary>
         /// Queue a <see cref="RenderedText"/> draw into the non-atlas gump layer.
         /// This is the preferred path: allocation-free (struct value), insertion-order
         /// preserved alongside <see cref="AddGumpNoAtlas(Func{UltimaBatcher2D, bool})"/>
@@ -526,6 +594,10 @@ namespace GUO.Game.Scenes
         // without requiring a live graphics device to invoke the flush path.
         internal int GumpTextsCount => _gumps.Count;
         internal NoAtlasGumpCommand PeekGumpText(int index) => _gumps[index];
+        internal int GumpTextureCount => _gumpTextures?.Count ?? 0;
+        internal int GumpTextureCapacity => _gumpTextures?.Capacity ?? 0;
+        internal bool HasGumpTextureStorage => _gumpTextures != null;
+        internal GumpTextureCommand PeekGumpTexture(int index) => _gumpTextures[index];
 
         /// <summary>Calls of the UI's overload below (UIManager, child lists), for the capture-marker regression.</summary>
         public static int ListDraws;
@@ -1024,7 +1096,7 @@ namespace GUO.Game.Scenes
             return done;
         }
 
-        private static int DrawGumps(UltimaBatcher2D batcher, List<NoAtlasGumpCommand> renderList)
+        private int DrawGumps(UltimaBatcher2D batcher, List<NoAtlasGumpCommand> renderList)
         {
             int done = 0;
 
@@ -1048,6 +1120,14 @@ namespace GUO.Game.Scenes
                     {
                         done++;
                     }
+                }
+                else if (cmd.IsTexture)
+                {
+                    // Acquire only when reached, after any preceding state callback.
+                    // Keep no payload span across callbacks that build child lists.
+                    ref readonly var texture = ref CollectionsMarshal.AsSpan(_gumpTextures)[cmd.TextureIndex];
+                    texture.Draw(batcher, cmd.X, cmd.LayerDepth, cmd.TextureTiled);
+                    done++; // original texture callbacks returned true, even for no emitted geometry
                 }
                 else if (cmd.Callback != null && cmd.Callback.Invoke(batcher))
                 {
