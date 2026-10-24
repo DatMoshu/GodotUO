@@ -124,6 +124,9 @@ public partial class BatcherProbe : Node
         await VerifyLandLight(batcher, viewport);
         Stage("land light");
 
+        VerifyAtlasPages1024();
+        Stage("atlas 1024 dynamic pages");
+
         VerifyIncidentalAllocations();
         Stage("incidental allocations");
         await VerifyUiTextureCommands(batcher, viewport);
