@@ -52,7 +52,7 @@ namespace GUO.Renderer
     /// <c>Rgba8</c>.
     /// </para>
     /// </remarks>
-    public sealed class TextureAtlas : IDisposable
+    public sealed partial class TextureAtlas : IDisposable
     {
         /// <summary>
         /// The largest page this will allocate, whatever a caller asks for.
@@ -81,13 +81,19 @@ namespace GUO.Renderer
         private Packer _packer;
         private int _packingPageIndex = -1;
 
-        public TextureAtlas(int width, int height)
+        public TextureAtlas(int width, int height) : this(width, height, "unclassified") { }
+
+        // PORT DEVIATION (GUO): the owner names the atlas for GUO_ATLAS_V2's
+        // page cap (TextureAtlas.V2.cs); upstream's constructor has no name.
+        internal TextureAtlas(int width, int height, string diagnosticOwner)
         {
             if (width <= 0 || height <= 0)
                 throw new ArgumentOutOfRangeException(nameof(width), "Atlas dimensions must be positive.");
 
-            _width = Math.Min(width, MaxPageSize);
-            _height = Math.Min(height, MaxPageSize);
+            // PORT DEVIATION (GUO): GUO_ATLAS_V2 caps the dynamic atlases lower (TextureAtlas.V2.cs).
+            int cap = PageCap(diagnosticOwner);
+            _width = Math.Min(width, cap);
+            _height = Math.Min(height, cap);
 
             _live.Add(this);
         }
@@ -108,6 +114,13 @@ namespace GUO.Renderer
         /// </summary>
         public static void FlushAll()
         {
+            // PORT DEVIATION (GUO): GUO_ATLAS_V2 budgets the uploads in the world (TextureAtlas.V2.cs).
+            if (V2 && Budgeted())
+            {
+                FlushBudgeted();
+                return;
+            }
+
             for (int i = 0; i < _live.Count; i++)
             {
                 _live[i].Flush();
@@ -120,12 +133,17 @@ namespace GUO.Renderer
             {
                 if (_dirty[i])
                 {
-                    _textures[i].Update(_pages[i]);
-                    PageUploads++;
-                    _dirty[i] = false;
-                    _versions[i]++;
+                    Upload(i);
                 }
             }
+        }
+
+        private void Upload(int i)
+        {
+            _textures[i].Update(_pages[i]);
+            PageUploads++;
+            _dirty[i] = false;
+            _versions[i]++;
         }
 
 
@@ -198,7 +216,7 @@ namespace GUO.Renderer
                 new Vector2I(region.X, region.Y)
             );
 
-            atlas._dirty[index] = true;
+            atlas.MarkDirty(index);
 
             return true;
         }
@@ -268,6 +286,7 @@ namespace GUO.Renderer
                 _pages.Add(page);
                 _textures.Add(texture);
                 _dirty.Add(false);
+                _dirtySince.Add(0);
                 _versions.Add(0);
                 pr = new Rectangle(0, 0, width, height);
                 return texture;
@@ -303,7 +322,7 @@ namespace GUO.Renderer
 
             // Not uploaded here. See the remarks: the upload is the expensive
             // half and it happens once a frame, in Flush.
-            _dirty[index] = true;
+            MarkDirty(index);
 
             return _textures[index];
         }
@@ -323,6 +342,7 @@ namespace GUO.Renderer
             _pages.Add(page);
             _textures.Add(CreatePage(page));
             _dirty.Add(false);
+            _dirtySince.Add(0);
             _versions.Add(0);
             _packingPageIndex = _textures.Count - 1;
 
@@ -381,6 +401,7 @@ namespace GUO.Renderer
             _pages.Clear();
             _textures.Clear();
             _dirty.Clear();
+            _dirtySince.Clear();
 
             _packer?.Dispose();
             _packer = null;

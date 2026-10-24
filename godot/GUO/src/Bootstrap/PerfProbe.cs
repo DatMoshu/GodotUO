@@ -444,6 +444,7 @@ internal static class PerfProbe
         // Atlas page uploads (review item G): whole pages re-sent by
         // TextureAtlas.Flush, and the frames they land in.
         long atlasUploadsBefore = TextureAtlas.PageUploads, atlasCreationsBefore = TextureAtlas.PageCreations;
+        long atlasDeferredBefore = TextureAtlas.DeferredUploads;
         long atlasUploadsLast = atlasUploadsBefore, atlasUploadsMax = 0, atlasUploadFrames = 0;
         var atlasUploadMs = new List<double>(sampleCapacity);
         bool atlasUploadedLast = false;
@@ -594,6 +595,7 @@ internal static class PerfProbe
             ["update_world_ms"] = System.Math.Round(update / n, 3),
             ["atlas_page_uploads"] = TextureAtlas.PageUploads - atlasUploadsBefore,
             ["atlas_page_creations"] = TextureAtlas.PageCreations - atlasCreationsBefore,
+            ["atlas_deferred_page_frames"] = TextureAtlas.DeferredUploads - atlasDeferredBefore,
             ["atlas_uploads_max_in_a_frame"] = atlasUploadsMax,
             ["frames_with_atlas_upload"] = atlasUploadFrames,
             ["atlas_upload_frames_mean_ms"] = atlasUploadMs.Count > 0 ? System.Math.Round(atlasUploadMs.Average(), 3) : 0.0,
@@ -771,7 +773,7 @@ internal static class PerfProbe
                       + $"profile {(string.IsNullOrWhiteSpace(_profilePreset) ? "as saved" : "preset " + _profilePreset)}: {_profileSummary}.");
         md.AppendLine();
         md.AppendLine($"Engine debug build: {OS.IsDebugBuild()}; export template: {ExportTemplate()}; quiet fixture: {PerfFixture.Quiet}; "
-                      + $"warm-up {_warmupSeconds} s, measured {(_measureSeconds > 0 ? _measureSeconds + " s" : Frames + " frames")} per standing scene; host load: {PerfHostLoad.Source}.");
+                      + $"atlas v2: {TextureAtlas.V2}; warm-up {_warmupSeconds} s, measured {(_measureSeconds > 0 ? _measureSeconds + " s" : Frames + " frames")} per standing scene; host load: {PerfHostLoad.Source}.");
         md.AppendLine();
         // Frame times first, FPS last (PERF-LANE-01): a mean hides the slow
         // frames a player feels. "other CPU" is the host's load this client
@@ -840,6 +842,7 @@ internal static class PerfProbe
                     ["label"] = label, ["window"] = $"{size.X}x{size.Y}", ["zoom"] = System.Math.Round(Client.Game?.Scene?.Camera?.Zoom ?? 0, 2),
                     ["optimized"] = optimized, ["postfx"] = look, ["profile_preset"] = _profilePreset, ["profile"] = _profileSummary, ["static_world"] = StaticWorld,
                     ["engine_debug_build"] = OS.IsDebugBuild(), ["export_template"] = ExportTemplate(), ["quiet_fixture"] = PerfFixture.Quiet,
+                    ["atlas_v2"] = TextureAtlas.V2,
                     ["warmup_seconds"] = _warmupSeconds, ["measure_seconds"] = _measureSeconds, ["host_load"] = PerfHostLoad.Launch(),
                     ["system"] = SystemInfo(), ["scenes"] = results,
                 },

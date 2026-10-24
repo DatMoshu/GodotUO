@@ -3304,7 +3304,10 @@ measured interval only), `host_cpu_warmup_max_pct`,
 `atlas_page_uploads` (whole pages re-sent by `TextureAtlas.Flush`),
 `atlas_page_creations`, `atlas_uploads_max_in_a_frame`,
 `frames_with_atlas_upload`, `atlas_upload_frames_mean_ms` and
-`atlas_upload_frames_max_ms` (those frames and the next). Host CPU is the
+`atlas_upload_frames_max_ms` (those frames and the next). With `GUO_ATLAS_V2=1`
+(PERF-LANE-03, off by default) the report's top-level `atlas_v2` is true and
+each scene's `atlas_deferred_page_frames` counts, once per frame, the dirty
+pages the two-per-frame upload budget left for a later frame. Host CPU is the
 whole machine's busy share; "other" subtracts this process's own CPU, read
 twice a second on a timer thread from Windows `GetSystemTimes` /
 `GetProcessTimes`; elsewhere the source is `unavailable` and the values null.
