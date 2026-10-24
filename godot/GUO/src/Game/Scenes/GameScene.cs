@@ -306,6 +306,8 @@ namespace GUO.Game.Scenes
                 return;
             }
 
+            _renderLists.ReleaseTerrain(); // PORT DEVIATION (GUO): release cached terrain meshes with their scene.
+
             ProfileManager.CurrentProfile.GameWindowPosition = new Point(
                 Camera.Bounds.X,
                 Camera.Bounds.Y
@@ -683,6 +685,10 @@ namespace GUO.Game.Scenes
             // one branch each while it is not measuring.
             long stageAt = PerfStages.Now();
 
+            // PORT DEVIATION (GUO): shared hue/CoT inputs are constant during
+            // this synchronous gather; object-dependent decisions stay live.
+            GatherInputs gatherInputs = CaptureGatherInputs();
+
             for (var chunkX = minChunkX; chunkX <= maxChunkX; chunkX++)
             {
                 for (var chunkY = minChunkY; chunkY <= maxChunkY; chunkY++)
@@ -759,7 +765,8 @@ namespace GUO.Game.Scenes
                                 firstObj,
                                 use_handles,
                                 150,
-                                chunk
+                                chunk,
+                                gatherInputs
                             );
                         }
                     }
@@ -1064,6 +1071,12 @@ namespace GUO.Game.Scenes
             // screen afterwards. Camera.GetViewportRect() is what the saved
             // value would have been set to, and nothing else reads it.
             Transform2D matrix = Camera.ViewTransform;
+            // PORT DEVIATION (GUO): match IsometricWorld.fx's clip-space
+            // (-0.5 / width, +0.5 / height) offset: -0.25 target pixels on
+            // each Godot screen axis, independent of zoom. Apply to both the
+            // world and its light target; Camera/picking retain upstream math.
+            // Without this offset, nearest sampling exposes atlas-edge seams.
+            matrix.Origin -= new Vector2(0.25f, 0.25f);
 
             bool can_draw_lights = false;
 
@@ -1208,6 +1221,10 @@ namespace GUO.Game.Scenes
 #endif
             DrawUnderlays(batcher);
 
+#if GUO_LABS
+            // PORT DEVIATION (GUO): ADR-0043, complete-world experimental backend.
+            batcher.BeginOrderedWorld(_splatObjects.Count == 0 && (_terrainLayers == null || _terrainLayers.Count == 0));
+#endif
             RenderedObjectsCount = _renderLists.DrawRenderLists(
                 batcher,
                 _maxGroundZ,
@@ -1216,6 +1233,9 @@ namespace GUO.Game.Scenes
                 _offset.Y
             );
 
+#if GUO_LABS
+            batcher.EndOrderedWorld();
+#endif
             RedrawWorldOnCanvas(batcher); // PORT DEVIATION (GUO): --gpu-world (GPU-03)
 
             if (

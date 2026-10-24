@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: BSD-2-Clause
+// SPDX-License-Identifier: BSD-2-Clause
 
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
@@ -24,6 +24,97 @@ namespace GUO.Game.Map
         }
 
         public GameObject[,] Tiles { get; } = new GameObject[8, 8];
+        // PORT DEVIATION (GUO): first-Land identity only, never visibility,
+        // depth or cover winners. Main-thread tile mutations invalidate cells.
+        private readonly Land[] _firstLand = new Land[64];
+        private ulong _firstLandValid;
+        private long _coverMembershipVersion;
+        private ulong _coverMembershipDirty;
+        // PORT DEVIATION (GUO): resolve pending identity/certification checks
+        // before any retained plan compares its dependency. Main thread only.
+        internal long CoverMembershipVersion
+        {
+            get
+            {
+                while (_coverMembershipDirty != 0)
+                {
+                    int cell = System.Numerics.BitOperations.TrailingZeroCount(_coverMembershipDirty);
+                    GetFirstLand(cell & 7, cell >> 3);
+                }
+                return _coverMembershipVersion;
+            }
+        }
+        internal static long FirstLandScans, FirstLandLookups, FirstLandNodes;
+
+        internal void InvalidateFirstLand(int x, int y)
+        {
+            int cell = x + (y << 3);
+            ulong bit = 1UL << cell;
+            if ((_firstLandValid & bit) != 0)
+                _coverMembershipDirty |= bit;
+            else if ((_coverMembershipDirty & bit) == 0)
+                _coverMembershipVersion++; // no certified baseline: stay conservative
+            _firstLandValid &= ~bit;
+            // A pending cell keeps its prior identity until the next scan.
+            // Repeated invalidations must not overwrite that baseline.
+        }
+
+        private void InvalidateFirstLandCache()
+        {
+            _coverMembershipVersion++;
+            _coverMembershipDirty = 0;
+            _firstLandValid = 0;
+            Array.Clear(_firstLand, 0, _firstLand.Length);
+        }
+
+        internal bool HasCertifiedFirstLand(int x, int y) =>
+            (_firstLandValid & (1UL << (x + (y << 3)))) != 0;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal Land GetFirstLand(int x, int y)
+        {
+            FirstLandLookups++;
+            int cell = x + (y << 3);
+            ulong bit = 1UL << cell;
+            // A valid entry certifies a homogeneous chain. Every link/owner
+            // mutation invalidates it, so hits need no anchor or owner query.
+            if ((_firstLandValid & bit) != 0) return _firstLand[cell];
+            Land first = ScanFirstLand(x, y, out bool cacheable);
+            if ((_coverMembershipDirty & bit) != 0)
+            {
+                // Non-Land moves can change a legacy anchor's reachable Land
+                // or introduce foreign ownership. Compare BOTH invariants;
+                // an unchanged identity alone does not certify a plan.
+                if (!cacheable || !ReferenceEquals(first, _firstLand[cell]))
+                    _coverMembershipVersion++;
+                _coverMembershipDirty &= ~bit;
+            }
+            if (cacheable)
+            {
+                _firstLand[cell] = first;
+                _firstLandValid |= bit;
+            }
+            else _firstLand[cell] = null;
+            return first;
+        }
+
+        private Land ScanFirstLand(int x, int y, out bool cacheable)
+        {
+            FirstLandScans++;
+            cacheable = true;
+            Land first = null;
+            for (GameObject obj = GetHeadObject(x, y); obj != null; obj = obj.TNext)
+            {
+                FirstLandNodes++;
+                // Scan the whole chain on a miss: insertion through a legacy
+                // detached anchor can mix owners. Such a chain must stay live.
+                cacheable &= obj.HasTileMembership(this, x, y);
+                if (first == null && obj is Land land) first = land;
+            }
+            return first;
+        }
+        // END PORT DEVIATION (GUO)
+
         public bool IsDestroyed;
         public long LastAccessTime;
         public LinkedListNode<int> Node;
@@ -51,6 +142,8 @@ namespace GUO.Game.Map
                 c = new Chunk(world);
             }
 
+            // PORT DEVIATION (GUO): pool reuse must not retain cached Land identities.
+            c.InvalidateFirstLandCache();
             c.LastAccessTime = Time.Ticks + Constants.CLEAR_TEXTURES_DELAY;
             c.X = x;
             c.Y = y;
@@ -63,6 +156,8 @@ namespace GUO.Game.Map
             while (_pool.Count > 0)
             {
                 var chunk = _pool.Dequeue();
+                // PORT DEVIATION (GUO): release cached references with the pooled chunk.
+                chunk.InvalidateFirstLandCache();
                 chunk.Mesh.Clear();
             }
         }
@@ -75,6 +170,15 @@ namespace GUO.Game.Map
             Map map = _world.Map;
 
             ref var im = ref GetIndex(index);
+            Load(map, ref im);
+        }
+
+        // PORT DEVIATION (GUO): shared load body also accepts a synthetic invalid
+        // index in BatcherProbe, without a file manager or client installation.
+        internal unsafe void Load(Map map, ref IndexMap im)
+        {
+            InvalidateFirstLandCache();
+            IsDestroyed = false;
 
             if (!im.IsValid())
             {
@@ -170,6 +274,9 @@ namespace GUO.Game.Map
         {
             Mesh.MarkDirtyIfNeeded(obj);
             obj.RemoveFromTile();
+            // PORT DEVIATION (GUO): old ownership was invalidated by unlink;
+            // destination must invalidate even when it previously cached null.
+            InvalidateFirstLand(x, y);
 
             short priorityZ = obj.Z;
             sbyte state = -1;
@@ -275,6 +382,8 @@ namespace GUO.Game.Map
             }
 
             obj.PriorityZ = priorityZ;
+            // PORT DEVIATION (GUO): covers empty and existing-anchor returns too.
+            obj.SetTileMembership(this, x, y);
 
             if (Tiles[x, y] == null)
             {
@@ -330,6 +439,10 @@ namespace GUO.Game.Map
                 obj.TPrevious = found;
                 GameObject next = found.TNext;
                 obj.TNext = next;
+                // PORT DEVIATION (GUO): aliased anchors can reach another
+                // cell's chain; invalidate the owners of changed links too.
+                found.InvalidateTileLand();
+                next?.InvalidateTileLand();
                 found.TNext = obj;
 
                 if (next != null)
@@ -339,6 +452,8 @@ namespace GUO.Game.Map
             }
             else if (start != null)
             {
+                // PORT DEVIATION (GUO): preserve aliases without stale owners.
+                start.InvalidateTileLand();
                 obj.TNext = start;
                 start.TPrevious = obj;
                 obj.TPrevious = null;
@@ -354,6 +469,12 @@ namespace GUO.Game.Map
             {
                 return;
             }
+
+            // PORT DEVIATION (GUO): this path bypasses RemoveFromTile.
+            obj.TPrevious?.InvalidateTileLand();
+            obj.TNext?.InvalidateTileLand();
+            obj.ClearTileMembership();
+            InvalidateFirstLand(x, y);
 
             if (firstNode == obj)
             {
@@ -377,6 +498,8 @@ namespace GUO.Game.Map
 
         public void Destroy()
         {
+            // PORT DEVIATION (GUO): raw bulk detaches must drop cached references.
+            InvalidateFirstLandCache();
             for (int i = 0; i < 8; i++)
             {
                 for (int j = 0; j < 8; j++)
@@ -394,6 +517,11 @@ namespace GUO.Game.Map
                     {
                         GameObject next = first.TNext;
 
+                        // PORT DEVIATION (GUO): clear ownership even for the
+                        // preserved Player and already-destroyed anchor aliases.
+                        first.TPrevious?.InvalidateTileLand();
+                        first.TNext?.InvalidateTileLand();
+                        first.ClearTileMembership();
                         if (!ReferenceEquals(first, _world.Player))
                         {
                             first.Destroy();
@@ -449,6 +577,8 @@ namespace GUO.Game.Map
         /// </summary>
         public void ClearForReload()
         {
+            // PORT DEVIATION (GUO): raw bulk detaches must drop cached references.
+            InvalidateFirstLandCache();
             for (int i = 0; i < 8; i++)
             {
                 for (int j = 0; j < 8; j++)
@@ -459,6 +589,11 @@ namespace GUO.Game.Map
                     {
                         GameObject next = first.TNext;
 
+                        // PORT DEVIATION (GUO): clear ownership even for the
+                        // preserved Player and already-destroyed anchor aliases.
+                        first.TPrevious?.InvalidateTileLand();
+                        first.TNext?.InvalidateTileLand();
+                        first.ClearTileMembership();
                         if (!ReferenceEquals(first, _world.Player))
                         {
                             first.Destroy();

@@ -39,7 +39,7 @@ namespace GUO.Renderer
         public FontGlyphAtlas(FontsLoader fontsLoader)
         {
             _fontsLoader = fontsLoader;
-            _atlas = new TextureAtlas(2048, 2048);
+            _atlas = new TextureAtlas(2048, 2048, "glyph");
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

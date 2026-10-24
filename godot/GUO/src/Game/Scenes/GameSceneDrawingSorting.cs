@@ -565,7 +565,8 @@ namespace GUO.Game.Scenes
             ref int maxObjectZ,
             int maxZ,
             out bool retValue,
-            ChunkMesh mesh
+            ChunkMesh mesh,
+            in GatherInputs gatherInputs
         )
         {
             retValue = false;
@@ -591,8 +592,9 @@ namespace GUO.Game.Scenes
             // If in chunk mesh, mark visible instead of adding to render list
             if (obj.InChunkMesh && obj.MeshSpriteIndex >= 0)
             {
-                bool cot = ProfileManager.CurrentProfile.UseCircleOfTransparency
-                    && obj.TransparentTest(_world.Player.Z + 5);
+                CheckGatherInputs(gatherInputs);
+                bool cot = gatherInputs.UseCot
+                    && obj.TransparentTest(gatherInputs.TransparencyZ);
 
                 // Objects above _maxZ (or hidden roofs) are fading out via ProcessAlpha:
                 // gradient CoT must not overwrite that alpha or they never disappear.
@@ -607,7 +609,7 @@ namespace GUO.Game.Scenes
                 }
 
                 mesh.Statics.SetVisible(obj.MeshSpriteIndex, obj.AlphaHue, cot);
-                ApplyMeshHue(obj, mesh.Statics);
+                ApplyMeshHue(obj, mesh.Statics, gatherInputs);
                 _renderLists.AddMeshStatic(obj, mesh.Statics);
 
                 if (itemData.IsLight)
@@ -615,7 +617,7 @@ namespace GUO.Game.Scenes
                     AddLight(obj, obj, obj.RealScreenPosition.X + 22, obj.RealScreenPosition.Y + 22);
                 }
 
-                if (allowSelection && !(cot && IsMouseInsideCotCircle()) && obj.AllowedToDraw && obj.CheckMouseSelection())
+                if (allowSelection && !(cot && gatherInputs.MouseInsideCot) && obj.AllowedToDraw && obj.CheckMouseSelection())
                 {
                     if (SelectedObject.Object is GameObject prev)
                     {
@@ -694,16 +696,23 @@ namespace GUO.Game.Scenes
         /// the water bit of a Wet static (Static.Draw adds it, ADR-0037).
         /// </summary>
         private void ApplyInstanceHue(GameObject obj, ChunkMesh mesh, ref StaticTiles itemData)
+            => ApplyInstanceHue(obj, mesh, ref itemData, CaptureGatherInputs());
+
+        private void ApplyInstanceHue(GameObject obj, ChunkMesh mesh, ref StaticTiles itemData, in GatherInputs gatherInputs)
         {
-            MeshHueOf(obj, out float hueX, out float hueY);
+            MeshHueOf(obj, gatherInputs, out float hueX, out float hueY);
             hueY += GUO.Renderer.Water.WaterRender.Flag(itemData.IsWet);
             mesh.Instances.SetHue(obj.MeshSpriteIndex, hueX, hueY);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ApplyMeshHue(GameObject obj, MeshLayer layer)
+            => ApplyMeshHue(obj, layer, CaptureGatherInputs());
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void ApplyMeshHue(GameObject obj, MeshLayer layer, in GatherInputs gatherInputs)
         {
-            MeshHueOf(obj, out float hueX, out float hueY);
+            MeshHueOf(obj, gatherInputs, out float hueX, out float hueY);
 
             // PORT DEVIATION (GUO): keep the water bit on Wet land under a water style (ADR-0037).
             hueY += GUO.Renderer.Water.WaterRender.Flag(obj is Land wetLand && wetLand.TileData.IsWet);
@@ -712,17 +721,17 @@ namespace GUO.Game.Scenes
         }
 
         /// <summary>The hue the tile walk gives a meshed object this frame: out of range, dead, or its own.</summary>
-        private void MeshHueOf(GameObject obj, out float hueX, out float hueY)
+        private void MeshHueOf(GameObject obj, in GatherInputs gatherInputs, out float hueX, out float hueY)
         {
-            var profile = ProfileManager.CurrentProfile;
+            CheckGatherInputs(gatherInputs);
             int hue = obj.Hue;
             bool partial = false;
 
-            if (profile.NoColorObjectsOutOfRange && obj.Distance > _world.ClientViewRange)
+            if (gatherInputs.NoRangeColor && obj.Distance > gatherInputs.ViewRange)
             {
                 hue = Constants.OUT_RANGE_COLOR;
             }
-            else if (_world.Player.IsDead && profile.EnableBlackWhiteEffect)
+            else if (gatherInputs.DeadTint)
             {
                 hue = Constants.DEAD_RANGE_COLOR;
             }
@@ -819,7 +828,8 @@ namespace GUO.Game.Scenes
             GameObject obj,
             bool useObjectHandles,
             int maxZ,
-            Chunk chunk
+            Chunk chunk,
+            in GatherInputs gatherInputs
         )
         {
             var profile = ProfileManager.CurrentProfile;
@@ -885,7 +895,7 @@ namespace GUO.Game.Scenes
                         if (obj.AlphaHue != 0)
                         {
                             mesh.Land.SetVisible(obj.MeshSpriteIndex, obj.AlphaHue);
-                            ApplyMeshHue(obj, mesh.Land);
+                            ApplyMeshHue(obj, mesh.Land, gatherInputs);
                             TrySelectObject(obj, true);
                         }
                         continue;
@@ -984,8 +994,9 @@ namespace GUO.Game.Scenes
                         continue;
                     }
 
-                    bool meshCot = ProfileManager.CurrentProfile.UseCircleOfTransparency
-                        && obj.TransparentTest(_world.Player.Z + 5);
+                    CheckGatherInputs(gatherInputs);
+                    bool meshCot = gatherInputs.UseCot
+                        && obj.TransparentTest(gatherInputs.TransparencyZ);
 
                     // Gradient CoT: set alpha on CPU and route to transparent list
                     // so depth buffer doesn't block mobiles underneath.
@@ -1018,7 +1029,7 @@ namespace GUO.Game.Scenes
                             continue;
                         }
 
-                        bool gpuSelect = meshAllowSelection && !(meshCot && IsMouseInsideCotCircle());
+                        bool gpuSelect = meshAllowSelection && !(meshCot && gatherInputs.MouseInsideCot);
                         if (obj.AlphaHue != 0xFF || meshCot)
                         {
                             QueueInstanced(obj, mesh, gpuIndex, false);
@@ -1026,7 +1037,7 @@ namespace GUO.Game.Scenes
                         else
                         {
                             mesh.Instances.SetDrawn(gpuIndex, true);
-                            ApplyInstanceHue(obj, mesh, ref meshItemData);
+                            ApplyInstanceHue(obj, mesh, ref meshItemData, gatherInputs);
                         }
 
                         if (meshItemData.IsLight)
@@ -1039,7 +1050,7 @@ namespace GUO.Game.Scenes
                     }
 
                     mesh.Statics.SetVisible(obj.MeshSpriteIndex, obj.AlphaHue, meshCot);
-                    ApplyMeshHue(obj, mesh.Statics);
+                    ApplyMeshHue(obj, mesh.Statics, gatherInputs);
                     _renderLists.AddMeshStatic(obj, mesh.Statics);
 
                     if (meshItemData.IsLight)
@@ -1047,7 +1058,7 @@ namespace GUO.Game.Scenes
                         AddLight(obj, obj, obj.RealScreenPosition.X + 22, obj.RealScreenPosition.Y + 22);
                     }
 
-                    TrySelectObject(obj, meshAllowSelection && !(meshCot && IsMouseInsideCotCircle()));
+                    TrySelectObject(obj, meshAllowSelection && !(meshCot && gatherInputs.MouseInsideCot));
                     continue;
                 }
 
@@ -1122,7 +1133,7 @@ namespace GUO.Game.Scenes
                                 continue;
                             }
 
-                            int cf = ProcessStaticLikeTail(obj, ref itemData, allowSelection, screenY, ref maxObjectZ, maxZ, out bool retVal, mesh);
+                            int cf = ProcessStaticLikeTail(obj, ref itemData, allowSelection, screenY, ref maxObjectZ, maxZ, out bool retVal, mesh, gatherInputs);
                             if (cf == 1) continue;
                             if (cf == 2) return retVal;
                             break;
@@ -1161,7 +1172,7 @@ namespace GUO.Game.Scenes
                                 }
                             }
 
-                            int cf = ProcessStaticLikeTail(obj, ref itemData, allowSelection, screenY, ref maxObjectZ, maxZ, out bool retVal, mesh);
+                            int cf = ProcessStaticLikeTail(obj, ref itemData, allowSelection, screenY, ref maxObjectZ, maxZ, out bool retVal, mesh, gatherInputs);
                             if (cf == 1) continue;
                             if (cf == 2) return retVal;
                             break;

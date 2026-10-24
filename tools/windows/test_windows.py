@@ -35,6 +35,7 @@ class WindowsTests(unittest.TestCase):
         run=importlib.util.module_from_spec(spec); spec.loader.exec_module(run)
         expected=['addons/'+name+'/*' for name in ('guo_editor','godot_cef','guo_editor_assets','guo_editor_gumps','guo_editor_mapgen','guo_editor_multiedit','guo_editor_store','guo_posture')]
         expected+=['src/Input/Touch/Pregame/Accounts/'+name+'.cs' for name in ('AccountBook','AndroidKeystoreStore','DevLogin','LibsecretStore','SecretStore')]
+        expected+=['src/Labs/*']
         with tempfile.TemporaryDirectory() as directory:
             p=SimpleNamespace(preset_file=Path(directory)/'preset.cfg')
             run.render_preset(p,Path(directory)/'GUO.exe')
@@ -43,6 +44,14 @@ class WindowsTests(unittest.TestCase):
             self.assertEqual(line.split('"')[1].split(','),expected)
             self.assertIn('dotnet/include_scripts_content=false',text)
             self.assertNotIn('Accounts/*',line)
+
+    def test_labs_resources_excluded_on_every_export_platform(self):
+        tools = Path(__file__).resolve().parents[1]
+        for platform in ('windows', 'android', 'steamdeck', 'web'):
+            with self.subTest(platform=platform):
+                text = (tools / platform / 'export_presets.template.cfg').read_text()
+                line = next(line for line in text.splitlines() if line.startswith('exclude_filter='))
+                self.assertIn('src/Labs/*', line.split('"')[1].split(','))
 
 
 if __name__ == '__main__':

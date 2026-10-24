@@ -13,7 +13,7 @@ namespace GUO.Renderer.Lights
         public Light(LightsLoader lightsLoader)
         {
             _lightsLoader = lightsLoader;
-            _atlas = new TextureAtlas(2048, 2048);
+            _atlas = new TextureAtlas(2048, 2048, "light");
             _spriteInfos = new SpriteInfo[lightsLoader.File.Entries.Length];
         }
 

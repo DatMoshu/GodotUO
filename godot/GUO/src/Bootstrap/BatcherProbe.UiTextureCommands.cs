@@ -165,11 +165,12 @@ public partial class BatcherProbe
         using var texture = ImageTexture.CreateFromImage(image);
         VerifyLazyLandBuckets(batcher);
         VerifyUiTextureStorage(texture);
-        bool oldBatched = UltimaBatcher2D.BatchedWorld;
+        bool oldRetain = UltimaBatcher2D.RetainCanvas, oldBatched = UltimaBatcher2D.BatchedWorld;
         var reference = new List<byte[]>();
         var returns = new List<int>();
         try
         {
+            UltimaBatcher2D.RetainCanvas = false;
             UltimaBatcher2D.BatchedWorld = false;
             foreach (bool typed in new[] { false, true })
             {
@@ -255,7 +256,9 @@ public partial class BatcherProbe
         }
         finally
         {
+            UltimaBatcher2D.RetainCanvas = false;
             batcher.BeginFrame(); // clear native test commands before texture disposal
+            UltimaBatcher2D.RetainCanvas = oldRetain;
             UltimaBatcher2D.BatchedWorld = oldBatched;
         }
     }

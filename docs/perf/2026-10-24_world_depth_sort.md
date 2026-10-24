@@ -14,14 +14,8 @@ engine dependency or default-toggle change. The ordinary Release path is
 measured separately from both GPU experiments and retained canvas commands.
 
 Base: local UI command commit `79a33c35`. Review branch:
-`codex/world-sort-inputs`.
-
-Rebased onto the perf integration (PR 130) for review, 2026-10-24: the sort,
-its oracle tests and `render_sort_tests` are unchanged. Two parts that need
-lane commits not in PR 130 are left out: the opt-in `GUO_PERF_SORT_INPUT`
-capture diagnostic described below (its measurements were taken on the lane
-branch), and the scratch release with terrain resources (there is no terrain
-release seam in PR 130, so the scratch lives as long as its `RenderLists`).
+`codex/world-sort-inputs`. The integration retains its sort-input capture diagnostic
+and releases the high-water scratch array with terrain resources.
 
 ## Why ordering stays exact
 
@@ -46,7 +40,7 @@ share one input traversal; constant bytes skip their scatter pass. Every
 active pass is stable, and odd pass counts copy back to the original array.
 
 Scratch is lazy per `RenderLists`, capped at 512 KiB payload, retained by
-ordinary `Clear` (on the lane branch, released with terrain resources). Captured bank/docks
+ordinary `Clear` and released with terrain resources. Captured bank/docks
 queue sizes need about 130/103 KiB payload. A new owner reference adds
 object storage; exact padding was not measured. Unused UI owners do not
 allocate the key scratch array. Histograms use 4 KiB stack storage.

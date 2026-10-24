@@ -12,12 +12,15 @@ using ClassicUO.Game;
 using ClassicUO.Game.Scenes;
 using ClassicUO.Utility;
 using ClientRoot = ClassicUO.Client;
+using GameObject = ClassicUO.Game.GameObjects.GameObject;
 #else
 using GUO.Configuration;
 using GUO.Game;
 using GUO.Game.Scenes;
+using GUO.Renderer;
 using GUO.Utility;
 using ClientRoot = GUO.Client;
+using GameObject = GUO.Game.GameObjects.GameObject;
 #endif
 
 using System;
@@ -67,6 +70,14 @@ internal static class PerfDump
     private static Timer _timer;
     private static object _attached;
     private static int _state;
+#if !PERF_DUMP_CUO
+    // Opt-in diagnostics only. Keep the ordinary one-shot/CUO contract intact.
+    private static int _sampleSeconds, _sampleIndex;
+    private static long _sampleStart, _samplePrevious, _samplePreviousDraws;
+    private static long _sampleAllocatedPrevious;
+    private static int _sampleGc0Previous, _sampleGc1Previous, _sampleGc2Previous;
+    private static ulong _samplePreviousProcesses;
+#endif
 
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
@@ -87,6 +98,9 @@ internal static class PerfDump
         }
 
 #if !PERF_DUMP_CUO
+        if (int.TryParse(Environment.GetEnvironmentVariable("GUO_PERF_SAMPLE_SECONDS"), out int seconds))
+            _sampleSeconds = Math.Clamp(seconds, 0, 300);
+
         // The quiet fixture (GUO.Host.PerfFixture): no weather and no incoming
         // messages, from before login, so captures of two launches match.
         if (Environment.GetEnvironmentVariable("GUO_PERF_QUIET") == "1")
@@ -159,16 +173,48 @@ internal static class PerfDump
     private const long FadeCapMs = 60_000;
     private static long _fadeStart = -1, _fadeWaitMs;
     private static int _fadingAtEnd = -1;
+    private static long _stableSince = -1;
+    private static ulong _alphaSignature;
+    private static bool _stableAlpha;
 #if !PERF_DUMP_CUO
     private static int _uploadsAtFade, _bumpsAtFade, _staticOntoAtFade;
     private static long _framesAtFade;
     private static long _samplersAtFade;
+#if GUO_LABS
+    private static long _rdDrawnAtFade, _rdFallbackAtFade, _rdReferencesAtFade, _rdDynamicAtFade, _rdReplayAtFade, _rdPacketsAtFade;
+#endif
+    private static long _landLookupsAtFade, _landScansAtFade, _landNodesAtFade;
+    private static long _candidateHitsAtFade, _candidateMissesAtFade, _candidateBuildsAtFade,
+        _candidateRejectedAtFade, _candidateChecksAtFade;
+    private static long _canvasComparedAtFade, _canvasReusedAtFade, _canvasSubmittedAtFade,
+        _canvasClearsAtFade, _canvasUncachedAtFade;
     private static ulong _processFramesAtFade;
 #endif
 
     private static int Fading() =>
         Field(ClientRoot.Game.Scene, "_renderLists") is object lists
         && Field(lists, "_transparentObjects") is System.Collections.ICollection c ? c.Count : -1;
+
+    // Translucent foliage and effects may stay in this list permanently.
+    // Observe object identity and alpha across several samples instead of
+    // treating every transparent object as an unfinished login/teleport fade.
+    private static ulong AlphaSignature()
+    {
+        ulong signature = 14695981039346656037UL;
+        if (Field(ClientRoot.Game.Scene, "_renderLists") is object lists
+            && Field(lists, "_transparentObjects") is System.Collections.IEnumerable objects)
+        {
+            foreach (object item in objects)
+            {
+                if (item is GameObject obj)
+                {
+                    signature = unchecked((signature ^ (uint)RuntimeHelpers.GetHashCode(obj)) * 1099511628211UL);
+                    signature = unchecked((signature ^ obj.AlphaHue) * 1099511628211UL);
+                }
+            }
+        }
+        return signature;
+    }
 
     private static void WaitForFade()
     {
@@ -179,7 +225,14 @@ internal static class PerfDump
         }
 
         int fading = Fading();
-        if (fading <= FadeLeft || now - _fadeStart >= FadeCapMs)
+        ulong signature = AlphaSignature();
+        if (_stableSince < 0 || signature != _alphaSignature)
+        {
+            _stableSince = now;
+            _alphaSignature = signature;
+        }
+        _stableAlpha = now - _stableSince >= 2000;
+        if (fading <= FadeLeft || _stableAlpha || now - _fadeStart >= FadeCapMs)
         {
             _fadingAtEnd = fading;
             _fadeWaitMs = now - _fadeStart;
@@ -189,7 +242,35 @@ internal static class PerfDump
             _staticOntoAtFade = GUO.Renderer.Arts.Art.StaticOntoLandLayer;
             _framesAtFade = GUO.Renderer.UltimaBatcher2D.FramesBegun;
             _samplersAtFade = GUO.Renderer.UltimaBatcher2D.SamplerCalls;
+#if GUO_LABS
+            _rdDrawnAtFade = GUO.Labs.GpuRenderer.OrderedWorldCapture.FramesDrawn;
+            _rdFallbackAtFade = GUO.Labs.GpuRenderer.OrderedWorldCapture.FramesFallback;
+            _rdReferencesAtFade = GUO.Labs.GpuRenderer.OrderedWorldCapture.ReferencedQuads;
+            _rdDynamicAtFade = GUO.Labs.GpuRenderer.OrderedWorldCapture.DynamicCaptureBytes;
+            _rdReplayAtFade = GUO.Labs.GpuRenderer.OrderedWorldCapture.ReplayedQuads;
+            _rdPacketsAtFade = GUO.Labs.GpuRenderer.OrderedWorldRecords.PacketAllocations;
+#endif
+            _landLookupsAtFade = GUO.Game.Map.Chunk.FirstLandLookups;
+            _landScansAtFade = GUO.Game.Map.Chunk.FirstLandScans;
+            _landNodesAtFade = GUO.Game.Map.Chunk.FirstLandNodes;
+            _candidateHitsAtFade = CoverCandidates.Hits;
+            _candidateMissesAtFade = CoverCandidates.Misses;
+            _candidateBuildsAtFade = CoverCandidates.Builds;
+            _candidateRejectedAtFade = CoverCandidates.Rejected;
+            _candidateChecksAtFade = CoverCandidates.DependencyChecks;
+            _canvasComparedAtFade = RetainedCanvasCommands.Compared;
+            _canvasReusedAtFade = RetainedCanvasCommands.Reused;
+            _canvasSubmittedAtFade = RetainedCanvasCommands.Submitted;
+            _canvasClearsAtFade = RetainedCanvasCommands.Clears;
+            _canvasUncachedAtFade = RetainedCanvasCommands.Uncached;
             _processFramesAtFade = Godot.Engine.GetProcessFrames();
+            _sampleStart = _samplePrevious = System.Diagnostics.Stopwatch.GetTimestamp();
+            _samplePreviousDraws = _framesAtFade;
+            _samplePreviousProcesses = _processFramesAtFade;
+            _sampleAllocatedPrevious = GC.GetTotalAllocatedBytes(false);
+            _sampleGc0Previous = GC.CollectionCount(0);
+            _sampleGc1Previous = GC.CollectionCount(1);
+            _sampleGc2Previous = GC.CollectionCount(2);
 #endif
             Console.WriteLine($"[perf_dump] {ClientName}: {fading} fading after {_fadeWaitMs} ms more; averaging");
             ClientRoot.Game.EnqueueAction(2000, Write);
@@ -223,6 +304,9 @@ internal static class PerfDump
                 ["render_ui_ms"] = Math.Round(Avg(Profiler.ProfilerContext.RENDER_FRAME_UI), 3),
                 ["update_world_ms"] = Math.Round(Avg(Profiler.ProfilerContext.UPDATE_WORLD), 3),
                 ["frames_averaged"] = Profiler.ProfileTimeCount,
+#if !PERF_DUMP_CUO
+                ["native_texture_measurements_last_frame"] = GUO.Renderer.UltimaBatcher2D.LastNativeTextureMeasurements,
+#endif
                 // The whole frame as the profiler's own clock saw it: wall time
                 // between its BeginFrame and EndFrame, averaged over the same
                 // last frames. Upstream paces its draw at Settings.FPS, so this
@@ -251,7 +335,11 @@ internal static class PerfDump
             r["fading_when_averaging"] = _fadingAtEnd;
             r["fade_wait_ms"] = _fadeWaitMs;
             r["fade_timed_out"] = _fadeWaitMs >= FadeCapMs;
+            r["transparent_alpha_stable"] = _stableAlpha;
 #if !PERF_DUMP_CUO
+            var godotApi = typeof(Godot.GodotObject).Assembly;
+            r["godot_api_jit_optimized"] = !(godotApi.GetCustomAttribute<System.Diagnostics.DebuggableAttribute>()?.IsJITOptimizerDisabled ?? false);
+            r["godot_api_mvid"] = godotApi.ManifestModule.ModuleVersionId.ToString();
             r["engine_debug_build"] = Godot.OS.IsDebugBuild();
             r["export_template"] = PerfProbe.ExportTemplate();
             r["quiet_fixture"] = GUO.Host.PerfFixture.Quiet;
@@ -259,6 +347,31 @@ internal static class PerfDump
 #if !PERF_DUMP_CUO
             int uploads = GUO.Renderer.LandPages.Uploads - _uploadsAtFade;
             long frames = GUO.Renderer.UltimaBatcher2D.FramesBegun - _framesAtFade;
+#if GUO_LABS
+            r["rd_frames_drawn_in_counter_window"] = GUO.Labs.GpuRenderer.OrderedWorldCapture.FramesDrawn - _rdDrawnAtFade;
+            r["rd_frames_fallback_in_counter_window"] = GUO.Labs.GpuRenderer.OrderedWorldCapture.FramesFallback - _rdFallbackAtFade;
+            r["rd_last_frame_on_pass"] = GUO.Labs.GpuRenderer.OrderedWorldCapture.LastFrameOnPass;
+            r["rd_referenced_quads_per_frame"] = frames > 0 ? Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.ReferencedQuads - _rdReferencesAtFade) / frames, 1) : 0;
+            r["rd_dynamic_capture_bytes_per_frame"] = frames > 0 ? Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.DynamicCaptureBytes - _rdDynamicAtFade) / frames, 1) : 0;
+            r["rd_replayed_quads_per_frame"] = frames > 0 ? Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.ReplayedQuads - _rdReplayAtFade) / frames, 1) : 0;
+            r["rd_source_packet_allocations_per_frame"] = frames > 0 ? Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldRecords.PacketAllocations - _rdPacketsAtFade) / frames, 1) : 0;
+#endif
+            r["first_land_lookups_per_frame"] = frames > 0 ? Math.Round((double)(GUO.Game.Map.Chunk.FirstLandLookups - _landLookupsAtFade) / frames, 1) : 0;
+            r["first_land_scans_per_frame"] = frames > 0 ? Math.Round((double)(GUO.Game.Map.Chunk.FirstLandScans - _landScansAtFade) / frames, 1) : 0;
+            r["first_land_nodes_per_frame"] = frames > 0 ? Math.Round((double)(GUO.Game.Map.Chunk.FirstLandNodes - _landNodesAtFade) / frames, 1) : 0;
+            r["cover_candidate_hits_per_frame"] = frames > 0 ? Math.Round((double)(CoverCandidates.Hits - _candidateHitsAtFade) / frames, 1) : 0;
+            r["cover_candidate_misses_per_frame"] = frames > 0 ? Math.Round((double)(CoverCandidates.Misses - _candidateMissesAtFade) / frames, 1) : 0;
+            r["cover_candidate_builds_per_frame"] = frames > 0 ? Math.Round((double)(CoverCandidates.Builds - _candidateBuildsAtFade) / frames, 1) : 0;
+            r["cover_candidate_rejected_per_frame"] = frames > 0 ? Math.Round((double)(CoverCandidates.Rejected - _candidateRejectedAtFade) / frames, 1) : 0;
+            r["cover_candidate_dependency_checks_per_frame"] = frames > 0 ? Math.Round((double)(CoverCandidates.DependencyChecks - _candidateChecksAtFade) / frames, 1) : 0;
+            r["retained_canvas_enabled"] = UltimaBatcher2D.RetainCanvas;
+            r["gather_input_checks"] = GameScene.GatherInputChecks;
+            r["gather_input_mismatches"] = GameScene.GatherInputMismatches;
+            r["retained_canvas_compared_per_frame"] = frames > 0 ? Math.Round((double)(RetainedCanvasCommands.Compared - _canvasComparedAtFade) / frames, 1) : 0;
+            r["retained_canvas_prefix_matches_per_frame"] = frames > 0 ? Math.Round((double)(RetainedCanvasCommands.Reused - _canvasReusedAtFade) / frames, 1) : 0;
+            r["retained_canvas_submitted_records_per_frame"] = frames > 0 ? Math.Round((double)(RetainedCanvasCommands.Submitted - _canvasSubmittedAtFade) / frames, 1) : 0;
+            r["retained_canvas_rewrite_clears_per_frame"] = frames > 0 ? Math.Round((double)(RetainedCanvasCommands.Clears - _canvasClearsAtFade) / frames, 1) : 0;
+            r["retained_canvas_uncached_items_per_frame"] = frames > 0 ? Math.Round((double)(RetainedCanvasCommands.Uncached - _canvasUncachedAtFade) / frames, 1) : 0;
             r["land_layers"] = GUO.Renderer.LandPages.Layers;
             r["land_uploads"] = uploads;
             r["land_uploads_per_frame"] = frames > 0 ? Math.Round((double)uploads / frames, 3) : 0.0;
@@ -271,6 +384,37 @@ internal static class PerfDump
             ulong processFrames = Godot.Engine.GetProcessFrames() - _processFramesAtFade;
             r["sampler_calls"] = samplerCalls;
             r["sampler_calls_per_process_frame"] = processFrames > 0 ? Math.Round((double)samplerCalls / processFrames, 3) : 0.0;
+            bool sampleComplete = true;
+            if (_sampleSeconds > 0)
+            {
+                long now = System.Diagnostics.Stopwatch.GetTimestamp();
+                double interval = (double)(now - _samplePrevious) / System.Diagnostics.Stopwatch.Frequency;
+                double elapsed = (double)(now - _sampleStart) / System.Diagnostics.Stopwatch.Frequency;
+                long drawsNow = GUO.Renderer.UltimaBatcher2D.FramesBegun;
+                ulong processesNow = Godot.Engine.GetProcessFrames();
+                sampleComplete = elapsed >= _sampleSeconds;
+                r["sample_index"] = ++_sampleIndex;
+                r["sample_elapsed_seconds"] = Math.Round(elapsed, 6);
+                r["sample_interval_seconds"] = Math.Round(interval, 6);
+                r["sample_draw_frames"] = drawsNow - _samplePreviousDraws;
+                r["sample_process_frames"] = processesNow - _samplePreviousProcesses;
+                r["sample_draw_fps"] = Math.Round((drawsNow - _samplePreviousDraws) / interval, 3);
+                r["sample_process_fps"] = Math.Round((processesNow - _samplePreviousProcesses) / interval, 3);
+                r["sample_complete"] = sampleComplete;
+                // Whole-process estimate, including the diagnostic's own
+                // allocations. No forced GC or exact cross-thread rendezvous.
+                long allocatedNow = GC.GetTotalAllocatedBytes(false);
+                int gc0 = GC.CollectionCount(0), gc1 = GC.CollectionCount(1), gc2 = GC.CollectionCount(2);
+                r["sample_allocated_bytes_approx"] = allocatedNow - _sampleAllocatedPrevious;
+                r["sample_gc0"] = gc0 - _sampleGc0Previous;
+                r["sample_gc1"] = gc1 - _sampleGc1Previous;
+                r["sample_gc2"] = gc2 - _sampleGc2Previous;
+                _sampleAllocatedPrevious = allocatedNow;
+                _sampleGc0Previous = gc0; _sampleGc1Previous = gc1; _sampleGc2Previous = gc2;
+                _samplePrevious = now;
+                _samplePreviousDraws = drawsNow;
+                _samplePreviousProcesses = processesNow;
+            }
 #endif
             string dir = Path.Combine(_args[0], _args[1]);
             Directory.CreateDirectory(dir);
@@ -280,6 +424,18 @@ internal static class PerfDump
                 ? "\"" + t.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\""
                 : Convert.ToString(v, CultureInfo.InvariantCulture);
             File.WriteAllText(path, "{\n" + string.Join(",\n", r.Select(kv => $"  \"{kv.Key}\": {Value(kv.Value)}")) + "\n}\n");
+#if !PERF_DUMP_CUO
+            if (_sampleSeconds > 0)
+            {
+                File.AppendAllText(Path.Combine(dir, "guo-samples.jsonl"),
+                    "{" + string.Join(",", r.Select(kv => $"\"{kv.Key}\":{Value(kv.Value)}")) + "}\n");
+                if (!sampleComplete)
+                {
+                    ClientRoot.Game.EnqueueAction(1000, Write);
+                    return;
+                }
+            }
+#endif
             Console.WriteLine($"[perf_dump] {ClientName}: wrote {path}");
             _state = 2;
         }

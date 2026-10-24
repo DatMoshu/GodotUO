@@ -2,7 +2,6 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using GUO.Game.GameObjects;
 using GUO.Game.Scenes;
 using GUO.Renderer;
@@ -11,10 +10,6 @@ namespace GUO.Host;
 
 public partial class BatcherProbe
 {
-    // Synthetic, main-thread checks: bypass data-loading constructors.
-    private static T LazyLandFixture<T>() where T : class =>
-        (T)RuntimeHelpers.GetUninitializedObject(typeof(T));
-
     private void VerifyLazyLandBuckets(UltimaBatcher2D batcher)
     {
         const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic;
@@ -29,8 +24,8 @@ public partial class BatcherProbe
         var lastCover = RenderLists.LastCover;
         var parent = new RenderLists();
         var child = new RenderLists();
-        var plainLand = LazyLandFixture<Land>();
-        var stretchedLand = LazyLandFixture<Land>();
+        var plainLand = FirstLandFixture<Land>();
+        var stretchedLand = FirstLandFixture<Land>();
         stretchedLand.IsStretched = true;
         try
         {

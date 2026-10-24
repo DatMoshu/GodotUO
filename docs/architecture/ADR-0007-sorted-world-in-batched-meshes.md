@@ -541,3 +541,32 @@ adjacent keys, the exact 28-bit sweep, and the all-ties scene. The parity
 probe on the gate scenes (0 px outside labels and the radar) and the perf
 probe are the next step and need a shard session; no frame-time claim is
 made here.
+
+### Persistent terrain buffers (2026-10-23)
+
+The array land path retains one indexed ArrayMesh. Each visible chunk owns
+a fixed geometry slot; only changed chunks upload vertex/attribute ranges.
+An ordered index stream preserves the original layer/tile order and triangle
+winding. Its unused tail contains degenerate triangles. Visibility shrink
+explicitly clears the previous active tail, preventing stale geometry.
+Unchanged views upload neither geometry nor indices. Non-array modes and
+unsupported textures retain the complete original ordered fallback.
+
+Cache validity includes layer identity, count, build stamp and atlas generation.
+Atlas growth preserves page indices. Invisible chunks release slots; capacity
+grows geometrically and shrinks after a sustained smaller view. Scene unload
+disposes the cache. Partial updates maintain conservative bounds and query the
+engine's vertex/attribute/index layouts. Colors reproduce the engine's byte
+truncation. Chunk run meshes now build lazily when that path actually draws.
+
+The batcher probe compares overlapping translucent slopes, alpha/visibility
+changes, pooled layer reuse, atlas reset/growth, non-atlas fallback, index-tail
+clearing and the 16-to-32-bit index boundary. PerfProbe reports
+`terrain_dirty_chunks_per_frame` and `terrain_rebuilt_sprites_per_frame`.
+This is a parity-preserving L0 implementation change, without a new player
+option. Count gates and walking measurements remain required.
+
+Current bound: a changed build stamp still regenerates the ordered index
+prefix, including alpha-only changes. Vertex/attribute uploads remain limited
+to changed chunks. Separating selection/topology invalidation is a measured
+follow-up; this change does not claim all walking work is incremental.

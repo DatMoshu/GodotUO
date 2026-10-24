@@ -124,12 +124,31 @@ public partial class BatcherProbe : Node
         await VerifyLandLight(batcher, viewport);
         Stage("land light");
 
+        await VerifyMergedLand(batcher, viewport);
+        Stage("persistent ordered terrain");
+        await VerifyAtlasMetadata(batcher, viewport);
+        Stage("atlas page metadata");
+        VerifyAtlasProfiling();
+        VerifyPerfIntervals();
+        VerifyPerfWalkReplay();
         VerifyIncidentalAllocations();
-        Stage("incidental allocations");
+        Stage("atlas upload attribution");
+        VerifyFirstLandCache();
+        Stage("first-land identity cache");
+        VerifyCoverCandidates();
+        Stage("incremental cover candidates");
+        await VerifyRetainedCanvas(batcher, viewport);
+        Stage("retained canvas commands");
+        await VerifyDeferredVisibility(batcher, viewport);
+        Stage("deferred retained visibility");
         await VerifyUiTextureCommands(batcher, viewport);
         Stage("typed UI texture commands");
-        VerifyWorldDepthSort();
-        Stage("world depth radix sort");
+            VerifyWorldDepthSort();
+            Stage("world depth radix sort");
+#if GUO_LABS
+        await VerifyOrderedWorld(batcher, viewport, palette);
+        Stage("ordered RenderingDevice world");
+#endif
 
         await VerifyUiTransform(batcher, viewport, ramp);
         Stage("gump transform and clipping");

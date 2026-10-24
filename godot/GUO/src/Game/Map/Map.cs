@@ -11,6 +11,12 @@ namespace GUO.Game.Map
     internal sealed class Map : GUO.Game.Scenes.IChunkSource<Chunk>
     {
         private static Chunk[] _terrainChunks;
+        // PORT DEVIATION (GUO): the table is shared across Map instances.
+        // Cover discovery must invalidate cached absent/present slot identities.
+        internal static long CoverTableVersion { get; private set; }
+        // Table/lifetime changes invalidate even dependencies whose old chunks
+        // remain alive (e.g. an auxiliary WorldMapGump constructs a larger Map).
+        internal static long CoverTableIdentityVersion { get; private set; }
         private static readonly bool[] _blockAccessList = new bool[0x1000];
         private readonly LinkedList<int> _usedIndices = new LinkedList<int>();
         private readonly World _world;
@@ -18,6 +24,8 @@ namespace GUO.Game.Map
 
         public Map(World world, int index)
         {
+            CoverTableIdentityVersion++;
+            CoverTableVersion++;
             _world = world;
             Index = index;
             BlocksCount = Client.Game.UO.FileManager.Maps.MapBlocksSize[Index, 0] * Client.Game.UO.FileManager.Maps.MapBlocksSize[Index, 1];
@@ -79,6 +87,7 @@ namespace GUO.Game.Map
 
                 LinkedListNode<int> node = _usedIndices.AddLast(block);
                 chunk = Chunk.Create(_world, chunkX, chunkY);
+                CoverTableVersion++;
                 chunk.Load(Index);
                 chunk.Node = node;
             }
@@ -265,6 +274,7 @@ namespace GUO.Game.Map
                 {
                     block.Destroy();
                     block = null;
+                    CoverTableVersion++;
 
                     if (++count >= Constants.MAX_MAP_OBJECT_REMOVED_BY_GARBAGE_COLLECTOR)
                     {
@@ -278,6 +288,8 @@ namespace GUO.Game.Map
 
         public void Destroy()
         {
+            CoverTableIdentityVersion++;
+            CoverTableVersion++;
             LinkedListNode<int> first = _usedIndices.First;
 
             while (first != null)

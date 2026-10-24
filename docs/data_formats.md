@@ -3284,6 +3284,112 @@ game thread. An exception drops that packet and is logged
 (`[mods] <id>: dropped packet ...`).
 ## 41. Perf probe and perf lab reports (`build/perf`, `tools/perf_probe`, `tools/perf_lab`)
 
+**Sustained GUO PerfDump**, `guo-samples.jsonl`: opt-in through
+`tools/perf_dump --only guo --sample-seconds N` (0 disables; 1–300 seconds),
+which sets the client diagnostic `GUO_PERF_SAMPLE_SECONDS`. After settling,
+the client writes roughly one-second observations with `sample_index`,
+`sample_elapsed_seconds`, `sample_interval_seconds`, `sample_draw_frames`,
+`sample_process_frames`, `sample_draw_fps`, `sample_process_fps` and
+`sample_complete`. The first interval is approximately two seconds. The final
+`guo.json` is complete only when that flag is true. Draw/process counts are
+deltas over actual monotonic intervals; sum frames divided by sum interval
+seconds gives sustained throughput. Existing profiler phase means still use
+the latest 60 entries; this is not an individual-frame percentile or GPU timer.
+The CUO injected build ignores this diagnostic. `--guo-exe` selects an existing
+Release export; its runtime/API identity fields must confirm that build type.
+
+Sustained samples also include `sample_allocated_bytes_approx` and
+`sample_gc0`, `sample_gc1`, `sample_gc2`, each a delta over that sample's
+interval. Allocation uses `GC.GetTotalAllocatedBytes(false)` across the
+whole managed process, including measurement and background activity. It is
+an estimate, not retained memory, native/GPU allocation, or allocation by a
+particular thread/stage. Sum bytes divided by summed draw counts gives bytes
+per drawn frame; also report bytes per second when comparing differing FPS.
+The diagnostic does not force a collection or a precise cross-thread count.
+
+`GUO_VERIFY_GATHER_INPUTS=1` checks that shared hue/CoT inputs captured at the
+start of the synchronous world gather still equal their live values at mesh
+hue and CoT decisions. A mismatch fails immediately. PerfDump and PerfProbe
+report cumulative `gather_input_checks` and `gather_input_mismatches`; checks
+also include fresh highlight-restoration captures and do not establish
+coverage of every path. Leave this verifier disabled for performance runs:
+it deliberately repeats the reads being removed. Per-object hue, distance,
+visibility, roof, transparency, light and picking decisions remain live.
+
+Ordinary GUO PerfDump also reports `first_land_lookups_per_frame`,
+`first_land_scans_per_frame`, `first_land_nodes_per_frame` and
+`cover_candidate_{hits,misses,builds,rejected,dependency_checks}_per_frame`.
+These are cumulative deltas since fade settling divided by drawn frames.
+Candidate plans cache ordered neighboring Land identities with chunk/map
+invalidation; visibility, alpha, depth and cover winners remain live. These
+counters measure discovery work, not GPU execution or guaranteed FPS gains.
+PerfProbe additionally records interval totals as
+`cover_candidate_{hits,misses,builds,rejected,dependency_checks}` (without the
+`_per_frame` suffix), aligned to its draw/time interval. Ordinary chunk-slot
+changes invalidate plans that observed missing chunks; separate table/lifetime
+changes invalidate all plans. Every link mutation, including non-Land movement,
+still invalidates its first-Land cell. A previously certified cell retains its
+old identity only until the next full linked-chain certification. Before a
+dependency reads the chunk's membership version, pending cells are rescanned;
+the version advances if the first Land changed or ownership certification was
+lost. Benign mutations with the same certified identity can retain plans.
+Uncertified cells, full invalidation and pooled reuse remain conservative.
+The pending mask is bounded to the chunk's 64 cells; visual fields stay live.
+`GUO_VERIFY_COVER_CANDIDATES=1` checks each cache hit against a fresh raw
+head/TNext traversal and fails on different Land identities, duplicate order,
+columns or count. It does not change cover stamps or winners. Probe rows report
+`cover_candidate_verifier` and interval `cover_candidate_verified_plans`,
+`cover_candidate_verified_references`, and `cover_candidate_mismatches`.
+Leave this diagnostic off for performance runs: it deliberately repeats the
+uncached walk. A passed diagnostic only proves the paths and state exercised.
+`GUO_PERF_PARITY_COVER_CANDIDATES=1` with `--perf-parity` compares the live
+uncached covering-land walk with candidate retention in the same client.
+The five captures alternate cache off/on/off/on/off; JSON identifies
+`parity_target: "cover-candidates"`. Normal play retains candidates. The probe
+restores the prior state even after failure, requires ordinary canvas rendering,
+and rejects combining this diagnostic with `GUO_PERF_PARITY_CANVAS`.
+Each parity capture waits for two actual client draws after its toggle, with
+a ten-second deadline, rather than merely two engine post-draw signals.
+`parity_capture_evidence` records the state, actual draws, engine signals and
+candidate hits for each image. `parity_target_exercised` is false for a world
+cache comparison unless both cache-on captures actually replayed candidates.
+Skipped client draws cannot count toward that capture fence.
+
+`GUO_RETAIN_CANVAS=1` enables an off-default, ordinary-canvas diagnostic
+experiment (ADR-0002 amendment). PerfDump reports `retained_canvas_enabled`
+and `retained_canvas_{compared,prefix_matches,submitted_records,rewrite_clears,uncached_items}_per_frame`.
+These are cumulative deltas divided by drawn frames, across batchers. A
+matching prefix can subsequently be replayed if a later command changes, so
+`prefix_matches` is not a count of avoided native calls. A submitted affine
+record makes three native calls; a rectangle or mesh record makes one. Clear
+counts include only rewrites inside retained items, excluding ordinary pool
+clears and visibility changes. Unrepresented triangle/composite commands are
+drawn normally and are not included in submitted-record counts. The counters
+do not measure GPU draw calls or prove a whole-frame speedup. The separate
+RenderingDevice Labs mode disables retention at frame start.
+For a direct comparison within one running client, set
+`GUO_PERF_PARITY_CANVAS=1` with `--perf-parity` on ordinary canvas rendering.
+The five saved frames alternate retention off/on/off/on/off; JSON reports
+`parity_target: "retained-canvas"`. This avoids treating different login-time
+player animation/light states as renderer differences. Existing stable-pixel
+and repeated-difference rules still apply. The diagnostic rejects GPU-world
+or RD mode and restores the prior retention state when the probe ends.
+Capture evidence includes retained comparison and prefix-match deltas; both
+world test captures must exercise retention as well as pass the actual-draw
+fence. `parity_target_exercised` gates acceptance for this diagnostic too.
+
+`GUO_PERF_SORT_INPUT=1` additionally writes numeric
+`sort-input_<label>_<scene>.json` snapshots before each world measurement.
+The diagnostic waits for two fresh actual client draws, reads the completed
+queue synchronously, verifies queue-index sequence and exact full-ulong
+`Array.Sort` agreement with the active sorted keys, then exports the original
+queue-order keys. JSON includes count, scene, static-world status, verification
+and actual draw count. Parse keys as unsigned 64-bit integers (or Python ints),
+never JavaScript Number. There are no object or texture payloads. Probe rows
+name the file in `sort_input_capture`, otherwise null. Capture-enabled timing
+is diagnostic only: reflection, copies and serialization precede the measured
+interval but can influence subsequent GC/cache state. This does not change
+ordinary rendering or enable an experimental renderer.
 **PERF-LANE-01 harness fields.** Probe JSON adds top-level
 `engine_debug_build`, `export_template` (`release` or `debug` for an exported
 template, `editor` for the editor binary), `quiet_fixture` (`--perf-quiet`:
@@ -3321,6 +3427,103 @@ Each scene object carries the probe's columns (`scene`, `what`, `at`,
 `batcher_items`, `texture_switches`, `world_prepare_ms`, `world_draw_ms`,
 `render_cpu_ms`, `render_gpu_ms` and the land, cover and allocation counts);
 readers must ignore keys they do not know, and older runs lack the newer ones.
+`sample_window_version: 2` starts cumulative counters, stage reset, allocation
+and wall time after the same initial `ProcessFrame` boundary. Earlier reports
+omit it and include that extra interval in cumulative/stage counters; use the
+same version when interpreting those comparisons. Wall-clock sample count is
+unchanged. Parity rows also carry `parity_frames`, five PNG filenames in capture
+order (plain, test, plain, test, plain), including all inputs to the stability
+and repeatability classification. The first two retain the original filenames.
+`optimized` describes GUO's assembly only. `godot_api_jit_optimized` records
+the loaded GodotSharp assembly's JIT setting, `godot_api_mvid` identifies that
+assembly without publishing its filesystem path, and `engine_debug_build`
+records the native engine build. An optimized project run through the editor
+executable can still load Debug GodotSharp; distinguish it from an export.
+The optional environment diagnostics `GUO_PERF_WARMUP_SECONDS` and
+`GUO_PERF_MEASURE_SECONDS` accept 0–300 seconds (default 0: existing warm-up
+and 360-frame sample). Login keeps its 360-frame sample and no added discard.
+`GUO_PERF_WALK_SECONDS` accepts 1–300 (default 12), and
+`GUO_PERF_WALK_ORIGIN` is `field` (default), `bank`, or `docks`. A world
+warm-up follows any parity captures. Reports record these four settings.
+Each scene adds `warmup_seconds`, `elapsed_seconds`, `drawn_frames`,
+`draw_fps` (draws / elapsed time), `sample_storage_grew`, and `gc0/gc1/gc2`
+(process-wide collection-count deltas; higher generations also collect
+younger generations, so do not sum these counts). A walk records observed positions in
+`walk_route_map_xyz` and a `walk_route_dropped` count; stationary rows use
+null and zero. This is an observed route, not deterministic replay.
+`route_observation_version: 2` counts the final passive observation in
+`tiles_moved`, excludes distance across maps, and counts distinct rejected
+positions when route storage is full. Earlier observations omit this version
+and can omit the final move. Distance remains approximate observed XY
+displacement, including server corrections, not a verified traversal.
+Preallocated sample storage grows if its capacity is exceeded; such runs
+must not be used for allocation claims without accounting for that growth.
+
+`GUO_PERF_RUNTIME_ATTRIBUTION=1` enables additional diagnostics only during
+measured intervals. `runtime_attribution` records this choice. Scene
+`runtime_wall_times` maps stages to `{calls, total_ms, ms_per_draw}`. These
+are main-thread elapsed wall times, including descheduling, not exclusive
+CPU or GPU times. `Process` includes `Draw` and update stages; `Draw`
+includes the existing world/UI scopes. Do not add overlapping totals.
+`Input` contains two scopes per process callback. With attribution disabled,
+`runtime_wall_times` and `atlas_pages` are null.
+
+`GUO_PERF_INTERVAL_COUNTERS=1` also enables runtime attribution and records
+`counter_intervals` per scene. Storage is allocated before measurement and
+serialized afterward. Each row records actual start/end/duration, process and
+drawn frame counts, route progress, frame p50/p95/p99/max, and interval deltas
+for retained comparisons, prefix matches, submitted records, rewrite clears,
+uncached items, ordinary owner clears, visibility hides/reveals, land uploads
+and rebuilds, atlas updates/creations/submitted RGBA bytes, process/main-thread
+allocated bytes, and GC collection counts. Owner clears exclude retained
+rewrites and the picking mirror; submitted records exclude raw bypasses.
+The process allocation counter is approximate; its delta may be slightly below
+the exact current-thread counter. Neither is a per-object allocation census.
+Per-draw ratios are null when no draw occurred. A delayed boundary produces one
+long interval; a final remainder is labeled partial. Counts are not cumulative
+since warmup, unlike the older PerfDump retention ratios. Prefix matches can
+still be resubmitted after a later mismatch. Submitted bytes estimate CPU image
+submission, not GPU traffic. `counter_intervals_dropped` and
+`counter_interval_thread_changed` must be zero/false for allocation claims.
+The scene records `retained_canvas_enabled`; ordinary retention remains off.
+
+For diagnostic replay, `GUO_PERF_WALK_ROUTE` points to a private JSON artifact
+`{version:1, run:bool, initial_direction:0..7, points:[[map,x,y,z],...]}` with
+exactly 47 adjacent same-map points (46 tile moves), at most 64 KiB. This requires
+only `--perf-scene walk` without `--perf-parity`. The artifact is loaded once,
+hashed, and never alters map data. GM positioning and an optional real turn
+occur before warmup; exact origin/facing and drained movement queues are then
+required. A setup turn needs its matching ACK and rejects denial/reset/bad ACK;
+local facing and drained queues alone do not establish success. Replay calls the real walk path, allows one request in flight, waits
+for matching acknowledgement and completed animation, and separates turn-only
+requests from moved tiles. Its fixed 250 ms release delay follows completion;
+it never sends catch-up bursts. Denial, reset, bad/unexpected ACK, wrong route,
+direction/run changes or timeout invalidate the result without replanning or
+teleporting. The external test driver must also enforce a hard process deadline
+if engine frame signals cease. `walk_replay` records its hash, completed points,
+requests/ACKs/turns and timing/failure evidence. `walk_replay_valid` must be true;
+`walk_replay_drain_draws` requires two actual client draws after completion.
+The drain has an independently bounded signal wait and rejects a late second
+draw. Before copying acceptance fields, replay finalization rechecks the exact
+endpoint/facing, healthy world, drained queues, movement conditions and observer
+ownership, then restores the previous observer. A failed finalization invalidates
+the row. This narrow diagnostic witness is not a packet-wide correction trace.
+Each OFF/ON performance leg still needs its own explicit 60-second warmup.
+The older timed walker remains the default and is not deterministic replay.
+
+`atlas_pages` contains numeric page identities, owner labels, actual
+`width/height`, `updates/creations`, `rgba_bytes_submitted`, and
+`update_call_ms/creation_call_ms`. Counts distinguish dirty-page updates
+from new textures (including populated oversized pages and initially blank
+packing pages). Bytes are the submitted RGBA image sizes, not measured GPU
+traffic. Durations measure synchronous call wall time, not GPU completion.
+Disposed atlas observations remain until the next interval without retaining
+resources. Creation of new observation records adds diagnostic allocation.
+The `atlas_uploads_max_in_interval`, `intervals_with_atlas_upload`, and
+`atlas_upload_related_intervals/mean_ms/max_ms` fields count uploads and
+sample intervals containing an upload or immediately following one. Their
+association does not establish that uploads caused a hitch. These atlas
+uploads are distinct from the existing `LandPages` array-upload counters.
 Since PERF-03 each scene also carries `render_frame_ms`, `ui_ms`,
 `update_world_ms`, `stage_<stage>_ms` for every `PerfStages.Stage`
 (`gather`, `mesh_build`, `gather_tail`, `land_mesh`, `land_loose`, `sort`,
@@ -3578,3 +3781,76 @@ Native capture sizes: 640x480, 1920x1080 and desktop-simulated phone aspect
 1080x2340. Existing `--presentation-parity` is the desktop paperdoll pixel
 test; `client.input.touch` and the shard-free touch-gesture probe remain
 regression checks. Physical phone gesture proof is separate from simulation.
+
+## 48. Ordered GPU world lab (ADR-0043)
+
+`--rd-world` and the shared Labs `-rdworld`/Options action select a session-only
+experimental world backend in Debug builds compiled with `GuoLabs=true`.
+The default is off; no profile field, packet, asset format or export behavior
+changes. Its README supplies the dependency/pixel doctor and the scenario is
+`client.renderer.ordered-rd`.
+
+The prototype retains a complete canvas rollback while recording ordered
+quads for Godot's main RenderingDevice. Unsupported states keep canvas for
+the entire pass. The render thread selects the current frame only after
+recording succeeds. Four corners become six vertices on the GPU, with the
+original rect/mesh diagonals, nearest sampling and raw UO color arithmetic.
+
+Chunk statics and terrain additionally keep bounded source records with per-quad
+dirty revisions. `rd_source_record_hits_per_frame` counts reused occurrences,
+`rd_source_records_packed_per_frame` counts rebuilt records, and
+`rd_source_dirty_checks_per_frame` counts exact source comparisons after a dirty
+notification (including reset/restored alpha). These are work counters, not
+frame or GPU times. Source revisions are private runtime state, not serialized
+IDs. The diagnostic flag `--rd-content-cache` under `--rd-world` disables this
+source reuse while retaining the original exact-content resident GPU cache.
+It has no effect outside Labs and does not enable the RD toggle by itself.
+
+Cached sources are captured as references to frame-immutable packets. Diagnostics
+`rd_referenced_quads_per_frame`, `rd_dynamic_capture_bytes_per_frame`,
+`rd_replayed_quads_per_frame` and `rd_source_packet_allocations_per_frame` count
+reference occurrences, uncached vertex bytes, fallback occurrences and new packet
+objects respectively. Reused packets receive fresh content IDs when changed;
+these fields are not retained-memory or total-allocation measurements. PerfDump
+also supplies `rd_frames_drawn_in_counter_window`,
+`rd_frames_fallback_in_counter_window` and `rd_last_frame_on_pass` to verify that
+timed observations actually used the pass.
+
+Labs PerfProbe rows add `rd_frames_drawn`, `rd_frames_fallback`,
+`rd_upload_bytes_per_frame`, `rd_draw_calls_per_frame`, `rd_record_cpu_ms`,
+`rd_last_fallback`, and parity field `rd_test_on_pass`. These supplement the
+canvas monitors, which do not count this custom pass. Recording CPU occurs
+outside the existing world-draw profiler context and must be reported in
+comparisons. `rd_test_on_pass` must match both test captures for active proof.
+Recording time includes callback initialization/fallback but excludes capture,
+queued waiting and GPU execution. Draw counts cover actual issued commands;
+upload counts cover successful writes. Both can precede a later transaction
+failure, so successful presentation requires the separate frame counters.
+Ordinary terrain rows add `terrain_dirty_chunks_per_frame` and
+`terrain_rebuilt_sprites_per_frame`, measured as counter deltas.
+
+`rd_canvas_items_cleared_per_frame` counts the batcher's native canvas-item
+clear calls over the measured interval, including ordinary canvas/off rows in
+a Labs build. It excludes private replay children, the ID mirror and GPU target
+clears. With RD enabled, only the preceding frame's active items need clearing;
+the retained unused tail was already cleared on its first idle frame. The item
+pool is retained, and RD-off keeps the ordinary full-pool clearing policy.
+
+Ordered state uses a 32-byte record per occurrence, capped at
+262,144 occurrences: transform floats at offsets 0/4/8 and 16/20/24, a uint art
+selector at offset 12 and zero padding at 28. Ordered batches bind at most four
+original art views plus hue/light, with immutable first-seen slots; a fifth view
+or palette change starts a new draw. Ordering and duplicate occurrences are
+preserved. Changed nonempty state
+streams upload all active rows once before drawing, while exact unchanged
+valid state uploads nothing. `rd_state_bytes_per_frame`,
+`rd_state_upload_calls_per_frame`, `rd_changed_state_streams_per_frame` and
+`rd_state_buffer_growths` expose that work; total upload bytes/calls include it.
+`rd_active_state_bytes` and `rd_state_capacity_bytes` are last-reported device
+gauges, possibly stale after a failed preparation and not summed across devices.
+`rd_occurrences_per_frame`, `rd_texture_runs_per_frame` and
+`rd_texture_batches_per_frame` count
+prepared streams even if drawing later fails; `rd_draw_calls_per_frame` counts
+issued commands. Runs count adjacent original complete texture tuples; batches
+count the prepared bounded descriptor groups. A/B/A has three runs and one
+batch. None measures GPU duration or individually dirty state rows.

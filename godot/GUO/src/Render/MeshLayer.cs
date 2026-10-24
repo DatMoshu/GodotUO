@@ -73,7 +73,7 @@ namespace GUO.Renderer
     /// <c>UploadVisibleIndices</c> and <c>FlushAlphaChanges</c> are gone with
     /// the buffers; the mesh rebuild is when all three used to happen.
     /// </remarks>
-    public sealed class MeshLayer
+    public sealed partial class MeshLayer
     {
         private const int INITIAL_CAPACITY = 64;
 
@@ -108,6 +108,7 @@ namespace GUO.Renderer
         // an ArrayMesh cannot be edited in place, so a rebuild clears its
         // surfaces and adds a new one, which is cheaper than a new resource.
         private ArrayMesh[] _runMeshes = new ArrayMesh[16];
+        private int _runMeshStamp = -1;
 
         // Scratch for a rebuild, grown to the largest run seen. Six vertices
         // per sprite: the quad's two triangles, written out, because the canvas
@@ -187,6 +188,7 @@ namespace GUO.Renderer
             v.Hue1.Z = alpha;
             v.Hue2.Z = alpha;
             v.Hue3.Z = alpha;
+            RecordVertexChanged(index);
 
             if (_alphaDirtyCount >= _alphaDirtyIndices.Length)
                 Array.Resize(ref _alphaDirtyIndices, _alphaDirtyIndices.Length * 2);
@@ -211,6 +213,7 @@ namespace GUO.Renderer
                 v.Hue1.Z = 1f;
                 v.Hue2.Z = 1f;
                 v.Hue3.Z = 1f;
+                RecordVertexChanged(_alphaDirtyIndices[i]);
             }
 
             _alphaDirty = true;
@@ -230,6 +233,7 @@ namespace GUO.Renderer
             float alpha = v.Hue0.Z;
             var h = new Vector3(hueX, hueY, alpha);
             v.Hue0 = v.Hue1 = v.Hue2 = v.Hue3 = h;
+            RecordVertexChanged(index);
 
             MarkVertexDirty();
         }
@@ -286,6 +290,7 @@ namespace GUO.Renderer
             vertex.Hue0 = vertex.Hue1 = vertex.Hue2 = vertex.Hue3 = hue;
 
             Textures[index] = texture;
+            RecordVertexChanged(index);
 
             MarkVertexDirty();
         }
@@ -350,7 +355,9 @@ namespace GUO.Renderer
 
             CloseRun(curTexture, runStart);
 
-            BuildRunMeshes();
+            // PORT DEVIATION (GUO): merged terrain consumes the visible
+            // quads directly. Build run meshes only if a caller draws them.
+            BuildStamp++;
 
             return VisibleSpriteCount > 0;
         }
@@ -387,7 +394,7 @@ namespace GUO.Renderer
         /// </remarks>
         private void BuildRunMeshes()
         {
-            BuildStamp++;
+            _runMeshStamp = BuildStamp;
             // Walk the visible sprites in the same order the runs were closed
             // in: runs are contiguous stretches of the visible subset, so run
             // N's sprites are simply the next r.Count of them.
@@ -560,6 +567,7 @@ namespace GUO.Renderer
 
         public void Reset()
         {
+            RecordLayerReset();
             Count = 0;
             VisibleSpriteCount = 0;
             VisibleRunCount = 0;
@@ -573,6 +581,7 @@ namespace GUO.Renderer
         /// </summary>
         public void SoftReset()
         {
+            RecordLayerReset();
             Count = 0;
             VisibleSpriteCount = 0;
             VisibleRunCount = 0;
@@ -588,7 +597,12 @@ namespace GUO.Renderer
         /// <summary>
         /// Returns the mesh for a visible run, for the batcher to draw.
         /// </summary>
-        public ArrayMesh GetRunMesh(int run) => _runMeshes[run];
+        public ArrayMesh GetRunMesh(int run)
+        {
+            if (_runMeshStamp != BuildStamp)
+                BuildRunMeshes();
+            return _runMeshes[run];
+        }
 
         /// <remarks>
         /// PORT DEVIATION (GUO): upstream frees its vertex buffer here. The
@@ -600,6 +614,8 @@ namespace GUO.Renderer
         /// </remarks>
         public void Dispose()
         {
+            RecordLayerReset();
+            _runMeshStamp = -1;
             for (int i = 0; i < _runMeshes.Length; i++)
             {
                 _runMeshes[i]?.Dispose();
@@ -613,5 +629,13 @@ namespace GUO.Renderer
 
             Array.Clear(_spriteMeshes);
         }
+
+        // PORT DEVIATION (GUO): ADR-0043's optional record invalidation seam.
+        // Unimplemented partial calls disappear completely outside Debug Labs.
+        partial void RecordVertexChanged(int index);
+        partial void RecordLayerReset();
+
+        [System.Diagnostics.Conditional("GUO_LABS")]
+        internal void InvalidateQuadRecord(int index) => RecordVertexChanged(index);
     }
 }

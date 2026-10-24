@@ -47,6 +47,7 @@ SCENES = [
     ("britain-bank", 1434, 1699, 0),
     ("dense-forest", 633, 858, None),
     ("dungeon", 5401, 629, None),
+    ("britain-docks", 1497, 1790, -5),
 ]
 KEYS = ["world_prepare_ms", "world_draw_ms", "render_frame_ms", "render_ui_ms", "update_world_ms"]
 
@@ -60,7 +61,13 @@ def wait_for(path: Path, proc: subprocess.Popen, timeout: float) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
         if path.exists():
-            return True
+            try:
+                # Sustained GUO runs write intermediate samples before the
+                # final receipt. Do not stop the client at its first write.
+                if json.loads(path.read_text(encoding="utf-8")).get("sample_complete", True):
+                    return True
+            except (OSError, json.JSONDecodeError):
+                pass  # Writer may be replacing the receipt at this instant.
         if proc.poll() is not None:
             return False
         time.sleep(1.0)
@@ -75,14 +82,18 @@ def end(proc: subprocess.Popen) -> None:
         proc.kill()
 
 
-def run_guo(cfg: Config, out: Path, scene: tuple, size: str, spec: str, timeout: float, quiet: bool = False) -> bool:
+def run_guo(cfg: Config, out: Path, scene: tuple, size: str, spec: str, timeout: float,
+            executable: Path | None = None, sample_seconds: int = 0, quiet: bool = False) -> bool:
     log = out / scene[0] / "guo.log"
     log.parent.mkdir(parents=True, exist_ok=True)
-    env = {**ab.guo_environment(cfg), "GUO_PERF_DUMP": spec, "GUO_PERF_QUIET": "1" if quiet else "0"}
+    env = {**ab.guo_environment(cfg), "GUO_PERF_DUMP": spec,
+           "GUO_PERF_SAMPLE_SECONDS": str(sample_seconds), "GUO_PERF_QUIET": "1" if quiet else "0"}
+    (out / scene[0] / "guo-samples.jsonl").unlink(missing_ok=True)
+    engine = [str(executable)] if executable else [str(cfg.godot_console_exe), "--path", str(cfg.godot_project)]
     proc = subprocess.Popen(
         # --play logs in only with something scripted to do: one shard
         # command (the daylight ab_compare pins too), then --stay.
-        [str(cfg.godot_console_exe), "--path", str(cfg.godot_project), "--", "--play", "--silent",
+        [*engine, "--", "--play", "--silent",
          "--window-size", size, "--account", cfg.shard_owner, "--password", cfg.shard_owner_password,
          "--postfx", "off",  # the Classic look, whatever look is saved
          "--shard-command", f"[globallight {ab.DAYLIGHT}", "--stay"],
@@ -149,6 +160,9 @@ def main() -> int:
                     help="per client and scene; covers login, SECONDS, and PerfDump's fade wait (up to 60 s)")
     ap.add_argument("--build", action="store_true", help="build ClassicUO first (tools/ab_compare)")
     ap.add_argument("--only", choices=["cuo", "guo"], help="run one client")
+    ap.add_argument("--guo-exe", type=Path, help="run this existing exported GUO executable, without rebuilding")
+    ap.add_argument("--sample-seconds", type=int, default=0,
+                    help="GUO-only sustained sampling after settling (1-300 seconds; 0 keeps one-shot behavior)")
     ap.add_argument("--quiet", action="store_true",
                     help="GUO only: freeze the weather and drop incoming messages (GUO_PERF_QUIET) for comparable captures")
     ap.add_argument("--scene", action="append", choices=[s[0] for s in SCENES], help="run these scenes only")
@@ -156,6 +170,12 @@ def main() -> int:
     ap.add_argument("--as-built", action="store_true",
                     help="run GUO as it is built, instead of rebuilding it optimised first (tools/guo/build.py)")
     args = ap.parse_args()
+    if not 0 <= args.sample_seconds <= 300:
+        ap.error("--sample-seconds must be between 0 and 300")
+    if args.sample_seconds and args.only != "guo":
+        ap.error("--sample-seconds requires --only guo")
+    if args.guo_exe and not args.guo_exe.is_file():
+        ap.error("--guo-exe must name an existing export")
 
     if args.quiet and args.only != "guo":
         ap.error("--quiet requires --only guo")
@@ -168,9 +188,9 @@ def main() -> int:
         return 0
 
     size = tuple(int(v) for v in args.size.split(","))
-    if args.build or not cfg.upstream_exe.exists():
+    if args.build or (args.only != "guo" and not cfg.upstream_exe.exists()):
         ab.build_cuo(cfg)
-    if args.only != "cuo" and not args.as_built:
+    if args.only != "cuo" and not args.as_built and not args.guo_exe:
         build_client(cfg)
 
     failed = 0
@@ -181,7 +201,8 @@ def main() -> int:
                 continue
             (out / scene[0] / f"{client}.json").unlink(missing_ok=True)
             ok = (run_cuo(cfg, out, scene, size, spec, args.timeout) if client == "cuo"
-                  else run_guo(cfg, out, scene, args.size, spec, args.timeout, args.quiet))
+                  else run_guo(cfg, out, scene, args.size, spec, args.timeout,
+                               args.guo_exe, args.sample_seconds, args.quiet))
             print(f"[perf_dump] {scene[0]} {client}: {'ok' if ok else 'NO RESULT (see its log)'}", flush=True)
             failed += not ok
     print(report(out))

@@ -47,7 +47,7 @@ namespace GUO.Renderer
     /// order is the sorted order and the argument is accepted and ignored.
     /// </para>
     /// </remarks>
-    public sealed class UltimaBatcher2D : IDisposable
+    public sealed partial class UltimaBatcher2D : IDisposable
     {
         private const string SHADER_PATH = "res://src/Render/shaders/uo_hue.gdshader";
         private const string BLEND_SHADER_PATH = "res://src/Render/shaders/uo_hue_blend.gdshader";
@@ -135,6 +135,8 @@ namespace GUO.Renderer
             public Material Material;
             public bool CopyToBackbuffer;
             public RenderingServer.CanvasItemTextureFilter Filter;
+            public RetainedCanvasCommands Commands;
+            public bool RetainedHidden;
         }
 
         private ItemState[] _itemStates = new ItemState[64];
@@ -198,6 +200,8 @@ namespace GUO.Renderer
         }
 
         public int TextureSwitches, FlushesDone;
+        public int NativeTextureMeasurements;
+        public static int LastNativeTextureMeasurements;
 
         /// <summary>Canvas draw commands added this frame: one per sprite, mesh or triangle list.</summary>
         public int Commands;
@@ -320,6 +324,7 @@ namespace GUO.Renderer
 
             Commands++;
             Count(3, RidOf(_runTexture));
+            _canvasCommands?.Bypass();
             RenderingServer.CanvasItemAddTriangleArray(
                 _runItem, _runIndices.ToArray(), _runPoints.ToArray(), _runColors.ToArray(), _runUVs.ToArray(),
                 null, null, RidOf(_runTexture));
@@ -332,6 +337,10 @@ namespace GUO.Renderer
 
         public void Dispose()
         {
+#if GUO_LABS
+            _orderedWorld?.Dispose();
+            _orderedPresentMaterial?.Dispose();
+#endif
             for (int i = 0; i < _items.Count; i++)
             {
                 RenderingServer.FreeRid(_items[i]);
@@ -339,6 +348,8 @@ namespace GUO.Renderer
 
             _items.Clear();
             System.Array.Clear(_itemStates);
+            _canvasCommands = null;
+            _canvasBudget = null;
 
             foreach (ShaderMaterial material in _blendMaterials.Values)
             {
@@ -413,6 +424,12 @@ namespace GUO.Renderer
         private void SetOnAllMaterials(string name, Variant value)
         {
             StringName param = UniformName(name);
+#if GUO_LABS
+            // Canvas materials are shared: a changed global must also affect the
+            // already captured prefix instead of leaving an older RD snapshot.
+            if (_orderedWorld?.Deferring == true && !_material.GetShaderParameter(param).Equals(value))
+                _orderedWorld.Reject("shared material changed during world capture");
+#endif
             GpuWorld.Pass?.SetShared(param, value); // PORT DEVIATION (GUO): --gpu-world's materials share the hue uniforms
             _material.SetShaderParameter(param, value);
             _meshMaterial.SetShaderParameter(param, value);
@@ -444,11 +461,34 @@ namespace GUO.Renderer
         /// Resetting the pool in Begin would erase the previous pass, so the
         /// reset lives here and Begin only sets up its own batch.
         /// </remarks>
-        public void BeginFrame()
+        public void BeginFrame() => BeginFrame(deferRetainedHiding: false);
+
+        /// <summary>Opt into deferred retained hiding only when a complete
+        /// synchronous frame will call <see cref="EndFrame"/> in a finally block.</summary>
+        public void BeginFrame(bool deferRetainedHiding)
         {
+            // PORT DEVIATION (GUO): a missing EndFrame must not carry a
+            // partially matched old stream into the next frame, even in Release.
+            if (_deferredCanvasFrameOpen || _canvasRecoveryPending)
+                RecoverDeferredCanvasFrame(throwOnFailure: true);
+            _retainCanvasFrame = RetainCanvas;
+            int itemsToClear = _items.Count;
+#if GUO_LABS
+            // ADR-0043: every item used last frame must be cleared once. The
+            // unused tail was cleared on its first idle frame and is still empty.
+            if (GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled) itemsToClear = _itemCount;
+            if (GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled) _retainCanvasFrame = false;
+            ResetOrderedWorldItems();
+#endif
             EnsureNotStarted();
+            FinishCanvasCommands();
+            // RD owns its late visibility election; legacy GPU capture keeps
+            // its existing eager lifecycle. Ordinary embedded/probe callers
+            // retain the default behavior without needing an EndFrame call.
+            _deferredCanvasFrameOpen = deferRetainedHiding && _retainCanvasFrame && !GpuWorld.Enabled;
 
             LastFrame = (TextureSwitches, _itemCount, Commands);
+            LastNativeTextureMeasurements = NativeTextureMeasurements;
             LastKinds = (Kinds[0], Kinds[1], Kinds[2], Kinds[3], EstimatedBatches, Kinds[4], CoverRuns);
             System.Array.Clear(Kinds);
             EstimatedBatches = 0;
@@ -459,6 +499,7 @@ namespace GUO.Renderer
             _itemCount = 0;
             _sizedTexture = null;
             TextureSwitches = 0;
+            NativeTextureMeasurements = 0;
             FlushesDone = 0;
             Commands = 0;
 
@@ -468,13 +509,32 @@ namespace GUO.Renderer
             // what the alternative costs.
             TextureAtlas.FlushAll();
 
-            // Everything in the pool, not just what this frame ends up using:
-            // an item left over from a busier frame would otherwise keep
-            // painting last frame's sprites.
-            for (int i = 0; i < _items.Count; i++)
+            // Include every item that could still hold previous commands,
+            // even when this frame ends up using fewer items.
+            for (int i = 0; i < itemsToClear; i++)
             {
-                RenderingServer.CanvasItemClear(_items[i]);
+                ref ItemState state = ref _itemStates[i];
+                if (_retainCanvasFrame && state.Commands?.HasCommands == true)
+                {
+                    // Main DrawFrame owns an explicit final boundary. Other
+                    // callers still hide eagerly and reveal only their used prefix.
+                    if (!_deferredCanvasFrameOpen && !state.RetainedHidden)
+                    {
+                        RenderingServer.CanvasItemSetVisible(_items[i], false);
+                        CanvasHides++;
+                        state.RetainedHidden = true;
+                    }
+                }
+                else
+                {
+                    RenderingServer.CanvasItemClear(_items[i]);
+                    CanvasOwnerClears++;
+                    state.Commands?.Reset();
+                }
             }
+#if GUO_LABS
+            OrderedCanvasItemsCleared += itemsToClear;
+#endif
         }
 
         public void Begin()
@@ -525,6 +585,7 @@ namespace GUO.Renderer
         {
             EnsureStarted();
             FlushRun();
+            FinishCanvasCommands();
 
             _started = false;
         }
@@ -752,7 +813,7 @@ void fragment() {
             FlushRun();
             Commands++;
             Count(2, default);
-            RenderingServer.CanvasItemAddMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, default);
+            CanvasMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, default);
         }
 
         /// <summary>
@@ -763,13 +824,16 @@ void fragment() {
         /// </summary>
         public void DrawSplatMesh(ArrayMesh mesh)
         {
+#if GUO_LABS
+            _orderedWorld?.Reject("splat");
+#endif
             EnsureStarted();
             SelectSpriteSampler(null);
             EnsureMaterial(_splatMaterial);
             FlushRun();
             Commands++;
             Count(2, default);
-            RenderingServer.CanvasItemAddMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, default);
+            CanvasMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, default);
         }
 
         /// <summary>
@@ -779,13 +843,16 @@ void fragment() {
         /// </summary>
         public void DrawLayerMesh(ArrayMesh mesh, Texture2D texture)
         {
+#if GUO_LABS
+            _orderedWorld?.Reject("terrain layer");
+#endif
             EnsureStarted();
             SelectSpriteSampler(null);
             EnsureMaterial(_layerMaterial);
             FlushRun();
             Commands++;
             Count(2, default);
-            RenderingServer.CanvasItemAddMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, texture.GetRid());
+            CanvasMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, texture.GetRid());
         }
 
         /// <summary>
@@ -800,7 +867,7 @@ void fragment() {
             FlushRun();
             Commands++;
             Count(2, default);
-            RenderingServer.CanvasItemAddMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, texture.GetRid());
+            CanvasMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, texture.GetRid());
         }
 
         /// <summary>
@@ -852,7 +919,7 @@ void fragment() {
                 Commands++;
                 Count(2, default);
 
-                RenderingServer.CanvasItemAddMesh(
+                CanvasMesh(
                     _current,
                     mesh.GetRid(),
                     Transform2D.Identity,
@@ -891,6 +958,9 @@ void fragment() {
             }
 
             var offset = new Vector2(-offsetX, -offsetY);
+#if GUO_LABS
+            if (OrderedWorldRecording && _orderedWorld.MeshRecord(layer, index, offset)) return 1;
+#endif
 
             // PORT DEVIATION (GUO): --gpu-world draws covering land in the
             // pass, keyed; a tile whose texture has no land-array page (HD,
@@ -962,7 +1032,7 @@ void fragment() {
             Commands++;
             Count(4, default);
 
-            RenderingServer.CanvasItemAddMesh(
+            CanvasMesh(
                 _current,
                 mesh.GetRid(),
                 Transform2D.Identity,
@@ -1029,7 +1099,7 @@ void fragment() {
             BindLandPages(LandPages.Array);
             Commands++;
             Count(4, default);
-            RenderingServer.CanvasItemAddMesh(_current, mesh, Transform2D.Identity, Colors.White, default);
+            CanvasMesh(_current, mesh, Transform2D.Identity, Colors.White, default);
 
             if (cut)
             {
@@ -1051,6 +1121,10 @@ void fragment() {
         {
             if (index < 0 || index >= layer.Count || !layer.Visible[index] || layer.Textures[index] == null)
                 return 0;
+
+#if GUO_LABS
+            if (OrderedWorldRecording && CaptureOrderedStatic(layer, index, offsetX, offsetY)) return 1;
+#endif
 
             ref var quad = ref layer.Vertices[index];
             var uvSize = quad.TextureCoordinate3 - quad.TextureCoordinate0;
@@ -1099,6 +1173,7 @@ void fragment() {
             _compositeMaterial ??= new CanvasItemMaterial { BlendMode = CanvasItemMaterial.BlendModeEnum.PremultAlpha };
 
             Rid item = NewItem(CurrentParent, _viewTransform.AffineInverse());
+            _canvasCommands?.Bypass();
             ItemSetMaterial(item, _compositeMaterial);
             RenderingServer.CanvasItemAddTextureRect(item, new Rect2(0, 0, width, height), pass.Texture.GetRid());
             Commands++;
@@ -1154,6 +1229,9 @@ void fragment() {
         public void SetBlendState(BlendState blend)
         {
             blend = blend ?? BlendState.AlphaBlend;
+#if GUO_LABS
+            if (!blend.IsPremultipliedAlpha) _orderedWorld?.Reject("custom blend");
+#endif
 
             // PORT DEVIATION (GUO): --gpu-world draws custom blends on the
             // canvas, after the composite (see BeginCapture).
@@ -1262,6 +1340,10 @@ void fragment() {
         /// </summary>
         public void SetSampler(SamplerState sampler)
         {
+#if GUO_LABS
+            if ((sampler ?? SamplerState.PointClamp) != SamplerState.PointClamp)
+                _orderedWorld?.Reject("non-nearest sampler");
+#endif
             if (TraceSamplerCalls) SamplerCalls++;
             _hdSpriteSampler = false;
             _sampler = sampler ?? SamplerState.PointClamp;
@@ -1288,6 +1370,9 @@ void fragment() {
         /// <summary>Scoped UI transform; clip children inherit it. Pop with ClipEnd.</summary>
         public void PushUiTransform(Transform2D transform)
         {
+#if GUO_LABS
+            _orderedWorld?.Reject("nested transform");
+#endif
             Rid parent = NewItem(CurrentParent, transform);
             _clipStack.Add(parent);
             Cut();
@@ -1295,6 +1380,9 @@ void fragment() {
 
         public bool ClipBegin(int x, int y, int width, int height)
         {
+#if GUO_LABS
+            _orderedWorld?.Reject("clip");
+#endif
             if (width <= 0 || height <= 0)
             {
                 return false;
@@ -1307,6 +1395,10 @@ void fragment() {
             // clip item inside the enclosing one is what intersects them.
             Rid clip = NewItem(CurrentParent, Transform2D.Identity);
 
+            // PORT DEVIATION (GUO): this is an empty clip ancestor. Finish
+            // removing any retained sprite suffix BEFORE enabling clipping:
+            // Godot's CanvasItemClear also resets the native clip flag.
+            FinishCanvasCommands();
             ItemSetCustomRect(clip, new Rect2(x, y, width, height));
             ItemSetClip(clip, true);
 
@@ -2002,9 +2094,19 @@ void fragment() {
             {
                 TextureSwitches++;
                 _sizedTexture = texture;
-                _sizedWidth = texture.GetWidth();
-                _sizedHeight = texture.GetHeight();
-                _sizedRid = texture.GetRid();
+                if (TextureAtlas.TryGetMetadata(texture, out var page))
+                {
+                    _sizedWidth = page.Width;
+                    _sizedHeight = page.Height;
+                    _sizedRid = page.Rid;
+                }
+                else
+                {
+                    NativeTextureMeasurements++;
+                    _sizedWidth = texture.GetWidth();
+                    _sizedHeight = texture.GetHeight();
+                    _sizedRid = texture.GetRid();
+                }
             }
         }
 
@@ -2065,6 +2167,16 @@ void fragment() {
 
             int textureWidth = WidthOf(texture);
             int textureHeight = HeightOf(texture);
+#if GUO_LABS
+            if (OrderedWorldRecording && rotationSin == 0f && rotationCos == 1f && effects == 0)
+            {
+                SetQuadPoints(destinationX, destinationY, destinationW, destinationH, originX, originY, rotationSin, rotationCos);
+                SetQuadUVs(sourceX, sourceY, sourceW, sourceH, sourceH, effects);
+                if (CaptureOrderedQuad(texture, color, true,
+                    new Rect2(destinationX - originX * destinationW, destinationY - originY * destinationH, destinationW, destinationH),
+                    new Rect2(sourceX * textureWidth, sourceY * textureHeight, sourceW * textureWidth, sourceH * textureHeight))) return;
+            }
+#endif
 
             // PORT DEVIATION (GUO): --gpu-world captures the sprite as an
             // instance: the rect path's corners and texel source rect, or the
@@ -2088,8 +2200,13 @@ void fragment() {
                 return;
             }
 
-            SelectSpriteSampler(texture);
-            EnsureMaterial(_currentMaterial);
+#if GUO_LABS
+            if (_orderedWorld?.Deferring != true)
+#endif
+            {
+                SelectSpriteSampler(texture);
+                EnsureMaterial(_currentMaterial);
+            }
 
             // PORT DEVIATION (GUO): the id mirror (ADR-0023) follows the plain path only.
             if (rotationSin == 0f && rotationCos == 1f && effects == 0 && BatchedWorld && !_mirroring)
@@ -2119,16 +2236,13 @@ void fragment() {
                     sourceY * textureHeight,
                     sourceW * textureWidth,
                     sourceH * textureHeight);
-                RenderingServer.CanvasItemAddTextureRectRegion
+                CanvasRect
                 (
                     _current,
                     destinationRect,
                     RidOf(texture),
                     sourceRect,
-                    Encode(color),
-                    false,
-                    // Upstream clamps nothing, so neither does this.
-                    false
+                    Encode(color)
                 );
                 MirrorRect(destinationRect, texture, sourceRect); // PORT DEVIATION (GUO): ADR-0023
 
@@ -2221,25 +2335,42 @@ void fragment() {
                 return;
             }
 
-            SelectSpriteSampler(texture);
-            EnsureMaterial(_currentMaterial);
+#if GUO_LABS
+            if (_orderedWorld?.Deferring != true)
+#endif
+            {
+                SelectSpriteSampler(texture);
+                EnsureMaterial(_currentMaterial);
+            }
 
             Color modulate = Encode(color);
             MirrorQuad(texture); // PORT DEVIATION (GUO): ADR-0023's id mirror, before any path returns
 
             if (BatchedWorld && !_mirroring)
             {
+#if GUO_LABS
+                if (CaptureOrderedQuad(texture, color)) return;
+#endif
                 AppendToRun(texture, _quadPoints[0], _quadPoints[1], _quadPoints[2], _quadPoints[3],
                     _quadUVs[0], _quadUVs[1], _quadUVs[2], _quadUVs[3], modulate);
                 return;
             }
 
-            if (TryAddAffineQuad(texture, modulate))
+            if (TryAddAffineQuad(texture, modulate, color))
             {
                 return;
             }
 
             _quadColors[0] = modulate;
+#if GUO_LABS
+            if (CaptureOrderedQuad(texture, color)) return;
+            // A rejection emitted the captured prefix; prepare this original suffix draw.
+            if (OrderedWorldRecording)
+            {
+                SelectSpriteSampler(texture);
+                EnsureMaterial(_currentMaterial);
+            }
+#endif
             _quadColors[1] = modulate;
             _quadColors[2] = modulate;
             _quadColors[3] = modulate;
@@ -2248,6 +2379,7 @@ void fragment() {
             Commands++;
             Count(3, RidOf(texture));
 
+            _canvasCommands?.Bypass();
             RenderingServer.CanvasItemAddTriangleArray
             (
                 _current,
@@ -2278,7 +2410,7 @@ void fragment() {
         /// the UVs have to span an axis-aligned region, or the quad goes the
         /// old way.
         /// </remarks>
-        private bool TryAddAffineQuad(Texture2D texture, Color modulate)
+        private bool TryAddAffineQuad(Texture2D texture, Color modulate, Vector3 hue)
         {
             var size = new Vector2(WidthOf(texture), HeightOf(texture));
 
@@ -2324,13 +2456,19 @@ void fragment() {
             }
 
             var region = new Rect2(left, top, right - left, bottom - top);
+#if GUO_LABS
+            if (CaptureOrderedAffine(texture, hue, region, size, new Transform2D(axisX, axisY, origin))) return true;
+            if (OrderedWorldRecording)
+            {
+                SelectSpriteSampler(texture);
+                EnsureMaterial(_currentMaterial);
+            }
+#endif
 
             FlushRun();
-            RenderingServer.CanvasItemAddSetTransform(_current, new Transform2D(axisX, axisY, origin));
             Commands++;
             Count(1, RidOf(texture));
-            RenderingServer.CanvasItemAddTextureRectRegion(_current, region, RidOf(texture), region, modulate, false, false);
-            RenderingServer.CanvasItemAddSetTransform(_current, Transform2D.Identity);
+            CanvasAffine(region, RidOf(texture), modulate, new Transform2D(axisX, axisY, origin));
 
             return true;
         }
@@ -2414,6 +2552,7 @@ void fragment() {
         private Rid NewItem(Rid parent, in Transform2D transform)
         {
             FlushRun();
+            FinishCanvasCommands();
             Rid item;
             int index = _itemCount;
 
@@ -2495,6 +2634,7 @@ void fragment() {
             _lastItem = index;
             _itemCount++;
             FlushesDone++;
+            StartCanvasCommands(index, item);
 
             return item;
         }

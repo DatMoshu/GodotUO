@@ -30,7 +30,7 @@ namespace GUO.Host;
 /// between runs on one machine at one window size; the draw calls and batcher
 /// counts are comparable anywhere.
 /// </remarks>
-internal static class PerfProbe
+internal static partial class PerfProbe
 {
     public static bool Passed { get; private set; }
 
@@ -96,22 +96,19 @@ internal static class PerfProbe
     private const int Settle = 180;
     private static string _outDir, _label;
     private static bool _parity;
+    private static bool _retainedCanvasParity;
+    private static bool _coverCandidatesParity;
+    private static bool _runtimeAttribution;
+    private static bool _intervalCounters;
+    private static PerfWalkRoute _walkRoute;
+    private static int _warmupSeconds, _measureSeconds, _walkSeconds = 12;
+    private static string _walkOrigin = "field";
     private static string _profilePreset = "", _profileSummary = "";
 
     // PERF-LANE-01: GUO_PERF_WARMUP_SECONDS discards that much play before a
     // world scene is timed (the first tens of seconds run Tier-0 JIT code);
     // GUO_PERF_MEASURE_SECONDS times a stationary world scene by the clock
     // instead of 360 frames. Both 0-300, default 0: the original contract.
-    private static int _warmupSeconds, _measureSeconds;
-
-    private static int DiagnosticSeconds(string name)
-    {
-        string value = System.Environment.GetEnvironmentVariable(name);
-        if (string.IsNullOrEmpty(value)) return 0;
-        if (int.TryParse(value, out int seconds) && seconds >= 0 && seconds <= 300) return seconds;
-        throw new System.ArgumentException($"{name} must be an integer from 0 to 300.");
-    }
-
     private static async System.Threading.Tasks.Task WarmUp(Node host)
     {
         PerfHostLoad.Enter(PerfHostLoad.Phase.Warmup);
@@ -135,7 +132,15 @@ internal static class PerfProbe
     /// thousand frames and more a second, a handheld sixty, and the ground
     /// covered is what matters. Twelve seconds of running crosses several chunks.
     /// </summary>
-    private const double WalkMs = 12000;
+    private static double WalkMs => _walkSeconds * 1000.0;
+
+    private static int DiagnosticSeconds(string name, int fallback, int minimum)
+    {
+        string value = System.Environment.GetEnvironmentVariable(name);
+        if (string.IsNullOrEmpty(value)) return fallback;
+        if (int.TryParse(value, out int seconds) && seconds >= minimum && seconds <= 300) return seconds;
+        throw new System.ArgumentException($"{name} must be an integer from {minimum} to 300.");
+    }
 
     /// <summary>
     /// Runs the player on, a step whenever the walker takes one, turning to the
@@ -154,8 +159,22 @@ internal static class PerfProbe
         private int _heading;
         private ulong _movedAt;
         private int _x = -1, _y = -1;
+        private readonly ObservedRoute _route = new(_walkSeconds * 16 + 16);
+        public int RouteDropped => _route.Dropped;
+        public int Tiles => _route.Tiles;
 
-        public int Tiles { get; private set; }
+        public void ObservePosition()
+        {
+            var world = Client.Game.UO.World;
+            var player = world?.Player;
+            if (player == null) return;
+            _route.Observe(world.MapIndex, player.X, player.Y, player.Z);
+        }
+
+        public int[][] Route()
+        {
+            return _route.Points();
+        }
 
         public void Step()
         {
@@ -165,14 +184,10 @@ internal static class PerfProbe
                 return;
             }
 
+            ObservePosition();
             ulong now = Godot.Time.GetTicksMsec();
             if (_x < 0 || player.X != _x || player.Y != _y)
             {
-                if (_x >= 0)
-                {
-                    Tiles += System.Math.Max(System.Math.Abs(player.X - _x), System.Math.Abs(player.Y - _y));
-                }
-
                 _movedAt = now;
             }
             else if (now - _movedAt > 1000)
@@ -191,17 +206,63 @@ internal static class PerfProbe
         string profilePreset = null, bool staticWorld = false, bool quiet = false)
     {
         StaticWorld = staticWorld;
+        var previousToggle = ParityToggle;
+        var previousState = ParityState;
+        bool previousRetained = UltimaBatcher2D.RetainCanvas;
+        bool previousCoverCandidates = Game.Scenes.RenderLists.RetainCoverCandidates;
+        bool previousRuntimeTimings = GUO.Utility.RuntimeTimings.Enabled;
+        bool previousProfiling = GUO.Utility.Profiler.Enabled;
+        _intervalCounters = System.Environment.GetEnvironmentVariable("GUO_PERF_INTERVAL_COUNTERS") == "1";
+        _runtimeAttribution = _intervalCounters || System.Environment.GetEnvironmentVariable("GUO_PERF_RUNTIME_ATTRIBUTION") == "1";
+        _retainedCanvasParity = System.Environment.GetEnvironmentVariable("GUO_PERF_PARITY_CANVAS") == "1";
+        _coverCandidatesParity = System.Environment.GetEnvironmentVariable("GUO_PERF_PARITY_COVER_CANDIDATES") == "1";
         PerfFixture.Quiet = quiet;
         PerfHostLoad.Start();
         try
         {
-            _warmupSeconds = DiagnosticSeconds("GUO_PERF_WARMUP_SECONDS");
-            _measureSeconds = DiagnosticSeconds("GUO_PERF_MEASURE_SECONDS");
+            _warmupSeconds = DiagnosticSeconds("GUO_PERF_WARMUP_SECONDS", 0, 0);
+            _measureSeconds = DiagnosticSeconds("GUO_PERF_MEASURE_SECONDS", 0, 0);
+            _walkSeconds = DiagnosticSeconds("GUO_PERF_WALK_SECONDS", 12, 1);
+            _walkOrigin = System.Environment.GetEnvironmentVariable("GUO_PERF_WALK_ORIGIN") ?? "field";
+            string routePath = System.Environment.GetEnvironmentVariable("GUO_PERF_WALK_ROUTE");
+            _walkRoute = string.IsNullOrWhiteSpace(routePath) ? null : PerfWalkRoute.Load(routePath);
+            if (_walkRoute != null && (parity || Only.Count != 1 || Only[0] != "walk"))
+                throw new System.ArgumentException("GUO_PERF_WALK_ROUTE requires only --perf-scene walk, without --perf-parity.");
+            if (_walkOrigin is not ("field" or "bank" or "docks"))
+                throw new System.ArgumentException("GUO_PERF_WALK_ORIGIN must be field, bank or docks.");
+            if (_retainedCanvasParity || _coverCandidatesParity)
+            {
+                bool rd = false;
+#if GUO_LABS
+                rd = GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled;
+#endif
+                if (!parity || GpuWorld.Enabled || rd || (_retainedCanvasParity && _coverCandidatesParity))
+                    throw new System.InvalidOperationException("Select one GUO_PERF_PARITY diagnostic with --perf-parity and ordinary canvas rendering.");
+                if (_coverCandidatesParity)
+                {
+                    ParityToggle = on => Game.Scenes.RenderLists.RetainCoverCandidates = on;
+                    ParityState = () => Game.Scenes.RenderLists.RetainCoverCandidates;
+                }
+                else
+                {
+                    ParityToggle = on => UltimaBatcher2D.RetainCanvas = on;
+                    ParityState = () => UltimaBatcher2D.RetainCanvas;
+                }
+            }
             await RunProbe(host, outDir, label, zoom, parity, profilePreset);
         }
         finally
         {
             StaticWorld = false;
+            ParityToggle = previousToggle;
+            ParityState = previousState;
+            UltimaBatcher2D.RetainCanvas = previousRetained;
+            Game.Scenes.RenderLists.RetainCoverCandidates = previousCoverCandidates;
+            _retainedCanvasParity = false;
+            _coverCandidatesParity = false;
+            _walkRoute = null;
+            GUO.Utility.RuntimeTimings.Enabled = previousRuntimeTimings;
+            GUO.Utility.Profiler.Enabled = previousProfiling;
             PerfFixture.Quiet = false;
             PerfHostLoad.Stop();
         }
@@ -246,11 +307,18 @@ internal static class PerfProbe
         // On a device, logged in as DualProbe does: the touch layer would
         // swallow the probe's clicks, which aim in client pixels.
         bool touch = GUO.Input.Touch.TouchInput.Enabled;
-        GUO.Input.Touch.TouchInput.Enabled = false;
-        InputProbe.PointerScale = Client.Game.DpiScale;
-        await InputProbe.EnterTheWorld(host, 200);
-        InputProbe.PointerScale = 1f;
-        GUO.Input.Touch.TouchInput.Enabled = touch;
+        float pointerScale = InputProbe.PointerScale;
+        try
+        {
+            GUO.Input.Touch.TouchInput.Enabled = false;
+            InputProbe.PointerScale = Client.Game.DpiScale;
+            await InputProbe.EnterTheWorld(host, 200);
+        }
+        finally
+        {
+            InputProbe.PointerScale = pointerScale;
+            GUO.Input.Touch.TouchInput.Enabled = touch;
+        }
         World world = Client.Game.UO.World;
         if (!world.InGame)
         {
@@ -318,8 +386,14 @@ internal static class PerfProbe
         }
 
         bool arrivedEverywhere = true;
-        foreach (Scene scene in scenes)
+        foreach (Scene configuredScene in scenes)
         {
+            Scene scene = configuredScene;
+            if (scene.Walks && _walkRoute != null)
+                scene = scene with { Go = _walkRoute.Go, What = "fixed 46-tile acknowledged walk; no detours or recovery teleport" };
+            else if (scene.Walks && _walkOrigin != "field")
+                scene = scene with { Go = Scenes.Single(s => s.Name == "britain-" + _walkOrigin).Go,
+                    What = $"running from Britain {_walkOrigin}, turning where blocked" };
             await InputProbe.Say(host, scene.Go);
             // Chunks newly in view load and build their meshes first; that is a
             // one-off, not what a player standing still pays every frame.
@@ -331,6 +405,7 @@ internal static class PerfProbe
                 continue;
             }
 
+            if (scene.Walks && _walkRoute != null) await PrepareReplayOrigin(host, _walkRoute);
             results.Add(await Measure(host, viewport, scene.Name, scene.What, scene.Walks));
 
             // With --perf-parity, the same spot again with the path under test
@@ -373,7 +448,13 @@ internal static class PerfProbe
             GD.PrintErr("[GUO] perf probe: a parity row has test captures the --gpu-world pass did not draw; see gpu_test_on_pass");
         }
 
-        Passed = unknown.Count == 0 && idle.Count == 0 && arrivedEverywhere && capturesValid
+        bool diagnosticCapturesValid = !(_coverCandidatesParity || _retainedCanvasParity) || results.Where(r => r.ContainsKey("parity_target_exercised"))
+            .All(r => (bool)r["parity_target_exercised"]);
+        if (!diagnosticCapturesValid)
+            GD.PrintErr("[GUO] perf probe: a world parity capture did not exercise its diagnostic target; see parity_target_exercised");
+
+        bool replayValid = results.All(r => r.GetValueOrDefault("walk_replay_valid") is not false);
+        Passed = unknown.Count == 0 && idle.Count == 0 && arrivedEverywhere && capturesValid && diagnosticCapturesValid && replayValid
             && results.Count == (_parity ? 2 : 1) * scenes.Length + 1;
     }
 
@@ -395,18 +476,17 @@ internal static class PerfProbe
     {
         // A pixel comparison needs a still frame; a run has none.
         Dictionary<string, object> parity = _parity && !walks ? await Parity(host, name) : null;
-        // The warm-up follows any parity captures, so their history is not
-        // inside the measured interval either.
+        // Time-based discard also follows parity captures, so their different
+        // histories are not hidden inside the measured interval.
         bool worldMeasurement = name != "login";
-        if (worldMeasurement && _warmupSeconds > 0) await WarmUp(host);
+        if (worldMeasurement) await WarmUp(host);
         int n = Frames;
-        Runner runner = walks ? new Runner() : null;
+        Runner runner = walks && _walkRoute == null ? new Runner() : null;
 
         // Uncapped: with vsync or a frame cap every frame below the cap reads as
         // the cap, and a renderer change that saves 4 ms would not show.
-        DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
-        int maxFps = Engine.MaxFps;
-        Engine.MaxFps = 0;
+        using var measurementState = new MeasurementState();
+        measurementState.Uncap();
         // Upstream's own pacing (GameController._intervalFixedUpdate) skips the
         // draw when a frame comes early: one draw per 1000/FPS ms. (Its 217 ms
         // inactive tick does not apply: GameController.IsActive counts a
@@ -414,57 +494,125 @@ internal static class PerfProbe
         // far faster than that interval, so left alone most measured frames
         // would draw nothing. Made tiny for the measurement, so every frame
         // draws; put back after.
-        var field = typeof(GUO.GameController).GetField("_intervalFixedUpdate",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-        float[] interval = field?.GetValue(Client.Game) as float[];
-        float[] kept = interval?.ToArray();
-        if (interval != null)
-        {
-            // Not zero: upstream wraps the elapsed time with %=, and x % 0 is NaN,
-            // which would stop drawing for good.
-            System.Array.Fill(interval, 0.001f);
-        }
-
         await InputProbe.Wait(host, 30);
-        long drawsBefore = UltimaBatcher2D.FramesBegun;
 
-        double measureMs = walks ? WalkMs : worldMeasurement ? _measureSeconds * 1000.0 : 0;
+        string sortInput = await CaptureWorldSortInput(host, name);
+        using var replay = walks && _walkRoute != null ? new PerfWalkReplay(_walkRoute) : null;
+        double measureMs = replay != null ? 180000 : walks ? WalkMs : worldMeasurement ? _measureSeconds * 1000.0 : 0;
         int sampleCapacity = measureMs > 0 ? System.Math.Max(20000, (int)measureMs * 2) : n;
         var ms = new List<double>(sampleCapacity);
         double kRect = 0, kAffine = 0, kMesh = 0, kTri = 0, kBatches = 0, kCover = 0, kCoverRuns = 0, coverQueued = 0, coverOverlapping = 0, chunksSkipped = 0;
         double calls = 0, items = 0, switches = 0, commands = 0, prepare = 0, world = 0, cpu = 0, gpu = 0, objects = 0;
-        int uploadsBefore = LandPages.Uploads, uploadsMax = 0, uploadFrames = 0, uploadsLast = LandPages.Uploads;
-        int rebuildsBefore = LandPages.Rebuilds, bumpsBefore = LandPages.Bumps;
-        int landOntoBefore = GUO.Renderer.Arts.Art.LandOntoLandLayer, staticOntoBefore = GUO.Renderer.Arts.Art.StaticOntoLandLayer;
-        // An upload lands in the frame after the one that drew it: its cost is
-        // in the next frame's time. Kept apart, since a p99 over thousands of
-        // frames never sees a few dozen.
+        // Allocate the probe's own storage before the measured interval.
         var uploadMs = new List<double>(sampleCapacity);
-        bool uploadedLast = false;
-        // Atlas page uploads (review item G): whole pages re-sent by
-        // TextureAtlas.Flush, and the frames they land in.
-        long atlasUploadsBefore = TextureAtlas.PageUploads, atlasCreationsBefore = TextureAtlas.PageCreations;
-        long atlasUploadsLast = atlasUploadsBefore, atlasUploadsMax = 0, atlasUploadFrames = 0;
-        var atlasUploadMs = new List<double>(sampleCapacity);
+        var atlasUploadMs = new List<double>(_runtimeAttribution ? sampleCapacity : 0);
+        var pageUploadMs = new List<double>(sampleCapacity);
+        var intervals = _intervalCounters ? new PerfIntervalSampler((int)(measureMs / 1000) + 32) : null;
         bool atlasUploadedLast = false;
-        // Stage by stage (PERF-03): summed over the frames, read back per frame.
+        long atlasUploadsLast = 0, atlasUploadsMax = 0, atlasUploadFrames = 0;
+        bool pageUploadedLast = false;
+        long pageUploadsMax = 0, pageUploadFrames = 0;
+        bool uploadedLast = false;
         int stages = (int)PerfStages.Stage.Count;
         double[] stageMs = new double[stages], frameStageMs = new double[stages];
         long[] stageDrawn = new long[stages];
         int[] frameDrawn = new int[stages];
         double renderFrame = 0, ui = 0, update = 0;
         PerfStages.Enabled = true;
+        // Align cumulative counters, stage reset and the wall clock to the
+        // same ProcessFrame boundary. Previously counters also included this
+        // unmeasured interval, and the first Take contained two intervals.
+        await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
         PerfStages.Take(frameStageMs, frameDrawn);
+        if (_runtimeAttribution)
+        {
+            TextureAtlas.BeginObservations();
+            GUO.Utility.RuntimeTimings.Reset();
+            GUO.Utility.RuntimeTimings.Enabled = true;
+        }
+        long drawsBefore = UltimaBatcher2D.FramesBegun;
+        long landLookupsBefore = GUO.Game.Map.Chunk.FirstLandLookups;
+        long landScansBefore = GUO.Game.Map.Chunk.FirstLandScans;
+        long landNodesBefore = GUO.Game.Map.Chunk.FirstLandNodes;
+        long candidateHitsBefore = GUO.Game.Scenes.CoverCandidates.Hits;
+        long candidateMissesBefore = GUO.Game.Scenes.CoverCandidates.Misses;
+        long candidateBuildsBefore = GUO.Game.Scenes.CoverCandidates.Builds;
+        long candidateRejectedBefore = GUO.Game.Scenes.CoverCandidates.Rejected;
+        long candidateChecksBefore = GUO.Game.Scenes.CoverCandidates.DependencyChecks;
+        long candidateVerifiedPlansBefore = GUO.Game.Scenes.CoverCandidateVerifier.Plans;
+        long candidateVerifiedReferencesBefore = GUO.Game.Scenes.CoverCandidateVerifier.References;
+        long candidateMismatchesBefore = GUO.Game.Scenes.CoverCandidateVerifier.Mismatches;
+        // An upload lands in the frame after the one that drew it: its cost
+        // is in the next frame's time. Keep upload frames and their successors
+        // apart, since a p99 over thousands of frames can hide a few dozen.
+        int uploadsBefore = LandPages.Uploads, uploadsMax = 0, uploadFrames = 0, uploadsLast = LandPages.Uploads;
+        long atlasUploadsBefore = TextureAtlas.PageUploads, atlasCreationsBefore = TextureAtlas.PageCreations;
+        long pageUploadsLast = atlasUploadsBefore;
+        int rebuildsBefore = LandPages.Rebuilds, bumpsBefore = LandPages.Bumps;
+        long terrainRebuildsBefore = CachedLand.TotalRebuilds;
+        long terrainSpritesBefore = CachedLand.TotalRebuiltSprites;
+#if GUO_LABS
+        long rdBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.FramesDrawn;
+        long rdFallbackBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.FramesFallback;
+        long rdBytesBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.UploadedBytes;
+        long rdCallsBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.DrawCalls;
+        long rdTicksBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.RecordTicks;
+        long rdSuppressedBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.SuppressedCommands;
+        long rdReplayBefore = GUO.Labs.GpuRenderer.OrderedWorldCanvas.CommandsDrawn;
+        long rdCanvasClearsBefore = UltimaBatcher2D.OrderedCanvasItemsCleared;
+        long rdGeometryBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.GeometryBytes;
+        long rdOrderBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.OrderBytes;
+        long rdStateBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.StateBytes;
+        long rdStateUploadsBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.StateUploadCalls;
+        long rdStateChangesBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.ChangedStateStreams;
+        long rdStateGrowthBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.StateBufferGrowths;
+        long rdTextureRunsBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.TextureRuns;
+        long rdTextureBatchesBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.TextureBatches;
+        long rdOccurrencesBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.Occurrences;
+        long rdUploadsBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.UploadCalls;
+        long rdDirtyBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.DirtyQuads;
+        long rdReferencedBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.ReferencedQuads;
+        long rdPacketAllocationsBefore = GUO.Labs.GpuRenderer.OrderedWorldRecords.PacketAllocations;
+        long rdDynamicCaptureBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.DynamicCaptureBytes;
+        long rdReplayQuadsBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.ReplayedQuads;
+        long rdRecordHitsBefore = GUO.Labs.GpuRenderer.OrderedWorldRecords.Hits;
+        long rdRecordsPackedBefore = GUO.Labs.GpuRenderer.OrderedWorldRecords.Packed;
+        long rdRecordChecksBefore = GUO.Labs.GpuRenderer.OrderedWorldRecords.DirtyChecks;
+        long rdGrowthBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.BufferGrowths;
+        long rdEvictionsBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.CacheEvictions;
+#endif
+        int landOntoBefore = GUO.Renderer.Arts.Art.LandOntoLandLayer, staticOntoBefore = GUO.Renderer.Arts.Art.StaticOntoLandLayer;
         long allocatedBefore = System.GC.GetTotalAllocatedBytes();
         System.TimeSpan pausedBefore = System.GC.GetTotalPauseDuration();
-        await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
         PerfHostLoad.Enter(PerfHostLoad.Phase.Sample);
+        int gc0Before = System.GC.CollectionCount(0), gc1Before = System.GC.CollectionCount(1), gc2Before = System.GC.CollectionCount(2);
+        intervals?.Begin(PerfIntervalSampler.Counts.Capture());
         long last = System.Diagnostics.Stopwatch.GetTimestamp();
         double elapsed = 0;
-        for (int i = 0; measureMs > 0 ? elapsed < measureMs : i < n; i++)
+        long replayDoneDraw = -1;
+        ParityDrawFence? replayDrain = null;
+        bool replayDrained = false;
+        async System.Threading.Tasks.Task NextReplayDrainFrame()
+        { await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame); }
+        for (int i = 0; replay != null
+            ? !replay.Done || !replayDrained
+            : measureMs > 0 ? elapsed < measureMs : i < n; i++)
         {
             runner?.Step();
-            await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
+            replay?.Step();
+            if (replay?.Done == true && replayDoneDraw < 0)
+            {
+                replayDoneDraw = UltimaBatcher2D.FramesBegun;
+                replayDrain = new ParityDrawFence(replayDoneDraw, Godot.Time.GetTicksMsec() + 10000);
+            }
+            if (replayDrain.HasValue)
+            {
+                await replayDrain.Value.WaitForSignal(NextReplayDrainFrame(), Godot.Time.GetTicksMsec());
+                // Observe checks the post-await deadline BEFORE draw success.
+                replayDrained = replayDrain.Value.Observe(UltimaBatcher2D.FramesBegun,
+                    Godot.Time.GetTicksMsec(), true, true);
+            }
+            else await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
             long now = System.Diagnostics.Stopwatch.GetTimestamp();
             double frameMs = (now - last) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
             ms.Add(frameMs);
@@ -480,12 +628,22 @@ internal static class PerfProbe
             }
 
             uploadedLast = up > 0;
-            long atlasUp = TextureAtlas.PageUploads - atlasUploadsLast;
-            atlasUploadsLast = TextureAtlas.PageUploads;
-            atlasUploadsMax = System.Math.Max(atlasUploadsMax, atlasUp);
-            atlasUploadFrames += atlasUp > 0 ? 1 : 0;
-            if (atlasUp > 0 || atlasUploadedLast) atlasUploadMs.Add(frameMs);
-            atlasUploadedLast = atlasUp > 0;
+            if (_runtimeAttribution)
+            {
+                long atlasUploads = TextureAtlas.ObservedUpdates + TextureAtlas.ObservedCreations;
+                long atlasUp = atlasUploads - atlasUploadsLast;
+                atlasUploadsLast = atlasUploads;
+                atlasUploadsMax = System.Math.Max(atlasUploadsMax, atlasUp);
+                atlasUploadFrames += atlasUp > 0 ? 1 : 0;
+                if (atlasUp > 0 || atlasUploadedLast) atlasUploadMs.Add(frameMs);
+                atlasUploadedLast = atlasUp > 0;
+            }
+            long pageUp = TextureAtlas.PageUploads - pageUploadsLast;
+            pageUploadsLast = TextureAtlas.PageUploads;
+            pageUploadsMax = System.Math.Max(pageUploadsMax, pageUp);
+            pageUploadFrames += pageUp > 0 ? 1 : 0;
+            if (pageUp > 0 || pageUploadedLast) pageUploadMs.Add(frameMs);
+            pageUploadedLast = pageUp > 0;
             calls += Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame);
             objects += Performance.GetMonitor(Performance.Monitor.RenderTotalObjectsInFrame);
             (int sw, int it, int cm) = UltimaBatcher2D.LastFrame;
@@ -518,8 +676,10 @@ internal static class PerfProbe
             ui += GUO.Utility.Profiler.GetContext(GUO.Utility.Profiler.ProfilerContext.RENDER_FRAME_UI).LastTime;
             update += GUO.Utility.Profiler.GetContext(GUO.Utility.Profiler.ProfilerContext.UPDATE_WORLD).LastTime;
             gpu += RenderingServer.ViewportGetMeasuredRenderTimeGpu(viewport);
+            intervals?.Observe(elapsed, ms.Count, replay?.Tiles ?? runner?.Tiles ?? 0);
         }
 
+        intervals?.Observe(elapsed, ms.Count, replay?.Tiles ?? runner?.Tiles ?? 0, finish: true);
         PerfHostLoad.Enter(PerfHostLoad.Phase.Between);
         PerfStages.Enabled = false;
         n = ms.Count;
@@ -527,12 +687,14 @@ internal static class PerfProbe
         int uploads = LandPages.Uploads - uploadsBefore;
         double allocatedKb = (System.GC.GetTotalAllocatedBytes() - allocatedBefore) / 1024.0 / n;
         double gcMs = (System.GC.GetTotalPauseDuration() - pausedBefore).TotalMilliseconds / n;
-        if (interval != null)
-        {
-            System.Array.Copy(kept, interval, kept.Length);
-        }
-
-        Engine.MaxFps = maxFps;
+        int gc0 = System.GC.CollectionCount(0) - gc0Before, gc1 = System.GC.CollectionCount(1) - gc1Before,
+            gc2 = System.GC.CollectionCount(2) - gc2Before;
+        GUO.Utility.RuntimeTimings.Enabled = false;
+        runner?.ObservePosition();
+        measurementState.Dispose();
+        // Dispose validates the endpoint and observer ownership, then restores
+        // the prior observer. Snapshot acceptance only after those checks.
+        replay?.Dispose();
         double[] sorted = ms.OrderBy(v => v).ToArray();
         double P(double q) => sorted[System.Math.Min(sorted.Length - 1, (int)System.Math.Ceiling(q * sorted.Length) - 1)];
         var player = Client.Game.UO.World?.Player;
@@ -543,11 +705,20 @@ internal static class PerfProbe
             ["at"] = player != null ? $"{player.X},{player.Y},{player.Z} map {Client.Game.UO.World.MapIndex}" : "",
             ["frames"] = n,
             ["warmup_seconds"] = worldMeasurement ? _warmupSeconds : 0,
-            ["elapsed_seconds"] = System.Math.Round(elapsed / 1000.0, 3),
-            ["sample_storage_grew"] = ms.Capacity > sampleCapacity,
+            ["sample_storage_grew"] = ms.Capacity > sampleCapacity || uploadMs.Capacity > sampleCapacity
+                || (_runtimeAttribution && atlasUploadMs.Capacity > sampleCapacity)
+                || pageUploadMs.Capacity > sampleCapacity,
+            ["elapsed_seconds"] = elapsed / 1000.0,
+            ["drawn_frames"] = draws,
+            ["draw_fps"] = draws * 1000.0 / elapsed,
+            ["walk_route_map_xyz"] = replay?.Route() ?? runner?.Route(),
+            ["walk_route_dropped"] = replay?.RouteDropped ?? runner?.RouteDropped ?? 0,
+            ["walk_replay"] = replay?.Report(),
+            ["walk_replay_valid"] = replay == null || replay.Valid,
+            ["walk_replay_drain_draws"] = replayDoneDraw < 0 ? 0 : UltimaBatcher2D.FramesBegun - replayDoneDraw,
             ["draws_per_frame"] = System.Math.Round((double)draws / n, 2),
-            ["p50_ms"] = System.Math.Round(P(0.5), 3),
             ["mean_ms"] = System.Math.Round(ms.Average(), 3),
+            ["p50_ms"] = System.Math.Round(P(0.5), 3),
             ["p95_ms"] = System.Math.Round(P(0.95), 3),
             ["p99_ms"] = System.Math.Round(P(0.99), 3),
             ["fps"] = System.Math.Round(1000.0 / ms.Average(), 1),
@@ -557,10 +728,50 @@ internal static class PerfProbe
             ["texture_switches"] = System.Math.Round(switches / n, 1),
             ["draw_commands"] = System.Math.Round(commands / n, 1),
             ["world_prepare_ms"] = System.Math.Round(prepare / n, 3),
+            ["first_land_lookups_per_frame"] = System.Math.Round((double)(GUO.Game.Map.Chunk.FirstLandLookups - landLookupsBefore) / n, 1),
+            ["first_land_scans_per_frame"] = System.Math.Round((double)(GUO.Game.Map.Chunk.FirstLandScans - landScansBefore) / n, 1),
+            ["first_land_nodes_per_frame"] = System.Math.Round((double)(GUO.Game.Map.Chunk.FirstLandNodes - landNodesBefore) / n, 1),
             ["world_draw_ms"] = System.Math.Round(world / n, 3),
             ["render_cpu_ms"] = System.Math.Round(cpu / n, 3),
             ["render_gpu_ms"] = System.Math.Round(gpu / n, 3),
             ["alloc_kb_per_frame"] = System.Math.Round(allocatedKb, 1),
+            ["terrain_dirty_chunks_per_frame"] = System.Math.Round((double)(CachedLand.TotalRebuilds - terrainRebuildsBefore) / n, 3),
+            ["terrain_rebuilt_sprites_per_frame"] = System.Math.Round((double)(CachedLand.TotalRebuiltSprites - terrainSpritesBefore) / n, 1),
+#if GUO_LABS
+            ["rd_frames_drawn"] = GUO.Labs.GpuRenderer.OrderedWorldCapture.FramesDrawn - rdBefore,
+            ["rd_frames_fallback"] = GUO.Labs.GpuRenderer.OrderedWorldCapture.FramesFallback - rdFallbackBefore,
+            ["rd_upload_bytes_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.UploadedBytes - rdBytesBefore) / n, 1),
+            ["rd_draw_calls_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.DrawCalls - rdCallsBefore) / n, 1),
+            ["rd_record_cpu_ms"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.RecordTicks - rdTicksBefore) * 1000 / System.Diagnostics.Stopwatch.Frequency / n, 3),
+            ["rd_last_fallback"] = GUO.Labs.GpuRenderer.OrderedWorldCapture.LastFallback ?? "",
+            ["rd_deferred_quads_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.SuppressedCommands - rdSuppressedBefore) / n, 1),
+            ["rd_canvas_replay_quads_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCanvas.CommandsDrawn - rdReplayBefore) / n, 1),
+            ["rd_canvas_items_cleared_per_frame"] = System.Math.Round((double)(UltimaBatcher2D.OrderedCanvasItemsCleared - rdCanvasClearsBefore) / n, 1),
+            ["rd_geometry_bytes_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.GeometryBytes - rdGeometryBefore) / n, 1),
+            ["rd_order_bytes_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.OrderBytes - rdOrderBefore) / n, 1),
+            ["rd_state_bytes_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.StateBytes - rdStateBefore) / n, 1),
+            ["rd_state_upload_calls_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.StateUploadCalls - rdStateUploadsBefore) / n, 3),
+            ["rd_changed_state_streams_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.ChangedStateStreams - rdStateChangesBefore) / n, 3),
+            ["rd_state_buffer_growths"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.StateBufferGrowths - rdStateGrowthBefore,
+            ["rd_texture_runs_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.TextureRuns - rdTextureRunsBefore) / n, 1),
+            ["rd_texture_batches_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.TextureBatches - rdTextureBatchesBefore) / n, 1),
+            ["rd_occurrences_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.Occurrences - rdOccurrencesBefore) / n, 1),
+            ["rd_active_state_bytes"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.ActiveStateBytes,
+            ["rd_state_capacity_bytes"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.StateCapacityBytes,
+            ["rd_upload_calls_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.UploadCalls - rdUploadsBefore) / n, 3),
+            ["rd_dirty_quads_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.DirtyQuads - rdDirtyBefore) / n, 1),
+            ["rd_referenced_quads_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.ReferencedQuads - rdReferencedBefore) / n, 1),
+            ["rd_source_packet_allocations_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldRecords.PacketAllocations - rdPacketAllocationsBefore) / n, 1),
+            ["rd_dynamic_capture_bytes_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.DynamicCaptureBytes - rdDynamicCaptureBefore) / n, 1),
+            ["rd_replayed_quads_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.ReplayedQuads - rdReplayQuadsBefore) / n, 1),
+            ["rd_source_record_hits_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldRecords.Hits - rdRecordHitsBefore) / n, 1),
+            ["rd_source_records_packed_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldRecords.Packed - rdRecordsPackedBefore) / n, 1),
+            ["rd_source_dirty_checks_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldRecords.DirtyChecks - rdRecordChecksBefore) / n, 1),
+            ["rd_cached_quads"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.CachedQuads,
+            ["rd_peak_cached_quads"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.PeakCachedQuads,
+            ["rd_buffer_growths"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.BufferGrowths - rdGrowthBefore,
+            ["rd_cache_evictions"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.CacheEvictions - rdEvictionsBefore,
+#endif
             ["cmd_rects"] = System.Math.Round(kRect / n, 1),
             ["cmd_affine_rects"] = System.Math.Round(kAffine / n, 1),
             ["cmd_meshes"] = System.Math.Round(kMesh / n, 1),
@@ -572,7 +783,7 @@ internal static class PerfProbe
             ["cmd_triangles"] = System.Math.Round(kTri / n, 1),
             ["estimated_batches"] = System.Math.Round(kBatches / n, 1),
             ["gc_ms_per_frame"] = System.Math.Round(gcMs, 3),
-            ["tiles_moved"] = runner?.Tiles ?? 0,
+            ["tiles_moved"] = replay?.Tiles ?? runner?.Tiles ?? 0,
             ["land_layers"] = LandPages.Layers,
             ["land_capacity"] = LandPages.Capacity,
             ["land_array_mib"] = System.Math.Round((double)LandPages.Capacity * LandPages.LayerBytes / (1 << 20), 1),
@@ -594,12 +805,37 @@ internal static class PerfProbe
             ["render_frame_ms"] = System.Math.Round(renderFrame / n, 3),
             ["ui_ms"] = System.Math.Round(ui / n, 3),
             ["update_world_ms"] = System.Math.Round(update / n, 3),
+            ["gather_input_checks"] = GUO.Game.Scenes.GameScene.GatherInputChecks,
+            ["gather_input_mismatches"] = GUO.Game.Scenes.GameScene.GatherInputMismatches,
+            ["gc0"] = gc0, ["gc1"] = gc1, ["gc2"] = gc2,
+            ["runtime_attribution"] = _runtimeAttribution,
+            ["retained_canvas_enabled"] = UltimaBatcher2D.RetainCanvas,
+            ["counter_intervals"] = intervals?.Report(ms),
+            ["counter_intervals_dropped"] = intervals?.Dropped ?? 0,
+            ["counter_interval_thread_changed"] = intervals?.ThreadChanged ?? false,
+            ["cover_candidate_hits"] = GUO.Game.Scenes.CoverCandidates.Hits - candidateHitsBefore,
+            ["cover_candidate_misses"] = GUO.Game.Scenes.CoverCandidates.Misses - candidateMissesBefore,
+            ["cover_candidate_builds"] = GUO.Game.Scenes.CoverCandidates.Builds - candidateBuildsBefore,
+            ["cover_candidate_rejected"] = GUO.Game.Scenes.CoverCandidates.Rejected - candidateRejectedBefore,
+            ["cover_candidate_dependency_checks"] = GUO.Game.Scenes.CoverCandidates.DependencyChecks - candidateChecksBefore,
+            ["cover_candidate_verifier"] = GUO.Game.Scenes.CoverCandidateVerifier.Enabled,
+            ["cover_candidate_verified_plans"] = GUO.Game.Scenes.CoverCandidateVerifier.Plans - candidateVerifiedPlansBefore,
+            ["cover_candidate_verified_references"] = GUO.Game.Scenes.CoverCandidateVerifier.References - candidateVerifiedReferencesBefore,
+            ["cover_candidate_mismatches"] = GUO.Game.Scenes.CoverCandidateVerifier.Mismatches - candidateMismatchesBefore,
+            ["runtime_wall_times"] = _runtimeAttribution ? GUO.Utility.RuntimeTimings.Report(draws) : null,
+            ["atlas_pages"] = _runtimeAttribution ? TextureAtlas.UploadReport() : null,
+            ["atlas_uploads_max_in_interval"] = atlasUploadsMax,
+            ["intervals_with_atlas_upload"] = atlasUploadFrames,
+            ["atlas_upload_related_intervals"] = atlasUploadMs.Count,
+            ["atlas_upload_related_mean_ms"] = atlasUploadMs.Count > 0 ? atlasUploadMs.Average() : 0,
+            ["atlas_upload_related_max_ms"] = atlasUploadMs.Count > 0 ? atlasUploadMs.Max() : 0,
+            ["sort_input_capture"] = sortInput,
             ["atlas_page_uploads"] = TextureAtlas.PageUploads - atlasUploadsBefore,
             ["atlas_page_creations"] = TextureAtlas.PageCreations - atlasCreationsBefore,
-            ["atlas_uploads_max_in_a_frame"] = atlasUploadsMax,
-            ["frames_with_atlas_upload"] = atlasUploadFrames,
-            ["atlas_upload_frames_mean_ms"] = atlasUploadMs.Count > 0 ? System.Math.Round(atlasUploadMs.Average(), 3) : 0.0,
-            ["atlas_upload_frames_max_ms"] = atlasUploadMs.Count > 0 ? System.Math.Round(atlasUploadMs.Max(), 3) : 0.0,
+            ["atlas_uploads_max_in_a_frame"] = pageUploadsMax,
+            ["frames_with_atlas_upload"] = pageUploadFrames,
+            ["atlas_upload_frames_mean_ms"] = pageUploadMs.Count > 0 ? System.Math.Round(pageUploadMs.Average(), 3) : 0.0,
+            ["atlas_upload_frames_max_ms"] = pageUploadMs.Count > 0 ? System.Math.Round(pageUploadMs.Max(), 3) : 0.0,
         };
         foreach (var kv in PerfHostLoad.TakeScene())
         {
@@ -630,9 +866,9 @@ internal static class PerfProbe
 
     /// <summary>
     /// Pixel parity of --batched-world against the plain path in this scene:
-    /// three frames in a row, plain, batched, plain. A pixel the two plain
-    /// frames agree on is stable (nothing animated there); the batched frame
-    /// must match it. Violations are stable pixels it does not match.
+    /// five frames in order, plain, test, plain, test, plain. A pixel the three
+    /// plain frames agree on is stable; both test frames agreeing on another
+    /// value is a repeatable violation. Save every input for independent review.
     /// </summary>
     private static async System.Threading.Tasks.Task<Dictionary<string, object>> Parity(Node host, string name)
     {
@@ -641,14 +877,44 @@ internal static class PerfProbe
         // the frame just drawn; whether that frame went through the pass is
         // read then (GpuWorld.LastFrameOnPass), not inferred from counters.
         int testCaptures = 0, testOnPass = 0;
+        int coverHitCaptures = 0, canvasHitCaptures = 0;
+        var captureEvidence = new List<Dictionary<string, object>>(5);
+#if GUO_LABS
+        int rdTestOnPass = 0;
+#endif
+        async System.Threading.Tasks.Task PostDraw()
+        {
+            await host.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        }
         async System.Threading.Tasks.Task<Image> Frame(bool batched)
         {
             ParityToggle(batched);
-            await host.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
-            await host.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            long hitsBefore = Game.Scenes.CoverCandidates.Hits;
+            long comparedBefore = RetainedCanvasCommands.Compared, reusedBefore = RetainedCanvasCommands.Reused;
+            var fence = new ParityDrawFence(UltimaBatcher2D.FramesBegun, Godot.Time.GetTicksMsec() + 10000);
+            int engineSignals = 0;
+            do
+            {
+                await fence.WaitForSignal(PostDraw(), Godot.Time.GetTicksMsec());
+                engineSignals++;
+            }
+            while (!fence.Observe(UltimaBatcher2D.FramesBegun, Godot.Time.GetTicksMsec(), ParityState(), batched));
+            long coverHits = Game.Scenes.CoverCandidates.Hits - hitsBefore;
+            long compared = RetainedCanvasCommands.Compared - comparedBefore, reused = RetainedCanvasCommands.Reused - reusedBefore;
+            captureEvidence.Add(new Dictionary<string, object>
+            {
+                ["test_state"] = batched, ["actual_client_draws"] = fence.DrawsSince(UltimaBatcher2D.FramesBegun),
+                ["engine_post_draw_signals"] = engineSignals, ["cover_candidate_hits"] = coverHits,
+                ["retained_compared"] = compared, ["retained_prefix_matches"] = reused,
+            });
             if (batched)
             {
                 testCaptures++;
+                if (coverHits > 0) coverHitCaptures++;
+                if (compared > 0 && reused > 0) canvasHitCaptures++;
+#if GUO_LABS
+                if (GUO.Labs.GpuRenderer.OrderedWorldCapture.LastFrameOnPass) rdTestOnPass++;
+#endif
                 if (GpuWorld.LastFrameOnPass)
                 {
                     testOnPass++;
@@ -669,7 +935,7 @@ internal static class PerfProbe
         long gpuDrawnBefore = GpuWorld.FramesDrawn, gpuFallbackBefore = GpuWorld.FramesFallback;
         long gpuSuspendedBefore = GpuWorld.FramesSuspended;
         int coverSkippedBefore = UltimaBatcher2D.CoverSkipped;
-        Image a = await Frame(false), b = await Frame(true), c = await Frame(false), b2 = await Frame(true), c2 = await Frame(false);
+        using Image a = await Frame(false), b = await Frame(true), c = await Frame(false), b2 = await Frame(true), c2 = await Frame(false);
         ParityToggle(was);
         long gpuDrawn = GpuWorld.FramesDrawn - gpuDrawnBefore, gpuFallback = GpuWorld.FramesFallback - gpuFallbackBefore;
         // GPU-03: covering tiles the pass left to the bake (no land-array
@@ -682,7 +948,7 @@ internal static class PerfProbe
         // The largest channel difference of a repeatable pixel: 1 is rounding
         // (fp16 math, ADR-0023's identity pass); tens is a different texel.
         int strictMaxDelta = 0;
-        var mask = Image.CreateEmpty(a.GetWidth(), a.GetHeight(), false, Image.Format.Rgba8);
+        using var mask = Image.CreateEmpty(a.GetWidth(), a.GetHeight(), false, Image.Format.Rgba8);
         bool Eq(byte[] x, byte[] y, int at)
         {
             for (int k = 0; k < bpp; k++)
@@ -725,11 +991,24 @@ internal static class PerfProbe
 
         Directory.CreateDirectory(_outDir);
         string stem = Path.Combine(_outDir, $"parity_{_label}_{name}");
-        b.SavePng(stem + "_batched.png");
-        a.SavePng(stem + "_plain.png");
+        void Save(Image image, string suffix)
+        {
+            string path = stem + suffix;
+            Error error = image.SavePng(path);
+            if (error != Error.Ok)
+            {
+                throw new IOException($"Could not save parity evidence {path}: {error}");
+            }
+        }
+
+        Save(a, "_plain.png");
+        Save(b, "_batched.png");
+        Save(c, "_plain2.png");
+        Save(b2, "_batched2.png");
+        Save(c2, "_plain3.png");
         if (violations > 0)
         {
-            mask.SavePng(stem + "_violations.png");
+            Save(mask, "_violations.png");
         }
 
         GD.Print($"[GUO] perf probe: parity {name}: {violations} of {stable} stable pixels differ, {strict} repeatably (max channel delta {strictMaxDelta})"
@@ -737,6 +1016,14 @@ internal static class PerfProbe
         return new Dictionary<string, object>
         {
             ["parity_stable_px"] = stable, ["parity_violations"] = violations, ["parity_strict"] = strict,
+            ["parity_capture_evidence"] = captureEvidence,
+            ["parity_target_exercised"] = name == "login" ||
+                ((!_coverCandidatesParity || coverHitCaptures == 2) && (!_retainedCanvasParity || canvasHitCaptures == 2)),
+            ["parity_frames"] = new[] { "_plain.png", "_batched.png", "_plain2.png", "_batched2.png", "_plain3.png" }
+                .Select(suffix => Path.GetFileName(stem + suffix)).ToArray(),
+#if GUO_LABS
+            ["rd_test_on_pass"] = rdTestOnPass,
+#endif
             ["parity_strict_max_delta"] = strictMaxDelta,
             ["gpu_test_captures"] = testCaptures, ["gpu_test_on_pass"] = testOnPass,
             ["gpu_frames_drawn"] = gpuDrawn, ["gpu_frames_fallback"] = gpuFallback,
@@ -758,6 +1045,8 @@ internal static class PerfProbe
         // Debug builds (the editor's) have the JIT optimiser off; every
         // absolute number depends on it, so it is written down.
         bool optimized = !(System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Diagnostics.DebuggableAttribute>(typeof(PerfProbe).Assembly)?.IsJITOptimizerDisabled ?? false);
+        var godotApi = typeof(GodotObject).Assembly;
+        bool apiOptimized = !(System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Diagnostics.DebuggableAttribute>(godotApi)?.IsJITOptimizerDisabled ?? false);
         // The post-processing look timed with the world: a saved look adds
         // full-screen passes to every number (Ink Outline on the Thor, 2026-09-28).
         var postFx = GUO.Renderer.PostFx.PostFxStack.Instance.Preset;
@@ -772,6 +1061,7 @@ internal static class PerfProbe
                       + (optimized ? "optimised build" : "UNOPTIMISED build (Debug, Optimize=false)") + $", post-processing {look}, "
                       + $"profile {(string.IsNullOrWhiteSpace(_profilePreset) ? "as saved" : "preset " + _profilePreset)}: {_profileSummary}.");
         md.AppendLine();
+        md.AppendLine($"Loaded Godot managed API JIT optimized: {apiOptimized}; engine debug build: {OS.IsDebugBuild()}.");
         md.AppendLine($"Engine debug build: {OS.IsDebugBuild()}; export template: {ExportTemplate()}; quiet fixture: {PerfFixture.Quiet}; "
                       + $"warm-up {_warmupSeconds} s, measured {(_measureSeconds > 0 ? _measureSeconds + " s" : Frames + " frames")} per standing scene; host load: {PerfHostLoad.Source}.");
         md.AppendLine();
@@ -840,7 +1130,14 @@ internal static class PerfProbe
             JsonSerializer.Serialize(new Dictionary<string, object>
                 {
                     ["label"] = label, ["window"] = $"{size.X}x{size.Y}", ["zoom"] = System.Math.Round(Client.Game?.Scene?.Camera?.Zoom ?? 0, 2),
+                    ["sample_window_version"] = 2,
+                    ["route_observation_version"] = 2,
+                    ["warmup_seconds"] = _warmupSeconds, ["walk_seconds"] = _walkSeconds,
+                    ["measure_seconds"] = _measureSeconds,
+                    ["walk_origin"] = _walkOrigin, ["runtime_attribution"] = _runtimeAttribution,
+                    ["parity_target"] = _coverCandidatesParity ? "cover-candidates" : _retainedCanvasParity ? "retained-canvas" : "configured",
                     ["optimized"] = optimized, ["postfx"] = look, ["profile_preset"] = _profilePreset, ["profile"] = _profileSummary, ["static_world"] = StaticWorld,
+                    ["godot_api_jit_optimized"] = apiOptimized, ["godot_api_mvid"] = godotApi.ManifestModule.ModuleVersionId.ToString(),
                     ["engine_debug_build"] = OS.IsDebugBuild(), ["export_template"] = ExportTemplate(), ["quiet_fixture"] = PerfFixture.Quiet,
                     ["warmup_seconds"] = _warmupSeconds, ["measure_seconds"] = _measureSeconds, ["host_load"] = PerfHostLoad.Launch(),
                     ["system"] = SystemInfo(), ["scenes"] = results,

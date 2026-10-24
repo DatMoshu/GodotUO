@@ -63,7 +63,7 @@ namespace GUO.Renderer.Arts
         {
             _artLoader = artLoader;
             _huesLoader = huesLoader;
-            _atlas = new TextureAtlas(4096, 4096);
+            _atlas = new TextureAtlas(4096, 4096, "art");
             _spriteInfos = new SpriteInfo[_artLoader.File.Entries.Length];
             _realArtBounds = new Rectangle[_spriteInfos.Length];
         }
@@ -232,7 +232,7 @@ namespace GUO.Renderer.Arts
 
                 // PORT DEVIATION (GUO): land onto its own pages under --merged-land=array (above).
                 TextureAtlas atlas = idx < 0x4000 && MergedLand.Array
-                    ? _landAtlas ??= new TextureAtlas(4096, 4096)
+                    ? _landAtlas ??= new TextureAtlas(4096, 4096, "land")
                     : _atlas;
 
                 spriteInfo.Texture = atlas.AddSprite(

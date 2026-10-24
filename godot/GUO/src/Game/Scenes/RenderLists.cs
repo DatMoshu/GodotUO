@@ -183,6 +183,9 @@ namespace GUO.Game.Scenes
 
         /// <summary>Whether this list's cover marks are still the live ones; see <see cref="CoverOwner"/>.</summary>
         private CoverOwner _coverOwner;
+        private CoverCandidates _coverCandidates; // lazy: UI lists allocate none
+        // Probe-only A/B control; ordinary play always retains candidates.
+        internal static bool RetainCoverCandidates = true;
 
         /// <summary>The keys of <see cref="_world"/>, sorted in place by DrawWorld (<see cref="DepthKey"/>).</summary>
         /// <remarks>
@@ -191,7 +194,7 @@ namespace GUO.Game.Scenes
         /// </remarks>
         private ulong[] _keys = Array.Empty<ulong>();
         // PORT DEVIATION (GUO): lazy bounded scratch; small UI world queues
-        // allocate none. The high-water array lives as long as these lists.
+        // allocate none. The scene releases its high-water array with terrain.
         private ulong[] _sortScratch;
 
         /// <summary>
@@ -290,6 +293,26 @@ namespace GUO.Game.Scenes
             // foot (dx + dy rows down) and across its width can cover it.
             int far = Math.Max(reach, rows);
 
+            // PORT DEVIATION (GUO): retain candidate identities only. The
+            // ground, source dimensions and every cover decision stay live.
+            // Dynamic objects keep the original walk.
+            CoverCandidates cache = RetainCoverCandidates && obj is (Static or Multi)
+                ? _coverCandidates ??= new CoverCandidates() : null;
+            if (cache != null)
+            {
+                QueueCover(ground, depth, 0, half);
+                if (cache.TryGet(map, Map.Map.CoverTableVersion,
+                    new CoverCandidates.Key(obj.X, obj.Y, rows, half), out var candidates,
+                    Map.Map.CoverTableIdentityVersion))
+                {
+                    if (CoverCandidateVerifier.Enabled)
+                        CoverCandidateVerifier.Check(map, obj.X, obj.Y, rows, reach, far, half, candidates);
+                    foreach (ref readonly var candidate in candidates)
+                        QueueCover(candidate.Land, depth, candidate.Column, half);
+                    return;
+                }
+            }
+
             // The square is walked a row at a time, so eight neighbours in a
             // row share a chunk: look it up when the chunk changes, not per tile.
             ChunkCursor<Chunk> cursor = default;
@@ -298,43 +321,41 @@ namespace GUO.Game.Scenes
             {
                 for (int dx = 0; dx <= far; dx++)
                 {
+                    if (cache != null && dx == 0 && dy == 0) continue;
                     if ((dx > reach || dy > reach)
                         && (dx + dy > rows || (half >= 0 && Math.Abs(dx - dy) * 22 >= 22 + half)))
                     {
                         continue;
                     }
 
-                    Land land = dx == 0 && dy == 0 ? ground : LandAt(map, obj.X + dx, obj.Y + dy, ref cursor);
-
-                    if (land == null || land.AlphaHue == 0 || _coverStamp.Marked(land.CoverStamp))
+                    Land land;
+                    if (cache == null)
+                        land = dx == 0 && dy == 0 ? ground : LandAt(map, obj.X + dx, obj.Y + dy, ref cursor);
+                    else
                     {
-                        continue;
+                        int x = obj.X + dx, y = obj.Y + dy;
+                        Chunk chunk = cursor.At(x, y, map);
+                        land = chunk?.GetFirstLand(x % 8, y % 8);
+                        cache.Observe(chunk, x % 8, y % 8, land, dx - dy);
                     }
-
-                    float landDepth = land.CalculateDepthZ();
-
-                    if (landDepth > depth)
-                    {
-                        // B4 fix 2: a diamond spans 22 px either side of its
-                        // column, (dx - dy) * 22 across from the object's.
-                        bool overlaps = half < 0 || Math.Abs(dx - dy) * 22 < 22 + half;
-
-                        CoverQueued++;
-                        if (overlaps)
-                        {
-                            CoverOverlapping++;
-                        }
-                        else if (CoverCull)
-                        {
-                            continue;
-                        }
-
-                        _coverStamp.Mark(ref land.CoverStamp);
-                        _coverOwner.Marked();
-                        _world.Add(new Drawable(land, landDepth, _world.Count));
-                    }
+                    QueueCover(land, depth, dx - dy, half);
                 }
             }
+            cache?.Complete(Map.Map.CoverTableVersion, Map.Map.CoverTableIdentityVersion);
+        }
+
+        private void QueueCover(Land land, float depth, int column, int half)
+        {
+            if (land == null || land.AlphaHue == 0 || _coverStamp.Marked(land.CoverStamp)) return;
+            float landDepth = land.CalculateDepthZ();
+            if (!(landDepth > depth)) return;
+            bool overlaps = half < 0 || Math.Abs(column) * 22 < 22 + half;
+            CoverQueued++;
+            if (overlaps) CoverOverlapping++;
+            else if (CoverCull) return;
+            _coverStamp.Mark(ref land.CoverStamp);
+            _coverOwner.Marked();
+            _world.Add(new Drawable(land, landDepth, _world.Count));
         }
 
         // PORT DEVIATION (GUO): Epic B, B4 fix 2 (docs/perf/2026-09-28_merged_land.md).
@@ -411,15 +432,9 @@ namespace GUO.Game.Scenes
                 return null;
             }
 
-            for (GameObject o = chunk.GetHeadObject(x % 8, y % 8); o != null; o = o.TNext)
-            {
-                if (o is Land land)
-                {
-                    return land;
-                }
-            }
-
-            return null;
+            // PORT DEVIATION (GUO): cache only the original linked traversal's
+            // first-Land identity. All cover decisions above remain live.
+            return chunk.GetFirstLand(x % 8, y % 8);
         }
 
         // The sort itself: see DepthKey. The order it gives is the one
@@ -448,6 +463,7 @@ namespace GUO.Game.Scenes
 
         public void Clear()
         {
+            _coverCandidates?.NextFrame();
             _tiles?.Clear();
             _stretchedTiles?.Clear();
             _world.Clear();
@@ -642,14 +658,20 @@ namespace GUO.Game.Scenes
 
             // Draw chunk mesh land tiles from GPU buffers with per-frame visibility
             batcher.SetWorldOffset(offsetX, offsetY);
+#if GUO_LABS
+            // ADR-0043: consume each quad once. A mid-land rejection replays only
+            // the captured prefix, then draws the remaining quads on canvas.
+            if (batcher.OrderedWorldRecording)
+            {
+                foreach (var chunk in visibleChunks) result += batcher.DrawOrderedLand(chunk.Mesh.Land);
+            }
+            else
+#endif
             // PORT DEVIATION (GUO): --merged-land (Epic B, B4) draws every
             // visible chunk's land as one mesh per texture; see MergedLand.
             if (MergedLand.Enabled)
             {
-                _mergedLayers.Clear();
-                foreach (var chunk in visibleChunks)
-                    _mergedLayers.Add(chunk.Mesh.Land);
-                result += _mergedLand.Draw(batcher, _mergedLayers);
+                result += (_mergedLand ??= new CachedLand()).Draw(batcher, visibleChunks);
             }
             else
             foreach (var chunk in visibleChunks)
@@ -1063,8 +1085,18 @@ namespace GUO.Game.Scenes
         }
 
         private int _meshOffsetX, _meshOffsetY;
-        private readonly MergedLand _mergedLand = new MergedLand(); // PORT DEVIATION (GUO): --merged-land
-        private readonly List<MeshLayer> _mergedLayers = new List<MeshLayer>(); // PORT DEVIATION (GUO): --merged-land
+        // PORT DEVIATION (GUO): UI controls also create RenderLists per draw;
+        // allocate the persistent terrain cache only for the actual world pass.
+        private CachedLand _mergedLand;
+
+        internal void ReleaseTerrain()
+        {
+            _sortScratch = null;
+            _coverCandidates?.Clear();
+            _coverCandidates = null;
+            _mergedLand?.Dispose(); // PORT DEVIATION (GUO): scene-owned mesh lifetime
+            _mergedLand = null;
+        }
 
         private static int DrawRenderList(UltimaBatcher2D batcher, List<GameObject> renderList, sbyte maxGroundZ)
         {

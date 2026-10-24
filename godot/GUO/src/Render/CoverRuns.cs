@@ -129,6 +129,10 @@ namespace GUO.Renderer
 
             entry.Frame = _frame;
             Build(entry.Mesh, run);
+            // The entry owns this mesh and only Build changes its surfaces.
+            // Resolve the native handle after a build, not on every cache hit:
+            // Resource.GetRid is a virtual native call for each covering run.
+            entry.MeshRid = entry.Mesh.GetRid();
             Builds++;
             return entry.MeshRid;
         }
