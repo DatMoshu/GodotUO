@@ -126,6 +126,8 @@ public partial class BatcherProbe : Node
 
         VerifyIncidentalAllocations();
         Stage("incidental allocations");
+        await VerifyUiTextureCommands(batcher, viewport);
+        Stage("typed UI texture commands");
 
         await VerifyUiTransform(batcher, viewport, ramp);
         Stage("gump transform and clipping");
