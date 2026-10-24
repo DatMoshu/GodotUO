@@ -3318,6 +3318,15 @@ default) are compared as given, in either flag order, and a strict run with
 whose `[go` did not arrive within three tiles in x and y, and two in z when
 the `[go` names one, has no row. A parity row whose test captures did not
 all come from the pass fails the run.
+Since PERF-MM-01 each scene also carries `p50_ms`, `multimesh_sprites`
+(whether `--multimesh-sprites` was on), `mm_instances` (sprites drawn as
+MultiMesh instances), `mm_runs` (MultiMeshes drawn), `mm_calls`
+(RenderingServer calls those runs made), `mm_fallbacks` (sprites the switch
+left on the per-sprite path), `mm_replayed` (sprites of runs shorter than
+`mm_min_run`, sent as their own commands) and `mm_min_run`, all per frame
+except the last; and `warmup_s` and `sample_s`, the unmeasured warm-up and
+the clock-timed sample a standing scene ran with `--perf-warmup-s` and
+`--perf-sample-s` (0 and 0: the fixed frame count).
 Since PERF-01, `system` is `{gpu, gpu_vendor, gpu_api, driver,
 driver_version, rendering_method, cpu, cpu_threads, ram_gib, os, os_version,
 screen "WxH", refresh_hz, engine}`, from Godot's `RenderingServer`, `OS`
