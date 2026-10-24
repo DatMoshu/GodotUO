@@ -129,6 +129,9 @@ public partial class BatcherProbe : Node
 
         batcher.Dispose();
 
+        await VerifyMultiMesh(palette);
+        Stage("multimesh sprites");
+
         await VerifyFonts();
         Stage("fonts");
 
@@ -247,6 +250,136 @@ public partial class BatcherProbe : Node
         Check("scaled gump clip grows with its contents", new byte[] { 255, 255, 255 }, result.GetPixel(3, 3));
         Check("scaled gump clip excludes outside pixels", new byte[] { 0, 0, 0 }, result.GetPixel(4, 3));
         Check("gump transform does not leak into following draws", new byte[] { 255, 255, 255 }, result.GetPixel(6, 6));
+    }
+
+    /// <summary>
+    /// --multimesh-sprites (PERF-MM-01): the same scene drawn per sprite and
+    /// as MultiMesh runs must come back pixel for pixel,
+    /// at six views. The scene interleaves two textures, a mirrored sprite
+    /// and a rotated one (instances through the transformed-rect route), hued, unhued and
+    /// translucent sprites and overlaps, so a run drawn out of order, a wrong
+    /// source rect, a wrong mirror or a lost hue all show.
+    /// </summary>
+    private async System.Threading.Tasks.Task VerifyMultiMesh(Texture2D palette)
+    {
+        const int size = 96;
+        var host = new Node2D();
+        var viewport = new SubViewport
+        {
+            Size = new Vector2I(size, size),
+            RenderTargetUpdateMode = SubViewport.UpdateMode.Always,
+            TransparentBg = false,
+        };
+        viewport.AddChild(host);
+        AddChild(viewport);
+
+        Texture2D a = BuildPattern(24, 20, 7), b = BuildPattern(17, 23, 3);
+        bool was = UltimaBatcher2D.MultiMeshSprites;
+        var batcher = new UltimaBatcher2D(host.GetCanvasItem()) { HueTexture = palette };
+
+        void Scene(Transform2D view)
+        {
+            batcher.BeginFrame();
+            batcher.Begin(view);
+            Vector3 plain = ShaderHueTranslator.GetHueVector(0), hued = ShaderHueTranslator.GetHueVector(34);
+            Vector3 half = ShaderHueTranslator.GetHueVector(0, false, 0.5f);
+            batcher.Draw(a, new Compat.Rectangle(3, 4, 24, 20), new Compat.Rectangle(0, 0, 24, 20), plain, 0f);
+            batcher.Draw(a, new Compat.Rectangle(15, 9, 10, 12), new Compat.Rectangle(5, 3, 10, 12), hued, 0f);
+            batcher.Draw(a, new Compat.Rectangle(40, 2, 24, 20), new Compat.Rectangle(0, 0, 24, 20), half, 0f);
+            batcher.Draw(b, new Compat.Rectangle(20, 18, 17, 23), new Compat.Rectangle(0, 0, 17, 23), hued, 0f);
+            batcher.Draw(b, new Compat.Rectangle(31, 30, 9, 7), new Compat.Rectangle(4, 9, 9, 7), plain, 0f);
+            batcher.Draw(a, new Vector2(50, 30), new Compat.Rectangle(0, 0, 24, 20), plain, 0f, Vector2.Zero, 1f,
+                SpriteEffects.FlipHorizontally, 0f);
+            batcher.Draw(a, new Compat.Rectangle(52, 36, 24, 20), new Compat.Rectangle(0, 0, 24, 20), hued, 0f);
+            batcher.Draw(b, new Compat.Rectangle(5, 50, 34, 46), new Compat.Rectangle(0, 0, 17, 23), half, 0f);
+            batcher.Draw(b, new Vector2(70, 60), new Compat.Rectangle(0, 0, 17, 23), hued, 0.35f, new Vector2(8, 11), 1f,
+                SpriteEffects.None, 0f);
+            batcher.End();
+        }
+
+        async System.Threading.Tasks.Task<Image> Frame(bool multimesh, Transform2D view)
+        {
+            UltimaBatcher2D.MultiMeshSprites = multimesh;
+            Scene(view);
+            await ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
+            await ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
+            return viewport.GetTexture().GetImage();
+        }
+
+        var views = new[]
+        {
+            ("plain view", Transform2D.Identity),
+            ("zoom 1.37 offset", new Transform2D(new Vector2(1.37f, 0), new Vector2(0, 1.37f), new Vector2(-3.5f, 2.25f))),
+            ("zoom 0.5", new Transform2D(new Vector2(0.5f, 0), new Vector2(0, 0.5f), new Vector2(7, 7))),
+            ("zoom 2 half-pixel offset", new Transform2D(new Vector2(2f, 0), new Vector2(0, 2f), new Vector2(-40.5f, -30.5f))),
+            ("zoom 0.8", new Transform2D(new Vector2(0.8f, 0), new Vector2(0, 0.8f), new Vector2(1.3f, 0.7f))),
+            ("zoom 0.66", new Transform2D(new Vector2(0.66f, 0), new Vector2(0, 0.66f), new Vector2(11, 3))),
+        };
+
+        int keepMinRun = UltimaBatcher2D.MultiMeshMinRun;
+        // Every run instanced, then every run too short and replayed as rects.
+        foreach (int minRun in new[] { 1, 1000 })
+        foreach ((string viewName, Transform2D view) in views)
+        {
+            UltimaBatcher2D.MultiMeshMinRun = minRun;
+            string name = $"{viewName}, {(minRun == 1 ? "instanced" : "replayed")}";
+            Image canvas = await Frame(false, view);
+            Image instanced = await Frame(true, view);
+            batcher.BeginFrame();
+            var counted = UltimaBatcher2D.LastMultiMesh;
+            batcher.Begin();
+            batcher.End();
+
+            bool countsRight = minRun == 1
+                ? counted.Sprites == 9 && counted.Runs == 4 && counted.Replayed == 0
+                : counted.Sprites == 0 && counted.Runs == 0 && counted.Replayed == 9;
+            CheckThat($"multimesh {name}: counts", countsRight && counted.Fallbacks == 0,
+                $"instances {counted.Sprites} runs {counted.Runs} replayed {counted.Replayed} fallbacks {counted.Fallbacks}");
+
+            int differing = 0, inked = 0;
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    Color p = canvas.GetPixel(x, y), q = instanced.GetPixel(x, y);
+                    inked += p.R8 + p.G8 + p.B8 > 0 ? 1 : 0;
+                    if (p.R8 != q.R8 || p.G8 != q.G8 || p.B8 != q.B8)
+                    {
+                        if (differing++ < 3)
+                        {
+                            GD.PrintErr($"[batcher-probe]   multimesh {name} ({x},{y}): canvas #{p.R8:X2}{p.G8:X2}{p.B8:X2} instanced #{q.R8:X2}{q.G8:X2}{q.B8:X2}");
+                        }
+                    }
+                }
+            }
+
+            CheckThat($"multimesh {name}: scene drew", inked > size * size / 4, $"{inked} inked pixels");
+            CheckThat($"multimesh {name}: pixel identical", differing == 0, $"{differing} of {size * size} pixels differ");
+        }
+
+        UltimaBatcher2D.MultiMeshSprites = was;
+        UltimaBatcher2D.MultiMeshMinRun = keepMinRun;
+        batcher.Dispose();
+        viewport.QueueFree();
+    }
+
+    /// <summary>A texture whose every texel differs from its neighbours, with a transparent corner, so a shifted source rect shows.</summary>
+    private static Texture2D BuildPattern(int width, int height, int seed)
+    {
+        var rgba = new byte[width * height * 4];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int at = (y * width + x) * 4;
+                rgba[at] = (byte)((x * 37 + y * 11 + seed * 53) & 0xFF);
+                rgba[at + 1] = (byte)((x * 13 + y * 29 + seed) & 0xFF);
+                rgba[at + 2] = (byte)((x * y + seed * 7) & 0xFF);
+                rgba[at + 3] = (byte)(x + y < 4 ? 0 : 255);
+            }
+        }
+
+        return ImageTexture.CreateFromImage(Image.CreateFromData(width, height, false, Image.Format.Rgba8, rgba));
     }
 
     /// <summary>
