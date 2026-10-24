@@ -128,6 +128,8 @@ public partial class BatcherProbe : Node
         Stage("persistent ordered terrain");
         await VerifyAtlasMetadata(batcher, viewport);
         Stage("atlas page metadata");
+        VerifyAtlasProfiling();
+        Stage("atlas upload attribution");
         VerifyFirstLandCache();
         Stage("first-land identity cache");
         VerifyCoverCandidates();

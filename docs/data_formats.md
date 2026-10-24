@@ -3364,6 +3364,48 @@ the loaded GodotSharp assembly's JIT setting, `godot_api_mvid` identifies that
 assembly without publishing its filesystem path, and `engine_debug_build`
 records the native engine build. An optimized project run through the editor
 executable can still load Debug GodotSharp; distinguish it from an export.
+The optional environment diagnostics `GUO_PERF_WARMUP_SECONDS` and
+`GUO_PERF_MEASURE_SECONDS` accept 0–300 seconds (default 0: existing warm-up
+and 360-frame sample). Login keeps its 360-frame sample and no added discard.
+`GUO_PERF_WALK_SECONDS` accepts 1–300 (default 12), and
+`GUO_PERF_WALK_ORIGIN` is `field` (default), `bank`, or `docks`. A world
+warm-up follows any parity captures. Reports record these four settings.
+Each scene adds `warmup_seconds`, `elapsed_seconds`, `drawn_frames`,
+`draw_fps` (draws / elapsed time), `sample_storage_grew`, and `gc0/gc1/gc2`
+(process-wide collection-count deltas; higher generations also collect
+younger generations, so do not sum these counts). A walk records observed positions in
+`walk_route_map_xyz` and a `walk_route_dropped` count; stationary rows use
+null and zero. This is an observed route, not deterministic replay.
+`route_observation_version: 2` counts the final passive observation in
+`tiles_moved`, excludes distance across maps, and counts distinct rejected
+positions when route storage is full. Earlier observations omit this version
+and can omit the final move. Distance remains approximate observed XY
+displacement, including server corrections, not a verified traversal.
+Preallocated sample storage grows if its capacity is exceeded; such runs
+must not be used for allocation claims without accounting for that growth.
+
+`GUO_PERF_RUNTIME_ATTRIBUTION=1` enables additional diagnostics only during
+measured intervals. `runtime_attribution` records this choice. Scene
+`runtime_wall_times` maps stages to `{calls, total_ms, ms_per_draw}`. These
+are main-thread elapsed wall times, including descheduling, not exclusive
+CPU or GPU times. `Process` includes `Draw` and update stages; `Draw`
+includes the existing world/UI scopes. Do not add overlapping totals.
+`Input` contains two scopes per process callback. With attribution disabled,
+`runtime_wall_times` and `atlas_pages` are null.
+
+`atlas_pages` contains numeric page identities, owner labels, actual
+`width/height`, `updates/creations`, `rgba_bytes_submitted`, and
+`update_call_ms/creation_call_ms`. Counts distinguish dirty-page updates
+from new textures (including populated oversized pages and initially blank
+packing pages). Bytes are the submitted RGBA image sizes, not measured GPU
+traffic. Durations measure synchronous call wall time, not GPU completion.
+Disposed atlas observations remain until the next interval without retaining
+resources. Creation of new observation records adds diagnostic allocation.
+The `atlas_uploads_max_in_interval`, `intervals_with_atlas_upload`, and
+`atlas_upload_related_intervals/mean_ms/max_ms` fields count uploads and
+sample intervals containing an upload or immediately following one. Their
+association does not establish that uploads caused a hitch. These atlas
+uploads are distinct from the existing `LandPages` array-upload counters.
 Since PERF-03 each scene also carries `render_frame_ms`, `ui_ms`,
 `update_world_ms`, `stage_<stage>_ms` for every `PerfStages.Stage`
 (`gather`, `mesh_build`, `gather_tail`, `land_mesh`, `land_loose`, `sort`,

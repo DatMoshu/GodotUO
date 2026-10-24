@@ -2,8 +2,8 @@
 
 Owner: Moshu. Implementation/review: Codex, continuing Fable's 22 October
 handoff. This consolidates the rendering/performance lane through the local
-incremental-cover and retained-canvas work, with a gather-input candidate
-under validation. It distinguishes ordinary-path Release work from the
+incremental-cover, retained-canvas and gather-input work, followed by runtime
+and atlas attribution. It distinguishes ordinary-path Release work from the
 off-by-default GPU experiment. It is a review record, not approval to merge or
 enable either GPU mode.
 
@@ -17,10 +17,12 @@ scopes and reduced draw counts cannot independently establish it.
 
 The owner has changed the workflow: **stop rerunning CUO cohorts**. Make bounded
 GUO changes, load the fixed locations and record sustained GUO FPS and phase
-timings. Keep all attempts and label shared host load. The latest actual Release
-comparison records 30 seconds per location. The current candidate removes work,
-but has not established a throughput gain: the first bank sample is slower and
-docks is approximately unchanged. Keep it as a local review candidate.
+timings. Keep all attempts and label shared host load. The gather-input Release
+comparison discards 60 seconds and records 30 seconds per location: bank
+71.285→74.058 FPS, docks 121.416→123.827 FPS. Competing load reached 96–100%,
+so these small changes do not establish a throughput gain. Keep the local
+candidates under review. The following attribution runs diagnose costs rather
+than claiming another optimization.
 
 ## Work completed, in dependency order
 
@@ -49,12 +51,34 @@ docks is approximately unchanged. Keep it as a local review candidate.
 | `393c50e8`, local | Immutable packet references through capture/replay | Copying four cached vertices per occurrence and expanding replay vertices | GPU prototype only; ticket lifetime and packet recycling tested |
 | `ea594411`, local | Incremental covering-land candidate discovery | Repeating neighboring tile/chunk discovery for static objects | Live alpha/depth/overlap/stamps, roofs, lights and picking remain authoritative; no measured gain established |
 | `b2fa6237`, local | Retain ordinary canvas commands | Resubmitting identical native draw commands | Off-default experiment; exact stream comparison and fallback replay |
-| Gather-input candidate, local | Snapshot shared values during one synchronous gather | Repeated profile/player/CoT input reads | Object decisions stay live; timings and runtime invariants recorded separately |
+| `72fd49fb`, local | Snapshot shared values during one synchronous gather | Repeated profile/player/CoT input reads | Object decisions stay live; timings and runtime invariants recorded separately |
+| Runtime-attribution candidate, local | Optional update/draw scopes, atlas upload accounting and timed warm-up/walk diagnostics | Makes hidden update cost and travel uploads measurable | Actual Release, shared-load observations; no performance gain claimed |
 
 PR references identify the existing stack, not a fresh remote-state audit.
 Only the previously authorized pushes through PRs 152/153 were made. The
 following local commits and candidate require review; no new push or merge is
 implied by this document.
+
+The latest [runtime attribution report](../2026-10-24_runtime_attribution.md)
+records bank preparation/drawing at 5.182/4.042 ms and the PerfProbe docks
+fixture at 4.052/3.165 ms. Packet/UI/audio updates were small in that run.
+The 60-second bank-origin walk made 147 atlas page updates, but its worst
+frame was outside upload-associated intervals. Continue gathering/submission
+work; do not infer that a blanket upload cap fixes the remaining cost.
+The docks fixtures differ between PerfProbe and earlier PerfDump samples;
+their coordinates and shared-host-load limitations are explicit in the report.
+
+A follow-up source review narrowed the cover-cache recommendations. Auxiliary
+`WorldMapGump.ChangeMap` construction can replace the shared map table while old
+chunks remain alive, so all entries still need an unconditional table/lifetime
+generation. Ordinary slot churn may be scoped to plans that observed missing
+chunks only after preserving that distinction. Land-only membership version
+bumps are unsafe: detaching a non-Land anchor or changing a foreign chain can
+change the first Land or its ownership certification. Keep existing membership
+invalidation until a semantic replacement has an oracle. Capacity admission can
+skip retention bookkeeping on a full-cache miss while keeping the live cover
+walk and existing hits unchanged. These are reviewed next steps, not measured
+optimizations in this report.
 
 ## Two GPU experiments must remain distinct
 

@@ -958,6 +958,8 @@ namespace GUO
 
         public override void _Process(double delta)
         {
+            // PORT DEVIATION (GUO): optional main-thread wall-time attribution.
+            long processAt = RuntimeTimings.Now();
             double elapsedMilliseconds = delta * 1000.0;
 
             _totalGameTime += delta;
@@ -972,17 +974,22 @@ namespace GUO
             // PORT DEVIATION (GUO): a tilted right stick moves the pointer
             // every frame, as a held finger is looked at every frame.
             GUO.Input.Gamepad.GamepadInput.Update(delta);
+            RuntimeTimings.Add(RuntimeTimings.Stage.Input, processAt);
 
             Update(elapsedMilliseconds);
 
             if (!_suppressedDraw)
             {
+                long drawAt = RuntimeTimings.Now();
                 DrawFrame();
+                RuntimeTimings.Add(RuntimeTimings.Stage.Draw, drawAt);
             }
+            RuntimeTimings.Add(RuntimeTimings.Stage.Process, processAt);
         }
 
         private void Update(double elapsedMilliseconds)
         {
+            long runtimeAt = RuntimeTimings.Now();
             if (Profiler.InContext(Profiler.ProfilerContext.OUT_OF_CONTEXT))
             {
                 Profiler.ExitContext(Profiler.ProfilerContext.OUT_OF_CONTEXT);
@@ -992,14 +999,17 @@ namespace GUO
             Time.Delta = (float)(elapsedMilliseconds / 1000.0);
 
             Mouse.Refresh();
+            runtimeAt = RuntimeTimings.Add(RuntimeTimings.Stage.Input, runtimeAt);
 
             var data = NetClient.Socket.CollectAvailableData();
             var packetsCount = PacketHandlers.Handler.ParsePackets(NetClient.Socket, UO.World, data);
 
             NetClient.Socket.Statistics.TotalPacketsReceived += (uint)packetsCount;
             NetClient.Socket.Flush();
+            runtimeAt = RuntimeTimings.Add(RuntimeTimings.Stage.Packets, runtimeAt);
 
             Plugin.Tick();
+            runtimeAt = RuntimeTimings.Add(RuntimeTimings.Stage.Plugins, runtimeAt);
 
             if (Scene != null && Scene.IsLoaded && !Scene.IsDestroyed)
             {
@@ -1007,8 +1017,10 @@ namespace GUO
                 Scene.Update();
                 Profiler.ExitContext(Profiler.ProfilerContext.UPDATE_WORLD);
             }
+            runtimeAt = RuntimeTimings.Add(RuntimeTimings.Stage.SceneUpdate, runtimeAt);
 
             UIManager.Update();
+            runtimeAt = RuntimeTimings.Add(RuntimeTimings.Stage.UiUpdate, runtimeAt);
 
             _totalElapsed += elapsedMilliseconds;
             _currentFpsTime += elapsedMilliseconds;
@@ -1045,8 +1057,11 @@ namespace GUO
                 _suppressedDraw = true;
             }
 
+            runtimeAt = RuntimeTimings.Add(RuntimeTimings.Stage.Pacing, runtimeAt);
             UO.GameCursor?.Update();
+            runtimeAt = RuntimeTimings.Add(RuntimeTimings.Stage.Cursor, runtimeAt);
             Audio?.Update();
+            runtimeAt = RuntimeTimings.Add(RuntimeTimings.Stage.Audio, runtimeAt);
 
 
             for (var i = _queuedActions.Count - 1; i >= 0; i--)
@@ -1060,6 +1075,7 @@ namespace GUO
                     break;
                 }
             }
+            RuntimeTimings.Add(RuntimeTimings.Stage.QueuedActions, runtimeAt);
         }
 
         /// <remarks>

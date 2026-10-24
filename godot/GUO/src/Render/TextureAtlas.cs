@@ -52,7 +52,7 @@ namespace GUO.Renderer
     /// <c>Rgba8</c>.
     /// </para>
     /// </remarks>
-    public sealed class TextureAtlas : IDisposable
+    public sealed partial class TextureAtlas : IDisposable
     {
         /// <summary>
         /// The largest page this will allocate, whatever a caller asks for.
@@ -77,6 +77,7 @@ namespace GUO.Renderer
 
         private readonly int _width;
         private readonly int _height;
+        private readonly string _diagnosticOwner;
 
         private readonly List<Image> _pages = new List<Image>();
         private readonly List<ImageTexture> _textures = new List<ImageTexture>();
@@ -90,13 +91,16 @@ namespace GUO.Renderer
         private Packer _packer;
         private int _packingPageIndex = -1;
 
-        public TextureAtlas(int width, int height)
+        public TextureAtlas(int width, int height) : this(width, height, "unclassified") { }
+
+        internal TextureAtlas(int width, int height, string diagnosticOwner)
         {
             if (width <= 0 || height <= 0)
                 throw new ArgumentOutOfRangeException(nameof(width), "Atlas dimensions must be positive.");
 
             _width = Math.Min(width, MaxPageSize);
             _height = Math.Min(height, MaxPageSize);
+            _diagnosticOwner = diagnosticOwner;
 
             _live.Add(this);
         }
@@ -122,7 +126,10 @@ namespace GUO.Renderer
             {
                 if (_dirty[i])
                 {
+                    long uploadAt = GUO.Utility.RuntimeTimings.Now();
                     _textures[i].Update(_pages[i]);
+                    long uploadTicks = GUO.Utility.RuntimeTimings.Elapsed(uploadAt);
+                    ObserveUpload(i, uploadTicks, false);
                     _dirty[i] = false;
                     _versions[i]++;
                 }
@@ -265,12 +272,15 @@ namespace GUO.Renderer
             {
                 var data = System.Runtime.InteropServices.MemoryMarshal.AsBytes(pixels.Slice(0, pixelCount)).ToArray();
                 Image page = Image.CreateFromData(width, height, false, Image.Format.Rgba8, data);
+                long uploadAt = GUO.Utility.RuntimeTimings.Now();
                 var texture = ImageTexture.CreateFromImage(page);
+                long uploadTicks = GUO.Utility.RuntimeTimings.Elapsed(uploadAt);
                 _pages.Add(page);
                 _textures.Add(texture);
                 _metadata.Add(texture, new PageMetadata(width, height, texture.GetRid()));
                 _dirty.Add(false);
                 _versions.Add(0);
+                ObserveUpload(_textures.Count - 1, uploadTicks, true);
                 pr = new Rectangle(0, 0, width, height);
                 return texture;
             }
@@ -317,12 +327,15 @@ namespace GUO.Renderer
             Image page = Image.CreateEmpty(_width, _height, false, Image.Format.Rgba8);
 
             _pages.Add(page);
-            _textures.Add(ImageTexture.CreateFromImage(page));
-            var texture = _textures[^1];
+            long uploadAt = GUO.Utility.RuntimeTimings.Now();
+            var texture = ImageTexture.CreateFromImage(page);
+            long uploadTicks = GUO.Utility.RuntimeTimings.Elapsed(uploadAt);
+            _textures.Add(texture);
             _metadata.Add(texture, new PageMetadata(_width, _height, texture.GetRid()));
             _dirty.Add(false);
             _versions.Add(0);
             _packingPageIndex = _textures.Count - 1;
+            ObserveUpload(_packingPageIndex, uploadTicks, true);
 
             _packer?.Dispose();
             _packer = new Packer(_width, _height);

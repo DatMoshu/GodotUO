@@ -30,7 +30,7 @@ namespace GUO.Host;
 /// between runs on one machine at one window size; the draw calls and batcher
 /// counts are comparable anywhere.
 /// </remarks>
-internal static class PerfProbe
+internal static partial class PerfProbe
 {
     public static bool Passed { get; private set; }
 
@@ -97,6 +97,9 @@ internal static class PerfProbe
     private static string _outDir, _label;
     private static bool _parity;
     private static bool _retainedCanvasParity;
+    private static bool _runtimeAttribution;
+    private static int _warmupSeconds, _measureSeconds, _walkSeconds = 12;
+    private static string _walkOrigin = "field";
     private static string _profilePreset = "", _profileSummary = "";
 
     /// <summary>
@@ -113,7 +116,23 @@ internal static class PerfProbe
     /// thousand frames and more a second, a handheld sixty, and the ground
     /// covered is what matters. Twelve seconds of running crosses several chunks.
     /// </summary>
-    private const double WalkMs = 12000;
+    private static double WalkMs => _walkSeconds * 1000.0;
+
+    private static int DiagnosticSeconds(string name, int fallback, int minimum)
+    {
+        string value = System.Environment.GetEnvironmentVariable(name);
+        if (string.IsNullOrEmpty(value)) return fallback;
+        if (int.TryParse(value, out int seconds) && seconds >= minimum && seconds <= 300) return seconds;
+        throw new System.ArgumentException($"{name} must be an integer from {minimum} to 300.");
+    }
+
+    private static async System.Threading.Tasks.Task WarmUp(Node host)
+    {
+        long until = System.Diagnostics.Stopwatch.GetTimestamp()
+            + _warmupSeconds * System.Diagnostics.Stopwatch.Frequency;
+        while (System.Diagnostics.Stopwatch.GetTimestamp() < until)
+            await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
+    }
 
     /// <summary>
     /// Runs the player on, a step whenever the walker takes one, turning to the
@@ -132,8 +151,22 @@ internal static class PerfProbe
         private int _heading;
         private ulong _movedAt;
         private int _x = -1, _y = -1;
+        private readonly ObservedRoute _route = new(_walkSeconds * 16 + 16);
+        public int RouteDropped => _route.Dropped;
+        public int Tiles => _route.Tiles;
 
-        public int Tiles { get; private set; }
+        public void ObservePosition()
+        {
+            var world = Client.Game.UO.World;
+            var player = world?.Player;
+            if (player == null) return;
+            _route.Observe(world.MapIndex, player.X, player.Y, player.Z);
+        }
+
+        public int[][] Route()
+        {
+            return _route.Points();
+        }
 
         public void Step()
         {
@@ -143,14 +176,10 @@ internal static class PerfProbe
                 return;
             }
 
+            ObservePosition();
             ulong now = Godot.Time.GetTicksMsec();
             if (_x < 0 || player.X != _x || player.Y != _y)
             {
-                if (_x >= 0)
-                {
-                    Tiles += System.Math.Max(System.Math.Abs(player.X - _x), System.Math.Abs(player.Y - _y));
-                }
-
                 _movedAt = now;
             }
             else if (now - _movedAt > 1000)
@@ -172,9 +201,18 @@ internal static class PerfProbe
         var previousToggle = ParityToggle;
         var previousState = ParityState;
         bool previousRetained = UltimaBatcher2D.RetainCanvas;
+        bool previousRuntimeTimings = GUO.Utility.RuntimeTimings.Enabled;
+        bool previousProfiling = GUO.Utility.Profiler.Enabled;
+        _runtimeAttribution = System.Environment.GetEnvironmentVariable("GUO_PERF_RUNTIME_ATTRIBUTION") == "1";
         _retainedCanvasParity = System.Environment.GetEnvironmentVariable("GUO_PERF_PARITY_CANVAS") == "1";
         try
         {
+            _warmupSeconds = DiagnosticSeconds("GUO_PERF_WARMUP_SECONDS", 0, 0);
+            _measureSeconds = DiagnosticSeconds("GUO_PERF_MEASURE_SECONDS", 0, 0);
+            _walkSeconds = DiagnosticSeconds("GUO_PERF_WALK_SECONDS", 12, 1);
+            _walkOrigin = System.Environment.GetEnvironmentVariable("GUO_PERF_WALK_ORIGIN") ?? "field";
+            if (_walkOrigin is not ("field" or "bank" or "docks"))
+                throw new System.ArgumentException("GUO_PERF_WALK_ORIGIN must be field, bank or docks.");
             if (_retainedCanvasParity)
             {
                 bool rd = false;
@@ -195,6 +233,8 @@ internal static class PerfProbe
             ParityState = previousState;
             UltimaBatcher2D.RetainCanvas = previousRetained;
             _retainedCanvasParity = false;
+            GUO.Utility.RuntimeTimings.Enabled = previousRuntimeTimings;
+            GUO.Utility.Profiler.Enabled = previousProfiling;
         }
     }
 
@@ -237,11 +277,18 @@ internal static class PerfProbe
         // On a device, logged in as DualProbe does: the touch layer would
         // swallow the probe's clicks, which aim in client pixels.
         bool touch = GUO.Input.Touch.TouchInput.Enabled;
-        GUO.Input.Touch.TouchInput.Enabled = false;
-        InputProbe.PointerScale = Client.Game.DpiScale;
-        await InputProbe.EnterTheWorld(host, 200);
-        InputProbe.PointerScale = 1f;
-        GUO.Input.Touch.TouchInput.Enabled = touch;
+        float pointerScale = InputProbe.PointerScale;
+        try
+        {
+            GUO.Input.Touch.TouchInput.Enabled = false;
+            InputProbe.PointerScale = Client.Game.DpiScale;
+            await InputProbe.EnterTheWorld(host, 200);
+        }
+        finally
+        {
+            InputProbe.PointerScale = pointerScale;
+            GUO.Input.Touch.TouchInput.Enabled = touch;
+        }
         World world = Client.Game.UO.World;
         if (!world.InGame)
         {
@@ -302,8 +349,12 @@ internal static class PerfProbe
         }
 
         bool arrivedEverywhere = true;
-        foreach (Scene scene in scenes)
+        foreach (Scene configuredScene in scenes)
         {
+            Scene scene = configuredScene;
+            if (scene.Walks && _walkOrigin != "field")
+                scene = scene with { Go = Scenes.Single(s => s.Name == "britain-" + _walkOrigin).Go,
+                    What = $"running from Britain {_walkOrigin}, turning where blocked" };
             await InputProbe.Say(host, scene.Go);
             // Chunks newly in view load and build their meshes first; that is a
             // one-off, not what a player standing still pays every frame.
@@ -379,14 +430,17 @@ internal static class PerfProbe
     {
         // A pixel comparison needs a still frame; a run has none.
         Dictionary<string, object> parity = _parity && !walks ? await Parity(host, name) : null;
+        // Time-based discard also follows parity captures, so their different
+        // histories are not hidden inside the measured interval.
+        bool worldMeasurement = name != "login";
+        if (worldMeasurement) await WarmUp(host);
         int n = Frames;
         Runner runner = walks ? new Runner() : null;
 
         // Uncapped: with vsync or a frame cap every frame below the cap reads as
         // the cap, and a renderer change that saves 4 ms would not show.
-        DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
-        int maxFps = Engine.MaxFps;
-        Engine.MaxFps = 0;
+        using var measurementState = new MeasurementState();
+        measurementState.Uncap();
         // Upstream's own pacing (GameController._intervalFixedUpdate) skips the
         // draw when a frame comes early: one draw per 1000/FPS ms. (Its 217 ms
         // inactive tick does not apply: GameController.IsActive counts a
@@ -394,24 +448,18 @@ internal static class PerfProbe
         // far faster than that interval, so left alone most measured frames
         // would draw nothing. Made tiny for the measurement, so every frame
         // draws; put back after.
-        var field = typeof(GUO.GameController).GetField("_intervalFixedUpdate",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-        float[] interval = field?.GetValue(Client.Game) as float[];
-        float[] kept = interval?.ToArray();
-        if (interval != null)
-        {
-            // Not zero: upstream wraps the elapsed time with %=, and x % 0 is NaN,
-            // which would stop drawing for good.
-            System.Array.Fill(interval, 0.001f);
-        }
-
         await InputProbe.Wait(host, 30);
 
-        var ms = new List<double>(walks ? 20000 : n);
+        double measureMs = walks ? WalkMs : worldMeasurement ? _measureSeconds * 1000.0 : 0;
+        int sampleCapacity = measureMs > 0 ? System.Math.Max(20000, (int)measureMs * 2) : n;
+        var ms = new List<double>(sampleCapacity);
         double kRect = 0, kAffine = 0, kMesh = 0, kTri = 0, kBatches = 0, kCover = 0, kCoverRuns = 0, coverQueued = 0, coverOverlapping = 0;
         double calls = 0, items = 0, switches = 0, commands = 0, prepare = 0, world = 0, cpu = 0, gpu = 0, objects = 0;
         // Allocate the probe's own storage before the measured interval.
-        var uploadMs = new List<double>();
+        var uploadMs = new List<double>(sampleCapacity);
+        var atlasUploadMs = new List<double>(_runtimeAttribution ? sampleCapacity : 0);
+        bool atlasUploadedLast = false;
+        long atlasUploadsLast = 0, atlasUploadsMax = 0, atlasUploadFrames = 0;
         bool uploadedLast = false;
         int stages = (int)PerfStages.Stage.Count;
         double[] stageMs = new double[stages], frameStageMs = new double[stages];
@@ -424,6 +472,12 @@ internal static class PerfProbe
         // unmeasured interval, and the first Take contained two intervals.
         await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
         PerfStages.Take(frameStageMs, frameDrawn);
+        if (_runtimeAttribution)
+        {
+            TextureAtlas.BeginObservations();
+            GUO.Utility.RuntimeTimings.Reset();
+            GUO.Utility.RuntimeTimings.Enabled = true;
+        }
         long drawsBefore = UltimaBatcher2D.FramesBegun;
         long landLookupsBefore = GUO.Game.Map.Chunk.FirstLandLookups;
         long landScansBefore = GUO.Game.Map.Chunk.FirstLandScans;
@@ -468,9 +522,10 @@ internal static class PerfProbe
         int landOntoBefore = GUO.Renderer.Arts.Art.LandOntoLandLayer, staticOntoBefore = GUO.Renderer.Arts.Art.StaticOntoLandLayer;
         long allocatedBefore = System.GC.GetTotalAllocatedBytes();
         System.TimeSpan pausedBefore = System.GC.GetTotalPauseDuration();
+        int gc0Before = System.GC.CollectionCount(0), gc1Before = System.GC.CollectionCount(1), gc2Before = System.GC.CollectionCount(2);
         long last = System.Diagnostics.Stopwatch.GetTimestamp();
         double elapsed = 0;
-        for (int i = 0; walks ? elapsed < WalkMs : i < n; i++)
+        for (int i = 0; measureMs > 0 ? elapsed < measureMs : i < n; i++)
         {
             runner?.Step();
             await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
@@ -489,6 +544,16 @@ internal static class PerfProbe
             }
 
             uploadedLast = up > 0;
+            if (_runtimeAttribution)
+            {
+                long atlasUploads = TextureAtlas.ObservedUpdates + TextureAtlas.ObservedCreations;
+                long atlasUp = atlasUploads - atlasUploadsLast;
+                atlasUploadsLast = atlasUploads;
+                atlasUploadsMax = System.Math.Max(atlasUploadsMax, atlasUp);
+                atlasUploadFrames += atlasUp > 0 ? 1 : 0;
+                if (atlasUp > 0 || atlasUploadedLast) atlasUploadMs.Add(frameMs);
+                atlasUploadedLast = atlasUp > 0;
+            }
             calls += Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame);
             objects += Performance.GetMonitor(Performance.Monitor.RenderTotalObjectsInFrame);
             (int sw, int it, int cm) = UltimaBatcher2D.LastFrame;
@@ -528,12 +593,11 @@ internal static class PerfProbe
         int uploads = LandPages.Uploads - uploadsBefore;
         double allocatedKb = (System.GC.GetTotalAllocatedBytes() - allocatedBefore) / 1024.0 / n;
         double gcMs = (System.GC.GetTotalPauseDuration() - pausedBefore).TotalMilliseconds / n;
-        if (interval != null)
-        {
-            System.Array.Copy(kept, interval, kept.Length);
-        }
-
-        Engine.MaxFps = maxFps;
+        int gc0 = System.GC.CollectionCount(0) - gc0Before, gc1 = System.GC.CollectionCount(1) - gc1Before,
+            gc2 = System.GC.CollectionCount(2) - gc2Before;
+        GUO.Utility.RuntimeTimings.Enabled = false;
+        runner?.ObservePosition();
+        measurementState.Dispose();
         double[] sorted = ms.OrderBy(v => v).ToArray();
         double P(double q) => sorted[System.Math.Min(sorted.Length - 1, (int)System.Math.Ceiling(q * sorted.Length) - 1)];
         var player = Client.Game.UO.World?.Player;
@@ -543,6 +607,14 @@ internal static class PerfProbe
             ["what"] = what,
             ["at"] = player != null ? $"{player.X},{player.Y},{player.Z} map {Client.Game.UO.World.MapIndex}" : "",
             ["frames"] = n,
+            ["warmup_seconds"] = worldMeasurement ? _warmupSeconds : 0,
+            ["sample_storage_grew"] = ms.Capacity > sampleCapacity || uploadMs.Capacity > sampleCapacity
+                || (_runtimeAttribution && atlasUploadMs.Capacity > sampleCapacity),
+            ["elapsed_seconds"] = elapsed / 1000.0,
+            ["drawn_frames"] = draws,
+            ["draw_fps"] = draws * 1000.0 / elapsed,
+            ["walk_route_map_xyz"] = runner?.Route(),
+            ["walk_route_dropped"] = runner?.RouteDropped ?? 0,
             ["draws_per_frame"] = System.Math.Round((double)draws / n, 2),
             ["mean_ms"] = System.Math.Round(ms.Average(), 3),
             ["p95_ms"] = System.Math.Round(P(0.95), 3),
@@ -632,6 +704,15 @@ internal static class PerfProbe
             ["update_world_ms"] = System.Math.Round(update / n, 3),
             ["gather_input_checks"] = GUO.Game.Scenes.GameScene.GatherInputChecks,
             ["gather_input_mismatches"] = GUO.Game.Scenes.GameScene.GatherInputMismatches,
+            ["gc0"] = gc0, ["gc1"] = gc1, ["gc2"] = gc2,
+            ["runtime_attribution"] = _runtimeAttribution,
+            ["runtime_wall_times"] = _runtimeAttribution ? GUO.Utility.RuntimeTimings.Report(draws) : null,
+            ["atlas_pages"] = _runtimeAttribution ? TextureAtlas.UploadReport() : null,
+            ["atlas_uploads_max_in_interval"] = atlasUploadsMax,
+            ["intervals_with_atlas_upload"] = atlasUploadFrames,
+            ["atlas_upload_related_intervals"] = atlasUploadMs.Count,
+            ["atlas_upload_related_mean_ms"] = atlasUploadMs.Count > 0 ? atlasUploadMs.Average() : 0,
+            ["atlas_upload_related_max_ms"] = atlasUploadMs.Count > 0 ? atlasUploadMs.Max() : 0,
         };
         for (int s = 0; s < stages; s++)
         {
@@ -888,6 +969,10 @@ internal static class PerfProbe
                 {
                     ["label"] = label, ["window"] = $"{size.X}x{size.Y}", ["zoom"] = System.Math.Round(Client.Game?.Scene?.Camera?.Zoom ?? 0, 2),
                     ["sample_window_version"] = 2,
+                    ["route_observation_version"] = 2,
+                    ["warmup_seconds"] = _warmupSeconds, ["walk_seconds"] = _walkSeconds,
+                    ["measure_seconds"] = _measureSeconds,
+                    ["walk_origin"] = _walkOrigin, ["runtime_attribution"] = _runtimeAttribution,
                     ["parity_target"] = _retainedCanvasParity ? "retained-canvas" : "configured",
                     ["optimized"] = optimized, ["postfx"] = look, ["profile_preset"] = _profilePreset, ["profile"] = _profileSummary, ["static_world"] = StaticWorld,
                     ["godot_api_jit_optimized"] = apiOptimized, ["godot_api_mvid"] = godotApi.ManifestModule.ModuleVersionId.ToString(),
