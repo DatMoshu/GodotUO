@@ -390,6 +390,7 @@ internal static class PerfProbe
 
         var ms = new List<double>(walks ? 20000 : n);
         double kRect = 0, kAffine = 0, kMesh = 0, kTri = 0, kBatches = 0, kCover = 0, kCoverRuns = 0, coverQueued = 0, coverOverlapping = 0;
+        double mmInstances = 0, mmRuns = 0, mmCalls = 0, mmFallbacks = 0; // --multimesh-sprites
         double calls = 0, items = 0, switches = 0, commands = 0, prepare = 0, world = 0, cpu = 0, gpu = 0, objects = 0;
         int uploadsBefore = LandPages.Uploads, uploadsMax = 0, uploadFrames = 0, uploadsLast = LandPages.Uploads;
         int rebuildsBefore = LandPages.Rebuilds, bumpsBefore = LandPages.Bumps;
@@ -445,6 +446,11 @@ internal static class PerfProbe
             kBatches += k.Batches;
             kCover += k.CoverMeshes;
             kCoverRuns += k.CoverRuns;
+            var mm = UltimaBatcher2D.LastMultiMesh;
+            mmInstances += mm.Sprites;
+            mmRuns += mm.Runs;
+            mmCalls += mm.Calls;
+            mmFallbacks += mm.Fallbacks;
             var cq = GUO.Game.Scenes.RenderLists.LastCover;
             coverQueued += cq.Queued;
             coverOverlapping += cq.Overlapping;
@@ -509,6 +515,11 @@ internal static class PerfProbe
             ["cover_overlapping"] = System.Math.Round(coverOverlapping / n, 1),
             ["cmd_triangles"] = System.Math.Round(kTri / n, 1),
             ["estimated_batches"] = System.Math.Round(kBatches / n, 1),
+            ["multimesh_sprites"] = UltimaBatcher2D.MultiMeshSprites,
+            ["mm_instances"] = System.Math.Round(mmInstances / n, 1),
+            ["mm_runs"] = System.Math.Round(mmRuns / n, 1),
+            ["mm_calls"] = System.Math.Round(mmCalls / n, 1),
+            ["mm_fallbacks"] = System.Math.Round(mmFallbacks / n, 1),
             ["gc_ms_per_frame"] = System.Math.Round(gcMs, 3),
             ["tiles_moved"] = runner?.Tiles ?? 0,
             ["land_layers"] = LandPages.Layers,

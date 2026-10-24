@@ -2148,6 +2148,16 @@ public partial class Main : Node
                     case "--merged-cover=off":
                         GUO.Renderer.UltimaBatcher2D.MergedCover = false;
                         break;
+                    case "--multimesh-sprites":
+                    case "--multimesh-sprites=on":
+                        // PERF-MM-01: runs of upright sprites as MultiMesh instances, one draw per run. Off by default.
+                        GUO.Renderer.UltimaBatcher2D.MultiMeshSprites = true;
+                        GUO.Host.PerfProbe.ParityToggle = on => GUO.Renderer.UltimaBatcher2D.MultiMeshSprites = on;
+                        GUO.Host.PerfProbe.ParityState = () => GUO.Renderer.UltimaBatcher2D.MultiMeshSprites;
+                        break;
+                    case "--multimesh-sprites=off":
+                        GUO.Renderer.UltimaBatcher2D.MultiMeshSprites = false;
+                        break;
                     case "--batched-world":
                         GUO.Renderer.UltimaBatcher2D.BatchedWorld = true;
                         break;
