@@ -2111,6 +2111,15 @@ public partial class Main : Node
                         // The experimental raw-bytes output (WorldDepthPass.RawOutput).
                         GUO.Renderer.GpuWorld.RawOutput = true;
                         break;
+                    case "--shared-cover":
+                        // Prototype: covering land on the sprite canvas item, no cut
+                        // (uo_hue_cover.gdshader); off by default. Given, it is
+                        // also the probe's parity toggle.
+                        GUO.Renderer.UltimaBatcher2D.SharedCoverShader = true;
+                        GUO.Renderer.UltimaBatcher2D.SharedCover = true;
+                        GUO.Host.PerfProbe.ParityToggle = on => GUO.Renderer.UltimaBatcher2D.SharedCover = on;
+                        GUO.Host.PerfProbe.ParityState = () => GUO.Renderer.UltimaBatcher2D.SharedCover;
+                        break;
                     case "--chunk-skip":
                         // Review item B: the tile walk skips chunks no anchor of
                         // which can reach the screen (on by default); given, it is
