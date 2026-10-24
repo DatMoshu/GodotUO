@@ -1123,66 +1123,79 @@ namespace GUO
             // discarded and rebuilt each frame, which is the same fact, and
             // RenderTargets.Draw covers the window with the tiled background
             // before anything else lands on it.
-            _uoSpriteBatch.BeginFrame();
-
-            if (Scene != null && Scene.IsLoaded && !Scene.IsDestroyed)
+            // PORT DEVIATION (GUO): only the main complete frame opts into
+            // deferred retained hiding. The final composite is the last producer.
+            bool canvasFrameCompleted = false;
+            try
             {
-                Scene.Draw(_uoSpriteBatch, _renderTargets);
-            }
+                _uoSpriteBatch.BeginFrame(deferRetainedHiding: true);
 
-            _uoSpriteBatch.SetRenderTarget(_renderTargets.UiRenderTarget);
-            _uoSpriteBatch.Clear(Godot.Colors.Transparent);
-
-            if ((UO.World?.InGame ?? false) && SelectedObject.Object is TextObject t)
-            {
-                if (t.IsTextGump)
+                if (Scene != null && Scene.IsLoaded && !Scene.IsDestroyed)
                 {
-                    t.ToTopD();
+                    Scene.Draw(_uoSpriteBatch, _renderTargets);
                 }
-                else
+
+                _uoSpriteBatch.SetRenderTarget(_renderTargets.UiRenderTarget);
+                _uoSpriteBatch.Clear(Godot.Colors.Transparent);
+
+                if ((UO.World?.InGame ?? false) && SelectedObject.Object is TextObject t)
                 {
-                    UO.World.WorldTextManager?.MoveToTop(t);
+                    if (t.IsTextGump)
+                    {
+                        t.ToTopD();
+                    }
+                    else
+                    {
+                        UO.World.WorldTextManager?.MoveToTop(t);
+                    }
                 }
+
+                SelectedObject.HealthbarObject = null;
+                SelectedObject.SelectedContainer = null;
+
+                _uoSpriteBatch.Begin();
+                if (Scene != null && Scene.IsLoaded && !Scene.IsDestroyed)
+                {
+                    Scene.DrawUI(_uoSpriteBatch);
+                }
+                _uoSpriteBatch.End();
+
+                UIManager.Draw(_uoSpriteBatch);
+
+                // PORT DEVIATION (GUO): the same gumps again for the second
+                // screen of a dual-screen device; a no-op without one. ADR-0009.
+                GUO.Platform.Android.DualScreen.Draw(_uoSpriteBatch, _renderTargets.UiRenderTarget);
+
+                // PORT DEVIATION (GUO): the idle screen saver, over everything
+                // but the cursor. A no-op unless the profile turns it on.
+                _uoSpriteBatch.Begin();
+                GUO.Game.Managers.ScreenSaver.Draw(_uoSpriteBatch, new Rectangle(0, 0, ClientBounds.Width, ClientBounds.Height));
+                _uoSpriteBatch.End();
+
+                _uoSpriteBatch.Begin();
+                // PORT DEVIATION (GUO): no cursor while a pad is in use and its
+                // pointer idle (ADR-0025, Input.InputMode.PointerHidden), or
+                // while the UI is hidden for a clean shot (Renderer.CleanShots).
+                if (!GUO.Input.InputMode.PointerHidden && !GUO.Renderer.CleanShots.Hidden)
+                {
+                    UO.GameCursor?.Draw(_uoSpriteBatch);
+                }
+                // PORT DEVIATION (GUO): with the pointer on a dual-screen device's
+                // second screen, a badge of the held item on this one. ADR-0009.
+                GUO.Platform.Android.DualScreen.DrawMainBadge(_uoSpriteBatch);
+                _uoSpriteBatch.End();
+
+                _uoSpriteBatch.SetRenderTarget(null);
+
+                _renderTargets.Draw(_uoSpriteBatch);
+
+                canvasFrameCompleted = true;
             }
-
-            SelectedObject.HealthbarObject = null;
-            SelectedObject.SelectedContainer = null;
-
-            _uoSpriteBatch.Begin();
-            if (Scene != null && Scene.IsLoaded && !Scene.IsDestroyed)
+            finally
             {
-                Scene.DrawUI(_uoSpriteBatch);
+                // Abort cleanup never replaces the original draw exception.
+                _uoSpriteBatch.EndFrame(canvasFrameCompleted);
             }
-            _uoSpriteBatch.End();
-
-            UIManager.Draw(_uoSpriteBatch);
-
-            // PORT DEVIATION (GUO): the same gumps again for the second
-            // screen of a dual-screen device; a no-op without one. ADR-0009.
-            GUO.Platform.Android.DualScreen.Draw(_uoSpriteBatch, _renderTargets.UiRenderTarget);
-
-            // PORT DEVIATION (GUO): the idle screen saver, over everything
-            // but the cursor. A no-op unless the profile turns it on.
-            _uoSpriteBatch.Begin();
-            GUO.Game.Managers.ScreenSaver.Draw(_uoSpriteBatch, new Rectangle(0, 0, ClientBounds.Width, ClientBounds.Height));
-            _uoSpriteBatch.End();
-
-            _uoSpriteBatch.Begin();
-            // PORT DEVIATION (GUO): no cursor while a pad is in use and its
-            // pointer idle (ADR-0025, Input.InputMode.PointerHidden), or
-            // while the UI is hidden for a clean shot (Renderer.CleanShots).
-            if (!GUO.Input.InputMode.PointerHidden && !GUO.Renderer.CleanShots.Hidden)
-            {
-                UO.GameCursor?.Draw(_uoSpriteBatch);
-            }
-            // PORT DEVIATION (GUO): with the pointer on a dual-screen device's
-            // second screen, a badge of the held item on this one. ADR-0009.
-            GUO.Platform.Android.DualScreen.DrawMainBadge(_uoSpriteBatch);
-            _uoSpriteBatch.End();
-
-            _uoSpriteBatch.SetRenderTarget(null);
-
-            _renderTargets.Draw(_uoSpriteBatch);
 
             Profiler.ExitContext(Profiler.ProfilerContext.RENDER_FRAME);
             Profiler.EnterContext(Profiler.ProfilerContext.OUT_OF_CONTEXT);

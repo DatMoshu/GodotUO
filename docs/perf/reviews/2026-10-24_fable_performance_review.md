@@ -3,7 +3,8 @@
 Owner: Moshu. Implementation/review: Codex, continuing Fable's 22 October
 handoff. This consolidates the rendering/performance lane through the local
 incremental-cover, retained-canvas and gather-input work, followed by runtime
-and atlas attribution, then scoped cover-cache retention. It distinguishes ordinary-path Release work from the
+and atlas attribution, scoped cover-cache retention, allocation fixes and
+deferred retained visibility. It distinguishes ordinary-path Release work from the
 off-by-default GPU experiment. It is a review record, not approval to merge or
 enable either GPU mode.
 
@@ -15,7 +16,26 @@ There is no established general 250 FPS result at 2560×1440, zoom 2. That targe
 requires the entire frame to fit within 4 ms. Callback timings, profiler CPU
 scopes and reduced draw counts cannot independently establish it.
 
-Latest sustained observations are in [cover-cache retention](../2026-10-24_cover_cache_admission.md):
+Latest standing observations are in [deferred retained visibility](../2026-10-24_deferred_retained_visibility.md).
+The off-default retained experiment eliminates almost all of its roughly
+3,300 native hide/reveal calls per stationary frame. Previous retention versus
+deferred retention measured bank 74.292→102.272 FPS and docks 90.789→98.302,
+under unequal shared load and different command/upload activity. Candidate
+retention-off measured 83.022 at bank and 98.347 at docks: the docks whole-frame
+result is effectively unchanged against ordinary Release. These are observations,
+not isolated gains. Four direct off/on world captures match all pixels; 940
+Release and 1,280 optimized Debug/Labs checks pass. Exact 46-tile routes measured
+bank 60.051→69.401 FPS and docks 90.276→91.461 under shared load, with unequal
+atlas activity. Travel visibility calls fell from roughly 3,170 per draw to
+less than 0.46; docks p95 slightly worsened. Full evidence and limits are in the
+linked report. The toggle remains off by default.
+
+The preceding [incidental allocation fix](../2026-10-24_incidental_frame_allocations.md)
+reduced bank/docks from 19.6 KB/frame to 14.1/14.0 in actual Release and removed
+the targeted debug/expiry allocation sites from fresh sampled traces. Neither
+these allocation results nor the reduced visibility counts imply a 4 ms frame.
+
+Earlier sustained observations are in [cover-cache retention](../2026-10-24_cover_cache_admission.md):
 bank 80.721→85.601 FPS, pier docks 98.466→93.213, bank walk 63.869→70.995,
 and pier walk 75.669→79.559. These are actual Release, 2560×1440, zoom 2,
 60-second discard, 30-second standing / 60-second walking samples under
@@ -74,7 +94,10 @@ than claiming another optimization.
 | `b2fa6237`, local | Retain ordinary canvas commands | Resubmitting identical native draw commands | Off-default experiment; exact stream comparison and fallback replay |
 | `72fd49fb`, local | Snapshot shared values during one synchronous gather | Repeated profile/player/CoT input reads | Object decisions stay live; timings and runtime invariants recorded separately |
 | `a64106c3`, local | Optional update/draw scopes, atlas upload accounting and timed warm-up/walk diagnostics | Makes hidden update cost and travel uploads measurable | Actual Release, shared-load observations; no performance gain claimed |
-| `codex/cover-cache-admission`, local candidate | Per-entry missing-slot epochs, hard map lifetime epoch and full-cache admission guard | Unnecessary travel-time discovery and rejected-plan bookkeeping | Broad membership checks preserved; shared-load observations and exact same-client cached/live pixels |
+| `33e39408`, local | Per-entry missing-slot epochs, hard map lifetime epoch and full-cache admission guard | Unnecessary travel-time discovery and rejected-plan bookkeeping | Broad membership checks preserved; shared-load observations and exact same-client cached/live pixels |
+| `12ab861c`, local | Exact 46-tile replay, interval counters and allocation attribution | Ambiguous routes and unmeasured native visibility work | Corrected cohorts include contrary retention results; no default promotion |
+| `1381cae1`, local | Guard unused debug callbacks; reuse cover-expiry predicate and scratch | Incidental per-frame UI/expiry allocations | Actual Release allocation reduction; ordinary pixels and debug behavior preserved |
+| `codex/deferred-retained-visibility`, local candidate | Keep reused retained items visible until a complete frame ends; fix clipping transition | Redundant hide/reveal calls and clear-after-clip regression | Existing off-default experiment; explicit abort recovery and target/clip pixel checks |
 
 PR references identify the existing stack, not a fresh remote-state audit.
 Only the previously authorized pushes through PRs 152/153 were made. The
@@ -484,3 +507,20 @@ calls in the retained-canvas experiment, with an explicit end-of-frame lifecycle
 and abort recovery. It remains behind the existing off-default experiment;
 ordinary Release and both GPU prototypes remain separate. Typed UI texture
 commands have a source design, but no implementation or FPS claim yet.
+
+## Follow-up: deferred retained visibility
+
+The [deferred visibility report](../2026-10-24_deferred_retained_visibility.md)
+now records completed standing and exact-route travel cohorts, final Release
+identity, all call counts and contrary timings. Stable retained frames avoid
+the old hide/reveal pair per owner; moving frames update only the changed
+visible suffix. The main frame has explicit completion and abort recovery.
+Transition tests also fixed native clipping being reset after a pooled owner
+changed roles. Default retention is still off, and GPU ownership is excluded.
+
+Final validation passes 940 Release checks and the preceding optimized
+Debug/Labs build passes 1,280. Four full world captures match retention off/on
+exactly. Independent source review found no new concrete defect, with no claim
+of independent runtime acceptance. Full smoke has aggregate OK plus the
+inherited editor `splat_lods_present` failure; docs, launchers and privacy pass.
+UI texture command allocation work is the next separate local candidate.

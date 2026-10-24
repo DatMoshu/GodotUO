@@ -461,8 +461,16 @@ namespace GUO.Renderer
         /// Resetting the pool in Begin would erase the previous pass, so the
         /// reset lives here and Begin only sets up its own batch.
         /// </remarks>
-        public void BeginFrame()
+        public void BeginFrame() => BeginFrame(deferRetainedHiding: false);
+
+        /// <summary>Opt into deferred retained hiding only when a complete
+        /// synchronous frame will call <see cref="EndFrame"/> in a finally block.</summary>
+        public void BeginFrame(bool deferRetainedHiding)
         {
+            // PORT DEVIATION (GUO): a missing EndFrame must not carry a
+            // partially matched old stream into the next frame, even in Release.
+            if (_deferredCanvasFrameOpen || _canvasRecoveryPending)
+                RecoverDeferredCanvasFrame(throwOnFailure: true);
             _retainCanvasFrame = RetainCanvas;
             int itemsToClear = _items.Count;
 #if GUO_LABS
@@ -474,6 +482,10 @@ namespace GUO.Renderer
 #endif
             EnsureNotStarted();
             FinishCanvasCommands();
+            // RD owns its late visibility election; legacy GPU capture keeps
+            // its existing eager lifecycle. Ordinary embedded/probe callers
+            // retain the default behavior without needing an EndFrame call.
+            _deferredCanvasFrameOpen = deferRetainedHiding && _retainCanvasFrame && !GpuWorld.Enabled;
 
             LastFrame = (TextureSwitches, _itemCount, Commands);
             LastNativeTextureMeasurements = NativeTextureMeasurements;
@@ -504,10 +516,9 @@ namespace GUO.Renderer
                 ref ItemState state = ref _itemStates[i];
                 if (_retainCanvasFrame && state.Commands?.HasCommands == true)
                 {
-                    // No EndFrame seam exists across all batchers. Hide retained
-                    // items now; NewItem reveals only the items this frame uses,
-                    // so a shorter frame cannot leave a stale visible suffix.
-                    if (!state.RetainedHidden)
+                    // Main DrawFrame owns an explicit final boundary. Other
+                    // callers still hide eagerly and reveal only their used prefix.
+                    if (!_deferredCanvasFrameOpen && !state.RetainedHidden)
                     {
                         RenderingServer.CanvasItemSetVisible(_items[i], false);
                         CanvasHides++;
@@ -1384,6 +1395,10 @@ void fragment() {
             // clip item inside the enclosing one is what intersects them.
             Rid clip = NewItem(CurrentParent, Transform2D.Identity);
 
+            // PORT DEVIATION (GUO): this is an empty clip ancestor. Finish
+            // removing any retained sprite suffix BEFORE enabling clipping:
+            // Godot's CanvasItemClear also resets the native clip flag.
+            FinishCanvasCommands();
             ItemSetCustomRect(clip, new Rect2(x, y, width, height));
             ItemSetClip(clip, true);
 
