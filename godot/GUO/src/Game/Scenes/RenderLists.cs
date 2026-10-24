@@ -195,26 +195,6 @@ namespace GUO.Game.Scenes
         private ulong[] _sortScratch;
 
         /// <summary>
-        /// PORT DEVIATION (GUO): the Realtime lights pass (ADR-0039) reads the
-        /// frame's gathered, sorted world instead of walking the chunks and
-        /// sorting again. True from DrawWorld's sort until the next Clear.
-        /// </summary>
-        internal bool WorldSorted { get; private set; }
-
-        /// <summary>How many drawables the sorted world holds this frame.</summary>
-        internal int WorldCount => _world.Count;
-
-        /// <summary>The object at <paramref name="sortedIndex"/> of the sorted world (valid while <see cref="WorldSorted"/>).</summary>
-        internal GameObject WorldObjectAt(int sortedIndex) => _world[DepthKey.Seq(_keys[sortedIndex])].Object;
-
-        /// <summary>The land queued this frame (the world's own cull), flat and stretched; empty before any is queued.</summary>
-        internal List<GameObject> LandTiles => _tiles ?? NoLand;
-        internal List<GameObject> StretchedLandTiles => _stretchedTiles ?? NoLand;
-
-        // Read-only stand-in for a bucket the lazy allocation has not made yet.
-        private static readonly List<GameObject> NoLand = new(0);
-
-        /// <summary>
         /// Land that has to be drawn over something below it, queued into the
         /// sorted pass as well as the chunk mesh.
         /// </summary>
@@ -452,7 +432,6 @@ namespace GUO.Game.Scenes
             _tiles?.Clear();
             _stretchedTiles?.Clear();
             _world.Clear();
-            WorldSorted = false;
             _coverStamp.NextFrame();
             _coverOwner.Release();
             LastCover = (CoverQueued, CoverOverlapping); // PORT DEVIATION (GUO): B4 fix 2 counters
@@ -731,7 +710,6 @@ namespace GUO.Game.Scenes
             }
 
             WorldDepthSort.SortQueueKeys(_keys, span.Length, ref _sortScratch);
-            WorldSorted = true;
             stageAt = PerfStages.Add(PerfStages.Stage.Sort, stageAt);
 
             // PORT DEVIATION (GUO): --gpu-world (ADR-0007, GPU-02). The sorted
