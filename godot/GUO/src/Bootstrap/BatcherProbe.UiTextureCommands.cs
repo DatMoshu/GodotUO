@@ -163,6 +163,7 @@ public partial class BatcherProbe
         image.SetPixel(1, 1, Colors.Red); image.SetPixel(2, 1, Colors.Green);
         image.SetPixel(1, 2, Colors.White); image.SetPixel(2, 2, Colors.Yellow);
         using var texture = ImageTexture.CreateFromImage(image);
+        VerifyLazyLandBuckets(batcher);
         VerifyUiTextureStorage(texture);
         bool oldBatched = UltimaBatcher2D.BatchedWorld;
         var reference = new List<byte[]>();

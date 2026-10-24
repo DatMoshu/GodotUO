@@ -137,8 +137,10 @@ namespace GUO.Game.Scenes
             public readonly int Slot = slot;
         }
 
-        private readonly List<GameObject> _tiles = [];
-        private readonly List<GameObject> _stretchedTiles = [];
+        // PORT DEVIATION (GUO): short-lived UI child lists have no land.
+        // Allocate each bucket only when its first Land is actually queued.
+        private List<GameObject> _tiles;
+        private List<GameObject> _stretchedTiles;
 
         /// <summary>
         /// Statics, multis, items, mobiles, corpses and effects, together.
@@ -205,9 +207,12 @@ namespace GUO.Game.Scenes
         /// <summary>The object at <paramref name="sortedIndex"/> of the sorted world (valid while <see cref="WorldSorted"/>).</summary>
         internal GameObject WorldObjectAt(int sortedIndex) => _world[DepthKey.Seq(_keys[sortedIndex])].Object;
 
-        /// <summary>The land queued this frame (the world's own cull), flat and stretched.</summary>
-        internal List<GameObject> LandTiles => _tiles;
-        internal List<GameObject> StretchedLandTiles => _stretchedTiles;
+        /// <summary>The land queued this frame (the world's own cull), flat and stretched; empty before any is queued.</summary>
+        internal List<GameObject> LandTiles => _tiles ?? NoLand;
+        internal List<GameObject> StretchedLandTiles => _stretchedTiles ?? NoLand;
+
+        // Read-only stand-in for a bucket the lazy allocation has not made yet.
+        private static readonly List<GameObject> NoLand = new(0);
 
         /// <summary>
         /// Land that has to be drawn over something below it, queued into the
@@ -444,8 +449,8 @@ namespace GUO.Game.Scenes
 
         public void Clear()
         {
-            _tiles.Clear();
-            _stretchedTiles.Clear();
+            _tiles?.Clear();
+            _stretchedTiles?.Clear();
             _world.Clear();
             WorldSorted = false;
             _coverStamp.NextFrame();
@@ -482,11 +487,11 @@ namespace GUO.Game.Scenes
                 case Land land:
                     if (land.IsStretched)
                     {
-                        _stretchedTiles.Add(toRender);
+                        (_stretchedTiles ??= new List<GameObject>()).Add(toRender);
                     }
                     else
                     {
-                        _tiles.Add(toRender);
+                        (_tiles ??= new List<GameObject>()).Add(toRender);
                     }
                     break;
 
@@ -1068,6 +1073,8 @@ namespace GUO.Game.Scenes
         {
             int done = 0;
 
+            // Null is the same empty bucket, including the id reset below.
+            if (renderList != null)
             foreach (var obj in renderList)
             {
                 if (obj.Z <= maxGroundZ)
