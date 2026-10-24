@@ -150,9 +150,74 @@ and all seven rows. A second alternating pair was deferred until a quiet
 window is available; repeating the noisy measurements cannot clear that gate.
 Draw calls rose slightly (up to 4.36% at docks), rather than falling.
 
-Promotion remains blocked. The dedicated interior-house roof/circle-of-
-transparency and live picking checks are still unproven. PR156 multimesh
-is absent from the merged baseline and its interaction is untested. Older
-zoom 1.4/0.8/0.5 captures do not validate this changed DLL; phone, Deck and
-web are also outside this evidence. No default enablement or subsequent
-bottleneck implementation is included.
+Promotion remains blocked on repeated quiet-host timing and tail gates.
+The following follow-up covers the independent desktop checks; phone,
+Deck and web remain outside this evidence. No default enablement or
+subsequent bottleneck implementation is included.
+
+### Independent desktop follow-up
+
+Evidence run: `20261024_guo-worker-astra-fps-20261024_desktop-interactions`.
+The same b08783c0 Release DLL above passed all six frozen scenes at each
+of zoom 1.4, 0.8 and 0.5: zero strict and repeatable differences.
+
+The existing inn at map0, 1451,1707,0 has carpet at z0 and slate roof at
+z23-26. With DrawRoofs true, its interior shows automatic roof removal.
+Six strict-login runs compare shared off/on with circle of transparency
+disabled, gradient mode enabled, and shader-circle mode enabled. Each
+uses an isolated temporary profile, 1280x720, zoom1.4, five captures.
+The inn-outline comparison has 125,360 stable pixels and zero differences
+for all three pairs. The effect control changes 28,233 inn pixels in
+gradient mode and 27,791 in shader-circle mode, equally on both paths.
+
+The original bounding rectangle also includes neighboring buildings:
+it has zero, five and thirty differences respectively. All residuals
+are outside the inn at x596-605,y705-709; their cause is not proven.
+Both comparisons and the outline are retained in `house-comparison.json`.
+This is a dedicated interior check, not whole-viewport frozen parity.
+
+The existing exported highlight probe passes all four checks on both
+paths: injected mouse position (700.95557,378.52914) selects the same
+Land0x0408 at1454,1706, the chunk unloads after teleport, and its reloaded
+mesh has no stray highlight. This proves hover picking and cleanup,
+not click/pickup behavior. No account, character or world fixture was
+created or modified beyond moving the allocated probe character.
+
+### PR156 interaction on an isolated branch
+
+`work/astra-shared-cover-pr156-20261024` merges shared-cover source
+`01f09b35` and original PR156 head `8555fc84` in `101a0d52`, preserving
+both parents and the original refs. The newer PERF-LANE-01 timing/replay
+protocol supersedes PR156's earlier timing switches; its renderer counters
+and tests are retained. No public merge or default enablement is included.
+
+The first combined renderer probe exposed two retained visibility count
+failures: short MultiMesh runs submitted raw rectangles without recording
+their ownership. The integration fix uses the existing CanvasRect and
+CanvasAffine helpers for replay, and explicitly bypasses retention before
+long MultiMesh commands, whose pooled buffer changes independently of its
+RID. The expanded probe checks instanced and replayed runs with retention
+off and on across six transforms. Full smoke and Release export passed;
+all three exported modes (default, shared, shared plus MultiMesh) passed
+1,315 checks each, with zero renderer errors and the existing one
+CanvasItem / one ObjectDB leak warnings. The perf-tool suite passed 127
+tests and documentation lint passed 334 documents.
+
+Final integration Release DLL SHA256:
+`813b8f518f4764733867310e29b8d7827f6556146de7235c99f0f2209260cd8d`.
+
+At 2560x1440, zoom2, Forward+, all six frozen scenes have zero strict
+and repeatable differences in three comparisons: MultiMesh toggled over
+shared cover, shared cover toggled over MultiMesh, and retained canvas
+toggled with both enabled. The retained diagnostic reports its target
+exercised. See `v2-*-manifest.json` and `final-gates.json` in the evidence
+run; the original shared-only Release DLL remains unchanged.
+
+MultiMesh uses a different material, so shared cover deliberately falls
+back to cut submission when both are enabled. At the bank, the combined
+mode uses 1,608 items and 1,589 draw calls, versus shared-only's 36 items
+and 1,629 draws. Flipping shared while MultiMesh is active leaves counts
+unchanged. This proves fallback compatibility, not combined savings.
+The original shared-only bank reduction remains 1,608 to 36 items with
+draw calls increasing from 1,568 to 1,629 (+3.9%). Quiet-host repeated
+alternating Release A/B and tail gates remain necessary for gain claims.

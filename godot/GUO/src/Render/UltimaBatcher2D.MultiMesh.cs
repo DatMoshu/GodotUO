@@ -253,6 +253,10 @@ namespace GUO.Renderer
                 MultiMeshCalls++;
             }
 
+            // PORT DEVIATION (GUO): the retained stream has no MultiMesh
+            // command. Materialize its prefix before this native command;
+            // its pooled instance buffer changes independently of the RID.
+            _canvasCommands?.Bypass();
             RenderingServer.CanvasItemAddMultimesh(_mmItem, multimesh, RidOf(_mmTexture));
             MultiMeshCalls++;
             MultiMeshRuns++;
@@ -278,15 +282,13 @@ namespace GUO.Renderer
                 Commands++;
                 if (command.Affine)
                 {
-                    RenderingServer.CanvasItemAddSetTransform(_mmItem, command.Transform);
                     Count(1, texture);
-                    RenderingServer.CanvasItemAddTextureRectRegion(_mmItem, command.Destination, texture, command.Source, modulate, false, false);
-                    RenderingServer.CanvasItemAddSetTransform(_mmItem, Transform2D.Identity);
+                    CanvasAffine(command.Source, texture, modulate, command.Transform);
                 }
                 else
                 {
                     Count(0, texture);
-                    RenderingServer.CanvasItemAddTextureRectRegion(_mmItem, command.Destination, texture, command.Source, modulate, false, false);
+                    CanvasRect(_mmItem, command.Destination, texture, command.Source, modulate);
                 }
             }
 

@@ -434,12 +434,15 @@ public partial class BatcherProbe : Node
         };
 
         int keepMinRun = UltimaBatcher2D.MultiMeshMinRun;
+        bool keepRetain = UltimaBatcher2D.RetainCanvas;
         // Every run instanced, then every run too short and replayed as rects.
+        foreach (bool retain in new[] { false, true })
         foreach (int minRun in new[] { 1, 1000 })
         foreach ((string viewName, Transform2D view) in views)
         {
+            UltimaBatcher2D.RetainCanvas = retain;
             UltimaBatcher2D.MultiMeshMinRun = minRun;
-            string name = $"{viewName}, {(minRun == 1 ? "instanced" : "replayed")}";
+            string name = $"{viewName}, {(minRun == 1 ? "instanced" : "replayed")}, retained={retain}";
             Image canvas = await Frame(false, view);
             Image instanced = await Frame(true, view);
             batcher.BeginFrame();
@@ -476,6 +479,7 @@ public partial class BatcherProbe : Node
 
         UltimaBatcher2D.MultiMeshSprites = was;
         UltimaBatcher2D.MultiMeshMinRun = keepMinRun;
+        UltimaBatcher2D.RetainCanvas = keepRetain;
         batcher.Dispose();
         viewport.QueueFree();
     }
