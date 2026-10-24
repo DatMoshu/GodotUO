@@ -18,15 +18,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from guo import load_config
 from guo.process import build_child_env
-from gate import SCENES, compare, validate
+from gate import SCENES, TIMES, compare, host_cell, validate
 
 SCHEMA = "guo/perf_gate@1"
 
 # What the gate itself asks of the probe, beyond the caller's --args: the six
-# scenes it binds on (login is measured whatever the list says) and the
-# map-only tile walk, so a stock run exits 0 on a clean main (PERF-V5) and a
-# passer-by cannot move a count between identical runs (PERF-V6).
-GATE_FLAGS = ["--perf-static-world"] + [flag for scene in SCENES if scene != "login" for flag in ("--perf-scene", scene)]
+# scenes it binds on (login is measured whatever the list says), the map-only
+# tile walk, so a stock run exits 0 on a clean main (PERF-V5) and a passer-by
+# cannot move a count between identical runs (PERF-V6), and the quiet
+# fixture, so rain and server text cannot either (PERF-LANE-01).
+GATE_FLAGS = ["--perf-static-world", "--perf-quiet"] + [flag for scene in SCENES if scene != "login" for flag in ("--perf-scene", scene)]
 
 
 def tag(value: str) -> str:
@@ -53,7 +54,12 @@ def context_for(args, cfg) -> dict:
             "gate_flags": " ".join(GATE_FLAGS)}
 
 
-def provenance(cfg) -> dict:
+def export_dll(exe: Path) -> Path | None:
+    """The GUO assembly an export loads: data_<name>_<platform>/GUO.dll beside it."""
+    return next(iter(sorted(exe.parent.glob("data_*/GUO.dll"))), None)
+
+
+def provenance(cfg, exe: Path) -> dict:
     """What was measured: the checkout's head, whether it was clean, and the client DLL's hash.
 
     Recorded beside a baseline so a number can be traced to the exact build
@@ -70,17 +76,20 @@ def provenance(cfg) -> dict:
             return ""
 
     head = git("rev-parse", "HEAD")
-    dll = Path(cfg.root) / "godot" / "GUO" / ".godot" / "mono" / "temp" / "bin" / "Debug" / "GUO.dll"
+    dll = export_dll(exe)
     try:
-        digest = hashlib.sha256(dll.read_bytes()).hexdigest()
+        digest = hashlib.sha256(dll.read_bytes()).hexdigest() if dll else ""
     except OSError:
         digest = ""
     return {"head": head or "unknown", "dirty": bool(git("status", "--porcelain")) if head else None,
             "client_dll_sha256": digest or "unknown"}
 
 
-def prerequisites(cfg) -> list[str]:
+def prerequisites(cfg, exe: Path | None = None) -> list[str]:
     missing = []
+    if exe is not None and (not exe.is_file() or export_dll(exe) is None):
+        missing.append("--exe must name an exported GUO executable with its data_*/GUO.dll beside it:"
+                       " export with launchers/windows/export (Release, not --export-debug)")
     if not cfg.godot_console_exe.is_file():
         missing.append("Godot .NET engine missing: run launchers/pipeline/00_bootstrap")
     if not cfg.client_data.is_dir():
@@ -115,6 +124,47 @@ def write_baseline(path: Path, context: dict, report: dict, replace: bool, prove
             stream.write(json.dumps(doc, indent=2) + "\n")
 
 
+def probe_command(args, label: str) -> list[str]:
+    cmd = [sys.executable, str(Path(__file__).with_name("run.py")), "--label", label, "--exe", str(args.exe),
+           "--size", args.size, "--zoom", str(args.zoom), "--renderer", args.renderer,
+           "--args=" + " ".join([*GATE_FLAGS, args.args]).strip()]
+    if args.port:
+        cmd.extend(["--port", str(args.port)])
+    return cmd
+
+
+def dry_run(args) -> int:
+    """No launch: the probe command, and optionally what the gate makes of an existing report."""
+    print("[perf_gate] Dry run; nothing launched. Probe command:")
+    print("  " + " ".join(probe_command(args, "gate_<fresh label>")))
+    if not args.from_report:
+        return 0
+    try:
+        report = json.loads(args.from_report.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        print("[perf_gate] Cannot read that report as JSON.")
+        return 2
+    if not isinstance(report, dict):
+        print("[perf_gate] That report is not a probe report.")
+        return 2
+    print()
+    print("| Scene | p50 ms | p95 ms | p99 ms | mean ms | other CPU mean/max over the sample |")
+    print("|---|---:|---:|---:|---:|---|")
+    for row in report.get("scenes") or []:
+        if isinstance(row, dict):
+            print(f"| {row.get('scene')} | " + " | ".join(str(row.get(key, "n/a")) for key in TIMES)
+                  + f" | {host_cell(row)} |")
+    print()
+    print(f"export_template {report.get('export_template', 'n/a')}, engine_debug_build {report.get('engine_debug_build', 'n/a')},"
+          f" quiet_fixture {report.get('quiet_fixture', 'n/a')}, host load {(report.get('host_load') or {}).get('host_load_source', 'n/a')}")
+    try:
+        validate(report)
+        print("[perf_gate] This report could bind.")
+    except ValueError as exc:
+        print(f"[perf_gate] This report cannot bind: {exc}.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--name", type=slug, default="default", help="local baseline name")
@@ -124,6 +174,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--renderer", choices=("forward_plus", "mobile", "gl_compatibility"), default="forward_plus")
     parser.add_argument("--port", type=int)
     parser.add_argument("--args", default="", help="extra client flags; must match the baseline exactly")
+    parser.add_argument("--exe", type=Path, help="the exported Release GUO executable to time; required for a measurement")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="check the export and print the probe command without launching anything")
+    parser.add_argument("--from-report", type=Path,
+                        help="with --dry-run: print this existing probe report's frame-time table and gate verdict")
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--record-baseline", action="store_true", help="record a new baseline; refuses an existing one")
     modes.add_argument("--replace-baseline", action="store_true", help="deliberately replace an existing baseline after a successful probe")
@@ -135,10 +190,14 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--port must be between 1 and 65535")
     if not args.doctor and not args.fixture:
         parser.error("--fixture is required; name the shard world/data version used for this comparison")
+    if not args.doctor and not args.exe:
+        parser.error("--exe is required; frame times bind only on an exported Release build (PERF-LANE-01)")
+    if args.from_report and not args.dry_run:
+        parser.error("--from-report only goes with --dry-run")
 
     try:
         cfg = load_config()
-        missing = prerequisites(cfg)
+        missing = prerequisites(cfg, None if args.doctor else args.exe)
     except (OSError, ValueError, RuntimeError):
         print("[perf_gate] Cannot read local configuration. Check config.local and run launchers/dev/perf_gate --doctor.")
         return 2
@@ -151,6 +210,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     context = context_for(args, cfg)
+    if args.dry_run:
+        return dry_run(args)
     out = cfg.build / "perf" / "gate" / context["machine"]
     baseline_path = out / f"{args.name}.baseline.json"
     baseline = None
@@ -166,11 +227,7 @@ def main(argv: list[str] | None = None) -> int:
                 baseline = read_baseline(baseline_path, context)
 
         label = "gate_" + uuid.uuid4().hex
-        cmd = [sys.executable, str(Path(__file__).with_name("run.py")), "--label", label,
-               "--size", args.size, "--zoom", str(args.zoom), "--renderer", args.renderer,
-               "--args=" + " ".join([*GATE_FLAGS, args.args]).strip()]
-        if args.port:
-            cmd.extend(["--port", str(args.port)])
+        cmd = probe_command(args, label)
         result = subprocess.run(cmd, check=False, env=build_child_env())
         if result.returncode:
             print("[perf_gate] Probe failed; baseline unchanged. Check its log and run launchers/dev/perf_gate --doctor.")
@@ -179,7 +236,7 @@ def main(argv: list[str] | None = None) -> int:
         validate(report)
         if report["window"] != context["window"]:
             raise ValueError("actual probe window differs from requested window; baseline unchanged")
-        measured = provenance(cfg)
+        measured = provenance(cfg, args.exe)
         if args.record_baseline or args.replace_baseline:
             write_baseline(baseline_path, context, report, args.replace_baseline, measured)
             print(f"[perf_gate] Baseline recorded: {baseline_path} (head {measured['head']}"

@@ -108,6 +108,13 @@ namespace GUO.Renderer
         public int TexturesCount => _textures.Count;
 
         /// <summary>
+        /// PORT DEVIATION (GUO): whole pages re-sent to the GPU by
+        /// <see cref="Flush"/>, and pages created, since start; the perf probe
+        /// reports their deltas (review item G). Main thread only.
+        /// </summary>
+        internal static long PageUploads, PageCreations;
+
+        /// <summary>
         /// Uploads every page that has changed since the last call. Cheap when
         /// nothing has: the whole point is that it collapses a frame's worth of
         /// decoded sprites into one upload per page.
@@ -130,6 +137,7 @@ namespace GUO.Renderer
                     _textures[i].Update(_pages[i]);
                     long uploadTicks = GUO.Utility.RuntimeTimings.Elapsed(uploadAt);
                     ObserveUpload(i, uploadTicks, false);
+                    PageUploads++;
                     _dirty[i] = false;
                     _versions[i]++;
                 }
@@ -273,7 +281,7 @@ namespace GUO.Renderer
                 var data = System.Runtime.InteropServices.MemoryMarshal.AsBytes(pixels.Slice(0, pixelCount)).ToArray();
                 Image page = Image.CreateFromData(width, height, false, Image.Format.Rgba8, data);
                 long uploadAt = GUO.Utility.RuntimeTimings.Now();
-                var texture = ImageTexture.CreateFromImage(page);
+                var texture = CreatePage(page);
                 long uploadTicks = GUO.Utility.RuntimeTimings.Elapsed(uploadAt);
                 _pages.Add(page);
                 _textures.Add(texture);
@@ -320,6 +328,12 @@ namespace GUO.Renderer
             return _textures[index];
         }
 
+        private static ImageTexture CreatePage(Image page)
+        {
+            PageCreations++;
+            return ImageTexture.CreateFromImage(page);
+        }
+
         private void CreateNewPage()
         {
             GUO.Utility.Logging.Log.Trace($"creating atlas page: {_width}x{_height}");
@@ -328,7 +342,7 @@ namespace GUO.Renderer
 
             _pages.Add(page);
             long uploadAt = GUO.Utility.RuntimeTimings.Now();
-            var texture = ImageTexture.CreateFromImage(page);
+            var texture = CreatePage(page);
             long uploadTicks = GUO.Utility.RuntimeTimings.Elapsed(uploadAt);
             _textures.Add(texture);
             _metadata.Add(texture, new PageMetadata(_width, _height, texture.GetRid()));

@@ -83,11 +83,11 @@ def end(proc: subprocess.Popen) -> None:
 
 
 def run_guo(cfg: Config, out: Path, scene: tuple, size: str, spec: str, timeout: float,
-            executable: Path | None = None, sample_seconds: int = 0) -> bool:
+            executable: Path | None = None, sample_seconds: int = 0, quiet: bool = False) -> bool:
     log = out / scene[0] / "guo.log"
     log.parent.mkdir(parents=True, exist_ok=True)
     env = {**ab.guo_environment(cfg), "GUO_PERF_DUMP": spec,
-           "GUO_PERF_SAMPLE_SECONDS": str(sample_seconds)}
+           "GUO_PERF_SAMPLE_SECONDS": str(sample_seconds), "GUO_PERF_QUIET": "1" if quiet else "0"}
     (out / scene[0] / "guo-samples.jsonl").unlink(missing_ok=True)
     engine = [str(executable)] if executable else [str(cfg.godot_console_exe), "--path", str(cfg.godot_project)]
     proc = subprocess.Popen(
@@ -163,6 +163,8 @@ def main() -> int:
     ap.add_argument("--guo-exe", type=Path, help="run this existing exported GUO executable, without rebuilding")
     ap.add_argument("--sample-seconds", type=int, default=0,
                     help="GUO-only sustained sampling after settling (1-300 seconds; 0 keeps one-shot behavior)")
+    ap.add_argument("--quiet", action="store_true",
+                    help="GUO only: freeze the weather and drop incoming messages (GUO_PERF_QUIET) for comparable captures")
     ap.add_argument("--scene", action="append", choices=[s[0] for s in SCENES], help="run these scenes only")
     ap.add_argument("--report", action="store_true", help="print the table of results already written")
     ap.add_argument("--as-built", action="store_true",
@@ -175,6 +177,8 @@ def main() -> int:
     if args.guo_exe and not args.guo_exe.is_file():
         ap.error("--guo-exe must name an existing export")
 
+    if args.quiet and args.only != "guo":
+        ap.error("--quiet requires --only guo")
     cfg = load_config()
     if args.port:
         cfg = dataclasses.replace(cfg, shard_port=args.port)
@@ -198,7 +202,7 @@ def main() -> int:
             (out / scene[0] / f"{client}.json").unlink(missing_ok=True)
             ok = (run_cuo(cfg, out, scene, size, spec, args.timeout) if client == "cuo"
                   else run_guo(cfg, out, scene, args.size, spec, args.timeout,
-                               args.guo_exe, args.sample_seconds))
+                               args.guo_exe, args.sample_seconds, args.quiet))
             print(f"[perf_dump] {scene[0]} {client}: {'ok' if ok else 'NO RESULT (see its log)'}", flush=True)
             failed += not ok
     print(report(out))

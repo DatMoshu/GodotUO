@@ -94,6 +94,19 @@ namespace GUO.Renderer
             return layer;
         }
 
+        /// <summary>LayerOf, with the page's <see cref="ScaleOf"/> from the same lookup.</summary>
+        public static int LayerOf(Texture2D texture, out Vector2 scale)
+        {
+            if (_index.TryGetValue(texture, out Page page))
+            {
+                scale = page.Scale;
+                return page.Layer;
+            }
+            int layer = LayerOf(texture);
+            scale = layer >= 0 ? _index[texture].Scale : default;
+            return layer;
+        }
+
         public static Vector2 ScaleOf(Texture2D texture) =>
             _index.TryGetValue(texture, out Page page) ? page.Scale : TextureScale(texture);
 

@@ -93,7 +93,9 @@ namespace GUO.Game.Managers
             bool translationEligible = false // // PORT DEVIATION (GUO): passed through to MessageEventArgs
         )
         {
-            if (string.IsNullOrEmpty(text))
+            // PORT DEVIATION (GUO): the quiet perf fixture (--perf-quiet,
+            // GUO.Host.PerfFixture) drops every message for its captures.
+            if (string.IsNullOrEmpty(text) || GUO.Host.PerfFixture.Quiet)
             {
                 return;
             }

@@ -123,6 +123,11 @@ namespace GUO.Game.Map
         public int X;
         public int Y;
 
+        // PORT DEVIATION (GUO): set when the tile walk skipped this chunk in a
+        // frame that moved the view (GameScene.FillGameObjectList), so its
+        // objects' screen positions are refreshed on the next visit.
+        public bool ScreenPositionsStale;
+
 
         public static Chunk Create(World world, int x, int y)
         {

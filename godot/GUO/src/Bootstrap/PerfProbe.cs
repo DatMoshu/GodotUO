@@ -105,6 +105,19 @@ internal static partial class PerfProbe
     private static string _walkOrigin = "field";
     private static string _profilePreset = "", _profileSummary = "";
 
+    // PERF-LANE-01: GUO_PERF_WARMUP_SECONDS discards that much play before a
+    // world scene is timed (the first tens of seconds run Tier-0 JIT code);
+    // GUO_PERF_MEASURE_SECONDS times a stationary world scene by the clock
+    // instead of 360 frames. Both 0-300, default 0: the original contract.
+    private static async System.Threading.Tasks.Task WarmUp(Node host)
+    {
+        PerfHostLoad.Enter(PerfHostLoad.Phase.Warmup);
+        long until = System.Diagnostics.Stopwatch.GetTimestamp()
+            + _warmupSeconds * System.Diagnostics.Stopwatch.Frequency;
+        while (System.Diagnostics.Stopwatch.GetTimestamp() < until)
+            await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
+    }
+
     /// <summary>
     /// The switch --perf-parity flips: the experimental path under test,
     /// --batched-world by default, --merged-land when that flag is on.
@@ -127,14 +140,6 @@ internal static partial class PerfProbe
         if (string.IsNullOrEmpty(value)) return fallback;
         if (int.TryParse(value, out int seconds) && seconds >= minimum && seconds <= 300) return seconds;
         throw new System.ArgumentException($"{name} must be an integer from {minimum} to 300.");
-    }
-
-    private static async System.Threading.Tasks.Task WarmUp(Node host)
-    {
-        long until = System.Diagnostics.Stopwatch.GetTimestamp()
-            + _warmupSeconds * System.Diagnostics.Stopwatch.Frequency;
-        while (System.Diagnostics.Stopwatch.GetTimestamp() < until)
-            await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
     }
 
     /// <summary>
@@ -198,7 +203,7 @@ internal static partial class PerfProbe
     }
 
     public static async System.Threading.Tasks.Task Run(Node host, string outDir, string label, float zoom = 0, bool parity = false,
-        string profilePreset = null, bool staticWorld = false)
+        string profilePreset = null, bool staticWorld = false, bool quiet = false)
     {
         StaticWorld = staticWorld;
         var previousToggle = ParityToggle;
@@ -211,6 +216,8 @@ internal static partial class PerfProbe
         _runtimeAttribution = _intervalCounters || System.Environment.GetEnvironmentVariable("GUO_PERF_RUNTIME_ATTRIBUTION") == "1";
         _retainedCanvasParity = System.Environment.GetEnvironmentVariable("GUO_PERF_PARITY_CANVAS") == "1";
         _coverCandidatesParity = System.Environment.GetEnvironmentVariable("GUO_PERF_PARITY_COVER_CANDIDATES") == "1";
+        PerfFixture.Quiet = quiet;
+        PerfHostLoad.Start();
         try
         {
             _warmupSeconds = DiagnosticSeconds("GUO_PERF_WARMUP_SECONDS", 0, 0);
@@ -256,6 +263,8 @@ internal static partial class PerfProbe
             _walkRoute = null;
             GUO.Utility.RuntimeTimings.Enabled = previousRuntimeTimings;
             GUO.Utility.Profiler.Enabled = previousProfiling;
+            PerfFixture.Quiet = false;
+            PerfHostLoad.Stop();
         }
     }
 
@@ -345,6 +354,13 @@ internal static partial class PerfProbe
         }
 
         GD.Print($"[GUO] perf probe: in the world as {identity}");
+        if (PerfFixture.Quiet)
+        {
+            // Rain that began before the fixture took hold stops here; the
+            // weather packet is ignored from now on.
+            world.Weather.Reset();
+            GD.Print("[GUO] perf probe: quiet fixture: weather off, incoming messages dropped");
+        }
 
         // --perf-profile NAME: the loaded profile set to a preset (plain, as
         // ClassicUO draws; uoplus-max, everything on) before any scene is timed.
@@ -485,14 +501,17 @@ internal static partial class PerfProbe
         double measureMs = replay != null ? 180000 : walks ? WalkMs : worldMeasurement ? _measureSeconds * 1000.0 : 0;
         int sampleCapacity = measureMs > 0 ? System.Math.Max(20000, (int)measureMs * 2) : n;
         var ms = new List<double>(sampleCapacity);
-        double kRect = 0, kAffine = 0, kMesh = 0, kTri = 0, kBatches = 0, kCover = 0, kCoverRuns = 0, coverQueued = 0, coverOverlapping = 0;
+        double kRect = 0, kAffine = 0, kMesh = 0, kTri = 0, kBatches = 0, kCover = 0, kCoverRuns = 0, coverQueued = 0, coverOverlapping = 0, chunksSkipped = 0;
         double calls = 0, items = 0, switches = 0, commands = 0, prepare = 0, world = 0, cpu = 0, gpu = 0, objects = 0;
         // Allocate the probe's own storage before the measured interval.
         var uploadMs = new List<double>(sampleCapacity);
         var atlasUploadMs = new List<double>(_runtimeAttribution ? sampleCapacity : 0);
+        var pageUploadMs = new List<double>(sampleCapacity);
         var intervals = _intervalCounters ? new PerfIntervalSampler((int)(measureMs / 1000) + 32) : null;
         bool atlasUploadedLast = false;
         long atlasUploadsLast = 0, atlasUploadsMax = 0, atlasUploadFrames = 0;
+        bool pageUploadedLast = false;
+        long pageUploadsMax = 0, pageUploadFrames = 0;
         bool uploadedLast = false;
         int stages = (int)PerfStages.Stage.Count;
         double[] stageMs = new double[stages], frameStageMs = new double[stages];
@@ -527,6 +546,8 @@ internal static partial class PerfProbe
         // is in the next frame's time. Keep upload frames and their successors
         // apart, since a p99 over thousands of frames can hide a few dozen.
         int uploadsBefore = LandPages.Uploads, uploadsMax = 0, uploadFrames = 0, uploadsLast = LandPages.Uploads;
+        long atlasUploadsBefore = TextureAtlas.PageUploads, atlasCreationsBefore = TextureAtlas.PageCreations;
+        long pageUploadsLast = atlasUploadsBefore;
         int rebuildsBefore = LandPages.Rebuilds, bumpsBefore = LandPages.Bumps;
         long terrainRebuildsBefore = CachedLand.TotalRebuilds;
         long terrainSpritesBefore = CachedLand.TotalRebuiltSprites;
@@ -563,6 +584,7 @@ internal static partial class PerfProbe
         int landOntoBefore = GUO.Renderer.Arts.Art.LandOntoLandLayer, staticOntoBefore = GUO.Renderer.Arts.Art.StaticOntoLandLayer;
         long allocatedBefore = System.GC.GetTotalAllocatedBytes();
         System.TimeSpan pausedBefore = System.GC.GetTotalPauseDuration();
+        PerfHostLoad.Enter(PerfHostLoad.Phase.Sample);
         int gc0Before = System.GC.CollectionCount(0), gc1Before = System.GC.CollectionCount(1), gc2Before = System.GC.CollectionCount(2);
         intervals?.Begin(PerfIntervalSampler.Counts.Capture());
         long last = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -616,6 +638,12 @@ internal static partial class PerfProbe
                 if (atlasUp > 0 || atlasUploadedLast) atlasUploadMs.Add(frameMs);
                 atlasUploadedLast = atlasUp > 0;
             }
+            long pageUp = TextureAtlas.PageUploads - pageUploadsLast;
+            pageUploadsLast = TextureAtlas.PageUploads;
+            pageUploadsMax = System.Math.Max(pageUploadsMax, pageUp);
+            pageUploadFrames += pageUp > 0 ? 1 : 0;
+            if (pageUp > 0 || pageUploadedLast) pageUploadMs.Add(frameMs);
+            pageUploadedLast = pageUp > 0;
             calls += Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame);
             objects += Performance.GetMonitor(Performance.Monitor.RenderTotalObjectsInFrame);
             (int sw, int it, int cm) = UltimaBatcher2D.LastFrame;
@@ -633,6 +661,7 @@ internal static partial class PerfProbe
             var cq = GUO.Game.Scenes.RenderLists.LastCover;
             coverQueued += cq.Queued;
             coverOverlapping += cq.Overlapping;
+            chunksSkipped += GUO.Game.Scenes.RenderLists.ChunksSkipped;
             prepare += GUO.Utility.Profiler.GetContext(GUO.Utility.Profiler.ProfilerContext.RENDER_FRAME_WORLD_PREPARE).LastTime;
             world += GUO.Utility.Profiler.GetContext(GUO.Utility.Profiler.ProfilerContext.RENDER_FRAME_WORLD).LastTime;
             cpu += RenderingServer.ViewportGetMeasuredRenderTimeCpu(viewport);
@@ -651,6 +680,7 @@ internal static partial class PerfProbe
         }
 
         intervals?.Observe(elapsed, ms.Count, replay?.Tiles ?? runner?.Tiles ?? 0, finish: true);
+        PerfHostLoad.Enter(PerfHostLoad.Phase.Between);
         PerfStages.Enabled = false;
         n = ms.Count;
         long draws = UltimaBatcher2D.FramesBegun - drawsBefore;
@@ -676,7 +706,8 @@ internal static partial class PerfProbe
             ["frames"] = n,
             ["warmup_seconds"] = worldMeasurement ? _warmupSeconds : 0,
             ["sample_storage_grew"] = ms.Capacity > sampleCapacity || uploadMs.Capacity > sampleCapacity
-                || (_runtimeAttribution && atlasUploadMs.Capacity > sampleCapacity),
+                || (_runtimeAttribution && atlasUploadMs.Capacity > sampleCapacity)
+                || pageUploadMs.Capacity > sampleCapacity,
             ["elapsed_seconds"] = elapsed / 1000.0,
             ["drawn_frames"] = draws,
             ["draw_fps"] = draws * 1000.0 / elapsed,
@@ -747,6 +778,7 @@ internal static partial class PerfProbe
             ["cmd_cover_meshes"] = System.Math.Round(kCover / n, 1),
             ["cover_runs"] = System.Math.Round(kCoverRuns / n, 1),
             ["cover_queued"] = System.Math.Round(coverQueued / n, 1),
+            ["chunks_skipped"] = System.Math.Round(chunksSkipped / n, 1),
             ["cover_overlapping"] = System.Math.Round(coverOverlapping / n, 1),
             ["cmd_triangles"] = System.Math.Round(kTri / n, 1),
             ["estimated_batches"] = System.Math.Round(kBatches / n, 1),
@@ -798,7 +830,17 @@ internal static partial class PerfProbe
             ["atlas_upload_related_mean_ms"] = atlasUploadMs.Count > 0 ? atlasUploadMs.Average() : 0,
             ["atlas_upload_related_max_ms"] = atlasUploadMs.Count > 0 ? atlasUploadMs.Max() : 0,
             ["sort_input_capture"] = sortInput,
+            ["atlas_page_uploads"] = TextureAtlas.PageUploads - atlasUploadsBefore,
+            ["atlas_page_creations"] = TextureAtlas.PageCreations - atlasCreationsBefore,
+            ["atlas_uploads_max_in_a_frame"] = pageUploadsMax,
+            ["frames_with_atlas_upload"] = pageUploadFrames,
+            ["atlas_upload_frames_mean_ms"] = pageUploadMs.Count > 0 ? System.Math.Round(pageUploadMs.Average(), 3) : 0.0,
+            ["atlas_upload_frames_max_ms"] = pageUploadMs.Count > 0 ? System.Math.Round(pageUploadMs.Max(), 3) : 0.0,
         };
+        foreach (var kv in PerfHostLoad.TakeScene())
+        {
+            r[kv.Key] = kv.Value;
+        }
         for (int s = 0; s < stages; s++)
         {
             string stage = StageName((PerfStages.Stage)s);
@@ -815,7 +857,7 @@ internal static partial class PerfProbe
                 r[kv.Key] = kv.Value;
             }
         }
-        GD.Print($"[GUO] perf probe: {name}: mean {r["mean_ms"]} ms, p95 {r["p95_ms"]}, p99 {r["p99_ms"]}, "
+        GD.Print($"[GUO] perf probe: {name}: p50 {r["p50_ms"]} ms, p95 {r["p95_ms"]}, p99 {r["p99_ms"]}, mean {r["mean_ms"]}, "
                  + $"{r["draw_calls"]} draw calls, {r["batcher_items"]} batcher items, {r["texture_switches"]} texture switches, "
                  + $"{r["draw_commands"]} commands"
                  + (walks || uploads > 0 ? $"; {r["tiles_moved"]} tiles moved, {uploads} land-array uploads ({r["land_upload_mib_per_frame"]} MiB/frame)" : ""));
@@ -1020,13 +1062,21 @@ internal static partial class PerfProbe
                       + $"profile {(string.IsNullOrWhiteSpace(_profilePreset) ? "as saved" : "preset " + _profilePreset)}: {_profileSummary}.");
         md.AppendLine();
         md.AppendLine($"Loaded Godot managed API JIT optimized: {apiOptimized}; engine debug build: {OS.IsDebugBuild()}.");
-        md.AppendLine("| Scene | mean ms | p95 ms | p99 ms | FPS | alloc KB/frame | draws/frame | draw calls | batcher items | texture switches | draw commands | world prepare ms | world draw ms | render CPU ms | GPU ms |");
-        md.AppendLine("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
+        md.AppendLine($"Engine debug build: {OS.IsDebugBuild()}; export template: {ExportTemplate()}; quiet fixture: {PerfFixture.Quiet}; "
+                      + $"warm-up {_warmupSeconds} s, measured {(_measureSeconds > 0 ? _measureSeconds + " s" : Frames + " frames")} per standing scene; host load: {PerfHostLoad.Source}.");
+        md.AppendLine();
+        // Frame times first, FPS last (PERF-LANE-01): a mean hides the slow
+        // frames a player feels. "other CPU" is the host's load this client
+        // did not cause, over the sampled seconds only.
+        md.AppendLine("| Scene | p50 ms | p95 ms | p99 ms | mean ms | max ms | host CPU max % | other CPU mean % | other CPU max % | alloc KB/frame | draws/frame | draw calls | batcher items | texture switches | draw commands | world prepare ms | world draw ms | render CPU ms | GPU ms | atlas page uploads | FPS |");
+        md.AppendLine("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
         foreach (var r in results)
         {
-            md.AppendLine($"| {r["scene"]} | {r["mean_ms"]} | {r["p95_ms"]} | {r["p99_ms"]} | {r["fps"]} | {r["alloc_kb_per_frame"]} | {r["draws_per_frame"]} | {r["draw_calls"]} | "
+            md.AppendLine($"| {r["scene"]} | {r["p50_ms"]} | {r["p95_ms"]} | {r["p99_ms"]} | {r["mean_ms"]} | {r["max_ms"]} | "
+                          + $"{r.GetValueOrDefault("host_cpu_sample_max_pct") ?? "n/a"} | {r.GetValueOrDefault("host_other_cpu_sample_mean_pct") ?? "n/a"} | {r.GetValueOrDefault("host_other_cpu_sample_max_pct") ?? "n/a"} | "
+                          + $"{r["alloc_kb_per_frame"]} | {r["draws_per_frame"]} | {r["draw_calls"]} | "
                           + $"{r["batcher_items"]} | {r["texture_switches"]} | {r["draw_commands"]} | {r["world_prepare_ms"]} | "
-                          + $"{r["world_draw_ms"]} | {r["render_cpu_ms"]} | {r["render_gpu_ms"]} |");
+                          + $"{r["world_draw_ms"]} | {r["render_cpu_ms"]} | {r["render_gpu_ms"]} | {r["atlas_page_uploads"]} | {r["fps"]} |");
         }
 
         md.AppendLine();
@@ -1088,12 +1138,22 @@ internal static partial class PerfProbe
                     ["parity_target"] = _coverCandidatesParity ? "cover-candidates" : _retainedCanvasParity ? "retained-canvas" : "configured",
                     ["optimized"] = optimized, ["postfx"] = look, ["profile_preset"] = _profilePreset, ["profile"] = _profileSummary, ["static_world"] = StaticWorld,
                     ["godot_api_jit_optimized"] = apiOptimized, ["godot_api_mvid"] = godotApi.ManifestModule.ModuleVersionId.ToString(),
-                    ["engine_debug_build"] = OS.IsDebugBuild(),
+                    ["engine_debug_build"] = OS.IsDebugBuild(), ["export_template"] = ExportTemplate(), ["quiet_fixture"] = PerfFixture.Quiet,
+                    ["warmup_seconds"] = _warmupSeconds, ["measure_seconds"] = _measureSeconds, ["host_load"] = PerfHostLoad.Launch(),
                     ["system"] = SystemInfo(), ["scenes"] = results,
                 },
                 new JsonSerializerOptions { WriteIndented = true }));
         GD.Print($"[GUO] perf probe: wrote {Path.Combine(dir, stem + ".md")}");
     }
+
+    /// <summary>
+    /// Which build ran: "release" or "debug" for an exported template, "editor"
+    /// for the editor binary. Only a release export times what players run
+    /// (review E: the Windows launcher exported with --export-debug); the
+    /// gate refuses anything else.
+    /// </summary>
+    internal static string ExportTemplate() =>
+        OS.HasFeature("template_release") ? "release" : OS.HasFeature("template_debug") ? "debug" : "editor";
 
     /// <summary>
     /// What the numbers were measured on, for a report someone else reads

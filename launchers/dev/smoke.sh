@@ -44,7 +44,7 @@ echo "[smoke] optional HD pack contracts (synthetic)"
 
 echo "[smoke] UO+ ambient particles contract (synthetic; ADR-0042)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/Particles/AmbientParticlesProbe.tscn || FAIL=1
-echo "[smoke] shared UO+ flags and densities (synthetic; ADR-uoplus-settings)"
+echo "[smoke] shared UO+ flags, densities and Touch UI persistence (synthetic; ADR-uoplus-settings, UX-03)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Configuration/UoPlusProbe.tscn || FAIL=1
 echo "[smoke] Realtime lights contract (synthetic; ADR-0039)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/Lights/RealtimeLightsProbe.tscn || FAIL=1

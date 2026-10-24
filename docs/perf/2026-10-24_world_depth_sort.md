@@ -14,7 +14,8 @@ engine dependency or default-toggle change. The ordinary Release path is
 measured separately from both GPU experiments and retained canvas commands.
 
 Base: local UI command commit `79a33c35`. Review branch:
-`codex/world-sort-inputs`. The change remains local and unpromoted.
+`codex/world-sort-inputs`. The integration retains its sort-input capture diagnostic
+and releases the high-water scratch array with terrain resources.
 
 ## Why ordering stays exact
 

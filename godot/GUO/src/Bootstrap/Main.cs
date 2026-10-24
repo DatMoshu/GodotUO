@@ -76,6 +76,14 @@ public partial class Main : Node
             return;
         }
 
+        string quietOnly = PerfProbeFlags.QuietOnlyError(_options.PerfProbe, _options.PerfQuiet);
+        if (quietOnly != null)
+        {
+            GD.PrintErr("[GUO] " + quietOnly);
+            Quit(2);
+            return;
+        }
+
         NoFocus = _options.NoFocus;
 
         if (NoFocus)
@@ -826,7 +834,7 @@ public partial class Main : Node
     /// <summary>Frame time in the five fixed scenes, then quit; see PerfProbe.</summary>
     private async void PerfProbeThenQuit()
     {
-        await PerfProbe.Run(this, _options.PerfOut, _options.PerfLabel, _options.PerfZoom, _options.PerfParity, _options.PerfProfile, _options.PerfStaticWorld);
+        await PerfProbe.Run(this, _options.PerfOut, _options.PerfLabel, _options.PerfZoom, _options.PerfParity, _options.PerfProfile, _options.PerfStaticWorld, _options.PerfQuiet);
         Quit(PerfProbe.Passed ? 0 : 1);
     }
 
@@ -1104,11 +1112,14 @@ public partial class Main : Node
     /// </summary>
     private async void TouchProbeThenQuit()
     {
-        if (_options.OptionsTouchProbe)
+        if (_options.InventoryTouchProbe)
+            await TouchProbe.RunInventory(this, _options.ScreenshotDir);
+        else if (_options.OptionsTouchProbe)
             await TouchProbe.RunOptions(this, _options.ScreenshotDir);
         else
-            await TouchProbe.Run(this);
-        await CaptureFrame();
+            await TouchProbe.Run(this, _options.ScreenshotDir);
+        // Failed inventory login must not capture partially typed credentials.
+        if (!_options.InventoryTouchProbe || TouchProbe.Passed) await CaptureFrame();
         Quit(TouchProbe.Passed ? 0 : 1);
     }
 
@@ -1742,6 +1753,9 @@ public partial class Main : Node
         /// <summary>--perf-static-world: the probe measures the map alone (PerfProbe.StaticWorld); refused without --perf-probe.</summary>
         public bool PerfStaticWorld { get; private set; }
 
+        /// <summary>--perf-quiet: weather frozen and incoming messages dropped while the probe runs (PerfFixture); refused without --perf-probe.</summary>
+        public bool PerfQuiet { get; private set; }
+
         public bool DoorProbe { get; private set; }
 
         public bool LayerShot { get; private set; }
@@ -1830,6 +1844,7 @@ public partial class Main : Node
         /// <summary>Drive the touch layer with synthetic fingers and check the client reacted.</summary>
         public bool TouchProbe { get; private set; }
         public bool OptionsTouchProbe { get; private set; }
+        public bool InventoryTouchProbe { get; private set; }
 
         /// <summary>
         /// Run in a client home of its own, made fresh (<see cref="ScratchHome"/>):
@@ -2096,6 +2111,17 @@ public partial class Main : Node
                         // The experimental raw-bytes output (WorldDepthPass.RawOutput).
                         GUO.Renderer.GpuWorld.RawOutput = true;
                         break;
+                    case "--chunk-skip":
+                        // Review item B: the tile walk skips chunks no anchor of
+                        // which can reach the screen (on by default); given, it is
+                        // also the probe's parity toggle.
+                        GUO.Game.Scenes.RenderLists.SkipOffScreenChunks = true;
+                        GUO.Host.PerfProbe.ParityToggle = on => GUO.Game.Scenes.RenderLists.SkipOffScreenChunks = on;
+                        GUO.Host.PerfProbe.ParityState = () => GUO.Game.Scenes.RenderLists.SkipOffScreenChunks;
+                        break;
+                    case "--chunk-skip=off":
+                        GUO.Game.Scenes.RenderLists.SkipOffScreenChunks = false;
+                        break;
                     case "--cover-cull":
                         // Epic B, B4 fix 2b: covering land only where it overlaps its object.
                         GUO.Game.Scenes.RenderLists.CoverCull = true;
@@ -2198,6 +2224,9 @@ public partial class Main : Node
                     case "--perf-static-world":
                         o.PerfStaticWorld = true;
                         break;
+                    case "--perf-quiet":
+                        o.PerfQuiet = true;
+                        break;
                     case "--perf-zoom":
                         o.PerfZoom = float.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture);
                         break;
@@ -2240,6 +2269,9 @@ public partial class Main : Node
                     case "--touch":
                         o.Touch = true;
                         break;
+                    case "--inventory-touch-probe":
+                        o.InventoryTouchProbe = true;
+                        goto case "--touch-probe";
                     case "--options-touch-probe":
                         o.OptionsTouchProbe = true;
                         goto case "--touch-probe";

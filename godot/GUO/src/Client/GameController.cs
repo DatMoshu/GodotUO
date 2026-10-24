@@ -838,6 +838,10 @@ namespace GUO
             // PORT DEVIATION (GUO): which input is in use, pad or keyboard and
             // mouse or touch, switched by the event itself (ADR-0025).
             GUO.Input.InputMode.Note(@event);
+            // PORT DEVIATION (GUO): UX-03 follows real fingers on a hybrid PC,
+            // without changing mouse-only startup or enabling mouse emulation.
+            if (@event is InputEventScreenTouch { Pressed: true } && !GUO.Input.Touch.TouchInput.Enabled)
+                GUO.Input.Touch.TouchInput.Enable(this, emulateTouchFromMouse: false);
 
             // PORT DEVIATION (GUO): every input counts as activity for the
             // screen saver, and the one that wakes it goes no further.

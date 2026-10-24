@@ -33,8 +33,9 @@ from guo import load_config  # noqa: E402
 from guo.build import build_client  # noqa: E402
 from guo.process import no_activate  # noqa: E402
 
-COLUMNS = ("mean_ms", "p95_ms", "p99_ms", "draw_calls", "batcher_items", "texture_switches", "world_draw_ms", "render_cpu_ms",
-           "land_uploads_per_frame")
+# Frame times first, mean after them; FPS is left out (PERF-LANE-01).
+COLUMNS = ("p50_ms", "p95_ms", "p99_ms", "mean_ms", "draw_calls", "batcher_items", "texture_switches", "world_draw_ms",
+           "render_cpu_ms", "land_uploads_per_frame", "host_other_cpu_sample_max_pct")
 
 
 def compare(out: Path, a: str, b: str) -> int:
@@ -47,7 +48,7 @@ def compare(out: Path, a: str, b: str) -> int:
             continue
         cells = []
         for c in COLUMNS:
-            x, y = ra[scene].get(c, 0), rb[scene].get(c, 0)  # older runs lack the newer columns
+            x, y = ra[scene].get(c) or 0, rb[scene].get(c) or 0  # older runs lack the newer columns
             pct = f" ({(y - x) / x * 100:+.0f}%)" if x else ""
             cells.append(f"{x} -> {y}{pct}")
         lines.append(f"| {scene} | " + " | ".join(cells) + " |")
@@ -67,6 +68,9 @@ def main() -> int:
     ap.add_argument("--renderer", choices=("forward_plus", "mobile", "gl_compatibility"),
                     help="pin the Godot rendering method before the client starts")
     ap.add_argument("--compare", nargs=2, metavar=("A", "B"), help="compare two labels already measured")
+    ap.add_argument("--exe", type=Path,
+                    help="run this exported GUO executable instead of the project through the editor (implies --as-built);"
+                         " only an exported Release build times what players run")
     ap.add_argument("--as-built", action="store_true",
                     help="run GUO as it is built, instead of rebuilding it optimised first (tools/guo/build.py)")
     args = ap.parse_args()
@@ -76,7 +80,9 @@ def main() -> int:
     if args.compare:
         return compare(out, *args.compare)
 
-    if not args.as_built:
+    if args.exe and not args.exe.is_file():
+        ap.error("--exe must name an existing export")
+    if not args.as_built and not args.exe:
         build_client(cfg)
 
     home = out / f"client_home_{args.label}"
@@ -91,8 +97,8 @@ def main() -> int:
                        ("UO_SHARD_GM_ACCOUNTS", ",".join(cfg.shard_gm_accounts)), ("UO_SHARD_GM_PASSWORD", cfg.shard_gm_password)):
         if value and not env.get(key):
             env[key] = value
-    cmd = [str(cfg.godot_console_exe), "--path", str(cfg.godot_project),
-           *(["--rendering-method", args.renderer] if args.renderer else []), "--", "--play", "--silent",
+    engine = [str(args.exe)] if args.exe else [str(cfg.godot_console_exe), "--path", str(cfg.godot_project)]
+    cmd = [*engine, *(["--rendering-method", args.renderer] if args.renderer else []), "--", "--play", "--silent",
            "--window-size", args.size, "--perf-probe", "--perf-out", str(out), "--perf-label", args.label, *(["--perf-zoom", str(args.zoom)] if args.zoom else []),
            # Timed in the Classic look unless the caller names one: a saved
            # look adds its passes to every number. The report says which ran.

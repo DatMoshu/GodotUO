@@ -985,7 +985,7 @@ void fragment() {
             if (MergedCover && !_mirroring)
             {
                 Texture2D t = layer.Textures[index];
-                int page = LandPages.LayerOf(t);
+                int page = LandPages.LayerOf(t, out Vector2 scale);
                 if (page >= 0)
                 {
                     if (_cover.Count > 0 && _coverOffset != offset)
@@ -995,7 +995,7 @@ void fragment() {
 
                     FlushQuadRun();
                     _coverOffset = offset;
-                    _cover.Add((layer, index, page, LandPages.ScaleOf(t)));
+                    _cover.Add((layer, index, page, scale));
                     return 1;
                 }
             }

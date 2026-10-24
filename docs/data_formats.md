@@ -3390,6 +3390,34 @@ name the file in `sort_input_capture`, otherwise null. Capture-enabled timing
 is diagnostic only: reflection, copies and serialization precede the measured
 interval but can influence subsequent GC/cache state. This does not change
 ordinary rendering or enable an experimental renderer.
+**PERF-LANE-01 harness fields.** Probe JSON adds top-level
+`engine_debug_build`, `export_template` (`release` or `debug` for an exported
+template, `editor` for the editor binary), `quiet_fixture` (`--perf-quiet`:
+weather packets ignored and running weather reset, every incoming message
+dropped, for the probe's lifetime only), `warmup_seconds` and
+`measure_seconds` (environment `GUO_PERF_WARMUP_SECONDS` /
+`GUO_PERF_MEASURE_SECONDS`, 0-300, default 0: a world scene is timed after
+that much discarded play, and a standing world scene for that many seconds
+instead of 360 frames; login keeps 360 frames and no discard), and
+`host_load` (`host_load_source`, `host_cpu_launch_readings`,
+`host_cpu_launch_max_pct`, `host_other_cpu_launch_max_pct`: process start to
+the first sample). Each scene adds `p50_ms`, `warmup_seconds`,
+`elapsed_seconds`, `sample_storage_grew`, `host_cpu_sample_readings`,
+`host_cpu_sample_mean_pct`, `host_cpu_sample_max_pct`,
+`host_other_cpu_sample_mean_pct`, `host_other_cpu_sample_max_pct` (the
+measured interval only), `host_cpu_warmup_max_pct`,
+`host_other_cpu_warmup_max_pct`, and the atlas page uploads of the interval:
+`atlas_page_uploads` (whole pages re-sent by `TextureAtlas.Flush`),
+`atlas_page_creations`, `atlas_uploads_max_in_a_frame`,
+`frames_with_atlas_upload`, `atlas_upload_frames_mean_ms` and
+`atlas_upload_frames_max_ms` (those frames and the next). Host CPU is the
+whole machine's busy share; "other" subtracts this process's own CPU, read
+twice a second on a timer thread from Windows `GetSystemTimes` /
+`GetProcessTimes`; elsewhere the source is `unavailable` and the values null.
+The count gate requires `export_template: release`, `engine_debug_build:
+false`, `quiet_fixture: true` and `p50_ms`. PerfDump receipts add
+`engine_debug_build`, `export_template` and `quiet_fixture`
+(`GUO_PERF_QUIET=1`, `tools/perf_dump --only guo --quiet`).
 
 **Probe JSON**, `perf_<label>.json`, written by the client's `--perf-probe`
 (`src/Bootstrap/PerfProbe.cs`): `{label, window "WxH", zoom, optimized,
@@ -3501,7 +3529,10 @@ Since PERF-03 each scene also carries `render_frame_ms`, `ui_ms`,
 (`gather`, `mesh_build`, `gather_tail`, `land_mesh`, `land_loose`, `sort`,
 `statics`, `mobiles`, `items`, `cover_land`, `multis`, `other`,
 `transparent`; per frame) and `drawn_<stage>` (objects drawn per frame, the
-sorted-list stages only, absent when none). Scenes `cave-roof` and
+sorted-list stages only, absent when none). Since review item B
+(2026-10-24) each scene also carries `chunks_skipped`: chunks per frame
+the tile walk skipped because no object anchor in them can reach the
+screen (0 with `--chunk-skip=off`). Scenes `cave-roof` and
 `open-sea` were added after `dungeon`. With `--perf-parity`, each standing
 scene also carries `parity_stable_px`, `parity_violations`,
 `parity_strict`, `parity_strict_max_delta` (pixels: stable across the plain
@@ -3715,6 +3746,41 @@ Smoke: `res://src/Configuration/UoPlusProbe.tscn`; scenario:
 and bottom screenshots and uses an unsaved fixture profile. No external
 dependency or doctor launcher is required; Labs weather's README retains its
 build/dependency doctor.
+
+### Touch inventory (UX-03)
+
+`Profile.touch_ui` is `null` (Automatic), `true` (On) or `false` (Off).
+Absent in older profiles means Automatic. Automatic is inactive on mouse-only
+desktop startup and activates with the touch pointer. On/Off is an explicit
+override, persisted through the existing profile JSON source generator. The
+shared UO+ panel stages this selection until Apply/Okay; Cancel discards it,
+and Defaults stages Automatic. Reopen inventory after a setting or pointer
+change; an open grid keeps its original chrome layout.
+
+The touch paperdoll retains its original serial and `GumpType.PaperDoll`.
+The native avatar, item serials, `GameActions.Equip`/`PickUp`/`DropItem` paths,
+packet handling and saved gump identity stay shared with Classic. Equipment
+targets are 44x44 client pixels. Secondary actions are under More/Back.
+The existing grid backpack keeps `GumpType.Container`, stable item ordering,
+filter/sort/page state and its existing save/restore path. Touch UI selects
+it without rewriting `grid_containers`; Off retains that independent older
+preference. `grid_container_slot_size` still persists 32..80, but touch renders
+at least 44. World/server item coordinates are never rewritten by grid layout.
+
+In touch inventory a stationary long press on a filled grid slot requests the
+shard's item context menu. A moving finger starts the existing pickup/drop
+path. Pinch changes `ui_scale`, whose existing inverse transform also controls
+hit tests. A portrait single-screen grid reserves the open touch paperdoll's
+height and opens below it; a second display retains its existing shelf policy.
+No external dependency or doctor is needed.
+
+Smoke: shared `UoPlusProbe.tscn` checks Automatic/Off/On JSON persistence.
+Live scenario: `client.ui.inventory_touch` (`--inventory-touch-probe`, scratch
+profile, a dev-shard character with worn equipment and backpack contents).
+Native capture sizes: 640x480, 1920x1080 and desktop-simulated phone aspect
+1080x2340. Existing `--presentation-parity` is the desktop paperdoll pixel
+test; `client.input.touch` and the shard-free touch-gesture probe remain
+regression checks. Physical phone gesture proof is separate from simulation.
 
 ## 48. Ordered GPU world lab (ADR-0043)
 

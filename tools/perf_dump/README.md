@@ -19,6 +19,11 @@ The GUO report also records `godot_api_jit_optimized`, `godot_api_mvid` and
 loaded managed API is optimized. The shared render/update contexts are CPU
 measurements, not uncapped throughput or GPU time; report custom RD recording
 work separately when comparing the experimental renderer.
+`--quiet` (GUO only) sets `GUO_PERF_QUIET=1`: the weather stays off and
+incoming messages are dropped, so captures of two launches can match
+(`docs/perf/2026-10-24_cross_launch_pixel_variance.md`). Receipts record
+`export_template` and `engine_debug_build`; only a Release export times what
+players run.
 
 ## Run
 

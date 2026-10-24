@@ -43,7 +43,7 @@ namespace GUO.Game.UI.Gumps
         private const int MIN_COLUMNS = 3;
         private const int PAD = 4;
         private const int GAP = 2;
-        private const int ROW_HEIGHT = 20;
+        private int ROW_HEIGHT => IsTouchLayout ? 44 : 20;
         public const int MIN_SLOT = 32;
         public const int MAX_SLOT = 80;
 
@@ -74,10 +74,14 @@ namespace GUO.Game.UI.Gumps
         private long _signature = -1;
         private string _lastFilter = string.Empty;
 
-        public GridContainerGump(World world) : base(world, 0, 0) { }
+        internal bool IsTouchLayout { get; }
+
+        public GridContainerGump(World world) : base(world, 0, 0)
+        { IsTouchLayout = GUO.Input.Touch.TouchInventory.Active; }
 
         public GridContainerGump(World world, uint serial, ushort graphic) : base(world, serial, 0)
         {
+            IsTouchLayout = GUO.Input.Touch.TouchInventory.Active;
             Graphic = graphic;
             CanMove = true;
             AcceptMouseInput = true;
@@ -85,7 +89,9 @@ namespace GUO.Game.UI.Gumps
 
             Add(_background = new AlphaBlendControl(0.92f));
 
-            Add(_title = new Label(string.Empty, true, 0x0481, 0, 1, FontStyle.BlackBorder) { X = PAD, Y = PAD + 2 });
+            Add(_title = new Label(string.Empty, true, 0x0481,
+                IsTouchLayout ? Columns * (SlotSize + GAP) - 72 : 0, 1,
+                IsTouchLayout ? FontStyle.BlackBorder | FontStyle.Cropped : FontStyle.BlackBorder) { X = PAD, Y = PAD + 2 });
 
             Add(
                 _classicButton = new NiceButton(0, PAD, 56, ROW_HEIGHT, ButtonAction.Activate, "Classic")
@@ -120,12 +126,12 @@ namespace GUO.Game.UI.Gumps
                     X = PAD + 4,
                     Y = PAD + ROW_HEIGHT + GAP + 2,
                     Width = 112,
-                    Height = ROW_HEIGHT - 2
+                    Height = IsTouchLayout ? ROW_HEIGHT : ROW_HEIGHT - 2
                 }
             );
 
-            Add(_prev = new NiceButton(PAD, 0, 40, ROW_HEIGHT, ButtonAction.Activate, "<") { ButtonParameter = 2, IsSelectable = false });
-            Add(_next = new NiceButton(0, 0, 40, ROW_HEIGHT, ButtonAction.Activate, ">") { ButtonParameter = 3, IsSelectable = false });
+            Add(_prev = new NiceButton(PAD, 0, IsTouchLayout ? 44 : 40, ROW_HEIGHT, ButtonAction.Activate, "<") { ButtonParameter = 2, IsSelectable = false });
+            Add(_next = new NiceButton(0, 0, IsTouchLayout ? 44 : 40, ROW_HEIGHT, ButtonAction.Activate, ">") { ButtonParameter = 3, IsSelectable = false });
             Add(_pageLabel = new Label(string.Empty, true, 0x0481, 0, 1, FontStyle.BlackBorder));
 
             Layout(0);
@@ -136,15 +142,16 @@ namespace GUO.Game.UI.Gumps
 
         public override GumpType GumpType => GumpType.Container;
 
-        private static int SlotSize =>
-            Math.Clamp(ProfileManager.CurrentProfile?.GridContainerSlotSize ?? 44, MIN_SLOT, MAX_SLOT);
+        private int SlotSize =>
+            Math.Clamp(ProfileManager.CurrentProfile?.GridContainerSlotSize ?? 44,
+                IsTouchLayout ? 44 : MIN_SLOT, MAX_SLOT);
 
         /// <summary>Whether this container opens as a grid.</summary>
         public static bool Wants(Item item, ushort graphic)
         {
             return item != null
                 && ProfileManager.CurrentProfile != null
-                && ProfileManager.CurrentProfile.GridContainers
+                && (GUO.Input.Touch.TouchInventory.Active || ProfileManager.CurrentProfile.GridContainers)
                 && !item.IsCorpse
                 && graphic != ContainerGump.CORPSES_GUMP
                 && graphic != 0x091A // chessboard
@@ -271,6 +278,8 @@ namespace GUO.Game.UI.Gumps
                 Rebuild(container);
             }
 
+            GUO.Input.Touch.TouchInventory.Place(this);
+
             if (
                 UIManager.MouseOverControl != null
                 && UIManager.MouseOverControl.RootParent == this
@@ -287,9 +296,10 @@ namespace GUO.Game.UI.Gumps
         /// shows of it, or the slot size changes under Options; cheap
         /// enough to take every frame.
         /// </summary>
-        private static long Signature(Item container)
+        private long Signature(Item container)
         {
             long h = 17 + SlotSize;
+            if (IsTouchLayout) h += Columns * 127 + MaxRows() * 16381;
 
             for (LinkedObject i = container.Items; i != null; i = i.Next)
             {
@@ -502,14 +512,27 @@ namespace GUO.Game.UI.Gumps
         /// Six columns, or fewer when big slots would make the grid wider than
         /// half the client, so two containers still fit side by side.
         /// </summary>
-        private static int Columns =>
-            Math.Clamp((Client.Game.ClientBounds.Width / 2 - PAD * 2 + GAP) / (SlotSize + GAP), MIN_COLUMNS, MAX_COLUMNS);
+        private int Columns
+        {
+            get
+            {
+                int room = Client.Game.ClientBounds.Width / 2;
+                if (IsTouchLayout && Client.Game.ClientBounds.Width >= Client.Game.ClientBounds.Height)
+                    foreach (Gump g in UIManager.Gumps)
+                        if (g is PaperDollGump { IsTouchLayout: true, IsDisposed: false, IsVisible: true })
+                            room = Math.Min(room, Client.Game.ClientBounds.Width - GUO.Input.Touch.GumpPresentation.Width(g) - 12);
+                return Math.Clamp((room - PAD * 2 + GAP) / (SlotSize + GAP),
+                    IsTouchLayout ? 5 : MIN_COLUMNS, MAX_COLUMNS);
+            }
+        }
 
-        private static int MaxRows()
+        private int MaxRows()
         {
             int height = Client.Game.ClientBounds.Height;
             float bar = GUO.Input.Touch.TouchInput.Bar?.ReservedFraction ?? 0f;
             int free = height - (int)Math.Ceiling(bar * height) - 40;
+            if (IsTouchLayout)
+                free = Math.Min(free, GUO.Input.Touch.TouchInventory.Room(this).Height);
             int chrome = PAD * 2 + 3 * (ROW_HEIGHT + GAP);
 
             return Math.Clamp((free - chrome) / (SlotSize + GAP), 1, 12);

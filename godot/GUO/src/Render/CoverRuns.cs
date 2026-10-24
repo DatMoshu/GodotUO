@@ -33,6 +33,9 @@ namespace GUO.Renderer
             public int[] Pages;
             public MeshQuad[] Quads;
             public ArrayMesh Mesh;
+            // The mesh's RID, asked of the engine once: Resource.GetRid is a
+            // native call, and a run is drawn every frame (bank profile
+            // 2026-10-24: about 12% of the world frame went to it).
             public Rid MeshRid;
             public long Frame;
         }
@@ -73,6 +76,7 @@ namespace GUO.Renderer
             }
         }
 
+        /// <summary>The RID of the run's mesh, built or found again.</summary>
         public Rid Get(List<(MeshLayer Layer, int Index, int Page, Vector2 Scale)> run)
         {
             int hash = 17;
@@ -107,6 +111,7 @@ namespace GUO.Renderer
             Entry entry = stale ?? new Entry { Mesh = new ArrayMesh() };
             if (stale == null)
             {
+                entry.MeshRid = entry.Mesh.GetRid();
                 entry.Layers = new MeshLayer[run.Count];
                 entry.Indices = new int[run.Count];
                 entry.Pages = new int[run.Count];

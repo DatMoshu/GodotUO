@@ -13,7 +13,21 @@ from pathlib import Path
 # and their rows are ignored here (PERF-V5).
 SCENES = ("login", "open-field", "britain-bank", "dense-forest", "dungeon", "walk")
 COUNTS = ("draw_calls", "batcher_items")
-TIMES = ("mean_ms", "p95_ms", "p99_ms")
+# Frame times first, mean last; FPS is not shown (PERF-LANE-01): a mean, and
+# the FPS derived from it, hide the slow frames a player feels.
+TIMES = ("p50_ms", "p95_ms", "p99_ms", "mean_ms")
+# Over a scene's sampled seconds, CPU load this client did not cause above
+# this share marks its frame times as taken on a shared host: not quotable.
+SHARED_HOST_PCT = 10.0
+
+
+def host_cell(row: dict) -> str:
+    """The sampled seconds' other-process CPU, or n/a when the client could not read it."""
+    mean, peak = row.get("host_other_cpu_sample_mean_pct"), row.get("host_other_cpu_sample_max_pct")
+    if not isinstance(peak, (int, float)) or isinstance(peak, bool):
+        return "n/a"
+    flag = " shared" if peak > SHARED_HOST_PCT else ""
+    return f"{mean}/{peak}%{flag}"
 
 
 def validate(report: object) -> dict[str, dict]:
@@ -22,6 +36,14 @@ def validate(report: object) -> dict[str, dict]:
         raise ValueError("report must be an object")
     if report.get("optimized") is not True:
         raise ValueError("report must come from an optimized build")
+    # Only an exported Release template times what players run: the editor
+    # binary loads a debug engine, and a debug export is what
+    # launchers/windows/export produced (review E, PERF-LANE-01).
+    if report.get("export_template") != "release" or report.get("engine_debug_build") is not False:
+        raise ValueError("report must come from an exported Release build (export_template release, engine_debug_build false)")
+    # Weather and server text moved thousands of pixels between two launches.
+    if report.get("quiet_fixture") is not True:
+        raise ValueError("report must be measured with --perf-quiet")
     # Counts bind, so what is counted must depend on the map alone: the
     # probe's --perf-static-world leaves out every mobile but the player,
     # every item and every effect (PERF-V6).
@@ -54,8 +76,8 @@ def validate(report: object) -> dict[str, dict]:
                 raise ValueError(f"{scene}: {key} must be a finite positive number")
         if row["draws_per_frame"] < 0.95:
             raise ValueError(f"{scene}: fewer than 0.95 draws per measured frame")
-        if row["p95_ms"] > row["p99_ms"]:
-            raise ValueError(f"{scene}: p95_ms exceeds p99_ms")
+        if not row["p50_ms"] <= row["p95_ms"] <= row["p99_ms"]:
+            raise ValueError(f"{scene}: frame-time percentiles out of order")
         if scene == "walk":
             tiles = row.get("tiles_moved")
             if type(tiles) is not int or tiles <= 0:
@@ -94,10 +116,13 @@ def compare(baseline: dict, measured: dict) -> tuple[bool, str]:
         lines.append(f"| {scene} | {a['draw_calls']} -> {b['draw_calls']} | "
                      f"{a['batcher_items']} -> {b['batcher_items']} | {result} |")
     lines.extend(["", "### Frame times (advisory)", "",
-                  "| Scene | Mean ms (baseline -> measured) | p95 ms | p99 ms |",
-                  "|---|---:|---:|---:|"])
+                  "Baseline -> measured. Other CPU is the host load this client did not cause, mean/max over the",
+                  f"sampled seconds only; above {SHARED_HOST_PCT:g}% the row is marked shared and its times are not quotable.", "",
+                  "| Scene | p50 ms | p95 ms | p99 ms | mean ms | other CPU (baseline -> measured) |",
+                  "|---|---:|---:|---:|---:|---|"])
     for scene in SCENES:
         cells = [f"{before[scene][key]} -> {after[scene][key]}" for key in TIMES]
+        cells.append(f"{host_cell(before[scene])} -> {host_cell(after[scene])}")
         lines.append(f"| {scene} | " + " | ".join(cells) + " |")
     lines.extend(["", "**Count gate: " + ("PASS" if passed else "FAIL") + "**", ""])
     return passed, "\n".join(lines)
