@@ -70,18 +70,22 @@ namespace GUO.Game.Scenes
         ///
         /// <see cref="Seq"/> breaks ties. Two things at the same depth have to
         /// keep the order the render list put them in -- upstream's depth test
-        /// is a less-than, so the first one queued wins -- and List.Sort is not
-        /// stable, so without this a pile of objects on one tile would shuffle
-        /// from frame to frame and shimmer.
+        /// is a less-than, so the first one queued wins -- and an unstable sort
+        /// without this would shuffle a pile of objects on one tile from frame
+        /// to frame and shimmer. Seq is the drawable's index in the list by
+        /// construction (every Add passes the list's count), which is what the
+        /// key sort in DrawWorld relies on to find a drawable from its key.
         /// </remarks>
         private readonly struct Drawable(GameObject obj, float depth, int seq, MeshLayer mesh = null,
-            Mobile.DrawPass pass = Mobile.DrawPass.All)
+            Mobile.DrawPass pass = Mobile.DrawPass.All, int slot = 0)
         {
             public readonly GameObject Object = obj;
             public readonly float Depth = depth;
             public readonly int Seq = seq;
             public readonly MeshLayer Mesh = mesh;
             public readonly Mobile.DrawPass Pass = pass;
+            /// <summary>PORT DEVIATION (GUO): --gpu-world's tile slot (WorldDepthKey), from the walk's chain position.</summary>
+            public readonly int Slot = slot;
         }
 
         private readonly List<GameObject> _tiles = [];
@@ -108,10 +112,50 @@ namespace GUO.Game.Scenes
 
         private readonly List<GameObject> _transparentObjects = [];
 
-        private int _queued;
+        /// <summary>
+        /// Marks the land CoverFromBelow has queued into <see cref="_world"/>
+        /// this frame, on the tile itself (<see cref="Land.CoverStamp"/>).
+        /// </summary>
+        /// <remarks>
+        /// PORT DEVIATION (GUO): was a HashSet of the tiles. A dungeon frame
+        /// queues six thousand covering tiles and asks about many more, and
+        /// each ask hashed and probed; one integer on the tile answers the
+        /// same question. The stamp advances in <see cref="Clear"/>, so last
+        /// frame's tiles are never mistaken for this frame's, and no per-frame
+        /// clearing of the tiles themselves is needed. See CoverStamp for why
+        /// two owners and a fresh tile can never collide, and for the one
+        /// lifecycle it supports: between this list's first cover mark and
+        /// the DrawWorld that reads it, no other list marks cover land, which
+        /// <see cref="_coverOwner"/> checks in debug builds.
+        /// </remarks>
+        private CoverStamp _coverStamp;
 
-        /// <summary>Land queued into <see cref="_world"/> this frame by CoverFromBelow.</summary>
-        private readonly HashSet<Land> _covering = new(ReferenceEqualityComparer.Instance);
+        /// <summary>Whether this list's cover marks are still the live ones; see <see cref="CoverOwner"/>.</summary>
+        private CoverOwner _coverOwner;
+
+        /// <summary>The keys of <see cref="_world"/>, sorted in place by DrawWorld (<see cref="DepthKey"/>).</summary>
+        /// <remarks>
+        /// Sized on first use: UI controls make a RenderLists per draw, and an
+        /// eager 8 KB here was 48 KB of garbage a frame at the login screen.
+        /// </remarks>
+        private ulong[] _keys = Array.Empty<ulong>();
+
+        /// <summary>
+        /// PORT DEVIATION (GUO): the Realtime lights pass (ADR-0039) reads the
+        /// frame's gathered, sorted world instead of walking the chunks and
+        /// sorting again. True from DrawWorld's sort until the next Clear.
+        /// </summary>
+        internal bool WorldSorted { get; private set; }
+
+        /// <summary>How many drawables the sorted world holds this frame.</summary>
+        internal int WorldCount => _world.Count;
+
+        /// <summary>The object at <paramref name="sortedIndex"/> of the sorted world (valid while <see cref="WorldSorted"/>).</summary>
+        internal GameObject WorldObjectAt(int sortedIndex) => _world[DepthKey.Seq(_keys[sortedIndex])].Object;
+
+        /// <summary>The land queued this frame (the world's own cull), flat and stretched.</summary>
+        internal List<GameObject> LandTiles => _tiles;
+        internal List<GameObject> StretchedLandTiles => _stretchedTiles;
 
         /// <summary>
         /// Land that has to be drawn over something below it, queued into the
@@ -197,6 +241,10 @@ namespace GUO.Game.Scenes
             // foot (dx + dy rows down) and across its width can cover it.
             int far = Math.Max(reach, rows);
 
+            // The square is walked a row at a time, so eight neighbours in a
+            // row share a chunk: look it up when the chunk changes, not per tile.
+            ChunkCursor<Chunk> cursor = default;
+
             for (int dy = 0; dy <= far; dy++)
             {
                 for (int dx = 0; dx <= far; dx++)
@@ -207,9 +255,9 @@ namespace GUO.Game.Scenes
                         continue;
                     }
 
-                    Land land = dx == 0 && dy == 0 ? ground : LandAt(map, obj.X + dx, obj.Y + dy);
+                    Land land = dx == 0 && dy == 0 ? ground : LandAt(map, obj.X + dx, obj.Y + dy, ref cursor);
 
-                    if (land == null || land.AlphaHue == 0 || _covering.Contains(land))
+                    if (land == null || land.AlphaHue == 0 || _coverStamp.Marked(land.CoverStamp))
                     {
                         continue;
                     }
@@ -232,8 +280,9 @@ namespace GUO.Game.Scenes
                             continue;
                         }
 
-                        _covering.Add(land);
-                        _world.Add(new Drawable(land, landDepth, _queued++));
+                        _coverStamp.Mark(ref land.CoverStamp);
+                        _coverOwner.Marked();
+                        _world.Add(new Drawable(land, landDepth, _world.Count));
                     }
                 }
             }
@@ -288,7 +337,25 @@ namespace GUO.Game.Scenes
 
         private static Land LandAt(Map.Map map, int x, int y)
         {
-            for (GameObject o = map.GetTile(x, y, false); o != null; o = o.TNext)
+            ChunkCursor<Chunk> cursor = default;
+
+            return LandAt(map, x, y, ref cursor);
+        }
+
+        /// <summary>
+        /// The land at (x, y), through a caller-held <see cref="ChunkCursor{T}"/>
+        /// that looks the chunk up again only when (x, y) leaves it.
+        /// </summary>
+        private static Land LandAt(Map.Map map, int x, int y, ref ChunkCursor<Chunk> cursor)
+        {
+            Chunk chunk = cursor.At(x, y, map);
+
+            if (chunk == null)
+            {
+                return null;
+            }
+
+            for (GameObject o = chunk.GetHeadObject(x % 8, y % 8); o != null; o = o.TNext)
             {
                 if (o is Land land)
                 {
@@ -299,12 +366,8 @@ namespace GUO.Game.Scenes
             return null;
         }
 
-        private static readonly Comparison<Drawable> ByDepth = static (a, b) =>
-        {
-            int order = a.Depth.CompareTo(b.Depth);
-
-            return order != 0 ? order : a.Seq.CompareTo(b.Seq);
-        };
+        // The sort itself: see DepthKey. The order it gives is the one
+        // List.Sort with (Depth, Seq) gave; tools/render_sort_tests proves it.
         /// <summary>
         /// Every gump draw, in the order the control tree asked for it.
         /// </summary>
@@ -331,10 +394,11 @@ namespace GUO.Game.Scenes
             _tiles.Clear();
             _stretchedTiles.Clear();
             _world.Clear();
-            _covering.Clear();
+            WorldSorted = false;
+            _coverStamp.NextFrame();
+            _coverOwner.Release();
             LastCover = (CoverQueued, CoverOverlapping); // PORT DEVIATION (GUO): B4 fix 2 counters
             CoverQueued = CoverOverlapping = 0;
-            _queued = 0;
             _transparentObjects.Clear();
             _gumps.Clear();
         }
@@ -349,7 +413,7 @@ namespace GUO.Game.Scenes
         /// answer; a sprite that blends is still blended over whatever the
         /// sort already drew beneath it.
         /// </remarks>
-        public void Add(GameObject toRender, bool isTransparent = false)
+        public void Add(GameObject toRender, bool isTransparent = false, int slot = 0)
         {
             if (isTransparent && toRender is Land)
             {
@@ -392,12 +456,12 @@ namespace GUO.Game.Scenes
                         // (ADR-0004's amendment): the body wins against what is
                         // up to half a step deeper -- a swimmer over the water
                         // statics in front of it -- and the shadow loses.
-                        _world.Add(new Drawable(toRender, depth, _queued++, null, Mobile.DrawPass.Shadow));
-                        _world.Add(new Drawable(toRender, depth + 0.5f, _queued++, null, Mobile.DrawPass.Body));
+                        _world.Add(new Drawable(toRender, depth, _world.Count, null, Mobile.DrawPass.Shadow, slot));
+                        _world.Add(new Drawable(toRender, depth + 0.5f, _world.Count, null, Mobile.DrawPass.Body, slot));
                     }
                     else
                     {
-                        _world.Add(new Drawable(toRender, depth, _queued++));
+                        _world.Add(new Drawable(toRender, depth, _world.Count, null, Mobile.DrawPass.All, slot));
                     }
 
                     CoverFromBelow(toRender, depth);
@@ -413,7 +477,7 @@ namespace GUO.Game.Scenes
         public void AddMeshStatic(GameObject obj, MeshLayer layer)
         {
             float depth = obj.CalculateDepthZ();
-            _world.Add(new Drawable(obj, depth, _queued++, layer));
+            _world.Add(new Drawable(obj, depth, _world.Count, layer));
             CoverFromBelow(obj, depth);
         }
 
@@ -465,8 +529,12 @@ namespace GUO.Game.Scenes
         internal int GumpTextsCount => _gumps.Count;
         internal NoAtlasGumpCommand PeekGumpText(int index) => _gumps[index];
 
+        /// <summary>Calls of the UI's overload below (UIManager, child lists), for the capture-marker regression.</summary>
+        public static int ListDraws;
+
         public int DrawRenderLists(UltimaBatcher2D batcher, sbyte maxGroundZ)
         {
+            ListDraws++;
             int result = DrawRenderList(batcher, _tiles, maxGroundZ) +
                    DrawRenderList(batcher, _stretchedTiles, maxGroundZ) +
                    DrawWorld(batcher, maxGroundZ);
@@ -565,18 +633,246 @@ namespace GUO.Game.Scenes
         private int DrawWorld(UltimaBatcher2D batcher, sbyte maxGroundZ)
         {
             long stageAt = PerfStages.Now();
-            _world.Sort(ByDepth);
+            System.Diagnostics.Debug.Assert(_coverOwner.Intact, "another RenderLists queued cover land after this one did and before it drew; cover marks are one world list at a time (CoverOwner)");
+            var span = CollectionsMarshal.AsSpan(_world);
+
+            // PORT DEVIATION (GUO): sort 8-byte keys, not the drawables. Seq is
+            // the index into _world (every Add queues one and counts one), so
+            // the low half of a sorted key is where its drawable sits.
+            if (_keys.Length < span.Length)
+            {
+                _keys = new ulong[Math.Max(span.Length, _keys.Length * 2)];
+            }
+
+            for (int i = 0; i < span.Length; i++)
+            {
+                System.Diagnostics.Debug.Assert(span[i].Seq == i, "a drawable's Seq must be its index");
+                _keys[i] = DepthKey.Of(span[i].Depth, span[i].Seq);
+            }
+
+            Array.Sort(_keys, 0, span.Length);
+            WorldSorted = true;
             stageAt = PerfStages.Add(PerfStages.Stage.Sort, stageAt);
+
+            // PORT DEVIATION (GUO): --gpu-world (ADR-0007, GPU-02). The sorted
+            // list is drawn through the world depth pass: every sprite the
+            // batcher would put on the canvas becomes an instance with the
+            // key its Drawable gives it, and the pass's depth buffer orders
+            // them with the chunks' persistent statics. The keys are planned
+            // first, so a frame the key cannot carry never starts; what the
+            // plan cannot know (the pages) is checked at End, and a frame
+            // refused there is drawn again on the canvas.
+            // GpuWorld.LastFrameOnPass is the world frame's: GameScene clears
+            // it when the world frame starts, and only the pass's success sets
+            // it. The UI draws its own lists through this method after the
+            // world (UIManager, child lists) and must not touch it.
+            WorldDepthPass pass = GpuWorld.Pass;
+            if (pass != null && pass.Began)
+            {
+                if (!pass.Failed)
+                {
+                    PlanGpuKeys(pass, span);
+                }
+
+                if (!pass.Failed)
+                {
+                    batcher.BeginCapture(pass, pass.Viewport.Size.X, pass.Viewport.Size.Y);
+                    int captured = DrawSorted(batcher, span, maxGroundZ, true);
+                    batcher.EndCapture();
+                    pass.End();
+                    if (!pass.Failed)
+                    {
+                        GpuWorld.FramesDrawn++;
+                        GpuWorld.LastFrameOnPass = true;
+                        return captured;
+                    }
+                }
+                else
+                {
+                    pass.End();
+                }
+
+                GpuWorld.FellBack(pass.FailedWhy);
+
+                // GPU-03: the walk left this frame's statics to the pass, so
+                // the canvas path alone would draw a world without them. The
+                // scene suspends the pass and draws the frame again.
+                if (GpuWorld.InstancesShown > 0)
+                {
+                    GpuWorld.RedrawOnCanvas = true;
+                    _coverOwner.Release();
+                    return 0;
+                }
+            }
+
+            return DrawSorted(batcher, span, maxGroundZ, false);
+        }
+
+        // The key parts of each Drawable in the sorted span, for the capture.
+        private uint[] _gpuDepthAbs = Array.Empty<uint>();
+        private uint[] _gpuTieAbs = Array.Empty<uint>();
+        private int[] _gpuS = Array.Empty<int>();
+
+        /// <summary>
+        /// PORT DEVIATION (GUO): --gpu-world. The key parts of every Drawable
+        /// (WorldDepthKey): the depth part from the Drawable's own depth, the
+        /// tile from the tile CalculateDepthZ counted it on, the slot from
+        /// the walk. Abandons the frame when something in the list has no
+        /// key, when a key is outside the frame's range, or when the keys do
+        /// not follow the sort.
+        /// </summary>
+        private void PlanGpuKeys(WorldDepthPass pass, ReadOnlySpan<Drawable> span)
+        {
+            if (_gpuDepthAbs.Length < span.Length)
+            {
+                int capacity = Math.Max(1024, Math.Max(span.Length, _gpuDepthAbs.Length * 2));
+                Array.Resize(ref _gpuDepthAbs, capacity);
+                Array.Resize(ref _gpuTieAbs, capacity);
+                Array.Resize(ref _gpuS, capacity);
+            }
+
+            uint previous = 0;      // the largest key so far
+            uint previousOther = 0; // the largest key of anything that is not covering land
+            bool previousLand = false;
+            float previousDepth = 0f;
+            for (int i = 0; i < span.Length; i++)
+            {
+                // The sorted order lives in _keys (DepthKey); span itself is in queue order.
+                ref readonly Drawable next = ref span[DepthKey.Seq(_keys[i])];
+                GameObject obj = next.Object;
+
+                if (next.Mesh != null)
+                {
+                    pass.Abandon("a baked static is in the sorted list");
+                    return;
+                }
+
+                if (obj is Game.GameObjects.SplatObject || obj is Game.GameObjects.LayerObject
+#if GUO_LABS
+                    || obj is GUO.Labs.Weather.WeatherSurface
+#endif
+                    )
+                {
+                    pass.Abandon("staged content is in the sorted list");
+                    return;
+                }
+
+                DepthTile(obj, out int x, out int y);
+                int slot = obj is Land ? 0 : next.Slot;
+                uint depthAbs = WorldDepthKey.DepthAbs(next.Depth);
+                uint tieAbs = WorldDepthKey.TieAbs(x, y, slot);
+                int s = x + y;
+                if (!WorldDepthKey.Relative(depthAbs, tieAbs, s, pass.FrameDepthOrigin, pass.FrameMinDiff, out uint key))
+                {
+                    pass.Abandon("a queued sprite's key is outside the frame's range");
+                    return;
+                }
+
+                bool land = obj is Land;
+                if (i > 0 && key < previous)
+                {
+                    // GPU-03: covering land is queued in the cover walk's order,
+                    // the key orders a diagonal in the tile walk's, and the
+                    // two disagree for tiles at one depth. Tiles at one depth
+                    // do not overlap (ChunkMesh's land order rests on the same
+                    // fact), so a run of covering land at one depth may come
+                    // out of the key in any order, as long as the run stays
+                    // above everything else drawn before it; what follows the
+                    // run is checked against the run's largest key.
+                    bool landRun = land && previousLand && next.Depth == previousDepth && key >= previousOther;
+                    if (!landRun)
+                    {
+                        if (!s_keyOrderReported)
+                        {
+                            s_keyOrderReported = true;
+                            ref readonly Drawable prev = ref span[DepthKey.Seq(_keys[i - 1])];
+                            DepthTile(prev.Object, out int px, out int py);
+                            Godot.GD.Print($"[GUO] --gpu-world key order: #{i - 1} {Describe(prev, px, py)} then #{i} {Describe(next, x, y)} key {key:X8} < {previous:X8}");
+                        }
+
+                        pass.Abandon("the key does not reproduce the sort");
+                        return;
+                    }
+                }
+                else
+                {
+                    previous = key;
+                }
+
+                if (!land)
+                {
+                    previousOther = previous;
+                }
+
+                previousLand = land;
+                previousDepth = next.Depth;
+                _gpuDepthAbs[i] = depthAbs;
+                _gpuTieAbs[i] = tieAbs;
+                _gpuS[i] = s;
+            }
+        }
+
+        private static bool s_keyOrderReported;
+
+        private static string Describe(in Drawable d, int tx, int ty)
+        {
+            GameObject o = d.Object;
+            return $"{o.GetType().Name} g={o.Graphic:X4} at ({o.X},{o.Y},{o.Z}) tile ({tx},{ty}) off=({o.Offset.X},{o.Offset.Y},{o.Offset.Z}) depth={d.Depth} seq={d.Seq} slot={(o is Land ? 0 : d.Slot)} pass={d.Pass}";
+        }
+
+        /// <summary>
+        /// The tile CalculateDepthZ counts an object on: its own, or the one
+        /// ahead of it while it walks (the same Offset cases, without z).
+        /// </summary>
+        private static void DepthTile(GameObject obj, out int x, out int y)
+        {
+            x = obj.X;
+            y = obj.Y;
+            Vector3 offset = obj.Offset;
+            if (offset.X > 0 && offset.Y == 0)
+            {
+                x++; // Northeast
+            }
+            else if (offset.X > 0 && offset.Y > 0)
+            {
+                x++; // East
+            }
+            else if (offset.X == 0 && offset.Y > 0)
+            {
+                x++; // Southeast
+                y++;
+            }
+            else if (offset.X < 0 && offset.Y > 0)
+            {
+                y++; // South
+            }
+            else if (offset.X < 0 && offset.Y == 0)
+            {
+                y++; // Southwest
+            }
+        }
+
+        /// <summary>
+        /// The sorted list, back to front. Capturing, each Drawable's key
+        /// parts are set on the batcher before it draws (--gpu-world).
+        /// </summary>
+        private int DrawSorted(UltimaBatcher2D batcher, ReadOnlySpan<Drawable> span, sbyte maxGroundZ, bool capturing)
+        {
+            long stageAt = PerfStages.Now();
             bool timing = PerfStages.Enabled;
             PerfStages.Stage kind = PerfStages.Stage.Other;
 
             int done = 0;
 
-            var span = CollectionsMarshal.AsSpan(_world);
-
             for (int i = 0; i < span.Length; i++)
             {
-                ref readonly Drawable next = ref span[i];
+                ref readonly Drawable next = ref span[DepthKey.Seq(_keys[i])];
+                if (capturing)
+                {
+                    batcher.CaptureDepthAbs = _gpuDepthAbs[i];
+                    batcher.CaptureTieAbs = _gpuTieAbs[i];
+                    batcher.CaptureS = _gpuS[i];
+                }
                 if (timing)
                 {
                     PerfStages.Stage now = StageOf(next.Object);
@@ -601,7 +897,7 @@ namespace GUO.Game.Scenes
                     continue;
                 }
 
-                if (next.Object is Land land && _covering.Contains(land))
+                if (next.Object is Land land && _coverStamp.Marked(land.CoverStamp))
                 {
                     done += DrawCovering(batcher, land, next.Depth);
                     continue;
@@ -642,6 +938,7 @@ namespace GUO.Game.Scenes
             }
 
             batcher.CurrentObjectId = 0; // PORT DEVIATION (GUO): ADR-0023
+            _coverOwner.Release();
             PerfStages.Add(kind, stageAt);
             return done;
         }

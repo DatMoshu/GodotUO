@@ -60,4 +60,32 @@ Check("every credential option in the arg loop is in the secret list", () =>
     }
 });
 
+// PERF-V6: --perf-static-world thins the world the render lists see. It is a
+// probe-only flag: refused without --perf-probe, and the live switch is set
+// only by PerfProbe.Run for the probe's lifetime, never by the arg loop.
+string bootstrap = File.ReadAllText(Path.Combine(root, "godot", "GUO", "src", "Bootstrap", "Main.cs"));
+string probe = File.ReadAllText(Path.Combine(root, "godot", "GUO", "src", "Bootstrap", "PerfProbe.cs"));
+
+Check("--perf-static-world is refused without --perf-probe", () =>
+{
+    Require(GUO.Host.PerfProbeFlags.ProbeOnlyError(perfProbe: false, staticWorld: true) != null, "accepted without the probe");
+    Require(GUO.Host.PerfProbeFlags.ProbeOnlyError(perfProbe: true, staticWorld: true) == null, "refused with the probe");
+    Require(GUO.Host.PerfProbeFlags.ProbeOnlyError(perfProbe: false, staticWorld: false) == null, "refused when absent");
+    Require(GUO.Host.PerfProbeFlags.ProbeOnlyError(perfProbe: true, staticWorld: false) == null, "refused a plain probe");
+    Require(Regex.IsMatch(bootstrap, @"PerfProbeFlags\.ProbeOnlyError\(_options\.PerfProbe, _options\.PerfStaticWorld\)"), "Main.cs does not check the combination after parsing");
+});
+
+Check("the arg loop never switches the static world on itself", () =>
+{
+    var arm = Regex.Match(bootstrap, @"case ""--perf-static-world"":\s*([^\n]*)");
+    Require(arm.Success, "the --perf-static-world case is gone");
+    Require(arm.Groups[1].Value.Trim() == "o.PerfStaticWorld = true;", "the case does more than record the option: " + arm.Groups[1].Value.Trim());
+    Require(!bootstrap.Contains("PerfProbe.StaticWorld ="), "Main.cs assigns PerfProbe.StaticWorld");
+    Require(Regex.IsMatch(probe, @"public static bool StaticWorld \{ get; private set; \}"), "StaticWorld is settable from outside PerfProbe");
+    var sets = Regex.Matches(probe, @"^\s*StaticWorld = (\w+);", RegexOptions.Multiline);
+    Require(sets.Count == 2 && sets[0].Groups[1].Value == "staticWorld" && sets[1].Groups[1].Value == "false",
+        "PerfProbe must set StaticWorld once from Run's argument and clear it once, found " + sets.Count);
+    Require(Regex.IsMatch(probe, @"finally\s*\{\s*StaticWorld = false;"), "StaticWorld is not cleared in a finally");
+});
+
 Console.WriteLine($"{passed} checks passed");

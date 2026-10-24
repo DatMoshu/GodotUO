@@ -5,9 +5,10 @@
 Proposed. **Recommendation: Reject**, measured 2026-09-27 (Epic B, B2; see
 "Measured" below). It stays Proposed until the owner signs off.
 
-**Amended 2026-10-19** (below): the alternative listed here, a depth buffer
-instead of the sort, is now proposed for the world pass, with the statics kept
-on the GPU. The amendment has its own status and also waits for the owner.
+**Amended 2026-10-19; accepted 2026-10-22 (owner)** (below): the alternative
+listed here, a depth buffer instead of the sort, is accepted for the world
+pass, with the statics kept on the GPU. The original batching proposal above
+retains its own status.
 
 Written up overnight 2026-09-26 so the owner could decide; see
 `docs/parity_2026-09-26_night.md`, P1.
@@ -194,7 +195,9 @@ it; upstream's own prepare is the yardstick.
 
 ## Amendment 2026-10-19: a depth buffer for the world pass, statics kept on the GPU
 
-**Status:** Proposed; the owner decides. Written by the perf lane (PERF-GPU)
+**Status:** Accepted 2026-10-22 (owner). Moshu approved this amendment and its
+ADR-0001 amendment in the exec-fable terminal at 06:40Z ("I approve").
+Written by the perf lane (PERF-GPU)
 from the numbers measured 2026-10-18/19. The measurement above still stands:
 rebuilding the sorted world into new arrays every frame is slower than
 per-sprite calls, and nothing here does that.
@@ -295,9 +298,54 @@ A mobile body adds 50 (its +0.5). A tie field follows: the object's index in
 its tile (4 bits) and, for statics, its rank along the diagonal (9 bits). That
 rank is the insertion order the sort falls back to today. The visible span at
 zoom 2.5 is under 300 diagonals, so the key needs 28 bits. The key has to map
-exactly onto a 32-bit float depth buffer, which is why precision is the first
-thing measured. If it fails, the fallback is ties by submission inside one page
-buffer.
+exactly onto a 32-bit float depth buffer; the encoding below preserves all
+28 bits. Normalizing the integer by dividing by `2^28` does not.
+
+#### Exact depth encoding, measured 2026-10-22
+
+Exec-fable's decision #12505 authorized testing exact bit-pattern encoding
+and the two-level alternative before GPU-01. The original step-1 result
+was **39/39 for its required 24-bit cases**, not proof of 28-bit precision:
+its normalized 28-bit cases only printed diagnostics. At the middle and top
+of that range, adjacent integers already collide as CPU floats.
+
+**Chosen encoding:** for the complete unsigned key `K` in `[0, 2^28)`,
+`depth = uintBitsToFloat(0x2f800000u + K)`. Positive normal floats sort in
+unsigned bit-pattern order. This interval contains exactly `2^28` distinct
+values, from `2^-32` through the float immediately below `1`; it crosses
+neither zero, subnormals, NaNs, infinities nor depth-clamp endpoints.
+Reverse Z makes the larger key nearer.
+
+The instance buffer carries `K >> 9` and `K & 511` in two spare transform
+lanes, each exactly representable as a float. The vertex shader reconstructs
+the uint with shift/or, adds the constant and bit-casts it. A flat varying
+carries the result to an unconditional fragment `DEPTH` write, avoiding
+interpolator rounding. No numeric conversion of the full uint to float is
+allowed. The buffer remains 20 floats per instance; the probe's integer-key
+flag occupies a third spare lane. `CalculateDepthZ()` remains the source of
+the ordered integer key; this is its storage encoding, not a second depth
+function.
+
+On Forward+ (Godot 4.7.2, Vulkan, RTX 4090), the extended synthetic probe
+checks all **268,435,455 adjacent pairs**, both submission orders, within
+one atlas page and across two pages. Each of the four exact-encoding sweeps
+has zero wrong pixels. CPU monotonicity and round-trip checks visit the same
+full domain. Instance upload and vertex reconstruction are additionally
+checked at every encoded exponent transition and selected rank boundaries.
+The original **39/39** still passes; the extended gate is **41/41**.
+
+The two-level alternative writes the high 19 bits to depth and leaves the
+low 9-bit rank to page-local submission order. Sorted instances in one page
+pass, but one of the two cross-page assignments loses **267,911,168** pairs;
+page-local sorting cannot order those ties across pages. It is rejected for
+unordered persistent chunk/page buffers. Exact encoding is the viable
+tested choice and needs no page segmentation or rank sorting. Probe wall
+times include vsync and CPU readback; they are not per-instance performance
+measurements or a world-frame speed claim.
+
+The proof and its two-level negative controls are reproducible with
+`launchers/dev/depth_probe.bat`. All art is synthetic. Compatibility retains
+the canvas fallback; no 28-bit precision claim applies there.
 
 **What a static does per frame today, and where it goes:**
 
@@ -318,7 +366,8 @@ buffer.
 ADR-0001 governs the renderer. It keeps one presenter, and makes
 `CalculateDepthZ()` the only source of depth, for drawing and picking alike.
 This amendment keeps both, but it changes two things ADR-0001 states, so it
-also needs an **ADR-0001 amendment**, for the owner to decide with this one.
+also needs an **ADR-0001 amendment**, accepted by the owner with this one
+on 2026-10-22; see ADR-0001's amendment below its original decision.
 
 **What stays:**
 
@@ -405,3 +454,90 @@ gathered and sorted every frame, so it removes only the submit cost.
 | canvas and 3D rasterise fractional zoom differently | step 1's pixel test at 0.5-2.5 |
 | a per-frame look this list missed | parity at the eight places; a miss sends that class of static back to the sprite path |
 | a chunk change costs a buffer rebuild | measured on a walk that crosses chunks (`walk` scene) |
+
+### Implemented 2026-10-22: the pass in the frame (GPU-01, GPU-02)
+
+Behind `--gpu-world` (off by default, Forward+ only; `--gpu-world-raw` for the
+raw-bytes output experiment), the world's sorted pass draws through the
+depth pass. What was built, and what was decided while building it:
+
+**The key.** 28 bits, `depth(15) | tile(9) | slot(4)` (`WorldDepthKey`).
+The depth part is `round(100 * CalculateDepthZ())` relative to the first
+diagonal the frame's top edge admits; `CalculateDepthZ()` is the only depth
+source and its adjustments to x, y and z are integers, so the part is exact.
+The tile part is the tile's position in the walk order of its diagonal
+(chunk x, chunk y, x within the chunk), relative to the first chunk column
+the frame's left edge admits, so equal depths across tiles order as `Seq`
+does. The slot is the chain position within the tile: an instanced static
+of rank r takes `2r + 1`; an object the walk queues after k instanced
+statics takes `2k`; covering land takes 0. Statics never tie dynamics;
+dynamics that tie (one tile, same chain position: a mobile's layers, two
+items on one tile) keep submission order, which is the sort's order. The
+parts are carried absolute in the instance and the shader rebuilds the key
+from the frame's origins in uint arithmetic; nothing is masked or
+truncated, an out-of-range part collapses the quad or abandons the frame.
+Below diagonal 32 (the void corner) float and integer order disagree, so a
+frame that shows it stays on the canvas.
+
+**Persistent statics (GPU-01).** `ChunkMesh.Build` applies upstream's mesh
+eligibility rule again when the switch is on and writes each eligible
+static as one instance of a MultiMesh per (chunk, atlas page)
+(`ChunkInstances`), at the index the texture buckets give it. The walk
+still visits every tile (lights, selection, alpha, roof and height culls),
+but an instanced static costs it a hue write and a drawn flag; a page is
+re-uploaded at the pass's End only when one of its instances changed. The
+walk's pixel cull is repeated in the shader, so a static the walk never
+reaches collapses as the walk would have skipped it. Seven instanced
+statics per tile at most (the slot field); the rest stay queued.
+
+**Dynamic sprites (GPU-02).** Inside the sorted draw, every sprite the
+batcher would put on the canvas is captured as an instance with its
+Drawable's key (`UltimaBatcher2D.BeginCapture`); one buffer per page is
+uploaded once per frame. A sprite that blends (alpha, shadow, spectral,
+circle of transparency) or that holds a key another sprite already holds
+on another page goes to the ordered pass: one MultiMesh per run of one page,
+drawn in submission order by Godot's transparency sort through
+`GeometryInstance3D.sorting_offset` (measured: a larger offset draws later).
+Equal keys in one page buffer keep their order on their own, because the
+buffer draws its instances in order and Forward+'s reverse-Z compare passes
+a tie (the depth probe's all-ties scene, 6 checks, verifies both the
+compare and the segment direction). The keys are planned before anything
+draws, so a frame the key cannot carry never starts on the pass.
+
+**Composite.** The pass's texture is drawn onto the world target under the
+inverse view transform as the first item of the sorted pass, so the land
+bake, loose land and underlays stay beneath it and what the canvas draws
+afterwards lands above it.
+
+**What stays on the canvas, per frame.** The id mirror (ADR-0023),
+Enhanced HD art, the void corner, a view taller than the depth field, staged
+splats, terrain layers and the weather lab, and a sorted list whose keys do
+not reproduce the sort (a walking mobile that ties a static on the diagonal
+it is counted on). Each is a logged reason (`GpuWorld.FellBack`) and a
+counted frame; nothing is silently wrong.
+
+**Deviations recorded.**
+
+- A custom blend (ADR-0003's read-back equations) cannot run inside the 3D
+  pass; those sprites keep the canvas and land after the composite, so they
+  are not occluded by what the pass drew.
+- Translucent statics, Wet statics under upstream's water wobble, themed
+  variants and HD art are not instanced: the sprite path draws them with
+  their key, so order is unchanged, only the saving is smaller.
+- An instanced static fading in, fading out, under the circle of
+  transparency, or hidden as vegetation is queued as a sprite that frame
+  with its own slot; its instance is off.
+- A covering tile whose texture has no land-array page is left to the bake
+  and counted (`CoverSkipped`).
+- The pass blends in linear light; the canvas blends sRGB bytes. Opaque
+  pixels round-trip exactly (measured); blended pixels may differ by
+  rounding until the raw-output experiment is measured.
+- The multi placement preview, the weather and the selection draw on the
+  canvas after the composite, as before, on top.
+
+**Measured.** `launchers\dev\depth_probe.bat` 46/46 on Forward+ (RTX 4090):
+pixel parity at 11 scales x 3 origins with the restructured shaders, 24-bit
+adjacent keys, the exact 28-bit sweep, and the all-ties scene. The parity
+probe on the gate scenes (0 px outside labels and the radar) and the perf
+probe are the next step and need a shard session; no frame-time claim is
+made here.

@@ -8,7 +8,7 @@ using GUO.Assets;
 
 namespace GUO.Game.Map
 {
-    internal sealed class Map
+    internal sealed class Map : GUO.Game.Scenes.IChunkSource<Chunk>
     {
         private static Chunk[] _terrainChunks;
         private static readonly bool[] _blockAccessList = new bool[0x1000];
@@ -54,6 +54,10 @@ namespace GUO.Game.Map
 
             return GetChunk2(cellX, cellY, load);
         }
+
+        // PORT DEVIATION (GUO): the loaded chunk at chunk coordinates, for a
+        // ChunkCursor walking tiles (RenderLists.CoverFromBelow); never loads.
+        Chunk GUO.Game.Scenes.IChunkSource<Chunk>.ChunkAt(int chunkX, int chunkY) => GetChunk2(chunkX, chunkY, false);
 
         public Chunk GetChunk2(int chunkX, int chunkY, bool load = true)
         {

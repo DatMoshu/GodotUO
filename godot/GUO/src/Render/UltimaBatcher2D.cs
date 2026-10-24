@@ -118,6 +118,30 @@ namespace GUO.Renderer
         private readonly List<Rid> _items = new List<Rid>();
         private int _itemCount;
 
+        // PERF (2026-10-22 traces): NewItem sent eight RenderingServer calls
+        // per pooled item per frame (parent, transform, clip, custom rect,
+        // material, back-buffer copy, filter, draw index) and Cut a ninth,
+        // 8-11% of the main thread at ~430 items a frame (1800 zoomed out).
+        // Items come back in the same order frame to frame, so each one
+        // remembers the state the server holds for it and only a change is
+        // sent. The draw index is the pool index and is set once, at creation.
+        private struct ItemState
+        {
+            public Rid Parent;
+            public Transform2D Transform;
+            public bool Clip;
+            public bool CustomRect;
+            public Rect2 CustomRectValue;
+            public Material Material;
+            public bool CopyToBackbuffer;
+            public RenderingServer.CanvasItemTextureFilter Filter;
+        }
+
+        private ItemState[] _itemStates = new ItemState[64];
+
+        /// <summary>A filter no item has been given, so the first frame sends one.</summary>
+        private const RenderingServer.CanvasItemTextureFilter NoFilter = (RenderingServer.CanvasItemTextureFilter)(-1);
+
         private readonly List<Rid> _clipStack = new List<Rid>();
         private Rid _current;
 
@@ -314,6 +338,7 @@ namespace GUO.Renderer
             }
 
             _items.Clear();
+            System.Array.Clear(_itemStates);
 
             foreach (ShaderMaterial material in _blendMaterials.Values)
             {
@@ -364,15 +389,38 @@ namespace GUO.Renderer
             SetOnAllMaterials(name, value);
         }
 
+        /// <summary>
+        /// One StringName per uniform name, made once. SetShaderParameter
+        /// takes a StringName, and a C# string handed to it builds a new one
+        /// on every call (interning, then a native free): the water uniforms
+        /// alone did that several times a frame, on every material
+        /// (dotnet-trace 2026-10-22: StringName..ctor under SetWaterUniform,
+        /// MergedLand.Draw and FlushCover together ~1% of all samples).
+        /// </summary>
+        private readonly Dictionary<string, StringName> _uniformNames = new Dictionary<string, StringName>();
+
+        private StringName UniformName(string name)
+        {
+            if (!_uniformNames.TryGetValue(name, out StringName sn))
+            {
+                sn = new StringName(name);
+                _uniformNames[name] = sn;
+            }
+
+            return sn;
+        }
+
         private void SetOnAllMaterials(string name, Variant value)
         {
-            _material.SetShaderParameter(name, value);
-            _meshMaterial.SetShaderParameter(name, value);
-            _landArrayMaterial.SetShaderParameter(name, value);
+            StringName param = UniformName(name);
+            GpuWorld.Pass?.SetShared(param, value); // PORT DEVIATION (GUO): --gpu-world's materials share the hue uniforms
+            _material.SetShaderParameter(param, value);
+            _meshMaterial.SetShaderParameter(param, value);
+            _landArrayMaterial.SetShaderParameter(param, value);
 
             foreach (ShaderMaterial material in _blendMaterials.Values)
             {
-                material.SetShaderParameter(name, value);
+                material.SetShaderParameter(param, value);
             }
         }
 
@@ -455,6 +503,7 @@ namespace GUO.Renderer
             EnsureNotStarted();
 
             RenderingServer.CanvasItemSetTransform(_target, viewTransform);
+            _viewTransform = viewTransform; // PORT DEVIATION (GUO): --gpu-world's composite
             if (_mirroring)
             {
                 RenderingServer.CanvasItemSetTransform(_idItem, viewTransform); // PORT DEVIATION (GUO): ADR-0023
@@ -509,6 +558,9 @@ namespace GUO.Renderer
         /// (land that covers an object).
         /// </summary>
         public int CurrentObjectId { get; set; }
+
+        /// <summary>The id mirror is on for the current target (ADR-0023); --gpu-world leaves the frame to the canvas then.</summary>
+        public bool Mirroring => _mirroring;
 
         private bool _mirroring;
         private Rid _idItem;
@@ -661,6 +713,31 @@ void fragment() {
         /// <summary>The land mesh shader on LandPages' Texture2DArray (--merged-land=array).</summary>
         private ShaderMaterial _landArrayMaterial;
 
+        private static readonly StringName LandPagesParam = "land_pages";
+
+        /// <summary>The page array <see cref="_landArrayMaterial"/> was last bound to.</summary>
+        private Texture2DArray _boundLandPages;
+
+        /// <summary>
+        /// Binds <paramref name="pages"/> to the land-array material, once per
+        /// array object. LandPages keeps one Texture2DArray and refills it in
+        /// place (CreateFromImages replaces the texture under the same RID), so
+        /// a material bound to it stays bound through every rebuild; only a new
+        /// object (LandPages.Reset, then the first Sync) needs the set again.
+        /// Before this, FlushCover set it on every cover flush, which built a
+        /// StringName and crossed into Godot each time for nothing.
+        /// </summary>
+        private void BindLandPages(Texture2DArray pages)
+        {
+            if (ReferenceEquals(_boundLandPages, pages))
+            {
+                return;
+            }
+
+            _landArrayMaterial.SetShaderParameter(LandPagesParam, pages);
+            _boundLandPages = pages;
+        }
+
         /// <summary>
         /// All visible land as one mesh over LandPages' Texture2DArray
         /// (MergedLand, --merged-land=array): the land mesh shader's shading,
@@ -670,7 +747,7 @@ void fragment() {
         {
             EnsureStarted();
             SelectSpriteSampler(null);
-            _landArrayMaterial.SetShaderParameter("land_pages", pages);
+            BindLandPages(pages);
             EnsureMaterial(_landArrayMaterial);
             FlushRun();
             Commands++;
@@ -815,6 +892,24 @@ void fragment() {
 
             var offset = new Vector2(-offsetX, -offsetY);
 
+            // PORT DEVIATION (GUO): --gpu-world draws covering land in the
+            // pass, keyed; a tile whose texture has no land-array page (HD,
+            // themed) is left to the bake, counted as a known deviation.
+            if (_capture != null)
+            {
+                Texture2D coverTexture = layer.Textures[index];
+                int coverPage = LandPages.LayerOf(coverTexture);
+                if (coverPage < 0)
+                {
+                    CoverSkipped++;
+                    return 0;
+                }
+
+                _capture.AddCoverTile(layer, index, coverPage, LandPages.ScaleOf(coverTexture), offset,
+                    CaptureDepthAbs, CaptureTieAbs, CaptureS);
+                return 1;
+            }
+
             // B4 fix 2c: held back and drawn with the tiles that follow it as
             // one mesh, unless the id mirror needs each tile's own texture.
             if (MergedCover && !_mirroring)
@@ -931,7 +1026,7 @@ void fragment() {
             }
 
             FlushQuadRun();
-            _landArrayMaterial.SetShaderParameter("land_pages", LandPages.Array);
+            BindLandPages(LandPages.Array);
             Commands++;
             Count(4, default);
             RenderingServer.CanvasItemAddMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, default);
@@ -969,6 +1064,66 @@ void fragment() {
 
         private Vector2 _itemOffset;
 
+        // PORT DEVIATION (GUO): --gpu-world (ADR-0007, GPU-02). While the
+        // sorted world pass is captured, every sprite the batcher would put
+        // on the canvas becomes an instance of the world depth pass instead,
+        // with the key RenderLists set for the object being drawn. A custom
+        // blend (ADR-0003's read-back equations) cannot run inside the 3D
+        // pass; those sprites keep the canvas, and land after the pass's
+        // composite because the composite item was opened first.
+        private WorldDepthPass _capture;
+        private bool _captureSuspended;
+        private Transform2D _viewTransform = Transform2D.Identity;
+        private static CanvasItemMaterial _compositeMaterial;
+
+        /// <summary>The key parts of the object being drawn, set by RenderLists before each Draw.</summary>
+        public uint CaptureDepthAbs, CaptureTieAbs;
+        public int CaptureS;
+
+        /// <summary>Covering tiles the pass could not take (no land-array page); a known deviation, counted.</summary>
+        public static int CoverSkipped;
+
+        public bool Capturing => _capture != null;
+
+        /// <summary>
+        /// Opens the composite item for the pass's texture, then routes the
+        /// sprites that follow into the pass. The item is a child of the
+        /// view-transformed target item under the inverse view, so the
+        /// texture lands on the target's own pixels; the view is a scale and
+        /// a translation, and the round trip is well under a pixel.
+        /// </summary>
+        public void BeginCapture(WorldDepthPass pass, int width, int height)
+        {
+            EnsureStarted();
+            FlushRun();
+            _compositeMaterial ??= new CanvasItemMaterial { BlendMode = CanvasItemMaterial.BlendModeEnum.PremultAlpha };
+
+            Rid item = NewItem(CurrentParent, _viewTransform.AffineInverse());
+            ItemSetMaterial(item, _compositeMaterial);
+            RenderingServer.CanvasItemAddTextureRect(item, new Rect2(0, 0, width, height), pass.Texture.GetRid());
+            Commands++;
+
+            Cut();
+            _capture = pass;
+            _captureSuspended = false;
+        }
+
+        public void EndCapture()
+        {
+            FlushRun();
+            _capture = null;
+            _captureSuspended = false;
+        }
+
+        private void CaptureQuad(Texture2D texture, Vector3 color)
+        {
+            Vector2 uv0 = _quadUVs[0], uv1 = _quadUVs[1], uv2 = _quadUVs[2];
+            _capture.AddSprite(texture, _quadPoints[0], _quadPoints[1], _quadPoints[2], _quadPoints[3],
+                new Vector4(uv0.X, uv0.Y, uv1.X - uv0.X, uv2.Y - uv0.Y), false, color,
+                CaptureDepthAbs, CaptureTieAbs, CaptureS);
+        }
+        // END PORT DEVIATION (GUO)
+
         public void SetWorldOffset(int offsetX, int offsetY)
         {
             _worldOffset = new Vector2(-offsetX, -offsetY);
@@ -1000,6 +1155,10 @@ void fragment() {
         {
             blend = blend ?? BlendState.AlphaBlend;
 
+            // PORT DEVIATION (GUO): --gpu-world draws custom blends on the
+            // canvas, after the composite (see BeginCapture).
+            _captureSuspended = _capture != null && !blend.IsPremultipliedAlpha;
+
             if (blend.IsPremultipliedAlpha)
             {
                 _currentMaterial = _nextMaterial = _material;
@@ -1023,8 +1182,8 @@ void fragment() {
             // The copy has to be its own item, submitted between what is
             // already drawn and what is about to read it. An empty rect means
             // the whole visible area.
-            Rid copier = NewItem(CurrentParent);
-            RenderingServer.CanvasItemSetCopyToBackbuffer(copier, true, new Rect2());
+            Rid copier = NewItem(CurrentParent, Transform2D.Identity);
+            ItemSetCopyToBackbuffer(copier, true);
 
             Cut();
         }
@@ -1129,8 +1288,7 @@ void fragment() {
         /// <summary>Scoped UI transform; clip children inherit it. Pop with ClipEnd.</summary>
         public void PushUiTransform(Transform2D transform)
         {
-            Rid parent = NewItem(CurrentParent);
-            RenderingServer.CanvasItemSetTransform(parent, transform);
+            Rid parent = NewItem(CurrentParent, transform);
             _clipStack.Add(parent);
             Cut();
         }
@@ -1147,10 +1305,10 @@ void fragment() {
             // scissor by hand. Neither is needed here: these items already sit
             // under the node carrying the camera transform, and nesting the
             // clip item inside the enclosing one is what intersects them.
-            Rid clip = NewItem(CurrentParent);
+            Rid clip = NewItem(CurrentParent, Transform2D.Identity);
 
-            RenderingServer.CanvasItemSetCustomRect(clip, true, new Rect2(x, y, width, height));
-            RenderingServer.CanvasItemSetClip(clip, true);
+            ItemSetCustomRect(clip, new Rect2(x, y, width, height));
+            ItemSetClip(clip, true);
 
             _clipStack.Add(clip);
 
@@ -1905,11 +2063,33 @@ void fragment() {
                 return;
             }
 
-            SelectSpriteSampler(texture);
-            EnsureMaterial(_currentMaterial);
-
             int textureWidth = WidthOf(texture);
             int textureHeight = HeightOf(texture);
+
+            // PORT DEVIATION (GUO): --gpu-world captures the sprite as an
+            // instance: the rect path's corners and texel source rect, or the
+            // rotated path's corners and normalised UVs, as the canvas would
+            // have had them.
+            if (_capture != null && !_captureSuspended)
+            {
+                if (rotationSin == 0f && rotationCos == 1f && effects == 0)
+                {
+                    float x0 = destinationX - originX * destinationW, y0 = destinationY - originY * destinationH;
+                    float x1 = x0 + destinationW, y1 = y0 + destinationH;
+                    _capture.AddSprite(texture, new Vector2(x0, y0), new Vector2(x1, y0), new Vector2(x0, y1), new Vector2(x1, y1),
+                        new Vector4(sourceX * textureWidth, sourceY * textureHeight, sourceW * textureWidth, sourceH * textureHeight),
+                        true, color, CaptureDepthAbs, CaptureTieAbs, CaptureS);
+                    return;
+                }
+
+                SetQuadPoints(destinationX, destinationY, destinationW, destinationH, originX, originY, rotationSin, rotationCos);
+                SetQuadUVs(sourceX, sourceY, sourceW, sourceH, sourceH, effects);
+                CaptureQuad(texture, color);
+                return;
+            }
+
+            SelectSpriteSampler(texture);
+            EnsureMaterial(_currentMaterial);
 
             // PORT DEVIATION (GUO): the id mirror (ADR-0023) follows the plain path only.
             if (rotationSin == 0f && rotationCos == 1f && effects == 0 && BatchedWorld && !_mirroring)
@@ -1958,6 +2138,16 @@ void fragment() {
             // Rotated or mirrored. The corner maths is upstream's SetVertex,
             // component for component, so a rotated sprite lands on the same
             // pixels it does there.
+            SetQuadPoints(destinationX, destinationY, destinationW, destinationH, originX, originY, rotationSin, rotationCos);
+            SetQuadUVs(sourceX, sourceY, sourceW, sourceH, sourceH, effects);
+
+            AddQuad(texture, color);
+        }
+
+        /// <summary>Upstream's SetVertex for the four corners of a rotated or mirrored sprite.</summary>
+        private void SetQuadPoints(float destinationX, float destinationY, float destinationW, float destinationH,
+            float originX, float originY, float rotationSin, float rotationCos)
+        {
             float cornerX = -originX * destinationW;
             float cornerY = -originY * destinationH;
             _quadPoints[0] = new Vector2(
@@ -1981,10 +2171,6 @@ void fragment() {
             _quadPoints[3] = new Vector2(
                 (-rotationSin * cornerY) + (rotationCos * cornerX) + destinationX,
                 (rotationCos * cornerY) + (rotationSin * cornerX) + destinationY);
-
-            SetQuadUVs(sourceX, sourceY, sourceW, sourceH, sourceH, effects);
-
-            AddQuad(texture, color);
         }
 
         /// <summary>
@@ -2024,6 +2210,14 @@ void fragment() {
 
             if (texture == null)
             {
+                return;
+            }
+
+            // PORT DEVIATION (GUO): --gpu-world captures the quad (a shadow's
+            // parallelogram, a mirror, a sitted section) as an instance.
+            if (_capture != null && !_captureSuspended)
+            {
+                CaptureQuad(texture, color);
                 return;
             }
 
@@ -2209,63 +2403,142 @@ void fragment() {
         /// </summary>
         private void Cut()
         {
-            _current = NewItem(CurrentParent);
             _itemOffset = _worldOffset;
-
-            if (_worldOffset != Vector2.Zero)
-            {
-                RenderingServer.CanvasItemSetTransform(
-                    _current, new Transform2D(0f, _worldOffset));
-            }
+            _current = NewItem(CurrentParent,
+                _worldOffset != Vector2.Zero ? new Transform2D(0f, _worldOffset) : Transform2D.Identity);
         }
 
-        private Rid NewItem(Rid parent)
+        /// <summary>The pool index of the item NewItem handed out last; the ItemSet helpers act on it.</summary>
+        private int _lastItem = -1;
+
+        private Rid NewItem(Rid parent, in Transform2D transform)
         {
             FlushRun();
             Rid item;
+            int index = _itemCount;
 
-            if (_itemCount < _items.Count)
+            if (index < _items.Count)
             {
-                item = _items[_itemCount];
+                item = _items[index];
             }
             else
             {
                 item = RenderingServer.CanvasItemCreate();
-                RenderingServer.CanvasItemSetMaterial(item, _nextMaterial.GetRid());
-
                 _items.Add(item);
+                if (_itemStates.Length < _items.Count)
+                {
+                    System.Array.Resize(ref _itemStates, _itemStates.Length * 2);
+                }
+
+                // Siblings paint in draw-index order, and the pool index only
+                // ever goes up within a frame, so a later item paints over an
+                // earlier one. The index is the item's for life.
+                RenderingServer.CanvasItemSetDrawIndex(item, index);
+                _itemStates[index] = new ItemState { Transform = Transform2D.Identity, Filter = NoFilter };
             }
 
-            RenderingServer.CanvasItemSetParent(item, parent);
-            RenderingServer.CanvasItemSetTransform(item, Transform2D.Identity);
-            RenderingServer.CanvasItemSetClip(item, false);
-            RenderingServer.CanvasItemSetCustomRect(item, false);
+            ref ItemState state = ref _itemStates[index];
+            if (state.Parent != parent)
+            {
+                RenderingServer.CanvasItemSetParent(item, parent);
+                state.Parent = parent;
+            }
 
-            // Reset every time, not only on creation: a pooled item was very
-            // likely last used under a different blend, or as a back-buffer
-            // copier, and either would carry over into this frame.
-            RenderingServer.CanvasItemSetMaterial(item, _nextMaterial.GetRid());
-            RenderingServer.CanvasItemSetCopyToBackbuffer(item, false, new Rect2());
+            if (state.Transform != transform)
+            {
+                RenderingServer.CanvasItemSetTransform(item, transform);
+                state.Transform = transform;
+            }
+
+            if (state.Clip)
+            {
+                RenderingServer.CanvasItemSetClip(item, false);
+                state.Clip = false;
+            }
+
+            if (state.CustomRect)
+            {
+                RenderingServer.CanvasItemSetCustomRect(item, false);
+                state.CustomRect = false;
+            }
+
+            // Reset whenever it differs, not only on creation: a pooled item
+            // may have last been used under a different blend, or as a
+            // back-buffer copier, and either would carry over into this frame.
+            if (!ReferenceEquals(state.Material, _nextMaterial))
+            {
+                RenderingServer.CanvasItemSetMaterial(item, _nextMaterial.GetRid());
+                state.Material = _nextMaterial;
+            }
+
+            if (state.CopyToBackbuffer)
+            {
+                RenderingServer.CanvasItemSetCopyToBackbuffer(item, false, new Rect2());
+                state.CopyToBackbuffer = false;
+            }
 
             _itemMaterial = _nextMaterial;
 
-            // Set every time, and never left to the project setting: a canvas
-            // item made through RenderingServer does NOT pick up
-            // default_texture_filter, it starts on linear. Measured by
-            // launchers/dev/batcher_probe.bat, which read brightness 8 back
-            // as 7 -- a 0.875/0.125 blend with the dark texel next door. Every
-            // sprite in the client was being smeared, and the only visible
-            // symptom would have been slightly soft art. Project rule 7.
-            RenderingServer.CanvasItemSetDefaultTextureFilter(item, _sampler.Filter);
+            // Never left to the project setting: a canvas item made through
+            // RenderingServer does NOT pick up default_texture_filter, it
+            // starts on linear. Measured by launchers/dev/batcher_probe.bat,
+            // which read brightness 8 back as 7 -- a 0.875/0.125 blend with
+            // the dark texel next door. Every sprite in the client was being
+            // smeared, and the only visible symptom would have been slightly
+            // soft art. Project rule 7. (NoFilter on a new item sends it.)
+            if (state.Filter != _sampler.Filter)
+            {
+                RenderingServer.CanvasItemSetDefaultTextureFilter(item, _sampler.Filter);
+                state.Filter = _sampler.Filter;
+            }
 
-            // Siblings paint in draw-index order, and the pool index only ever
-            // goes up within a frame, so a later item paints over an earlier one.
-            RenderingServer.CanvasItemSetDrawIndex(item, _itemCount);
-
+            _lastItem = index;
             _itemCount++;
             FlushesDone++;
 
             return item;
+        }
+
+        // The pooled item's state the server holds, kept beside every change
+        // so NewItem can skip what is already set. Only the item NewItem gave
+        // out last is ever changed after the fact.
+        private ref ItemState StateOf(Rid item)
+        {
+            System.Diagnostics.Debug.Assert(_lastItem >= 0 && _items[_lastItem] == item, "only the newest pooled item is changed after NewItem");
+            return ref _itemStates[_lastItem];
+        }
+
+        private void ItemSetMaterial(Rid item, Material material)
+        {
+            ref ItemState state = ref StateOf(item);
+            if (ReferenceEquals(state.Material, material)) return;
+            RenderingServer.CanvasItemSetMaterial(item, material.GetRid());
+            state.Material = material;
+        }
+
+        private void ItemSetCopyToBackbuffer(Rid item, bool copy)
+        {
+            ref ItemState state = ref StateOf(item);
+            if (state.CopyToBackbuffer == copy) return;
+            RenderingServer.CanvasItemSetCopyToBackbuffer(item, copy, new Rect2());
+            state.CopyToBackbuffer = copy;
+        }
+
+        private void ItemSetClip(Rid item, bool clip)
+        {
+            ref ItemState state = ref StateOf(item);
+            if (state.Clip == clip) return;
+            RenderingServer.CanvasItemSetClip(item, clip);
+            state.Clip = clip;
+        }
+
+        private void ItemSetCustomRect(Rid item, Rect2 rect)
+        {
+            ref ItemState state = ref StateOf(item);
+            if (state.CustomRect && state.CustomRectValue == rect) return;
+            RenderingServer.CanvasItemSetCustomRect(item, true, rect);
+            state.CustomRect = true;
+            state.CustomRectValue = rect;
         }
 
 

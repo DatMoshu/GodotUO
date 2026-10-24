@@ -428,7 +428,11 @@ namespace GUO.Renderer
                 ArrayMesh mesh = _runMeshes[run];
                 mesh.ClearSurfaces();
 
-                var arrays = new Godot.Collections.Array();
+                // Disposed here, not by the finalizer thread: AddSurfaceFromArrays
+                // copies the data, and a Godot Array left to the GC is freed by
+                // a finalizer (dotnet-trace 2026-10-22: godotsharp_array_destroy
+                // plus RunFinalizers were ~5% of all samples at britain-bank).
+                using var arrays = new Godot.Collections.Array();
                 arrays.Resize((int)Mesh.ArrayType.Max);
                 arrays[(int)Mesh.ArrayType.Vertex] = _points.AsSpan(0, vertexCount).ToArray();
                 arrays[(int)Mesh.ArrayType.TexUV] = _uvs.AsSpan(0, vertexCount).ToArray();
@@ -469,7 +473,7 @@ namespace GUO.Renderer
 
             mesh.ClearSurfaces();
 
-            var arrays = new Godot.Collections.Array();
+            using var arrays = new Godot.Collections.Array();
             arrays.Resize((int)Mesh.ArrayType.Max);
             arrays[(int)Mesh.ArrayType.Vertex] = _points.AsSpan(0, 6).ToArray();
             arrays[(int)Mesh.ArrayType.TexUV] = _uvs.AsSpan(0, 6).ToArray();

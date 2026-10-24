@@ -6,7 +6,12 @@ same spots. Each client runs once per scene with `GUO_SHOT_DUMP` set
 saves its own screenshots; GUO runs plain, `--merged-land=array` and with
 `--merged-cover`. Output per scene in `build/visual_ab/<scene>/`: each shot,
 a labelled sheet, and a diff of each GUO variant against plain GUO, which must
-be empty. Needs a shard.
+be empty. The diff table counts every pixel that differs in any channel by any
+step (exact), and beside it, for information, how many of those are isolated
+(no differing neighbour): the shape of a difference, not its cause or its
+acceptability. A non-empty diff is read from the diff picture, whatever its
+shape (PERF-V7, [the cover regression note](../../docs/perf/2026-10-19_cover_regression.md)).
+Needs a shard.
 
 ## Run
 
@@ -17,4 +22,10 @@ python tools/visual_ab/run.py --sheets        redraw the sheets from shots alrea
 
 ## Tests
 
-No automated tests: the run itself is the check, and its exit code says whether it passed.
+```
+python -m pytest -q tools/visual_ab
+```
+
+The exact count (single-channel one-step controls in R, G and B, black against
+one blue step) and the isolated split are tested on synthetic pictures.
+The run itself is the check for the clients, and its exit code says whether it passed.

@@ -18,9 +18,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from guo import load_config
 from guo.process import build_child_env
-from gate import compare, validate
+from gate import SCENES, compare, validate
 
 SCHEMA = "guo/perf_gate@1"
+
+# What the gate itself asks of the probe, beyond the caller's --args: the six
+# scenes it binds on (login is measured whatever the list says) and the
+# map-only tile walk, so a stock run exits 0 on a clean main (PERF-V5) and a
+# passer-by cannot move a count between identical runs (PERF-V6).
+GATE_FLAGS = ["--perf-static-world"] + [flag for scene in SCENES if scene != "login" for flag in ("--perf-scene", scene)]
 
 
 def tag(value: str) -> str:
@@ -43,7 +49,34 @@ def context_for(args, cfg) -> dict:
     return {"machine": tag(platform.node() + "|" + platform.system() + "|" + platform.machine()),
             "window": args.size.replace(",", "x"), "zoom": args.zoom, "renderer": args.renderer,
             "client_version": cfg.client_version, "fixture": args.fixture,
-            "shard": tag(f"{cfg.shard_host}:{args.port or cfg.shard_port}"), "args": args.args}
+            "shard": tag(f"{cfg.shard_host}:{args.port or cfg.shard_port}"), "args": args.args,
+            "gate_flags": " ".join(GATE_FLAGS)}
+
+
+def provenance(cfg) -> dict:
+    """What was measured: the checkout's head, whether it was clean, and the client DLL's hash.
+
+    Recorded beside a baseline so a number can be traced to the exact build
+    it came from; never binding, since a comparison is about the context."""
+    def git(*words: str) -> str:
+        # Popen, not run: the probe launch goes through run, and this must
+        # never be mistaken for a launch (the tests count those).
+        try:
+            with subprocess.Popen(["git", *words], cwd=cfg.root, text=True, stdout=subprocess.PIPE,
+                                  stderr=subprocess.DEVNULL) as process:
+                out, _ = process.communicate(timeout=30)
+                return out.strip() if process.returncode == 0 else ""
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return ""
+
+    head = git("rev-parse", "HEAD")
+    dll = Path(cfg.root) / "godot" / "GUO" / ".godot" / "mono" / "temp" / "bin" / "Debug" / "GUO.dll"
+    try:
+        digest = hashlib.sha256(dll.read_bytes()).hexdigest()
+    except OSError:
+        digest = ""
+    return {"head": head or "unknown", "dirty": bool(git("status", "--porcelain")) if head else None,
+            "client_dll_sha256": digest or "unknown"}
 
 
 def prerequisites(cfg) -> list[str]:
@@ -67,10 +100,10 @@ def read_baseline(path: Path, context: dict) -> dict:
     return doc["report"]
 
 
-def write_baseline(path: Path, context: dict, report: dict, replace: bool) -> None:
+def write_baseline(path: Path, context: dict, report: dict, replace: bool, provenance: dict | None = None) -> None:
     validate(report)
     doc = {"schema": SCHEMA, "recorded": datetime.now(timezone.utc).isoformat(),
-           "context": context, "report": report}
+           "context": context, "provenance": provenance or {}, "report": report}
     # Only called after a successful real probe. Failed probes cannot erase a
     # previous baseline. A first record uses exclusive creation.
     if replace:
@@ -135,7 +168,7 @@ def main(argv: list[str] | None = None) -> int:
         label = "gate_" + uuid.uuid4().hex
         cmd = [sys.executable, str(Path(__file__).with_name("run.py")), "--label", label,
                "--size", args.size, "--zoom", str(args.zoom), "--renderer", args.renderer,
-               "--args=" + args.args]
+               "--args=" + " ".join([*GATE_FLAGS, args.args]).strip()]
         if args.port:
             cmd.extend(["--port", str(args.port)])
         result = subprocess.run(cmd, check=False, env=build_child_env())
@@ -146,11 +179,16 @@ def main(argv: list[str] | None = None) -> int:
         validate(report)
         if report["window"] != context["window"]:
             raise ValueError("actual probe window differs from requested window; baseline unchanged")
+        measured = provenance(cfg)
         if args.record_baseline or args.replace_baseline:
-            write_baseline(baseline_path, context, report, args.replace_baseline)
-            print(f"[perf_gate] Baseline recorded: {baseline_path}. This is not a regression comparison.")
+            write_baseline(baseline_path, context, report, args.replace_baseline, measured)
+            print(f"[perf_gate] Baseline recorded: {baseline_path} (head {measured['head']}"
+                  f"{', dirty tree' if measured['dirty'] else ''}). This is not a regression comparison.")
             return 0
         passed, summary = compare(baseline, report)
+        recorded = json.loads(baseline_path.read_text(encoding="utf-8")).get("provenance") or {}
+        summary += (f"\nBaseline head {recorded.get('head', 'unknown')}, measured head {measured['head']}"
+                    f"{' (dirty tree)' if measured['dirty'] else ''}.\n")
         summary_path = out / f"{args.name}.{label}.md"
         summary_path.write_text(summary, encoding="utf-8")
         print(summary)

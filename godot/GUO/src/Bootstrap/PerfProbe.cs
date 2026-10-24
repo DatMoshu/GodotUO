@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using Godot;
+using GUO.Configuration;
 using GUO.Game;
 using GUO.Renderer;
 
@@ -63,9 +64,39 @@ internal static class PerfProbe
     /// <summary>--perf-scene NAME, repeatable: these world scenes only (all when empty).</summary>
     public static readonly List<string> Only = new();
 
+    /// <summary>
+    /// --perf-expect-character NAME and --perf-expect-map N: the run measures
+    /// nothing unless it is in the world as that character on that map, and
+    /// never creates a character to get there. A scene whose [go did not
+    /// land within three tiles of its target is not captured either.
+    /// </summary>
+    public static string ExpectCharacter { get; set; }
+    public static int ExpectMap { get; set; } = -1;
+
+    /// <summary>--perf-expect-account NAME: the allocated account; InputProbe.Strict logs in as it and nothing else.</summary>
+    public static string ExpectAccount { get; set; }
+
+    /// <c>--perf-static-world</c>: the tile walk leaves out every mobile but
+    /// the player, every item and every effect, so a scene's counts depend on
+    /// the map alone. The count gate (tools/perf_probe/gate.py) measures with
+    /// it: the dungeon's batcher items moved between two identical runs (158
+    /// to 160) and failed a stock gate (PERF-V6); the working hypothesis is
+    /// dynamic content (a passer-by, a spawn and its loot at the mouth of
+    /// Despise), not yet reproduced under control, and a map-only world is
+    /// the proposed stabilisation. Frame times under this flag are lower
+    /// than play; they are advisory there.
+    ///
+    /// Set by <see cref="Run"/> for the probe's lifetime and cleared when it
+    /// ends, never by argument parsing: the flag is refused without
+    /// <c>--perf-probe</c> (<see cref="PerfProbeFlags.ProbeOnlyError"/>), so
+    /// ordinary play can never run with a thinned world.
+    /// </summary>
+    public static bool StaticWorld { get; private set; }
+
     private const int Settle = 180;
     private static string _outDir, _label;
     private static bool _parity;
+    private static string _profilePreset = "", _profileSummary = "";
 
     /// <summary>
     /// The switch --perf-parity flips: the experimental path under test,
@@ -133,8 +164,24 @@ internal static class PerfProbe
         }
     }
 
-    public static async System.Threading.Tasks.Task Run(Node host, string outDir, string label, float zoom = 0, bool parity = false)
+    public static async System.Threading.Tasks.Task Run(Node host, string outDir, string label, float zoom = 0, bool parity = false,
+        string profilePreset = null, bool staticWorld = false)
     {
+        StaticWorld = staticWorld;
+        try
+        {
+            await RunProbe(host, outDir, label, zoom, parity, profilePreset);
+        }
+        finally
+        {
+            StaticWorld = false;
+        }
+    }
+
+    private static async System.Threading.Tasks.Task RunProbe(Node host, string outDir, string label, float zoom, bool parity, string profilePreset)
+    {
+        _profilePreset = profilePreset ?? "";
+        _profileSummary = "";
         _outDir = string.IsNullOrWhiteSpace(outDir) ? ProjectSettings.GlobalizePath("user://perf") : outDir;
         _label = label;
         _parity = parity;
@@ -153,6 +200,20 @@ internal static class PerfProbe
         await InputProbe.Wait(host, Settle);
         results.Add(await Measure(host, viewport, "login", "the login screen over the background"));
 
+        // The allocated account's credential has to exist, the configured
+        // account has to be the allocated one and autologin has to be off
+        // before anything connects (LoginPreflight.Decide, the decision Main
+        // already took at startup); a run that fails it stops here with the
+        // login row only.
+        if (ExpectAccount != null
+            && !InputProbe.StrictCredential(ExpectAccount, System.Environment.GetEnvironmentVariable, out _, out string noCredential))
+        {
+            GD.PrintErr($"[GUO] perf probe: not connecting: {noCredential}");
+            GUO.Utility.Profiler.Enabled = profiling;
+            Write(outDir, label, results);
+            return;
+        }
+
         // On a device, logged in as DualProbe does: the touch layer would
         // swallow the probe's clicks, which aim in client pixels.
         bool touch = GUO.Input.Touch.TouchInput.Enabled;
@@ -169,6 +230,39 @@ internal static class PerfProbe
             Write(outDir, label, results);
             return;
         }
+
+        // The preflight: the world entered as the allocated account (the one
+        // the client connected with and the shard let in, as the loaded
+        // profile records it; the shard's own record is not read) and the
+        // expected character, on the expected map, or no scene is visited
+        // and nothing is captured (the login row is kept).
+        var profile = ProfileManager.CurrentProfile;
+        string identity = $"account {profile?.Username}, character {profile?.CharacterName} (player {world.Player?.Name}),"
+            + $" map {world.MapIndex} at {world.Player?.X},{world.Player?.Y},{world.Player?.Z}, connects {InputProbe.ConnectCalls}";
+        if (!LoginPreflight.IdentityMatches(profile?.Username, profile?.CharacterName, ExpectAccount, ExpectCharacter, out string wrongIdentity)
+            || (ExpectCharacter != null && !string.Equals(world.Player?.Name, ExpectCharacter, System.StringComparison.Ordinal)))
+        {
+            GD.PrintErr($"[GUO] perf probe: {wrongIdentity ?? "the player is not the expected character"}; in the world as {identity}; measuring nothing.");
+            GUO.Utility.Profiler.Enabled = profiling;
+            Write(outDir, label, results);
+            return;
+        }
+
+        if (ExpectMap >= 0 && world.MapIndex != ExpectMap)
+        {
+            GD.PrintErr($"[GUO] perf probe: expected map {ExpectMap}, in the world as {identity}; measuring nothing.");
+            GUO.Utility.Profiler.Enabled = profiling;
+            Write(outDir, label, results);
+            return;
+        }
+
+        GD.Print($"[GUO] perf probe: in the world as {identity}");
+
+        // --perf-profile NAME: the loaded profile set to a preset (plain, as
+        // ClassicUO draws; uoplus-max, everything on) before any scene is timed.
+        _profileSummary = string.IsNullOrWhiteSpace(_profilePreset)
+            ? PerfProfilePreset.Describe(GUO.Configuration.ProfileManager.CurrentProfile)
+            : PerfProfilePreset.Apply(_profilePreset, world);
 
         // --perf-zoom Z: the camera at Z (clamped to its range) for every world
         // scene. Zoomed out is where the sorted world costs most (ADR-0007).
@@ -187,12 +281,20 @@ internal static class PerfProbe
             GD.PrintErr($"[GUO] perf probe: no scene named {string.Join(", ", unknown)}; the scenes are {string.Join(", ", Scenes.Select(s => s.Name))}");
         }
 
+        bool arrivedEverywhere = true;
         foreach (Scene scene in scenes)
         {
             await InputProbe.Say(host, scene.Go);
             // Chunks newly in view load and build their meshes first; that is a
             // one-off, not what a player standing still pays every frame.
             await InputProbe.Wait(host, Settle);
+            if (!Arrived(world, scene, out string where))
+            {
+                GD.PrintErr($"[GUO] perf probe: {scene.Name}: {scene.Go} did not arrive ({where}); not captured.");
+                arrivedEverywhere = false;
+                continue;
+            }
+
             results.Add(await Measure(host, viewport, scene.Name, scene.What, scene.Walks));
 
             // With --perf-parity, the same spot again with the path under test
@@ -225,7 +327,31 @@ internal static class PerfProbe
             GD.PrintErr($"[GUO] perf probe: frames that drew nothing in {string.Join(", ", idle)}; fewer than {MinDrawsPerFrame} draws per frame");
         }
 
-        Passed = unknown.Count == 0 && idle.Count == 0 && results.Count == (_parity ? 2 : 1) * scenes.Length + 1;
+        // A parity row whose test captures did not all come from the pass is
+        // not a result for it; the reviewer reads gpu_test_on_pass in the
+        // report, and the run does not pass with such a row either.
+        bool capturesValid = !GpuWorld.Enabled || results.Where(r => r.ContainsKey("gpu_test_on_pass"))
+            .All(r => (int)r["gpu_test_on_pass"] == (int)r["gpu_test_captures"]);
+        if (!capturesValid)
+        {
+            GD.PrintErr("[GUO] perf probe: a parity row has test captures the --gpu-world pass did not draw; see gpu_test_on_pass");
+        }
+
+        Passed = unknown.Count == 0 && idle.Count == 0 && arrivedEverywhere && capturesValid
+            && results.Count == (_parity ? 2 : 1) * scenes.Length + 1;
+    }
+
+    /// <summary>The player stands at the scene's [go target: x, y, z and map, by LoginPreflight.ArrivedAt.</summary>
+    private static bool Arrived(World world, Scene scene, out string where)
+    {
+        var player = world.Player;
+        if (player == null)
+        {
+            where = "no player";
+            return false;
+        }
+
+        return LoginPreflight.ArrivedAt(player.X, player.Y, player.Z, world.MapIndex, scene.Go, ExpectMap, out where);
     }
 
     private static async System.Threading.Tasks.Task<Dictionary<string, object>> Measure(Node host, Rid viewport, string name, string what,
@@ -439,11 +565,24 @@ internal static class PerfProbe
     private static async System.Threading.Tasks.Task<Dictionary<string, object>> Parity(Node host, string name)
     {
         bool was = ParityState();
+        // PORT DEVIATION (GUO): --gpu-world. Each test capture is taken from
+        // the frame just drawn; whether that frame went through the pass is
+        // read then (GpuWorld.LastFrameOnPass), not inferred from counters.
+        int testCaptures = 0, testOnPass = 0;
         async System.Threading.Tasks.Task<Image> Frame(bool batched)
         {
             ParityToggle(batched);
             await host.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
             await host.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            if (batched)
+            {
+                testCaptures++;
+                if (GpuWorld.LastFrameOnPass)
+                {
+                    testOnPass++;
+                }
+            }
+
             return host.GetViewport().GetTexture().GetImage();
         }
 
@@ -452,8 +591,19 @@ internal static class PerfProbe
         // pixels where the first test frame differs; "strict" counts those where
         // both test frames agree with each other and differ from plain -- a
         // repeatable rendering difference, which flicker or motion almost never is.
+        // PORT DEVIATION (GUO): --gpu-world's frame counters over the test
+        // frames, so a scene that fell back to the canvas is told apart from
+        // one the pass drew (GpuWorld.FellBack logs the reason once).
+        long gpuDrawnBefore = GpuWorld.FramesDrawn, gpuFallbackBefore = GpuWorld.FramesFallback;
+        long gpuSuspendedBefore = GpuWorld.FramesSuspended;
+        int coverSkippedBefore = UltimaBatcher2D.CoverSkipped;
         Image a = await Frame(false), b = await Frame(true), c = await Frame(false), b2 = await Frame(true), c2 = await Frame(false);
         ParityToggle(was);
+        long gpuDrawn = GpuWorld.FramesDrawn - gpuDrawnBefore, gpuFallback = GpuWorld.FramesFallback - gpuFallbackBefore;
+        // GPU-03: covering tiles the pass left to the bake (no land-array
+        // page) and suspensions over the captures, for the parity reviewer.
+        long gpuSuspended = GpuWorld.FramesSuspended - gpuSuspendedBefore;
+        int coverSkipped = UltimaBatcher2D.CoverSkipped - coverSkippedBefore;
         byte[] da = a.GetData(), db = b.GetData(), dc = c.GetData(), db2 = b2.GetData(), dc2 = c2.GetData();
         int bpp = da.Length / (a.GetWidth() * a.GetHeight());
         long stable = 0, violations = 0, strict = 0;
@@ -510,11 +660,16 @@ internal static class PerfProbe
             mask.SavePng(stem + "_violations.png");
         }
 
-        GD.Print($"[GUO] perf probe: parity {name}: {violations} of {stable} stable pixels differ, {strict} repeatably (max channel delta {strictMaxDelta})");
+        GD.Print($"[GUO] perf probe: parity {name}: {violations} of {stable} stable pixels differ, {strict} repeatably (max channel delta {strictMaxDelta})"
+            + (GpuWorld.Enabled ? $"; gpu-world: {testOnPass} of {testCaptures} test captures on the pass; over the five captures {gpuDrawn} frames drawn, {gpuFallback} fallback{(gpuFallback > 0 ? " (" + GpuWorld.LastFallback + ")" : "")}, {gpuSuspended} suspended, {coverSkipped} cover tiles skipped" : ""));
         return new Dictionary<string, object>
         {
             ["parity_stable_px"] = stable, ["parity_violations"] = violations, ["parity_strict"] = strict,
             ["parity_strict_max_delta"] = strictMaxDelta,
+            ["gpu_test_captures"] = testCaptures, ["gpu_test_on_pass"] = testOnPass,
+            ["gpu_frames_drawn"] = gpuDrawn, ["gpu_frames_fallback"] = gpuFallback,
+            ["gpu_last_fallback"] = gpuFallback > 0 ? GpuWorld.LastFallback ?? "" : "",
+            ["gpu_suspended"] = gpuSuspended, ["gpu_cover_skipped"] = coverSkipped,
         };
     }
 
@@ -542,7 +697,8 @@ internal static class PerfProbe
         md.AppendLine($"{System.DateTime.Now:yyyy-MM-dd HH:mm}, {OS.GetName()}, {RenderingServer.GetVideoAdapterName()}, "
                       + $"window {size.X}x{size.Y}, zoom {Client.Game?.Scene?.Camera?.Zoom:F1}, vsync and frame cap off, "
                       + $"{Frames} frames per scene ({WalkMs / 1000:0} s for a run) after {Settle} to settle, "
-                      + (optimized ? "optimised build" : "UNOPTIMISED build (Debug, Optimize=false)") + $", post-processing {look}.");
+                      + (optimized ? "optimised build" : "UNOPTIMISED build (Debug, Optimize=false)") + $", post-processing {look}, "
+                      + $"profile {(string.IsNullOrWhiteSpace(_profilePreset) ? "as saved" : "preset " + _profilePreset)}: {_profileSummary}.");
         md.AppendLine();
         md.AppendLine("| Scene | mean ms | p95 ms | p99 ms | FPS | alloc KB/frame | draws/frame | draw calls | batcher items | texture switches | draw commands | world prepare ms | world draw ms | render CPU ms | GPU ms |");
         md.AppendLine("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
@@ -587,11 +743,13 @@ internal static class PerfProbe
         if (results.Any(r => r.ContainsKey("parity_violations")))
         {
             md.AppendLine();
-            md.AppendLine("| Scene | parity: stable pixels | test differs | repeatably (strict) | strict max delta |");
-            md.AppendLine("|---|---:|---:|---:|---:|");
+            md.AppendLine("| Scene | parity: stable pixels | test differs | repeatably (strict) | strict max delta | test captures on the pass | frames drawn / fallback over the captures | last fallback | suspended | cover tiles skipped |");
+            md.AppendLine("|---|---:|---:|---:|---:|---:|---:|---|---:|---:|");
             foreach (var r in results.Where(r => r.ContainsKey("parity_violations")))
             {
-                md.AppendLine($"| {r["scene"]} | {r["parity_stable_px"]} | {r["parity_violations"]} | {r["parity_strict"]} | {r.GetValueOrDefault("parity_strict_max_delta", "")} |");
+                md.AppendLine($"| {r["scene"]} | {r["parity_stable_px"]} | {r["parity_violations"]} | {r["parity_strict"]} | {r.GetValueOrDefault("parity_strict_max_delta", "")}"
+                    + $" | {r.GetValueOrDefault("gpu_test_on_pass", "")} of {r.GetValueOrDefault("gpu_test_captures", "")} | {r.GetValueOrDefault("gpu_frames_drawn", "")} / {r.GetValueOrDefault("gpu_frames_fallback", "")} | {r.GetValueOrDefault("gpu_last_fallback", "")}"
+                    + $" | {r.GetValueOrDefault("gpu_suspended", "")} | {r.GetValueOrDefault("gpu_cover_skipped", "")} |");
             }
         }
 
@@ -602,7 +760,8 @@ internal static class PerfProbe
             JsonSerializer.Serialize(new Dictionary<string, object>
                 {
                     ["label"] = label, ["window"] = $"{size.X}x{size.Y}", ["zoom"] = System.Math.Round(Client.Game?.Scene?.Camera?.Zoom ?? 0, 2),
-                    ["optimized"] = optimized, ["postfx"] = look, ["system"] = SystemInfo(), ["scenes"] = results,
+                    ["optimized"] = optimized, ["postfx"] = look, ["profile_preset"] = _profilePreset, ["profile"] = _profileSummary, ["static_world"] = StaticWorld,
+                    ["system"] = SystemInfo(), ["scenes"] = results,
                 },
                 new JsonSerializerOptions { WriteIndented = true }));
         GD.Print($"[GUO] perf probe: wrote {Path.Combine(dir, stem + ".md")}");

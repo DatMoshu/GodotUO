@@ -131,6 +131,68 @@ internal static class InputProbe
     public static string ProbeCharacter { get; set; }
 
     /// <summary>
+    /// PORT DEVIATION (GUO): a measuring run (--perf-expect-character) must
+    /// never make a character: a wrong account would otherwise be given one
+    /// and the run would measure the wrong world. On, the character has to be
+    /// named and on the list, or the run stops before the world.
+    /// </summary>
+    public static bool NeverCreate { get; set; }
+
+    /// <summary>
+    /// PORT DEVIATION (GUO): --perf-expect-account. A measuring run logs in
+    /// with one guarded LoginScene.Connect for the allocated account and its
+    /// configured credential (LoginPreflight.ResolveCredential): nothing is
+    /// typed into the login fields (a prefilled field would double), a
+    /// missing allocation or credential stops at the login screen, and no
+    /// character is created. Implies NeverCreate.
+    /// </summary>
+    public static bool Strict
+    {
+        get => _strict;
+        set
+        {
+            _strict = value;
+            if (value) NeverCreate = true;
+        }
+    }
+
+    private static bool _strict;
+
+    /// <summary>Connects issued by the strict path; a measuring run issues exactly one.</summary>
+    public static int ConnectCalls { get; private set; }
+
+    /// <summary>Characters typed into any field by <see cref="Type"/>; the strict login types none.</summary>
+    public static int FieldInputs { get; private set; }
+
+    /// <summary>The account the probe logs in with when none is configured.</summary>
+    public static string DefaultAccountName => DefaultAccount;
+
+    /// <summary>The strict path's decision for <paramref name="expectedAccount"/> against the configured account and autologin.</summary>
+    public static bool StrictCredential(string expectedAccount, System.Func<string, string> env, out string secret, out string why)
+        => LoginPreflight.Decide(expectedAccount, ProbeAccount, AutoLogin, env, out secret, out why);
+
+    /// <summary>
+    /// The strict login: LoginPreflight.Decide, then one call of
+    /// <paramref name="connect"/> with the allocated account and its
+    /// credential, or none. Nothing is typed. The connect is injected so the
+    /// headless probe can count it without reaching a shard.
+    /// </summary>
+    public static bool StrictLogin(string expectedAccount, bool autoLogin, System.Func<string, string> env,
+        System.Action<string, string> connect, out string why)
+    {
+        if (!LoginPreflight.Decide(expectedAccount, ProbeAccount, autoLogin, env, out string secret, out why))
+        {
+            GD.Print($"[GUO] input probe: strict login refused, no connect: {why}");
+            return false;
+        }
+
+        GD.Print($"[GUO] input probe: strict connect as the allocated account ({expectedAccount}); no field typed");
+        ConnectCalls++;
+        connect(expectedAccount, secret);
+        return true;
+    }
+
+    /// <summary>
     /// Every expectation the run has checked, in order.
     /// </summary>
     private static readonly System.Collections.Generic.List<(string What, bool Ok)> Checks =
@@ -210,7 +272,29 @@ internal static class InputProbe
 
         await Frames(host, settleFrames);
 
-        if (!AutoLogin)
+        if (Strict)
+        {
+            // One guarded Connect: the login fields are never touched, and
+            // autologin (upstream's own route) is refused by the decision.
+            Game.Scenes.LoginScene strictScene = Client.Game.GetScene<Game.Scenes.LoginScene>();
+            if (strictScene == null)
+            {
+                Check("the login scene is up for the strict connect", false, OpenLoginGumps());
+                return;
+            }
+
+            if (!StrictLogin(account, AutoLogin, System.Environment.GetEnvironmentVariable, strictScene.Connect, out string refused))
+            {
+                Check("the allocated account may connect", false, refused);
+                return;
+            }
+
+            await Frames(host, 120);
+            GD.Print("[GUO] input probe: selecting the shard");
+            await Click(host, ShardEntry);
+            await Frames(host, 180);
+        }
+        else if (!AutoLogin)
         {
             GD.Print("[GUO] input probe: typing the account");
 
@@ -287,10 +371,24 @@ internal static class InputProbe
             return;
         }
 
+        if (NeverCreate && (creating || !byName))
+        {
+            Check("the expected character is on the list (no creation allowed)", false,
+                creating ? "the client went to character creation" : "no character name was expected");
+            return;
+        }
+
         if (!creating)
         {
             Game.Scenes.LoginScene loginScene = Client.Game.GetScene<Game.Scenes.LoginScene>();
             int slot = System.Array.IndexOf(loginScene?.Characters ?? System.Array.Empty<string>(), character);
+
+            if (NeverCreate && slot < 0)
+            {
+                Check($"the account has {character} (no creation allowed)", false,
+                    "the list is " + string.Join(", ", loginScene?.Characters ?? System.Array.Empty<string>()));
+                return;
+            }
 
             if (!byName)
             {
@@ -4002,6 +4100,7 @@ internal static class InputProbe
 
     private static async System.Threading.Tasks.Task Type(Node host, string text)
     {
+        FieldInputs += text.Length;
         foreach (char c in text)
         {
             // Keycode is the capital because that is how Godot names a letter

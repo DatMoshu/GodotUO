@@ -51,6 +51,37 @@ def test_record_then_compare_and_refuse_implicit_overwrite(setup_gate):
     assert calls[0][calls[0].index("--renderer") + 1] == "forward_plus"
 
 
+def test_gate_asks_the_probe_for_its_own_scenes_and_a_static_world(setup_gate):
+    """PERF-V5/V6: a stock run needs no --args; the gate names its six scenes and the map-only walk."""
+    cfg, calls = setup_gate
+    assert local_gate.main(["--fixture", "test-world", "--record-baseline", "--args=--batched-world"]) == 0
+    passed = next(a for a in calls[0] if a.startswith("--args="))[len("--args="):].split()
+    assert passed[0] == "--perf-static-world"
+    assert passed.count("--perf-scene") == 5 and "login" not in passed and "walk" in passed
+    assert passed[-1] == "--batched-world"
+    doc = json.loads(baseline_path(cfg).read_text())
+    assert doc["context"]["gate_flags"] == " ".join(local_gate.GATE_FLAGS)
+    assert doc["context"]["args"] == "--batched-world"
+    assert set(doc["provenance"]) == {"head", "dirty", "client_dll_sha256"}
+
+
+def test_dynamic_world_report_cannot_record(setup_gate, monkeypatch):
+    cfg, calls = setup_gate
+
+    def run(cmd, **kwargs):
+        label = cmd[cmd.index("--label") + 1]
+        out = cfg.build / "perf" / f"perf_{label}.json"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        doc = report()
+        doc["static_world"] = False
+        out.write_text(json.dumps(doc), encoding="utf-8")
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(local_gate.subprocess, "run", run)
+    assert local_gate.main(["--fixture", "test-world", "--record-baseline"]) == 2
+    assert not list(cfg.build.glob("perf/gate/*/default.baseline.json"))
+
+
 @pytest.mark.parametrize("change", [["--zoom", "2.5"], ["--renderer", "gl_compatibility"],
                                     ["--size", "1920,1080"], ["--args=--batched-world"],
                                     ["--port", "2594"], ["--fixture", "changed-world"]])

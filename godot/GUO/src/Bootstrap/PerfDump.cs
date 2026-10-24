@@ -7,11 +7,13 @@
 // swaps. sources\ is never edited.
 
 #if PERF_DUMP_CUO
+using ClassicUO.Configuration;
 using ClassicUO.Game;
 using ClassicUO.Game.Scenes;
 using ClassicUO.Utility;
 using ClientRoot = ClassicUO.Client;
 #else
+using GUO.Configuration;
 using GUO.Game;
 using GUO.Game.Scenes;
 using GUO.Utility;
@@ -211,6 +213,13 @@ internal static class PerfDump
                 ["render_ui_ms"] = Math.Round(Avg(Profiler.ProfilerContext.RENDER_FRAME_UI), 3),
                 ["update_world_ms"] = Math.Round(Avg(Profiler.ProfilerContext.UPDATE_WORLD), 3),
                 ["frames_averaged"] = Profiler.ProfileTimeCount,
+                // The whole frame as the profiler's own clock saw it: wall time
+                // between its BeginFrame and EndFrame, averaged over the same
+                // last frames. Upstream paces its draw at Settings.FPS, so this
+                // reads as the cap once the client is faster than it; the cap
+                // is written beside it so a reader knows which it is.
+                ["frame_ms"] = Math.Round(Profiler.TrackedTime / Profiler.ProfileTimeCount, 3),
+                ["fps_cap"] = Settings.GlobalSettings.FPS,
                 ["optimized"] = !(typeof(PerfDump).Assembly.GetCustomAttribute<System.Diagnostics.DebuggableAttribute>()?.IsJITOptimizerDisabled ?? false),
                 ["rendered_objects"] = ClientRoot.Game.Scene.RenderedObjectsCount,
             };

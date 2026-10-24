@@ -338,7 +338,7 @@ namespace GUO.Renderer
                 verts[i] = new Vector3(pos[v] + ox, pos[v + 1] + oy, pos[v + 2]);
             }
 
-            var arrays = new Godot.Collections.Array();
+            using var arrays = new Godot.Collections.Array();
             arrays.Resize((int)Mesh.ArrayType.Max);
             arrays[(int)Mesh.ArrayType.Vertex] = verts;
             arrays[(int)Mesh.ArrayType.Color] = colors;

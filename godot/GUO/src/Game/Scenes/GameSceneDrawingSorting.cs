@@ -64,6 +64,12 @@ namespace GUO.Game.Scenes
         /// </summary>
         internal Point DrawOffset => _offset;
 
+        // PORT DEVIATION (GUO): --gpu-world (ADR-0007). The slot the next
+        // queued object of the current tile takes in the depth key: twice the
+        // instanced statics before it in the tile's chain, so it sorts after
+        // them and before the ones after it (WorldDepthKey).
+        private int _gpuSlot;
+
         public void UpdateMaxDrawZ(bool force = false)
         {
             int playerX = _world.Player.X;
@@ -667,8 +673,46 @@ namespace GUO.Game.Scenes
             return 0;
         }
 
+        /// <summary>
+        /// PORT DEVIATION (GUO): --gpu-world (ADR-0007). An instanced static
+        /// the sprite path draws this frame: its instance is turned off and
+        /// it is queued with its own slot in the tile's chain (the odd one its
+        /// rank gave it), so it keeps its place among what the chain queues.
+        /// </summary>
+        private void QueueInstanced(GameObject obj, ChunkMesh mesh, int index, bool allowSelection)
+        {
+            mesh.Instances.SetDrawn(index, false);
+            int next = _gpuSlot;
+            _gpuSlot = mesh.Instances.Slot(index);
+            PushToRenderQueue(obj, true, allowSelection);
+            _gpuSlot = next;
+        }
+
+        /// <summary>
+        /// PORT DEVIATION (GUO): --gpu-world (ADR-0007). ApplyMeshHue for an
+        /// instanced static: the same hue, written into its instance, plus
+        /// the water bit of a Wet static (Static.Draw adds it, ADR-0037).
+        /// </summary>
+        private void ApplyInstanceHue(GameObject obj, ChunkMesh mesh, ref StaticTiles itemData)
+        {
+            MeshHueOf(obj, out float hueX, out float hueY);
+            hueY += GUO.Renderer.Water.WaterRender.Flag(itemData.IsWet);
+            mesh.Instances.SetHue(obj.MeshSpriteIndex, hueX, hueY);
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ApplyMeshHue(GameObject obj, MeshLayer layer)
+        {
+            MeshHueOf(obj, out float hueX, out float hueY);
+
+            // PORT DEVIATION (GUO): keep the water bit on Wet land under a water style (ADR-0037).
+            hueY += GUO.Renderer.Water.WaterRender.Flag(obj is Land wetLand && wetLand.TileData.IsWet);
+
+            layer.SetHue(obj.MeshSpriteIndex, hueX, hueY);
+        }
+
+        /// <summary>The hue the tile walk gives a meshed object this frame: out of range, dead, or its own.</summary>
+        private void MeshHueOf(GameObject obj, out float hueX, out float hueY)
         {
             var profile = ProfileManager.CurrentProfile;
             int hue = obj.Hue;
@@ -691,7 +735,6 @@ namespace GUO.Game.Scenes
                 partial = m.ItemData.IsPartialHue;
             }
 
-            float hueX, hueY;
             if (hue != 0)
             {
                 hueX = hue - 1;
@@ -708,11 +751,6 @@ namespace GUO.Game.Scenes
                 else
                     hueY = ShaderHueTranslator.SHADER_NONE;
             }
-
-            // PORT DEVIATION (GUO): keep the water bit on Wet land under a water style (ADR-0037).
-            hueY += GUO.Renderer.Water.WaterRender.Flag(obj is Land wetLand && wetLand.TileData.IsWet);
-
-            layer.SetHue(obj.MeshSpriteIndex, hueX, hueY);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -774,7 +812,7 @@ namespace GUO.Game.Scenes
                 }
             }
 
-            _renderLists.Add(obj, isTransparent || obj.AlphaHue != byte.MaxValue);
+            _renderLists.Add(obj, isTransparent || obj.AlphaHue != byte.MaxValue, _gpuSlot);
         }
 
         private unsafe bool AddTileToRenderList(
@@ -786,6 +824,7 @@ namespace GUO.Game.Scenes
         {
             var profile = ProfileManager.CurrentProfile;
             var mesh = chunk.Mesh;
+            _gpuSlot = 0; // PORT DEVIATION (GUO): --gpu-world, a new tile's chain
 
             for (; obj != null; obj = obj.TNext)
             {
@@ -857,6 +896,19 @@ namespace GUO.Game.Scenes
                         ? ref meshStatic.ItemData
                         : ref Unsafe.As<Multi>(obj).ItemData);
 
+                    // PORT DEVIATION (GUO): --gpu-world (ADR-0007, GPU-01). An
+                    // instanced static draws from its chunk's instance buffer,
+                    // unless this frame fades, blends or hides it: then it is
+                    // queued like any sprite, with its own slot, and its
+                    // instance is turned off. Its rank sets the slot of what
+                    // the chain queues after it.
+                    bool gpu = mesh.Instanced;
+                    int gpuIndex = obj.MeshSpriteIndex;
+                    if (gpu)
+                    {
+                        _gpuSlot = mesh.Instances.Slot(gpuIndex) + 1;
+                    }
+
                     // Simplified ProcessAlpha for meshed statics: skip IsFoliage branch (never true)
                     bool meshAllowSelection = true;
                     bool meshFadingOut = false;
@@ -867,7 +919,10 @@ namespace GUO.Game.Scenes
                             : obj.AlphaHue != 0;
 
                         if (!changed)
+                        {
+                            if (gpu) mesh.Instances.SetDrawn(gpuIndex, false);
                             continue;
+                        }
 
                         meshFadingOut = true;
                         meshAllowSelection = false;
@@ -875,9 +930,15 @@ namespace GUO.Game.Scenes
                     else if (_noDrawRoofs && meshItemData.IsRoof)
                     {
                         if (_alphaChanged && !CalculateAlpha(ref obj.AlphaHue, 0))
+                        {
+                            if (gpu) mesh.Instances.SetDrawn(gpuIndex, false);
                             continue;
+                        }
                         if (obj.AlphaHue == 0)
+                        {
+                            if (gpu) mesh.Instances.SetDrawn(gpuIndex, false);
                             continue;
+                        }
 
                         meshFadingOut = true;
                         meshAllowSelection = false;
@@ -893,21 +954,30 @@ namespace GUO.Game.Scenes
                     }
 
                     if (obj.AlphaHue == 0)
+                    {
+                        if (gpu) mesh.Instances.SetDrawn(gpuIndex, false);
                         continue;
+                    }
 
                     // Z-height culling
                     if (obj.AllowedToDraw)
                         CalculateObjectHeight(ref maxObjectZ, ref meshItemData);
 
                     if (maxObjectZ > maxZ)
+                    {
+                        if (gpu) mesh.Instances.SetDrawn(gpuIndex, false);
                         continue;
+                    }
 
                     // Fading statics must not be drawn from the mesh GPU buffer because
                     // they write to the depth buffer and block objects underneath (mobiles, items).
                     // Instead, draw them via the CPU transparent list (rendered after mobiles).
                     if (meshFadingOut)
                     {
-                        PushToRenderQueue(obj, true, false);
+                        if (gpu)
+                            QueueInstanced(obj, mesh, gpuIndex, false);
+                        else
+                            PushToRenderQueue(obj, true, false);
                         continue;
                     }
 
@@ -918,9 +988,50 @@ namespace GUO.Game.Scenes
                     // so depth buffer doesn't block mobiles underneath.
                     if (meshCot && _cotGradientMode)
                     {
+                        if (gpu) mesh.Instances.SetDrawn(gpuIndex, false);
                         obj.AlphaHue = GetGradientCotAlpha(obj);
                         if (obj.AlphaHue > 0)
-                            PushToRenderQueue(obj, true, meshAllowSelection);
+                        {
+                            if (gpu)
+                                QueueInstanced(obj, mesh, gpuIndex, meshAllowSelection);
+                            else
+                                PushToRenderQueue(obj, true, meshAllowSelection);
+                        }
+                        continue;
+                    }
+
+                    if (gpu)
+                    {
+                        // PORT DEVIATION (GUO): --gpu-world. Hidden vegetation
+                        // is what the sprite path skips below; a fading-in or
+                        // circle-cut static blends, so the sprite path draws it
+                        // (its instance is opaque). The rest is the instance's:
+                        // the hue the walk gives it, the light, the selection.
+                        if (profile.HideVegetation && (obj is Static gpuStatic
+                                ? gpuStatic.IsVegetation && !meshItemData.IsMultiMovable
+                                : Unsafe.As<Multi>(obj).IsVegetation))
+                        {
+                            mesh.Instances.SetDrawn(gpuIndex, false);
+                            continue;
+                        }
+
+                        bool gpuSelect = meshAllowSelection && !(meshCot && IsMouseInsideCotCircle());
+                        if (obj.AlphaHue != 0xFF || meshCot)
+                        {
+                            QueueInstanced(obj, mesh, gpuIndex, false);
+                        }
+                        else
+                        {
+                            mesh.Instances.SetDrawn(gpuIndex, true);
+                            ApplyInstanceHue(obj, mesh, ref meshItemData);
+                        }
+
+                        if (meshItemData.IsLight)
+                        {
+                            AddLight(obj, obj, obj.RealScreenPosition.X + 22, obj.RealScreenPosition.Y + 22);
+                        }
+
+                        TrySelectObject(obj, gpuSelect);
                         continue;
                     }
 
@@ -1053,6 +1164,12 @@ namespace GUO.Game.Scenes
 
                     case Mobile mobile:
                         {
+                            // PORT DEVIATION (GUO): --perf-static-world (PerfProbe.StaticWorld).
+                            if (GUO.Host.PerfProbe.StaticWorld && !ReferenceEquals(mobile, _world.Player))
+                            {
+                                continue;
+                            }
+
                             UpdateObjectHandles(mobile, useObjectHandles);
 
                             maxObjectZ += Constants.DEFAULT_CHARACTER_HEIGHT;
@@ -1092,6 +1209,12 @@ namespace GUO.Game.Scenes
 
                     case Item item:
                         {
+                            // PORT DEVIATION (GUO): --perf-static-world (PerfProbe.StaticWorld).
+                            if (GUO.Host.PerfProbe.StaticWorld)
+                            {
+                                continue;
+                            }
+
                             ref StaticTiles itemData = ref (
                                 item.IsMulti
                                     ? ref Client.Game.UO.FileManager.TileData.StaticData[item.MultiGraphic]
@@ -1182,6 +1305,12 @@ namespace GUO.Game.Scenes
                         }
 
                     case GameEffect effect:
+                        // PORT DEVIATION (GUO): --perf-static-world (PerfProbe.StaticWorld).
+                        if (GUO.Host.PerfProbe.StaticWorld)
+                        {
+                            continue;
+                        }
+
                         if (effect is not LightningEffect &&
                             !ProcessAlpha(
                                 obj,
