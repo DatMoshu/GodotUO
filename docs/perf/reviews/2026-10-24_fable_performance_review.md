@@ -114,7 +114,7 @@ than claiming another optimization.
 | `79a33c35`, local | Ordered typed UI texture commands | Repeated simple texture closures | Deferred dimensions, mixed order and clipping retained; 14.1/14.0 to 5.9/5.8 KB/frame in its cohort |
 | `419e7a7a`, local | Adaptive exact world-depth radix sort | General comparison sort for qualifying queues | Integer order oracle; bank/docks sort stage 0.447/0.328 to 0.091/0.082 ms |
 | `0c0e8a5b`, local | Revalidate first-Land identity and chain certification | Unnecessary plan rebuilds after benign mutations | Lower rebuild counts, mixed FPS; every mutation hook remains active |
-| Local lazy land-bucket candidate | Allocate two loose Land queues only on first use | Empty lists in short-lived UI owners | 64 bytes saved per fresh list; 1,217 Release / 1,557 optimized Debug/Labs checks; no FPS gain established |
+| `d0be5ce1`, local | Allocate two loose Land queues only on first use | Empty lists in short-lived UI owners | 64 bytes saved per fresh list; 1,217 Release / 1,557 optimized Debug/Labs checks; no FPS gain established |
 
 PR references identify the existing stack, not a fresh remote-state audit.
 Only the previously authorized pushes through PRs 152/153 were made. The
@@ -378,7 +378,9 @@ reduced stream still measures a material crossing/submission bottleneck.
 
 ## Evidence, review checklist and detailed reports
 
-Current private run: `20261024_guo-codex-perf-implementation-20261022_static-candidates`.
+Current private run: `20261024_guo-codex-perf-implementation-20261022_native-symbols`.
+It also holds the separate cover-membership and lazy-land evidence archives.
+Earlier private run: `20261024_guo-codex-perf-implementation-20261022_static-candidates`.
 Earlier private runs include `20261023_guo-codex-perf-implementation-20261022_release-cpu-hotpaths`
 and `20261023_guo-codex-perf-implementation-20261022_atlas-cover-capture`.
 Evidence belongs under the shared runs area, not in Git. Credentials, client
@@ -607,8 +609,17 @@ FPS under 49.8% mean host CPU load; docks standing is 117.449. These observation
 do not establish a general FPS improvement or justify a renderer default change.
 
 The elevated native collector was canceled by Windows before recording; no new
-ETL was obtained. A separate private engine now has bounded, default-disabled
-own-process elapsed/CPU scopes. Its source, production flags and matching PDB
-have been checked; runtime coverage and disabled/enabled pixels are still being
-validated. It does not change the configured engine or the ordinary Release
-comparisons, and it provides no GPU-time or ready-versus-blocked attribution.
+ETL was obtained. The [private native attribution report](../2026-10-24_native_render_attribution.md)
+now records complete bank/docks and wall-only bank runs. Inclusive native
+executed-draw elapsed means are 3.524/3.192/2.905 ms; canvas-tree means are
+2.206/1.944/1.846 ms and end-frame means 1.104/1.051/0.896 ms. Scopes overlap;
+do not add parent and child rows. Host load differs, and coarse thread-CPU
+counters cannot establish exclusive CPU or wait time. No GPU-time claim follows.
+
+Native source, production flags, matching PDB and bounded runtime coverage have
+been checked. Disabled/enabled static captures match at four scenes after an
+unchanged control reproduces terrain variation; bank still contains rain and
+system-message differences, retained as an unresolved strict comparison. The
+configured engine and ordinary Release exports are unchanged. Finer wall-only
+canvas/end-frame scopes and a private optimized Debug-binding experiment are
+the next investigations, with no default renderer or export-policy change.
