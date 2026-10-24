@@ -128,6 +128,8 @@ public partial class BatcherProbe : Node
         Stage("incidental allocations");
         await VerifyUiTextureCommands(batcher, viewport);
         Stage("typed UI texture commands");
+        VerifyWorldDepthSort();
+        Stage("world depth radix sort");
 
         await VerifyUiTransform(batcher, viewport, ramp);
         Stage("gump transform and clipping");

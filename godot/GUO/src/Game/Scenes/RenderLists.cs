@@ -188,6 +188,9 @@ namespace GUO.Game.Scenes
         /// eager 8 KB here was 48 KB of garbage a frame at the login screen.
         /// </remarks>
         private ulong[] _keys = Array.Empty<ulong>();
+        // PORT DEVIATION (GUO): lazy bounded scratch; small UI world queues
+        // allocate none. The high-water array lives as long as these lists.
+        private ulong[] _sortScratch;
 
         /// <summary>
         /// PORT DEVIATION (GUO): the Realtime lights pass (ADR-0039) reads the
@@ -722,7 +725,7 @@ namespace GUO.Game.Scenes
                 _keys[i] = DepthKey.Of(span[i].Depth, span[i].Seq);
             }
 
-            Array.Sort(_keys, 0, span.Length);
+            WorldDepthSort.SortQueueKeys(_keys, span.Length, ref _sortScratch);
             WorldSorted = true;
             stageAt = PerfStages.Add(PerfStages.Stage.Sort, stageAt);
 
