@@ -593,6 +593,7 @@ namespace GUO.Game.Scenes
         {
             _renderLists.Clear();
             _visibleChunks.Clear();
+            RenderLists.ChunksSkipped = 0; // PORT DEVIATION (GUO): perf probe count
 
             _foliageCount = 0;
 
@@ -719,6 +720,33 @@ namespace GUO.Game.Scenes
 
                     _visibleChunks.Add(chunk);
 
+                    // PORT DEVIATION (GUO): perf, review item B (2026-10-24).
+                    // Upstream walks every object of every chunk in the tile
+                    // window, a square about four times the screen's diamond,
+                    // and each one rejects itself on its screen anchor. A chunk
+                    // whose anchors cannot reach the screen at any Z skips the
+                    // walk: no object in it would pass its own test. Its mesh is
+                    // still built, reset and listed above, as upstream leaves it.
+                    // Upstream refreshes the rejected objects' screen positions
+                    // when the view moves; a chunk skipped in such a frame is
+                    // marked and refreshes them on its next visit, before any of
+                    // them can be drawn. Off-screen alpha fades and name handles
+                    // start at that visit instead, at least ~500 world px from
+                    // the edge, where a fade (about 220 ms) cannot be seen.
+                    if (RenderLists.SkipOffScreenChunks && ChunkOffScreen(chunk.X, chunk.Y))
+                    {
+                        if (UpdateDrawPosition)
+                        {
+                            chunk.ScreenPositionsStale = true;
+                        }
+
+                        RenderLists.ChunksSkipped++;
+                        continue;
+                    }
+
+                    _forcePositions = chunk.ScreenPositionsStale;
+                    chunk.ScreenPositionsStale = false;
+
                     for (var x = 0; x < 8; x++)
                     {
                         for (var y = 0; y < 8; y++)
@@ -738,6 +766,8 @@ namespace GUO.Game.Scenes
                 }
             }
 
+            _forcePositions = false;
+            _renderLists.GroundHint = null;
             stageAt = PerfStages.Add(PerfStages.Stage.Gather, stageAt);
 
             if (_alphaChanged)
@@ -762,6 +792,27 @@ namespace GUO.Game.Scenes
             PerfStages.Add(PerfStages.Stage.GatherTail, stageAt);
 
             UpdateDrawPosition = false;
+        }
+
+        // PORT DEVIATION (GUO): the chunk being walked was skipped while the
+        // view moved; AddTileToRenderList refreshes every position it visits.
+        private bool _forcePositions;
+
+        /// <summary>
+        /// PORT DEVIATION (GUO): true when no object of chunk (cx, cy) can pass
+        /// the tile walk's screen tests: its anchor (UpdateRealScreenPosition)
+        /// is outside [_minPixel, _maxPixel] for every tile of the chunk and
+        /// every Z an object or a stretched land's MinZ can have.
+        /// </summary>
+        private bool ChunkOffScreen(int cx, int cy)
+        {
+            int x0 = cx << 3, y0 = cy << 3;
+            int minX = (x0 - (y0 + 7)) * 22 - _offset.X - 22;
+            int maxX = (x0 + 7 - y0) * 22 - _offset.X - 22;
+            int minY = (x0 + y0) * 22 - (sbyte.MaxValue << 2) - _offset.Y - 22;
+            int maxY = (x0 + y0 + 14) * 22 - (sbyte.MinValue << 2) - _offset.Y - 22;
+
+            return maxX < _minPixel.X || minX > _maxPixel.X || maxY < _minPixel.Y || minY > _maxPixel.Y;
         }
 
         private void UpdateTextServerEntities<T>(IEnumerable<T> entities, bool force)

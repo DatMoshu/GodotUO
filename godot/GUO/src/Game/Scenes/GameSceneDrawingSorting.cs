@@ -825,10 +825,12 @@ namespace GUO.Game.Scenes
             var profile = ProfileManager.CurrentProfile;
             var mesh = chunk.Mesh;
             _gpuSlot = 0; // PORT DEVIATION (GUO): --gpu-world, a new tile's chain
+            _renderLists.GroundHint = null; // PORT DEVIATION (GUO): RenderLists.GroundHint
 
             for (; obj != null; obj = obj.TNext)
             {
-                if (UpdateDrawPosition || obj.IsPositionChanged)
+                // PORT DEVIATION (GUO): _forcePositions, see FillGameObjectList.
+                if (UpdateDrawPosition || _forcePositions || obj.IsPositionChanged)
                 {
                     obj.UpdateRealScreenPosition(_offset.X, _offset.Y);
                 }
@@ -848,6 +850,7 @@ namespace GUO.Game.Scenes
                 {
                     if (obj is Land meshLand)
                     {
+                        _renderLists.GroundHint = meshLand; // PORT DEVIATION (GUO): RenderLists.GroundHint
                         // For stretched tiles, the visible area extends below screenY
                         // based on MinZ, so use adjustedY for the top-of-screen cull.
                         if (meshLand.IsStretched)
@@ -1051,6 +1054,8 @@ namespace GUO.Game.Scenes
                 switch (obj)
                 {
                     case Land land:
+                        _renderLists.GroundHint = land; // PORT DEVIATION (GUO): RenderLists.GroundHint
+
                         if (maxObjectZ > maxZ)
                         {
                             return false;

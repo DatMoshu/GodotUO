@@ -33,6 +33,10 @@ namespace GUO.Renderer
             public int[] Pages;
             public MeshQuad[] Quads;
             public ArrayMesh Mesh;
+            // The mesh's RID, asked of the engine once: Resource.GetRid is a
+            // native call, and a run is drawn every frame (bank profile
+            // 2026-10-24: about 12% of the world frame went to it).
+            public Rid MeshRid;
             public long Frame;
         }
 
@@ -72,7 +76,8 @@ namespace GUO.Renderer
             }
         }
 
-        public ArrayMesh Get(List<(MeshLayer Layer, int Index, int Page, Vector2 Scale)> run)
+        /// <summary>The RID of the run's mesh, built or found again.</summary>
+        public Rid Get(List<(MeshLayer Layer, int Index, int Page, Vector2 Scale)> run)
         {
             int hash = 17;
             foreach ((MeshLayer layer, int index, int page, _) in run)
@@ -96,7 +101,7 @@ namespace GUO.Renderer
                 if (SameQuads(e, run))
                 {
                     e.Frame = _frame;
-                    return e.Mesh;
+                    return e.MeshRid;
                 }
 
                 stale = e;
@@ -106,6 +111,7 @@ namespace GUO.Renderer
             Entry entry = stale ?? new Entry { Mesh = new ArrayMesh() };
             if (stale == null)
             {
+                entry.MeshRid = entry.Mesh.GetRid();
                 entry.Layers = new MeshLayer[run.Count];
                 entry.Indices = new int[run.Count];
                 entry.Pages = new int[run.Count];
@@ -124,7 +130,7 @@ namespace GUO.Renderer
             entry.Frame = _frame;
             Build(entry.Mesh, run);
             Builds++;
-            return entry.Mesh;
+            return entry.MeshRid;
         }
 
         private static bool SameTiles(Entry e, List<(MeshLayer Layer, int Index, int Page, Vector2 Scale)> run)

@@ -216,6 +216,13 @@ namespace GUO.Game.Scenes
         /// its drop below the ground carries its sprite down the screen.
         /// Everything else keeps the bake.
         /// </remarks>
+        /// <summary>
+        /// PORT DEVIATION (GUO): perf, review item D (2026-10-24). The land of
+        /// the tile GameScene's tile walk is on, once the walk has passed it;
+        /// null otherwise. Saves CoverFromBelow a chunk lookup per object.
+        /// </summary>
+        public Land GroundHint;
+
         private void CoverFromBelow(GameObject obj, float depth)
         {
             // Only what upstream draws at depth + 0.5, the same as land.
@@ -235,7 +242,12 @@ namespace GUO.Game.Scenes
                 return;
             }
 
-            Land ground = LandAt(map, obj.X, obj.Y);
+            // The tile walk hands over the land of the tile it is on
+            // (GroundHint); a tile holds one land, so it is the one LandAt
+            // would find.
+            Land ground = GroundHint != null && GroundHint.X == obj.X && GroundHint.Y == obj.Y
+                ? GroundHint
+                : LandAt(map, obj.X, obj.Y);
 
             if (ground == null)
             {
@@ -332,6 +344,13 @@ namespace GUO.Game.Scenes
         // the object changes nothing unless another earlier sprite overlaps it
         // -- the case the five-frame parity check is there to catch.
         public static bool CoverCull;
+
+        // PORT DEVIATION (GUO): GameScene.FillGameObjectList's chunk skip
+        // (review item B, 2026-10-24), on unless --chunk-skip=off, and the
+        // chunks it skipped this frame, for the perf probe. Here rather than
+        // on GameScene, whose static constructor must not run at startup.
+        public static bool SkipOffScreenChunks = true;
+        public static int ChunksSkipped;
         public static int CoverQueued, CoverOverlapping;
         public static (int Queued, int Overlapping) LastCover;
 

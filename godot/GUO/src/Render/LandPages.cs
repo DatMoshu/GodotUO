@@ -27,6 +27,9 @@ namespace GUO.Renderer
 
         private static readonly List<Texture2D> _layers = new();
         private static readonly List<int> _versions = new();
+        // Each layer's ScaleOf, worked out when it is added: a page keeps its
+        // size, and GetWidth/GetHeight are two native calls a covering tile.
+        private static readonly List<Vector2> _scales = new();
         private static readonly Dictionary<Texture2D, int> _index = new();
         private static bool _rebuild;
 
@@ -83,12 +86,24 @@ namespace GUO.Renderer
             layer = _layers.Count;
             _layers.Add(texture);
             _versions.Add(-1);
+            _scales.Add(Measure(texture));
             _index[texture] = layer;
             _rebuild = true;
             return layer;
         }
 
+        /// <summary>LayerOf, with the page's <see cref="ScaleOf"/> from the same lookup.</summary>
+        public static int LayerOf(Texture2D texture, out Vector2 scale)
+        {
+            int layer = LayerOf(texture);
+            scale = layer >= 0 ? _scales[layer] : default;
+            return layer;
+        }
+
         public static Vector2 ScaleOf(Texture2D texture) =>
+            _index.TryGetValue(texture, out int layer) ? _scales[layer] : Measure(texture);
+
+        private static Vector2 Measure(Texture2D texture) =>
             new((float)texture.GetWidth() / Size, (float)texture.GetHeight() / Size);
 
         /// <summary>Brings the array up to date with its pages; once a frame, before land draws.</summary>
@@ -157,6 +172,7 @@ namespace GUO.Renderer
         {
             _layers.Clear();
             _versions.Clear();
+            _scales.Clear();
             _index.Clear();
             _rebuild = false;
             _capacity = 0;

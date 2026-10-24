@@ -2104,6 +2104,17 @@ public partial class Main : Node
                         // The experimental raw-bytes output (WorldDepthPass.RawOutput).
                         GUO.Renderer.GpuWorld.RawOutput = true;
                         break;
+                    case "--chunk-skip":
+                        // Review item B: the tile walk skips chunks no anchor of
+                        // which can reach the screen (on by default); given, it is
+                        // also the probe's parity toggle.
+                        GUO.Game.Scenes.RenderLists.SkipOffScreenChunks = true;
+                        GUO.Host.PerfProbe.ParityToggle = on => GUO.Game.Scenes.RenderLists.SkipOffScreenChunks = on;
+                        GUO.Host.PerfProbe.ParityState = () => GUO.Game.Scenes.RenderLists.SkipOffScreenChunks;
+                        break;
+                    case "--chunk-skip=off":
+                        GUO.Game.Scenes.RenderLists.SkipOffScreenChunks = false;
+                        break;
                     case "--cover-cull":
                         // Epic B, B4 fix 2b: covering land only where it overlaps its object.
                         GUO.Game.Scenes.RenderLists.CoverCull = true;
