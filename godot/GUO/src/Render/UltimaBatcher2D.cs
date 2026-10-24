@@ -333,6 +333,7 @@ namespace GUO.Renderer
         /// <summary>Sends the pending run, if there is one, as one triangle array.</summary>
         private void FlushQuadRun()
         {
+            FlushMultiMeshRun(); // PORT DEVIATION (GUO): --multimesh-sprites
             if (_runPoints.Count == 0)
             {
                 _runTexture = null;
@@ -392,6 +393,8 @@ namespace GUO.Renderer
                 RenderingServer.FreeRid(_idItem);
                 _idItem = default;
             }
+
+            DisposeMultiMesh(); // PORT DEVIATION (GUO): --multimesh-sprites
         }
 
         public void SetBrightlight(float f)
@@ -456,6 +459,7 @@ namespace GUO.Renderer
             _plainSpriteMaterial?.SetShaderParameter(param, value);
             _meshMaterial.SetShaderParameter(param, value);
             _landArrayMaterial.SetShaderParameter(param, value);
+            _mmMaterial?.SetShaderParameter(param, value); // PORT DEVIATION (GUO): --multimesh-sprites
 
             foreach (ShaderMaterial material in _blendMaterials.Values)
             {
@@ -520,6 +524,7 @@ namespace GUO.Renderer
             CoverRuns = 0;
             _lastKind = -1;
             FramesBegun++;
+            NextMultiMeshFrame(); // PORT DEVIATION (GUO): --multimesh-sprites
             _coverRuns.NextFrame();
             _itemCount = 0;
             _sizedTexture = null;
@@ -598,7 +603,7 @@ namespace GUO.Renderer
             _started = true;
             _worldOffset = Vector2.Zero;
             _clipStack.Clear();
-            _currentMaterial = _nextMaterial = _material;
+            _currentMaterial = _nextMaterial = SpriteMaterial; // PORT DEVIATION (GUO): --multimesh-sprites
             _sampler = SamplerState.PointClamp;
 
             _hdSpriteSampler = false;
@@ -1315,7 +1320,7 @@ void fragment() {
 
             if (blend.IsPremultipliedAlpha)
             {
-                _currentMaterial = _nextMaterial = _material;
+                _currentMaterial = _nextMaterial = SpriteMaterial; // PORT DEVIATION (GUO): --multimesh-sprites
                 Cut(CutReason.Material);
 
                 return;
@@ -2284,6 +2289,13 @@ void fragment() {
                 EnsureSpriteMaterial(texture);
             }
 
+            // PORT DEVIATION (GUO): --multimesh-sprites, an upright sprite as a MultiMesh instance.
+            if (MultiMeshSprites && TryAppendMultiMesh(texture, sourceX, sourceY, sourceW, sourceH,
+                    destinationX, destinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, effects))
+            {
+                return;
+            }
+
             // PORT DEVIATION (GUO): the id mirror (ADR-0023) follows the plain path only.
             if (rotationSin == 0f && rotationCos == 1f && effects == 0 && BatchedWorld && !_mirroring)
             {
@@ -2543,6 +2555,12 @@ void fragment() {
                 EnsureSpriteMaterial(texture);
             }
 #endif
+
+            // PORT DEVIATION (GUO): --multimesh-sprites, the transformed rect as an instance.
+            if (MultiMeshSprites && TryAppendMultiMeshAffine(texture, axisX, axisY, origin, region, modulate))
+            {
+                return true;
+            }
 
             FlushRun();
             Commands++;
