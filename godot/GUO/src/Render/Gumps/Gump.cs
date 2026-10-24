@@ -14,7 +14,7 @@ namespace GUO.Renderer.Gumps
         public Gump(GumpsLoader gumpsLoader)
         {
             _gumpsLoader = gumpsLoader;
-            _atlas = new TextureAtlas(4096, 4096);
+            _atlas = new TextureAtlas(4096, 4096, "gump");
             _spriteInfos = new SpriteInfo[gumpsLoader.File.Entries.Length];
         }
 

@@ -33,6 +33,13 @@ namespace GUO.Game.UI.Gumps
         private ushort _x, _y;
         private static readonly uint[][] _blankGumpsPixels = new uint[4][];
 
+        // PORT DEVIATION (GUO): GUO_ATLAS_V2 (TextureAtlas.V2.cs). The map is
+        // painted into a texture of its own instead of a region of the gump
+        // atlas, so a step uploads this small texture, not a whole atlas page.
+        private Godot.Image _mapImage;
+        private Godot.ImageTexture _mapTexture;
+        private byte[] _mapBytes;
+
         const ushort SMALL_MAP_GRAPHIC = 5010;
         const ushort BIG_MAP_GRAPHIC = 5011;
 
@@ -145,7 +152,14 @@ namespace GUO.Game.UI.Gumps
 
                     CreateMiniMapTexture(gumpInfo.Texture, gumpInfo.UV);
 
-                    batcher.Draw(gumpInfo.Texture, new Vector2(x, y), gumpInfo.UV, hueVector, layerDepth);
+                    if (_mapTexture != null)
+                    {
+                        batcher.Draw(_mapTexture, new Vector2(x, y), new Rectangle(0, 0, gumpInfo.UV.Width, gumpInfo.UV.Height), hueVector, layerDepth);
+                    }
+                    else
+                    {
+                        batcher.Draw(gumpInfo.Texture, new Vector2(x, y), gumpInfo.UV, hueVector, layerDepth);
+                    }
 
                     if (_draw)
                     {
@@ -400,7 +414,48 @@ namespace GUO.Game.UI.Gumps
                 }
             }
 
-            TextureAtlas.TryWriteRegion(texture, bounds, data);
+            if (TextureAtlas.V2)
+            {
+                WriteMapTexture(bounds.Width, bounds.Height, data);
+            }
+            else
+            {
+                TextureAtlas.TryWriteRegion(texture, bounds, data);
+            }
+        }
+
+        private void WriteMapTexture(int width, int height, uint[] data)
+        {
+            int bytes = width * height * 4;
+            if (_mapBytes == null || _mapBytes.Length != bytes)
+            {
+                _mapBytes = new byte[bytes];
+                _mapTexture?.Dispose();
+                _mapImage?.Dispose();
+                _mapTexture = null;
+                _mapImage = null;
+            }
+
+            System.Runtime.InteropServices.MemoryMarshal.AsBytes(data.AsSpan(0, width * height)).CopyTo(_mapBytes);
+            if (_mapImage == null)
+            {
+                _mapImage = Godot.Image.CreateFromData(width, height, false, Godot.Image.Format.Rgba8, _mapBytes);
+                _mapTexture = Godot.ImageTexture.CreateFromImage(_mapImage);
+            }
+            else
+            {
+                _mapImage.SetData(width, height, false, Godot.Image.Format.Rgba8, _mapBytes);
+                _mapTexture.Update(_mapImage);
+            }
+        }
+
+        public override void Dispose()
+        {
+            _mapTexture?.Dispose();
+            _mapImage?.Dispose();
+            _mapTexture = null;
+            _mapImage = null;
+            base.Dispose();
         }
 
         private unsafe void CreatePixels(

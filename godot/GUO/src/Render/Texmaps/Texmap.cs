@@ -14,7 +14,7 @@ namespace GUO.Renderer.Texmaps
         public Texmap(TexmapsLoader texmapsLoader)
         {
             _texmapsLoader = texmapsLoader;
-            _atlas = new TextureAtlas(2048, 2048);
+            _atlas = new TextureAtlas(2048, 2048, "texmap");
             _spriteInfos = new SpriteInfo[texmapsLoader.File.Entries.Length];
         }
 

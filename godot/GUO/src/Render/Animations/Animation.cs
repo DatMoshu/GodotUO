@@ -22,7 +22,7 @@ namespace GUO.Renderer.Animations
         public Animations(AnimationsLoader animationLoader)
         {
             _animationLoader = animationLoader;
-            _atlas = new TextureAtlas(4096, 4096);
+            _atlas = new TextureAtlas(4096, 4096, "animation");
         }
 
 
