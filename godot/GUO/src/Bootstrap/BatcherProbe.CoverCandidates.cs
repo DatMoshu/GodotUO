@@ -14,6 +14,8 @@ public partial class BatcherProbe
 {
     private void VerifyCoverCandidates()
     {
+        VerifyCoverCandidateAdmission();
+        VerifyCoverCandidateVerifier();
         var world = FirstLandFixture<World>();
         var a = new Chunk(world);
         var b = new Chunk(world);

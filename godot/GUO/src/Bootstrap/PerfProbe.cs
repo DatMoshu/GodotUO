@@ -97,6 +97,7 @@ internal static partial class PerfProbe
     private static string _outDir, _label;
     private static bool _parity;
     private static bool _retainedCanvasParity;
+    private static bool _coverCandidatesParity;
     private static bool _runtimeAttribution;
     private static int _warmupSeconds, _measureSeconds, _walkSeconds = 12;
     private static string _walkOrigin = "field";
@@ -201,10 +202,12 @@ internal static partial class PerfProbe
         var previousToggle = ParityToggle;
         var previousState = ParityState;
         bool previousRetained = UltimaBatcher2D.RetainCanvas;
+        bool previousCoverCandidates = Game.Scenes.RenderLists.RetainCoverCandidates;
         bool previousRuntimeTimings = GUO.Utility.RuntimeTimings.Enabled;
         bool previousProfiling = GUO.Utility.Profiler.Enabled;
         _runtimeAttribution = System.Environment.GetEnvironmentVariable("GUO_PERF_RUNTIME_ATTRIBUTION") == "1";
         _retainedCanvasParity = System.Environment.GetEnvironmentVariable("GUO_PERF_PARITY_CANVAS") == "1";
+        _coverCandidatesParity = System.Environment.GetEnvironmentVariable("GUO_PERF_PARITY_COVER_CANDIDATES") == "1";
         try
         {
             _warmupSeconds = DiagnosticSeconds("GUO_PERF_WARMUP_SECONDS", 0, 0);
@@ -213,16 +216,24 @@ internal static partial class PerfProbe
             _walkOrigin = System.Environment.GetEnvironmentVariable("GUO_PERF_WALK_ORIGIN") ?? "field";
             if (_walkOrigin is not ("field" or "bank" or "docks"))
                 throw new System.ArgumentException("GUO_PERF_WALK_ORIGIN must be field, bank or docks.");
-            if (_retainedCanvasParity)
+            if (_retainedCanvasParity || _coverCandidatesParity)
             {
                 bool rd = false;
 #if GUO_LABS
                 rd = GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled;
 #endif
-                if (!parity || GpuWorld.Enabled || rd)
-                    throw new System.InvalidOperationException("GUO_PERF_PARITY_CANVAS requires --perf-parity and ordinary canvas rendering.");
-                ParityToggle = on => UltimaBatcher2D.RetainCanvas = on;
-                ParityState = () => UltimaBatcher2D.RetainCanvas;
+                if (!parity || GpuWorld.Enabled || rd || (_retainedCanvasParity && _coverCandidatesParity))
+                    throw new System.InvalidOperationException("Select one GUO_PERF_PARITY diagnostic with --perf-parity and ordinary canvas rendering.");
+                if (_coverCandidatesParity)
+                {
+                    ParityToggle = on => Game.Scenes.RenderLists.RetainCoverCandidates = on;
+                    ParityState = () => Game.Scenes.RenderLists.RetainCoverCandidates;
+                }
+                else
+                {
+                    ParityToggle = on => UltimaBatcher2D.RetainCanvas = on;
+                    ParityState = () => UltimaBatcher2D.RetainCanvas;
+                }
             }
             await RunProbe(host, outDir, label, zoom, parity, profilePreset);
         }
@@ -232,7 +243,9 @@ internal static partial class PerfProbe
             ParityToggle = previousToggle;
             ParityState = previousState;
             UltimaBatcher2D.RetainCanvas = previousRetained;
+            Game.Scenes.RenderLists.RetainCoverCandidates = previousCoverCandidates;
             _retainedCanvasParity = false;
+            _coverCandidatesParity = false;
             GUO.Utility.RuntimeTimings.Enabled = previousRuntimeTimings;
             GUO.Utility.Profiler.Enabled = previousProfiling;
         }
@@ -408,7 +421,12 @@ internal static partial class PerfProbe
             GD.PrintErr("[GUO] perf probe: a parity row has test captures the --gpu-world pass did not draw; see gpu_test_on_pass");
         }
 
-        Passed = unknown.Count == 0 && idle.Count == 0 && arrivedEverywhere && capturesValid
+        bool coverCapturesValid = !_coverCandidatesParity || results.Where(r => r.ContainsKey("parity_target_exercised"))
+            .All(r => (bool)r["parity_target_exercised"]);
+        if (!coverCapturesValid)
+            GD.PrintErr("[GUO] perf probe: a world parity capture did not replay cover candidates; see parity_target_exercised");
+
+        Passed = unknown.Count == 0 && idle.Count == 0 && arrivedEverywhere && capturesValid && coverCapturesValid
             && results.Count == (_parity ? 2 : 1) * scenes.Length + 1;
     }
 
@@ -482,6 +500,14 @@ internal static partial class PerfProbe
         long landLookupsBefore = GUO.Game.Map.Chunk.FirstLandLookups;
         long landScansBefore = GUO.Game.Map.Chunk.FirstLandScans;
         long landNodesBefore = GUO.Game.Map.Chunk.FirstLandNodes;
+        long candidateHitsBefore = GUO.Game.Scenes.CoverCandidates.Hits;
+        long candidateMissesBefore = GUO.Game.Scenes.CoverCandidates.Misses;
+        long candidateBuildsBefore = GUO.Game.Scenes.CoverCandidates.Builds;
+        long candidateRejectedBefore = GUO.Game.Scenes.CoverCandidates.Rejected;
+        long candidateChecksBefore = GUO.Game.Scenes.CoverCandidates.DependencyChecks;
+        long candidateVerifiedPlansBefore = GUO.Game.Scenes.CoverCandidateVerifier.Plans;
+        long candidateVerifiedReferencesBefore = GUO.Game.Scenes.CoverCandidateVerifier.References;
+        long candidateMismatchesBefore = GUO.Game.Scenes.CoverCandidateVerifier.Mismatches;
         // An upload lands in the frame after the one that drew it: its cost
         // is in the next frame's time. Keep upload frames and their successors
         // apart, since a p99 over thousands of frames can hide a few dozen.
@@ -706,6 +732,15 @@ internal static partial class PerfProbe
             ["gather_input_mismatches"] = GUO.Game.Scenes.GameScene.GatherInputMismatches,
             ["gc0"] = gc0, ["gc1"] = gc1, ["gc2"] = gc2,
             ["runtime_attribution"] = _runtimeAttribution,
+            ["cover_candidate_hits"] = GUO.Game.Scenes.CoverCandidates.Hits - candidateHitsBefore,
+            ["cover_candidate_misses"] = GUO.Game.Scenes.CoverCandidates.Misses - candidateMissesBefore,
+            ["cover_candidate_builds"] = GUO.Game.Scenes.CoverCandidates.Builds - candidateBuildsBefore,
+            ["cover_candidate_rejected"] = GUO.Game.Scenes.CoverCandidates.Rejected - candidateRejectedBefore,
+            ["cover_candidate_dependency_checks"] = GUO.Game.Scenes.CoverCandidates.DependencyChecks - candidateChecksBefore,
+            ["cover_candidate_verifier"] = GUO.Game.Scenes.CoverCandidateVerifier.Enabled,
+            ["cover_candidate_verified_plans"] = GUO.Game.Scenes.CoverCandidateVerifier.Plans - candidateVerifiedPlansBefore,
+            ["cover_candidate_verified_references"] = GUO.Game.Scenes.CoverCandidateVerifier.References - candidateVerifiedReferencesBefore,
+            ["cover_candidate_mismatches"] = GUO.Game.Scenes.CoverCandidateVerifier.Mismatches - candidateMismatchesBefore,
             ["runtime_wall_times"] = _runtimeAttribution ? GUO.Utility.RuntimeTimings.Report(draws) : null,
             ["atlas_pages"] = _runtimeAttribution ? TextureAtlas.UploadReport() : null,
             ["atlas_uploads_max_in_interval"] = atlasUploadsMax,
@@ -750,17 +785,37 @@ internal static partial class PerfProbe
         // the frame just drawn; whether that frame went through the pass is
         // read then (GpuWorld.LastFrameOnPass), not inferred from counters.
         int testCaptures = 0, testOnPass = 0;
+        int coverHitCaptures = 0;
+        var captureEvidence = new List<Dictionary<string, object>>(5);
 #if GUO_LABS
         int rdTestOnPass = 0;
 #endif
+        async System.Threading.Tasks.Task PostDraw()
+        {
+            await host.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        }
         async System.Threading.Tasks.Task<Image> Frame(bool batched)
         {
             ParityToggle(batched);
-            await host.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
-            await host.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            long hitsBefore = Game.Scenes.CoverCandidates.Hits;
+            var fence = new ParityDrawFence(UltimaBatcher2D.FramesBegun, Godot.Time.GetTicksMsec() + 10000);
+            int engineSignals = 0;
+            do
+            {
+                await fence.WaitForSignal(PostDraw(), Godot.Time.GetTicksMsec());
+                engineSignals++;
+            }
+            while (!fence.Observe(UltimaBatcher2D.FramesBegun, Godot.Time.GetTicksMsec(), ParityState(), batched));
+            long coverHits = Game.Scenes.CoverCandidates.Hits - hitsBefore;
+            captureEvidence.Add(new Dictionary<string, object>
+            {
+                ["test_state"] = batched, ["actual_client_draws"] = fence.DrawsSince(UltimaBatcher2D.FramesBegun),
+                ["engine_post_draw_signals"] = engineSignals, ["cover_candidate_hits"] = coverHits,
+            });
             if (batched)
             {
                 testCaptures++;
+                if (coverHits > 0) coverHitCaptures++;
 #if GUO_LABS
                 if (GUO.Labs.GpuRenderer.OrderedWorldCapture.LastFrameOnPass) rdTestOnPass++;
 #endif
@@ -865,6 +920,8 @@ internal static partial class PerfProbe
         return new Dictionary<string, object>
         {
             ["parity_stable_px"] = stable, ["parity_violations"] = violations, ["parity_strict"] = strict,
+            ["parity_capture_evidence"] = captureEvidence,
+            ["parity_target_exercised"] = !_coverCandidatesParity || name == "login" || coverHitCaptures == 2,
             ["parity_frames"] = new[] { "_plain.png", "_batched.png", "_plain2.png", "_batched2.png", "_plain3.png" }
                 .Select(suffix => Path.GetFileName(stem + suffix)).ToArray(),
 #if GUO_LABS
@@ -973,7 +1030,7 @@ internal static partial class PerfProbe
                     ["warmup_seconds"] = _warmupSeconds, ["walk_seconds"] = _walkSeconds,
                     ["measure_seconds"] = _measureSeconds,
                     ["walk_origin"] = _walkOrigin, ["runtime_attribution"] = _runtimeAttribution,
-                    ["parity_target"] = _retainedCanvasParity ? "retained-canvas" : "configured",
+                    ["parity_target"] = _coverCandidatesParity ? "cover-candidates" : _retainedCanvasParity ? "retained-canvas" : "configured",
                     ["optimized"] = optimized, ["postfx"] = look, ["profile_preset"] = _profilePreset, ["profile"] = _profileSummary, ["static_world"] = StaticWorld,
                     ["godot_api_jit_optimized"] = apiOptimized, ["godot_api_mvid"] = godotApi.ManifestModule.ModuleVersionId.ToString(),
                     ["engine_debug_build"] = OS.IsDebugBuild(),

@@ -14,6 +14,9 @@ namespace GUO.Game.Map
         // PORT DEVIATION (GUO): the table is shared across Map instances.
         // Cover discovery must invalidate cached absent/present slot identities.
         internal static long CoverTableVersion { get; private set; }
+        // Table/lifetime changes invalidate even dependencies whose old chunks
+        // remain alive (e.g. an auxiliary WorldMapGump constructs a larger Map).
+        internal static long CoverTableIdentityVersion { get; private set; }
         private static readonly bool[] _blockAccessList = new bool[0x1000];
         private readonly LinkedList<int> _usedIndices = new LinkedList<int>();
         private readonly World _world;
@@ -21,6 +24,7 @@ namespace GUO.Game.Map
 
         public Map(World world, int index)
         {
+            CoverTableIdentityVersion++;
             CoverTableVersion++;
             _world = world;
             Index = index;
@@ -284,6 +288,7 @@ namespace GUO.Game.Map
 
         public void Destroy()
         {
+            CoverTableIdentityVersion++;
             CoverTableVersion++;
             LinkedListNode<int> first = _usedIndices.First;
 

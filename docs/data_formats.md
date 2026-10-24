@@ -3323,6 +3323,31 @@ These are cumulative deltas since fade settling divided by drawn frames.
 Candidate plans cache ordered neighboring Land identities with chunk/map
 invalidation; visibility, alpha, depth and cover winners remain live. These
 counters measure discovery work, not GPU execution or guaranteed FPS gains.
+PerfProbe additionally records interval totals as
+`cover_candidate_{hits,misses,builds,rejected,dependency_checks}` (without the
+`_per_frame` suffix), aligned to its draw/time interval. Ordinary chunk-slot
+changes invalidate plans that observed missing chunks; separate table/lifetime
+changes invalidate all plans. Dependencies still validate every chunk's broad
+membership version, including non-Land link mutations and pooled reuse.
+`GUO_VERIFY_COVER_CANDIDATES=1` checks each cache hit against a fresh raw
+head/TNext traversal and fails on different Land identities, duplicate order,
+columns or count. It does not change cover stamps or winners. Probe rows report
+`cover_candidate_verifier` and interval `cover_candidate_verified_plans`,
+`cover_candidate_verified_references`, and `cover_candidate_mismatches`.
+Leave this diagnostic off for performance runs: it deliberately repeats the
+uncached walk. A passed diagnostic only proves the paths and state exercised.
+`GUO_PERF_PARITY_COVER_CANDIDATES=1` with `--perf-parity` compares the live
+uncached covering-land walk with candidate retention in the same client.
+The five captures alternate cache off/on/off/on/off; JSON identifies
+`parity_target: "cover-candidates"`. Normal play retains candidates. The probe
+restores the prior state even after failure, requires ordinary canvas rendering,
+and rejects combining this diagnostic with `GUO_PERF_PARITY_CANVAS`.
+Each parity capture waits for two actual client draws after its toggle, with
+a ten-second deadline, rather than merely two engine post-draw signals.
+`parity_capture_evidence` records the state, actual draws, engine signals and
+candidate hits for each image. `parity_target_exercised` is false for a world
+cache comparison unless both cache-on captures actually replayed candidates.
+Skipped client draws cannot count toward that capture fence.
 
 `GUO_RETAIN_CANVAS=1` enables an off-default, ordinary-canvas diagnostic
 experiment (ADR-0002 amendment). PerfDump reports `retained_canvas_enabled`

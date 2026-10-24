@@ -16,11 +16,14 @@ internal sealed class CoverCandidates
     internal readonly record struct Key(int X, int Y, int Rows, int Half);
     internal readonly record struct Candidate(Land Land, int Column);
     private readonly record struct Dependency(Chunk Chunk, long Version);
-    private sealed class Entry(Candidate[] candidates, Dependency[] dependencies, long frame)
+    private sealed class Entry(Candidate[] candidates, Dependency[] dependencies, long frame,
+        long tableVersion, bool missingChunk)
     {
         internal readonly Candidate[] Candidates = candidates;
         internal readonly Dependency[] Dependencies = dependencies;
         internal long Frame = frame;
+        internal readonly long TableVersion = tableVersion;
+        internal readonly bool MissingChunk = missingChunk;
         internal int References => Candidates.Length + Dependencies.Length;
     }
 
@@ -30,10 +33,10 @@ internal sealed class CoverCandidates
     private readonly List<Dependency> _dependencies = new();
     private readonly List<Key> _expired = new();
     private object _map;
-    private long _tableVersion, _frame;
+    private long _tableVersion, _tableIdentityVersion, _frame;
     private Key _key;
     private Chunk _lastChunk;
-    private bool _retain;
+    private bool _retain, _missingChunk;
     internal int RetainedReferences { get; private set; }
     internal int Count => _entries.Count;
     internal static long Hits, Misses, Builds, Rejected, DependencyChecks;
@@ -47,24 +50,31 @@ internal sealed class CoverCandidates
         _expired.Clear();
     }
 
-    internal bool TryGet(object map, long tableVersion, Key key, out ReadOnlySpan<Candidate> candidates)
+    internal bool TryGet(object map, long tableVersion, Key key, out ReadOnlySpan<Candidate> candidates,
+        long tableIdentityVersion = 0)
     {
-        if (!ReferenceEquals(map, _map) || tableVersion != _tableVersion)
+        if (!ReferenceEquals(map, _map) || tableIdentityVersion != _tableIdentityVersion)
         {
             Clear();
             _map = map;
-            _tableVersion = tableVersion;
+            _tableIdentityVersion = tableIdentityVersion;
         }
+        // Ordinary slot churn only invalidates plans that observed absent
+        // chunks. Each entry owns its snapshot, so one hit cannot bless another.
+        _tableVersion = tableVersion;
         if (_entries.TryGetValue(key, out var entry))
         {
-            bool valid = true;
-            foreach (var dependency in entry.Dependencies)
+            bool valid = !entry.MissingChunk || entry.TableVersion == tableVersion;
+            if (valid)
             {
-                DependencyChecks++;
-                if (dependency.Chunk.IsDestroyed || dependency.Version != dependency.Chunk.CoverMembershipVersion)
+                foreach (var dependency in entry.Dependencies)
                 {
-                    valid = false;
-                    break;
+                    DependencyChecks++;
+                    if (dependency.Chunk.IsDestroyed || dependency.Version != dependency.Chunk.CoverMembershipVersion)
+                    {
+                        valid = false;
+                        break;
+                    }
                 }
             }
             if (valid)
@@ -82,7 +92,10 @@ internal sealed class CoverCandidates
         }
         Misses++;
         _key = key;
-        _retain = true;
+        // Validate/remove stale entries before admission: a full cache must
+        // still serve hits, and removal can free the slot needed for this miss.
+        _retain = _entries.Count < MaxEntries;
+        _missingChunk = false;
         _lastChunk = null;
         _building.Clear();
         _dependencies.Clear();
@@ -91,10 +104,12 @@ internal sealed class CoverCandidates
     }
 
     // Called during the original walk, after GetFirstLand and before processing
-    // that land. A null chunk is covered by the shared map-table generation.
+    // that land. Missing chunks need the ordinary slot generation as well as
+    // the hard table/lifetime generation. Empty non-null chunks remain deps.
     internal void Observe(Chunk chunk, int x, int y, Land land, int column)
     {
-        if (!_retain || chunk == null) return;
+        if (!_retain) return;
+        if (chunk == null) { _missingChunk = true; return; }
         if (!chunk.HasCertifiedFirstLand(x, y))
         {
             _retain = false; // legacy foreign/detached chains must stay live
@@ -112,9 +127,17 @@ internal sealed class CoverCandidates
         if (_building.Count + _dependencies.Count > MaxPlan) _retain = false;
     }
 
-    internal void Complete(long tableVersion)
+    internal void Complete(long tableVersion, long tableIdentityVersion = 0)
     {
-        bool valid = _retain && tableVersion == _tableVersion;
+        if (!_retain)
+        {
+            Rejected++;
+            ResetDiscovery();
+            return;
+        }
+        // Reject any table change during discovery conservatively, even when
+        // no null was seen. Never publish a mixed-generation plan.
+        bool valid = tableVersion == _tableVersion && tableIdentityVersion == _tableIdentityVersion;
         foreach (var dependency in _dependencies)
             valid &= !dependency.Chunk.IsDestroyed && dependency.Version == dependency.Chunk.CoverMembershipVersion;
         if (valid)
@@ -128,17 +151,24 @@ internal sealed class CoverCandidates
             }
             else
             {
-                var entry = new Entry(_building.ToArray(), _dependencies.ToArray(), _frame);
+                var entry = new Entry(_building.ToArray(), _dependencies.ToArray(), _frame,
+                    _tableVersion, _missingChunk);
                 _entries.Add(_key, entry);
                 RetainedReferences += entry.References;
                 Builds++;
             }
         }
         else Rejected++;
+        ResetDiscovery();
+    }
+
+    private void ResetDiscovery()
+    {
         _building.Clear();
         _dependencies.Clear();
         _lastChunk = null;
         _retain = false;
+        _missingChunk = false;
     }
 
     private void Remove(Key key)
@@ -155,6 +185,7 @@ internal sealed class CoverCandidates
         _lastChunk = null;
         _map = null;
         _retain = false;
+        _missingChunk = false;
         RetainedReferences = 0;
     }
 }

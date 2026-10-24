@@ -3,7 +3,7 @@
 Owner: Moshu. Implementation/review: Codex, continuing Fable's 22 October
 handoff. This consolidates the rendering/performance lane through the local
 incremental-cover, retained-canvas and gather-input work, followed by runtime
-and atlas attribution. It distinguishes ordinary-path Release work from the
+and atlas attribution, then scoped cover-cache retention. It distinguishes ordinary-path Release work from the
 off-by-default GPU experiment. It is a review record, not approval to merge or
 enable either GPU mode.
 
@@ -14,6 +14,27 @@ checks. Bank and docks still have expensive CPU preparation and submission.
 There is no established general 250 FPS result at 2560×1440, zoom 2. That target
 requires the entire frame to fit within 4 ms. Callback timings, profiler CPU
 scopes and reduced draw counts cannot independently establish it.
+
+Latest sustained observations are in [cover-cache retention](../2026-10-24_cover_cache_admission.md):
+bank 80.721→85.601 FPS, pier docks 98.466→93.213, bank walk 63.869→70.995,
+and pier walk 75.669→79.559. These are actual Release, 2560×1440, zoom 2,
+60-second discard, 30-second standing / 60-second walking samples under
+95–100% peak shared-host CPU load. **Mixed FPS; no isolated speedup claim.**
+The stronger finding is reduced travel rediscovery/allocation: bank cover builds
+75,090→22,988 and 60.9→49.1 KB/frame; identical observed 180-tile pier route
+35,403→4,950 builds and 34.8→30.5 KB/frame. All raw limits and contrary results
+are retained. Both GPU modes and ordinary canvas retention were off.
+
+The cache keeps hard map-table/lifetime invalidation and broad chunk membership
+checks. It only spares unaffected resident plans from ordinary slot churn and
+skips retention bookkeeping for full-cache misses. Live raw-chain checks covered
+134.1 million references with zero mismatches. Direct cached/live pixel checks
+now record actual client redraws and cache hits per capture: engine post-draw
+signals alone were not sufficient proof. See the report for exact build identities,
+tests, old cross-build differences and the strengthened capture checks. Final
+validation passed 700 Release and 1,039 optimized Debug/Labs checks plus the
+four-scene direct pixel comparison. Full smoke returned aggregate OK with the
+inherited editor `splat_lods_present` failure still present.
 
 The owner has changed the workflow: **stop rerunning CUO cohorts**. Make bounded
 GUO changes, load the fixed locations and record sustained GUO FPS and phase
@@ -52,7 +73,8 @@ than claiming another optimization.
 | `ea594411`, local | Incremental covering-land candidate discovery | Repeating neighboring tile/chunk discovery for static objects | Live alpha/depth/overlap/stamps, roofs, lights and picking remain authoritative; no measured gain established |
 | `b2fa6237`, local | Retain ordinary canvas commands | Resubmitting identical native draw commands | Off-default experiment; exact stream comparison and fallback replay |
 | `72fd49fb`, local | Snapshot shared values during one synchronous gather | Repeated profile/player/CoT input reads | Object decisions stay live; timings and runtime invariants recorded separately |
-| Runtime-attribution candidate, local | Optional update/draw scopes, atlas upload accounting and timed warm-up/walk diagnostics | Makes hidden update cost and travel uploads measurable | Actual Release, shared-load observations; no performance gain claimed |
+| `a64106c3`, local | Optional update/draw scopes, atlas upload accounting and timed warm-up/walk diagnostics | Makes hidden update cost and travel uploads measurable | Actual Release, shared-load observations; no performance gain claimed |
+| `codex/cover-cache-admission`, local candidate | Per-entry missing-slot epochs, hard map lifetime epoch and full-cache admission guard | Unnecessary travel-time discovery and rejected-plan bookkeeping | Broad membership checks preserved; shared-load observations and exact same-client cached/live pixels |
 
 PR references identify the existing stack, not a fresh remote-state audit.
 Only the previously authorized pushes through PRs 152/153 were made. The
@@ -77,8 +99,9 @@ bumps are unsafe: detaching a non-Land anchor or changing a foreign chain can
 change the first Land or its ownership certification. Keep existing membership
 invalidation until a semantic replacement has an oracle. Capacity admission can
 skip retention bookkeeping on a full-cache miss while keeping the live cover
-walk and existing hits unchanged. These are reviewed next steps, not measured
-optimizations in this report.
+walk and existing hits unchanged. The local cover-cache candidate implements
+these bounded changes; its travel observations and limitations are recorded
+above. Further membership narrowing remains unimplemented.
 
 ## Two GPU experiments must remain distinct
 
@@ -404,3 +427,15 @@ hit-rate counter. RD source/command optimizations after Fable's reviewed
 snapshot remain separate and do not turn the prototype into a shipping path.
 No public push, merge, default-toggle change or fresh CUO run is authorized
 by this review exchange.
+
+## Current next step after cover retention
+
+Follow Fable's later ordering: measure retained canvas OFF/ON over a repeatable
+real walk with per-second submission/visibility/upload counters, then attribute
+steady allocations. The old duration-based walker can follow different routes;
+do not label equal durations as an exact route replay. Retention still hides and
+reveals retained items each frame, so count that native work. Its oversized-item
+fallback retries recording each frame; test recovery after shrink and bounded
+budget behavior before changing admission. Only then choose the next MultiMesh
+pilot. Smaller art/animation atlas pages and a dedicated minimap texture remain
+separate measured candidates; no upload deferral or visual changes are implied.

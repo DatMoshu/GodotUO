@@ -133,6 +133,8 @@ namespace GUO.Game.Scenes
         /// <summary>Whether this list's cover marks are still the live ones; see <see cref="CoverOwner"/>.</summary>
         private CoverOwner _coverOwner;
         private CoverCandidates _coverCandidates; // lazy: UI lists allocate none
+        // Probe-only A/B control; ordinary play always retains candidates.
+        internal static bool RetainCoverCandidates = true;
 
         /// <summary>The keys of <see cref="_world"/>, sorted in place by DrawWorld (<see cref="DepthKey"/>).</summary>
         /// <remarks>
@@ -228,14 +230,17 @@ namespace GUO.Game.Scenes
             // PORT DEVIATION (GUO): retain candidate identities only. The
             // ground, source dimensions and every cover decision stay live.
             // Dynamic objects keep the original walk.
-            CoverCandidates cache = obj is Static or Multi
+            CoverCandidates cache = RetainCoverCandidates && obj is (Static or Multi)
                 ? _coverCandidates ??= new CoverCandidates() : null;
             if (cache != null)
             {
                 QueueCover(ground, depth, 0, half);
                 if (cache.TryGet(map, Map.Map.CoverTableVersion,
-                    new CoverCandidates.Key(obj.X, obj.Y, rows, half), out var candidates))
+                    new CoverCandidates.Key(obj.X, obj.Y, rows, half), out var candidates,
+                    Map.Map.CoverTableIdentityVersion))
                 {
+                    if (CoverCandidateVerifier.Enabled)
+                        CoverCandidateVerifier.Check(map, obj.X, obj.Y, rows, reach, far, half, candidates);
                     foreach (ref readonly var candidate in candidates)
                         QueueCover(candidate.Land, depth, candidate.Column, half);
                     return;
@@ -270,7 +275,7 @@ namespace GUO.Game.Scenes
                     QueueCover(land, depth, dx - dy, half);
                 }
             }
-            cache?.Complete(Map.Map.CoverTableVersion);
+            cache?.Complete(Map.Map.CoverTableVersion, Map.Map.CoverTableIdentityVersion);
         }
 
         private void QueueCover(Land land, float depth, int column, int half)
