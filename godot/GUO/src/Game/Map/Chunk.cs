@@ -28,10 +28,12 @@ namespace GUO.Game.Map
         // depth or cover winners. Main-thread tile mutations invalidate cells.
         private readonly Land[] _firstLand = new Land[64];
         private ulong _firstLandValid;
+        internal long CoverMembershipVersion { get; private set; }
         internal static long FirstLandScans, FirstLandLookups, FirstLandNodes;
 
         internal void InvalidateFirstLand(int x, int y)
         {
+            CoverMembershipVersion++;
             int cell = x + (y << 3);
             _firstLandValid &= ~(1UL << cell);
             _firstLand[cell] = null;
@@ -39,9 +41,13 @@ namespace GUO.Game.Map
 
         private void InvalidateFirstLandCache()
         {
+            CoverMembershipVersion++;
             _firstLandValid = 0;
             Array.Clear(_firstLand, 0, _firstLand.Length);
         }
+
+        internal bool HasCertifiedFirstLand(int x, int y) =>
+            (_firstLandValid & (1UL << (x + (y << 3)))) != 0;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal Land GetFirstLand(int x, int y)

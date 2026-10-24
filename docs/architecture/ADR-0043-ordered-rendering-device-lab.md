@@ -149,3 +149,9 @@ and document that it is separate from the maximum live occurrence demand.
 Exercise repeated same-frame revisions, expiration, camera changes and both
 early/late rollback. Keep ordinary Release/CUO comparisons separate from the
 optimized Debug/Labs experiment and label shared-load observations explicitly.
+
+Owner workflow amendment, 2026-10-24: further iterations use quick sustained
+GUO-only location samples, focused on bank and docks. Fresh CUO cohorts are no
+longer required; retain the historical comparisons and their build limitations.
+This changes measurement cadence, not pixel acceptance, the off-by-default
+Labs boundary or the requirement to distinguish Release from prototype results.

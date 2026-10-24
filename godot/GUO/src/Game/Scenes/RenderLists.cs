@@ -132,6 +132,7 @@ namespace GUO.Game.Scenes
 
         /// <summary>Whether this list's cover marks are still the live ones; see <see cref="CoverOwner"/>.</summary>
         private CoverOwner _coverOwner;
+        private CoverCandidates _coverCandidates; // lazy: UI lists allocate none
 
         /// <summary>The keys of <see cref="_world"/>, sorted in place by DrawWorld (<see cref="DepthKey"/>).</summary>
         /// <remarks>
@@ -224,6 +225,23 @@ namespace GUO.Game.Scenes
             // foot (dx + dy rows down) and across its width can cover it.
             int far = Math.Max(reach, rows);
 
+            // PORT DEVIATION (GUO): retain candidate identities only. The
+            // ground, source dimensions and every cover decision stay live.
+            // Dynamic objects keep the original walk.
+            CoverCandidates cache = obj is Static or Multi
+                ? _coverCandidates ??= new CoverCandidates() : null;
+            if (cache != null)
+            {
+                QueueCover(ground, depth, 0, half);
+                if (cache.TryGet(map, Map.Map.CoverTableVersion,
+                    new CoverCandidates.Key(obj.X, obj.Y, rows, half), out var candidates))
+                {
+                    foreach (ref readonly var candidate in candidates)
+                        QueueCover(candidate.Land, depth, candidate.Column, half);
+                    return;
+                }
+            }
+
             // The square is walked a row at a time, so eight neighbours in a
             // row share a chunk: look it up when the chunk changes, not per tile.
             ChunkCursor<Chunk> cursor = default;
@@ -232,43 +250,41 @@ namespace GUO.Game.Scenes
             {
                 for (int dx = 0; dx <= far; dx++)
                 {
+                    if (cache != null && dx == 0 && dy == 0) continue;
                     if ((dx > reach || dy > reach)
                         && (dx + dy > rows || (half >= 0 && Math.Abs(dx - dy) * 22 >= 22 + half)))
                     {
                         continue;
                     }
 
-                    Land land = dx == 0 && dy == 0 ? ground : LandAt(map, obj.X + dx, obj.Y + dy, ref cursor);
-
-                    if (land == null || land.AlphaHue == 0 || _coverStamp.Marked(land.CoverStamp))
+                    Land land;
+                    if (cache == null)
+                        land = dx == 0 && dy == 0 ? ground : LandAt(map, obj.X + dx, obj.Y + dy, ref cursor);
+                    else
                     {
-                        continue;
+                        int x = obj.X + dx, y = obj.Y + dy;
+                        Chunk chunk = cursor.At(x, y, map);
+                        land = chunk?.GetFirstLand(x % 8, y % 8);
+                        cache.Observe(chunk, x % 8, y % 8, land, dx - dy);
                     }
-
-                    float landDepth = land.CalculateDepthZ();
-
-                    if (landDepth > depth)
-                    {
-                        // B4 fix 2: a diamond spans 22 px either side of its
-                        // column, (dx - dy) * 22 across from the object's.
-                        bool overlaps = half < 0 || Math.Abs(dx - dy) * 22 < 22 + half;
-
-                        CoverQueued++;
-                        if (overlaps)
-                        {
-                            CoverOverlapping++;
-                        }
-                        else if (CoverCull)
-                        {
-                            continue;
-                        }
-
-                        _coverStamp.Mark(ref land.CoverStamp);
-                        _coverOwner.Marked();
-                        _world.Add(new Drawable(land, landDepth, _world.Count));
-                    }
+                    QueueCover(land, depth, dx - dy, half);
                 }
             }
+            cache?.Complete(Map.Map.CoverTableVersion);
+        }
+
+        private void QueueCover(Land land, float depth, int column, int half)
+        {
+            if (land == null || land.AlphaHue == 0 || _coverStamp.Marked(land.CoverStamp)) return;
+            float landDepth = land.CalculateDepthZ();
+            if (!(landDepth > depth)) return;
+            bool overlaps = half < 0 || Math.Abs(column) * 22 < 22 + half;
+            CoverQueued++;
+            if (overlaps) CoverOverlapping++;
+            else if (CoverCull) return;
+            _coverStamp.Mark(ref land.CoverStamp);
+            _coverOwner.Marked();
+            _world.Add(new Drawable(land, landDepth, _world.Count));
         }
 
         // PORT DEVIATION (GUO): Epic B, B4 fix 2 (docs/perf/2026-09-28_merged_land.md).
@@ -368,6 +384,7 @@ namespace GUO.Game.Scenes
 
         public void Clear()
         {
+            _coverCandidates?.NextFrame();
             _tiles.Clear();
             _stretchedTiles.Clear();
             _world.Clear();
@@ -973,6 +990,8 @@ namespace GUO.Game.Scenes
 
         internal void ReleaseTerrain()
         {
+            _coverCandidates?.Clear();
+            _coverCandidates = null;
             _mergedLand?.Dispose(); // PORT DEVIATION (GUO): scene-owned mesh lifetime
             _mergedLand = null;
         }

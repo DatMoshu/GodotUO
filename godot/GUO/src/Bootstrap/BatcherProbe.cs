@@ -130,6 +130,8 @@ public partial class BatcherProbe : Node
         Stage("atlas page metadata");
         VerifyFirstLandCache();
         Stage("first-land identity cache");
+        VerifyCoverCandidates();
+        Stage("incremental cover candidates");
 #if GUO_LABS
         await VerifyOrderedWorld(batcher, viewport, palette);
         Stage("ordered RenderingDevice world");

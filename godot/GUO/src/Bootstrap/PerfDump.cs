@@ -69,6 +69,12 @@ internal static class PerfDump
     private static Timer _timer;
     private static object _attached;
     private static int _state;
+#if !PERF_DUMP_CUO
+    // Opt-in diagnostics only. Keep the ordinary one-shot/CUO contract intact.
+    private static int _sampleSeconds, _sampleIndex;
+    private static long _sampleStart, _samplePrevious, _samplePreviousDraws;
+    private static ulong _samplePreviousProcesses;
+#endif
 
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
@@ -87,6 +93,11 @@ internal static class PerfDump
             Console.WriteLine("[perf_dump] GUO_PERF_DUMP wants DIR;LABEL;X;Y;Z;ZOOM;SECONDS");
             return;
         }
+
+#if !PERF_DUMP_CUO
+        if (int.TryParse(Environment.GetEnvironmentVariable("GUO_PERF_SAMPLE_SECONDS"), out int seconds))
+            _sampleSeconds = Math.Clamp(seconds, 0, 300);
+#endif
 
         _timer = new Timer(_ => Attach(), null, 1000, 1000);
     }
@@ -162,6 +173,8 @@ internal static class PerfDump
     private static long _rdDrawnAtFade, _rdFallbackAtFade, _rdReferencesAtFade, _rdDynamicAtFade, _rdReplayAtFade, _rdPacketsAtFade;
 #endif
     private static long _landLookupsAtFade, _landScansAtFade, _landNodesAtFade;
+    private static long _candidateHitsAtFade, _candidateMissesAtFade, _candidateBuildsAtFade,
+        _candidateRejectedAtFade, _candidateChecksAtFade;
     private static ulong _processFramesAtFade;
 #endif
 
@@ -227,7 +240,15 @@ internal static class PerfDump
             _landLookupsAtFade = GUO.Game.Map.Chunk.FirstLandLookups;
             _landScansAtFade = GUO.Game.Map.Chunk.FirstLandScans;
             _landNodesAtFade = GUO.Game.Map.Chunk.FirstLandNodes;
+            _candidateHitsAtFade = CoverCandidates.Hits;
+            _candidateMissesAtFade = CoverCandidates.Misses;
+            _candidateBuildsAtFade = CoverCandidates.Builds;
+            _candidateRejectedAtFade = CoverCandidates.Rejected;
+            _candidateChecksAtFade = CoverCandidates.DependencyChecks;
             _processFramesAtFade = Godot.Engine.GetProcessFrames();
+            _sampleStart = _samplePrevious = System.Diagnostics.Stopwatch.GetTimestamp();
+            _samplePreviousDraws = _framesAtFade;
+            _samplePreviousProcesses = _processFramesAtFade;
 #endif
             Console.WriteLine($"[perf_dump] {ClientName}: {fading} fading after {_fadeWaitMs} ms more; averaging");
             ClientRoot.Game.EnqueueAction(2000, Write);
@@ -312,6 +333,11 @@ internal static class PerfDump
             r["first_land_lookups_per_frame"] = frames > 0 ? Math.Round((double)(GUO.Game.Map.Chunk.FirstLandLookups - _landLookupsAtFade) / frames, 1) : 0;
             r["first_land_scans_per_frame"] = frames > 0 ? Math.Round((double)(GUO.Game.Map.Chunk.FirstLandScans - _landScansAtFade) / frames, 1) : 0;
             r["first_land_nodes_per_frame"] = frames > 0 ? Math.Round((double)(GUO.Game.Map.Chunk.FirstLandNodes - _landNodesAtFade) / frames, 1) : 0;
+            r["cover_candidate_hits_per_frame"] = frames > 0 ? Math.Round((double)(CoverCandidates.Hits - _candidateHitsAtFade) / frames, 1) : 0;
+            r["cover_candidate_misses_per_frame"] = frames > 0 ? Math.Round((double)(CoverCandidates.Misses - _candidateMissesAtFade) / frames, 1) : 0;
+            r["cover_candidate_builds_per_frame"] = frames > 0 ? Math.Round((double)(CoverCandidates.Builds - _candidateBuildsAtFade) / frames, 1) : 0;
+            r["cover_candidate_rejected_per_frame"] = frames > 0 ? Math.Round((double)(CoverCandidates.Rejected - _candidateRejectedAtFade) / frames, 1) : 0;
+            r["cover_candidate_dependency_checks_per_frame"] = frames > 0 ? Math.Round((double)(CoverCandidates.DependencyChecks - _candidateChecksAtFade) / frames, 1) : 0;
             r["land_layers"] = GUO.Renderer.LandPages.Layers;
             r["land_uploads"] = uploads;
             r["land_uploads_per_frame"] = frames > 0 ? Math.Round((double)uploads / frames, 3) : 0.0;
@@ -324,6 +350,27 @@ internal static class PerfDump
             ulong processFrames = Godot.Engine.GetProcessFrames() - _processFramesAtFade;
             r["sampler_calls"] = samplerCalls;
             r["sampler_calls_per_process_frame"] = processFrames > 0 ? Math.Round((double)samplerCalls / processFrames, 3) : 0.0;
+            bool sampleComplete = true;
+            if (_sampleSeconds > 0)
+            {
+                long now = System.Diagnostics.Stopwatch.GetTimestamp();
+                double interval = (double)(now - _samplePrevious) / System.Diagnostics.Stopwatch.Frequency;
+                double elapsed = (double)(now - _sampleStart) / System.Diagnostics.Stopwatch.Frequency;
+                long drawsNow = GUO.Renderer.UltimaBatcher2D.FramesBegun;
+                ulong processesNow = Godot.Engine.GetProcessFrames();
+                sampleComplete = elapsed >= _sampleSeconds;
+                r["sample_index"] = ++_sampleIndex;
+                r["sample_elapsed_seconds"] = Math.Round(elapsed, 6);
+                r["sample_interval_seconds"] = Math.Round(interval, 6);
+                r["sample_draw_frames"] = drawsNow - _samplePreviousDraws;
+                r["sample_process_frames"] = processesNow - _samplePreviousProcesses;
+                r["sample_draw_fps"] = Math.Round((drawsNow - _samplePreviousDraws) / interval, 3);
+                r["sample_process_fps"] = Math.Round((processesNow - _samplePreviousProcesses) / interval, 3);
+                r["sample_complete"] = sampleComplete;
+                _samplePrevious = now;
+                _samplePreviousDraws = drawsNow;
+                _samplePreviousProcesses = processesNow;
+            }
 #endif
             string dir = Path.Combine(_args[0], _args[1]);
             Directory.CreateDirectory(dir);
@@ -333,6 +380,18 @@ internal static class PerfDump
                 ? "\"" + t.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\""
                 : Convert.ToString(v, CultureInfo.InvariantCulture);
             File.WriteAllText(path, "{\n" + string.Join(",\n", r.Select(kv => $"  \"{kv.Key}\": {Value(kv.Value)}")) + "\n}\n");
+#if !PERF_DUMP_CUO
+            if (_sampleSeconds > 0)
+            {
+                File.AppendAllText(Path.Combine(dir, "guo-samples.jsonl"),
+                    "{" + string.Join(",", r.Select(kv => $"\"{kv.Key}\":{Value(kv.Value)}")) + "}\n");
+                if (!sampleComplete)
+                {
+                    ClientRoot.Game.EnqueueAction(1000, Write);
+                    return;
+                }
+            }
+#endif
             Console.WriteLine($"[perf_dump] {ClientName}: wrote {path}");
             _state = 2;
         }

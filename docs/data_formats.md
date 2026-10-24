@@ -3284,6 +3284,28 @@ game thread. An exception drops that packet and is logged
 (`[mods] <id>: dropped packet ...`).
 ## 41. Perf probe and perf lab reports (`build/perf`, `tools/perf_probe`, `tools/perf_lab`)
 
+**Sustained GUO PerfDump**, `guo-samples.jsonl`: opt-in through
+`tools/perf_dump --only guo --sample-seconds N` (0 disables; 1–300 seconds),
+which sets the client diagnostic `GUO_PERF_SAMPLE_SECONDS`. After settling,
+the client writes roughly one-second observations with `sample_index`,
+`sample_elapsed_seconds`, `sample_interval_seconds`, `sample_draw_frames`,
+`sample_process_frames`, `sample_draw_fps`, `sample_process_fps` and
+`sample_complete`. The first interval is approximately two seconds. The final
+`guo.json` is complete only when that flag is true. Draw/process counts are
+deltas over actual monotonic intervals; sum frames divided by sum interval
+seconds gives sustained throughput. Existing profiler phase means still use
+the latest 60 entries; this is not an individual-frame percentile or GPU timer.
+The CUO injected build ignores this diagnostic. `--guo-exe` selects an existing
+Release export; its runtime/API identity fields must confirm that build type.
+
+Ordinary GUO PerfDump also reports `first_land_lookups_per_frame`,
+`first_land_scans_per_frame`, `first_land_nodes_per_frame` and
+`cover_candidate_{hits,misses,builds,rejected,dependency_checks}_per_frame`.
+These are cumulative deltas since fade settling divided by drawn frames.
+Candidate plans cache ordered neighboring Land identities with chunk/map
+invalidation; visibility, alpha, depth and cover winners remain live. These
+counters measure discovery work, not GPU execution or guaranteed FPS gains.
+
 **Probe JSON**, `perf_<label>.json`, written by the client's `--perf-probe`
 (`src/Bootstrap/PerfProbe.cs`): `{label, window "WxH", zoom, optimized,
 postfx, system, scenes[]}`. `zoom` is the camera's at the end of the run.
