@@ -15,7 +15,7 @@ namespace GUO.Game.Scenes
     /// used List.Sort with a comparison delegate: an indirect call per
     /// comparison, about n log n of them, over a 24-byte struct that was
     /// moved around while sorting. Sorting an array of ulong instead is a
-    /// primitive introsort with no calls and 8-byte moves, and the low half
+    /// primitive integer ordering with 8-byte moves, and the low half
     /// of each key is the index of the draw it stands for, so no second array
     /// is needed to find it again.
     ///
@@ -23,7 +23,8 @@ namespace GUO.Game.Scenes
     /// (sign bit flipped for positives, every bit flipped for negatives), with
     /// negative zero folded into positive zero so that the two stay equal, as
     /// float.CompareTo says they are. NaN never comes from CalculateDepthZ;
-    /// it would sort after every finite depth instead of before it.
+    /// if encountered, its transformed sign/payload bits retain their unsigned
+    /// order, which is not float.CompareTo's NaN ordering.
     /// </remarks>
     internal static class DepthKey
     {

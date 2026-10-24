@@ -138,18 +138,9 @@ namespace GUO.Game.UI.Controls
             {
                 var texture = gumpInfo.Texture;
                 var sourceRectangle = gumpInfo.UV;
-                renderLists.AddGumpWithAtlas(
-                    batcher =>
-                    {
-                        batcher.Draw(
-                            texture,
-                            new Rectangle(x, y, Width, Height),
-                            sourceRectangle,
-                            hueVector,
-                            layerDepth
-                        );
-                        return true;
-                    });
+                // PORT DEVIATION (GUO): typed payload preserves these snapshots
+                // and the callback's live Width/Height reads at flush.
+                renderLists.AddGumpWithAtlas(this, texture, x, y, sourceRectangle, hueVector, layerDepth);
             }
 
             return base.AddToRenderLists(renderLists, x, y, ref layerDepthRef);

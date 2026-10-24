@@ -1,7 +1,7 @@
 # render_sort_tests
 
 Proves the three engine-free pieces the sorted world pass (`RenderLists`)
-rests on: the key sort (`DepthKey`) orders draws exactly as the comparison
+rests on: the key sort (`DepthKey` and production `WorldDepthSort`) orders draws exactly as the comparison
 sort it replaced (depth, then queue order), also over a queue shaped like
 the real one (shadow/body pairs, meshed statics, covering land, Seq == index);
 the per-frame cover mark (`CoverStamp`) is void after a frame, idempotent
@@ -25,7 +25,11 @@ dotnet run --project tools/render_sort_tests -- --bench # proof, then timings
 
 The sort proof runs five input shapes (spread depths of both signs, piles
 of ties, signed zeros, a nearly sorted frame, extreme magnitudes) at sizes
-up to 40,000 draws. `launchers/dev/smoke.bat` runs the proof. Timings are
+through 65,537 draws, including both radix thresholds. Each production result
+also matches the full unsigned-integer `Array.Sort` oracle. Separate BatcherProbe
+fixtures cover every transformed byte, signed NaN payloads, inactive tails,
+all constant-byte skip combinations and warmed allocation behavior.
+`launchers/dev/smoke.bat` runs the engine-free proof. Timings are
 advisory and need no client data, shard or Godot. What the proof cannot
 reach is the engine side: that `Map` hands the cursor the loaded chunk and
 that the client draws the same pixels; those are the live gate's.
