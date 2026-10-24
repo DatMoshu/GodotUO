@@ -915,7 +915,7 @@ void fragment() {
             if (MergedCover && !_mirroring)
             {
                 Texture2D t = layer.Textures[index];
-                int page = LandPages.LayerOf(t);
+                int page = LandPages.LayerOf(t, out Vector2 scale);
                 if (page >= 0)
                 {
                     if (_cover.Count > 0 && _coverOffset != offset)
@@ -925,7 +925,7 @@ void fragment() {
 
                     FlushQuadRun();
                     _coverOffset = offset;
-                    _cover.Add((layer, index, page, LandPages.ScaleOf(t)));
+                    _cover.Add((layer, index, page, scale));
                     return 1;
                 }
             }
@@ -1005,7 +1005,7 @@ void fragment() {
                 _coverSynced = FramesBegun;
             }
 
-            ArrayMesh mesh = _coverRuns.Get(_cover);
+            Rid mesh = _coverRuns.Get(_cover);
             _cover.Clear();
 
             // The item state is put back as it was found. A caller checks its
@@ -1029,7 +1029,7 @@ void fragment() {
             BindLandPages(LandPages.Array);
             Commands++;
             Count(4, default);
-            RenderingServer.CanvasItemAddMesh(_current, mesh.GetRid(), Transform2D.Identity, Colors.White, default);
+            RenderingServer.CanvasItemAddMesh(_current, mesh, Transform2D.Identity, Colors.White, default);
 
             if (cut)
             {

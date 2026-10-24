@@ -431,7 +431,7 @@ internal static class PerfProbe
         double measureMs = walks ? WalkMs : worldMeasurement ? _measureSeconds * 1000.0 : 0;
         int sampleCapacity = measureMs > 0 ? System.Math.Max(20000, (int)measureMs * 2) : n;
         var ms = new List<double>(sampleCapacity);
-        double kRect = 0, kAffine = 0, kMesh = 0, kTri = 0, kBatches = 0, kCover = 0, kCoverRuns = 0, coverQueued = 0, coverOverlapping = 0;
+        double kRect = 0, kAffine = 0, kMesh = 0, kTri = 0, kBatches = 0, kCover = 0, kCoverRuns = 0, coverQueued = 0, coverOverlapping = 0, chunksSkipped = 0;
         double calls = 0, items = 0, switches = 0, commands = 0, prepare = 0, world = 0, cpu = 0, gpu = 0, objects = 0;
         int uploadsBefore = LandPages.Uploads, uploadsMax = 0, uploadFrames = 0, uploadsLast = LandPages.Uploads;
         int rebuildsBefore = LandPages.Rebuilds, bumpsBefore = LandPages.Bumps;
@@ -503,6 +503,7 @@ internal static class PerfProbe
             var cq = GUO.Game.Scenes.RenderLists.LastCover;
             coverQueued += cq.Queued;
             coverOverlapping += cq.Overlapping;
+            chunksSkipped += GUO.Game.Scenes.RenderLists.ChunksSkipped;
             prepare += GUO.Utility.Profiler.GetContext(GUO.Utility.Profiler.ProfilerContext.RENDER_FRAME_WORLD_PREPARE).LastTime;
             world += GUO.Utility.Profiler.GetContext(GUO.Utility.Profiler.ProfilerContext.RENDER_FRAME_WORLD).LastTime;
             cpu += RenderingServer.ViewportGetMeasuredRenderTimeCpu(viewport);
@@ -566,6 +567,7 @@ internal static class PerfProbe
             ["cmd_cover_meshes"] = System.Math.Round(kCover / n, 1),
             ["cover_runs"] = System.Math.Round(kCoverRuns / n, 1),
             ["cover_queued"] = System.Math.Round(coverQueued / n, 1),
+            ["chunks_skipped"] = System.Math.Round(chunksSkipped / n, 1),
             ["cover_overlapping"] = System.Math.Round(coverOverlapping / n, 1),
             ["cmd_triangles"] = System.Math.Round(kTri / n, 1),
             ["estimated_batches"] = System.Math.Round(kBatches / n, 1),
