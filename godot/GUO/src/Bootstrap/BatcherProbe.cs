@@ -124,6 +124,9 @@ public partial class BatcherProbe : Node
         await VerifyLandLight(batcher, viewport);
         Stage("land light");
 
+        VerifyIncidentalAllocations();
+        Stage("incidental allocations");
+
         await VerifyUiTransform(batcher, viewport, ramp);
         Stage("gump transform and clipping");
 

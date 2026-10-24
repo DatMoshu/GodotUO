@@ -250,7 +250,12 @@ namespace GUO.Game.UI.Controls
                 }
             }
 
-            DrawDebug(renderLists, x, y, layerDepth);
+            // PORT DEVIATION (GUO): DrawDebug captures its arguments before
+            // its own guard. Avoid that closure when no debug draw is needed.
+            if (IsVisible && CUOEnviroment.Debug)
+            {
+                DrawDebug(renderLists, x, y, layerDepth);
+            }
 
             return true;
         }
