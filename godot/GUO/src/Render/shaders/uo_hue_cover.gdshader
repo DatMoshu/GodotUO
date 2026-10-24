@@ -8,10 +8,11 @@
 //
 // What tells the two apart has to be defined for every command, rects
 // included, and CUSTOM0 is only defined on a mesh. The cover mesh is drawn
-// with a marker texture of a size nothing else has (2 x 4096; both sides
+// with a marker texture of a reserved size (2 x 4096; both sides
 // powers of two, so TEXTURE_PIXEL_SIZE is exact); only then is CUSTOM0 read,
 // as uo_hue_land_array.gdshader reads it: normal in xyz, page in w. For
-// everything else this is uo_hue.gdshader line for line.
+// everything else this is uo_hue.gdshader line for line. The batcher routes
+// real sprite textures of this size through the original sprite material.
 
 shader_type canvas_item;
 render_mode blend_premul_alpha, unshaded;

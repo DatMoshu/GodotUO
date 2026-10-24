@@ -2112,6 +2112,7 @@ public partial class Main : Node
                         GUO.Renderer.GpuWorld.RawOutput = true;
                         break;
                     case "--shared-cover":
+                    case "--shared-cover-shader-parity":
                         // Prototype: covering land on the sprite canvas item, no cut
                         // (uo_hue_cover.gdshader); off by default. Given, it is
                         // also the probe's parity toggle.
@@ -2119,6 +2120,14 @@ public partial class Main : Node
                         GUO.Renderer.UltimaBatcher2D.SharedCover = true;
                         GUO.Host.PerfProbe.ParityToggle = on => GUO.Renderer.UltimaBatcher2D.SharedCover = on;
                         GUO.Host.PerfProbe.ParityState = () => GUO.Renderer.UltimaBatcher2D.SharedCover;
+                        if (arg == "--shared-cover-shader-parity")
+                        {
+                            // Compare the old sprite shader/cut path with the new
+                            // shader/cut path in one frozen world. No shared draws.
+                            GUO.Renderer.UltimaBatcher2D.SharedCover = false;
+                            GUO.Host.PerfProbe.ParityToggle = on => GUO.Renderer.UltimaBatcher2D.SharedCoverReference = !on;
+                            GUO.Host.PerfProbe.ParityState = () => !GUO.Renderer.UltimaBatcher2D.SharedCoverReference;
+                        }
                         break;
                     case "--chunk-skip":
                         // Review item B: the tile walk skips chunks no anchor of

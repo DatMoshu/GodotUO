@@ -76,6 +76,7 @@ namespace GUO.Renderer
         private Rid _target;
         private RenderTarget2D _currentTarget;
         private readonly ShaderMaterial _material;
+        private readonly ShaderMaterial _plainSpriteMaterial;
 
         // One material per distinct non-default blend state. There are five in
         // the whole client, so this never grows.
@@ -169,6 +170,10 @@ namespace GUO.Renderer
             var shader = GD.Load<Shader>(SharedCoverShader ? COVER_SHADER_PATH : SHADER_PATH);
 
             _material = new ShaderMaterial { Shader = shader };
+            // The marker size is reserved only on the shared shader. Real
+            // textures of that size must still draw as sprites, including UI.
+            if (SharedCoverShader)
+                _plainSpriteMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(SHADER_PATH) };
             _meshMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(MESH_SHADER_PATH) };
             _splatMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(SPLAT_SHADER_PATH) };
             _layerMaterial = new ShaderMaterial { Shader = GD.Load<Shader>(LAYER_SHADER_PATH) };
@@ -371,6 +376,10 @@ namespace GUO.Renderer
             _blendMaterials.Clear();
             _meshMaterial?.Dispose();
             _material?.Dispose();
+            _plainSpriteMaterial?.Dispose();
+            _coverMarker?.Dispose();
+            _coverMarker = null;
+            _coverMarkerRid = default;
 
             // PORT DEVIATION (GUO): the land-array material (B4) and the id
             // mirror's canvas item (ADR-0023) are this batcher's too.
@@ -444,6 +453,7 @@ namespace GUO.Renderer
 #endif
             GpuWorld.Pass?.SetShared(param, value); // PORT DEVIATION (GUO): --gpu-world's materials share the hue uniforms
             _material.SetShaderParameter(param, value);
+            _plainSpriteMaterial?.SetShaderParameter(param, value);
             _meshMaterial.SetShaderParameter(param, value);
             _landArrayMaterial.SetShaderParameter(param, value);
 
@@ -1085,6 +1095,9 @@ void fragment() {
         /// back. The probe's parity toggle flips SharedCover only.
         /// </summary>
         public static bool SharedCoverShader, SharedCover;
+        // Probe-only reference selection; set between frames, never mid-batch.
+        public static bool SharedCoverReference;
+        private const int CoverMarkerWidth = 2, CoverMarkerHeight = 4096;
 
         private Texture2D _coverMarker;
         private Rid _coverMarkerRid;
@@ -1092,7 +1105,7 @@ void fragment() {
 
         private bool TryFlushCoverShared(Rid mesh)
         {
-            if (!SharedCover || !SharedCoverShader || !ReferenceEquals(_itemMaterial, _material))
+            if (!SharedCover || !SharedCoverShader || SharedCoverReference || !ReferenceEquals(_itemMaterial, _material))
             {
                 return false;
             }
@@ -1100,7 +1113,8 @@ void fragment() {
             if (_coverMarker == null)
             {
                 // 2 x 4096: the size uo_hue_cover.gdshader tells covering land by.
-                _coverMarker = ImageTexture.CreateFromImage(Image.CreateEmpty(2, 4096, false, Image.Format.Rgba8));
+                using Image markerImage = Image.CreateEmpty(CoverMarkerWidth, CoverMarkerHeight, false, Image.Format.Rgba8);
+                _coverMarker = ImageTexture.CreateFromImage(markerImage);
                 _coverMarkerRid = _coverMarker.GetRid();
             }
 
@@ -1114,7 +1128,7 @@ void fragment() {
             Commands++;
             Count(4, default);
             Transform2D at = _coverOffset == _itemOffset ? Transform2D.Identity : new Transform2D(0f, _coverOffset - _itemOffset);
-            RenderingServer.CanvasItemAddMesh(_current, mesh, at, Colors.White, _coverMarkerRid);
+            CanvasMesh(_current, mesh, at, Colors.White, _coverMarkerRid);
             return true;
         }
 
@@ -2267,7 +2281,7 @@ void fragment() {
 #endif
             {
                 SelectSpriteSampler(texture);
-                EnsureMaterial(_currentMaterial);
+                EnsureSpriteMaterial(texture);
             }
 
             // PORT DEVIATION (GUO): the id mirror (ADR-0023) follows the plain path only.
@@ -2402,7 +2416,7 @@ void fragment() {
 #endif
             {
                 SelectSpriteSampler(texture);
-                EnsureMaterial(_currentMaterial);
+                EnsureSpriteMaterial(texture, triangle: true);
             }
 
             Color modulate = Encode(color);
@@ -2430,7 +2444,7 @@ void fragment() {
             if (OrderedWorldRecording)
             {
                 SelectSpriteSampler(texture);
-                EnsureMaterial(_currentMaterial);
+                EnsureSpriteMaterial(texture, triangle: true);
             }
 #endif
             _quadColors[1] = modulate;
@@ -2523,7 +2537,7 @@ void fragment() {
             if (OrderedWorldRecording)
             {
                 SelectSpriteSampler(texture);
-                EnsureMaterial(_currentMaterial);
+                EnsureSpriteMaterial(texture);
             }
 #endif
 
@@ -2595,6 +2609,21 @@ void fragment() {
             _nextMaterial = _currentMaterial;
         }
 
+        private void EnsureSpriteMaterial(Texture2D texture, bool triangle = false)
+        {
+            ShaderMaterial material = _currentMaterial;
+            if (_plainSpriteMaterial != null && ReferenceEquals(material, _material))
+            {
+                Measure(texture);
+                // Triangle-array commands have no CUSTOM0 vertex input. Even
+                // an untaken branch in the shared shader requires that input
+                // when Godot creates their Vulkan pipeline.
+                if (SharedCoverReference || triangle || BatchedWorld || (_sizedWidth == CoverMarkerWidth && _sizedHeight == CoverMarkerHeight))
+                    material = _plainSpriteMaterial;
+            }
+            EnsureMaterial(material);
+        }
+
         private Rid CurrentParent => _clipStack.Count > 0 ? _clipStack[_clipStack.Count - 1] : _target;
 
         /// <summary>
@@ -2604,9 +2633,11 @@ void fragment() {
         private void Cut(CutReason reason = CutReason.Other)
         {
             _cuts[(int)reason]++;
-            _itemOffset = _worldOffset;
             _current = NewItem(CurrentParent,
                 _worldOffset != Vector2.Zero ? new Transform2D(0f, _worldOffset) : Transform2D.Identity);
+            // NewItem flushes pending cover onto the OLD item. Its offset
+            // must remain valid until that submission has completed.
+            _itemOffset = _worldOffset;
         }
 
         /// <summary>The pool index of the item NewItem handed out last; the ItemSet helpers act on it.</summary>

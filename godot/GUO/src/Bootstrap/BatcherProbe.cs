@@ -155,6 +155,11 @@ public partial class BatcherProbe : Node
 
         batcher.Dispose();
 
+        await VerifySharedCoverSpriteFallback(host, viewport, palette, ramp);
+        Stage("shared cover marker collision and shader reference");
+        await VerifySharedCoverOffset(host, viewport, palette);
+        Stage("shared cover offset transition");
+
         await VerifyFonts();
         Stage("fonts");
 
@@ -273,6 +278,93 @@ public partial class BatcherProbe : Node
         Check("scaled gump clip grows with its contents", new byte[] { 255, 255, 255 }, result.GetPixel(3, 3));
         Check("scaled gump clip excludes outside pixels", new byte[] { 0, 0, 0 }, result.GetPixel(4, 3));
         Check("gump transform does not leak into following draws", new byte[] { 255, 255, 255 }, result.GetPixel(6, 6));
+    }
+
+    private async System.Threading.Tasks.Task VerifySharedCoverSpriteFallback(
+        Node2D host, SubViewport viewport, Texture2D palette, Texture2D ramp)
+    {
+        bool shader = UltimaBatcher2D.SharedCoverShader;
+        bool reference = UltimaBatcher2D.SharedCoverReference;
+        bool batched = UltimaBatcher2D.BatchedWorld;
+        UltimaBatcher2D.SharedCoverShader = true;
+        using Image markerSizedImage = Image.CreateEmpty(2, 4096, false, Image.Format.Rgba8);
+        markerSizedImage.Fill(Colors.White);
+        using Texture2D markerSizedSprite = ImageTexture.CreateFromImage(markerSizedImage);
+        using var probe = new UltimaBatcher2D(host.GetCanvasItem()) { HueTexture = palette };
+        try
+        {
+            foreach (bool oldShader in new[] { false, true })
+            {
+                UltimaBatcher2D.SharedCoverReference = oldShader;
+                foreach (bool batch in new[] { false, true })
+                {
+                    UltimaBatcher2D.BatchedWorld = batch;
+                    foreach (bool mirror in new[] { false, true })
+                    {
+                        Color got = await DrawAndRead(probe, viewport, markerSizedSprite, 0, 18, mirror);
+                        Check($"marker-sized sprite reference={oldShader} batched={batch} mirror={mirror}", PaletteEntry(17, 31), got);
+                        Color ordinary = await DrawAndRead(probe, viewport, ramp, 15, 18, mirror);
+                        Check($"ordinary sprite after marker reference={oldShader} batched={batch} mirror={mirror}", PaletteEntry(17, 15), ordinary);
+                    }
+                }
+                UltimaBatcher2D.BatchedWorld = false;
+                await VerifyUiTransform(probe, viewport, ramp);
+            }
+        }
+        finally
+        {
+            UltimaBatcher2D.SharedCoverShader = shader;
+            UltimaBatcher2D.SharedCoverReference = reference;
+            UltimaBatcher2D.BatchedWorld = batched;
+        }
+    }
+
+    private async System.Threading.Tasks.Task VerifySharedCoverOffset(
+        Node2D host, SubViewport viewport, Texture2D palette)
+    {
+        bool shader = UltimaBatcher2D.SharedCoverShader;
+        bool shared = UltimaBatcher2D.SharedCover;
+        bool merged = UltimaBatcher2D.MergedCover;
+        bool reference = UltimaBatcher2D.SharedCoverReference;
+        UltimaBatcher2D.SharedCoverShader = true;
+        UltimaBatcher2D.SharedCoverReference = false;
+        UltimaBatcher2D.MergedCover = true;
+        using var atlas = new TextureAtlas(16, 16);
+        Texture2D white = atlas.AddSprite(new uint[] { 0xFFFFFFFF }, 1, 1, out Compat.Rectangle source);
+        var layer = new MeshLayer { Count = 1 };
+        layer.WriteQuadAt(0, white, source, 0, 0, ShaderHueTranslator.GetHueVector(0), 0f);
+        MeshQuad quad = layer.Vertices[0];
+        quad.Position1.X = quad.Position3.X = 4;
+        quad.Position2.Y = quad.Position3.Y = 4;
+        layer.Vertices[0] = quad;
+        using var probe = new UltimaBatcher2D(host.GetCanvasItem()) { HueTexture = palette };
+        try
+        {
+            foreach (bool enabled in new[] { false, true })
+            {
+                UltimaBatcher2D.SharedCover = enabled;
+                probe.BeginFrame();
+                probe.Begin();
+                probe.SetWorldOffset(-2, -2);
+                probe.DrawMeshSprite(layer, 0, -2, -2);
+                // Flush onto the item translated by (2,2), while creating
+                // the next item at zero. Cover must stay at (2,2)..(6,6).
+                probe.ResetWorldOffset();
+                probe.End();
+                await ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
+                using Image result = viewport.GetTexture().GetImage();
+                Check($"cover offset shared={enabled} inside", new byte[] { 255, 255, 255 }, result.GetPixel(3, 3));
+                Check($"cover offset shared={enabled} outside", new byte[] { (byte)result.GetPixel(0, 0).R8, (byte)result.GetPixel(0, 0).G8, (byte)result.GetPixel(0, 0).B8 }, result.GetPixel(6, 6));
+            }
+        }
+        finally
+        {
+            UltimaBatcher2D.SharedCoverShader = shader;
+            UltimaBatcher2D.SharedCover = shared;
+            UltimaBatcher2D.MergedCover = merged;
+            UltimaBatcher2D.SharedCoverReference = reference;
+            LandPages.Reset();
+        }
     }
 
     /// <summary>

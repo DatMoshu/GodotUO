@@ -3536,6 +3536,17 @@ screen (0 with `--chunk-skip=off`), `items_allocated` (the batcher's
 pooled canvas items) and `cuts_total` with `cuts_cover`, `cuts_material`,
 `cuts_offset`, `cuts_sampler`, `cuts_clip`, `cuts_begin`, `cuts_other`
 (canvas items started per frame, by why; `UltimaBatcher2D.CutReason`).
+The off-by-default `--shared-cover` prototype makes the parity toggle
+compare cut versus shared cover submission under the new sprite shader.
+Use `--shared-cover-shader-parity` instead to compare the original sprite
+shader against the new shader with cut submission on both sides. Both
+comparisons need `--perf-parity`; neither proves the other's gate.
+Real 2 x 4096 sprite textures use the original material, reserving that
+texture-size discriminator for cover meshes under the shared material.
+Triangle-array sprites (including `--batched-world`) also use the original
+material: their vertex format lacks the shared shader's `CUSTOM0` input.
+Cover following those commands uses the existing cut path.
+
 Scenes `cave-roof` and
 `open-sea` were added after `dungeon`. With `--perf-parity`, each standing
 scene also carries `parity_stable_px`, `parity_violations`,
