@@ -92,6 +92,60 @@ See [the gate guide](../../docs/perf/performance_gate.md) for prerequisites,
 flags, smoke steps and limitations, and [section 41](../../docs/data_formats.md#41-perf-probe-and-perf-lab-reports-buildperf-toolsperf_probe-toolsperf_lab)
 for the baseline contract.
 
+## Auditable Release measurements (opt-in)
+
+Build from a clean committed checkout with `launchers/windows/export.bat --release --manifest`.
+The adjacent `.build.json` binds the source head/tree, SDK, export command,
+engine/config hashes, executable, external PCK and all exported dependencies.
+Missing or multiple GUO/GodotSharp assemblies fail; the normal export path is unchanged.
+
+Pass `--manifest-inputs private-inputs.json` to this tool or the local gate.
+This private JSON has nonempty `configuration` and `fixture` objects mapping
+descriptive names to files (relative paths resolve beside the JSON). Include the
+profile/settings and every content/route input defining the cohort. Only file
+hashes are retained. This is an explicit input inventory, not automatic discovery
+of all files a shard or client might read. Files must remain unchanged during the run.
+
+The option requires a fresh label and a matching clean Release build receipt.
+It enables `GUO_PERF_MANIFEST=1` and `GUO_PERF_RAW_FRAMES=1`. Runtime executable,
+client and GodotSharp hashes must match the export, with optimized client/API and
+a Release engine; MVIDs, engine/runtime/OS, effective render switches and actual
+zoom/window are recorded. Build/config hashing and all serialization run outside
+sample windows. A failed identity check cannot record a gate baseline.
+
+Raw files contain `guo/raw-frames@1`, chronological `frame_ms`, frame count,
+initial capacity, zero dropped samples and a no-growth assertion. Each scene
+links its file; the measured manifest hashes it and verifies count and elapsed
+time. Capacity growth, invalid durations, missing samples/files or mismatched
+runtime identities fail acceptance. Existing probe counters still measure process
+frames; raw durations are not new GPU measurements. Probe-overhead controls remain
+required before interpreting timings.
+
+`GUO_PERF_RAW_FRAMES=1` alone enables raw output without a manifest.
+`GUO_PERF_MINIMAP=1` restores PR161's explicit open-minimap cohort; each scene
+reports `minimap_open`. It does not change minimap storage or visibility timing.
+
+The manifest gate compares actual global and per-scene window/zoom/renderer,
+minimap state, profile/PostFX, warm-up/sample/route settings and diagnostic modes.
+It also records and compares the minimap request. Matching input hashes do not
+override changed effective state. Old reports missing these fields need a fresh
+baseline; invalid comparisons and failed replacements preserve existing bytes.
+
+To vary an optimization intentionally, pass `--experiment-arm arm.json` to the
+local gate on both runs. For example, the control file can contain
+`{"name":"control","flags":{"gpu_world":false}}`, and the candidate file
+`{"name":"candidate","flags":{"gpu_world":true}}`. The gate requires matching
+declared dimensions, verifies their actual values, and records both arms beside
+the result. Their corresponding `--args=--gpu-world=off` / `--args=--gpu-world=on`
+may differ. Only known switches wholly covered by the declaration are excluded
+from argument equality; all other arguments and all cohort state still bind.
+Environment-controlled flags such as `retained_canvas` use the same declaration.
+Allowed dimensions are the eight boolean fields in `runtime_identity.effective_flags`:
+`batched_world`, `merged_cover`, `merged_land`, `merged_land_ordered`,
+`merged_land_array`, `gpu_world`, `retained_canvas`, `retained_cover_candidates`.
+Declaring an arm does not enable it: use the existing runtime switch, and a request
+that did not take effect fails. The tool does not authorize running experiments.
+
 ## Tests
 
 ```

@@ -3418,6 +3418,36 @@ game thread. An exception drops that packet and is logged
 (`[mods] <id>: dropped packet ...`).
 ## 41. Perf probe and perf lab reports (`build/perf`, `tools/perf_probe`, `tools/perf_lab`)
 
+Task698 measurement readiness adds opt-in private artifacts (see
+`tools/perf_probe/README.md`). `GUO_PERF_RAW_FRAMES=1` adds a scene `raw_frames`
+reference to `guo/raw-frames@1`: chronological `frame_ms`, `frames`,
+`initial_capacity`, `dropped: 0`, `storage_grew: false`. Serialization occurs
+after the sample window and fails on count/capacity/nonfinite-duration errors.
+`minimap_open` records actual scene state; `GUO_PERF_MINIMAP=1` opens it for the
+explicit diagnostic cohort only.
+
+`--release --manifest` on Windows export creates `guo/release-build@1` beside
+the executable. `--manifest-inputs` on the perf probe/gate requires this receipt,
+hashes caller-listed configuration/fixture files before and after, enables raw
+samples and runtime identity, and creates `guo/measured-build@1`. It binds source
+head/tree, build command/SDK/engine/config, all exported dependency hashes,
+actual loaded executable/client/GodotSharp hashes and MVIDs, Release/optimized
+state, runtime/OS/renderer, effective switches and raw-file hashes. Ambiguous or
+changed exports, changed inputs and missing/mismatched samples fail. These
+artifacts prove identity and sample accounting, not quiet-host performance or
+completeness of a caller's fixture inventory. They remain private external output.
+
+The measured manifest's `cohort` binds actual global and per-scene window, zoom,
+renderer and minimap state; profile/PostFX, warm-up/sample/frame-target/route
+settings; and effective diagnostic modes (including interval counters, parity,
+raw sampling and the minimap request). Requested diagnostic environment values
+also remain in `requested.diagnostics`; route content is identified by the loaded
+route hash. Old manifests missing cohort fields require a fresh baseline.
+In manifest mode the local gate rejects cohort drift and preserves the baseline.
+`--experiment-arm FILE` permits only explicitly named boolean optimization
+dimensions to vary; each arm records its name and expected effective flags.
+Undeclared flags, scene state and diagnostics still bind. See the perf probe README.
+
 **Sustained GUO PerfDump**, `guo-samples.jsonl`: opt-in through
 `tools/perf_dump --only guo --sample-seconds N` (0 disables; 1–300 seconds),
 which sets the client diagnostic `GUO_PERF_SAMPLE_SECONDS`. After settling,

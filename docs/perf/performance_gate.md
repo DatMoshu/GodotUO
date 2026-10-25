@@ -104,6 +104,13 @@ is the export's `data_*/GUO.dll`. The baseline embeds the probe report, and summ
 beside it. The raw probe JSON and log stay under `<UO_BUILD_DIR>/perf/`.
 The format is specified in [section 41](../data_formats.md#41-perf-probe-and-perf-lab-reports-buildperf-toolsperf_probe-toolsperf_lab).
 
+With `--manifest-inputs`, actual scene conditions and diagnostic modes must
+also match. Missing cohort fields require a fresh baseline; matching fixture
+hashes alone cannot establish comparability. Intentional optimization flag
+changes use `--experiment-arm FILE` on both recording and comparison, declaring
+the same flag names and each arm's expected values. This declaration never
+allows minimap, window, zoom, renderer, profile, route or diagnostic drift.
+
 Exit 0 means a comparison passed, or an explicitly requested baseline was
 recorded. Recording prints that it is **not a regression comparison**. Exit
 1 means counts regressed. Exit 2 means prerequisites, configuration,
