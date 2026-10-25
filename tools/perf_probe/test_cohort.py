@@ -140,3 +140,39 @@ def test_invalid_replacement_preserves_baseline(cohort_gate, tmp_path):
     state["report"]["runtime_identity"]["renderer"] = "gl_compatibility"
     assert run_gate([*ARGS, "--replace-baseline"]) == 2
     assert baseline_path(cfg).read_bytes() == before
+
+
+@pytest.mark.parametrize("flags,argument", [
+    ({"shared_cover": True, "shared_cover_shader": True}, "--shared-cover"),
+    ({"multimesh_sprites": True}, "--multimesh-sprites=on"),
+])
+def test_renderer_arms_allow_only_declared_changes(cohort_gate, tmp_path, flags, argument):
+    cfg, _, state = cohort_gate
+    arm = tmp_path / "arm.json"
+    arm.write_text(json.dumps({"name": "off", "flags": dict.fromkeys(flags, False)}))
+    args = [*ARGS, "--experiment-arm", str(arm)]
+    assert run_gate([*args, "--record-baseline"]) == 0
+    before = baseline_path(cfg).read_bytes()
+    arm.write_text(json.dumps({"name": "on", "flags": flags}))
+    state["report"]["runtime_identity"]["effective_flags"].update(flags)
+    assert run_gate([*args, "--args=" + argument]) == 0
+    state["report"]["runtime_identity"]["effective_flags"]["shared_cover_reference"] = True
+    assert run_gate([*args, "--args=" + argument]) == 2
+    assert baseline_path(cfg).read_bytes() == before
+
+
+def test_multimesh_threshold_drift_preserves_baseline(cohort_gate):
+    cfg, _, state = cohort_gate
+    assert run_gate([*ARGS, "--record-baseline"]) == 0
+    before = baseline_path(cfg).read_bytes()
+    state["report"]["runtime_identity"]["parameters"]["multimesh_min_run"] = 16
+    assert run_gate(ARGS) == 2
+    assert baseline_path(cfg).read_bytes() == before
+
+
+@pytest.mark.parametrize("value", [None, {}, {"multimesh_min_run": True}, {"multimesh_min_run": 8.0}])
+def test_missing_or_malformed_renderer_parameters_rejected(value):
+    report = cohort_report()
+    report["runtime_identity"]["parameters"] = value
+    with pytest.raises(ValueError):
+        effective_cohort(report)

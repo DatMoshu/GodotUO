@@ -33,8 +33,13 @@ internal static class PerfRuntimeIdentity
                 merged_land_array = GUO.Renderer.MergedLand.Array,
                 gpu_world = GUO.Renderer.GpuWorld.Enabled,
                 retained_canvas = GUO.Renderer.UltimaBatcher2D.RetainCanvas,
-                retained_cover_candidates = GUO.Game.Scenes.RenderLists.RetainCoverCandidates
+                retained_cover_candidates = GUO.Game.Scenes.RenderLists.RetainCoverCandidates,
+                shared_cover = GUO.Renderer.UltimaBatcher2D.SharedCover,
+                shared_cover_shader = GUO.Renderer.UltimaBatcher2D.SharedCoverShader,
+                shared_cover_reference = GUO.Renderer.UltimaBatcher2D.SharedCoverReference,
+                multimesh_sprites = GUO.Renderer.UltimaBatcher2D.MultiMeshSprites
             },
+            parameters = new { multimesh_min_run = GUO.Renderer.UltimaBatcher2D.MultiMeshMinRun },
             engine_version = Godot.Engine.GetVersionInfo()["string"].AsString(),
             dotnet_runtime = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
             os = System.Runtime.InteropServices.RuntimeInformation.OSDescription

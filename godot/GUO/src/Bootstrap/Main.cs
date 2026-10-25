@@ -1729,7 +1729,7 @@ public partial class Main : Node
 
         public float PerfZoom { get; private set; }
 
-        /// <summary>--perf-profile plain|defaults|uoplus-max: the profile preset the perf probe measures with (PerfProfilePreset).</summary>
+        /// <summary>--perf-profile plain|lean|defaults|uoplus-max: the profile preset the perf probe measures with (PerfProfilePreset).</summary>
         public string PerfProfile { get; private set; } = "";
         /// <summary>Photograph and time every post-processing look into this folder (ADR-0023).</summary>
         public string PostFxSheet { get; private set; }
@@ -2111,6 +2111,24 @@ public partial class Main : Node
                         // The experimental raw-bytes output (WorldDepthPass.RawOutput).
                         GUO.Renderer.GpuWorld.RawOutput = true;
                         break;
+                    case "--shared-cover":
+                    case "--shared-cover-shader-parity":
+                        // Prototype: covering land on the sprite canvas item, no cut
+                        // (uo_hue_cover.gdshader); off by default. Given, it is
+                        // also the probe's parity toggle.
+                        GUO.Renderer.UltimaBatcher2D.SharedCoverShader = true;
+                        GUO.Renderer.UltimaBatcher2D.SharedCover = true;
+                        GUO.Host.PerfProbe.ParityToggle = on => GUO.Renderer.UltimaBatcher2D.SharedCover = on;
+                        GUO.Host.PerfProbe.ParityState = () => GUO.Renderer.UltimaBatcher2D.SharedCover;
+                        if (arg == "--shared-cover-shader-parity")
+                        {
+                            // Compare the old sprite shader/cut path with the new
+                            // shader/cut path in one frozen world. No shared draws.
+                            GUO.Renderer.UltimaBatcher2D.SharedCover = false;
+                            GUO.Host.PerfProbe.ParityToggle = on => GUO.Renderer.UltimaBatcher2D.SharedCoverReference = !on;
+                            GUO.Host.PerfProbe.ParityState = () => !GUO.Renderer.UltimaBatcher2D.SharedCoverReference;
+                        }
+                        break;
                     case "--chunk-skip":
                         // Review item B: the tile walk skips chunks no anchor of
                         // which can reach the screen (on by default); given, it is
@@ -2180,6 +2198,16 @@ public partial class Main : Node
                         break;
                     case "--merged-cover=off":
                         GUO.Renderer.UltimaBatcher2D.MergedCover = false;
+                        break;
+                    case "--multimesh-sprites":
+                    case "--multimesh-sprites=on":
+                        // PERF-MM-01: runs of upright sprites as MultiMesh instances, one draw per run. Off by default.
+                        GUO.Renderer.UltimaBatcher2D.MultiMeshSprites = true;
+                        GUO.Host.PerfProbe.ParityToggle = on => GUO.Renderer.UltimaBatcher2D.MultiMeshSprites = on;
+                        GUO.Host.PerfProbe.ParityState = () => GUO.Renderer.UltimaBatcher2D.MultiMeshSprites;
+                        break;
+                    case "--multimesh-sprites=off":
+                        GUO.Renderer.UltimaBatcher2D.MultiMeshSprites = false;
                         break;
                     case "--batched-world":
                         GUO.Renderer.UltimaBatcher2D.BatchedWorld = true;

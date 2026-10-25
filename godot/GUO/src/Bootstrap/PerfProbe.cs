@@ -125,6 +125,7 @@ internal static partial class PerfProbe
     public static System.Action<bool> ParityToggle = on => UltimaBatcher2D.BatchedWorld = on;
     public static System.Func<bool> ParityState = () => UltimaBatcher2D.BatchedWorld;
     private const int Frames = 360;
+
     private const double MinDrawsPerFrame = 0.95;
 
     /// <summary>
@@ -507,6 +508,9 @@ internal static partial class PerfProbe
         int sampleCapacity = measureMs > 0 ? System.Math.Max(20000, (int)measureMs * 2) : n;
         var ms = new List<double>(sampleCapacity);
         double kRect = 0, kAffine = 0, kMesh = 0, kTri = 0, kBatches = 0, kCover = 0, kCoverRuns = 0, coverQueued = 0, coverOverlapping = 0, chunksSkipped = 0;
+        double mmInstances = 0, mmRuns = 0, mmCalls = 0, mmFallbacks = 0, mmReplayed = 0; // --multimesh-sprites
+        double itemsAllocated = 0;
+        var cuts = new double[(int)UltimaBatcher2D.CutReason.Count];
         double calls = 0, items = 0, switches = 0, commands = 0, prepare = 0, world = 0, cpu = 0, gpu = 0, objects = 0;
         // Allocate the probe's own storage before the measured interval.
         var uploadMs = new List<double>(sampleCapacity);
@@ -663,10 +667,19 @@ internal static partial class PerfProbe
             kBatches += k.Batches;
             kCover += k.CoverMeshes;
             kCoverRuns += k.CoverRuns;
+            var mm = UltimaBatcher2D.LastMultiMesh;
+            mmInstances += mm.Sprites;
+            mmRuns += mm.Runs;
+            mmCalls += mm.Calls;
+            mmFallbacks += mm.Fallbacks;
+            mmReplayed += mm.Replayed;
             var cq = GUO.Game.Scenes.RenderLists.LastCover;
             coverQueued += cq.Queued;
             coverOverlapping += cq.Overlapping;
             chunksSkipped += GUO.Game.Scenes.RenderLists.ChunksSkipped;
+            itemsAllocated += UltimaBatcher2D.LastItemsAllocated;
+            for (int c = 0; c < cuts.Length; c++)
+                cuts[c] += UltimaBatcher2D.LastCuts[c];
             prepare += GUO.Utility.Profiler.GetContext(GUO.Utility.Profiler.ProfilerContext.RENDER_FRAME_WORLD_PREPARE).LastTime;
             world += GUO.Utility.Profiler.GetContext(GUO.Utility.Profiler.ProfilerContext.RENDER_FRAME_WORLD).LastTime;
             cpu += RenderingServer.ViewportGetMeasuredRenderTimeCpu(viewport);
@@ -800,9 +813,25 @@ internal static partial class PerfProbe
             ["cover_runs"] = System.Math.Round(kCoverRuns / n, 1),
             ["cover_queued"] = System.Math.Round(coverQueued / n, 1),
             ["chunks_skipped"] = System.Math.Round(chunksSkipped / n, 1),
+            ["items_allocated"] = System.Math.Round(itemsAllocated / n, 1),
+            ["cuts_total"] = System.Math.Round(cuts.Sum() / n, 1),
+            ["cuts_cover"] = System.Math.Round(cuts[(int)UltimaBatcher2D.CutReason.Cover] / n, 1),
+            ["cuts_material"] = System.Math.Round(cuts[(int)UltimaBatcher2D.CutReason.Material] / n, 1),
+            ["cuts_offset"] = System.Math.Round(cuts[(int)UltimaBatcher2D.CutReason.Offset] / n, 1),
+            ["cuts_sampler"] = System.Math.Round(cuts[(int)UltimaBatcher2D.CutReason.Sampler] / n, 1),
+            ["cuts_clip"] = System.Math.Round(cuts[(int)UltimaBatcher2D.CutReason.Clip] / n, 1),
+            ["cuts_begin"] = System.Math.Round(cuts[(int)UltimaBatcher2D.CutReason.Begin] / n, 1),
+            ["cuts_other"] = System.Math.Round(cuts[(int)UltimaBatcher2D.CutReason.Other] / n, 1),
             ["cover_overlapping"] = System.Math.Round(coverOverlapping / n, 1),
             ["cmd_triangles"] = System.Math.Round(kTri / n, 1),
             ["estimated_batches"] = System.Math.Round(kBatches / n, 1),
+            ["multimesh_sprites"] = UltimaBatcher2D.MultiMeshSprites,
+            ["mm_instances"] = System.Math.Round(mmInstances / n, 1),
+            ["mm_runs"] = System.Math.Round(mmRuns / n, 1),
+            ["mm_calls"] = System.Math.Round(mmCalls / n, 1),
+            ["mm_fallbacks"] = System.Math.Round(mmFallbacks / n, 1),
+            ["mm_replayed"] = System.Math.Round(mmReplayed / n, 1),
+            ["mm_min_run"] = UltimaBatcher2D.MultiMeshMinRun,
             ["gc_ms_per_frame"] = System.Math.Round(gcMs, 3),
             ["tiles_moved"] = replay?.Tiles ?? runner?.Tiles ?? 0,
             ["land_layers"] = LandPages.Layers,

@@ -3444,6 +3444,16 @@ raw sampling and the minimap request). Requested diagnostic environment values
 also remain in `requested.diagnostics`; route content is identified by the loaded
 route hash. Old manifests missing cohort fields require a fresh baseline.
 In manifest mode the local gate rejects cohort drift and preserves the baseline.
+The renderer cohort also binds effective shared-cover path, shader/reference and
+MultiMesh flags, plus the integer `runtime_identity.parameters.multimesh_min_run`.
+Declared boolean experiment arms may vary the named paths; changing the run
+threshold requires a distinct cohort. A shader-only parity switch remains a
+diagnostic mode, not an ordinary shared-cover timing arm.
+
+`--perf-profile lean` is a probe-only effects-off variant of `plain`: it also
+disables Enhanced HD, sprite/static/terrain shadows and animated water. Its
+effective profile description includes these values and ambient density. The
+ordinary client defaults and the existing `plain` preset are unchanged.
 `--experiment-arm FILE` permits only explicitly named boolean optimization
 dimensions to vary; each arm records its name and expected effective flags.
 Undeclared flags, scene state and diagnostics still bind. See the perf probe README.
@@ -3696,7 +3706,22 @@ Since PERF-03 each scene also carries `render_frame_ms`, `ui_ms`,
 sorted-list stages only, absent when none). Since review item B
 (2026-10-24) each scene also carries `chunks_skipped`: chunks per frame
 the tile walk skipped because no object anchor in them can reach the
-screen (0 with `--chunk-skip=off`). Scenes `cave-roof` and
+screen (0 with `--chunk-skip=off`), `items_allocated` (the batcher's
+pooled canvas items) and `cuts_total` with `cuts_cover`, `cuts_material`,
+`cuts_offset`, `cuts_sampler`, `cuts_clip`, `cuts_begin`, `cuts_other`
+(canvas items started per frame, by why; `UltimaBatcher2D.CutReason`).
+The off-by-default `--shared-cover` prototype makes the parity toggle
+compare cut versus shared cover submission under the new sprite shader.
+Use `--shared-cover-shader-parity` instead to compare the original sprite
+shader against the new shader with cut submission on both sides. Both
+comparisons need `--perf-parity`; neither proves the other's gate.
+Real 2 x 4096 sprite textures use the original material, reserving that
+texture-size discriminator for cover meshes under the shared material.
+Triangle-array sprites (including `--batched-world`) also use the original
+material: their vertex format lacks the shared shader's `CUSTOM0` input.
+Cover following those commands uses the existing cut path.
+
+Scenes `cave-roof` and
 `open-sea` were added after `dungeon`. With `--perf-parity`, each standing
 scene also carries `parity_stable_px`, `parity_violations`,
 `parity_strict`, `parity_strict_max_delta` (pixels: stable across the plain
@@ -3717,6 +3742,15 @@ default) are compared as given, in either flag order, and a strict run with
 whose `[go` did not arrive within three tiles in x and y, and two in z when
 the `[go` names one, has no row. A parity row whose test captures did not
 all come from the pass fails the run.
+Since PERF-MM-01 each scene also carries `p50_ms`, `multimesh_sprites`
+(whether `--multimesh-sprites` was on), `mm_instances` (sprites drawn as
+MultiMesh instances), `mm_runs` (MultiMeshes drawn), `mm_calls`
+(RenderingServer calls those runs made), `mm_fallbacks` (sprites the switch
+left on the per-sprite path), `mm_replayed` (sprites of runs shorter than
+`mm_min_run`, sent as their own commands) and `mm_min_run`, all per frame
+except the last. The integrated probe retains the PERF-LANE-01 timing
+controls and fields above (`GUO_PERF_WARMUP_SECONDS` and
+`GUO_PERF_MEASURE_SECONDS`); PR156's earlier timing switches are superseded.
 Since PERF-01, `system` is `{gpu, gpu_vendor, gpu_api, driver,
 driver_version, rendering_method, cpu, cpu_threads, ram_gib, os, os_version,
 screen "WxH", refresh_hz, engine}`, from Godot's `RenderingServer`, `OS`

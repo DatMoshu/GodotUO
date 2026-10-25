@@ -21,7 +21,8 @@ def cohort_report():
                   walk_route_sha256="", sample_window_version=2, route_observation_version=2, frame_target=360,
                   diagnostics=dict(interval_counters=False, parity=False, parity_target="configured",
                                    raw_frames=True, minimap_requested=False),
-                  runtime_identity=dict(renderer="forward_plus", effective_flags={key: False for key in FLAGS}))
+                  runtime_identity=dict(renderer="forward_plus", effective_flags={key: False for key in FLAGS},
+                                        parameters={"multimesh_min_run": 8}))
     for row in report["scenes"]:
         row.update(window="1280x720", zoom=1, renderer="forward_plus", minimap_open=False, warmup_seconds=0)
     return report

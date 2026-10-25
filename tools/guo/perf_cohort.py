@@ -7,13 +7,16 @@ import shlex
 from pathlib import Path
 
 FLAGS = frozenset(("batched_world", "merged_cover", "merged_land", "merged_land_ordered",
-                   "merged_land_array", "gpu_world", "retained_canvas", "retained_cover_candidates"))
+                   "merged_land_array", "gpu_world", "retained_canvas", "retained_cover_candidates",
+                   "shared_cover", "shared_cover_shader", "shared_cover_reference", "multimesh_sprites"))
 ARG_FLAGS = {
     "--batched-world": {"batched_world"},
     "--merged-cover": {"merged_cover"}, "--merged-cover=off": {"merged_cover"},
     **{arg: {"merged_land", "merged_land_ordered", "merged_land_array"}
        for arg in ("--merged-land", "--merged-land=off", "--merged-land=ordered", "--merged-land=array")},
     **{arg: {"gpu_world"} for arg in ("--gpu-world", "--gpu-world=on", "--gpu-world=off")},
+    "--shared-cover": {"shared_cover", "shared_cover_shader"},
+    **{arg: {"multimesh_sprites"} for arg in ("--multimesh-sprites", "--multimesh-sprites=on", "--multimesh-sprites=off")},
 }
 EFFECTIVE = ("window", "zoom", "postfx", "profile", "profile_preset", "static_world", "quiet_fixture",
              "runtime_attribution", "warmup_seconds", "measure_seconds", "walk_seconds", "walk_origin",
@@ -33,7 +36,10 @@ def effective_cohort(report: dict) -> dict:
     """Bind scene conditions, never observed frame counts/timings or build hashes."""
     effective = required(report, EFFECTIVE, "effective")
     required(effective["diagnostics"], DIAGNOSTICS, "diagnostic")
-    runtime = required(report.get("runtime_identity"), ("renderer", "effective_flags"), "runtime")
+    runtime = required(report.get("runtime_identity"), ("renderer", "effective_flags", "parameters"), "runtime")
+    parameters = required(runtime["parameters"], ("multimesh_min_run",), "renderer parameters")
+    if type(parameters["multimesh_min_run"]) is not int:
+        raise ValueError("Invalid MultiMesh threshold")
     required(runtime["effective_flags"], FLAGS, "optimization flags")
     flags = dict(runtime["effective_flags"])
     if any(type(value) is not bool for value in flags.values()):
@@ -49,7 +55,8 @@ def effective_cohort(report: dict) -> dict:
         scenes[name] = required(row, SCENE, name)
         if type(row["minimap_open"]) is not bool:
             raise ValueError("Invalid minimap cohort state")
-    return {"effective": effective, "renderer": runtime["renderer"], "flags": flags, "scenes": scenes}
+    return {"effective": effective, "renderer": runtime["renderer"], "parameters": parameters,
+            "flags": flags, "scenes": scenes}
 
 
 def read_arm(path: Path | None) -> dict | None:
@@ -86,7 +93,7 @@ def compatible(before: dict, after: dict, before_arm: dict | None, after_arm: di
     varied = set((before_arm or {}).get("flags", {}))
     if varied != set((after_arm or {}).get("flags", {})):
         raise ValueError("Experiment arm dimensions differ from baseline")
-    for field in ("effective", "renderer", "scenes"):
+    for field in ("effective", "renderer", "parameters", "scenes"):
         if before[field] != after[field]:
             raise ValueError(f"Effective cohort {field} differs from baseline; baseline unchanged")
     if {k: v for k, v in before["flags"].items() if k not in varied} != {
