@@ -115,4 +115,4 @@ if __name__ == "__main__":
     seed(args.store_dir, config.root / "godot/GUO/assets/backgrounds")
     seed_screensavers(args.store_dir, config.root / "godot/GUO/assets/screensavers")
     if not args.skip_store_loops:
-        seed_store_loops(args.store_dir, config.root / "build/bg_videos/store")
+        seed_store_loops(args.store_dir, config.build / "bg_videos/store")

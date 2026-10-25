@@ -9,13 +9,14 @@ from unittest.mock import patch
 
 from check import check, git
 from install import install, MARKER
+from guo.config import load_config
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 class HookTests(unittest.TestCase):
     def setUp(self):
-        scratch = ROOT / "build/git_hooks"
+        scratch = load_config(ROOT).build / "git_hooks"
         scratch.mkdir(parents=True, exist_ok=True)
         self.temp = tempfile.TemporaryDirectory(prefix="tests-", dir=scratch)
         self.addCleanup(self.temp.cleanup)
@@ -27,6 +28,12 @@ class HookTests(unittest.TestCase):
         for tool in ("docs_lint", "launcher_lint", "privacy_scan"):
             shutil.copytree(ROOT / "tools" / tool, self.root / "tools" / tool,
                             ignore=shutil.ignore_patterns("deny.local.txt", "__pycache__"))
+        # A GUO checkout includes shared config; the hook resolves its output there.
+        shared = self.root / "launchers/_shared"
+        shared.mkdir(parents=True)
+        for name in ("config.bat", "config.sh", "common.bat", "common.sh",
+                     "config.local.bat.example", "config.local.sh.example"):
+            shutil.copyfile(ROOT / "launchers/_shared" / name, shared / name)
         (self.root / "README.md").write_text("# Fixture\n", encoding="utf-8")
         (self.root / ".gitignore").write_text("build/\ntools/privacy_scan/deny.local.txt\n", encoding="utf-8")
         self.commit()

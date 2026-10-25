@@ -7,6 +7,9 @@ import subprocess
 import sys
 import tempfile
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from guo.config import load_config
+
 
 def clean_environment():
     # Hooks inherit repository-local Git variables. Never let those redirect a
@@ -86,7 +89,7 @@ def check(root, updates):
     print(f"[pre-push] {len(seen)} new commit(s) scanned for machine paths and compiled programs")
     if not tips:
         return 0
-    scratch = root / "build" / "git_hooks"
+    scratch = load_config(root).build / "git_hooks"
     scratch.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="check-", dir=scratch) as temporary:
         temporary = Path(temporary).resolve()
