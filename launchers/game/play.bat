@@ -38,23 +38,10 @@ echo [play] Data source  : %UO_DATA_SOURCE%
 echo [play] Shard        : %UO_SHARD_HOST%:%UO_SHARD_PORT%
 echo.
 
-REM  Pull --frames N out of the arguments and turn it into Godot's own
-REM  --quit-after, which has to sit before the separator.
-set "GUO_QUIT_AFTER="
+REM  Forward the original command line with %*: CMD's %1/shift parsing treats
+REM  unquoted equals signs as separators (--gpu-world=off became two arguments).
+REM  Python preserves those tokens and moves --frames before Godot's separator.
 set "GUO_ARGS="
 if defined UO_FILES_OVERRIDE set "GUO_ARGS= --files-override "%UO_FILES_OVERRIDE%""
-:parse
-if "%~1"=="" goto run
-if /I "%~1"=="--frames" (
-    set "GUO_QUIT_AFTER=--quit-after %~2"
-    shift
-    shift
-    goto parse
-)
-set "GUO_ARGS=%GUO_ARGS% %1"
-shift
-goto parse
-
-:run
-"%GODOT_CONSOLE%" --path "%UO_GODOT_PROJECT%" %GUO_QUIT_AFTER% %GUO_ENGINE_ARGS% --%GUO_ARGS%
+"%UO_PYTHON%" "%UO_TOOLS%\play\run.py" "%GODOT_CONSOLE%" --path "%UO_GODOT_PROJECT%" %GUO_ENGINE_ARGS% --%GUO_ARGS% %*
 exit /b %ERRORLEVEL%
