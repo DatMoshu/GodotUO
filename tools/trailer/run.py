@@ -35,8 +35,11 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools"))
+from guo.config import load_config
+
 WT = ROOT.parent if ROOT.parent.name == "worktrees" else ROOT / ".claude" / "worktrees"
-OUT = ROOT / "build" / "trailer"
+OUT = load_config(ROOT).build / "trailer"
 W, H, FPS = 1920, 1080, 30
 BG = np.array([0x0c, 0x0a, 0x08], np.float32) / 255
 GOLD = (0xE6, 0xC8, 0x78)

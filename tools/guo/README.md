@@ -33,6 +33,31 @@ cd tools && python -m unittest guo.test_world_preflight
 only and never read your `config.local.bat` or the client install; CI runs
 `test_config.py`.
 
+## Legacy output routing
+
+Generated paths use `load_config(root).build`, including mapgen's CLI output,
+trailer masters/work files, background-loop reports and Store-only loops,
+MCP probe output, pre-push snapshot checkouts, content/Comfy probe scratch,
+content proof images and the PostFX pack's default archive. Seeded Store loops
+read from that same configured output. Explicit `--out`, `--stage` and `--clips`
+arguments retain their meaning. Configure `UO_BUILD_DIR` outside the checkout;
+the environment overrides local config as for other tools. No new setting is
+introduced.
+
+Built-in background and screensaver art remains in its product asset path.
+Trailer source clips, authored voice profiles and fixed expansion/reference
+inputs are not relocated or rediscovered by this migration. Existing generated
+files are not moved or removed. Scenario-run path validation/reference lookup
+and retention are a separate migration; avoid treating authored files under an
+old `build/` directory as disposable. Mapgen's MSBuild intermediate directories
+also retain their existing project settings.
+
+Run `python -m pytest tools/guo/test_output_routing.py tools/asset_store/test_postfx_pack.py`
+for routing regressions. The tests exercise external destinations, explicit
+output precedence, pack verification, scratch cleanup and the pre-push snapshot
+boundary without launching Godot, contacting generation services or reading UO
+data. `tools/git_hooks/test_hooks.py` exercises the real Git/checker workflow.
+
 ## Headless build timeout
 
 `launchers/dev/build.bat` and `build.sh` use the same stdlib Python guard.

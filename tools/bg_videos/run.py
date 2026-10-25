@@ -31,8 +31,11 @@ from scipy.spatial import cKDTree
 from scipy.special import erf
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools"))
+from guo.config import load_config
+
 DEFAULT_OUT = ROOT / "godot" / "GUO" / "assets" / "backgrounds"
-REPORT_DIR = ROOT / "build" / "bg_videos"
+REPORT_DIR = load_config(ROOT).build / "bg_videos"
 FPS = 24
 TAU = 2 * np.pi
 

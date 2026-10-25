@@ -21,6 +21,9 @@ import sys
 import tempfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from guo.config import load_config
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--godot", required=True, help="Blocking godot-console executable")
@@ -29,12 +32,14 @@ if __name__ == "__main__":
                         required=not bool(os.environ.get("UO_CLIENT_DATA")))
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
+    output = load_config(root).build
+    output.mkdir(parents=True, exist_ok=True)
     args.stage = args.stage.resolve()
     tool = root / "tools/asset_store/headless/bin/Debug/net8.0/StoreSmoke.dll"
     zips = sorted(args.stage.glob("*.zip"))
     assert len(zips) == 1, f"expected one pack in {args.stage}, found {len(zips)}"
     bindings = json.loads((args.stage / "bindings.json").read_text(encoding="utf-8"))
-    with tempfile.TemporaryDirectory(prefix="comfy-probe-", dir=root / "build") as temporary:
+    with tempfile.TemporaryDirectory(prefix="comfy-probe-", dir=output) as temporary:
         work = Path(temporary)
         installed = work / "store"
         lock = work / "content-lock.json"
