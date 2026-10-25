@@ -377,6 +377,11 @@ internal static partial class PerfProbe
             GD.Print($"[GUO] perf probe: zoom {camera.Zoom:F1} (asked {zoom:F1}, range {camera.ZoomMin:F1}-{camera.ZoomMax:F1})");
         }
 
+        // PR161 diagnostic cohort only; ordinary play and other probe runs are unchanged.
+        if (System.Environment.GetEnvironmentVariable("GUO_PERF_MINIMAP") == "1"
+            && GUO.Game.Managers.UIManager.GetGump<GUO.Game.UI.Gumps.MiniMapGump>() == null)
+            GUO.Game.Managers.UIManager.Add(new GUO.Game.UI.Gumps.MiniMapGump(world));
+
         Scene[] scenes = Only.Count == 0 ? Scenes : System.Array.FindAll(Scenes, s => Only.Contains(s.Name));
         // A misspelt --perf-scene measured nothing and still passed (review M6).
         List<string> unknown = Only.Where(n => !Scenes.Any(s => s.Name == n)).ToList();
@@ -695,6 +700,17 @@ internal static partial class PerfProbe
         // Dispose validates the endpoint and observer ownership, then restores
         // the prior observer. Snapshot acceptance only after those checks.
         replay?.Dispose();
+        string rawFrames = null;
+        if (System.Environment.GetEnvironmentVariable("GUO_PERF_RAW_FRAMES") == "1")
+        {
+            Directory.CreateDirectory(_outDir);
+            rawFrames = $"frames_{System.Guid.NewGuid():N}.json";
+            using var output = new FileStream(Path.Combine(_outDir, rawFrames), FileMode.CreateNew);
+            PerfRawFrames.Write(output, ms, n, sampleCapacity,
+                ms.Capacity > sampleCapacity || uploadMs.Capacity > sampleCapacity
+                || (_runtimeAttribution && atlasUploadMs.Capacity > sampleCapacity)
+                || pageUploadMs.Capacity > sampleCapacity, sampleWindowClosed: true);
+        }
         double[] sorted = ms.OrderBy(v => v).ToArray();
         double P(double q) => sorted[System.Math.Min(sorted.Length - 1, (int)System.Math.Ceiling(q * sorted.Length) - 1)];
         var player = Client.Game.UO.World?.Player;
@@ -704,6 +720,8 @@ internal static partial class PerfProbe
             ["what"] = what,
             ["at"] = player != null ? $"{player.X},{player.Y},{player.Z} map {Client.Game.UO.World.MapIndex}" : "",
             ["frames"] = n,
+            ["raw_frames"] = rawFrames,
+            ["minimap_open"] = GUO.Game.Managers.UIManager.GetGump<GUO.Game.UI.Gumps.MiniMapGump>() != null,
             ["warmup_seconds"] = worldMeasurement ? _warmupSeconds : 0,
             ["sample_storage_grew"] = ms.Capacity > sampleCapacity || uploadMs.Capacity > sampleCapacity
                 || (_runtimeAttribution && atlasUploadMs.Capacity > sampleCapacity)
@@ -1138,6 +1156,7 @@ internal static partial class PerfProbe
                     ["parity_target"] = _coverCandidatesParity ? "cover-candidates" : _retainedCanvasParity ? "retained-canvas" : "configured",
                     ["optimized"] = optimized, ["postfx"] = look, ["profile_preset"] = _profilePreset, ["profile"] = _profileSummary, ["static_world"] = StaticWorld,
                     ["godot_api_jit_optimized"] = apiOptimized, ["godot_api_mvid"] = godotApi.ManifestModule.ModuleVersionId.ToString(),
+                    ["runtime_identity"] = PerfRuntimeIdentity.Capture(),
                     ["engine_debug_build"] = OS.IsDebugBuild(), ["export_template"] = ExportTemplate(), ["quiet_fixture"] = PerfFixture.Quiet,
                     ["warmup_seconds"] = _warmupSeconds, ["measure_seconds"] = _measureSeconds, ["host_load"] = PerfHostLoad.Launch(),
                     ["system"] = SystemInfo(), ["scenes"] = results,

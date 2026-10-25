@@ -92,6 +92,39 @@ See [the gate guide](../../docs/perf/performance_gate.md) for prerequisites,
 flags, smoke steps and limitations, and [section 41](../../docs/data_formats.md#41-perf-probe-and-perf-lab-reports-buildperf-toolsperf_probe-toolsperf_lab)
 for the baseline contract.
 
+## Auditable Release measurements (opt-in)
+
+Build from a clean committed checkout with `launchers/windows/export.bat --release --manifest`.
+The adjacent `.build.json` binds the source head/tree, SDK, export command,
+engine/config hashes, executable, external PCK and all exported dependencies.
+Missing or multiple GUO/GodotSharp assemblies fail; the normal export path is unchanged.
+
+Pass `--manifest-inputs private-inputs.json` to this tool or the local gate.
+This private JSON has nonempty `configuration` and `fixture` objects mapping
+descriptive names to files (relative paths resolve beside the JSON). Include the
+profile/settings and every content/route input defining the cohort. Only file
+hashes are retained. This is an explicit input inventory, not automatic discovery
+of all files a shard or client might read. Files must remain unchanged during the run.
+
+The option requires a fresh label and a matching clean Release build receipt.
+It enables `GUO_PERF_MANIFEST=1` and `GUO_PERF_RAW_FRAMES=1`. Runtime executable,
+client and GodotSharp hashes must match the export, with optimized client/API and
+a Release engine; MVIDs, engine/runtime/OS, effective render switches and actual
+zoom/window are recorded. Build/config hashing and all serialization run outside
+sample windows. A failed identity check cannot record a gate baseline.
+
+Raw files contain `guo/raw-frames@1`, chronological `frame_ms`, frame count,
+initial capacity, zero dropped samples and a no-growth assertion. Each scene
+links its file; the measured manifest hashes it and verifies count and elapsed
+time. Capacity growth, invalid durations, missing samples/files or mismatched
+runtime identities fail acceptance. Existing probe counters still measure process
+frames; raw durations are not new GPU measurements. Probe-overhead controls remain
+required before interpreting timings.
+
+`GUO_PERF_RAW_FRAMES=1` alone enables raw output without a manifest.
+`GUO_PERF_MINIMAP=1` restores PR161's explicit open-minimap cohort; each scene
+reports `minimap_open`. It does not change minimap storage or visibility timing.
+
 ## Tests
 
 ```

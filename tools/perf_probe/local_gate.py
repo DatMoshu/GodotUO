@@ -56,7 +56,8 @@ def context_for(args, cfg) -> dict:
 
 def export_dll(exe: Path) -> Path | None:
     """The GUO assembly an export loads: data_<name>_<platform>/GUO.dll beside it."""
-    return next(iter(sorted(exe.parent.glob("data_*/GUO.dll"))), None)
+    matches = sorted(exe.parent.glob("data_*/GUO.dll"))
+    return matches[0] if len(matches) == 1 else None
 
 
 def provenance(cfg, exe: Path) -> dict:
@@ -130,6 +131,8 @@ def probe_command(args, label: str) -> list[str]:
            "--args=" + " ".join([*GATE_FLAGS, args.args]).strip()]
     if args.port:
         cmd.extend(["--port", str(args.port)])
+    if getattr(args, "manifest_inputs", None):
+        cmd.extend(["--manifest-inputs", str(args.manifest_inputs)])
     return cmd
 
 
@@ -175,6 +178,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--port", type=int)
     parser.add_argument("--args", default="", help="extra client flags; must match the baseline exactly")
     parser.add_argument("--exe", type=Path, help="the exported Release GUO executable to time; required for a measurement")
+    parser.add_argument("--manifest-inputs", type=Path, help="require verified build/runtime identity and raw frames")
     parser.add_argument("--dry-run", action="store_true",
                         help="check the export and print the probe command without launching anything")
     parser.add_argument("--from-report", type=Path,
@@ -237,6 +241,16 @@ def main(argv: list[str] | None = None) -> int:
         if report["window"] != context["window"]:
             raise ValueError("actual probe window differs from requested window; baseline unchanged")
         measured = provenance(cfg, args.exe)
+        if args.manifest_inputs:
+            manifest_path = cfg.build / "perf" / f"perf_{label}.manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            measured["manifest"] = manifest
+            measured["head"] = manifest["build"]["inputs"]["source"]["head"]
+            measured["dirty"] = False
+            if baseline is not None:
+                old = json.loads(baseline_path.read_text(encoding="utf-8")).get("provenance", {}).get("manifest")
+                if old is None or old.get("inputs") != manifest.get("inputs"):
+                    raise ValueError("baseline lacks matching configuration/fixture manifest; use a separate baseline")
         if args.record_baseline or args.replace_baseline:
             write_baseline(baseline_path, context, report, args.replace_baseline, measured)
             print(f"[perf_gate] Baseline recorded: {baseline_path} (head {measured['head']}"

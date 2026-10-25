@@ -73,6 +73,8 @@ def main() -> int:
                          " only an exported Release build times what players run")
     ap.add_argument("--as-built", action="store_true",
                     help="run GUO as it is built, instead of rebuilding it optimised first (tools/guo/build.py)")
+    ap.add_argument("--manifest-inputs", type=Path,
+                    help="private JSON configuration/fixture file maps; verify Release build and loaded runtime")
     args = ap.parse_args()
     cfg = load_config()
     out = cfg.build / "perf"
@@ -82,6 +84,14 @@ def main() -> int:
 
     if args.exe and not args.exe.is_file():
         ap.error("--exe must name an existing export")
+    if args.manifest_inputs:
+        if not args.exe:
+            ap.error("--manifest-inputs requires --exe")
+        if any((out / f"perf_{args.label}{suffix}").exists() for suffix in (".json", ".manifest.json", ".log")):
+            ap.error("manifest runs require a fresh --label")
+        from guo.perf_manifest import verify_build, cohort_inputs, measured_manifest, raw_identities
+        build_identity = verify_build(args.exe)
+        inputs_before = cohort_inputs(args.manifest_inputs)
     if not args.as_built and not args.exe:
         build_client(cfg)
 
@@ -90,6 +100,9 @@ def main() -> int:
     env = {**os.environ, "UO_CLIENT_DATA": str(cfg.client_data), "UO_CACHE_DIR": str(home / "cache"),
            "UO_CLIENT_VERSION": cfg.client_version, "UO_SHARD_HOST": cfg.shard_host,
            "UO_SHARD_PORT": str(args.port or cfg.shard_port)}
+    if args.manifest_inputs:
+        env["GUO_PERF_MANIFEST"] = "1"
+        env["GUO_PERF_RAW_FRAMES"] = "1"
     # The probe logs in as the owner account, whose password the launchers
     # export from the per-user secrets file; run from Python, nothing did, and
     # the shard refused it.
@@ -108,6 +121,17 @@ def main() -> int:
     print(f"[perf] {args.label}: shard {env['UO_SHARD_HOST']}:{env['UO_SHARD_PORT']}, window {args.size}, log {log}", flush=True)
     r = subprocess.run(cmd, stdout=log.open("w", encoding="utf-8", errors="replace"), stderr=subprocess.STDOUT,
                        env=env, timeout=1800, **no_activate())
+    if args.manifest_inputs and r.returncode == 0:
+        report = json.loads((out / f"perf_{args.label}.json").read_text(encoding="utf-8"))
+        if verify_build(args.exe) != build_identity:
+            raise ValueError("Build receipt changed during measurement")
+        manifest = measured_manifest(build_identity, report, inputs_before, cohort_inputs(args.manifest_inputs),
+            {"size": args.size, "zoom": args.zoom, "renderer": args.renderer, "args": args.args,
+             "diagnostics": {k: env[k] for k in ("GUO_PERF_RAW_FRAMES", "GUO_PERF_MANIFEST",
+                 "GUO_PERF_WARMUP_SECONDS", "GUO_PERF_MEASURE_SECONDS", "GUO_PERF_WALK_SECONDS",
+                 "GUO_PERF_WALK_ORIGIN", "GUO_PERF_RUNTIME_ATTRIBUTION", "GUO_PERF_INTERVAL_COUNTERS") if k in env}})
+        manifest["raw_samples"] = raw_identities(report, out)
+        (out / f"perf_{args.label}.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     md = out / f"perf_{args.label}.md"
     if md.exists():
         print(md.read_text(encoding="utf-8"))
@@ -116,4 +140,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except (OSError, ValueError) as exc:
+        print(f"[perf] Readiness validation failed: {exc}. Check manifest inputs and launchers/dev/perf_gate --doctor.", file=sys.stderr)
+        sys.exit(2)
