@@ -819,6 +819,8 @@ public partial class EditorSmoke : Node
             return;
         }
 
+        CheckPathfinder();
+
         // The client writes default tables under CUOEnviroment.ExecutablePath;
         // the world view must have pointed that away from the project.
         bool litter = Directory.Exists(Path.Combine(ProjectSettings.GlobalizePath("res://"), "Data"));

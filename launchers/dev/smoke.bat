@@ -50,6 +50,9 @@ dotnet run --project "%UO_ROOT%\tools\network_tests\NetworkTests.csproj" --nolog
 echo [smoke] world sort order: key sort equals the depth-then-sequence comparison (tools\render_sort_tests)
 dotnet run --project "%UO_ROOT%\tools\render_sort_tests\RenderSortTests.csproj" --nologo || set "FAIL=1"
 
+echo [smoke] diagnostics correctness (fragmented loopback, plugins, compression; no FPS sampling)
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://addons/guo_editor/Tests/DiagnosticsFunctionalProbe.tscn || set "FAIL=1"
+
 echo [smoke] optional audio pack contracts (synthetic; no shard or AI service)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Store/StoreAudioProbe.tscn || set "FAIL=1"
 

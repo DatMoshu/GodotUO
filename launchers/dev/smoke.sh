@@ -36,6 +36,9 @@ echo "[smoke] selection seam (synthetic; no shard or install)"
 echo "[smoke] world depth ordering (CPU only; no shard or install)"
 dotnet run --project "$UO_ROOT/tools/world_depth_tests/WorldDepthTests.csproj" --artifacts-path "$UO_BUILD_DIR/world-depth-tests" --nologo || FAIL=1
 
+echo "[smoke] diagnostics correctness (fragmented loopback, plugins, compression; no FPS sampling)"
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://addons/guo_editor/Tests/DiagnosticsFunctionalProbe.tscn || FAIL=1
+
 echo "[smoke] optional audio pack contracts (synthetic; no shard or AI service)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Store/StoreAudioProbe.tscn || FAIL=1
 
