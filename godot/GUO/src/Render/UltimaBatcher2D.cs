@@ -1978,8 +1978,8 @@ void fragment() {
                 color,
                 origin.X / sourceW / (float)WidthOf(texture),
                 origin.Y / sourceH / (float)HeightOf(texture),
-                (float)Math.Sin(rotation),
-                (float)Math.Cos(rotation),
+                RotationSine(rotation),
+                RotationCosine(rotation),
                 layerDepth,
                 (byte)(effects & (SpriteEffects)0x03)
             );
@@ -2031,8 +2031,8 @@ void fragment() {
                 color,
                 origin.X / sourceW / (float)WidthOf(texture),
                 origin.Y / sourceH / (float)HeightOf(texture),
-                (float)Math.Sin(rotation),
-                (float)Math.Cos(rotation),
+                RotationSine(rotation),
+                RotationCosine(rotation),
                 layerDepth,
                 (byte)(effects & (SpriteEffects)0x03)
             );
@@ -2152,13 +2152,21 @@ void fragment() {
                 color,
                 origin.X / sourceW / (float)WidthOf(texture),
                 origin.Y / sourceH / (float)HeightOf(texture),
-                (float)Math.Sin(rotation),
-                (float)Math.Cos(rotation),
+                RotationSine(rotation),
+                RotationCosine(rotation),
                 layerDepth,
                 (byte)(effects & (SpriteEffects)0x03)
             );
         }
 
+
+        // PORT DEVIATION (GUO): ordinary sprites have zero rotation. Skip their
+        // trigonometry, preserving the sign of zero and the original nonzero path.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static float RotationSine(float rotation) => rotation == 0f ? rotation : (float)Math.Sin(rotation);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static float RotationCosine(float rotation) => rotation == 0f ? 1f : (float)Math.Cos(rotation);
 
         // The last texture measured, and what it measured.
         private Texture2D _sizedTexture;
