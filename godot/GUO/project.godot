@@ -10,6 +10,8 @@ config_version=5
 
 [application]
 
+config/version="0.1.0-alpha.1"
+
 config/name="GUO"
 config/description="Godot Ultima Online - the Classic client, ported from ClassicUO onto Godot."
 run/main_scene="res://scenes/Main.tscn"

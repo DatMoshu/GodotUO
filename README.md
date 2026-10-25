@@ -23,6 +23,8 @@ parts that genuinely bind to FNA are reimplemented on Godot.
 
 **Pre-release. Playable on a local shard; not yet at parity.**
 
+[Downloads and releases](https://datmoshu.github.io/GodotUO/releases.html) · [Versioning and release process](docs/release/README.md)
+
 - Every upstream file is ported, by the audit's count (`docs/port_status.md`).
   "Ported" means present and compiling, not proven working.
 - Against a ModernUO dev shard it logs in, walks the world and opens gumps,

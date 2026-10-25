@@ -22,15 +22,19 @@ name: build
 
 on:
   push:
-    branches: [main, "work/**"]
+    branches: [main, integration, "work/**"]
     paths:
       - "godot/GUO/**"
       - "tools/plugin_host/**"
+      - "tools/msbuild/**"
+      - "version.json"
       - ".github/workflows/build.yml"
   pull_request:
     paths:
       - "godot/GUO/**"
       - "tools/plugin_host/**"
+      - "tools/msbuild/**"
+      - "version.json"
       - ".github/workflows/build.yml"
   workflow_dispatch:
 

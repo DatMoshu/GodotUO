@@ -1,0 +1,68 @@
+---
+layout: null
+---
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Downloads and releases | GodotUO</title><meta name="description" content="GUO release downloads, release notes and development builds.">
+<link rel="icon" href="images/guo-emblem.png">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #14110d; --panel: #1f1a14; --line: #3a3024; --ink: #ece3d2;
+    --muted: #b3a48a; --gold: #d4a94f; --silver: #c9ced6; --ok: #8fbf73; --warn: #d9a14a; --no: #c9736a;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f6f0e4; --panel: #fffaf0; --line: #dccfb6; --ink: #2a2218;
+      --muted: #6d5f49; --gold: #9a6f1c; --silver: #56606e; --ok: #3f7a2a; --warn: #93620f; --no: #9b3d33;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body { font: 17px/1.6 "Source Sans 3", system-ui, sans-serif; }
+  a { color: var(--gold); }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+  header { text-align: center; padding: 48px 0 24px; }
+  header img { width: 168px; height: 168px; }
+  h1 { font: 700 clamp(2.2rem, 6vw, 3.4rem)/1.1 Cinzel, serif; margin: 12px 0 8px; letter-spacing: .04em; }
+  h2 { font: 500 1.5rem/1.2 Cinzel, serif; color: var(--gold); margin: 48px 0 16px; }
+  .lede { font-size: 1.2rem; color: var(--muted); max-width: 680px; margin: 0 auto; }
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin: 28px 0 8px; }
+  .cta a { padding: 10px 20px; border: 1px solid var(--gold); border-radius: 4px; text-decoration: none; font-weight: 600; }
+  .cta a.primary { background: var(--gold); color: var(--bg); }
+  figure { margin: 32px 0 0; }
+  figure img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; image-rendering: pixelated; display: block; }
+  figcaption { color: var(--muted); font-size: .9rem; margin-top: 8px; text-align: center; }
+  .note { border-left: 3px solid var(--gold); background: var(--panel); padding: 12px 16px; border-radius: 0 4px 4px 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px; }
+  .card h3 { margin: 0 0 4px; font: 600 1.1rem/1.3 "Source Sans 3", sans-serif; color: var(--silver); }
+  .card p { margin: 6px 0 0; color: var(--muted); font-size: .95rem; }
+  .card code { font-size: .85rem; }
+  .tag { display: inline-block; font-size: .78rem; font-weight: 600; padding: 1px 8px; border-radius: 10px; border: 1px solid currentColor; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .no { color: var(--no); }
+  code { background: var(--panel); border: 1px solid var(--line); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+  pre { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 14px; overflow-x: auto; font-size: .9rem; }
+  pre code { border: 0; padding: 0; background: none; }
+  footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line); margin-top: 56px; padding: 24px 0 40px; }
+
+.wrap { max-width: 820px; } header { text-align: left; } header img { width: 72px; height: 72px; }
+article { border-top: 1px solid var(--line); padding: 12px 0 24px; } article h2 { margin-top: 24px; }
+a:focus-visible { outline: 3px solid var(--gold); outline-offset: 4px; }
+li { margin: 8px 0; } .lede { margin: 0; } nav { padding-top: 24px; }
+</style></head><body><main class="wrap">
+<nav aria-label="Main"><a href="index.html">GodotUO home</a> / Downloads</nav>
+<header><img src="images/guo-emblem.png" alt="GodotUO emblem"><h1>Downloads and releases</h1>
+<p class="lede">Choose a published build and read what changed before you install.</p></header>
+<p class="note"><strong>Bring your own Ultima Online install.</strong> GUO downloads contain no UO game data. GUO is still in development; prereleases may have incomplete features.</p>
+<section aria-label="Published releases"><p id="release-status" role="status">Loading published releases…</p><div id="releases"></div>
+<noscript><p>JavaScript is off. Open GitHub Releases to see available downloads.</p></noscript>
+<p><a href="https://github.com/DatMoshu/GodotUO/releases">All releases and release notes on GitHub</a></p></section>
+<h2>Which download?</h2><ul><li><strong>Windows:</strong> choose the windows-x86_64 ZIP and extract the entire folder.</li>
+<li><strong>Steam Deck / Linux:</strong> choose the steamdeck-linux-x86_64 ZIP.</li>
+<li><strong>Android:</strong> release ZIPs contain the APK. A download marked debug is a test build; its signing key may change between builds.</li></ul>
+<p>Only files attached to a release are installable builds. GitHub’s automatically generated “Source code” archives are for developers. SHA256SUMS.txt lists checksums for the attached ZIPs.</p>
+<h2>Development builds</h2><p>Integration builds are for testing unfinished changes. They expire after seven days and may require a GitHub sign-in to download. They are not published releases.</p>
+<p><a href="https://github.com/DatMoshu/GodotUO/actions/workflows/release.yml?query=branch%3Aintegration">Browse integration build runs</a> · <a href="wiki/Getting-Started.html">Build and setup instructions</a></p>
+<footer>GodotUO is an unofficial fan project and is not affiliated with Electronic Arts or Broadsword Online Games.</footer>
+</main><script src="releases.js" defer></script></body></html>

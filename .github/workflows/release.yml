@@ -23,16 +23,19 @@ on:
   workflow_dispatch:
   push:
     tags: ["v*"]
-    branches: [main]
+    branches: [main, integration]
     paths:
       - "godot/GUO/**"
+      - "version.json"
+      - "tools/release/**"
+      - "tools/msbuild/**"
       - "tools/windows/**"
       - "tools/steamdeck/**"
       - "tools/android/**"
       - ".github/workflows/release.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -43,7 +46,32 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
 
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Validate version and release ancestry
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          RELEASE_ENABLED: ${{ vars.GUO_RELEASE_ENABLED }}
+        run: |
+          python3 tools/release/run.py check
+          if [ "$REF_TYPE" = tag ]; then
+            test "$RELEASE_ENABLED" = true || { echo "::error::Release hold: cleanup, debloat and performance acceptance must be complete before GUO_RELEASE_ENABLED is set to true."; exit 1; }
+            python3 tools/release/run.py check --tag "$REF_NAME"
+            git merge-base --is-ancestor HEAD origin/main
+            test -s "docs/release/$REF_NAME.md"
+          fi
+
+  checks:
+    needs: validate
+    uses: ./.github/workflows/ci.yml
+
   export:
+    needs: checks
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -143,14 +171,17 @@ jobs:
           name: GUO-windows-x86_64
           path: build/windows/
           if-no-files-found: error
+          retention-days: 7
       - uses: actions/upload-artifact@v7
         with:
           name: GUO-steamdeck-linux-x86_64
           path: build/steamdeck/
           if-no-files-found: error
+          retention-days: 7
 
 
   android:
+    needs: checks
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -281,6 +312,7 @@ jobs:
           name: GUO-android-arm64-debug
           path: build/android/GUO-debug.apk
           if-no-files-found: error
+          retention-days: 7
 
       # The release APK, signed with the owner's key: on a v* tag or a manual
       # run, and only when its three secrets are set. The key is written to
@@ -318,28 +350,35 @@ jobs:
           name: GUO-android-arm64-release
           path: build/android/GUO-release.apk
           if-no-files-found: error
+          retention-days: 7
 
   # On a v* tag: one draft release with all three platforms, after both
   # build jobs. Notes come from docs/release/<tag>.md when that file exists.
   draft:
+    permissions:
+      contents: write
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [export, android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
+          pattern: GUO-*
           path: artifacts
       - name: Zip each platform
         run: |
           cd artifacts
           for d in */; do (cd "$d" && zip -qr "../../${d%/}.zip" .); done
-          ls -la ..
+          cd ..
+          for f in GUO-*.zip; do mv "$f" "${f%.zip}-${GITHUB_REF_NAME}.zip"; done
+          sha256sum GUO-*.zip > SHA256SUMS.txt
       - name: Create the draft
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
           notes="docs/release/${TAG}.md"
-          if [ -f "$notes" ]; then set -- --notes-file "$notes"; else set -- --generate-notes; fi
-          gh release create "$TAG" --draft "$@" GUO-*.zip
+          set -- --notes-file "$notes"
+          case "$TAG" in *-*) set -- "$@" --prerelease ;; esac
+          gh release create "$TAG" --verify-tag --draft --title "GUO $TAG" "$@" GUO-*.zip SHA256SUMS.txt
