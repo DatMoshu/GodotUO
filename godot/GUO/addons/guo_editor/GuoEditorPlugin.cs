@@ -239,6 +239,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _assets.Visible = _assetsWasVisible;
         _assetsWasVisible = false;
         AddDock(_inspector);
+        _assets.AttachInspector(_inspector);
 
         // UO Store is the third main-screen tab (GuoStorePlugin owns its button): catalogues, server
         // content and publishing for shard owners and pack authors (ADR-0026 section 8). It loads its
@@ -604,6 +605,10 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
 
     private void TearDown()
     {
+        _inspector?.Metadata?.StashDrafts();
+        _inspector?.Strings?.StashDrafts();
+        _inspector?.Sound?.StashDrafts();
+        _inspector?.Hues?.StashDrafts();
         RemoveUoLayout();
 
         if (_collapseBottomPanels != null)

@@ -776,7 +776,17 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
     }
 
     private int? _lastWritten;
-    private readonly CancellationTokenSource _writeLifetime = new();
+    private CancellationTokenSource _writeLifetime = new();
+    public override void _EnterTree()
+    {
+        // Dock reparenting exits and re-enters the scene tree. Cancel the old
+        // operations on exit, then give the mounted editor a fresh lifetime.
+        if (_writeLifetime.IsCancellationRequested)
+        {
+            _writeLifetime.Dispose();
+            _writeLifetime = new CancellationTokenSource();
+        }
+    }
     public override void _ExitTree() => _writeLifetime.Cancel();
 
     private static void Overlay(int id, List<MultiInfo> infos)

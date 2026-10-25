@@ -176,6 +176,12 @@ public partial class EditorSmoke : Node
         _elapsed += delta;
         _frames++;
 
+        if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-multi-text-proof") >= 0)
+        { StepMultiTextProof(); return; }
+
+        if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-assets-workbench") >= 0)
+        { StepAssetWorkbenchProof(); return; }
+
         if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-editor-header-only") >= 0)
         {
             if (!_world.IsBooted) { _frames = 0; return; }

@@ -61,7 +61,17 @@ public partial class EditorSmoke
                 long bytes = GC.GetAllocatedBytesForCurrentThread() - allocated;
                 int[] ids = Enumerable.Range(0, list.ItemCount).Select(i => (int)(long)list.GetItemMetadata(i)).ToArray();
                 string status = panel.FindChildren("*", "Label", true, false).OfType<Label>().Single().Text;
-                bool ok = panel.Selected == selected && panel.IdScans == 1 && list.GetSelectedItems().Length == 0;
+                // Fiddler's workbench retains highlights on a rebuilt page.
+                // A search callback must not highlight its temporary first result
+                // instead of the saved selection (482 on the second name page).
+                int[] expectedHighlights = name switch
+                {
+                    "numeric" => new[] { 20 },
+                    "name_selected482" => new[] { 1 },
+                    _ => Array.Empty<int>(),
+                };
+                bool ok = panel.Selected == selected && panel.IdScans == 1
+                    && list.GetSelectedItems().SequenceEqual(expectedHighlights);
                 // Golden final states from the unmodified grid with these synthetic IDs.
                 var expected = name switch
                 {

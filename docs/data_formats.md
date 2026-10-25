@@ -468,9 +468,15 @@ texture; export warns about it.
 |---|---|
 | `format` | `1` |
 | `hue` | Hue number, 1-based: group `(hue-1)/8`, entry `(hue-1)%8` of `hues.mul` |
-| `name` | Up to 20 ASCII characters |
+| `name` | Project hue name, up to 4,096 UTF-8 bytes with no NUL or line breaks; native output uses the first 20 ASCII bytes |
 | `table_start`, `table_end` | Hex strings, as `hues.mul` stores them |
 | `colors` | 32 hex strings, the 16-bit colours as stored (four rows of eight) |
+| `source_sha256`, `source_record_base64` | Optional paired F08a binding to the active loader's complete original 88-byte hue record; saved documents check both, legacy unbound copies remain readable |
+
+[Hue working documents](editor/hue_documents.md) retain invalid drafts locally,
+check source and saved-copy conflicts, and save format 1 atomically. Editing or
+importing PNG changes the working document first; **Save copy** reapplies the
+existing overlay. This binding does not certify the separate native export path.
 
 **`animations/0xNNNN.json`** (editor preview only; not yet exported to anim.mul/UOP):
 `{"format":1,"body":int,"clips":[{"action":int,"direction":int,"fps":number,"frames":[{"image":str,"center":[x,y]}]}]}`.
@@ -514,6 +520,93 @@ Layouts, as `ArtLoader` and `GumpsLoader` read them (and as
 
 None of these files are committed: they derive from the install.
 ---
+
+### Item metadata working documents (F06a)
+
+`<world-project>/metadata/items/0xNNNN.json` is editor-only inert JSON, schema 1:
+`kind: guo/item-metadata`, `layout: modern-41`, item `id`, base64 `original`
+(exactly 41 source bytes), original-record `source_sha256`, UTF-8 `name`,
+hexadecimal-string `flags` (unsigned 64-bit) and integer `height` (0–255).
+Only name, flags and height are editable. The source record and all other fields
+are retained; an unchanged name retains its raw bytes. A changed name is at most
+20 UTF-8 bytes, without NUL, and zero-padded in the in-memory preview.
+The document does not modify runtime loaders or emit native tiledata. A changed
+source, mismatched ID/layout/hash or document larger than 16 KiB is refused.
+Writes remain in the project and refuse resolved installation/escaping paths.
+See [item metadata workflow](editor/item_metadata.md) and
+[synthetic recipe](../tools/scenarios/fiddler-f06a/README.md).
+
+### Cliloc working documents and CSV (F15a/F15c/F15d/F15e)
+
+`<world-project>/metadata/cliloc/<language>.json` is inert editor-only schema 1
+`guo/cliloc-document`, containing three-letter `language`, `encoding: UTF-8`,
+source SHA-256, compression state, base64 six-byte header and changed rows
+(`id`, `deleted`, preserved byte `flag`, `text`). Tombstones omit active text;
+new IDs use flag zero. The source-bound patch is limited to 10,000 changes and
+2 MiB of text; edited strings fit 32,767 UTF-8 bytes without NUL.
+
+Custom sources use language `custom1` or `custom2` and additionally require
+`source_identity`: lowercase SHA-256 of the resolved absolute source path's
+UTF-8 bytes (uppercase path on Windows). Their project path is
+`metadata/cliloc/custom/<source_identity>/<source_sha256>/<language>.json`.
+Path identity, content version and slot isolate project patches and editor-local
+recovery. Raw source paths are remembered only in private editor metadata;
+installed-language documents remain unchanged. See [custom sources](editor/cliloc_custom_sources.md).
+
+Standard CSV exchange uses UTF-8 `Number;Text;Flag`, decimal IDs, Fiddler flag
+names (or unknown decimal bytes) and CRLF output. The explicit Fiddler dialect
+has line-based unquoted records and trims imported text. Input also detects
+BOM-marked UTF-16/UTF-32 LE/BE; unmarked input is strict UTF-8. Quoted UTF-8 supports
+multiline fields, semicolons and doubled quotes as a separate lossless dialect.
+Imports merge text only, preserve source flags, leave omitted IDs untouched and
+apply atomically as one undo step after review. A blank string is not deletion.
+CSV files are bounded to 64 MiB/500,000 records; malformed or duplicate rows
+refuse the whole import. Export omits tombstones and uses atomic standard-file
+replacement outside the installation. See [working documents](editor/cliloc_documents.md)
+and [CSV exchange](editor/cliloc_csv_exchange.md). Neither emits native cliloc data;
+[separate native staging](editor/cliloc_native_staging.md) consumes the working
+snapshot after its own comparison and confirmation.
+
+[Tiledata-name synchronization](editor/cliloc_tiledata_sync.md) uses the same
+Cliloc JSON/tombstone contract. Legacy 37-byte and modern 41-byte item tables
+map IDs below `0x4000` to ID+1020000, below `0x8000` to ID+1078872, and the rest
+through `0xFFFF` to ID+1084024. Source name fields decode first-NUL ASCII;
+explicit project name edits retain authored Unicode. Captured saved/draft item
+metadata is validated against source records. Selected changes apply atomically,
+preserving existing flags and binding review to source/document/name snapshots.
+
+### Sound working documents (F14b/F14c)
+
+`<world-project>/metadata/sounds/0xNNNN.json` is editor-only inert JSON, schema 2:
+`kind: guo/sound-effect`, effect `id`, `source_sha256`, working `name` and
+`pcm_sha256` (null for source PCM, otherwise lowercase SHA-256 of raw PCM).
+Legacy schema 1 `guo/sound-name` documents remain readable and upgrade on save.
+The fingerprint is SHA-256 of ASCII decimal UTF-8 source-name byte count plus
+`:` followed by those complete name bytes and the active loader's PCM bytes.
+The displayed source name stops at its first NUL; bytes after it still bind
+the document to that source. New names fit 32 UTF-8 bytes without NUL.
+The original display name may retain a larger decoded size unchanged.
+Documents larger than 16 KiB, mismatched IDs/hashes and invalid names are refused.
+Saves recheck the active source and use atomic project-only replacement with
+resolved installation/path-escape protection. Changed PCM is stored in canonical
+WAV blobs at `assets/sound-documents/<pcm_sha256>.wav`, derived only from validated
+hashes. Blob decoding and raw PCM checksums are verified on reopen and reuse;
+missing/corrupt references are refused. Blob writes precede atomic manifest
+replacement. Unreferenced blobs are retained; no automatic deletion is implied.
+Recovery also materializes blobs and stores references with saved-name/PCM
+baselines. It can therefore write project audio before an explicit Save copy.
+Imports accept one fmt-16 PCM mono 16-bit 22050 Hz format before one nonempty,
+even data chunk (at most 64 MiB; file at most 65 MiB), validating RIFF and padded
+chunk bounds. No native sound header is emitted and no runtime sound is changed.
+See [naming](editor/sound_documents.md) and [WAV import](editor/sound_wav_import.md).
+
+F14e standard [sound-list exports](editor/sound_list_export.md) use semicolon
+`ID;Name;Length` CSV: hexadecimal ID (minimum three digits), quoted name and
+two-decimal seconds. UTF-8 without BOM uses invariant decimals; strict CP1252
+uses locale decimals for the Fiddler profile. Optional POL (+1) shifts CSV IDs
+only. WAV folders contain exact reviewed PCM plus UTF-8 `SoundList.csv` with
+native IDs. Filename normalization/collision checks and whole-folder publication
+are editor export behavior, not a new pack or native sound archive format.
 
 ## 12. GUO Asset Store packs (ADR-0019)
 
@@ -894,9 +987,23 @@ file of the same shape in `--ranges` / `UO_DATA_RANGES`):
 | `anim` | One direction's frame group as `anim.mul` stores it | `action`, `direction` |
 | `tiledata-item` | empty | Any of `flags weight layer count anim hue light height name`; the rest keep their value |
 | `hue` | One 88-byte hue entry | |
+| `cliloc-file` | Complete bounded native Cliloc; ID is zero. Explicit replacement required. | Only `filename: Cliloc.<safe suffix>`; no runtime language registration |
+| `sound` | Complete 40-byte native name plus mono 16-bit LE 22050 Hz PCM; occupied physical ID only. Explicit replacement required. | Only `packaging: mul` or `packaging: uop`; resolve/review Sound.def aliases before writing |
 | `multi` | The `MultiCollection.uop` record: `uint32 id, int32 count`, then per component `uint16 item, int16 x, y, z, uint16 flags` (0 shown, 1 hidden), `uint32 0` (no cliloc list). Ids stay below 0x4000, which the shard masks to | |
 
 **Writes** (all append-only except the in-place records):
+
+Native Cliloc staging uses the existing project snapshot and a separate reviewed
+candidate transaction; see [native Cliloc staging](editor/cliloc_native_staging.md).
+Native sound staging captures source fingerprint, working name and a hashed
+raw PCM file in a schema-1 `domain: sound` snapshot, with explicit packaging and
+logical ID. Its separate native-payload manifest binds the resolved physical row
+and affected aliases; see [native sound staging](editor/sound_native_staging.md).
+The private stage's `cliloc_sources` map binds each target to a document source
+path/hash. A new native filename records `source_exists: false`, an empty
+`source_sha1` and zero `source_size`; installation checks require it to remain
+absent. Existing file provenance remains unchanged. Edited BWT sources emit plain
+UTF-8 while identity exports retain their compressed bytes.
 
 - **LegacyMUL UOP.** The data is appended, then one new block
   (`int32 count, int64 next = 0`, then `count` × 34-byte entries:
@@ -1735,9 +1842,36 @@ Same parameters and seed, same bytes.
   `guo.multi.orient/1` (`wall` `{id: {axis, ew, ns}}`, `map` `{rot90, mirror_x, mirror_y: {id: id}}`, `door_bases`, and
   `lossy` `{id: id}` for window sets that share one art on the other axis, which come back as the first set), built from
   the styles, and with `run.py orient-table` from the mined catalogue and tiledata names.
-- `import` / `export`: `format` is one of `txt` (UOFiddler and Ultima SDK text, `0xID x y z flags`), `uoa` (UO Architect
+- `import` / `export`: `format` is one of `txt` (GUO legacy TXT: decimal IDs unless `0x`-prefixed), `txt-fiddler`
+  (Fiddler TXT: hexadecimal uint16 IDs, decimal int16 X/Y/Z, signed int32 flags), `uoa-fiddler`
+  (Fiddler UOA text: four headers, decimal uint16 IDs/int16 offsets/int32 flags), `uoa` (GUO legacy UO Architect
   text, 4 header lines), `uoab` (UO Architect binary designs, version 1 or 2), `wsc`, `csv-punt`, `csv-swerv`,
-  `centred` (CentrED# `id,x,y,z,hue,flags`) and `uox3`. Import detects the format from the name and head and recentres.
+  `centred` (CentrED# `id,x,y,z,hue,flags`) and `uox3`. Import detects legacy formats from the name/head and recentres.
+  `txt-fiddler` and `uoa-fiddler` must be selected explicitly and preserve coordinates by default (`recentre: true` opts in).
+  Their `text_flags` result/parameter parallels `components`; TXT export writes canonical `0xID X Y Z Flags` CRLF lines.
+  Each accepts 1–65,535 entries and at most 4 MiB. Editor text review covers hue loss and stale source/document/output.
+  Rotate/mirror `preserve_entries: true` refuses splitting, recombination or order changes so opaque per-entry
+  metadata cannot be assigned to a different part merely because aggregate counts match.
+  UOA's first three header values are ignored as in Fiddler; output normalizes them to version 6/template 1/item −1,
+  with the current count in the fourth line. Both profiles retain signed raw `text_flags` and review hue loss.
+  `wsc-fiddler` is separately explicit: complete decimal ID/X/Y/Z sections, pinned Fiddler world-coordinate
+  normalization and optional `dynamic_ids` uint16 list (listed IDs import hidden). It ignores Color and exports
+  canonical tab-separated CRLF with Color 0 and no stored flags. Editor export requires hue/flag-loss consent.
+  ID 65535, incomplete/duplicate fields and overflow are refused; input/output are bounded to 4 MiB and 65,535
+  components. Automatic detection keeps the existing color-retaining `wsc` profile. See
+  `docs/editor/multi_fiddler_wsc.md` for the seeded-minimum heuristic and explicit sentinel refusal.
+  `uox3-fiddler` is an explicit export-only profile: numbered HOUSE ITEM blocks,
+  uppercase four-digit hexadecimal IDs, decimal int16 offsets, no indentation,
+  Windows CRLF and a blank line after each block. It retains order/duplicates but
+  omits flags, hue and level. The editor reviews hue/flag loss; nonzero CSV Unk1
+  is refused. Legacy `uox3` import/export and detection stay separate. The pinned
+  Fiddler source supplies an exporter only; no independent importer is claimed.
+  `csv-fiddler` is also explicit: hexadecimal uint16 IDs/int32 flag bit patterns, decimal int16 offsets and
+  trailing signed int32 Unk1 (decimal or 0x hex on input, empty/absent means zero). Its parallel `text_extra`
+  array preserves Unk1 alongside `text_flags`; both arrays must match component count and int32 bounds.
+  Canonical output is `TileID,OffsetX,OffsetY,OffsetZ,Flag,Unk1` plus lower-case hex ID/flags/extra and CRLF.
+  Coordinates are preserved by default; count/byte budgets match reviewed TXT. Nonzero extra values block
+  lossy legacy/text/native export. See `docs/editor/multi_fiddler_csv.md` for project retention and review.
 
 The validator (section 16) also refuses a roof with floor open to the sky, a door with nowhere to stand on a side, and
 a stair whose foot is unreachable, whose arrival is not floor above, whose hole is not cut, or that does not climb the
@@ -1755,7 +1889,7 @@ diffable (one component per line) and keeps the hue, which a multi record cannot
 | `name` | The multi's name in a stage |
 | `source` | The client multi id it was opened from, or `null` |
 | `floor_z`, `storey_height` | `7` and `20`, the client's story heights |
-| `components` | `[item, x, y, z, shown, hue]` per component, in list order (the order breaks ties in painting): `item` and `hue` numbers, `shown` `1` or `0`, x/y from the centre |
+| `components` | `[item, x, y, z, shown, hue, text_flags?, text_extra?]` per component, in list order (the order breaks ties in painting): `item` and `hue` numbers, `shown` `1` or `0`, x/y from the centre. Optional seventh column retains original signed int32 Fiddler text flags; omitted for existing six-column documents. Optional eighth column retains CSV's signed int32 `Unk1`; a null seventh placeholder is allowed when only the eighth is present. CSV export retains both fields; TXT/UOA retain flags while visibility matches, otherwise emit edited visibility as 0/1. Exporters that cannot retain nonzero `text_extra` refuse it. Native flag/extra translation is separate and refuses opaque effective flags or nonzero extra values. |
 
 Writing it to a stage goes through the built form of §16 (`components.json`: `[item, x, y, z]` with a
 fifth element `0` when hidden, plus a `multi.json` with `valid`, `problems`, `doors`, `size`,

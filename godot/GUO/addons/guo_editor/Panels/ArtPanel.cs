@@ -21,6 +21,14 @@ public partial class ArtPanel : GridPanel
 
     protected override void SearchUiReady()
     {
+        var filters = new HBoxContainer(); AddChild(filters);
+        _source = new OptionButton { AccessibilityName = "Art source", TooltipText = "Filter project image replacements or installed art" };
+        foreach (string label in new[] { "All sources", "Project images", "Source only" }) _source.AddItem(label);
+        _source.ItemSelected += _ => Refresh(); filters.AddChild(_source);
+        _wall = new CheckBox { Text = "Wall", TooltipText = "Show statics whose source metadata has the Wall flag" };
+        _wall.Toggled += _ => Refresh(); filters.AddChild(_wall);
+        var batch = AssetUi.Action("FileDialog", "Review batch static PNG replacements…", () => BatchStaticDialog.Open(Data));
+        filters.AddChild(batch);
         if (Autocomplete)
         {
             SearchBox.PlaceholderText = "Search land & statics…";
@@ -31,6 +39,9 @@ public partial class ArtPanel : GridPanel
         }
     }
     private OptionButton _kind;
+    private OptionButton _source;
+    private CheckBox _wall;
+    private HashSet<int> _projectIds;
     private readonly List<int>[] _ids = new List<int>[2];
 
     public override string SmokeQuery => "0x0E75";
@@ -42,12 +53,13 @@ public partial class ArtPanel : GridPanel
         _kind = new OptionButton();
         _kind.AddItem("Statics");
         _kind.AddItem("Land");
-        _kind.ItemSelected += _ => Refresh();
+        _kind.ItemSelected += _ => { _projectIds = null; _wall.Disabled = Land; Refresh(); };
         bar.AddChild(_kind);
     }
 
     protected override void ForgetIds()
     {
+        _projectIds = null;
         _ids[0] = null;
         _ids[1] = null;
     }
@@ -57,6 +69,8 @@ public partial class ArtPanel : GridPanel
     {
         EnsureUi();
         _kind.Selected = land ? 1 : 0;
+        _projectIds = null;
+        if (_wall != null) _wall.Disabled = land;
     }
 
     private uint Index(int id) => Land ? (uint)id : EditorData.LandCount + (uint)id;
@@ -93,6 +107,17 @@ public partial class ArtPanel : GridPanel
 
     protected override bool Matches(int id, string query) =>
         Data.NameOf(Index(id)).Contains(query, StringComparison.OrdinalIgnoreCase);
+
+    protected override bool Include(int id)
+    {
+        if (_source?.Selected > 0)
+        {
+            _projectIds ??= new HashSet<int>(Data.Assets?.Ids(Land ? AssetKind.Land : AssetKind.Static) ?? new List<int>());
+            bool project = _projectIds.Contains(id);
+            if (_source.Selected == 1 && !project || _source.Selected == 2 && project) return false;
+        }
+        return Land || _wall?.ButtonPressed != true || (id < Data.Files.TileData.StaticData.Length && (Data.Files.TileData.StaticData[id].Flags & TileFlag.Wall) != 0);
+    }
 
     protected override Image Icon(int id) => Data.ArtImage(Index(id));
 
@@ -131,7 +156,32 @@ public partial class ArtPanel : GridPanel
         }
 
         Inspection ins = Inspection.Still("Art", $"0x{id:X4}", img, sb.ToString());
+        ins.Title = Data.NameOf(index);
+        ins.Fields.Add(("Kind", Land ? "Land" : "Static"));
+        if (Land && id < Data.Files.TileData.LandData.Length)
+        {
+            LandTiles tile = Data.Files.TileData.LandData[id];
+            ins.Fields.Add(("Source name", tile.Name));
+            ins.Fields.Add(("Texmap", $"0x{tile.TexID:X4}"));
+            ins.Fields.Add(("Source flags", Flags((ulong)tile.Flags)));
+        }
+        else if (!Land && id < Data.Files.TileData.StaticData.Length)
+        {
+            StaticTiles tile = Data.Files.TileData.StaticData[id];
+            ins.Fields.Add(("Source name", tile.Name));
+            ins.Fields.Add(("Source height", tile.Height.ToString()));
+            ins.Fields.Add(("Weight / layer", $"{tile.Weight} / {tile.Layer}"));
+            ins.Fields.Add(("Animation", $"0x{tile.AnimID:X4}"));
+            ins.Fields.Add(("Hue / light", $"{tile.Hue} / {tile.LightIndex}"));
+        }
         AssetActions.Add(ins, Data, Land ? AssetKind.Land : AssetKind.Static, id, img);
+        if (!Land && Data.Assets != null && id < Data.Files.TileData.StaticData.Length)
+        {
+            ins.MetadataData = Data;
+            ins.Actions.Add(new("edit-metadata", "Edit item metadata…", "Edit", () => GuoEditorPlugin.AssetsMain.FocusMetadata(id), false));
+            ins.Actions.Add(new("export-metadata-stage", "Export verified item metadata stage…", "Save", () => GuoEditorPlugin.AssetsMain.OpenMetadataStage(id)));
+            ins.Actions.Add(new("reopen-item-metadata", "Reopen item metadata and discard its draft…", "Reload", () => GuoEditorPlugin.AssetsMain.ReopenMetadata(id)));
+        }
         return ins;
     }
 

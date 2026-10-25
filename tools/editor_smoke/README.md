@@ -76,6 +76,37 @@ backends: camera, source and simulation time are fixed. It demonstrates a
 stationary impact light, not a shard-driven projectile animation. Player
 profiles are not used; the World tab has its own editor profile.
 
+For the Assets workbench, run
+`python tools/editor_smoke/run.py --windowed --assets-workbench --out FOLDER`.
+It captures Art/Statics and its docked metadata inspector at 1920, 1366 and
+1024 window widths, checks toolbar bounds, and captures the source/replacement
+export review. It uses a project under FOLDER. Its native hue proof prepares,
+explicitly confirms Apply, independently reads the disposable stage and recovers
+the prior absence; it also closes an owned preparation and checks cancellation.
+The source installation stays read-only. The proof cannot combine with reload,
+world-project or header-only.
+It also reviews/cancels/applies a synthetic texture PNG replacement, captures
+the working document at three widths, checks undo and project save, and compares
+the source without changing the saved working texture.
+It then prepares a verified native texture candidate at three widths, reviews
+the physical row/affected aliases, cancels and confirms Apply, recovers the prior
+absence, and closes during an owned preparation to prove cancellation.
+Native item metadata follows the same three-width prepare, cancel/confirm,
+Apply, prior-absence recovery and owned-process cancellation proof. Regular
+smoke additionally checks source/saved-copy/draft guards, retained stale recovery
+and explicit selected-item reopen behavior.
+Native Cliloc follows with a paged current/exported string review at the same
+three widths, explicit cancel/confirm, Apply, prior-absence recovery and owned
+preparation cancellation. Normal smoke checks source/saved-copy/selection guards,
+invalid pending text and the native action's initial state.
+Native sound follows with current/export name, duration and sample-count review,
+audition of both PCM buffers, physical aliases, three-width captures, explicit
+cancel/confirm Apply, exact prior-absence recovery and owned-job cancellation.
+Normal smoke checks native sound source/saved-copy/revision/selection guards.
+The normal full smoke also checks metadata drafts across selection, UTF-8
+validation, named-flag bit preservation, save/history, draft recovery and the
+source comparison's restoration of the overlay.
+
 ## What it does
 
 1. `dotnet build` of `godot/GUO/GUO.csproj`. The addon is C# in the game

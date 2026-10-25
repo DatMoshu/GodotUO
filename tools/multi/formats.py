@@ -4,7 +4,8 @@ Written from the format descriptions in the research notes (layouts only; no cod
 A tile is `Tile(item, x, y, z, visible, hue, level)`: hue and level are carried where a format has them
 (UOA binary: both; WSC, CentrED# CSV: hue) and are 0 elsewhere.
 
-  txt       one `0xID x y z flags` per line: UOFiddler's text export, the Ultima SDK text (decimal ids read too)
+  txt       GUO legacy text: decimal IDs unless explicitly prefixed with 0x
+  txt-fiddler Fiddler 4.24 text: hexadecimal IDs, int16 offsets, preserved int32 flags
   uoa       UO Architect's text: 4 header lines, then `id x y z flags` (also the Sphere multi text)
   uoab      UO Architect's binary designs: version 1 (one design) or 2 (a count of them)
   wsc       `SECTION WORLDITEM i { ID X Y Z Color }` blocks
@@ -14,13 +15,13 @@ A tile is `Tile(item, x, y, z, visible, hue, level)`: hue and level are carried 
   uox3      `[HOUSE ITEM i]` blocks of `ITEM=0x.. X= Y= Z=`
 
 `detect` picks a format from a file's name and head; `read`/`write` take a format name. Multi components
-use flags 1 visible / 0 hidden in every text format.
+use boolean visibility; txt-fiddler additionally retains the original signed flags.
 """
 from __future__ import annotations
 
 import re
 import struct
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import sys
@@ -38,6 +39,8 @@ class Tile:
     visible: bool = True
     hue: int = 0
     level: int = 0
+    text_flags: int | None = None
+    text_extra: int | None = None
 
     def component(self) -> Component:
         return Component(self.item, self.x, self.y, self.z, self.visible)
@@ -84,6 +87,85 @@ def read_txt(text: str) -> list[Tile]:
 
 def write_txt(tiles: list[Tile]) -> str:
     return "".join(f"0x{t.item:04X} {t.x} {t.y} {t.z} {1 if t.visible else 0}\n" for t in tiles)
+
+
+def read_fiddler_txt(text: str, *, check_size: bool = True) -> list[Tile]:
+    """Fiddler 4.24: hexadecimal item IDs, signed decimal offsets and int32 flags."""
+    if check_size and len(text.encode('utf-8')) > 4 * 1024 * 1024:
+        raise FormatError('Fiddler TXT exceeds 4 MiB')
+    out = []
+    for number, line in enumerate(text.splitlines(), 1):
+        if not line.strip(): continue
+        fields = line.split()
+        if len(fields) != 5:
+            raise FormatError(f'Fiddler TXT line {number}: expected hexadecimal ID, X, Y, Z and flags')
+        try:
+            ident = fields[0].removeprefix('0x').removeprefix('0X')
+            if not re.fullmatch('[0-9a-fA-F]+', ident): raise ValueError('ID must be hexadecimal')
+            ident = ident.lstrip('0') or '0'
+            if len(ident) > 4: raise ValueError('ID must fit uint16')
+            item = int(ident, 16)
+            if any(not re.fullmatch('[+-]?[0-9]+', field) for field in fields[1:]): raise ValueError('offsets/flags must be decimal')
+            values = []
+            for field in fields[1:]:
+                digits = field.lstrip('+-').lstrip('0') or '0'
+                if len(digits) > 10: raise ValueError('offsets/flags are outside signed bounds')
+                values.append(int(digits) * (-1 if field.startswith('-') else 1))
+            x, y, z, flags = values
+            if any(not -32768 <= value <= 32767 for value in (x, y, z)) or not -(2**31) <= flags < 2**31:
+                raise ValueError('offsets must fit int16 and flags int32')
+            out.append(Tile(item, x, y, z, flags != 0, text_flags=flags))
+            if len(out) > 65535: raise ValueError('at most 65535 components')
+        except ValueError as error:
+            raise FormatError(f'Fiddler TXT line {number}: {error}') from error
+    if not out: raise FormatError('Fiddler TXT contains no components')
+    return out
+
+
+def write_fiddler_txt(tiles: list[Tile], *, allow_extra: bool = False) -> str:
+    if not allow_extra and any(t.text_extra not in (None,0) for t in tiles):
+        raise FormatError('This text format cannot preserve nonzero CSV Unk1; choose csv-fiddler')
+    out = []
+    if not tiles or len(tiles) > 65535: raise FormatError('Fiddler TXT requires 1 to 65535 components')
+    for tile in tiles:
+        flags = tile.text_flags if tile.text_flags is not None and (tile.text_flags != 0) == tile.visible else int(tile.visible)
+        values = (tile.item, tile.x, tile.y, tile.z, flags)
+        if any(type(value) is not int for value in values) or not 0 <= tile.item <= 65535 or any(not -32768 <= value <= 32767 for value in values[1:4]) or not -(2**31) <= flags < 2**31:
+            raise FormatError('Fiddler TXT requires uint16 IDs, int16 offsets and int32 flags')
+        out.append(f'0x{tile.item:X} {tile.x} {tile.y} {tile.z} {flags}\r\n')
+    result = ''.join(out)
+    if len(result) > 4 * 1024 * 1024: raise FormatError('Fiddler TXT exceeds 4 MiB')
+    return result
+
+
+def read_fiddler_uoa(text: str) -> list[Tile]:
+    """Fiddler UOA text: four header lines, decimal IDs, retained signed flags."""
+    if len(text.encode('utf-8')) > 4 * 1024 * 1024: raise FormatError('Fiddler UOA exceeds 4 MiB')
+    ls = text.splitlines()
+    if len(ls) < 5: raise FormatError('Fiddler UOA requires four header lines and components')
+    count_field = ls[3].split()
+    if not count_field or not re.fullmatch('[+]?[0-9]+', count_field[0]): raise FormatError('Fiddler UOA fourth header must start with a decimal component count')
+    digits = count_field[0].lstrip('+0') or '0'
+    if len(digits) > 5 or not 1 <= int(digits) <= 65535: raise FormatError('Fiddler UOA requires 1 to 65535 components')
+    count = int(digits)
+    if len(ls) - 4 != count: raise FormatError(f'Fiddler UOA header declares {count} components, found {len(ls)-4}')
+    canonical = []
+    for number, line in enumerate(ls[4:], 5):
+        fields = line.split()
+        if len(fields) != 5 or not re.fullmatch('[+]?[0-9]+', fields[0]): raise FormatError(f'Fiddler UOA line {number}: expected decimal ID X Y Z Flags')
+        ident = fields[0].lstrip('+0') or '0'
+        if len(ident) > 5 or int(ident) > 65535: raise FormatError(f'Fiddler UOA line {number}: ID must fit uint16')
+        canonical.append(f'0x{int(ident):X} ' + ' '.join(fields[1:]))
+    try: return read_fiddler_txt('\n'.join(canonical), check_size=False)
+    except FormatError as error:
+        message = re.sub(r'line (\d+)', lambda match: 'line '+str(int(match[1])+4), str(error))
+        raise FormatError(message.replace('Fiddler TXT','Fiddler UOA')) from error
+
+
+def write_fiddler_uoa(tiles: list[Tile]) -> str:
+    canonical = write_fiddler_txt(tiles)
+    records = [line.split(' ', 1) for line in canonical.splitlines()]
+    return f'6 version\r\n1 template id\r\n-1 item version\r\n{len(tiles)} num components\r\n' + ''.join(f'{int(ident,16)} {rest}\r\n' for ident,rest in records)
 
 
 # --- UOA text ----------------------------------------------------------------------------------
@@ -224,7 +306,100 @@ def write_wsc(tiles: list[Tile]) -> str:
                    for i, t in enumerate(tiles))
 
 
+def read_fiddler_wsc(text: str, dynamic_ids=()) -> list[Tile]:
+    """Bounded complete WSC records with Fiddler's coordinate/dynamic-ID semantics.
+
+    Refuse its 0xFFFF sentinel defect and incomplete/duplicate fields instead of
+    returning zero-filled or inherited components. Unknown world fields are inert.
+    """
+    if len(text.encode('utf-8')) > 4 * 1024 * 1024: raise FormatError('Fiddler WSC exceeds 4 MiB')
+    out, fields = [], None
+    def finish():
+        if fields is None: return
+        if not {'ID','X','Y','Z'} <= fields.keys(): raise FormatError('Fiddler WSC requires ID, X, Y and Z in every section')
+        ident = fields['ID']
+        if not 0 <= ident < 65535: raise FormatError('Fiddler WSC ID must be 0..65534; 65535 is the reader sentinel')
+        if any(not -32768 <= fields[k] <= 32767 for k in ('X','Y','Z')): raise FormatError('Fiddler WSC offsets must fit int16')
+        out.append(Tile(ident, fields['X'], fields['Y'], fields['Z'], ident not in dynamic_ids,
+                        text_flags=0 if ident in dynamic_ids else 1))
+        if len(out) > 65535: raise FormatError('Fiddler WSC exceeds 65535 components')
+    for number, line in enumerate(text.splitlines(),1):
+        line = line.strip()
+        if line.startswith('SECTION WORLDITEM'):
+            finish(); fields = {}
+        elif line and line not in ('{','}'):
+            words = line.split()
+            if words[0] in ('ID','X','Y','Z'):
+                if fields is None or len(words) != 2 or words[0] in fields or not re.fullmatch('[+-]?[0-9]+',words[1]):
+                    raise FormatError(f'Fiddler WSC line {number}: expected one decimal {words[0]} field per section')
+                digits = words[1].lstrip('+-0') or '0'
+                if len(digits)>5: raise FormatError(f'Fiddler WSC line {number}: numeric overflow')
+                fields[words[0]] = int(digits) * (-1 if words[1].startswith('-') else 1)
+    finish()
+    if not out: raise FormatError('Fiddler WSC requires 1 to 65535 components')
+    # Preserve the pinned reader's initial 10000 minimum and zero maximum.
+    min_x, min_y = min(10000,min(t.x for t in out)), min(10000,min(t.y for t in out))
+    max_x, max_y = max(0,max(t.x for t in out)), max(0,max(t.y for t in out))
+    if min_x>0 and min_y>0 and min_x>max_x-min_x and min_y>max_y-min_y:
+        out = [replace(t,x=t.x-min_x,y=t.y-min_y) for t in out]
+    return out
+
+
+def write_fiddler_wsc(tiles: list[Tile]) -> str:
+    write_fiddler_txt(tiles)  # shared strict ID, coordinate, flag and count validation
+    if any(t.item == 65535 for t in tiles): raise FormatError('Fiddler WSC cannot export sentinel ID 65535')
+    result = ''.join(f'SECTION WORLDITEM {i}\r\n{{\r\n\tID\t{t.item}\r\n\tX\t{t.x}\r\n\tY\t{t.y}\r\n\tZ\t{t.z}\r\n\tColor\t0\r\n}}\r\n' for i,t in enumerate(tiles))
+    if len(result) > 4 * 1024 * 1024: raise FormatError('Fiddler WSC output exceeds 4 MiB')
+    return result
+
+
 # --- CSV ---------------------------------------------------------------------------------------
+
+def _fiddler_hex32(token: str) -> int:
+    digits=token[2:] if token[:2].lower()=='0x' else token
+    if not re.fullmatch('[0-9a-fA-F]+',digits): raise FormatError('expected hexadecimal int32')
+    digits=digits.lstrip('0') or '0'
+    if len(digits)>8: raise FormatError('hexadecimal value exceeds int32 bits')
+    value=int(digits,16)
+    return value if value<2**31 else value-2**32
+
+
+def read_fiddler_csv(text: str) -> list[Tile]:
+    if len(text.encode('utf-8'))>4*1024*1024: raise FormatError('Fiddler CSV exceeds 4 MiB')
+    out=[]
+    for number,line in enumerate(text.splitlines(),1):
+        if line.strip().startswith('TileID,OffsetX'): continue
+        try:
+            fields=[f.strip() for f in line.split(',')]
+            if len(fields) not in (5,6): raise FormatError('expected ID,X,Y,Z,Flag and optional Unk1')
+            flags=_fiddler_hex32(fields[4]); extra=fields[5] if len(fields)>5 else ''
+            if not extra: value=0
+            elif extra.lower().startswith('0x'): value=_fiddler_hex32(extra)
+            else:
+                if not re.fullmatch('[+-]?[0-9]+',extra): raise FormatError('Unk1 must be decimal or 0x-prefixed int32')
+                digits=extra.lstrip('+-0') or '0'
+                if len(digits)>10: raise FormatError('Unk1 exceeds int32')
+                value=int(digits)*(-1 if extra.startswith('-') else 1)
+                if not -(2**31)<=value<2**31: raise FormatError('Unk1 exceeds int32')
+            tile=read_fiddler_txt(' '.join(fields[:4])+f' {flags}',check_size=False)[0]
+            out.append(replace(tile,text_extra=value))
+            if len(out)>65535: raise FormatError('at most 65535 components')
+        except FormatError as error: raise FormatError(f'Fiddler CSV line {number}: {error}') from error
+    if not out: raise FormatError('Fiddler CSV contains no components')
+    return out
+
+
+def write_fiddler_csv(tiles: list[Tile]) -> str:
+    canonical=write_fiddler_txt(tiles,allow_extra=True)
+    records=[line.split() for line in canonical.splitlines()]
+    out=['TileID,OffsetX,OffsetY,OffsetZ,Flag,Unk1\r\n']
+    for tile,record in zip(tiles,records):
+        extra=tile.text_extra if tile.text_extra is not None else 0
+        if type(extra) is not int or not -(2**31)<=extra<2**31: raise FormatError('Fiddler CSV Unk1 must be int32')
+        out.append(f'0x{tile.item:04x},{tile.x},{tile.y},{tile.z},0x{int(record[4]) & 0xffffffff:x},0x{extra & 0xffffffff:x}\r\n')
+    result=''.join(out)
+    if len(result)>4*1024*1024: raise FormatError('Fiddler CSV output exceeds 4 MiB')
+    return result
 
 def _csv_rows(text: str) -> list[list[str]]:
     return [[c.strip() for c in ln.split(",")] for ln in lines(text)]
@@ -293,10 +468,23 @@ def write_uox3(tiles: list[Tile]) -> str:
                    for i, t in enumerate(tiles))
 
 
+def write_fiddler_uox3(tiles: list[Tile]) -> str:
+    write_fiddler_txt(tiles)  # shared scalar/count validation and nonzero Unk1 guard
+    result = ''.join(f'[HOUSE ITEM {i}]\r\n{{\r\nITEM=0x{t.item:04X}\r\nX={t.x}\r\nY={t.y}\r\nZ={t.z}\r\n}}\r\n\r\n'
+                     for i,t in enumerate(tiles))
+    if len(result)>4*1024*1024: raise FormatError('Fiddler UOX3 output exceeds 4 MiB')
+    return result
+
+
 # --- dispatch ----------------------------------------------------------------------------------
 
 FORMATS = {
-    "txt": "UOFiddler / Ultima SDK text", "uoa": "UO Architect text", "uoab": "UO Architect binary",
+    "uox3-fiddler": "Fiddler UOX3 (reviewed export only)",
+    "csv-fiddler": "Fiddler CSV (hex IDs/flags, retained Unk1)",
+    "wsc-fiddler": "Fiddler WSC (reviewed world items)",
+    "uoa-fiddler": "UO Architect text (Fiddler)",
+    "txt-fiddler": "Fiddler TXT (hexadecimal IDs)",
+    "txt": "GUO legacy text (decimal IDs unless 0x-prefixed)", "uoa": "UO Architect text", "uoab": "UO Architect binary",
     "wsc": "WSC worldfile", "csv-punt": "CSV (Punt)", "csv-swerv": "CSV (SwervUO)",
     "centred": "CentrED# blueprint / selection CSV", "uox3": "UOX3 house items",
 }
@@ -323,11 +511,12 @@ def detect(name: str, head: bytes) -> str:
 
 
 def read(fmt: str, data: bytes) -> list[Tile]:
+    if fmt=='uox3-fiddler': raise FormatError('Fiddler UOX3 is export-only; use legacy uox3 to read house-item blocks')
     if fmt == "uoab":
         ds = read_uoab(data)
         return [t for d in ds for t in d.tiles]
     text = data.decode("utf-8-sig", "replace")
-    readers = {"txt": read_txt, "uoa": read_uoa, "wsc": read_wsc, "csv-punt": read_csv, "csv-swerv": read_csv,
+    readers = {"txt": read_txt, "txt-fiddler": read_fiddler_txt, "uoa-fiddler": read_fiddler_uoa, "wsc-fiddler": read_fiddler_wsc, "csv-fiddler":read_fiddler_csv, "uoa": read_uoa, "wsc": read_wsc, "csv-punt": read_csv, "csv-swerv": read_csv,
                "centred": read_csv, "uox3": read_uox3}
     if fmt not in readers:
         raise FormatError(f"format '{fmt}': {', '.join(FORMATS)}")
@@ -335,13 +524,17 @@ def read(fmt: str, data: bytes) -> list[Tile]:
 
 
 def write(fmt: str, tiles: list[Tile], name: str = "multi") -> bytes:
+    if fmt=='uox3-fiddler': return write_fiddler_uox3(tiles).encode('ascii')
+    if fmt!='csv-fiddler' and any(t.text_extra not in (None,0) for t in tiles):
+        raise FormatError('This format cannot preserve nonzero CSV Unk1; choose csv-fiddler')
+    if fmt=='csv-fiddler': return write_fiddler_csv(tiles).encode('ascii')
     if fmt == "uoab":
         return write_uoab([Design(name, "GUO", "Generated", tiles)])
     if fmt.startswith("csv-"):
         return write_csv(tiles, fmt[4:]).encode("utf-8")
     if fmt == "centred":
         return write_csv(tiles, "centred").encode("utf-8")
-    writers = {"txt": write_txt, "uoa": write_uoa, "wsc": write_wsc, "uox3": write_uox3}
+    writers = {"txt": write_txt, "txt-fiddler": write_fiddler_txt, "uoa-fiddler": write_fiddler_uoa, "wsc-fiddler": write_fiddler_wsc, "uoa": write_uoa, "wsc": write_wsc, "uox3": write_uox3}
     if fmt not in writers:
         raise FormatError(f"format '{fmt}': {', '.join(FORMATS)}")
     return writers[fmt](tiles).encode("utf-8")
@@ -353,4 +546,4 @@ def recentre(tiles: list[Tile]) -> list[Tile]:
         return tiles
     cx = (min(t.x for t in tiles) + max(t.x for t in tiles)) // 2
     cy = (min(t.y for t in tiles) + max(t.y for t in tiles)) // 2
-    return [Tile(t.item, t.x - cx, t.y - cy, t.z, t.visible, t.hue, t.level) for t in tiles]
+    return [replace(t,x=t.x-cx,y=t.y-cy) for t in tiles]
