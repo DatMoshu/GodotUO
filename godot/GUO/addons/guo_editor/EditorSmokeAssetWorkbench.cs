@@ -21,6 +21,18 @@ public partial class EditorSmoke
     private SoundStageDialog _soundStageProof;
     private System.Threading.Tasks.Task _soundStageTask;
     private System.Threading.Tasks.Task _hueStageTask;
+    private ConfirmationDialog _assetCanceledDialog;
+    private Action _assetAfterCancel;
+    private string _assetCancelCheck;
+
+    private void CancelAssetProof(ConfirmationDialog dialog, string check, Action resume)
+    {
+        // A real click queues the dialog for deletion. Opening its replacement
+        // in this same frame leaves the old exclusive child registered in Godot.
+        dialog.GetCancelButton().EmitSignal(Button.SignalName.Pressed);
+        MetadataCheck(check + "_queues_close", dialog.IsQueuedForDeletion());
+        _assetCanceledDialog = dialog; _assetCancelCheck = check; _assetAfterCancel = resume;
+    }
     private void CheckAssetWorkbench(ArtPanel art, int id)
     {
         art.SelectKind(false); art.Search($"0x{id:X4}");
@@ -90,6 +102,15 @@ public partial class EditorSmoke
 
     private void StepAssetWorkbenchProof()
     {
+        if (_assetAfterCancel != null)
+        {
+            bool closed = !IsInstanceValid(_assetCanceledDialog);
+            MetadataCheck(_assetCancelCheck + "_dialog_closed", closed);
+            Action resume = _assetAfterCancel; _assetAfterCancel = null; _assetCanceledDialog = null;
+            if (!closed) { Finish(); return; }
+            resume();
+            return;
+        }
         if (!_data.IsLoaded)
         {
             if (_elapsed > TimeoutSeconds) { _failures.Add(_data.Error ?? "Assets proof: client data did not load"); Finish(); }
@@ -442,12 +463,15 @@ public partial class EditorSmoke
             _assetsProofStep++;
             if (_assetsProofStep == 42) { GetWindow().Size = AssetProofSize(1024, 768); return; }
             if (_assetsProofStep == 43) { GetWindow().Size = AssetProofSize(1920, 1080); return; }
-            _textureImportProof.EmitSignal(ConfirmationDialog.SignalName.Canceled);
-            MetadataCheck("texture_review_cancel_preserves_document", !textureDocument.IsDirty && textureDocument.Size == textureDocument.SourceSize);
-            using Image fixture = TextureFixture(128);
-            _textureImportProof = texturePanel.OpenImportReview(textureDocument, fixture.SavePngToBuffer(), "texture-128-fixture.png");
-            _textureImportProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed);
-            GetWindow().Size = AssetProofSize(1366, 900); return;
+            CancelAssetProof(_textureImportProof, "texture_review_cancel", () =>
+            {
+                MetadataCheck("texture_review_cancel_preserves_document", !textureDocument.IsDirty && textureDocument.Size == textureDocument.SourceSize);
+                using Image fixture = TextureFixture(128);
+                _textureImportProof = texturePanel.OpenImportReview(textureDocument, fixture.SavePngToBuffer(), "texture-128-fixture.png");
+                _textureImportProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed);
+                GetWindow().Size = AssetProofSize(1366, 900);
+            });
+            return;
         }
         if (_assetsProofStep <= 46)
         {
@@ -493,9 +517,12 @@ public partial class EditorSmoke
             _textureStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed);
             var applyReview = _textureStageProof.GetChildren().OfType<ConfirmationDialog>().Last();
             MetadataCheck("texture_native_apply_requires_confirmation", !_textureStageProof.Applied && !Directory.Exists(_textureStageProof.Destination.Text));
-            applyReview.EmitSignal(ConfirmationDialog.SignalName.Canceled);
-            MetadataCheck("texture_native_cancel_apply_keeps_stage", !_textureStageProof.Applied && !Directory.Exists(_textureStageProof.Destination.Text));
-            _textureStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); return;
+            CancelAssetProof(applyReview, "texture_native_cancel", () =>
+            {
+                MetadataCheck("texture_native_cancel_apply_keeps_stage", !_textureStageProof.Applied && !Directory.Exists(_textureStageProof.Destination.Text));
+                _textureStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed);
+            });
+            return;
         }
         if (_assetsProofStep == 52)
         {
@@ -543,9 +570,12 @@ public partial class EditorSmoke
             _metadataStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed);
             var confirm = _metadataStageProof.GetChildren().OfType<ConfirmationDialog>().Last();
             MetadataCheck("metadata_native_apply_requires_confirmation", !_metadataStageProof.Applied && !Directory.Exists(_metadataStageProof.Destination.Text));
-            confirm.EmitSignal(ConfirmationDialog.SignalName.Canceled);
-            MetadataCheck("metadata_native_cancel_apply_keeps_stage", !_metadataStageProof.Applied && !Directory.Exists(_metadataStageProof.Destination.Text));
-            _metadataStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); return;
+            CancelAssetProof(confirm, "metadata_native_cancel", () =>
+            {
+                MetadataCheck("metadata_native_cancel_apply_keeps_stage", !_metadataStageProof.Applied && !Directory.Exists(_metadataStageProof.Destination.Text));
+                _metadataStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed);
+            });
+            return;
         }
         if (_assetsProofStep == 59)
         {
@@ -592,9 +622,12 @@ public partial class EditorSmoke
             var confirm = _clilocStageProof.GetChildren().OfType<ConfirmationDialog>().Last();
             MetadataCheck("cliloc_native_confirmation_fits_1024", confirm.Size.X <= GetWindow().Size.X && confirm.Size.Y <= GetWindow().Size.Y);
             MetadataCheck("cliloc_native_apply_requires_confirmation", !_clilocStageProof.Applied && !Directory.Exists(_clilocStageProof.Destination.Text));
-            confirm.EmitSignal(ConfirmationDialog.SignalName.Canceled);
-            MetadataCheck("cliloc_native_cancel_apply_keeps_stage", !_clilocStageProof.Applied && !Directory.Exists(_clilocStageProof.Destination.Text));
-            _clilocStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); return;
+            CancelAssetProof(confirm, "cliloc_native_cancel", () =>
+            {
+                MetadataCheck("cliloc_native_cancel_apply_keeps_stage", !_clilocStageProof.Applied && !Directory.Exists(_clilocStageProof.Destination.Text));
+                _clilocStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed);
+            });
+            return;
         }
         if (_assetsProofStep == 66)
         {
@@ -644,9 +677,12 @@ public partial class EditorSmoke
             var confirm = _soundStageProof.GetChildren().OfType<ConfirmationDialog>().Last();
             MetadataCheck("sound_native_confirmation_fits_1024", confirm.Size.X <= GetWindow().Size.X && confirm.Size.Y <= GetWindow().Size.Y);
             MetadataCheck("sound_native_apply_requires_confirmation", !_soundStageProof.Applied && !Directory.Exists(_soundStageProof.Destination.Text));
-            confirm.EmitSignal(ConfirmationDialog.SignalName.Canceled);
-            MetadataCheck("sound_native_cancel_apply_keeps_stage", !_soundStageProof.Applied && !Directory.Exists(_soundStageProof.Destination.Text));
-            _soundStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed); return;
+            CancelAssetProof(confirm, "sound_native_cancel", () =>
+            {
+                MetadataCheck("sound_native_cancel_apply_keeps_stage", !_soundStageProof.Applied && !Directory.Exists(_soundStageProof.Destination.Text));
+                _soundStageProof.EmitSignal(ConfirmationDialog.SignalName.Confirmed);
+            });
+            return;
         }
         if (_assetsProofStep == 73)
         {
