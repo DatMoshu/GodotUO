@@ -139,6 +139,8 @@ public partial class BatcherProbe : Node
         Stage("incremental cover candidates");
         await VerifyRetainedCanvas(batcher, viewport);
         Stage("retained canvas commands");
+        await VerifyCanvasClearPrefix(batcher, viewport);
+        Stage("active-prefix canvas clear");
         await VerifyDeferredVisibility(batcher, viewport);
         Stage("deferred retained visibility");
         await VerifyUiTextureCommands(batcher, viewport);
@@ -153,6 +155,8 @@ public partial class BatcherProbe : Node
         await VerifyUiTransform(batcher, viewport, ramp);
         Stage("gump transform and clipping");
 
+        await VerifyMultiMeshAbort(batcher, viewport);
+        Stage("queued MultiMesh abort recovery");
         batcher.Dispose();
 
         await VerifySharedCoverSpriteFallback(host, viewport, palette, ramp);

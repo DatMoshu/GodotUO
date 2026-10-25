@@ -3454,6 +3454,16 @@ diagnostic mode, not an ordinary shared-cover timing arm.
 disables Enhanced HD, sprite/static/terrain shadows and animated water. Its
 effective profile description includes these values and ambient density. The
 ordinary client defaults and the existing `plain` preset are unchanged.
+
+`GUO_CANVAS_CLEAR_USED=1` is an off-by-default ordinary-canvas experiment:
+after a non-retained frame it clears the previous used item prefix, leaving
+the already-empty unused tail alone. Retained frames and transitions out of
+retention or recovery keep full-pool processing; the legacy GPU path is unchanged.
+`clear_used_canvas` is an effective boolean experiment-arm dimension. The
+scene's `canvas_owner_clears` counts native ownership clears per measured frame.
+`items_allocated` is the pooled item high-water size, not new allocations per
+frame; compare it with `batcher_items` to identify unused capacity. Reduced
+clear calls alone do not establish a frame-time improvement.
 `--experiment-arm FILE` permits only explicitly named boolean optimization
 dimensions to vary; each arm records its name and expected effective flags.
 Undeclared flags, scene state and diagnostics still bind. See the perf probe README.

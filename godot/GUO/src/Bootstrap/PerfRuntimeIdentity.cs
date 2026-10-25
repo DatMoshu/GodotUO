@@ -37,7 +37,8 @@ internal static class PerfRuntimeIdentity
                 shared_cover = GUO.Renderer.UltimaBatcher2D.SharedCover,
                 shared_cover_shader = GUO.Renderer.UltimaBatcher2D.SharedCoverShader,
                 shared_cover_reference = GUO.Renderer.UltimaBatcher2D.SharedCoverReference,
-                multimesh_sprites = GUO.Renderer.UltimaBatcher2D.MultiMeshSprites
+                multimesh_sprites = GUO.Renderer.UltimaBatcher2D.MultiMeshSprites,
+                clear_used_canvas = GUO.Renderer.UltimaBatcher2D.ClearUsedCanvas
             },
             parameters = new { multimesh_min_run = GUO.Renderer.UltimaBatcher2D.MultiMeshMinRun },
             engine_version = Godot.Engine.GetVersionInfo()["string"].AsString(),

@@ -266,6 +266,9 @@ namespace GUO.Renderer
         private readonly int[] _cuts = new int[(int)CutReason.Count];
         public static int[] LastCuts = new int[(int)CutReason.Count];
         public static int LastItemsAllocated;
+        // Opt-in submission experiment: an ordinary unused tail was cleared
+        // on its first idle frame. Keep the reference path and retained lifecycle.
+        internal static bool ClearUsedCanvas = System.Environment.GetEnvironmentVariable("GUO_CANVAS_CLEAR_USED") == "1";
 
         /// <summary>Frames begun since start: the perf probe checks every measured frame really drew.</summary>
         public static long FramesBegun;
@@ -493,9 +496,11 @@ namespace GUO.Renderer
         /// synchronous frame will call <see cref="EndFrame"/> in a finally block.</summary>
         public void BeginFrame(bool deferRetainedHiding)
         {
+            bool previousRetainedFrame = _retainCanvasFrame;
+            bool recovering = _deferredCanvasFrameOpen || _canvasRecoveryPending;
             // PORT DEVIATION (GUO): a missing EndFrame must not carry a
             // partially matched old stream into the next frame, even in Release.
-            if (_deferredCanvasFrameOpen || _canvasRecoveryPending)
+            if (recovering)
                 RecoverDeferredCanvasFrame(throwOnFailure: true);
             _retainCanvasFrame = RetainCanvas;
             int itemsToClear = _items.Count;
@@ -508,6 +513,13 @@ namespace GUO.Renderer
 #endif
             EnsureNotStarted();
             FinishCanvasCommands();
+            // Select the prior used prefix only after pending work is finalized.
+            // Recovery and retained transitions retain the conservative full clear.
+            if (ClearUsedCanvas && !recovering && !previousRetainedFrame && !_retainCanvasFrame && !GpuWorld.Enabled
+#if GUO_LABS
+                && !GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled
+#endif
+                ) itemsToClear = _itemCount;
             // RD owns its late visibility election; legacy GPU capture keeps
             // its existing eager lifecycle. Ordinary embedded/probe callers
             // retain the default behavior without needing an EndFrame call.

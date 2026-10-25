@@ -77,11 +77,12 @@ def test_requested_minimap_drift_rejects_even_if_effective_state_matches(cohort_
     assert baseline_path(cfg).read_bytes() == before
 
 
-def test_unexpected_optimization_flag_drift_rejects(cohort_gate):
+@pytest.mark.parametrize("flag", ["retained_canvas", "clear_used_canvas"])
+def test_unexpected_optimization_flag_drift_rejects(cohort_gate, flag):
     cfg, _, state = cohort_gate
     assert run_gate([*ARGS, "--record-baseline"]) == 0
     before = baseline_path(cfg).read_bytes()
-    state["report"]["runtime_identity"]["effective_flags"]["retained_canvas"] = True
+    state["report"]["runtime_identity"]["effective_flags"][flag] = True
     assert run_gate(ARGS) == 2
     assert baseline_path(cfg).read_bytes() == before
 

@@ -540,6 +540,7 @@ internal static partial class PerfProbe
             GUO.Utility.RuntimeTimings.Enabled = true;
         }
         long drawsBefore = UltimaBatcher2D.FramesBegun;
+        long ownerClearsBefore = UltimaBatcher2D.CanvasOwnerClears;
         long landLookupsBefore = GUO.Game.Map.Chunk.FirstLandLookups;
         long landScansBefore = GUO.Game.Map.Chunk.FirstLandScans;
         long landNodesBefore = GUO.Game.Map.Chunk.FirstLandNodes;
@@ -814,6 +815,7 @@ internal static partial class PerfProbe
             ["cover_queued"] = System.Math.Round(coverQueued / n, 1),
             ["chunks_skipped"] = System.Math.Round(chunksSkipped / n, 1),
             ["items_allocated"] = System.Math.Round(itemsAllocated / n, 1),
+            ["canvas_owner_clears"] = System.Math.Round((double)(UltimaBatcher2D.CanvasOwnerClears - ownerClearsBefore) / n, 1),
             ["cuts_total"] = System.Math.Round(cuts.Sum() / n, 1),
             ["cuts_cover"] = System.Math.Round(cuts[(int)UltimaBatcher2D.CutReason.Cover] / n, 1),
             ["cuts_material"] = System.Math.Round(cuts[(int)UltimaBatcher2D.CutReason.Material] / n, 1),
