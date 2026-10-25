@@ -25,7 +25,7 @@ PROJECT = HERE / "cli" / "GuoMapGen.Cli.csproj"
 
 
 def output_dir(root: Path) -> Path:
-    return root / "build" / "mapgen" / "cli"
+    return load_config(root).build / "mapgen" / "cli"
 
 
 def cli_path(root: Path) -> Path:

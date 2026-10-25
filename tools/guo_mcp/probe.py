@@ -23,7 +23,7 @@ def main():
     args = parser.parse_args()
     cfg = load_config()
     root = Path(__file__).resolve().parents[2]
-    output = root / "build" / "mcp_probe"
+    output = cfg.build / "mcp_probe"
     output.mkdir(parents=True, exist_ok=True)
     with socket.socket() as available:
         available.bind(("127.0.0.1", 0))

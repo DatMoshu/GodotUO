@@ -9,6 +9,7 @@ import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from asset_store.content_examples import build
+from guo.config import load_config
 
 
 def main():
@@ -23,8 +24,10 @@ def main():
     parser.add_argument("--data", default=os.environ.get("UO_CLIENT_DATA"), required=not bool(os.environ.get("UO_CLIENT_DATA")))
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
+    output = load_config(root).build
+    output.mkdir(parents=True, exist_ok=True)
     tool = root / "tools/asset_store/headless/bin/Debug/net8.0/StoreSmoke.dll"
-    with tempfile.TemporaryDirectory(prefix="content-probe-", dir=root / "build") as temporary:
+    with tempfile.TemporaryDirectory(prefix="content-probe-", dir=output) as temporary:
         work = Path(temporary)
         examples, installed = work / "examples", work / "store"
         build(examples)
@@ -52,12 +55,12 @@ def main():
         lock.write_text(json.dumps(value, indent=2), encoding="utf-8")
         if args.server_export:
             command("export-server", installed, lock, args.server_export.resolve())
-        proof = root / "build/asset_packs/runtime-pixels.png"
+        proof = output / "asset_packs/runtime-pixels.png"
         proof.parent.mkdir(parents=True, exist_ok=True)
         env = dict(os.environ, UO_CLIENT_DATA=args.data, UO_CONTENT_STORE=str(installed), UO_CONTENT_LOCK=str(lock), UO_CONTENT_PROOF_IMAGE=str(proof), UO_CONTENT_PROBE_LAND="3" if args.shared_world or args.collision_world else "580", UO_CONTENT_PROBE_COLLISION="1" if args.collision_world else "0")
         if args.visual:
             if not args.deployment_ui: parser.error("--visual requires --deployment-ui")
-            env["UO_DEPLOYMENT_PROOF_IMAGE"] = str(root / "build/asset_packs" / ("deployment-ui-compact.png" if args.compact else "deployment-ui.png"))
+            env["UO_DEPLOYMENT_PROOF_IMAGE"] = str(output / "asset_packs" / ("deployment-ui-compact.png" if args.compact else "deployment-ui.png"))
         if args.compact: env["UO_DEPLOYMENT_PROOF_COMPACT"] = "1"
         scene = "StoreDeploymentProbe" if args.deployment_ui else "StoreContentProbe"
         subprocess.run([args.godot, *([] if args.visual else ["--headless"]), "--path", str(root / "godot/GUO"), f"res://src/Store/{scene}.tscn"], env=env, check=True, timeout=90)

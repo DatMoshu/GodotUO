@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 from asset_store.pack import verify
 from asset_store.run import publish
+from guo.config import load_config
 
 SOURCE = ROOT / "design/packs/jarjar-postfx"
 
@@ -57,7 +58,7 @@ def build(out):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", type=Path, default=ROOT / "build/asset_packs/jarjar-postfx-1.0.0.zip")
+    parser.add_argument("--out", type=Path, default=load_config(ROOT).build / "asset_packs/jarjar-postfx-1.0.0.zip")
     parser.add_argument("--store-dir", type=Path, help="Also publish to this local catalogue; no server or network")
     args = parser.parse_args()
     archive = build(args.out)

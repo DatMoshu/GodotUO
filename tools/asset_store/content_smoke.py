@@ -8,11 +8,14 @@ import threading
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from asset_store.content_examples import build
 from asset_store.run import server
+from guo.config import load_config
 
 
 def main():
     root = Path(__file__).resolve().parents[2]
-    with tempfile.TemporaryDirectory(prefix="content-http-", dir=root / "build") as temporary:
+    output = load_config(root).build
+    output.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="content-http-", dir=output) as temporary:
         work = Path(temporary)
         build(work / "examples", work / "cdn")
         with server(work / "cdn", port=0) as http:
