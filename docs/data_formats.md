@@ -3437,6 +3437,17 @@ changed exports, changed inputs and missing/mismatched samples fail. These
 artifacts prove identity and sample accounting, not quiet-host performance or
 completeness of a caller's fixture inventory. They remain private external output.
 
+The measured manifest's `cohort` binds actual global and per-scene window, zoom,
+renderer and minimap state; profile/PostFX, warm-up/sample/frame-target/route
+settings; and effective diagnostic modes (including interval counters, parity,
+raw sampling and the minimap request). Requested diagnostic environment values
+also remain in `requested.diagnostics`; route content is identified by the loaded
+route hash. Old manifests missing cohort fields require a fresh baseline.
+In manifest mode the local gate rejects cohort drift and preserves the baseline.
+`--experiment-arm FILE` permits only explicitly named boolean optimization
+dimensions to vary; each arm records its name and expected effective flags.
+Undeclared flags, scene state and diagnostics still bind. See the perf probe README.
+
 **Sustained GUO PerfDump**, `guo-samples.jsonl`: opt-in through
 `tools/perf_dump --only guo --sample-seconds N` (0 disables; 1–300 seconds),
 which sets the client diagnostic `GUO_PERF_SAMPLE_SECONDS`. After settling,

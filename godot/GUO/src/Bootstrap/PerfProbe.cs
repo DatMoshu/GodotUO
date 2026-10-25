@@ -722,6 +722,9 @@ internal static partial class PerfProbe
             ["frames"] = n,
             ["raw_frames"] = rawFrames,
             ["minimap_open"] = GUO.Game.Managers.UIManager.GetGump<GUO.Game.UI.Gumps.MiniMapGump>() != null,
+            ["window"] = $"{DisplayServer.WindowGetSize().X}x{DisplayServer.WindowGetSize().Y}",
+            ["zoom"] = System.Math.Round(Client.Game?.Scene?.Camera?.Zoom ?? 0, 2),
+            ["renderer"] = RenderingServer.GetCurrentRenderingMethod(),
             ["warmup_seconds"] = worldMeasurement ? _warmupSeconds : 0,
             ["sample_storage_grew"] = ms.Capacity > sampleCapacity || uploadMs.Capacity > sampleCapacity
                 || (_runtimeAttribution && atlasUploadMs.Capacity > sampleCapacity)
@@ -1150,6 +1153,15 @@ internal static partial class PerfProbe
                     ["label"] = label, ["window"] = $"{size.X}x{size.Y}", ["zoom"] = System.Math.Round(Client.Game?.Scene?.Camera?.Zoom ?? 0, 2),
                     ["sample_window_version"] = 2,
                     ["route_observation_version"] = 2,
+                    ["frame_target"] = Frames,
+                    ["walk_route_sha256"] = _walkRoute?.Hash ?? "",
+                    ["diagnostics"] = new
+                    {
+                        interval_counters = _intervalCounters, parity = _parity,
+                        parity_target = _coverCandidatesParity ? "cover-candidates" : _retainedCanvasParity ? "retained-canvas" : "configured",
+                        raw_frames = System.Environment.GetEnvironmentVariable("GUO_PERF_RAW_FRAMES") == "1",
+                        minimap_requested = System.Environment.GetEnvironmentVariable("GUO_PERF_MINIMAP") == "1"
+                    },
                     ["warmup_seconds"] = _warmupSeconds, ["walk_seconds"] = _walkSeconds,
                     ["measure_seconds"] = _measureSeconds,
                     ["walk_origin"] = _walkOrigin, ["runtime_attribution"] = _runtimeAttribution,

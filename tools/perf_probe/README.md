@@ -125,6 +125,27 @@ required before interpreting timings.
 `GUO_PERF_MINIMAP=1` restores PR161's explicit open-minimap cohort; each scene
 reports `minimap_open`. It does not change minimap storage or visibility timing.
 
+The manifest gate compares actual global and per-scene window/zoom/renderer,
+minimap state, profile/PostFX, warm-up/sample/route settings and diagnostic modes.
+It also records and compares the minimap request. Matching input hashes do not
+override changed effective state. Old reports missing these fields need a fresh
+baseline; invalid comparisons and failed replacements preserve existing bytes.
+
+To vary an optimization intentionally, pass `--experiment-arm arm.json` to the
+local gate on both runs. For example, the control file can contain
+`{"name":"control","flags":{"gpu_world":false}}`, and the candidate file
+`{"name":"candidate","flags":{"gpu_world":true}}`. The gate requires matching
+declared dimensions, verifies their actual values, and records both arms beside
+the result. Their corresponding `--args=--gpu-world=off` / `--args=--gpu-world=on`
+may differ. Only known switches wholly covered by the declaration are excluded
+from argument equality; all other arguments and all cohort state still bind.
+Environment-controlled flags such as `retained_canvas` use the same declaration.
+Allowed dimensions are the eight boolean fields in `runtime_identity.effective_flags`:
+`batched_world`, `merged_cover`, `merged_land`, `merged_land_ordered`,
+`merged_land_array`, `gpu_world`, `retained_canvas`, `retained_cover_candidates`.
+Declaring an arm does not enable it: use the existing runtime switch, and a request
+that did not take effect fails. The tool does not authorize running experiments.
+
 ## Tests
 
 ```

@@ -8,6 +8,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from .perf_cohort import effective_cohort
+
 
 def digest(path: Path) -> str:
     with path.open("rb") as stream:
@@ -110,9 +112,7 @@ def measured_manifest(build: dict, report: dict, before: dict, after: dict, requ
         raise ValueError("Loaded API MVID mismatch")
     return {"schema": "guo/measured-build@1", "build": build, "inputs": before,
             "requested": requested, "runtime": runtime,
-            "effective": {key: report.get(key) for key in (
-                "window", "zoom", "postfx", "profile", "static_world", "quiet_fixture",
-                "runtime_attribution", "warmup_seconds", "measure_seconds", "walk_seconds", "walk_origin")}}
+            "cohort": effective_cohort(report)}
 
 
 def raw_identities(report: dict, folder: Path) -> list[dict]:

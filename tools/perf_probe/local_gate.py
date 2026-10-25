@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from guo import load_config
 from guo.process import build_child_env
+from guo.perf_cohort import read_arm, invariant_args, effective_cohort, check_arm, compatible
 from gate import SCENES, TIMES, compare, host_cell, validate
 
 SCHEMA = "guo/perf_gate@1"
@@ -50,7 +51,9 @@ def context_for(args, cfg) -> dict:
     return {"machine": tag(platform.node() + "|" + platform.system() + "|" + platform.machine()),
             "window": args.size.replace(",", "x"), "zoom": args.zoom, "renderer": args.renderer,
             "client_version": cfg.client_version, "fixture": args.fixture,
-            "shard": tag(f"{cfg.shard_host}:{args.port or cfg.shard_port}"), "args": args.args,
+            "shard": tag(f"{cfg.shard_host}:{args.port or cfg.shard_port}"),
+            "args": invariant_args(args.args, args.arm),
+            "experiment_dimensions": sorted((args.arm or {}).get("flags", {})),
             "gate_flags": " ".join(GATE_FLAGS)}
 
 
@@ -179,6 +182,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--args", default="", help="extra client flags; must match the baseline exactly")
     parser.add_argument("--exe", type=Path, help="the exported Release GUO executable to time; required for a measurement")
     parser.add_argument("--manifest-inputs", type=Path, help="require verified build/runtime identity and raw frames")
+    parser.add_argument("--experiment-arm", type=Path,
+                        help="JSON name/flags declaration for intentional optimization changes; requires manifests")
     parser.add_argument("--dry-run", action="store_true",
                         help="check the export and print the probe command without launching anything")
     parser.add_argument("--from-report", type=Path,
@@ -188,6 +193,12 @@ def main(argv: list[str] | None = None) -> int:
     modes.add_argument("--replace-baseline", action="store_true", help="deliberately replace an existing baseline after a successful probe")
     modes.add_argument("--doctor", action="store_true", help="check local prerequisites without connecting to the shard")
     args = parser.parse_args(argv)
+    try:
+        args.arm = read_arm(args.experiment_arm)
+    except (OSError, ValueError) as exc:
+        parser.error(str(exc))
+    if args.arm and not args.manifest_inputs:
+        parser.error("--experiment-arm requires --manifest-inputs")
     if not math.isfinite(args.zoom) or args.zoom <= 0:
         parser.error("--zoom must be a finite positive number")
     if args.port is not None and not 1 <= args.port <= 65535:
@@ -244,6 +255,17 @@ def main(argv: list[str] | None = None) -> int:
         if args.manifest_inputs:
             manifest_path = cfg.build / "perf" / f"perf_{label}.manifest.json"
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            cohort = effective_cohort(report)
+            if manifest.get("cohort") != cohort:
+                raise ValueError("manifest cohort missing or differs from report")
+            if report["zoom"] != args.zoom or cohort["renderer"] != args.renderer:
+                raise ValueError("actual zoom/renderer differs from requested cohort")
+            for scene, state in cohort["scenes"].items():
+                if (state["window"] != context["window"] or state["renderer"] != args.renderer
+                        or scene != "login" and state["zoom"] != args.zoom):
+                    raise ValueError(f"actual {scene} window/zoom/renderer differs from requested cohort")
+            check_arm(cohort, args.arm)
+            measured["experiment_arm"] = args.arm
             measured["manifest"] = manifest
             measured["head"] = manifest["build"]["inputs"]["source"]["head"]
             measured["dirty"] = False
@@ -251,6 +273,14 @@ def main(argv: list[str] | None = None) -> int:
                 old = json.loads(baseline_path.read_text(encoding="utf-8")).get("provenance", {}).get("manifest")
                 if old is None or old.get("inputs") != manifest.get("inputs"):
                     raise ValueError("baseline lacks matching configuration/fixture manifest; use a separate baseline")
+                old_cohort = effective_cohort(baseline)
+                if old.get("cohort") != old_cohort:
+                    raise ValueError("baseline manifest lacks matching effective cohort; record a fresh baseline")
+                old_provenance = json.loads(baseline_path.read_text(encoding="utf-8"))["provenance"]
+                compatible(old_cohort, cohort, old_provenance.get("experiment_arm"), args.arm)
+                # Requested diagnostic switches bind too, even if an effective default currently matches.
+                if old.get("requested", {}).get("diagnostics") != manifest.get("requested", {}).get("diagnostics"):
+                    raise ValueError("requested diagnostic modes differ from baseline")
         if args.record_baseline or args.replace_baseline:
             write_baseline(baseline_path, context, report, args.replace_baseline, measured)
             print(f"[perf_gate] Baseline recorded: {baseline_path} (head {measured['head']}"
@@ -260,6 +290,9 @@ def main(argv: list[str] | None = None) -> int:
         recorded = json.loads(baseline_path.read_text(encoding="utf-8")).get("provenance") or {}
         summary += (f"\nBaseline head {recorded.get('head', 'unknown')}, measured head {measured['head']}"
                     f"{' (dirty tree)' if measured['dirty'] else ''}.\n")
+        if args.arm:
+            summary += "Declared experiment arms: " + json.dumps({"baseline": recorded.get("experiment_arm"),
+                                                                 "measured": args.arm}, sort_keys=True) + "\n"
         summary_path = out / f"{args.name}.{label}.md"
         summary_path.write_text(summary, encoding="utf-8")
         print(summary)

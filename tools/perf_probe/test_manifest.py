@@ -9,7 +9,22 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from guo.perf_manifest import cohort_inputs, export_files, measured_manifest, record_build, verify_build
 from guo.perf_manifest import raw_identities
+from guo.perf_cohort import FLAGS, effective_cohort
 from test_local_gate import setup_gate, run_gate, baseline_path
+from test_gate import report as gate_report
+
+
+def cohort_report():
+    report = gate_report()
+    report.update(zoom=1, profile="plain", profile_preset="", runtime_attribution=False,
+                  warmup_seconds=0, measure_seconds=30, walk_seconds=12, walk_origin="field",
+                  walk_route_sha256="", sample_window_version=2, route_observation_version=2, frame_target=360,
+                  diagnostics=dict(interval_counters=False, parity=False, parity_target="configured",
+                                   raw_frames=True, minimap_requested=False),
+                  runtime_identity=dict(renderer="forward_plus", effective_flags={key: False for key in FLAGS}))
+    for row in report["scenes"]:
+        row.update(window="1280x720", zoom=1, renderer="forward_plus", minimap_open=False, warmup_seconds=0)
+    return report
 
 
 @pytest.fixture
@@ -34,9 +49,11 @@ def receipt(exe):
 def runtime(build):
     identity = {field: build["files"][build[role]] for field, role in (
         ("executable_sha256", "executable"), ("client_sha256", "client"), ("godot_api_sha256", "godot_api"))}
-    identity.update(client_mvid="client-id", godot_api_mvid="api-id", engine_version="4.7.2", dotnet_runtime=".NET 8", os="test", renderer="forward_plus", effective_flags={"gpu_world": False})
-    return dict(runtime_identity=identity, godot_api_mvid="api-id", optimized=True,
-                godot_api_jit_optimized=True, engine_debug_build=False, export_template="release")
+    report = cohort_report()
+    identity.update(client_mvid="client-id", godot_api_mvid="api-id", engine_version="4.7.2", dotnet_runtime=".NET 8", os="test", **report["runtime_identity"])
+    report.update(runtime_identity=identity, godot_api_mvid="api-id", optimized=True,
+                  godot_api_jit_optimized=True, engine_debug_build=False, export_template="release")
+    return report
 
 
 def test_manifest_binds_export_and_loaded_files(export):
@@ -149,8 +166,11 @@ def test_gate_manifest_records_build_head_and_refuses_fixture_drift(setup_gate, 
         result = original(cmd, **kwargs)
         label = cmd[cmd.index("--label") + 1]
         assert "--manifest-inputs" in cmd
+        report = cohort_report()
+        (cfg.build / "perf" / f"perf_{label}.json").write_text(json.dumps(report))
         (cfg.build / "perf" / f"perf_{label}.manifest.json").write_text(json.dumps({
-            "build": {"inputs": {"source": {"head": "exact-export-head"}}}, "inputs": inputs}))
+            "build": {"inputs": {"source": {"head": "exact-export-head"}}}, "inputs": inputs,
+            "cohort": effective_cohort(report)}))
         return result
     monkeypatch.setattr(local_gate.subprocess, "run", run)
     args = ["--fixture", "test-world", "--manifest-inputs", "private-inputs.json"]

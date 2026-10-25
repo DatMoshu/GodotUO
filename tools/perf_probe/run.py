@@ -129,7 +129,8 @@ def main() -> int:
             {"size": args.size, "zoom": args.zoom, "renderer": args.renderer, "args": args.args,
              "diagnostics": {k: env[k] for k in ("GUO_PERF_RAW_FRAMES", "GUO_PERF_MANIFEST",
                  "GUO_PERF_WARMUP_SECONDS", "GUO_PERF_MEASURE_SECONDS", "GUO_PERF_WALK_SECONDS",
-                 "GUO_PERF_WALK_ORIGIN", "GUO_PERF_RUNTIME_ATTRIBUTION", "GUO_PERF_INTERVAL_COUNTERS") if k in env}})
+                 "GUO_PERF_WALK_ORIGIN", "GUO_PERF_RUNTIME_ATTRIBUTION", "GUO_PERF_INTERVAL_COUNTERS",
+                 "GUO_PERF_MINIMAP", "GUO_PERF_PARITY_CANVAS", "GUO_PERF_PARITY_COVER_CANDIDATES") if k in env}})
         manifest["raw_samples"] = raw_identities(report, out)
         (out / f"perf_{args.label}.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     md = out / f"perf_{args.label}.md"
