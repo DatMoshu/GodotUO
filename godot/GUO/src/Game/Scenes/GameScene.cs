@@ -721,6 +721,15 @@ namespace GUO.Game.Scenes
                     }
 
                     // PORT DEVIATION (GUO): ADR-0044, an unchanged chunk keeps its last walk.
+                    // PORT DEVIATION (GUO): ADR-0044. An off-screen chunk's walk
+                    // is skipped below after a reset; one already reset and
+                    // unchanged has nothing to clear, so it skips that too.
+                    if (SkipClearedOffScreen(chunk, built))
+                    {
+                        _visibleChunks.Add(chunk);
+                        continue;
+                    }
+
                     // Only the tiles in walkMask are walked; null walks the chunk whole.
                     ulong? walkMask = ReusableTiles(chunk, gatherInputs, built);
                     if (walkMask == 0 && !VerifyChunkReuse)
@@ -765,6 +774,8 @@ namespace GUO.Game.Scenes
                         {
                             chunk.ScreenPositionsStale = true;
                         }
+
+                        MarkOffScreenCleared(chunk, walkMask == null); // PORT DEVIATION (GUO): ADR-0044
 
                         RenderLists.ChunksSkipped++;
                         continue;

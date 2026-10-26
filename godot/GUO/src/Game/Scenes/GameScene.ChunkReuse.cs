@@ -55,7 +55,7 @@ internal partial class GameScene
         // could be culled then, and the tiles skipped since the view moved,
         // whose objects' screen positions are refreshed when next walked.
         internal Point Offset;
-        internal bool FullyInside;
+        internal bool FullyInside, OffScreenCleared;
         internal ulong StaleTiles;
         internal readonly List<(int Tile, GameObject Light)> Lights = new();
     }
@@ -172,6 +172,33 @@ internal partial class GameScene
         if (walkMask == null) walk.StaleTiles = 0;
         chunk.DirtyTiles = 0;
         _walkLights = null;
+    }
+
+    /// <summary>
+    /// Depth World: an off-screen chunk whose visibility a whole reset
+    /// already cleared, with no mesh rebuilt since, needs no reset again;
+    /// the moved-view bookkeeping of the ordinary skip still applies.
+    /// </summary>
+    private bool SkipClearedOffScreen(Chunk chunk, bool built)
+    {
+        if (!ChunkReuse || !DepthWorldProbe.Enabled || built || chunk.Walk is not { OffScreenCleared: true } walk)
+            return false;
+        if (!RenderLists.SkipOffScreenChunks || !ChunkOffScreen(chunk.X, chunk.Y))
+        {
+            walk.OffScreenCleared = false;
+            return false;
+        }
+        if (UpdateDrawPosition) chunk.ScreenPositionsStale = true;
+        RenderLists.ChunksSkipped++;
+        return true;
+    }
+
+    /// <summary>After the ordinary off-screen skip: its visibility is clear (if the reset was whole) and its walk record is gone.</summary>
+    private static void MarkOffScreenCleared(Chunk chunk, bool wholeReset)
+    {
+        chunk.Walk ??= new ChunkWalk();
+        chunk.Walk.Reusable = false;
+        chunk.Walk.OffScreenCleared = wholeReset;
     }
 
     /// <summary>True when every anchor the chunk can have, at any Z, is inside the walk's pixel window: no object is culled.</summary>
