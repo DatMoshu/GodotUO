@@ -38,6 +38,22 @@ namespace GUO.Renderer
         public const bool Uncapped = false;
 #endif
 
+        /// <summary>
+        /// PORT DEVIATION (GUO): <c>--zoom-max=N</c> lets the game camera zoom
+        /// out past upstream's 2.5, to N. Off unless given; Labs
+        /// <c>--depth-world</c> defaults it to 5.
+        /// </summary>
+        public static readonly float ZoomMax = ReadZoomMax();
+
+        private static float ReadZoomMax()
+        {
+            foreach (string arg in Godot.OS.GetCmdlineUserArgs())
+                if (arg.StartsWith("--zoom-max=", StringComparison.Ordinal)
+                    && float.TryParse(arg.AsSpan(11), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float max))
+                    return max;
+            return Enabled ? 5f : 0f;
+        }
+
         public static bool Active => Ceiling || Enabled;
     }
 }
