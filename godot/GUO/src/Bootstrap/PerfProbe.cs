@@ -378,6 +378,31 @@ internal static partial class PerfProbe
             GD.Print($"[GUO] perf probe: zoom {camera.Zoom:F1} (asked {zoom:F1}, range {camera.ZoomMin:F1}-{camera.ZoomMax:F1})");
         }
 
+        // Play-session UI for floor timing: GUO_PERF_PLAY_UI is a list of
+        // paperdoll, options, debug, profiler; GUO_PERF_GAME_WINDOW=W,H shrinks
+        // the game viewport inside the window, as a player can.
+        string playUi = System.Environment.GetEnvironmentVariable("GUO_PERF_PLAY_UI") ?? "";
+        if (playUi.Contains("paperdoll")) GUO.Game.GameActions.OpenPaperdoll(world, world.Player.Serial);
+        if (playUi.Contains("options") && GUO.Game.Managers.UIManager.GetGump<GUO.Game.UI.Gumps.OptionsGump>() == null)
+            GUO.Game.Managers.UIManager.Add(new GUO.Game.UI.Gumps.OptionsGump(world) { X = 300, Y = 300 });
+        if (playUi.Contains("debug"))
+        {
+            var debug = GUO.Game.Managers.UIManager.GetGump<GUO.Game.UI.Gumps.DebugGump>();
+            if (debug == null) GUO.Game.Managers.UIManager.Add(debug = new GUO.Game.UI.Gumps.DebugGump(world, 100, 100));
+            debug.IsMinimized = true;
+        }
+        if (playUi.Contains("profiler")) GUO.Utility.Profiler.Enabled = true;
+        string gameWindow = System.Environment.GetEnvironmentVariable("GUO_PERF_GAME_WINDOW");
+        if (!string.IsNullOrEmpty(gameWindow))
+        {
+            var wh = gameWindow.Split(',');
+            GUO.Configuration.ProfileManager.CurrentProfile.GameWindowFullSize = false;
+            var worldViewport = GUO.Game.Managers.UIManager.GetGump<GUO.Game.UI.Gumps.WorldViewportGump>();
+            worldViewport?.ResizeGameWindow(new GUO.Compat.Point(int.Parse(wh[0]), int.Parse(wh[1])));
+            worldViewport?.SetGameWindowPosition(new GUO.Compat.Point(0, 0));
+        }
+        GD.Print($"[GUO] perf probe: play UI '{playUi}', game window '{gameWindow}'");
+
         // PR161 diagnostic cohort only; ordinary play and other probe runs are unchanged.
         if (System.Environment.GetEnvironmentVariable("GUO_PERF_MINIMAP") == "1"
             && GUO.Game.Managers.UIManager.GetGump<GUO.Game.UI.Gumps.MiniMapGump>() == null)

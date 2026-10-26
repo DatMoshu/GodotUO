@@ -496,6 +496,33 @@ namespace GUO.Game
             if (atlas == null)
                 return false;
 
+            // PORT DEVIATION (GUO): the glyphs are recorded once into a
+            // GlyphMesh at the origin and drawn with one canvas command per
+            // texture run until any input below changes (they move the text
+            // only by destX/destY, which the mesh transform carries).
+            if (batcher.CanDrawTextMesh)
+            {
+                _textMesh ??= new GlyphMesh();
+                long key0 = ((long)_contentVersion << 32) | ((long)Hue << 16) | drawHue;
+                long key1 = ((long)BitConverter.SingleToInt32Bits(alpha) << 32) | (uint)BitConverter.SingleToInt32Bits(scale);
+                long key2 = ((long)(clipOffsetX & 0xFFFF) << 48) | ((long)(clipOffsetY & 0xFFFF) << 32)
+                    | ((long)(clipWidth & 0xFFFF) << 16) | (uint)(clipHeight & 0xFFFF);
+                if (!_textMesh.Valid || !ReferenceEquals(_textMesh.Info, _info) || !ReferenceEquals(_textMesh.Atlas, atlas)
+                    || _textMesh.Key0 != key0 || _textMesh.Key1 != key1 || _textMesh.Key2 != key2)
+                {
+                    _textMesh.Info = _info; _textMesh.Atlas = atlas;
+                    _textMesh.Key0 = key0; _textMesh.Key1 = key1; _textMesh.Key2 = key2;
+                    batcher.BeginTextRecord(_textMesh);
+                    try { DrawGlyphs(batcher, 0, 0, depth, alpha, drawHue, scale, clipOffsetX, clipOffsetY, clipWidth, clipHeight); }
+                    finally { batcher.EndTextRecord(); }
+                }
+                if (_textMesh.Valid)
+                {
+                    batcher.DrawTextMesh(_textMesh, destX, destY);
+                    return true;
+                }
+            }
+
             // Draw HTML background color if present
             if (_htmlBgColor != 0)
             {
@@ -775,8 +802,13 @@ namespace GUO.Game
             );
         }
 
+        // PORT DEVIATION (GUO): GlyphMesh, and the version that invalidates it.
+        private GlyphMesh _textMesh;
+        private int _contentVersion;
+
         public unsafe void CreateTexture()
         {
+            _contentVersion++;
             // Atlas path: generate FontInfo for Width/Height/LinesCount/Links,
             // but don't create a per-string Texture2D — glyphs are drawn from the shared atlas.
             if (GodotObject.IsInstanceValid(Texture))
@@ -851,6 +883,7 @@ namespace GUO.Game
             }
 
             IsDestroyed = true;
+            _contentVersion++;
 
             if (GodotObject.IsInstanceValid(Texture))
             {

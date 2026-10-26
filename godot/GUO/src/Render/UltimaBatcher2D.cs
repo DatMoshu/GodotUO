@@ -1784,6 +1784,10 @@ void fragment() {
             float layerDepth
         )
         {
+            // PORT DEVIATION (GUO): one recorded mesh instead of a canvas
+            // command per tile (UltimaBatcher2D.GlyphMesh.cs).
+            if (DrawTiledMesh(texture, destinationRectangle, sourceRectangle, hue)) return;
+
             int h = destinationRectangle.Height;
 
             Rectangle rect = sourceRectangle;
@@ -2268,6 +2272,9 @@ void fragment() {
 
             int textureWidth = WidthOf(texture);
             int textureHeight = HeightOf(texture);
+            if (_textRecord != null && RecordText(texture, destinationX, destinationY, destinationW, destinationH,
+                    sourceX, sourceY, sourceW, sourceH, originX, originY, rotationSin, rotationCos, effects, color))
+                return; // PORT DEVIATION (GUO): TextMesh
 #if GUO_LABS
             if (DepthWorldProbe.Enabled) OrderedDepth = depth; // ADR-0044: the depth upstream gives this vertex
             if (OrderedWorldRecording && rotationSin == 0f && rotationCos == 1f && effects == 0)

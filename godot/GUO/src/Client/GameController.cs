@@ -594,8 +594,15 @@ namespace GUO
             Scene?.Load();
         }
 
+#if GUO_LABS
+        private bool _uncappedOpened;
+#endif
+
         public void SetVSync(bool value)
         {
+#if GUO_LABS
+            if (DepthWorldProbe.Uncapped) value = false;
+#endif
             DisplayServer.WindowSetVsyncMode(
                 value ? DisplayServer.VSyncMode.Enabled : DisplayServer.VSyncMode.Disabled
             );
@@ -637,6 +644,14 @@ namespace GUO
             // early. Godot paces the loop, so the cap is set here and the
             // sleep is gone -- see Update for what is left of the throttle.
             Engine.MaxFps = rate;
+#if GUO_LABS
+            if (DepthWorldProbe.Uncapped)
+            {
+                // Not zero: Update wraps elapsed time with %=; x % 0 is NaN.
+                Engine.MaxFps = 0;
+                _intervalFixedUpdate[0] = _intervalFixedUpdate[1] = 0.001f;
+            }
+#endif
         }
 
         private void SetWindowPosition(int x, int y)
@@ -1030,6 +1045,18 @@ namespace GUO
             }
             runtimeAt = RuntimeTimings.Add(RuntimeTimings.Stage.SceneUpdate, runtimeAt);
 
+#if GUO_LABS
+            if (DepthWorldProbe.Uncapped && !_uncappedOpened && Scene is GameScene && UO?.World?.Player != null)
+            {
+                _uncappedOpened = true;
+                SetVSync(false);
+                SetRefreshRate(Settings.GlobalSettings.FPS);
+                Profiler.Enabled = true;
+                var debug = UIManager.GetGump<Game.UI.Gumps.DebugGump>();
+                if (debug == null) UIManager.Add(debug = new Game.UI.Gumps.DebugGump(UO.World, 100, 100));
+                debug.IsMinimized = true; // upstream's name for the detailed view
+            }
+#endif
             long uiStage = PerfStages.Now();
             UIManager.Update();
             PerfStages.Add(PerfStages.Stage.UiUpdate, uiStage);
