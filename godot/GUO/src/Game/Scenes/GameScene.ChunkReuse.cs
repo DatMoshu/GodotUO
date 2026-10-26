@@ -42,7 +42,7 @@ internal partial class GameScene
 
         internal bool Same(in ReuseKey o) => MinPixel == o.MinPixel && MaxPixel == o.MaxPixel
             && MaxZ == o.MaxZ && ObjectsVersion == o.ObjectsVersion && MaxGroundZ == o.MaxGroundZ
-            && NoDrawRoofs == o.NoDrawRoofs && HideVegetation == o.HideVegetation && Inputs.Same(o.Inputs);
+            && NoDrawRoofs == o.NoDrawRoofs && HideVegetation == o.HideVegetation && Inputs.SameForReuse(o.Inputs);
     }
 
     internal sealed class ChunkWalk
