@@ -1,6 +1,6 @@
 # ADR-0044: Depth World — the world drawn with ClassicUO's depth rules on RenderingDevice
 
-Date: 2026-10-26. Status: proposed.
+Date: 2026-10-26. Status: **accepted by Moshu 2026-10-26**. Same day, Moshu resumed the FPS lane, with validation on the bank scene only until improvement shows.
 
 **Owner decisions (Moshu, 2026-10-26):**
 - The parity reference for this renderer is **ClassicUO's depth semantics**, not GUO's canvas painter's order.
@@ -52,9 +52,18 @@ Every item here is a parity requirement. S0 must verify each one against Classic
    - that the camera matrix leaves Z unscaled;
    - which FNA3D driver the reference ran (D3D11, Vulkan or OpenGL), because the clip-space depth convention and the depth-range mapping differ by backend. Record it in the CUO reference manifest.
 3. **Format and quantisation.** ClassicUO's effective depth is 24-bit UNORM. D24 and D32F are **not** interchangeable proofs: values about 0.004 depth units apart can quantise together in D24 and stay apart in D32F.
-   - The renderer reproduces D24 ordering exactly. Where D24S8 is available on the RD device, use it. Otherwise compute the D24 code in the vertex shader and emit `z = code · 2⁻²⁴`, which is exact in float32 and D32F, so comparisons match D24 code comparisons.
+   - **Reference first.** S0 records the reference backend's effective depth format, depth clear value, viewport depth range and clip behaviour at the near and far planes. That comes from the FNA3D driver plus a depth readback. Until then the values below are the expected ones, not established ones.
+   - **Expected values:**
+     - D24 UNORM; depth cleared to 1.0, the farthest value; viewport depth range [0, 1].
+     - No clipping in practice: `CalculateDepthZ` stays far inside ±32767.
+     - Reference code = UNORM conversion of `z_ndc`: `round(z_ndc · (2²⁴ − 1))`, with the rounding mode confirmed by readback.
+   - **Two encodings, gated separately:**
+     - **Native D24S8**, where the RD device offers it.
+     - **Emulated D32F:** the vertex shader computes the reference code with the reference arithmetic and emits `z = code · 2⁻²⁴`. That value is exact in float32/D32F, so comparisons equal code comparisons. This is only a faithful ordered encoding **once the reference code construction is known**. By itself it does not reproduce reference projection or rounding.
    - Sprites are flat (four equal vertex Z values), so interpolation cannot change the code.
-   - Acceptance is by **equal-depth class**: for every overlapping pair in the frozen scenes, ClassicUO and Depth World agree on less, equal or greater. Measure this from a ClassicUO depth readback or an instrumented reference build, not by assumption.
+   - **Acceptance, per encoding:**
+     - Synthetic boundary and tie cases: equal depth, ±1 code, values that differ by less than one D24 step, the near and far ends, and the clear value.
+     - The **equal-depth class** test on the frozen scenes, against a ClassicUO depth readback or an instrumented reference build: for every overlapping pair, ClassicUO and Depth World agree on less, equal or greater.
 4. **Test and write.** LessEqual, depth write on, for every world category including translucent objects. ClassicUO's `DepthRead` line for transparents is commented out (`RenderLists.cs:236-240`).
 5. **Discard.** Discard only where the texel alpha is 0 or the hue alpha is 0, as in `IsometricWorld.fx:99-113`. Translucent pixels write depth.
 6. **Draw order** (decides equal-depth ties under LessEqual, where the later draw wins). Follows ClassicUO `RenderLists.DrawRenderLists`:
@@ -79,7 +88,12 @@ Every item here is a parity requirement. S0 must verify each one against Classic
 
 - Land and mesh statics live in GPU storage buffers per 8×8 chunk. They are built when a chunk is loaded or its revision changes, and are immutable after that.
 - Dynamic objects (mobiles, excluded statics, items, effects) are written each frame into one persistently allocated occurrence buffer with one update. The ADR-0043 32-byte record is the starting format.
-- Draws: one `DrawListDraw` per category per texture-binding group. The art-view limit rises from 4 to 8 or more, or moves to an array, with nearest sampling. No per-frame resource creation; all RD access on the rendering thread (as ADR-0043).
+- Draws: **the original primitive sequence within each category is preserved.** A draw is a contiguous run of primitives whose textures are all bound in the current binding set.
+  - A primitive needing a texture outside that set ends the run.
+  - Selectors are assigned in first-seen order and are order-preserving.
+  - Primitives are **never regrouped by texture**, including across equal-depth or translucent overlaps.
+  - The art-view limit rises from 4 to 8 or more, or moves to an array, to make runs longer. Nearest sampling is kept.
+  - No per-frame resource creation; all RD access on the rendering thread (as ADR-0043).
 
 ### 3. Who owns per-frame state
 
@@ -94,7 +108,7 @@ ClassicUO evaluates these on the CPU each frame. Each stays CPU-owned and sparse
 | Animated art, internal tiles | Excluded from the mesh | Excluded; drawn as dynamic objects | — |
 | Picking | CPU, highest `CalculateDepthZ()` under the cursor | Unchanged, CPU-only, bounded by artwork extents in candidate chunks; never reads GPU depth | — |
 
-"Zero per-static CPU work on a warm standing frame" is the spike's goal. It is not a claim that every moving-world rule reduces to uniforms.
+**Phase 1 (the spike) keeps the CPU visibility walk.** Its goal is **zero per-static packing and submission work** on a warm standing frame: no per-static records, uploads or draw commands, only a bitset write per visible static. The walk is reported separately as gather time. A **zero-walk** goal belongs to a later phase and needs an oracle-proven reuse mechanism for visibility and picking first. This ADR does not claim both at once.
 
 ### 4. Fallback and platforms
 
@@ -111,12 +125,17 @@ ClassicUO evaluates these on the CPU each frame. Each stays CPU-owned and sparse
   - The Dell gates the canvas path and the ClassicUO comparison under OpenGL.
   - Depth World is timed on the desktop during **owner-approved quiet windows**: other seats' heavy jobs are paused for windows of at most 10 minutes, coordinated through the lead with `org lease` on `godot:runtime` and `build:D`, and the sample-window host-load gate must still pass.
 - Promotion uses the existing AB/BA/AB rule in `fps/EXPERIMENTS.md`.
+- **Build modes.** Labs builds are Debug-only today, so the spike compares the Depth World and canvas arms **inside the same Labs build and executable**, switched by a flag. Those results are **provisional**.
+  - CUO comparisons and any promotion claim need **matched optimized builds**: an optimized Labs build, or Depth World compiled into Release, measured against Release CUO.
+  - A Labs Debug result is never compared directly with a Release reference.
+- **Bank-first.** By owner direction, each run validates the bank scene only, at zoom 2 and 2.5, until Depth World shows improvement there. The remaining scenes and zooms follow before any promotion.
 
 ### 6. Acceptance for the spike (go/no-go)
 
 - The depth contract items 1–8 are verified, with the equal-depth class test passing on the frozen static scenes.
-- Pixel comparison against ClassicUO captures in the frozen scenes. Every difference from the GUO canvas output is listed and explained.
-- Counters show no per-static CPU work on a warm standing frame.
+- Pixel comparison against ClassicUO captures in the frozen scenes shows **zero unexplained differences from ClassicUO**. Separately, every difference from the GUO canvas output is listed and explained.
+- Counters show zero per-static packing and submission work on a warm standing frame, with gather reported separately.
+- Depth World results are provisional until confirmed with matched optimized builds (§5).
 - **Go** if Depth World end-to-end p50 and p95 beat both the GUO canvas and ClassicUO in the matched bank zoom-2 and zoom-2.5 cells. Otherwise stop and report. No speedup is assumed by this ADR.
 
 ## Consequences
@@ -134,7 +153,5 @@ ClassicUO evaluates these on the CPU each frame. Each stays CPU-owned and sparse
 
 ## Still needs Moshu
 
-- Accepting this ADR.
 - Promotion from Labs to an L0 presenter option.
 - Default-on for any renderer.
-- Resuming the owner-stopped FPS lane.
