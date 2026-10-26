@@ -40,7 +40,7 @@ internal partial class GameScene
             HideVegetation = hideVegetation; Inputs = inputs;
         }
 
-        internal bool Same(in ReuseKey o) => Offset == o.Offset && MinPixel == o.MinPixel && MaxPixel == o.MaxPixel
+        internal bool Same(in ReuseKey o) => MinPixel == o.MinPixel && MaxPixel == o.MaxPixel
             && MaxZ == o.MaxZ && ObjectsVersion == o.ObjectsVersion && MaxGroundZ == o.MaxGroundZ
             && NoDrawRoofs == o.NoDrawRoofs && HideVegetation == o.HideVegetation && Inputs.Same(o.Inputs);
     }
@@ -51,6 +51,12 @@ internal partial class GameScene
         internal int LandStamp, StaticStamp, LandCount, StaticCount;
         internal object Key;
         internal ulong DynamicMask, WalkedDynamic;
+        // The view offset of the last walk, whether no anchor of the chunk
+        // could be culled then, and the tiles skipped since the view moved,
+        // whose objects' screen positions are refreshed when next walked.
+        internal Point Offset;
+        internal bool FullyInside;
+        internal ulong StaleTiles;
         internal readonly List<(int Tile, GameObject Light)> Lights = new();
     }
 
@@ -72,9 +78,14 @@ internal partial class GameScene
     /// </summary>
     private ulong? ReusableTiles(Chunk chunk, in GatherInputs inputs, bool built)
     {
-        if (!ChunkReuse || !DepthWorldProbe.Enabled || built || UpdateDrawPosition || chunk.ScreenPositionsStale)
+        if (!ChunkReuse || !DepthWorldProbe.Enabled || built || chunk.ScreenPositionsStale)
             return null;
         if (chunk.Walk is not { Reusable: true } walk || walk.Key is not ReuseKey key) return null;
+        // A moved view keeps the walk only where nothing was or is culled; a
+        // static's out-of-range tint follows the player, so that turns it off.
+        bool moved = walk.Offset != _offset;
+        if (moved && (!walk.FullyInside || !ChunkFullyInside(chunk.X, chunk.Y) || inputs.NoRangeColor))
+            return null;
         var mesh = chunk.Mesh;
         if (mesh.Land.ContentStamp != walk.LandStamp || mesh.Statics.ContentStamp != walk.StaticStamp
             || mesh.Land.Count != walk.LandCount || mesh.Statics.Count != walk.StaticCount)
@@ -83,7 +94,12 @@ internal partial class GameScene
         ulong walkMask = walk.DynamicMask | chunk.DirtyTiles;
         foreach (var (tile, light) in walk.Lights)
             if ((walkMask & (1UL << tile)) == 0)
+            {
+                if (moved) light.UpdateRealScreenPosition(_offset.X, _offset.Y);
                 AddLight(light, light, light.RealScreenPosition.X + 22, light.RealScreenPosition.Y + 22);
+            }
+        if (moved) walk.StaleTiles |= ~walkMask;
+        walk.Offset = _offset;
         if (walkMask == 0) ChunksReused++;
         else TilesReused += 64 - System.Numerics.BitOperations.PopCount(walkMask);
         return walkMask;
@@ -91,6 +107,7 @@ internal partial class GameScene
 
     private void WalkChunkTiles(Chunk chunk, bool useHandles, in GatherInputs inputs, ulong? walkMask)
     {
+        bool chunkForce = _forcePositions;
         for (var x = 0; x < 8; x++)
         {
             for (var y = 0; y < 8; y++)
@@ -103,6 +120,9 @@ internal partial class GameScene
 
                 _walkDynamic = false;
                 _walkTile = (x << 3) | y;
+                ulong bit = 1UL << _walkTile;
+                _forcePositions = chunkForce || (chunk.Walk.StaleTiles & bit) != 0;
+                chunk.Walk.StaleTiles &= ~bit;
                 AddTileToRenderList(firstObj, useHandles, 150, chunk, inputs);
                 // A tile with anything but meshed land and statics is walked every frame.
                 if (_walkDynamic) chunk.Walk.WalkedDynamic |= 1UL << _walkTile;
@@ -146,8 +166,23 @@ internal partial class GameScene
         walk.LandStamp = mesh.Land.ContentStamp; walk.StaticStamp = mesh.Statics.ContentStamp;
         walk.LandCount = mesh.Land.Count; walk.StaticCount = mesh.Statics.Count;
         walk.Key = CurrentReuseKey(inputs);
+        walk.Offset = _offset;
+        walk.FullyInside = ChunkFullyInside(chunk.X, chunk.Y);
+        // A whole walk refreshed every position it had to (see WalkChunkTiles).
+        if (walkMask == null) walk.StaleTiles = 0;
         chunk.DirtyTiles = 0;
         _walkLights = null;
+    }
+
+    /// <summary>True when every anchor the chunk can have, at any Z, is inside the walk's pixel window: no object is culled.</summary>
+    private bool ChunkFullyInside(int cx, int cy)
+    {
+        int x0 = cx << 3, y0 = cy << 3;
+        int minX = (x0 - (y0 + 7)) * 22 - _offset.X - 22;
+        int maxX = (x0 + 7 - y0) * 22 - _offset.X - 22;
+        int minY = (x0 + y0) * 22 - (sbyte.MaxValue << 2) - _offset.Y - 22;
+        int maxY = (x0 + y0 + 14) * 22 - (sbyte.MinValue << 2) - _offset.Y - 22;
+        return minX >= _minPixel.X && maxX <= _maxPixel.X && minY >= _minPixel.Y && maxY <= _maxPixel.Y;
     }
 
     /// <summary>Generous screen bounds of the chunk's sprites (tall statics reach far above their anchors).</summary>
@@ -180,8 +215,23 @@ internal partial class GameScene
         if (!mesh.Land.Visible.AsSpan(0, mesh.Land.Count).SequenceEqual(_verifyLand.AsSpan(0, mesh.Land.Count))
             || !mesh.Statics.Visible.AsSpan(0, mesh.Statics.Count).SequenceEqual(_verifyStatics.AsSpan(0, mesh.Statics.Count)))
         {
-            if (ChunkReuseMismatches++ < 5)
-                Godot.GD.Print($"[GUO] chunk reuse mismatch at chunk {chunk.X},{chunk.Y}");
+            if (ChunkReuseMismatches++ < 8)
+            {
+                string what = "";
+                for (int t = 0; t < 64 && what.Length == 0; t++)
+                    for (var obj = chunk.GetHeadObject(t >> 3, t & 7); obj != null; obj = obj.TNext)
+                    {
+                        if (!obj.InChunkMesh) continue;
+                        bool land = obj is Land;
+                        bool now = (land ? mesh.Land : mesh.Statics).Visible[obj.MeshSpriteIndex];
+                        bool kept = (land ? _verifyLand : _verifyStatics)[obj.MeshSpriteIndex];
+                        if (now == kept) continue;
+                        what = $"{obj.GetType().Name} 0x{obj.Graphic:X4} at {obj.X},{obj.Y},{obj.Z} tile {t} reused {kept} walked {now} alpha {obj.AlphaHue} "
+                            + $"screen {obj.RealScreenPosition} pixels {_minPixel}-{_maxPixel} maxZ {_maxZ} maxGroundZ {_maxGroundZ} dyn {((chunk.Walk.DynamicMask >> t) & 1)}";
+                        break;
+                    }
+                Godot.GD.Print($"[GUO] chunk reuse mismatch at chunk {chunk.X},{chunk.Y}: {what}");
+            }
         }
     }
 }

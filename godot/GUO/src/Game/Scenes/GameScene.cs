@@ -771,6 +771,7 @@ namespace GUO.Game.Scenes
                     }
 
                     _forcePositions = chunk.ScreenPositionsStale;
+                    bool chunkForce = _forcePositions; // PORT DEVIATION (GUO): ChunkReuse verify
                     chunk.ScreenPositionsStale = false;
                     // PORT DEVIATION (GUO): ChunkReuse; WalkChunkTiles is upstream's tile loop.
                     BeginChunkWalk(chunk, walkMask);
@@ -783,6 +784,7 @@ namespace GUO.Game.Scenes
                         chunk.Mesh.Land.ResetVisibility();
                         chunk.Mesh.Statics.ResetVisibility();
                         BeginChunkWalk(chunk, null);
+                        _forcePositions = chunkForce;
                         WalkChunkTiles(chunk, use_handles, gatherInputs, null);
                         EndChunkWalk(chunk, gatherInputs, landStamp, staticStamp, built, null);
                         CompareVisibility(chunk);

@@ -894,6 +894,10 @@ namespace GUO.Game.Scenes
                             CalculateAlpha(ref obj.AlphaHue, 0xFF);
                         }
 
+                        // PORT DEVIATION (GUO): ChunkReuse, as for statics below.
+                        if (obj.AlphaHue != (obj.Z > _maxGroundZ ? 0 : 0xFF))
+                            _walkDynamic = true;
+
                         if (obj.AlphaHue != 0)
                         {
                             mesh.Land.SetVisible(obj.MeshSpriteIndex, obj.AlphaHue);
@@ -967,6 +971,12 @@ namespace GUO.Game.Scenes
                     {
                         CalculateAlpha(ref obj.AlphaHue, 0xFF);
                     }
+
+                    // PORT DEVIATION (GUO): ChunkReuse. Short of its target the
+                    // alpha still moves, on the alpha timer's frames, even while
+                    // no vertex changes (a static seen first has AlphaHue 0).
+                    if (!meshFadingOut && obj.AlphaHue != (meshItemData.IsTranslucent ? 178 : 0xFF))
+                        _walkDynamic = true;
 
                     if (obj.AlphaHue == 0)
                     {
