@@ -132,7 +132,10 @@ internal sealed class OrderedWorldCapture : IDisposable
     {
         if (!Recording || _unsupported != null) return false;
         if (texture == null) { Reject("missing texture"); return false; }
+        // A sprite's four corners share one hue: test and encode it once.
+        bool oneHue = SameHue(q.Hue0, q.Hue1) && SameHue(q.Hue0, q.Hue2) && SameHue(q.Hue0, q.Hue3);
         if (record != null ? !record.Supported
+            : oneHue ? !SupportedMode(q.Hue0)
             : !SupportedMode(q.Hue0) || !SupportedMode(q.Hue1) || !SupportedMode(q.Hue2) || !SupportedMode(q.Hue3))
         { Reject("unsupported shader mode"); return false; }
         if (_states.Count == OrderedWorldDevice.MaxOccurrences)
@@ -168,8 +171,14 @@ internal sealed class OrderedWorldCapture : IDisposable
         if (local.HasValue) transform *= local.Value;
         // Reuse each original encoded color for both complete canvas replay and
         // GPU packing. Mesh replay must retain the value before UNORM8 conversion.
-        Color color0 = record?.Color0 ?? UltimaBatcher2D.Encode(q.Hue0), color1 = record?.Color1 ?? UltimaBatcher2D.Encode(q.Hue1);
-        Color color2 = record?.Color2 ?? UltimaBatcher2D.Encode(q.Hue2), color3 = record?.Color3 ?? UltimaBatcher2D.Encode(q.Hue3);
+        Color color0, color1, color2, color3;
+        if (record != null) { color0 = record.Color0; color1 = record.Color1; color2 = record.Color2; color3 = record.Color3; }
+        else if (oneHue) color0 = color1 = color2 = color3 = UltimaBatcher2D.Encode(q.Hue0);
+        else
+        {
+            color0 = UltimaBatcher2D.Encode(q.Hue0); color1 = UltimaBatcher2D.Encode(q.Hue1);
+            color2 = UltimaBatcher2D.Encode(q.Hue2); color3 = UltimaBatcher2D.Encode(q.Hue3);
+        }
         _commands.Add(new OrderedWorldCanvas.Command
         {
             Type = meshColor ? OrderedWorldCanvas.Kind.Mesh : rectangle ? OrderedWorldCanvas.Kind.Rect : OrderedWorldCanvas.Kind.Triangles,
@@ -266,6 +275,12 @@ internal sealed class OrderedWorldCapture : IDisposable
         _batchArtCount = 1;
         return 0;
     }
+
+    // Bitwise, so -0/+0 and NaN payloads count as different and take the general path.
+    private static bool SameHue(in Vector3 a, in Vector3 b) =>
+        BitConverter.SingleToInt32Bits(a.X) == BitConverter.SingleToInt32Bits(b.X)
+        && BitConverter.SingleToInt32Bits(a.Y) == BitConverter.SingleToInt32Bits(b.Y)
+        && BitConverter.SingleToInt32Bits(a.Z) == BitConverter.SingleToInt32Bits(b.Z);
 
     internal static bool SupportedMode(Vector3 hue)
     {

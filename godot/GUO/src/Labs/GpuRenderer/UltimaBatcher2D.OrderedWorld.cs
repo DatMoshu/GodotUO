@@ -132,12 +132,14 @@ public sealed partial class UltimaBatcher2D
         return _orderedWorld.Quad(texture, q, _worldOffset, false, rectangle, destination: destination, source: source);
     }
 
+    private static readonly Vector3 ScratchNormal = new(0, 0, 1);
+
     private MeshQuad OrderedScratchQuad(Vector3 hue) => new()
         {
             Position0 = _quadPoints[0], Position1 = _quadPoints[1], Position2 = _quadPoints[2], Position3 = _quadPoints[3],
             TextureCoordinate0 = _quadUVs[0], TextureCoordinate1 = _quadUVs[1], TextureCoordinate2 = _quadUVs[2], TextureCoordinate3 = _quadUVs[3],
             Hue0 = hue, Hue1 = hue, Hue2 = hue, Hue3 = hue,
-            Normal0 = new Vector3(0,0,1), Normal1 = new Vector3(0,0,1), Normal2 = new Vector3(0,0,1), Normal3 = new Vector3(0,0,1)
+            Normal0 = ScratchNormal, Normal1 = ScratchNormal, Normal2 = ScratchNormal, Normal3 = ScratchNormal
         };
 
     private bool CaptureOrderedStatic(MeshLayer layer, int index, int offsetX, int offsetY)
