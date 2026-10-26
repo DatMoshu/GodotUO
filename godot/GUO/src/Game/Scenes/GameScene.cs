@@ -595,6 +595,7 @@ namespace GUO.Game.Scenes
         {
             _renderLists.Clear();
             _visibleChunks.Clear();
+            _meshChunks.Clear(); // PORT DEVIATION (GUO): ADR-0044
             RenderLists.ChunksSkipped = 0; // PORT DEVIATION (GUO): perf probe count
 
             _foliageCount = 0;
@@ -735,6 +736,7 @@ namespace GUO.Game.Scenes
                     if (walkMask == 0 && !VerifyChunkReuse)
                     {
                         _visibleChunks.Add(chunk);
+                        _meshChunks.Add(chunk);
                         continue;
                     }
                     bool verifyReuse = walkMask != null && VerifyChunkReuse;
@@ -754,6 +756,7 @@ namespace GUO.Game.Scenes
                     }
 
                     _visibleChunks.Add(chunk);
+                    _meshChunks.Add(chunk);
 
                     // PORT DEVIATION (GUO): perf, review item B (2026-10-24).
                     // Upstream walks every object of every chunk in the tile
@@ -1258,7 +1261,7 @@ namespace GUO.Game.Scenes
             RenderedObjectsCount = _renderLists.DrawRenderLists(
                 batcher,
                 _maxGroundZ,
-                _visibleChunks,
+                _meshChunks, // PORT DEVIATION (GUO): ADR-0044, _visibleChunks less the cleared off-screen ones
                 _offset.X,
                 _offset.Y
             );

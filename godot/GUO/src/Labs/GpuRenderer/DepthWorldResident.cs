@@ -66,6 +66,7 @@ internal sealed class DepthWorldResident
     private List<Group> _frameGroups = new(), _lastGroups = new();
     private readonly Dictionary<(OrderedWorldDevice.TextureSet, bool), List<Group>> _buckets = new();
     private bool _mergeNeeded = true;
+    private Rid[] _rids = new Rid[1024];
     private int _frame;
     internal static long Packed, VisibleRebuilds, ResidentDraws, Resets;
 
@@ -115,6 +116,10 @@ internal sealed class DepthWorldResident
         reason = null;
         entry.Groups.Clear();
         int count = layer.Count;
+        // One interop call per texture run (the layer is texture-sorted), not two per quad.
+        if (_rids.Length < count) _rids = new Rid[Math.Max(count, _rids.Length * 2)];
+        Texture2D last = null;
+        Rid lastRid = default;
         int i = 0;
         while (i < count)
         {
@@ -124,8 +129,13 @@ internal sealed class DepthWorldResident
             {
                 Texture2D texture = layer.Textures[i];
                 if (texture == null) { reason = "missing resident texture"; return false; }
-                if (GUO.Renderer.Arts.Art.IsHdTexture(texture)) { reason = "HD texture in a chunk mesh"; return false; }
-                Rid rid = texture.GetRid();
+                if (!ReferenceEquals(texture, last))
+                {
+                    if (GUO.Renderer.Arts.Art.IsHdTexture(texture)) { reason = "HD texture in a chunk mesh"; return false; }
+                    last = texture;
+                    lastRid = texture.GetRid();
+                }
+                Rid rid = _rids[i] = lastRid;
                 int slot = -1;
                 for (int a = 0; a < group.ArtCount; a++) if (group.Arts[a].ArtRs == rid) { slot = a; break; }
                 if (slot < 0)
@@ -151,7 +161,7 @@ internal sealed class DepthWorldResident
             {
                 int index = start + q;
                 ref readonly MeshQuad m = ref layer.Vertices[index];
-                Rid rid = layer.Textures[index].GetRid();
+                Rid rid = _rids[index];
                 int slot = 0;
                 for (int a = 0; a < group.ArtCount; a++) if (group.Arts[a].ArtRs == rid) { slot = a; break; }
                 Quads[group.Base + q] = PackQuad(m, land, layer.Depths[index], slot, land ? (sbyte)-128 : layer.ObjectZ[index]);

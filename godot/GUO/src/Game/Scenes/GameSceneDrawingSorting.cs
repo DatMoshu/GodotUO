@@ -51,6 +51,10 @@ namespace GUO.Game.Scenes
 
         private readonly RenderLists _renderLists = new();
         private readonly List<Map.Chunk> _visibleChunks = new();
+        // PORT DEVIATION (GUO): ADR-0044. The chunks whose meshes are drawn:
+        // _visibleChunks less the off-screen ones already cleared, which
+        // would draw nothing (every quad of theirs is invisible).
+        private readonly List<Map.Chunk> _meshChunks = new();
 
         public sbyte FoliageIndex { get; private set; }
 
