@@ -119,12 +119,7 @@ internal sealed class DepthWorldResident
         reason = null;
         entry.Groups.Clear();
         int count = layer.Count;
-        if (entry.Reserved < count)
-        {
-            entry.QuadBase = Reserve(ref Quads, ref QuadCount, count);
-            entry.VisibleBase = Reserve(ref Visible, ref VisibleCount, count);
-            entry.Reserved = count;
-        }
+        if (entry.Reserved < count) Allocate(entry, count);
         // One interop call per texture run (the layer is texture-sorted), not two per quad.
         if (_rids.Length < count) _rids = new Rid[Math.Max(count, _rids.Length * 2)];
         Texture2D last = null;
@@ -238,6 +233,37 @@ internal sealed class DepthWorldResident
         };
     }
 
+    /// <summary>
+    /// A layer's quad and visible-index ranges (the same size, reserved
+    /// together): first fit from the ranges dropped or outgrown layers left,
+    /// else fresh at the end. Without reuse a long walk filled the buffers
+    /// with waste until Collect repacked everything in one frame.
+    /// </summary>
+    private void Allocate(Layer entry, int count)
+    {
+        if (entry.Reserved > 0) Free(entry);
+        for (int i = 0; i < _free.Count; i++)
+        {
+            var f = _free[i];
+            if (f.Size < count) continue;
+            entry.QuadBase = f.Quad; entry.VisibleBase = f.Visible; entry.Reserved = count;
+            if (f.Size > count) _free[i] = (f.Quad + count, f.Visible + count, f.Size - count);
+            else _free.RemoveAt(i);
+            return;
+        }
+        entry.QuadBase = Reserve(ref Quads, ref QuadCount, count);
+        entry.VisibleBase = Reserve(ref Visible, ref VisibleCount, count);
+        entry.Reserved = count;
+    }
+
+    private void Free(Layer entry)
+    {
+        if (entry.Reserved > 0 && _free.Count < 4096) _free.Add((entry.QuadBase, entry.VisibleBase, entry.Reserved));
+        entry.Reserved = 0;
+    }
+
+    private readonly List<(int Quad, int Visible, int Size)> _free = new();
+
     private static int Reserve<T>(ref T[] array, ref int used, int size)
     {
         int at = used;
@@ -264,9 +290,10 @@ internal sealed class DepthWorldResident
             if (_frame - pair.Value.LastFrame > 600) { _stale.Add(pair.Key); continue; }
             live += pair.Value.Reserved;
         }
-        foreach (var layer in _stale) _layers.Remove(layer);
+        foreach (var layer in _stale) { Free(_layers[layer]); _layers.Remove(layer); }
         if (QuadCount <= 2 * live + 65536) return;
         _layers.Clear();
+        _free.Clear();
         QuadCount = VisibleCount = 0;
         DirtyQuads.Clear(); DirtyVisible.Clear();
         AllDirty = true;
