@@ -47,6 +47,9 @@ internal sealed class DepthWorldResident
     private sealed class Layer
     {
         public int Stamp = int.MinValue, Count = -1, LastFrame, VisibilityStamp = int.MinValue;
+        // The quad and visible-index ranges this layer owns; a repack that
+        // fits reuses them, so a fade's repeated repacks leave no waste.
+        public int QuadBase, VisibleBase, Reserved;
         public readonly List<Group> Groups = new();
     }
 
@@ -116,6 +119,12 @@ internal sealed class DepthWorldResident
         reason = null;
         entry.Groups.Clear();
         int count = layer.Count;
+        if (entry.Reserved < count)
+        {
+            entry.QuadBase = Reserve(ref Quads, ref QuadCount, count);
+            entry.VisibleBase = Reserve(ref Visible, ref VisibleCount, count);
+            entry.Reserved = count;
+        }
         // One interop call per texture run (the layer is texture-sorted), not two per quad.
         if (_rids.Length < count) _rids = new Rid[Math.Max(count, _rids.Length * 2)];
         Texture2D last = null;
@@ -153,8 +162,8 @@ internal sealed class DepthWorldResident
             group.Set = new OrderedWorldDevice.TextureSet(group.Arts[0]);
             for (int a = 1; a < group.ArtCount; a++) group.Set = group.Set.WithArt(a, group.Arts[a].ArtRs);
             int size = group.End - start;
-            group.Base = Reserve(ref Quads, ref QuadCount, size);
-            group.VisibleBase = Reserve(ref Visible, ref VisibleCount, size);
+            group.Base = entry.QuadBase + start;
+            group.VisibleBase = entry.VisibleBase + start;
             group.Previous = new bool[size];
             group.VisibleCount = 0;
             for (int q = 0; q < size; q++)
@@ -253,7 +262,7 @@ internal sealed class DepthWorldResident
         foreach (var pair in _layers)
         {
             if (_frame - pair.Value.LastFrame > 600) { _stale.Add(pair.Key); continue; }
-            foreach (var group in pair.Value.Groups) live += group.End - group.Start;
+            live += pair.Value.Reserved;
         }
         foreach (var layer in _stale) _layers.Remove(layer);
         if (QuadCount <= 2 * live + 65536) return;
