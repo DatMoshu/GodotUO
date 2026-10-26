@@ -610,7 +610,8 @@ namespace GUO.Game.Scenes
 
                 mesh.Statics.SetVisible(obj.MeshSpriteIndex, obj.AlphaHue, cot);
                 ApplyMeshHue(obj, mesh.Statics, gatherInputs);
-                _renderLists.AddMeshStatic(obj, mesh.Statics);
+                if (!DepthWorldProbe.Active)
+                    _renderLists.AddMeshStatic(obj, mesh.Statics);
 
                 if (itemData.IsLight)
                 {
@@ -1051,7 +1052,8 @@ namespace GUO.Game.Scenes
 
                     mesh.Statics.SetVisible(obj.MeshSpriteIndex, obj.AlphaHue, meshCot);
                     ApplyMeshHue(obj, mesh.Statics, gatherInputs);
-                    _renderLists.AddMeshStatic(obj, mesh.Statics);
+                    if (!DepthWorldProbe.Active)
+                        _renderLists.AddMeshStatic(obj, mesh.Statics);
 
                     if (meshItemData.IsLight)
                     {

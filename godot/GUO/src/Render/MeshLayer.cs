@@ -86,6 +86,14 @@ namespace GUO.Renderer
         public Texture2D[] Textures = new Texture2D[INITIAL_CAPACITY];
         public int Count;
 
+        // PORT DEVIATION (GUO): ADR-0044. Upstream keeps each quad's depth in
+        // its vertex Z; the canvas path had no use for it. Depth World reads it
+        // back, with the object's Z for the draw-time maxGroundZ test, and
+        // ContentStamp to know when a chunk's resident copy is stale.
+        public float[] Depths = new float[INITIAL_CAPACITY];
+        public sbyte[] ObjectZ = new sbyte[INITIAL_CAPACITY];
+        public int ContentStamp;
+
         // Per-frame visibility filtering
         public bool[] Visible = new bool[INITIAL_CAPACITY];
         public int VisibleSpriteCount;
@@ -147,6 +155,8 @@ namespace GUO.Renderer
             Array.Resize(ref Vertices, newSize);
             Array.Resize(ref Textures, newSize);
             Array.Resize(ref Visible, newSize);
+            Array.Resize(ref Depths, newSize);
+            Array.Resize(ref ObjectZ, newSize);
         }
 
         /// <summary>
@@ -218,6 +228,7 @@ namespace GUO.Renderer
 
             _alphaDirty = true;
             _alphaDirtyCount = 0;
+            ContentStamp++;
         }
 
         /// <summary>
@@ -242,6 +253,7 @@ namespace GUO.Renderer
         private void MarkVertexDirty()
         {
             _alphaDirty = true;
+            ContentStamp++;
         }
 
         /// <summary>
@@ -263,6 +275,7 @@ namespace GUO.Renderer
             int destW, int destH, Vector3 hue, float depth, float uvInset = 0f)
         {
             ref var vertex = ref Vertices[index];
+            Depths[index] = depth;
 
             float sourceX = (sourceRect.X + uvInset) / (float)texture.GetWidth();
             float sourceY = (sourceRect.Y + uvInset) / (float)texture.GetHeight();

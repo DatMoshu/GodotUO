@@ -33,7 +33,14 @@ void main() {
     vec2 pixel = vec2(dot(states[occurrence].row0, p), dot(states[occurrence].row1.xyz, p));
     // Native RD clip convention. The shared world matrix already includes
     // CUO's quarter-target-pixel raster offset; do not apply it a second time.
-    gl_Position = vec4(pixel * (2.0 / pc.screen.xy) - 1.0, 0.0, 1.0);
+    // ADR-0044 Depth World (pc.draw.y = 1): the state row's spare float is
+    // upstream's depth, mapped as its orthographic projection maps it.
+    float z = 0.0;
+    if (pc.draw.y == 1u) {
+        float zn = (32768.0 - states[occurrence].row1.w) / 65535.0;
+        z = floor(zn * 16777215.0 + 0.5) / 16777216.0;
+    }
+    gl_Position = vec4(pixel * (2.0 / pc.screen.xy) - 1.0, z, 1.0);
     uv = v.position_uv.zw;
     packed_hue = v.packed_hue;
     land_normal = v.normal.xyz;

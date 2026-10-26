@@ -102,6 +102,12 @@ internal sealed class OrderedWorldDevice
     private RD _rd;
     private Rid _shader, _pipeline, _color, _framebuffer, _sampler, _storage, _orderStorage, _stateStorage, _storageSet;
     private Rid _retiredColor;
+    // ADR-0044 Depth World: a depth attachment, and chunk land/statics drawn
+    // from resident buffers by a second pipeline before the ordered stream.
+    private bool _depthMode;
+    private Rid _depth, _residentShader, _residentPipeline, _residentQuads, _residentVisible, _residentSet;
+    private uint _residentQuadCapacity, _residentVisibleCapacity;
+    internal static long ResidentBytes, ResidentDrawCalls;
     private uint _capacityBytes, _orderCapacityBytes, _stateCapacityBytes;
     private byte[] _appliedStates = Array.Empty<byte>();
     private int _appliedStateBytes;
@@ -121,8 +127,9 @@ internal sealed class OrderedWorldDevice
 
     // ALL methods with RT suffix run through RenderingServer.CallOnRenderThread.
     // Initialization/resize is a separate transaction; use canvas until published ready.
-    public void InitializeRT(Vector2I size, string vertexGlsl, string fragmentGlsl)
+    public void InitializeRT(Vector2I size, string vertexGlsl, string fragmentGlsl, string residentVertexGlsl = null)
     {
+        _depthMode = residentVertexGlsl != null;
         if (_color.IsValid || _shader.IsValid)
             throw new InvalidOperationException("Retire the previous target before initialization.");
         if (size.X <= 0 || size.Y <= 0) throw new ArgumentOutOfRangeException(nameof(size));
@@ -167,6 +174,23 @@ internal sealed class OrderedWorldDevice
             _color = _rd.TextureCreate(format, view, initialTextureData);
             Require(_color, "color texture");
             var attachments = new Godot.Collections.Array<Rid> { _color };
+            if (_depthMode)
+            {
+                var depthUsage = RD.TextureUsageBits.DepthStencilAttachmentBit;
+                if (!_rd.TextureIsFormatSupportedForUsage(RD.DataFormat.D32Sfloat, depthUsage))
+                    throw new NotSupportedException("D32 depth attachment unsupported.");
+                using var depthFormat = new RDTextureFormat
+                {
+                    Format = RD.DataFormat.D32Sfloat,
+                    Width = (uint)size.X, Height = (uint)size.Y, Depth = 1,
+                    ArrayLayers = 1, Mipmaps = 1, TextureType = RD.TextureType.Type2D,
+                    Samples = RD.TextureSamples.Samples1, UsageBits = depthUsage,
+                };
+                using var depthView = new RDTextureView();
+                _depth = _rd.TextureCreate(depthFormat, depthView, new Godot.Collections.Array<byte[]>());
+                Require(_depth, "depth texture");
+                attachments.Add(_depth);
+            }
             _framebuffer = _rd.FramebufferCreate(attachments, RD.InvalidId, 1);
             Require(_framebuffer, "framebuffer");
 
@@ -205,9 +229,11 @@ internal sealed class OrderedWorldDevice
                 SampleCount = RD.TextureSamples.Samples1, EnableSampleShading = false,
                 EnableAlphaToCoverage = false, EnableAlphaToOne = false,
             };
+            // ADR-0044 1: LessEqual, depth write on for every category.
             using var depth = new RDPipelineDepthStencilState
             {
-                EnableDepthTest = false, EnableDepthWrite = false, EnableStencil = false,
+                EnableDepthTest = _depthMode, EnableDepthWrite = _depthMode, EnableStencil = false,
+                DepthCompareOperator = RD.CompareOperator.LessOrEqual,
             };
             using var blendAttachment = new RDPipelineColorBlendStateAttachment
             {
@@ -228,6 +254,24 @@ internal sealed class OrderedWorldDevice
                 (RD.PipelineDynamicStateFlags)0, 0, specializations);
             Require(_pipeline, "pipeline");
             if (!_rd.RenderPipelineIsValid(_pipeline)) throw new InvalidOperationException("Invalid pipeline.");
+            if (_depthMode)
+            {
+                using var residentSource = new RDShaderSource
+                {
+                    Language = RD.ShaderLanguage.Glsl,
+                    SourceVertex = residentVertexGlsl, SourceFragment = fragmentGlsl,
+                };
+                using RDShaderSpirV residentSpirv = _rd.ShaderCompileSpirVFromSource(residentSource, true);
+                if (!string.IsNullOrEmpty(residentSpirv.CompileErrorVertex)
+                    || !string.IsNullOrEmpty(residentSpirv.CompileErrorFragment))
+                    throw new InvalidOperationException(residentSpirv.CompileErrorVertex + "\n" + residentSpirv.CompileErrorFragment);
+                _residentShader = _rd.ShaderCreateFromSpirV(residentSpirv, "guo_depth_world_resident");
+                Require(_residentShader, "resident shader");
+                _residentPipeline = _rd.RenderPipelineCreate(_residentShader, _rd.FramebufferGetFormat(_framebuffer),
+                    RD.InvalidId, RD.RenderPrimitive.Triangles, raster, samples, depth, blend,
+                    (RD.PipelineDynamicStateFlags)0, 0, specializations);
+                Require(_residentPipeline, "resident pipeline");
+            }
             Presenter.TextureRdRid = _color; // RS wrapper of our owned main-device texture.
             Free(ref _retiredColor); // Replace the wrapper's dependent view before retiring its old source.
         }
@@ -344,6 +388,53 @@ internal sealed class OrderedWorldDevice
         finally { CacheEvictions += _resident.Evictions - evictions; }
     }
 
+    private void UploadResidentChunksRT(DepthWorldResident resident)
+    {
+        uint quadBytes = checked((uint)Math.Max(resident.QuadCount, 1) * DepthWorldResident.QuadBytes);
+        uint visibleBytes = checked((uint)Math.Max(resident.VisibleCount, 1) * 4);
+        if (quadBytes > _residentQuadCapacity || visibleBytes > _residentVisibleCapacity)
+        {
+            Free(ref _residentSet);
+            if (quadBytes > _residentQuadCapacity) GrowBuffer(ref _residentQuads, ref _residentQuadCapacity, quadBytes);
+            if (visibleBytes > _residentVisibleCapacity) GrowBuffer(ref _residentVisible, ref _residentVisibleCapacity, visibleBytes);
+            resident.Invalidate();
+        }
+        if (!_residentSet.IsValid)
+        {
+            using var q = new RDUniform { UniformType = RD.UniformType.StorageBuffer, Binding = 0 };
+            q.AddId(_residentQuads);
+            using var v = new RDUniform { UniformType = RD.UniformType.StorageBuffer, Binding = 1 };
+            v.AddId(_residentVisible);
+            _residentSet = _rd.UniformSetCreate(new Godot.Collections.Array<RDUniform> { q, v }, _residentShader, 0);
+            Require(_residentSet, "resident set");
+        }
+        try
+        {
+            if (resident.AllDirty)
+            {
+                Upload(_residentQuads, MemoryMarshal.AsBytes(resident.Quads.AsSpan(0, resident.QuadCount)), 0);
+                Upload(_residentVisible, MemoryMarshal.AsBytes(resident.Visible.AsSpan(0, resident.VisibleCount)), 0);
+            }
+            else
+            {
+                foreach (var (start, count) in resident.DirtyQuads)
+                    Upload(_residentQuads, MemoryMarshal.AsBytes(resident.Quads.AsSpan(start, count)), (uint)start * DepthWorldResident.QuadBytes);
+                foreach (var (start, count) in resident.DirtyVisible)
+                    Upload(_residentVisible, MemoryMarshal.AsBytes(resident.Visible.AsSpan(start, count)), (uint)start * 4);
+            }
+            resident.Uploaded();
+        }
+        catch { resident.Invalidate(); throw; }
+    }
+
+    private void Upload(Rid buffer, ReadOnlySpan<byte> bytes, uint offset)
+    {
+        if (bytes.IsEmpty) return;
+        Error error = _rd.BufferUpdate(buffer, offset, (uint)bytes.Length, bytes);
+        if (error != Error.Ok) throw new InvalidOperationException("Resident BufferUpdate: " + error);
+        ResidentBytes += bytes.Length; UploadCalls++;
+    }
+
     private Rid ResolveTextureRT(Rid texture)
     {
         Rid raw = RenderingServer.TextureGetRdTexture(texture, false);
@@ -352,7 +443,11 @@ internal sealed class OrderedWorldDevice
         return raw;
     }
 
-    private Rid TextureSetRT(TextureSet textures)
+    private Rid TextureSetRT(TextureSet textures) => TextureSetRT(textures, _shader, _textureSets);
+
+    private readonly Dictionary<TextureSet, Rid> _residentTextureSets = new();
+
+    private Rid TextureSetRT(TextureSet textures, Rid shader, Dictionary<TextureSet, Rid> cache)
     {
         // false selects the raw view: palette/art bytes must not be sRGB-decoded.
         if (!_resolvedTextures.TryGetValue(textures, out var key))
@@ -363,7 +458,7 @@ internal sealed class OrderedWorldDevice
             _resolvedTextures.Add(textures, key);
         }
         _usedTextureSets.Add(key);
-        if (_textureSets.TryGetValue(key, out Rid existing) && _rd.UniformSetIsValid(existing))
+        if (cache.TryGetValue(key, out Rid existing) && _rd.UniformSetIsValid(existing))
             return existing;
         // An invalid existing set may already have been destroyed with its dependency.
         using var a0 = SamplerUniform(new RDUniform { UniformType = RD.UniformType.SamplerWithTexture, Binding = 0 }, key.Art0);
@@ -373,9 +468,9 @@ internal sealed class OrderedWorldDevice
         using var h = SamplerUniform(new RDUniform { UniformType = RD.UniformType.SamplerWithTexture, Binding = 4 }, key.Hue);
         using var l = SamplerUniform(new RDUniform { UniformType = RD.UniformType.SamplerWithTexture, Binding = 5 }, key.Light);
         var uniforms = new Godot.Collections.Array<RDUniform> { a0, a1, a2, a3, h, l };
-        Rid set = _rd.UniformSetCreate(uniforms, _shader, 1);
+        Rid set = _rd.UniformSetCreate(uniforms, shader, 1);
         Require(set, "texture set");
-        _textureSets[key] = set;
+        cache[key] = set;
         return set;
     }
 
@@ -390,7 +485,8 @@ internal sealed class OrderedWorldDevice
     // opaqueBackdrop=true for ALL world content; false is diagnostic sorted-only
     // compositing and is not generally byte-exact for translucent pixels.
     public void RenderRT(ReadOnlySpan<OrderedWorldResidency.Occurrence> occurrences, ReadOnlySpan<OrderedWorldResidency.Quad> dynamic,
-        ReadOnlySpan<State> states, ReadOnlySpan<Segment> segments, int textureRuns, in Push frame, bool opaqueBackdrop)
+        ReadOnlySpan<State> states, ReadOnlySpan<Segment> segments, int textureRuns, in Push frame, bool opaqueBackdrop,
+        DepthWorldResident resident = null, int cameraX = 0, int cameraY = 0, int maxGroundZ = 127)
     {
         if (frame.Screen.X != Size.X || frame.Screen.Y != Size.Y)
             throw new InvalidOperationException("Stale target dimensions.");
@@ -413,6 +509,14 @@ internal sealed class OrderedWorldDevice
             _frameTextureSets.Add(TextureSetRT(segment.Textures));
         }
         if (next / 6 != (uint)occurrences.Length) throw new InvalidOperationException("Incomplete command stream.");
+        if (resident != null && !_depthMode) throw new InvalidOperationException("Resident chunks need the depth target.");
+        Rid[] residentSets = resident == null ? Array.Empty<Rid>() : new Rid[resident.Draws.Count];
+        if (resident != null)
+        {
+            for (int i = 0; i < resident.Draws.Count; i++)
+                residentSets[i] = TextureSetRT(resident.Draws[i].Textures, _residentShader, _residentTextureSets);
+            UploadResidentChunksRT(resident);
+        }
         if (!occurrences.IsEmpty)
         {
             UploadResidentRT(occurrences, dynamic, states);
@@ -431,10 +535,34 @@ internal sealed class OrderedWorldDevice
 
         // No uploads, allocations or texture discovery inside the open draw list.
         _clear[0] = opaqueBackdrop ? Colors.Black : Colors.Transparent;
-        long list = _rd.DrawListBegin(_framebuffer, RD.DrawFlags.ClearColor0, _clear, 1.0f, 0, null, 0);
+        var clearFlags = _depthMode ? RD.DrawFlags.ClearColor0 | RD.DrawFlags.ClearDepth : RD.DrawFlags.ClearColor0;
+        long list = _rd.DrawListBegin(_framebuffer, clearFlags, _clear, 1.0f, 0, null, 0);
         if (list == RD.InvalidId) throw new InvalidOperationException("DrawListBegin failed.");
         try
         {
+            // ADR-0044: upstream draws chunk land, then chunk statics, then the
+            // rest; the depth test decides cover, draw order only breaks ties.
+            if (resident != null && resident.Draws.Count != 0)
+            {
+                _rd.DrawListBindRenderPipeline(list, _residentPipeline);
+                _rd.DrawListBindUniformSet(list, _residentSet, 0);
+                Span<Push> rpush = stackalloc Push[1];
+                for (int pass = 0; pass < 2; pass++)
+                for (int i = 0; i < resident.Draws.Count; i++)
+                {
+                    var draw = resident.Draws[i];
+                    if (draw.Land != (pass == 0)) continue;
+                    rpush[0] = frame;
+                    rpush[0].FirstVertex = draw.VisibleBase;
+                    rpush[0].Reserved0 = unchecked((uint)cameraX);
+                    rpush[0].Reserved1 = unchecked((uint)cameraY);
+                    rpush[0].Reserved2 = unchecked((uint)(draw.Land ? 127 : maxGroundZ));
+                    _rd.DrawListBindUniformSet(list, residentSets[i], 1);
+                    _rd.DrawListSetPushConstant(list, MemoryMarshal.AsBytes(rpush), 64);
+                    _rd.DrawListDraw(list, false, 1, draw.Count * 6);
+                    ResidentDrawCalls++;
+                }
+            }
             if (!occurrences.IsEmpty)
             {
                 _rd.DrawListBindRenderPipeline(list, _pipeline);
@@ -444,6 +572,7 @@ internal sealed class OrderedWorldDevice
                 {
                     push[0] = frame;
                     push[0].FirstVertex = segments[i].FirstVertex;
+                    push[0].Reserved0 = _depthMode ? 1u : 0u; // ADR-0044: depth from the state row
                     // Probe-only negative control: the pixel oracle must catch
                     // draw-local indexing on a later texture run.
                     if (OrderedWorldCapture.InjectStateIndexFault) push[0].FirstVertex = 0;
@@ -467,6 +596,12 @@ internal sealed class OrderedWorldDevice
             if (_rd.UniformSetIsValid(set)) _rd.FreeRid(set);
             _textureSets.Remove(key);
         }
+        if (_residentTextureSets.Count > 512)
+        {
+            foreach (Rid set in _residentTextureSets.Values)
+                if (_rd.UniformSetIsValid(set)) _rd.FreeRid(set);
+            _residentTextureSets.Clear();
+        }
         // Main RD submission is owned by Godot: do not call Submit(), Sync() or GetData().
     }
 
@@ -486,7 +621,16 @@ internal sealed class OrderedWorldDevice
         foreach (Rid set in _textureSets.Values)
             if (_rd.UniformSetIsValid(set)) _rd.FreeRid(set);
         _textureSets.Clear();
+        foreach (Rid set in _residentTextureSets.Values)
+            if (_rd.UniformSetIsValid(set)) _rd.FreeRid(set);
+        _residentTextureSets.Clear();
         _resolvedTextures.Clear();
+        Free(ref _residentSet);
+        Free(ref _residentQuads);
+        Free(ref _residentVisible);
+        _residentQuadCapacity = _residentVisibleCapacity = 0;
+        Free(ref _residentPipeline);
+        Free(ref _residentShader);
         Free(ref _storageSet);
         Free(ref _storage);
         Free(ref _orderStorage);
@@ -496,6 +640,7 @@ internal sealed class OrderedWorldDevice
         Free(ref _pipeline);
         Free(ref _shader);
         Free(ref _framebuffer);
+        Free(ref _depth);
         if (detachPresenter)
         {
             Free(ref _color);

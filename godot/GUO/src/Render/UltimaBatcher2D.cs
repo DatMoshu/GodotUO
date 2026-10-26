@@ -2269,6 +2269,7 @@ void fragment() {
             int textureWidth = WidthOf(texture);
             int textureHeight = HeightOf(texture);
 #if GUO_LABS
+            if (DepthWorldProbe.Enabled) OrderedDepth = depth; // ADR-0044: the depth upstream gives this vertex
             if (OrderedWorldRecording && rotationSin == 0f && rotationCos == 1f && effects == 0)
             {
                 SetQuadPoints(destinationX, destinationY, destinationW, destinationH, originX, originY, rotationSin, rotationCos);
@@ -2604,6 +2605,12 @@ void fragment() {
         /// two channels and why the circle-of-transparency flag moved into the
         /// mode byte.
         /// </summary>
+        /// <summary>
+        /// PORT DEVIATION (GUO): ADR-0044. The depth upstream would write for the
+        /// next sprite, set by the world pass; only Depth World reads it.
+        /// </summary>
+        public float OrderedDepth;
+
         internal static Color Encode(Vector3 color)
         {
             int index = (int)color.X;

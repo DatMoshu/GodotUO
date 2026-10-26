@@ -477,6 +477,20 @@ internal static partial class PerfProbe
         return LoginPreflight.ArrivedAt(player.X, player.Y, player.Z, world.MapIndex, scene.Go, ExpectMap, out where);
     }
 
+    /// <summary>
+    /// ADR-0044 spike: with GUO_PERF_SHOT_DIR set, the scene's frame after
+    /// warm-up, before timing, so two runs can be compared by eye or by diff.
+    /// </summary>
+    private static async System.Threading.Tasks.Task SaveShot(Node host, string name)
+    {
+        string dir = System.Environment.GetEnvironmentVariable("GUO_PERF_SHOT_DIR");
+        if (string.IsNullOrWhiteSpace(dir)) return;
+        for (int i = 0; i < 3; i++) await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
+        await host.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        Directory.CreateDirectory(dir);
+        host.GetViewport().GetTexture().GetImage().SavePng(Path.Combine(dir, $"shot_{_label}_{name}.png"));
+    }
+
     private static async System.Threading.Tasks.Task<Dictionary<string, object>> Measure(Node host, Rid viewport, string name, string what,
         bool walks = false)
     {
@@ -486,6 +500,7 @@ internal static partial class PerfProbe
         // histories are not hidden inside the measured interval.
         bool worldMeasurement = name != "login";
         if (worldMeasurement) await WarmUp(host);
+        if (worldMeasurement) await SaveShot(host, name);
         int n = Frames;
         Runner runner = walks && _walkRoute == null ? new Runner() : null;
 

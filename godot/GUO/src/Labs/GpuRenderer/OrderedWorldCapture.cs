@@ -12,7 +12,7 @@ namespace GUO.Labs.GpuRenderer;
 /// <summary>Capture once; construct canvas commands only when the GPU transaction cannot be used.</summary>
 internal sealed class OrderedWorldCapture : IDisposable
 {
-    internal static bool Enabled = Array.IndexOf(OS.GetCmdlineUserArgs(), "--rd-world") >= 0;
+    internal static bool Enabled = Array.IndexOf(OS.GetCmdlineUserArgs(), "--rd-world") >= 0 || DepthWorldProbe.Enabled;
     internal static long FramesDrawn, FramesFallback, UploadedBytes;
     internal static long DrawCalls, RecordTicks;
     internal static long SuppressedCommands;
@@ -46,7 +46,12 @@ internal sealed class OrderedWorldCapture : IDisposable
     private string _unsupported;
     private bool _queued, _disposed;
     private int _pending;
-    private readonly string _vertexSource, _fragmentSource;
+    private readonly string _vertexSource, _fragmentSource, _residentVertexSource;
+    // ADR-0044 Depth World: upstream's depth for the next captured quad, and
+    // the chunk land/statics drawn from resident buffers this frame.
+    internal float Depth;
+    internal readonly DepthWorldResident Resident = DepthWorldProbe.Enabled ? new DepthWorldResident() : null;
+    private int _cameraX, _cameraY, _maxGroundZ = 127;
     internal bool Recording { get; private set; }
     internal bool Deferring => Recording && _unsupported == null;
     internal Texture2Drd Texture => _device.Presenter;
@@ -56,6 +61,8 @@ internal sealed class OrderedWorldCapture : IDisposable
         _fallback = new OrderedWorldCanvas(spriteMaterial, meshMaterial);
         _vertexSource = FileAccess.GetFileAsString("res://src/Labs/GpuRenderer/resident_world_vertex.glsl.txt");
         _fragmentSource = FileAccess.GetFileAsString("res://src/Labs/GpuRenderer/ordered_world_fragment.glsl.txt");
+        if (Resident != null)
+            _residentVertexSource = FileAccess.GetFileAsString("res://src/Labs/GpuRenderer/depth_world_resident_vertex.glsl.txt");
         _render = Callable.From(RenderThread);
         RenderingServer.FramePreDraw += BeforeDraw;
     }
@@ -79,6 +86,8 @@ internal sealed class OrderedWorldCapture : IDisposable
         Records.Begin();
         _batchArtCount = _textureRuns = 0;
         _canvas = default;
+        Depth = 0f;
+        Resident?.BeginFrame();
         _hue = hue; _light = light ?? hue;
         _hueRid = _hue?.GetRid() ?? default;
         _lightRid = _light?.GetRid() ?? default;
@@ -187,11 +196,37 @@ internal sealed class OrderedWorldCapture : IDisposable
         {
             Xx = transform.X.X, Yx = transform.Y.X, OriginX = transform.Origin.X,
             Xy = transform.X.Y, Yy = transform.Y.Y, OriginY = transform.Origin.Y,
-            ArtSlot = InjectInvalidTextureSlot ? 4 : InjectTextureSlotFault ? 0 : artSlot, Pad1 = 0,
+            ArtSlot = InjectInvalidTextureSlot ? 4 : InjectTextureSlotFault ? 0 : artSlot, Pad1 = Depth,
         });
         SuppressedCommands++;
         return true;
     }
+
+    /// <summary>ADR-0044: queue the visible chunks' land and statics from resident buffers.</summary>
+    internal bool ResidentChunks(System.Collections.Generic.List<GUO.Game.Map.Chunk> chunks, int cameraX, int cameraY, sbyte maxGroundZ)
+    {
+        if (!Deferring || Resident == null) return false;
+        _cameraX = cameraX; _cameraY = cameraY; _maxGroundZ = maxGroundZ;
+        foreach (var chunk in chunks)
+        {
+            var mesh = chunk.Mesh;
+            if (mesh == null) continue;
+            if (!Resident.Add(mesh.Land, true, _hueRid, _lightRid, out string reason)
+                || !Resident.Add(mesh.Statics, false, _hueRid, _lightRid, out reason))
+            {
+                Reject(reason);
+                return false;
+            }
+        }
+        foreach (var draw in Resident.Draws)
+        {
+            // Strong owners for the borrowed atlas textures until the ticket retires.
+            if (!_residentOwners.Contains(draw.Textures.Art0)) _residentOwners.Add(draw.Textures.Art0);
+        }
+        return true;
+    }
+
+    private readonly HashSet<Rid> _residentOwners = new();
 
     private void ReplayCanvas()
     {
@@ -294,11 +329,12 @@ internal sealed class OrderedWorldCapture : IDisposable
             if (_device.Size != size)
             {
                 _device.DisposeRT(false);
-                _device.InitializeRT(size, _vertexSource, _fragmentSource);
+                _device.InitializeRT(size, _vertexSource, _fragmentSource, _residentVertexSource);
             }
             if (InjectFailure == 1) throw new InvalidOperationException("injected before upload");
             _device.RenderRT(CollectionsMarshal.AsSpan(_occurrences), CollectionsMarshal.AsSpan(_dynamic),
-                CollectionsMarshal.AsSpan(_states), CollectionsMarshal.AsSpan(_segments), _textureRuns, _push, true);
+                CollectionsMarshal.AsSpan(_states), CollectionsMarshal.AsSpan(_segments), _textureRuns, _push, true,
+                Resident, _cameraX, _cameraY, _maxGroundZ);
             if (InjectFailure == 2) throw new InvalidOperationException("injected after recording");
             FramesDrawn++;
             success = true;

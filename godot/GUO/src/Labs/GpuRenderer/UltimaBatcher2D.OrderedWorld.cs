@@ -95,6 +95,14 @@ public sealed partial class UltimaBatcher2D
         _orderedCanvas = _orderedPresenter = default;
     }
 
+    /// <summary>ADR-0044: chunk land and statics from resident GPU buffers; nothing per quad here.</summary>
+    internal int DrawDepthWorldResident(System.Collections.Generic.List<GUO.Game.Map.Chunk> chunks, int offsetX, int offsetY, sbyte maxGroundZ)
+    {
+        if (!OrderedWorldRecording) return 0;
+        EnsureStarted();
+        return _orderedWorld.ResidentChunks(chunks, offsetX, offsetY, maxGroundZ) ? _orderedWorld.Resident.Draws.Count : 0;
+    }
+
     internal int DrawOrderedLand(MeshLayer layer)
     {
         int count = 0;
@@ -112,6 +120,7 @@ public sealed partial class UltimaBatcher2D
     {
         if (!OrderedWorldRecording) return false;
         MeshQuad q = OrderedScratchQuad(hue);
+        _orderedWorld.Depth = OrderedDepth;
         return _orderedWorld.Quad(texture, q, _worldOffset, false, rectangle, destination: destination, source: source);
     }
 
@@ -151,6 +160,7 @@ public sealed partial class UltimaBatcher2D
             source = new Rect2(original.TextureCoordinate0.X * width, original.TextureCoordinate0.Y * height, uvSize.X * width, uvSize.Y * height);
             record = _orderedWorld.Records.Store(layer, index, true, q, offsetX, offsetY, width, height, destination, source);
         }
+        _orderedWorld.Depth = OrderedDepth;
         return _orderedWorld.Quad(texture, q, _worldOffset, false, true, destination: destination, source: source, record: record);
     }
 
@@ -166,6 +176,7 @@ public sealed partial class UltimaBatcher2D
             Hue0=hue,Hue1=hue,Hue2=hue,Hue3=hue,
             Normal0=new Vector3(0,0,1),Normal1=new Vector3(0,0,1),Normal2=new Vector3(0,0,1),Normal3=new Vector3(0,0,1)
         };
+        _orderedWorld.Depth = OrderedDepth;
         return _orderedWorld.Quad(texture,q,_worldOffset,false,true,local,rect,rect);
     }
 }

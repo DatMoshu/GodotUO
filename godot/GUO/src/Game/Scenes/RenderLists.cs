@@ -233,7 +233,7 @@ namespace GUO.Game.Scenes
             // sort puts them, so land in front of one by less than that half
             // does not cover it upstream; they are left out rather than hidden
             // wrongly. See ADR-0004's amendment.
-            if (obj is Mobile or GameEffect)
+            if (obj is Mobile or GameEffect || DepthWorldProbe.Active)
             {
                 return;
             }
@@ -663,6 +663,10 @@ namespace GUO.Game.Scenes
             // the captured prefix, then draws the remaining quads on canvas.
             if (batcher.OrderedWorldRecording)
             {
+                // ADR-0044: Depth World draws chunk land and statics from resident buffers.
+                if (DepthWorldProbe.Enabled)
+                    result += batcher.DrawDepthWorldResident(visibleChunks, offsetX, offsetY, maxGroundZ);
+                else
                 foreach (var chunk in visibleChunks) result += batcher.DrawOrderedLand(chunk.Mesh.Land);
             }
             else
@@ -988,6 +992,7 @@ namespace GUO.Game.Scenes
                 // post-processing id buffer (ADR-0023); land here covers, so it
                 // paints background. Read only while an id pass is on.
                 batcher.CurrentObjectId = next.Object is Land ? -1 : Renderer.PostFx.PostFxIds.Of(next.Object);
+                batcher.OrderedDepth = next.Pass == Mobile.DrawPass.Body ? next.Depth - 0.5f : next.Depth; // ADR-0044
 
                 if (next.Mesh != null)
                 {
@@ -1109,6 +1114,7 @@ namespace GUO.Game.Scenes
                 if (obj.Z <= maxGroundZ)
                 {
                     float depth = obj.CalculateDepthZ();
+                    batcher.OrderedDepth = depth; // ADR-0044
                     // PORT DEVIATION (GUO): the id buffer (ADR-0023); first-drawn land is background.
                     batcher.CurrentObjectId = obj is Land ? 0 : Renderer.PostFx.PostFxIds.Of(obj);
 

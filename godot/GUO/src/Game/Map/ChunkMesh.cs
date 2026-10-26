@@ -388,7 +388,8 @@ namespace GUO.Game.Map
             if (!Instanceable(obj, ref itemData, graphic))
                 return false;
 
-            if (_tileRank >= WorldDepthKey.MaxInstancedPerTile)
+            // A depth buffer orders any number per tile (ADR-0044).
+            if (_tileRank >= WorldDepthKey.MaxInstancedPerTile && !DepthWorldProbe.Active)
                 return false;
 
             _tileRank++;
@@ -605,7 +606,7 @@ namespace GUO.Game.Map
             // That is ADR-0007's amendment: under --gpu-world (GpuWorld.Building)
             // the rules below apply again and the statics become instances of
             // the world depth pass, ordered by its depth buffer.
-            if (!GpuWorld.Building)
+            if (!GpuWorld.Building && !DepthWorldProbe.Active)
                 return true;
 
             if (itemData.IsInternal)
@@ -723,6 +724,7 @@ namespace GUO.Game.Map
             else
             {
                 Statics.WriteQuadAt(idx, artInfo.Texture, artInfo.UV, posX, posY, hueVec, depth);
+                Statics.ObjectZ[idx] = obj.Z; // PORT DEVIATION (GUO): ADR-0044
             }
 
             obj.InChunkMesh = true;
@@ -738,6 +740,7 @@ namespace GUO.Game.Map
             Vector3 hue, float depth)
         {
             ref var vertex = ref Land.Vertices[index];
+            Land.Depths[index] = depth; // PORT DEVIATION (GUO): ADR-0044
 
             // Half-pixel inset to prevent texture bleeding at tile seams
             float sourceX = (sourceRect.X + 0.5f) / (float)texture.GetWidth();
