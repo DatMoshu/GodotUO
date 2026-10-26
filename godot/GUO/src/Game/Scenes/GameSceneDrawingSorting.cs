@@ -1061,7 +1061,7 @@ namespace GUO.Game.Scenes
                     if (meshItemData.IsLight)
                     {
                         AddLight(obj, obj, obj.RealScreenPosition.X + 22, obj.RealScreenPosition.Y + 22);
-                        _walkLights?.Add(obj); // PORT DEVIATION (GUO): ChunkReuse
+                        _walkLights?.Add((_walkTile, obj)); // PORT DEVIATION (GUO): ChunkReuse
                     }
 
                     TrySelectObject(obj, meshAllowSelection && !(meshCot && gatherInputs.MouseInsideCot));

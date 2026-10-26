@@ -721,24 +721,28 @@ namespace GUO.Game.Scenes
                     }
 
                     // PORT DEVIATION (GUO): ADR-0044, an unchanged chunk keeps its last walk.
-                    bool verifyReuse = false;
-                    if (TryReuseChunk(chunk, gatherInputs, built))
+                    // Only the tiles in walkMask are walked; null walks the chunk whole.
+                    ulong? walkMask = ReusableTiles(chunk, gatherInputs, built);
+                    if (walkMask == 0 && !VerifyChunkReuse)
                     {
-                        if (!VerifyChunkReuse)
-                        {
-                            _visibleChunks.Add(chunk);
-                            continue;
-                        }
-                        verifyReuse = true;
-                        KeepVisibility(chunk);
+                        _visibleChunks.Add(chunk);
+                        continue;
                     }
+                    bool verifyReuse = walkMask != null && VerifyChunkReuse;
                     int landStamp = chunk.Mesh.Land.ContentStamp, staticStamp = chunk.Mesh.Statics.ContentStamp;
 
-                    // Reset visibility and alpha for this frame
-                    chunk.Mesh.Land.ResetVisibility();
-                    chunk.Mesh.Land.ResetAlpha();
-                    chunk.Mesh.Statics.ResetVisibility();
-                    chunk.Mesh.Statics.ResetAlpha();
+                    if (walkMask is ulong partial)
+                    {
+                        ClearTileVisibility(chunk, partial);
+                    }
+                    else
+                    {
+                        // Reset visibility and alpha for this frame
+                        chunk.Mesh.Land.ResetVisibility();
+                        chunk.Mesh.Land.ResetAlpha();
+                        chunk.Mesh.Statics.ResetVisibility();
+                        chunk.Mesh.Statics.ResetAlpha();
+                    }
 
                     _visibleChunks.Add(chunk);
 
@@ -768,28 +772,21 @@ namespace GUO.Game.Scenes
 
                     _forcePositions = chunk.ScreenPositionsStale;
                     chunk.ScreenPositionsStale = false;
-                    BeginChunkWalk(chunk); // PORT DEVIATION (GUO): ChunkReuse
-
-                    for (var x = 0; x < 8; x++)
+                    // PORT DEVIATION (GUO): ChunkReuse; WalkChunkTiles is upstream's tile loop.
+                    BeginChunkWalk(chunk, walkMask);
+                    WalkChunkTiles(chunk, use_handles, gatherInputs, walkMask);
+                    EndChunkWalk(chunk, gatherInputs, landStamp, staticStamp, built, walkMask);
+                    if (verifyReuse)
                     {
-                        for (var y = 0; y < 8; y++)
-                        {
-                            var firstObj = chunk.GetHeadObject(x, y);
-                            if (firstObj == null || firstObj.IsDestroyed)
-                                continue;
-
-                            AddTileToRenderList(
-                                firstObj,
-                                use_handles,
-                                150,
-                                chunk,
-                                gatherInputs
-                            );
-                        }
+                        // The reused result against a whole walk (lights and queues doubled; verify only).
+                        KeepVisibility(chunk);
+                        chunk.Mesh.Land.ResetVisibility();
+                        chunk.Mesh.Statics.ResetVisibility();
+                        BeginChunkWalk(chunk, null);
+                        WalkChunkTiles(chunk, use_handles, gatherInputs, null);
+                        EndChunkWalk(chunk, gatherInputs, landStamp, staticStamp, built, null);
+                        CompareVisibility(chunk);
                     }
-
-                    EndChunkWalk(chunk, gatherInputs, landStamp, staticStamp, built); // PORT DEVIATION (GUO): ChunkReuse
-                    if (verifyReuse) CompareVisibility(chunk);
                 }
             }
 

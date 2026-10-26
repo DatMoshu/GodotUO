@@ -50,50 +50,103 @@ internal partial class GameScene
         internal bool Reusable;
         internal int LandStamp, StaticStamp, LandCount, StaticCount;
         internal object Key;
-        internal readonly List<GameObject> Lights = new();
+        internal ulong DynamicMask, WalkedDynamic;
+        internal readonly List<(int Tile, GameObject Light)> Lights = new();
     }
 
-    // Set by AddTileToRenderList while a chunk is walked.
+    // Set by AddTileToRenderList while a tile is walked; _walkTile names the tile.
     private bool _walkDynamic;
-    private List<GameObject> _walkLights;
+    private int _walkTile;
+    private List<(int Tile, GameObject Light)> _walkLights;
+    internal static long TilesReused;
 
-    private ReuseKey CurrentReuseKey(Chunk chunk, in GatherInputs inputs) => new ReuseKey(_offset, _minPixel, _maxPixel,
-        _maxZ, chunk.ObjectsVersion, _maxGroundZ, _noDrawRoofs, ProfileManager.CurrentProfile.HideVegetation, inputs);
+    private ReuseKey CurrentReuseKey(in GatherInputs inputs) => new ReuseKey(_offset, _minPixel, _maxPixel,
+        _maxZ, 0, _maxGroundZ, _noDrawRoofs, ProfileManager.CurrentProfile.HideVegetation, inputs);
 
-    /// <summary>True when the chunk's last walk still holds; then its lights are re-added and the walk is skipped.</summary>
-    private bool TryReuseChunk(Chunk chunk, in GatherInputs inputs, bool built)
+    /// <summary>
+    /// The tiles of the chunk that must be walked this frame when its last
+    /// walk still holds: those that held anything but meshed land and statics
+    /// then (DynamicMask), and those an object entered or left since
+    /// (Chunk.DirtyTiles). Null when the chunk must be walked whole. The
+    /// other tiles keep their visibility; their static lights are re-added.
+    /// </summary>
+    private ulong? ReusableTiles(Chunk chunk, in GatherInputs inputs, bool built)
     {
         if (!ChunkReuse || !DepthWorldProbe.Enabled || built || UpdateDrawPosition || chunk.ScreenPositionsStale)
-            return false;
-        if (chunk.Walk is not { Reusable: true } walk || walk.Key is not ReuseKey key) return false;
+            return null;
+        if (chunk.Walk is not { Reusable: true } walk || walk.Key is not ReuseKey key) return null;
         var mesh = chunk.Mesh;
         if (mesh.Land.ContentStamp != walk.LandStamp || mesh.Statics.ContentStamp != walk.StaticStamp
             || mesh.Land.Count != walk.LandCount || mesh.Statics.Count != walk.StaticCount)
-            return false;
-        if (!key.Same(CurrentReuseKey(chunk, inputs)) || MouseNearChunk(chunk.X, chunk.Y)) return false;
-        foreach (var light in walk.Lights)
-            AddLight(light, light, light.RealScreenPosition.X + 22, light.RealScreenPosition.Y + 22);
-        ChunksReused++;
-        return true;
+            return null;
+        if (!key.Same(CurrentReuseKey(inputs)) || MouseNearChunk(chunk.X, chunk.Y)) return null;
+        ulong walkMask = walk.DynamicMask | chunk.DirtyTiles;
+        foreach (var (tile, light) in walk.Lights)
+            if ((walkMask & (1UL << tile)) == 0)
+                AddLight(light, light, light.RealScreenPosition.X + 22, light.RealScreenPosition.Y + 22);
+        if (walkMask == 0) ChunksReused++;
+        else TilesReused += 64 - System.Numerics.BitOperations.PopCount(walkMask);
+        return walkMask;
     }
 
-    private void BeginChunkWalk(Chunk chunk)
+    private void WalkChunkTiles(Chunk chunk, bool useHandles, in GatherInputs inputs, ulong? walkMask)
     {
-        _walkDynamic = false;
-        chunk.Walk ??= new ChunkWalk();
-        chunk.Walk.Lights.Clear();
-        _walkLights = chunk.Walk.Lights;
+        for (var x = 0; x < 8; x++)
+        {
+            for (var y = 0; y < 8; y++)
+            {
+                if (walkMask is ulong mask && (mask & (1UL << ((x << 3) | y))) == 0)
+                    continue;
+                var firstObj = chunk.GetHeadObject(x, y);
+                if (firstObj == null || firstObj.IsDestroyed)
+                    continue;
+
+                _walkDynamic = false;
+                _walkTile = (x << 3) | y;
+                AddTileToRenderList(firstObj, useHandles, 150, chunk, inputs);
+                // A tile with anything but meshed land and statics is walked every frame.
+                if (_walkDynamic) chunk.Walk.WalkedDynamic |= 1UL << _walkTile;
+            }
+        }
     }
 
-    /// <summary>Records whether this walk may be reused: only meshed objects, and no vertex changed since the stamps before the reset.</summary>
-    private void EndChunkWalk(Chunk chunk, in GatherInputs inputs, int landStamp, int staticStamp, bool built)
+    /// <summary>Partial walk: the tiles about to be walked lose their meshed visibility, as a reset would clear it.</summary>
+    private static void ClearTileVisibility(Chunk chunk, ulong walkMask)
+    {
+        var mesh = chunk.Mesh;
+        mesh.Land.VisibilityStamp++;
+        mesh.Statics.VisibilityStamp++;
+        for (int t = 0; t < 64; t++)
+        {
+            if ((walkMask & (1UL << t)) == 0) continue;
+            for (var obj = chunk.GetHeadObject(t >> 3, t & 7); obj != null; obj = obj.TNext)
+                if (obj.InChunkMesh)
+                    (obj is Land ? mesh.Land : mesh.Statics).Visible[obj.MeshSpriteIndex] = false;
+        }
+    }
+
+    private void BeginChunkWalk(Chunk chunk, ulong? walkMask)
+    {
+        chunk.Walk ??= new ChunkWalk();
+        var lights = chunk.Walk.Lights;
+        if (walkMask is ulong mask) lights.RemoveAll(l => (mask & (1UL << l.Tile)) != 0);
+        else lights.Clear();
+        _walkLights = lights;
+        chunk.Walk.WalkedDynamic = 0;
+    }
+
+    /// <summary>Records whether this walk may be reused: no vertex changed since the stamps before it.</summary>
+    private void EndChunkWalk(Chunk chunk, in GatherInputs inputs, int landStamp, int staticStamp, bool built, ulong? walkMask)
     {
         var walk = chunk.Walk;
         var mesh = chunk.Mesh;
-        walk.Reusable = !_walkDynamic && !built && mesh.Land.ContentStamp == landStamp && mesh.Statics.ContentStamp == staticStamp;
+        walk.Reusable = !built && mesh.Land.ContentStamp == landStamp && mesh.Statics.ContentStamp == staticStamp;
+        // A partial walk keeps the skipped tiles' record: they were static.
+        walk.DynamicMask = walkMask is ulong mask ? (walk.DynamicMask & ~mask) | walk.WalkedDynamic : walk.WalkedDynamic;
         walk.LandStamp = mesh.Land.ContentStamp; walk.StaticStamp = mesh.Statics.ContentStamp;
         walk.LandCount = mesh.Land.Count; walk.StaticCount = mesh.Statics.Count;
-        walk.Key = CurrentReuseKey(chunk, inputs);
+        walk.Key = CurrentReuseKey(inputs);
+        chunk.DirtyTiles = 0;
         _walkLights = null;
     }
 

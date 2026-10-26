@@ -132,6 +132,7 @@ namespace GUO.Game.Map
         // (GameScene.ChunkReuse.cs): bumped whenever an object enters or
         // leaves one of this chunk's tiles, and the last walk's record.
         internal int ObjectsVersion;
+        internal ulong DirtyTiles; // one bit per tile, (x << 3) | y
         internal Scenes.GameScene.ChunkWalk Walk;
 
 
@@ -278,7 +279,7 @@ namespace GUO.Game.Map
 
         public void AddGameObject(GameObject obj, int x, int y)
         {
-            ObjectsVersion++; // PORT DEVIATION (GUO): ChunkReuse
+            ObjectsVersion++; DirtyTiles |= 1UL << ((x << 3) | y); // PORT DEVIATION (GUO): ChunkReuse
             Mesh.MarkDirtyIfNeeded(obj);
             obj.RemoveFromTile();
             // PORT DEVIATION (GUO): old ownership was invalidated by unlink;
@@ -469,7 +470,7 @@ namespace GUO.Game.Map
 
         public void RemoveGameObject(GameObject obj, int x, int y)
         {
-            ObjectsVersion++; // PORT DEVIATION (GUO): ChunkReuse
+            ObjectsVersion++; DirtyTiles |= 1UL << ((x << 3) | y); // PORT DEVIATION (GUO): ChunkReuse
             Mesh.MarkDirtyIfNeeded(obj);
             ref GameObject firstNode = ref Tiles[x, y];
 

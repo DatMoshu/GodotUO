@@ -818,6 +818,7 @@ internal static partial class PerfProbe
             ["rd_frames_fallback"] = GUO.Labs.GpuRenderer.OrderedWorldCapture.FramesFallback - rdFallbackBefore,
             ["dw_chunks_reused_total"] = GUO.Game.Scenes.GameScene.ChunksReused,
             ["dw_chunk_reuse_mismatches"] = GUO.Game.Scenes.GameScene.ChunkReuseMismatches,
+            ["dw_tiles_reused_total"] = GUO.Game.Scenes.GameScene.TilesReused,
             ["rd_upload_bytes_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.UploadedBytes - rdBytesBefore) / n, 1),
             ["rd_draw_calls_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.DrawCalls - rdCallsBefore) / n, 1),
             ["rd_record_cpu_ms"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.RecordTicks - rdTicksBefore) * 1000 / System.Diagnostics.Stopwatch.Frequency / n, 3),
