@@ -33,6 +33,7 @@ internal static class PerfRuntimeIdentity
                 merged_land_array = GUO.Renderer.MergedLand.Array,
                 gpu_world = GUO.Renderer.GpuWorld.Enabled,
                 retained_canvas = GUO.Renderer.UltimaBatcher2D.RetainCanvas,
+                reclaim_empty_retained_canvas = GUO.Renderer.UltimaBatcher2D.ReclaimEmptyRetainedCanvas,
                 retained_cover_candidates = GUO.Game.Scenes.RenderLists.RetainCoverCandidates,
                 shared_cover = GUO.Renderer.UltimaBatcher2D.SharedCover,
                 shared_cover_shader = GUO.Renderer.UltimaBatcher2D.SharedCoverShader,

@@ -9,7 +9,7 @@ from pathlib import Path
 FLAGS = frozenset(("batched_world", "merged_cover", "merged_land", "merged_land_ordered",
                    "merged_land_array", "gpu_world", "retained_canvas", "retained_cover_candidates",
                    "shared_cover", "shared_cover_shader", "shared_cover_reference", "multimesh_sprites",
-                   "clear_used_canvas"))
+                   "clear_used_canvas", "reclaim_empty_retained_canvas"))
 ARG_FLAGS = {
     "--batched-world": {"batched_world"},
     "--merged-cover": {"merged_cover"}, "--merged-cover=off": {"merged_cover"},

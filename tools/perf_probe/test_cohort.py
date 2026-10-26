@@ -77,7 +77,7 @@ def test_requested_minimap_drift_rejects_even_if_effective_state_matches(cohort_
     assert baseline_path(cfg).read_bytes() == before
 
 
-@pytest.mark.parametrize("flag", ["retained_canvas", "clear_used_canvas"])
+@pytest.mark.parametrize("flag", ["retained_canvas", "clear_used_canvas", "reclaim_empty_retained_canvas"])
 def test_unexpected_optimization_flag_drift_rejects(cohort_gate, flag):
     cfg, _, state = cohort_gate
     assert run_gate([*ARGS, "--record-baseline"]) == 0
@@ -177,3 +177,21 @@ def test_missing_or_malformed_renderer_parameters_rejected(value):
     report["runtime_identity"]["parameters"] = value
     with pytest.raises(ValueError):
         effective_cohort(report)
+
+
+def test_reclamation_explicit_arm_and_missing_identity(cohort_gate, tmp_path):
+    cfg, _, state = cohort_gate
+    arm = tmp_path / "arm.json"
+    flag = "reclaim_empty_retained_canvas"
+    arm.write_text(json.dumps({"name": "control", "flags": {flag: False}}))
+    args = [*ARGS, "--experiment-arm", str(arm)]
+    state["report"]["runtime_identity"]["effective_flags"]["retained_canvas"] = True
+    assert run_gate([*args, "--record-baseline"]) == 0
+    before = baseline_path(cfg).read_bytes()
+    arm.write_text(json.dumps({"name": "candidate", "flags": {flag: True}}))
+    state["report"]["runtime_identity"]["effective_flags"][flag] = True
+    assert run_gate(args) == 0
+    assert baseline_path(cfg).read_bytes() == before
+    del state["report"]["runtime_identity"]["effective_flags"][flag]
+    with pytest.raises(ValueError, match="Incomplete optimization flags"):
+        effective_cohort(state["report"])

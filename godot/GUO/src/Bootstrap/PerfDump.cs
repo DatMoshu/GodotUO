@@ -365,6 +365,7 @@ internal static class PerfDump
             r["cover_candidate_rejected_per_frame"] = frames > 0 ? Math.Round((double)(CoverCandidates.Rejected - _candidateRejectedAtFade) / frames, 1) : 0;
             r["cover_candidate_dependency_checks_per_frame"] = frames > 0 ? Math.Round((double)(CoverCandidates.DependencyChecks - _candidateChecksAtFade) / frames, 1) : 0;
             r["retained_canvas_enabled"] = UltimaBatcher2D.RetainCanvas;
+            r["reclaim_empty_retained_canvas_enabled"] = UltimaBatcher2D.ReclaimEmptyRetainedCanvas;
             r["gather_input_checks"] = GameScene.GatherInputChecks;
             r["gather_input_mismatches"] = GameScene.GatherInputMismatches;
             r["retained_canvas_compared_per_frame"] = frames > 0 ? Math.Round((double)(RetainedCanvasCommands.Compared - _canvasComparedAtFade) / frames, 1) : 0;

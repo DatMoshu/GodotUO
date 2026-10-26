@@ -152,3 +152,27 @@ Keep screenshots, UO artwork, credentials, client profiles and private logs
 out of the repository. This experiment remains local and unpromoted pending
 review. It does not change the conclusion that the preceding cover-candidate
 cache had mixed performance and higher allocations.
+
+
+## Finalized-empty storage experiment (2026-10-26)
+
+Owner-approved bounded experiment: `GUO_RETAIN_CANVAS_RECLAIM_EMPTY=1`, with
+`GUO_RETAIN_CANVAS=1`. Both remain off by default. After cacheable `End` removes
+the old native suffix and finalizes an empty stream, return that owner's array
+capacity to the existing shared budget. Limits remain 8192 slots per item and
+65536 per batcher. Hidden nonempty owners, uncached/Bypass streams and Reset
+retain storage. No RID is freed and no command ordering or culling changes.
+
+Runtime identity and scene reports record `reclaim_empty_retained_canvas`;
+comparisons must explicitly declare this flag in both experiment arms and keep
+retention/other prerequisites fixed. Older manifests lacking the flag require
+a fresh baseline; preserved exports and protocols are unchanged.
+
+`--batcher-probe` exercises full shared-budget handoff between owners, native
+stream ordering, hidden-tail reuse, repeated empty finalization, Reset/recovery,
+uncached bypass and per-item overflow. The viewport fixture compares off/on
+pixels across clipping, empty pools, regrowth and mode transitions. A bounded
+synthetic 256-command grow/empty cycle reports managed allocation off/on, separate
+from the unchanged-stream zero-allocation check. Reclaiming slots may reduce
+other-owner fallback but necessarily allocates again on regrowth. These checks
+are functional/work evidence, not real-world frequency or FPS acceptance.

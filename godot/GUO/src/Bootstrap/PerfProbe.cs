@@ -862,6 +862,7 @@ internal static partial class PerfProbe
             ["gc0"] = gc0, ["gc1"] = gc1, ["gc2"] = gc2,
             ["runtime_attribution"] = _runtimeAttribution,
             ["retained_canvas_enabled"] = UltimaBatcher2D.RetainCanvas,
+            ["reclaim_empty_retained_canvas_enabled"] = UltimaBatcher2D.ReclaimEmptyRetainedCanvas,
             ["counter_intervals"] = intervals?.Report(ms),
             ["counter_intervals_dropped"] = intervals?.Dropped ?? 0,
             ["counter_interval_thread_changed"] = intervals?.ThreadChanged ?? false,

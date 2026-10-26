@@ -146,12 +146,20 @@ internal sealed class RetainedCanvasCommands
         Uncached++;
     }
 
-    internal void End()
+    internal void End(bool reclaimEmpty = false)
     {
         if (_uncached) return;
         // A matching but shorter stream must remove the previous suffix.
         if (_cursor != _count) RewritePrefix();
         _count = _cursor;
+        // Only a finalized cacheable empty stream may return its backing slots.
+        // RewritePrefix above must clear the old native suffix first. Hidden
+        // nonempty owners and the uncached early return keep their warm storage.
+        if (reclaimEmpty && _count == 0 && _commands.Length != 0)
+        {
+            _budget.Capacity -= _commands.Length;
+            _commands = Array.Empty<Command>();
+        }
     }
 
     private void RewritePrefix()
