@@ -1212,7 +1212,10 @@ namespace GUO
                 // PORT DEVIATION (GUO): the idle screen saver, over everything
                 // but the cursor. A no-op unless the profile turns it on.
                 _uoSpriteBatch.Begin();
-                GUO.Game.Managers.ScreenSaver.Draw(_uoSpriteBatch, new Rectangle(0, 0, ClientBounds.Width, ClientBounds.Height));
+                // PORT DEVIATION (GUO): ClientBounds' size, without its window-position query.
+                GUO.Game.Managers.ScreenSaver.Draw(_uoSpriteBatch, _embedded
+                    ? new Rectangle(0, 0, _embeddedClientBounds.Width, _embeddedClientBounds.Height)
+                    : new Rectangle(0, 0, (int)((float)windowBounds.Width / DpiScale), (int)((float)windowBounds.Height / DpiScale)));
                 _uoSpriteBatch.End();
 
                 _uoSpriteBatch.Begin();

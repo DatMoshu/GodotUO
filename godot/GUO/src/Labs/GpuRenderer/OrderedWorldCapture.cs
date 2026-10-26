@@ -32,6 +32,9 @@ internal sealed class OrderedWorldCapture : IDisposable
     private readonly List<OrderedWorldDevice.Segment> _segments = new(1024);
     private readonly List<OrderedWorldCanvas.Command> _commands = new(8192);
     private readonly Dictionary<Texture2D, OrderedWorldDevice.Textures> _textures = new(ReferenceEqualityComparer.Instance);
+    // A texture's RID is fixed for its life; asking Godot is an interop call.
+    // Kept across frames, emptied when it grows past what a few frames use.
+    private readonly Dictionary<Texture2D, Rid> _rids = new(ReferenceEqualityComparer.Instance);
     private readonly Callable _render;
     private OrderedWorldDevice.Push _push;
     private Transform2D _view;
@@ -137,7 +140,12 @@ internal sealed class OrderedWorldCapture : IDisposable
         if (!_textures.TryGetValue(texture, out var textures))
         {
             if (GUO.Renderer.Arts.Art.IsHdTexture(texture)) { Reject("HD texture"); return false; }
-            textures = new OrderedWorldDevice.Textures(texture.GetRid(), _hueRid, _lightRid);
+            if (!_rids.TryGetValue(texture, out Rid rid))
+            {
+                if (_rids.Count >= 8192) _rids.Clear();
+                _rids.Add(texture, rid = texture.GetRid());
+            }
+            textures = new OrderedWorldDevice.Textures(rid, _hueRid, _lightRid);
             _textures.Add(texture, textures); // Strong owner reference held until the ticket retires.
         }
         // Reserve before mutating any stream. A rejected command leaves the
