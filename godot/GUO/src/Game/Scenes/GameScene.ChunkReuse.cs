@@ -57,6 +57,10 @@ internal partial class GameScene
         internal Point Offset;
         internal bool FullyInside, OffScreenCleared;
         internal ulong StaleTiles;
+        // The Z range of the chunk's anchors (a stretched land's MinZ
+        // included): a reused tile holds only meshed land and statics, whose
+        // Z changes with a mesh rebuild or a tile walk, both of which widen it.
+        internal int ZMin = sbyte.MinValue, ZMax = sbyte.MaxValue;
         internal readonly List<(int Tile, GameObject Light)> Lights = new();
     }
 
@@ -81,10 +85,11 @@ internal partial class GameScene
         if (!ChunkReuse || !DepthWorldProbe.Enabled || built || chunk.ScreenPositionsStale)
             return null;
         if (chunk.Walk is not { Reusable: true } walk || walk.Key is not ReuseKey key) return null;
-        // A moved view keeps the walk only where nothing was or is culled; a
-        // static's out-of-range tint follows the player, so that turns it off.
+        // A moved view keeps the walk only of tiles where nothing was or is
+        // culled; a static's out-of-range tint follows the player, so that
+        // turns it off.
         bool moved = walk.Offset != _offset;
-        if (moved && (!walk.FullyInside || !ChunkFullyInside(chunk.X, chunk.Y) || inputs.NoRangeColor))
+        if (moved && inputs.NoRangeColor)
             return null;
         var mesh = chunk.Mesh;
         if (mesh.Land.ContentStamp != walk.LandStamp || mesh.Statics.ContentStamp != walk.StaticStamp
@@ -92,6 +97,12 @@ internal partial class GameScene
             return null;
         if (!key.Same(CurrentReuseKey(inputs)) || MouseNearChunk(chunk.X, chunk.Y)) return null;
         ulong walkMask = walk.DynamicMask | chunk.DirtyTiles;
+        if (moved && !(walk.FullyInside && ChunkFullyInside(chunk.X, chunk.Y, walk.ZMin, walk.ZMax)))
+        {
+            walkMask |= TilesNotInside(chunk.X, chunk.Y, walk.Offset, walk.ZMin, walk.ZMax)
+                | TilesNotInside(chunk.X, chunk.Y, _offset, walk.ZMin, walk.ZMax);
+            if (walkMask == ulong.MaxValue) return null;
+        }
         foreach (var (tile, light) in walk.Lights)
             if ((walkMask & (1UL << tile)) == 0)
             {
@@ -167,7 +178,8 @@ internal partial class GameScene
         walk.LandCount = mesh.Land.Count; walk.StaticCount = mesh.Statics.Count;
         walk.Key = CurrentReuseKey(inputs);
         walk.Offset = _offset;
-        walk.FullyInside = ChunkFullyInside(chunk.X, chunk.Y);
+        WidenZ(chunk, walk, walkMask);
+        walk.FullyInside = ChunkFullyInside(chunk.X, chunk.Y, walk.ZMin, walk.ZMax);
         // A whole walk refreshed every position it had to (see WalkChunkTiles).
         if (walkMask == null) walk.StaleTiles = 0;
         chunk.DirtyTiles = 0;
@@ -201,14 +213,49 @@ internal partial class GameScene
         chunk.Walk.OffScreenCleared = wholeReset;
     }
 
-    /// <summary>True when every anchor the chunk can have, at any Z, is inside the walk's pixel window: no object is culled.</summary>
-    private bool ChunkFullyInside(int cx, int cy)
+    /// <summary>A whole walk records the chunk's Z range afresh; a partial one widens it by the tiles it walked.</summary>
+    private static void WidenZ(Chunk chunk, ChunkWalk walk, ulong? walkMask)
+    {
+        int zMin = walkMask == null ? int.MaxValue : walk.ZMin, zMax = walkMask == null ? int.MinValue : walk.ZMax;
+        for (int t = 0; t < 64; t++)
+        {
+            if (walkMask is ulong mask && (mask & (1UL << t)) == 0) continue;
+            for (var obj = chunk.GetHeadObject(t >> 3, t & 7); obj != null; obj = obj.TNext)
+            {
+                int z = obj.Z;
+                if (obj is Land { IsStretched: true } land && land.MinZ < z) z = land.MinZ;
+                if (z < zMin) zMin = z;
+                if (obj.Z > zMax) zMax = obj.Z;
+            }
+        }
+        if (zMin > zMax) { zMin = 0; zMax = 0; } // an empty chunk has no anchor to cull
+        walk.ZMin = zMin; walk.ZMax = zMax;
+    }
+
+    /// <summary>The tiles of chunk (cx, cy) with an anchor, at view offset o and Z in [zMin, zMax], outside the pixel window.</summary>
+    private ulong TilesNotInside(int cx, int cy, Point o, int zMin, int zMax)
+    {
+        ulong mask = 0;
+        int x0 = cx << 3, y0 = cy << 3;
+        for (int x = 0; x < 8; x++)
+            for (int y = 0; y < 8; y++)
+            {
+                int sx = (x0 + x - (y0 + y)) * 22 - o.X - 22;
+                int sy = (x0 + x + y0 + y) * 22 - o.Y - 22;
+                if (sx < _minPixel.X || sx > _maxPixel.X || sy - (zMax << 2) < _minPixel.Y || sy - (zMin << 2) > _maxPixel.Y)
+                    mask |= 1UL << ((x << 3) | y);
+            }
+        return mask;
+    }
+
+    /// <summary>True when every anchor the chunk can have, at Z in [zMin, zMax], is inside the walk's pixel window: no object is culled.</summary>
+    private bool ChunkFullyInside(int cx, int cy, int zMin = sbyte.MinValue, int zMax = sbyte.MaxValue)
     {
         int x0 = cx << 3, y0 = cy << 3;
         int minX = (x0 - (y0 + 7)) * 22 - _offset.X - 22;
         int maxX = (x0 + 7 - y0) * 22 - _offset.X - 22;
-        int minY = (x0 + y0) * 22 - (sbyte.MaxValue << 2) - _offset.Y - 22;
-        int maxY = (x0 + y0 + 14) * 22 - (sbyte.MinValue << 2) - _offset.Y - 22;
+        int minY = (x0 + y0) * 22 - (zMax << 2) - _offset.Y - 22;
+        int maxY = (x0 + y0 + 14) * 22 - (zMin << 2) - _offset.Y - 22;
         return minX >= _minPixel.X && maxX <= _maxPixel.X && minY >= _minPixel.Y && maxY <= _maxPixel.Y;
     }
 
