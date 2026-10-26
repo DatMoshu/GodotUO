@@ -705,8 +705,10 @@ namespace GUO.Game.Scenes
                     }
 
                     // Build chunk mesh if dirty
+                    bool built = false; // PORT DEVIATION (GUO): ChunkReuse
                     if (chunk.Mesh.IsDirty)
                     {
+                        built = true;
                         stageAt = PerfStages.Add(PerfStages.Stage.Gather, stageAt);
                         chunk.Mesh.Build(chunk, _world);
                         stageAt = PerfStages.Add(PerfStages.Stage.MeshBuild, stageAt);
@@ -717,6 +719,20 @@ namespace GUO.Game.Scenes
                         chunk.Mesh.Instances.Show(); // PORT DEVIATION (GUO): --gpu-world
                         GpuWorld.InstancesShown++;
                     }
+
+                    // PORT DEVIATION (GUO): ADR-0044, an unchanged chunk keeps its last walk.
+                    bool verifyReuse = false;
+                    if (TryReuseChunk(chunk, gatherInputs, built))
+                    {
+                        if (!VerifyChunkReuse)
+                        {
+                            _visibleChunks.Add(chunk);
+                            continue;
+                        }
+                        verifyReuse = true;
+                        KeepVisibility(chunk);
+                    }
+                    int landStamp = chunk.Mesh.Land.ContentStamp, staticStamp = chunk.Mesh.Statics.ContentStamp;
 
                     // Reset visibility and alpha for this frame
                     chunk.Mesh.Land.ResetVisibility();
@@ -752,6 +768,7 @@ namespace GUO.Game.Scenes
 
                     _forcePositions = chunk.ScreenPositionsStale;
                     chunk.ScreenPositionsStale = false;
+                    BeginChunkWalk(chunk); // PORT DEVIATION (GUO): ChunkReuse
 
                     for (var x = 0; x < 8; x++)
                     {
@@ -770,6 +787,9 @@ namespace GUO.Game.Scenes
                             );
                         }
                     }
+
+                    EndChunkWalk(chunk, gatherInputs, landStamp, staticStamp, built); // PORT DEVIATION (GUO): ChunkReuse
+                    if (verifyReuse) CompareVisibility(chunk);
                 }
             }
 

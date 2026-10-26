@@ -840,6 +840,7 @@ namespace GUO.Game.Scenes
 
             for (; obj != null; obj = obj.TNext)
             {
+                if (!obj.InChunkMesh) _walkDynamic = true; // PORT DEVIATION (GUO): ChunkReuse
                 // PORT DEVIATION (GUO): _forcePositions, see FillGameObjectList.
                 if (UpdateDrawPosition || _forcePositions || obj.IsPositionChanged)
                 {
@@ -988,6 +989,7 @@ namespace GUO.Game.Scenes
                     // Instead, draw them via the CPU transparent list (rendered after mobiles).
                     if (meshFadingOut)
                     {
+                        _walkDynamic = true; // PORT DEVIATION (GUO): ChunkReuse, queued every frame
                         if (gpu)
                             QueueInstanced(obj, mesh, gpuIndex, false);
                         else
@@ -1003,6 +1005,7 @@ namespace GUO.Game.Scenes
                     // so depth buffer doesn't block mobiles underneath.
                     if (meshCot && _cotGradientMode)
                     {
+                        _walkDynamic = true; // PORT DEVIATION (GUO): ChunkReuse
                         if (gpu) mesh.Instances.SetDrawn(gpuIndex, false);
                         obj.AlphaHue = GetGradientCotAlpha(obj);
                         if (obj.AlphaHue > 0)
@@ -1058,6 +1061,7 @@ namespace GUO.Game.Scenes
                     if (meshItemData.IsLight)
                     {
                         AddLight(obj, obj, obj.RealScreenPosition.X + 22, obj.RealScreenPosition.Y + 22);
+                        _walkLights?.Add(obj); // PORT DEVIATION (GUO): ChunkReuse
                     }
 
                     TrySelectObject(obj, meshAllowSelection && !(meshCot && gatherInputs.MouseInsideCot));

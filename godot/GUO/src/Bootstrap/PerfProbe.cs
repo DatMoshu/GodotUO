@@ -42,6 +42,7 @@ internal static partial class PerfProbe
     {
         new("open-field", "[go 1164 1668", "Felucca grassland south of Britain: land and a few trees"),
         new("britain-bank", "[go 1434 1699 0", "the Britain bank: dense statics, roofs, vendors and passers-by"),
+        new("owner-3469", "[go 3469 2544 31", "where the owner compared the clients on 2026-10-26: roofs, a yard, NPCs"),
         new("dense-forest", "[go 633 858", "the forest east of Yew (ab_compare yew-forest)"),
         new("dungeon", "[go 5401 629", "the mouth of Despise (ab_compare despise-mouth): dungeon light level, torches"),
         // ADR-0037: the water budget's scenes, on a pier with water on every side.
@@ -815,6 +816,8 @@ internal static partial class PerfProbe
 #if GUO_LABS
             ["rd_frames_drawn"] = GUO.Labs.GpuRenderer.OrderedWorldCapture.FramesDrawn - rdBefore,
             ["rd_frames_fallback"] = GUO.Labs.GpuRenderer.OrderedWorldCapture.FramesFallback - rdFallbackBefore,
+            ["dw_chunks_reused_total"] = GUO.Game.Scenes.GameScene.ChunksReused,
+            ["dw_chunk_reuse_mismatches"] = GUO.Game.Scenes.GameScene.ChunkReuseMismatches,
             ["rd_upload_bytes_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.UploadedBytes - rdBytesBefore) / n, 1),
             ["rd_draw_calls_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.DrawCalls - rdCallsBefore) / n, 1),
             ["rd_record_cpu_ms"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.RecordTicks - rdTicksBefore) * 1000 / System.Diagnostics.Stopwatch.Frequency / n, 3),
