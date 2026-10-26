@@ -6,6 +6,7 @@
     <Optimize>true</Optimize>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../godot/GUO/src/Render/PixelPicker.cs" Link="PixelPicker.cs" />
     <Compile Include="../../godot/GUO/src/Game/Scenes/DepthKey.cs" Link="DepthKey.cs" />
     <Compile Include="../../godot/GUO/src/Game/Scenes/WorldDepthSort.cs" Link="WorldDepthSort.cs" />
     <Compile Include="../../godot/GUO/src/Game/Scenes/CoverStamp.cs" Link="CoverStamp.cs" />

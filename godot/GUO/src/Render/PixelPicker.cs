@@ -12,6 +12,14 @@ namespace GUO.Renderer
 
         public bool Get(ulong textureID, int x, int y, int extraRange = 0)
         {
+            // PORT DEVIATION (GUO): valid Set-produced masks already reject
+            // negative coordinates, including with extraRange. Avoid the map
+            // lookup/dimension reads; corrupt-buffer exception order may differ.
+            if (x < 0 || y < 0)
+            {
+                return false;
+            }
+
             int index;
             if (!m_IDs.TryGetValue(textureID, out index))
             {
