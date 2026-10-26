@@ -163,8 +163,12 @@ namespace GUO.Renderer
         /// Resets all visibility flags to false. Called each frame before
         /// AddTileToRenderList marks visible sprites.
         /// </summary>
+        /// <summary>PORT DEVIATION (GUO): ADR-0044, bumped by every reset; an unchanged stamp means Visible is as last read.</summary>
+        public int VisibilityStamp;
+
         public void ResetVisibility()
         {
+            VisibilityStamp++;
             if (Count > 0)
                 Array.Clear(Visible, 0, Count);
         }

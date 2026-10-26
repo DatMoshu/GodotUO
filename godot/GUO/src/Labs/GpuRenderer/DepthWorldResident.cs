@@ -40,11 +40,13 @@ internal sealed class DepthWorldResident
         public bool[] Previous;
         public OrderedWorldDevice.Textures[] Arts;
         public int ArtCount;
+        public OrderedWorldDevice.TextureSet Set;
+        public bool Land;
     }
 
     private sealed class Layer
     {
-        public int Stamp = int.MinValue, Count = -1, LastFrame;
+        public int Stamp = int.MinValue, Count = -1, LastFrame, VisibilityStamp = int.MinValue;
         public readonly List<Group> Groups = new();
     }
 
@@ -55,13 +57,21 @@ internal sealed class DepthWorldResident
     internal int QuadCount, VisibleCount;
     internal readonly List<(int Start, int Count)> DirtyQuads = new(), DirtyVisible = new();
     internal bool AllDirty = true;
+    // One draw per (texture set, land) bucket over Merged, the frame's
+    // visible quads grouped by bucket; rebuilt only when visibility changes.
     internal readonly List<Draw> Draws = new(512);
+    internal uint[] Merged = new uint[16384];
+    internal int MergedCount;
+    internal bool MergedDirty = true;
+    private List<Group> _frameGroups = new(), _lastGroups = new();
+    private readonly Dictionary<(OrderedWorldDevice.TextureSet, bool), List<Group>> _buckets = new();
+    private bool _mergeNeeded = true;
     private int _frame;
     internal static long Packed, VisibleRebuilds, ResidentDraws, Resets;
 
     internal void BeginFrame()
     {
-        Draws.Clear();
+        _frameGroups.Clear();
         _frame++;
         if (_frame % 600 == 0) Collect();
     }
@@ -78,24 +88,24 @@ internal sealed class DepthWorldResident
         {
             if (!Pack(layer, land, entry, hue, light, out reason)) return false;
         }
+        // A layer not reset since it was last read (its chunk's walk was reused) is unchanged.
+        bool same = entry.VisibilityStamp == layer.VisibilityStamp;
+        entry.VisibilityStamp = layer.VisibilityStamp;
         foreach (var group in entry.Groups)
         {
             var visible = layer.Visible.AsSpan(group.Start, group.End - group.Start);
-            if (!visible.SequenceEqual(group.Previous))
+            if (!same && !visible.SequenceEqual(group.Previous))
             {
                 int n = 0;
                 for (int i = 0; i < visible.Length; i++)
                     if (visible[i]) Visible[group.VisibleBase + n++] = (uint)(group.Base + i);
                 group.VisibleCount = n;
                 visible.CopyTo(group.Previous);
-                DirtyVisible.Add((group.VisibleBase, Math.Max(n, 1)));
+                _mergeNeeded = true;
                 VisibleRebuilds++;
             }
             if (group.VisibleCount == 0) continue;
-            var set = new OrderedWorldDevice.TextureSet(group.Arts[0]);
-            for (int a = 1; a < group.ArtCount; a++) set = set.WithArt(a, group.Arts[a].ArtRs);
-            Draws.Add(new Draw { VisibleBase = (uint)group.VisibleBase, Count = (uint)group.VisibleCount, Textures = set, Land = land });
-            ResidentDraws++;
+            _frameGroups.Add(group);
         }
         return true;
     }
@@ -127,6 +137,11 @@ internal sealed class DepthWorldResident
                 i++;
             }
             group.End = i;
+            group.Land = land;
+            // Canonical art order, so groups on the same pages share one set and one draw.
+            Array.Sort(group.Arts, 0, group.ArtCount, ArtOrder);
+            group.Set = new OrderedWorldDevice.TextureSet(group.Arts[0]);
+            for (int a = 1; a < group.ArtCount; a++) group.Set = group.Set.WithArt(a, group.Arts[a].ArtRs);
             int size = group.End - start;
             group.Base = Reserve(ref Quads, ref QuadCount, size);
             group.VisibleBase = Reserve(ref Visible, ref VisibleCount, size);
@@ -142,13 +157,49 @@ internal sealed class DepthWorldResident
                 Quads[group.Base + q] = PackQuad(m, land, layer.Depths[index], slot, land ? (sbyte)-128 : layer.ObjectZ[index]);
             }
             DirtyQuads.Add((group.Base, size));
-            DirtyVisible.Add((group.VisibleBase, size));
             Packed += size;
             entry.Groups.Add(group);
         }
+        _mergeNeeded = true;
         entry.Stamp = layer.ContentStamp;
         entry.Count = count;
+        entry.VisibilityStamp = int.MinValue; // fresh groups: compare once
         return true;
+    }
+
+    private static readonly Comparer<OrderedWorldDevice.Textures> ArtOrder =
+        Comparer<OrderedWorldDevice.Textures>.Create((a, b) => a.ArtRs.Id.CompareTo(b.ArtRs.Id));
+
+    /// <summary>After the frame's Adds: the merged draws, rebuilt when a group's visibility or the group list changed.</summary>
+    internal void Merge()
+    {
+        bool same = !_mergeNeeded && _frameGroups.Count == _lastGroups.Count;
+        for (int i = 0; same && i < _frameGroups.Count; i++) same = ReferenceEquals(_frameGroups[i], _lastGroups[i]);
+        (_lastGroups, _frameGroups) = (_frameGroups, _lastGroups);
+        ResidentDraws += Draws.Count;
+        if (same) return;
+        _mergeNeeded = false;
+        foreach (var list in _buckets.Values) list.Clear();
+        foreach (var group in _lastGroups)
+        {
+            if (!_buckets.TryGetValue((group.Set, group.Land), out var list))
+                _buckets.Add((group.Set, group.Land), list = new List<Group>());
+            list.Add(group);
+        }
+        Draws.Clear();
+        MergedCount = 0;
+        foreach (var pair in _buckets)
+        {
+            if (pair.Value.Count == 0) continue;
+            int start = MergedCount;
+            foreach (var group in pair.Value)
+            {
+                int at = Reserve(ref Merged, ref MergedCount, group.VisibleCount);
+                Array.Copy(Visible, group.VisibleBase, Merged, at, group.VisibleCount);
+            }
+            Draws.Add(new Draw { VisibleBase = (uint)start, Count = (uint)(MergedCount - start), Textures = pair.Key.Item1, Land = pair.Key.Item2 });
+        }
+        MergedDirty = true;
     }
 
     private static Quad PackQuad(in MeshQuad m, bool land, float depth, int slot, sbyte z)
@@ -200,11 +251,13 @@ internal sealed class DepthWorldResident
         QuadCount = VisibleCount = 0;
         DirtyQuads.Clear(); DirtyVisible.Clear();
         AllDirty = true;
+        _mergeNeeded = true;
         Resets++;
     }
 
     internal void Uploaded()
     {
+        MergedDirty = false;
         DirtyQuads.Clear();
         DirtyVisible.Clear();
         AllDirty = false;

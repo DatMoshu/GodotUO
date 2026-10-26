@@ -391,7 +391,7 @@ internal sealed class OrderedWorldDevice
     private void UploadResidentChunksRT(DepthWorldResident resident)
     {
         uint quadBytes = checked((uint)Math.Max(resident.QuadCount, 1) * DepthWorldResident.QuadBytes);
-        uint visibleBytes = checked((uint)Math.Max(resident.VisibleCount, 1) * 4);
+        uint visibleBytes = checked((uint)Math.Max(resident.MergedCount, 1) * 4);
         if (quadBytes > _residentQuadCapacity || visibleBytes > _residentVisibleCapacity)
         {
             Free(ref _residentSet);
@@ -413,14 +413,15 @@ internal sealed class OrderedWorldDevice
             if (resident.AllDirty)
             {
                 Upload(_residentQuads, MemoryMarshal.AsBytes(resident.Quads.AsSpan(0, resident.QuadCount)), 0);
-                Upload(_residentVisible, MemoryMarshal.AsBytes(resident.Visible.AsSpan(0, resident.VisibleCount)), 0);
+                Upload(_residentVisible, MemoryMarshal.AsBytes(resident.Merged.AsSpan(0, resident.MergedCount)), 0);
             }
             else
             {
                 foreach (var (start, count) in resident.DirtyQuads)
                     Upload(_residentQuads, MemoryMarshal.AsBytes(resident.Quads.AsSpan(start, count)), (uint)start * DepthWorldResident.QuadBytes);
-                foreach (var (start, count) in resident.DirtyVisible)
-                    Upload(_residentVisible, MemoryMarshal.AsBytes(resident.Visible.AsSpan(start, count)), (uint)start * 4);
+                // The merged list is small and rebuilt whole when visibility changes.
+                if (resident.MergedDirty)
+                    Upload(_residentVisible, MemoryMarshal.AsBytes(resident.Merged.AsSpan(0, resident.MergedCount)), 0);
             }
             resident.Uploaded();
         }

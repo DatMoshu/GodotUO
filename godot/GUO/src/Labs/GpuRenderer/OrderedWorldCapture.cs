@@ -218,15 +218,10 @@ internal sealed class OrderedWorldCapture : IDisposable
                 return false;
             }
         }
-        foreach (var draw in Resident.Draws)
-        {
-            // Strong owners for the borrowed atlas textures until the ticket retires.
-            if (!_residentOwners.Contains(draw.Textures.Art0)) _residentOwners.Add(draw.Textures.Art0);
-        }
+        Resident.Merge();
         return true;
     }
 
-    private readonly HashSet<Rid> _residentOwners = new();
 
     private void ReplayCanvas()
     {
