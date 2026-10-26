@@ -1125,7 +1125,10 @@ namespace GUO
         /// </remarks>
         private void DrawFrame()
         {
-            Rectangle windowBounds = Window.ClientBounds;
+            // PORT DEVIATION (GUO): upstream reads Window.ClientBounds; only its
+            // size is used, and the position is a costly OS query every frame.
+            Vector2I windowSize = DisplayServer.WindowGetSize();
+            Rectangle windowBounds = new Rectangle(0, 0, windowSize.X, windowSize.Y);
 
             if (windowBounds.Width <= 0 || windowBounds.Height <= 0)
             {
@@ -1258,11 +1261,26 @@ namespace GUO
         /// PORT DEVIATION (GUO): upstream reads
         /// <c>SDL_GetWindowDisplayScale</c>, which is the scale of the display
         /// the window is currently on. Godot states the same fact per screen.
+        /// The display's scale is read at most every half second, and at once
+        /// after a DPI change: finding the window's screen enumerates the
+        /// monitors, and this is read several times a frame.
         /// </summary>
         public float DpiScale
         {
-            get => DisplayServer.ScreenGetScale(DisplayServer.WindowGetCurrentScreen()) * ScreenScale;
+            get
+            {
+                long now = System.Environment.TickCount64;
+                if (now - _screenScaleReadAt >= 500 || _screenDpi <= 0)
+                {
+                    _screenDpi = DisplayServer.ScreenGetScale(DisplayServer.WindowGetCurrentScreen());
+                    _screenScaleReadAt = now;
+                }
+                return _screenDpi * ScreenScale;
+            }
         }
+
+        private float _screenDpi;
+        private long _screenScaleReadAt;
 
         public int ScaleWithDpi(int value, float previousDpi = 1)
         {
@@ -1274,7 +1292,13 @@ namespace GUO
             // Godot's notification constants are long; the override takes int.
             switch ((long)what)
             {
+                case NotificationWMDpiChange:
+                    _screenDpi = 0; // PORT DEVIATION (GUO): see DpiScale
+
+                    break;
+
                 case NotificationWMSizeChanged:
+                    _screenDpi = 0; // PORT DEVIATION (GUO): see DpiScale
                     Vector2I size = DisplayServer.WindowGetSize();
 
                     WindowOnClientSizeChanged(size.X, size.Y);

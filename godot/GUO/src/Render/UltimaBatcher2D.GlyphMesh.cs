@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 using Godot;
+using System;
 using GUO.Compat;
 using Color = Godot.Color;
 
@@ -80,6 +81,49 @@ public sealed partial class UltimaBatcher2D
         foreach (var pair in _tiled)
             if (FramesBegun - pair.Value.Frame >= age) _tiledStale.Add(pair.Key);
         foreach (var key in _tiledStale) _tiled.Remove(key);
+    }
+
+    private sealed class StringMesh
+    {
+        public SpriteFont Font;
+        public Vector3 Color;
+        public char[] Text = new char[64];
+        public int Length;
+        public GlyphMesh Mesh;
+        public long Frame;
+    }
+
+    private readonly System.Collections.Generic.List<StringMesh> _strings = new();
+
+    /// <summary>
+    /// DrawString's glyphs as one recorded mesh, kept while the same text is
+    /// drawn (a debug panel redraws an unchanged text every frame). Recorded
+    /// at the origin and drawn at a whole-pixel position, as RenderedText is.
+    /// </summary>
+    private bool DrawStringMesh(SpriteFont font, System.ReadOnlySpan<char> text, Vector2 position, Vector3 color)
+    {
+        if (!CanDrawTextMesh || position.X != (int)position.X || position.Y != (int)position.Y) return false;
+        StringMesh entry = null, oldest = null;
+        foreach (var s in _strings)
+        {
+            if (s.Font == font && s.Color == color && text.SequenceEqual(s.Text.AsSpan(0, s.Length))) { entry = s; break; }
+            if (oldest == null || s.Frame < oldest.Frame) oldest = s;
+        }
+        if (entry == null)
+        {
+            if (_strings.Count < 32) _strings.Add(entry = new StringMesh { Mesh = new GlyphMesh() });
+            else entry = oldest;
+            entry.Font = font; entry.Color = color; entry.Length = text.Length;
+            if (entry.Text.Length < text.Length) entry.Text = new char[System.Math.Max(text.Length, entry.Text.Length * 2)];
+            text.CopyTo(entry.Text);
+            BeginTextRecord(entry.Mesh);
+            try { DrawString(font, text, Vector2.Zero, color, 0f); }
+            finally { EndTextRecord(); }
+        }
+        entry.Frame = FramesBegun;
+        if (!entry.Mesh.Valid) return false;
+        DrawTextMesh(entry.Mesh, (int)position.X, (int)position.Y);
+        return true;
     }
 
     /// <summary>Draws a recorded text at (x, y): one mesh command per texture run.</summary>

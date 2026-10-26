@@ -14,6 +14,14 @@ public sealed partial class UltimaBatcher2D
     internal static long OrderedCanvasItemsCleared;
     internal bool OrderedWorldRecording => _orderedWorld?.Recording == true;
 
+    // Built once: a string argument makes a new StringName every frame.
+    private static readonly StringName ParamWaterModel = "water_model";
+    private static readonly StringName ParamHueTexture = "hue_texture";
+    private static readonly StringName ParamLightTexture = "light_texture";
+    private static readonly StringName ParamBrightlight = "brightlight";
+    private static readonly StringName ParamCircleOfTransparencyCenter = "circle_of_transparency_center";
+    private static readonly StringName ParamCircleOfTransparencyRadius = "circle_of_transparency_radius";
+
     internal void BeginOrderedWorld(bool supported, Vector2I probeSize = default)
     {
         OrderedWorldCapture.LastFrameOnPass = false;
@@ -41,18 +49,18 @@ public sealed partial class UltimaBatcher2D
             return;
         }
         _orderedProbeSize = size;
-        if (_material.GetShaderParameter("water_model").AsInt32() != 0)
+        if (_material.GetShaderParameter(ParamWaterModel).AsInt32() != 0)
         {
             OrderedWorldCapture.Fallback("styled water");
             return;
         }
         _orderedWorld ??= new OrderedWorldCapture(_material, _meshMaterial);
         if (!_orderedWorld.Begin(size, _viewTransform,
-            _material.GetShaderParameter("hue_texture").AsGodotObject() as Texture2D,
-            _material.GetShaderParameter("light_texture").AsGodotObject() as Texture2D,
-            _material.GetShaderParameter("brightlight").AsSingle(),
-            _material.GetShaderParameter("circle_of_transparency_center").AsVector2(),
-            _material.GetShaderParameter("circle_of_transparency_radius").AsSingle())) return;
+            _material.GetShaderParameter(ParamHueTexture).AsGodotObject() as Texture2D,
+            _material.GetShaderParameter(ParamLightTexture).AsGodotObject() as Texture2D,
+            _material.GetShaderParameter(ParamBrightlight).AsSingle(),
+            _material.GetShaderParameter(ParamCircleOfTransparencyCenter).AsVector2(),
+            _material.GetShaderParameter(ParamCircleOfTransparencyRadius).AsSingle())) return;
         FlushRun();
         _orderedCanvas = NewItem(CurrentParent, Transform2D.Identity);
         _orderedWorld.SetCanvas(_orderedCanvas);

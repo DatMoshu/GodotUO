@@ -1531,6 +1531,8 @@ void fragment() {
                 return;
             }
 
+            if (DrawStringMesh(spriteFont, text, position, color)) return; // PORT DEVIATION (GUO): GlyphMesh
+
             Texture2D textureValue = spriteFont.Texture;
             List<Rectangle> glyphData = spriteFont.GlyphData;
             List<Rectangle> croppingData = spriteFont.CroppingData;
