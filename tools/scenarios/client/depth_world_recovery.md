@@ -39,3 +39,7 @@ the required `launchers/dev/smoke.bat` and release export. Run the normal Releas
 payload separately; compilation or a fixture build alone is not export proof.
 Keep exact source/build hashes with the run. These checks make no live mobile,
 full CUO parity, stable FPS, or remote Dell claim.
+
+### Canvas reuse bookkeeping (D1)
+
+The map-backed fixture also records per-frame `ChunkWalkRecords` and `ChunkZScanObjects` in `chunk-maintenance.json`. Every canvas frame must report zero for both, and an RD-to-canvas return must exactly match the frozen canvas pixels at 1/2.5/5x. The ordinary object walk, stale screen-position refresh and dirty-tile clearing still run. An admitted RD frame rebuilds its cache after canvas; no stale key/light list can be reused. For Compatibility, skip the RD-only mask/recovery phases and check canvas repeat controls and zero bookkeeping. These are work counts, not FPS evidence.

@@ -19,6 +19,7 @@ internal static class RealRecovery
         var game = Client.Game;
         var draw = game.GetType().GetMethod("DrawFrame", BindingFlags.Instance | BindingFlags.NonPublic);
         var results = new List<object>();
+        var maintenance = new List<object>();
         game.SetProcess(false);
         try
         {
@@ -27,7 +28,13 @@ internal static class RealRecovery
                 OrderedWorldCapture.Enabled = rd;
                 OrderedWorldCapture.InjectFailure = failure;
                 OrderedWorldCapture.InjectResidentFailureAfter = admission;
+                long records = GameScene.ChunkWalkRecords, scanned = GameScene.ChunkZScanObjects;
                 draw.Invoke(game, null);
+                records = GameScene.ChunkWalkRecords - records;
+                scanned = GameScene.ChunkZScanObjects - scanned;
+                maintenance.Add(new { name, rd, records, scanned });
+                File.WriteAllText(Path.Combine(dir, "chunk-maintenance.json"), JsonSerializer.Serialize(maintenance));
+                if (!rd && (records != 0 || scanned != 0)) throw new Exception("canvas recorded unused cache state");
                 await driver.ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
                 using var image = driver.GetViewport().GetTexture().GetImage();
                 image.SavePng(Path.Combine(dir, name + ".png"));
@@ -48,6 +55,10 @@ internal static class RealRecovery
                 await Frame(prefix + "-rd", true);
                 bool exercisedResident = OrderedWorldCapture.ResidentFrames > resident;
                 if (!exercisedResident || RenderLists.RecoveryPlans != plans) throw new Exception("successful resident frame built recovery or was not resident");
+                // Explicit resident -> canvas -> resident transitions without a clock tick.
+                byte[] restored = await Frame(prefix + "-canvas-return", false);
+                if (!expected.SequenceEqual(restored)) throw new Exception("canvas return changed pixels");
+                await Frame(prefix + "-rd-return", true);
                 foreach (var test in new[] { ("early", 7, -1), ("middle", 0, 1), ("upload", 1, -1), ("recorded", 2, -1) })
                 {
                     long fallback = OrderedWorldCapture.FramesFallback;

@@ -22,6 +22,7 @@ internal partial class GameScene
     internal static readonly bool ChunkReuse = Environment.GetEnvironmentVariable("GUO_DW_REUSE") != "0";
     private static readonly bool VerifyChunkReuse = Environment.GetEnvironmentVariable("GUO_DW_REUSE_VERIFY") == "1";
     internal static long ChunksReused, ChunkReuseMismatches;
+    internal static long ChunkWalkRecords, ChunkZScanObjects;
 
     private readonly struct ReuseKey
     {
@@ -64,6 +65,7 @@ internal partial class GameScene
 
     // Set by AddTileToRenderList while a tile is walked; _walkTile names the tile.
     private bool _walkDynamic;
+    private bool _recordChunkWalk;
     private int _walkTile;
     private List<(int Tile, GameObject Light)> _walkLights;
     internal static long TilesReused;
@@ -151,7 +153,7 @@ internal partial class GameScene
                 chunk.Walk.StaleTiles &= ~bit;
                 AddTileToRenderList(firstObj, useHandles, 150, chunk, inputs);
                 // A tile with anything but meshed land and statics is walked every frame.
-                if (_walkDynamic) chunk.Walk.WalkedDynamic |= 1UL << _walkTile;
+                if (_recordChunkWalk && _walkDynamic) chunk.Walk.WalkedDynamic |= 1UL << _walkTile;
             }
         }
     }
@@ -175,6 +177,17 @@ internal partial class GameScene
     {
         chunk.Walk ??= new ChunkWalk();
         var lights = chunk.Walk.Lights;
+        // Canvas still needs StaleTiles and the ordinary object walk, but has
+        // no consumer of the reuse key, static-light cache or Z-range scan.
+        _recordChunkWalk = ChunkReuse && DepthWorldProbe.ResidentEnabled;
+        if (!_recordChunkWalk)
+        {
+            chunk.Walk.Reusable = false;
+            chunk.Walk.Key = null;
+            lights.Clear();
+            _walkLights = null;
+            return;
+        }
         if (walkMask is ulong mask) lights.RemoveAll(l => (mask & (1UL << l.Tile)) != 0);
         else lights.Clear();
         _walkLights = lights;
@@ -185,18 +198,22 @@ internal partial class GameScene
     private void EndChunkWalk(Chunk chunk, in GatherInputs inputs, int landStamp, int staticStamp, bool built, ulong? walkMask)
     {
         var walk = chunk.Walk;
-        var mesh = chunk.Mesh;
-        walk.Reusable = !built && mesh.Land.ContentStamp == landStamp && mesh.Statics.ContentStamp == staticStamp;
-        // A partial walk keeps the skipped tiles' record: they were static.
-        walk.DynamicMask = walkMask is ulong mask ? (walk.DynamicMask & ~mask) | walk.WalkedDynamic : walk.WalkedDynamic;
-        walk.LandStamp = mesh.Land.ContentStamp; walk.StaticStamp = mesh.Statics.ContentStamp;
-        walk.LandCount = mesh.Land.Count; walk.StaticCount = mesh.Statics.Count;
-        walk.Key = CurrentReuseKey(inputs);
-        walk.Offset = _offset;
-        walk.MinPixel = _minPixel;
-        walk.MaxPixel = _maxPixel;
-        WidenZ(chunk, walk, walkMask);
-        walk.FullyInside = ChunkFullyInside(chunk.X, chunk.Y, walk.ZMin, walk.ZMax);
+        if (_recordChunkWalk)
+        {
+            ChunkWalkRecords++;
+            var mesh = chunk.Mesh;
+            walk.Reusable = !built && mesh.Land.ContentStamp == landStamp && mesh.Statics.ContentStamp == staticStamp;
+            // A partial walk keeps the skipped tiles' record: they were static.
+            walk.DynamicMask = walkMask is ulong mask ? (walk.DynamicMask & ~mask) | walk.WalkedDynamic : walk.WalkedDynamic;
+            walk.LandStamp = mesh.Land.ContentStamp; walk.StaticStamp = mesh.Statics.ContentStamp;
+            walk.LandCount = mesh.Land.Count; walk.StaticCount = mesh.Statics.Count;
+            walk.Key = CurrentReuseKey(inputs);
+            walk.Offset = _offset;
+            walk.MinPixel = _minPixel;
+            walk.MaxPixel = _maxPixel;
+            WidenZ(chunk, walk, walkMask);
+            walk.FullyInside = ChunkFullyInside(chunk.X, chunk.Y, walk.ZMin, walk.ZMax);
+        }
         // A whole walk refreshed every position it had to (see WalkChunkTiles).
         if (walkMask == null) walk.StaleTiles = 0;
         chunk.DirtyTiles = 0;
@@ -239,6 +256,7 @@ internal partial class GameScene
             if (walkMask is ulong mask && (mask & (1UL << t)) == 0) continue;
             for (var obj = chunk.GetHeadObject(t >> 3, t & 7); obj != null; obj = obj.TNext)
             {
+                ChunkZScanObjects++;
                 int z = obj.Z;
                 if (obj is Land { IsStretched: true } land && land.MinZ < z) z = land.MinZ;
                 if (z < zMin) zMin = z;
