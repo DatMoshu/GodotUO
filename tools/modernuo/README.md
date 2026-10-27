@@ -220,6 +220,26 @@ the RoyaltyDefender's stages and Undying. Built on its own, the test project
 needs `-p:SolutionDir=<src>\` to copy `Distribution/Data` beside it. Not yet ported: the Sphynx fortune reading and the copper bars
 of DFI's event reward system.
 
+### `patches/0009-dfi-player-items.patch`
+
+Requires `0008-dfi-monsters.patch`. Player items from both shards, new files
+under `Custom/DFI/Items/`, each added with `[add <Name>`:
+
+| Group | Items |
+|---|---|
+| Gear and bags | `DonationShroud` (on kopia's `HoodedRobe`, an anonymity hood), `Emblem` (DFI's cursed Royal Emblem), `EquipBag` (ten 5-property jewels), `PvPBag` (16 stacks of 60,000 reagents, ammo and bandages) |
+| Deeds | `ItemBlessDeed`, `SashLayerDeed`, `SpellChannelingDeed`, `SelfRepairDeed`, `TitleChangeDeed`, `PetResurrectionDeed`, `PetBondingDeed`, `WarHorseBondingDeed`, `SexChangeDeed`, `BeardRestylingDeed`, `ItemIDDeed`, `SpellbookDeed` (and the six `Full*Spellbook`s), `ArtifactDeed`, `ChampionArtifactDeed`, `MinorArtieDeed` |
+| Balls | `SkillBall`, `DonationSkillBall`, `PetSkillBall` (DFI's +N balls), `TemplateSkillBall` (kopia's pick seven skills at 100), `StatBall` |
+| Shrink | `ShrinkPotion`, `EverlastingShrinkPotion`, `Shrinkbag`, `ShrinkStone`, `HitchingPostEastDeed`, `HitchingPostSouthDeed`, the `[Shrink` command |
+| Runic tools | hammers, saws, fletcher and tinker tools in eight metals, three sewing kits, their bags, `BagOfCraft`, `RunicStone`, `CraftingStone` |
+
+Where both shards had a deed, it takes DFI's checks and kopia's blessed look.
+kopia's `SkillBall` is `TemplateSkillBall` here, beside DFI's. ModernUO's own
+`NameChangeDeed` stands in for kopia's. Gumps keep their choices and order but
+are laid out afresh; known quirks of the originals are kept and commented.
+`DfiItemTests.cs` constructs every item and checks the bags, deeds, balls,
+shrinking and the Emblem.
+
 ### Retired
 
 `0004-multi-tile-enumerator` fixed tile lookups that stopped at a multi with no
