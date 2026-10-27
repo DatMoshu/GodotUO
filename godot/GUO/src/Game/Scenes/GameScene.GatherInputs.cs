@@ -8,7 +8,7 @@ internal partial class GameScene
 {
     // PORT DEVIATION (GUO): frame-invariant inputs for the synchronous gather.
     // Never retained on objects or shared with Draw/highlight restoration.
-    private readonly struct GatherInputs
+    internal readonly struct GatherInputs
     {
         internal readonly int ViewRange, TransparencyZ;
         internal readonly bool NoRangeColor, DeadTint, UseCot, MouseInsideCot;

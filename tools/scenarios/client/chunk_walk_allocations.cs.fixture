@@ -1,0 +1,160 @@
+// Diagnostic source only. Compile alongside the actual GameScene methods in a separate stage.
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using GUO.Game.GameObjects;
+using GUO.Game.Map;
+using GUO.Renderer;
+
+namespace GUO.Game.Scenes;
+internal partial class GameScene
+{
+    private static object _allocationFixtureSink;
+
+    internal void ChunkWalkAllocationCases(string dir)
+    {
+        int checks = 0;
+        void Check(bool value, string why) { checks++; if (!value) throw new Exception("chunk allocation: " + why); }
+        bool admitted = DepthWorldProbe.FrameAdmitted;
+        var chunk = new Chunk(_world) { X = 100, Y = 100 };
+        var inputs = new GatherInputs(18, 5, false, false, false, false);
+        bool typed = Nullable.GetUnderlyingType(typeof(ChunkWalk).GetField("Key", BindingFlags.Instance | BindingFlags.NonPublic).FieldType) == typeof(ReuseKey);
+        var rows = new List<object>();
+        try
+        {
+            DepthWorldProbe.FrameAdmitted = true;
+            Check(DepthWorldProbe.ResidentEnabled, "test requires actual resident selection");
+            var empty = new ChunkWalk { Reusable = true };
+            Check(empty.Key is null, "initial key is absent even when reusable is set");
+            chunk.Walk = empty;
+            Check(ReusableTiles(chunk, inputs, false) == null, "absent key never reuses default values");
+            BeginChunkWalk(chunk, null);
+            EndChunkWalk(chunk, inputs, chunk.Mesh.Land.ContentStamp, chunk.Mesh.Statics.ContentStamp, false, null);
+            Check(chunk.Walk.Key is ReuseKey && chunk.Walk.Reusable, "record creates a valid key");
+            MarkOffScreenCleared(chunk, true);
+            Check(!chunk.Walk.Reusable && chunk.Walk.Key is ReuseKey, "offscreen invalidates reuse without changing key lifetime");
+            DepthWorldProbe.FrameAdmitted = false;
+            BeginChunkWalk(chunk, 1UL);
+            Check(!chunk.Walk.Reusable && chunk.Walk.Key is null && _walkLights == null, "canvas invalidates key and recording");
+            DepthWorldProbe.FrameAdmitted = true;
+            BeginChunkWalk(chunk, null);
+            Check(chunk.Walk.Key is null, "return to RD still requires a completed record");
+            EndChunkWalk(chunk, inputs, chunk.Mesh.Land.ContentStamp, chunk.Mesh.Statics.ContentStamp, false, null);
+            Check(chunk.Walk.Key is ReuseKey && chunk.Walk.Reusable, "completed RD walk restores key");
+
+            var key = new ReuseKey(10, 20, 3, false, false, inputs);
+            Check(key.Same(key), "key reflexive");
+            foreach (var other in new[] {
+                new ReuseKey(11,20,3,false,false,inputs), new ReuseKey(10,21,3,false,false,inputs),
+                new ReuseKey(10,20,4,false,false,inputs), new ReuseKey(10,20,3,true,false,inputs),
+                new ReuseKey(10,20,3,false,true,inputs),
+                new ReuseKey(10,20,3,false,false,new GatherInputs(19,5,false,false,false,false)),
+                new ReuseKey(10,20,3,false,false,new GatherInputs(18,5,true,false,false,false)),
+                new ReuseKey(10,20,3,false,false,new GatherInputs(18,5,false,true,false,false)),
+                new ReuseKey(10,20,3,false,false,new GatherInputs(18,5,false,false,true,false)) })
+                Check(!key.Same(other) && !other.Same(key), "changed key input rejects in both directions");
+            Check(key.Same(new ReuseKey(10,20,3,false,false,new GatherInputs(18,99,false,false,false,true))), "inactive CoT ignores only its two conditional inputs");
+            var cot = new ReuseKey(10,20,3,false,false,new GatherInputs(18,5,false,false,true,false));
+            Check(!cot.Same(new ReuseKey(10,20,3,false,false,new GatherInputs(18,6,false,false,true,false))), "active CoT transparency Z participates");
+            Check(!cot.Same(new ReuseKey(10,20,3,false,false,new GatherInputs(18,5,false,false,true,true))), "active CoT mouse input participates");
+
+            // The original predicate is the independent filtering oracle, including duplicates/null references.
+            var source = new (int Tile, GameObject Light)[] {
+                (3,_world.Player),(1,null),(3,_world.Player),(63,_world.Player),(0,null),(8,_world.Player),
+                (1,_world.Player),(8,null),(63,_world.Player),(2,_world.Player),(3,null) };
+            ulong[] masks = { 0, ulong.MaxValue, 1, 1UL << 63, (1UL << 3) | (1UL << 8), 0x5555555555555555UL, ~(1UL << 1) };
+            var backing = typeof(List<(int Tile, GameObject Light)>).GetField("_items", BindingFlags.Instance | BindingFlags.NonPublic);
+            foreach (ulong mask in masks)
+            {
+                var expected = new List<(int Tile, GameObject Light)>(source);
+                expected.RemoveAll(l => (mask & (1UL << l.Tile)) != 0);
+                var lights = chunk.Walk.Lights;
+                lights.Clear(); lights.AddRange(source);
+                BeginChunkWalk(chunk, mask);
+                Check(lights.Count == expected.Count, "survivor count " + mask);
+                for (int i = 0; i < expected.Count; i++)
+                    Check(lights[i].Tile == expected[i].Tile && ReferenceEquals(lights[i].Light, expected[i].Light), "stable survivor/duplicate " + mask + ":" + i);
+                var storage = ((int Tile, GameObject Light)[])backing.GetValue(lights);
+                for (int i = lights.Count; i < source.Length; i++)
+                    Check(storage[i].Light == null, "removed reference cleared " + mask + ":" + i);
+                rows.Add(new { mask, kept = lights.Select(l => new { l.Tile, player = ReferenceEquals(l.Light, _world.Player) }).ToArray() });
+            }
+            chunk.Walk.Lights.AddRange(source);
+            BeginChunkWalk(chunk, null);
+            Check(chunk.Walk.Lights.Count == 0, "whole walk clears every prior light");
+
+            const int iterations = 10000;
+            long Measure(Action action)
+            {
+                for (int i = 0; i < 1024; i++) action();
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                for (int i = 0; i < iterations; i++) action();
+                return GC.GetAllocatedBytesForCurrentThread() - before;
+            }
+            BeginChunkWalk(chunk, null);
+            long recordBytes = Measure(() => EndChunkWalk(chunk, inputs, chunk.Mesh.Land.ContentStamp, chunk.Mesh.Statics.ContentStamp, false, null));
+            long partialBytes = Measure(() => BeginChunkWalk(chunk, 1UL << 3));
+            long wholeBytes = Measure(() => BeginChunkWalk(chunk, null));
+            // Nonempty filtering reuses the same list/backing capacity and source array.
+            var retained = chunk.Walk.Lights;
+            retained.Capacity = Math.Max(retained.Capacity, source.Length);
+            long mixedBytes = Measure(() => { retained.Clear(); retained.AddRange(source); BeginChunkWalk(chunk, (1UL << 3) | (1UL << 8)); });
+            DepthWorldProbe.FrameAdmitted = false;
+            long canvasBeginBytes = Measure(() => BeginChunkWalk(chunk, 1UL));
+            long canvasEndBytes = Measure(() => EndChunkWalk(chunk, inputs, 0, 0, false, null));
+            long newWalkBytes = Measure(() => _allocationFixtureSink = new ChunkWalk());
+            _allocationFixtureSink = null;
+            if (typed)
+            {
+                Check(recordBytes == 0 && partialBytes == 0 && wholeBytes == 0 && mixedBytes == 0, "typed recorded walk/filter allocate zero in isolated loop");
+                Check(canvasBeginBytes == 0 && canvasEndBytes == 0, "canvas stays free of key/filter allocations");
+            }
+            else Check(recordBytes > 0 && partialBytes > 0 && mixedBytes > 0, "baseline exposes both allocated paths");
+
+            var opcodes = typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static)
+                .Where(f => f.FieldType == typeof(OpCode)).Select(f => (OpCode)f.GetValue(null)).ToDictionary(o => o.Value);
+            object[] Instructions(string name)
+            {
+                var method = typeof(GameScene).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic);
+                byte[] il = method.GetMethodBody().GetILAsByteArray();
+                var result = new List<object>();
+                for (int p = 0; p < il.Length;)
+                {
+                    int offset = p;
+                    short value = il[p++] == 0xfe ? unchecked((short)(0xfe00 | il[p++])) : il[offset];
+                    OpCode op = opcodes[value];
+                    int bytes = op.OperandType switch {
+                        OperandType.InlineNone => 0,
+                        OperandType.ShortInlineBrTarget or OperandType.ShortInlineI or OperandType.ShortInlineVar => 1,
+                        OperandType.InlineVar => 2,
+                        OperandType.InlineI8 or OperandType.InlineR => 8,
+                        OperandType.InlineSwitch => 4 + 4 * BitConverter.ToInt32(il, p),
+                        _ => 4 };
+                    if (op == OpCodes.Box || op == OpCodes.Newobj || op == OpCodes.Unbox_Any || op == OpCodes.Isinst)
+                    {
+                        var member = method.Module.ResolveMember(BitConverter.ToInt32(il, p));
+                        result.Add(new { offset, opcode = op.Name, target = member.DeclaringType + "." + member });
+                        if (typed && name == "EndChunkWalk") Check(op != OpCodes.Box, "actual EndChunkWalk IL has no box");
+                        if (typed && name == "BeginChunkWalk") Check(!member.DeclaringType.Name.Contains("DisplayClass") && !member.DeclaringType.Name.Contains("Predicate"), "actual BeginChunkWalk IL has no closure/delegate construction");
+                    }
+                    p += bytes;
+                }
+                return result.ToArray();
+            }
+            var compiledPaths = new { begin = Instructions("BeginChunkWalk"), end = Instructions("EndChunkWalk"), reuse = Instructions("ReusableTiles") };
+            File.WriteAllText(Path.Combine(dir, "chunk-allocations.json"), JsonSerializer.Serialize(new {
+                typed, checks, pass = true, iterations, recordBytes, partialBytes, wholeBytes, mixedBytes,
+                canvasBeginBytes, canvasEndBytes, newWalkBytes, keyValueBytes = Unsafe.SizeOf<ReuseKey>(),
+                nullableKeyBytes = Unsafe.SizeOf<ReuseKey?>(), objectReferenceBytes = IntPtr.Size,
+                lightMasks = rows, compiledPaths,
+                scope = "isolated current-thread allocation counts and actual compiled paths; no timing/FPS measurements" }, new JsonSerializerOptions { WriteIndented = true }));
+            Godot.GD.Print($"[chunk-allocation] PASS typed={typed} checks={checks} record={recordBytes} partial={partialBytes} whole={wholeBytes} mixed={mixedBytes} canvasBegin={canvasBeginBytes} newWalk={newWalkBytes} over {iterations}");
+        }
+        finally { DepthWorldProbe.FrameAdmitted = admitted; _walkLights = null; }
+    }
+}

@@ -24,7 +24,7 @@ internal partial class GameScene
     internal static long ChunksReused, ChunkReuseMismatches;
     internal static long ChunkWalkRecords, ChunkZScanObjects;
 
-    private readonly struct ReuseKey
+    internal readonly struct ReuseKey
     {
         internal readonly int MaxZ, ObjectsVersion;
         internal readonly sbyte MaxGroundZ;
@@ -47,7 +47,8 @@ internal partial class GameScene
     {
         internal bool Reusable;
         internal int LandStamp, StaticStamp, LandCount, StaticCount;
-        internal object Key;
+        // Inline value storage; null still means no completed/current reuse record.
+        internal ReuseKey? Key;
         internal ulong DynamicMask, WalkedDynamic;
         // The view offset of the last walk, whether no anchor of the chunk
         // could be culled then, and the tiles skipped since the view moved,
@@ -173,6 +174,21 @@ internal partial class GameScene
         }
     }
 
+    // Keep surviving static lights in their original order, including duplicates.
+    // RemoveRange clears the vacated references without a captured mask predicate.
+    private static void RemoveWalkedLights(List<(int Tile, GameObject Light)> lights, ulong mask)
+    {
+        int count = lights.Count, kept = 0;
+        for (int read = 0; read < count; read++)
+        {
+            var light = lights[read];
+            if ((mask & (1UL << light.Tile)) != 0) continue;
+            if (kept != read) lights[kept] = light;
+            kept++;
+        }
+        if (kept != count) lights.RemoveRange(kept, count - kept);
+    }
+
     private void BeginChunkWalk(Chunk chunk, ulong? walkMask)
     {
         chunk.Walk ??= new ChunkWalk();
@@ -188,7 +204,7 @@ internal partial class GameScene
             _walkLights = null;
             return;
         }
-        if (walkMask is ulong mask) lights.RemoveAll(l => (mask & (1UL << l.Tile)) != 0);
+        if (walkMask is ulong mask) RemoveWalkedLights(lights, mask);
         else lights.Clear();
         _walkLights = lights;
         chunk.Walk.WalkedDynamic = 0;
