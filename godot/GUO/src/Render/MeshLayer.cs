@@ -653,6 +653,12 @@ namespace GUO.Renderer
         partial void RecordLayerReset();
 
         [System.Diagnostics.Conditional("GUO_LABS")]
-        internal void InvalidateQuadRecord(int index) => RecordVertexChanged(index);
+        internal void InvalidateQuadRecord(int index)
+        {
+            // PORT DEVIATION (GUO): direct stretched-land writes must also
+            // invalidate Depth World's layer-wide resident content stamp.
+            ContentStamp++;
+            RecordVertexChanged(index);
+        }
     }
 }

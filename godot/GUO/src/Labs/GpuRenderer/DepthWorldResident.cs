@@ -60,14 +60,13 @@ internal sealed class DepthWorldResident
     internal int QuadCount, VisibleCount;
     internal readonly List<(int Start, int Count)> DirtyQuads = new(), DirtyVisible = new();
     internal bool AllDirty = true;
-    // One draw per (texture set, land) bucket over Merged, the frame's
-    // visible quads grouped by bucket; rebuilt only when visibility changes.
+    // One draw per contiguous texture run within each category. Nonadjacent
+    // runs cannot be regrouped: equal-depth primitives use submission order.
     internal readonly List<Draw> Draws = new(512);
     internal uint[] Merged = new uint[16384];
     internal int MergedCount;
     internal bool MergedDirty = true;
     private List<Group> _frameGroups = new(), _lastGroups = new();
-    private readonly Dictionary<(OrderedWorldDevice.TextureSet, bool), List<Group>> _buckets = new();
     private bool _mergeNeeded = true;
     private Rid[] _rids = new Rid[1024];
     private int _frame;
@@ -193,25 +192,32 @@ internal sealed class DepthWorldResident
         ResidentDraws += Draws.Count;
         if (same) return;
         _mergeNeeded = false;
-        foreach (var list in _buckets.Values) list.Clear();
-        foreach (var group in _lastGroups)
-        {
-            if (!_buckets.TryGetValue((group.Set, group.Land), out var list))
-                _buckets.Add((group.Set, group.Land), list = new List<Group>());
-            list.Add(group);
-        }
         Draws.Clear();
         MergedCount = 0;
-        foreach (var pair in _buckets)
+        // ADR-0044: land before statics, preserving traversal within each.
+        // Only adjacent runs with identical bindings may share a draw. A global
+        // texture bucket changes A,B,A into A,A,B and changes equal-depth cover.
+        for (int pass = 0; pass < 2; pass++)
         {
-            if (pair.Value.Count == 0) continue;
-            int start = MergedCount;
-            foreach (var group in pair.Value)
+            foreach (var group in _lastGroups)
             {
+                if (group.Land != (pass == 0)) continue;
                 int at = Reserve(ref Merged, ref MergedCount, group.VisibleCount);
                 Array.Copy(Visible, group.VisibleBase, Merged, at, group.VisibleCount);
+                int previous = Draws.Count - 1;
+                if (previous >= 0 && Draws[previous].Land == group.Land
+                    && Draws[previous].Textures == group.Set)
+                {
+                    var draw = Draws[previous];
+                    draw.Count += (uint)group.VisibleCount;
+                    Draws[previous] = draw;
+                }
+                else
+                {
+                    Draws.Add(new Draw { VisibleBase = (uint)at,
+                        Count = (uint)group.VisibleCount, Textures = group.Set, Land = group.Land });
+                }
             }
-            Draws.Add(new Draw { VisibleBase = (uint)start, Count = (uint)(MergedCount - start), Textures = pair.Key.Item1, Land = pair.Key.Item2 });
         }
         MergedDirty = true;
     }
