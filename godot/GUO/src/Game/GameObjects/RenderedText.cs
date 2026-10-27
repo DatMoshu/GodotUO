@@ -507,14 +507,30 @@ namespace GUO.Game
                 long key1 = ((long)BitConverter.SingleToInt32Bits(alpha) << 32) | (uint)BitConverter.SingleToInt32Bits(scale);
                 long key2 = ((long)(clipOffsetX & 0xFFFF) << 48) | ((long)(clipOffsetY & 0xFFFF) << 32)
                     | ((long)(clipWidth & 0xFFFF) << 16) | (uint)(clipHeight & 0xFFFF);
-                if (!_textMesh.Valid || !ReferenceEquals(_textMesh.Info, _info) || !ReferenceEquals(_textMesh.Atlas, atlas)
-                    || _textMesh.Key0 != key0 || _textMesh.Key1 != key1 || _textMesh.Key2 != key2)
+                // A rejected recording still draws its ordinary glyphs below.
+                // Retry only after an input changes; full clip integers avoid the
+                // packed key's 16-bit collisions. Atlas identity is its lifetime:
+                // FontGlyphAtlas is append-only and replaced, never reset in place.
+                var failed = _failedTextRecord;
+                bool sameFailure = !_textMesh.Valid && failed != null
+                    && ReferenceEquals(failed.Info, _info) && ReferenceEquals(failed.Atlas, atlas)
+                    && failed.Key0 == key0 && failed.Key1 == key1
+                    && failed.ClipX == clipOffsetX && failed.ClipY == clipOffsetY
+                    && failed.ClipWidth == clipWidth && failed.ClipHeight == clipHeight
+                    && failed.Font == Font && failed.Style == FontStyle && failed.Cell == Cell
+                    && failed.Unicode == IsUnicode && failed.Html == IsHTML
+                    && failed.Width == Width && failed.Height == Height && failed.Background == _htmlBgColor;
+                if (!sameFailure && (!_textMesh.Valid || !ReferenceEquals(_textMesh.Info, _info) || !ReferenceEquals(_textMesh.Atlas, atlas)
+                    || _textMesh.Key0 != key0 || _textMesh.Key1 != key1 || _textMesh.Key2 != key2))
                 {
                     _textMesh.Info = _info; _textMesh.Atlas = atlas;
                     _textMesh.Key0 = key0; _textMesh.Key1 = key1; _textMesh.Key2 = key2;
                     batcher.BeginTextRecord(_textMesh);
                     try { DrawGlyphs(batcher, 0, 0, depth, alpha, drawHue, scale, clipOffsetX, clipOffsetY, clipWidth, clipHeight); }
                     finally { batcher.EndTextRecord(); }
+                    _failedTextRecord = _textMesh.Valid ? null : new FailedGlyphRecord(_info, atlas, key0, key1,
+                        clipOffsetX, clipOffsetY, clipWidth, clipHeight, Font, FontStyle, Cell,
+                        IsUnicode, IsHTML, Width, Height, _htmlBgColor);
                 }
                 if (_textMesh.Valid)
                 {
@@ -804,6 +820,11 @@ namespace GUO.Game
 
         // PORT DEVIATION (GUO): GlyphMesh, and the version that invalidates it.
         private GlyphMesh _textMesh;
+        // Allocated only on a failed attempt; unchanged failures allocate nothing here.
+        private sealed record FailedGlyphRecord(MultilinesFontInfo Info, FontGlyphAtlas Atlas,
+            long Key0, long Key1, int ClipX, int ClipY, int ClipWidth, int ClipHeight,
+            byte Font, FontStyle Style, byte Cell, bool Unicode, bool Html, int Width, int Height, uint Background);
+        private FailedGlyphRecord _failedTextRecord;
         private int _contentVersion;
 
         public unsafe void CreateTexture()
@@ -883,6 +904,7 @@ namespace GUO.Game
             }
 
             IsDestroyed = true;
+            _failedTextRecord = null;
             _contentVersion++;
 
             if (GodotObject.IsInstanceValid(Texture))
