@@ -38,6 +38,8 @@ is retired (as `0004-multi-tile-enumerator` was).
 | 0005-pad | Record controller probe attacks | **ours**, depends on 0004-pad | none |
 | 0005 | System message hook | **ours** | none |
 | 0006 | Keep loopback out of automatic behavioral bans | **ours**, local development probes | none |
+| 0007 | DFI Network loot tables and death bonuses | **ours**, shard content | none |
+| 0008 | DFI Network and kopia 2012 custom monsters | **ours**, shard content, depends on 0007 | none |
 | issue | `MultiData.LoadUOP` and uncompressed entries | **upstream** (issue, no patch) | `upstream/issue-multidata-loaduop-uncompressed.md` |
 
 ### 0006: loopback ban exemption (NET-00c, MUO patch)
@@ -68,6 +70,18 @@ still requires the shard console's detection/filter messages.
 
 **Verdict: ours.** Local readiness checks and development clients share one
 address. Keep this narrow policy separate from public-shard ban policy.
+
+### 0007 and 0008: DFI Network shard content (MUO patch)
+
+GUO patches: `patches/0007-dfi-loot.patch` and `patches/0008-dfi-monsters.patch`.
+Ports of an owner's former RunUO shards (DFI Network, DefianceUO-based, and
+kopia 2012) so the dev shard plays like them: DFI's SE loot packs, its paragon
+and champion death bonuses, and 25 custom monsters under `Custom/DFI/`. The
+only edit to existing ModernUO code is the loot table values and one call at
+the top of `BaseCreature.OnDeath`. The tools/modernuo README lists the monsters.
+
+**Verdict: ours.** Shard-specific balance and content; ModernUO ships OSI's
+loot and monsters.
 
 ### 0001: headless owner account
 

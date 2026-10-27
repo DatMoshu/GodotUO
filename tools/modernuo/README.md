@@ -184,6 +184,42 @@ exempts private addresses. Run
 old hold and check the patch without opening a socket or touching accounts.
 See [UPSTREAM.md](UPSTREAM.md) for scope and deployment steps.
 
+### `patches/0007-dfi-loot.patch`
+
+The loot tables of the DFI Network shard (a DefianceUO-based RunUO server),
+for the dev shard to match. The SE packs in `LootPack.cs`, the ones an
+Endless Journey shard uses, take DFI's values: less gold from Rich upwards,
+and more, stronger magic items from Average upwards (SuperBoss rolls 10 to 18
+items, several at 33 to 60% minimum intensity). `Custom/DFI/Loot/DfiLoot.cs`
+carries DFI's loot helpers and, through one call at the top of
+`BaseCreature.OnDeath`, its death bonuses: a paragon drops one more loot pack
+by fame and 1.5 times the gold, and a champion spawn monster has a 0.05% chance
+of a +5 power scroll for a random looter in Felucca. DFI's plague and elder
+bonuses are not ported (ModernUO has neither).
+
+### `patches/0008-dfi-monsters.patch`
+
+Requires `0007-dfi-loot.patch`. Custom monsters from DFI and from the
+`kopia 2012` RunUO shard, under `Projects/UOContent/Custom/DFI/`, each added
+with `[add <Name>`:
+
+| Group | Monsters |
+|---|---|
+| Event boss | `QuestMobile` (GM-configured; `GiveRewardBag` gives each looter a "Reward bag for slaying ..." with 6 strong items, maps, SOS and a 5,000 check) |
+| Vampires | `VampireKnight`, `VampireFighter`, `VampireNecro`, `MindlessZombie` |
+| Stealth | `Stalker`, `NightStalker`, `Undying`, `DarkSentinel`, `HorrorDaemon`, `PoisonousRat`, `Doppelganger` |
+| Others | `OrcChopper`, `OrcScout`, `Sphynx` |
+| Donation dungeon | `Harvester`, `RoyaltyDefender` |
+| Opticon/Kale | `ZealotOfMondain` (dies into `AbominationOfMondain`, carrying four extra loot packs), `OpticonWyrm`, `GrimReaper` |
+| kopia 2012 | `ValoriteDragon`, `Chameleon`, `YChameleon` |
+
+DFI's `AI_Stealth` becomes `StealthAI`, chosen through `ForcedAI`, so no AI
+enum changes. `UOContent.Tests/Tests/Custom/DfiContentTests.cs` spawns every
+monster and checks the SuperBoss tier, the reward bag, the Zealot's death,
+the RoyaltyDefender's stages and Undying. Built on its own, the test project
+needs `-p:SolutionDir=<src>\` to copy `Distribution/Data` beside it. Not yet ported: the Sphynx fortune reading and the copper bars
+of DFI's event reward system.
+
 ### Retired
 
 `0004-multi-tile-enumerator` fixed tile lookups that stopped at a multi with no
