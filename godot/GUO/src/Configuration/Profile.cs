@@ -53,7 +53,7 @@ namespace GUO.Configuration
         public bool JournalFileWithSerial { get; set; } = false;
     }
 
-    internal sealed class Profile : System.Text.Json.Serialization.IJsonOnDeserialized
+    internal sealed class Profile : System.Text.Json.Serialization.IJsonOnDeserialized, System.Text.Json.Serialization.IJsonOnSerializing
     {
         [JsonIgnore] public string Username { get; set; }
         [JsonIgnore] public string ServerName { get; set; }
@@ -425,11 +425,22 @@ namespace GUO.Configuration
             get => _uoPlusFlags;
             set { _uoPlusFlags = value; _uoPlusFlagsRead = true; }
         }
+        // PORT DEVIATION (GUO): owner-requested session safety. Wide zoom is
+        // available during play, but logout/exit saves and old profiles must
+        // never start the next login above the standard 2.5 camera maximum.
+        private void ClampLoginZoom()
+        {
+            if (DefaultScale > 2.5f) DefaultScale = 2.5f;
+        }
+
+        void System.Text.Json.Serialization.IJsonOnSerializing.OnSerializing() => ClampLoginZoom();
+
         // PORT DEVIATION (GUO): preserve the existing styled-water user's
         // ripples/wakes when first reading a profile predating UO+ flags.
         // New profiles and explicitly saved off flags remain off.
         void System.Text.Json.Serialization.IJsonOnDeserialized.OnDeserialized()
         {
+            ClampLoginZoom();
             if (!_uoPlusFlagsRead && !string.IsNullOrWhiteSpace(WaterStyle)
                 && !string.Equals(WaterStyle, "classic", StringComparison.OrdinalIgnoreCase))
             {
