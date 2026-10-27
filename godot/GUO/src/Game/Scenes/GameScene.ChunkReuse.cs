@@ -25,23 +25,20 @@ internal partial class GameScene
 
     private readonly struct ReuseKey
     {
-        internal readonly Point Offset;
-        internal readonly Vector2 MinPixel, MaxPixel;
         internal readonly int MaxZ, ObjectsVersion;
         internal readonly sbyte MaxGroundZ;
         internal readonly bool NoDrawRoofs, HideVegetation;
         internal readonly GatherInputs Inputs;
 
-        internal ReuseKey(Point offset, Vector2 minPixel, Vector2 maxPixel, int maxZ, int objectsVersion,
+        internal ReuseKey(int maxZ, int objectsVersion,
             sbyte maxGroundZ, bool noDrawRoofs, bool hideVegetation, in GatherInputs inputs)
         {
-            Offset = offset; MinPixel = minPixel; MaxPixel = maxPixel; MaxZ = maxZ;
+            MaxZ = maxZ;
             ObjectsVersion = objectsVersion; MaxGroundZ = maxGroundZ; NoDrawRoofs = noDrawRoofs;
             HideVegetation = hideVegetation; Inputs = inputs;
         }
 
-        internal bool Same(in ReuseKey o) => MinPixel == o.MinPixel && MaxPixel == o.MaxPixel
-            && MaxZ == o.MaxZ && ObjectsVersion == o.ObjectsVersion && MaxGroundZ == o.MaxGroundZ
+        internal bool Same(in ReuseKey o) => MaxZ == o.MaxZ && ObjectsVersion == o.ObjectsVersion && MaxGroundZ == o.MaxGroundZ
             && NoDrawRoofs == o.NoDrawRoofs && HideVegetation == o.HideVegetation && Inputs.SameForReuse(o.Inputs);
     }
 
@@ -55,6 +52,7 @@ internal partial class GameScene
         // could be culled then, and the tiles skipped since the view moved,
         // whose objects' screen positions are refreshed when next walked.
         internal Point Offset;
+        internal Vector2 MinPixel, MaxPixel;
         internal bool FullyInside, OffScreenCleared;
         internal ulong StaleTiles;
         // The Z range of the chunk's anchors (a stretched land's MinZ
@@ -70,8 +68,7 @@ internal partial class GameScene
     private List<(int Tile, GameObject Light)> _walkLights;
     internal static long TilesReused;
 
-    private ReuseKey CurrentReuseKey(in GatherInputs inputs) => new ReuseKey(_offset, _minPixel, _maxPixel,
-        _maxZ, 0, _maxGroundZ, _noDrawRoofs, ProfileManager.CurrentProfile.HideVegetation, inputs);
+    private ReuseKey CurrentReuseKey(in GatherInputs inputs) => new ReuseKey(_maxZ, 0, _maxGroundZ, _noDrawRoofs, ProfileManager.CurrentProfile.HideVegetation, inputs);
 
     /// <summary>
     /// The tiles of the chunk that must be walked this frame when its last
@@ -96,12 +93,25 @@ internal partial class GameScene
             || mesh.Land.Count != walk.LandCount || mesh.Statics.Count != walk.StaticCount)
             return null;
         if (!key.Same(CurrentReuseKey(inputs)) || MouseNearChunk(chunk.X, chunk.Y)) return null;
+        // PORT DEVIATION (GUO): zoom/peek/resize may change the pixel window
+        // without changing world positions. Keep only tiles whose full Z range
+        // was inside the old window AND is inside the new one. Testing both
+        // offsets against the new window would retain formerly culled tiles
+        // on zoom-out. Circle transparency keeps its former full-walk path.
+        bool windowChanged = walk.MinPixel != _minPixel || walk.MaxPixel != _maxPixel;
+        if (windowChanged && inputs.UseCot) return null;
+        bool viewChanged = moved || windowChanged;
+        bool fullyInside = walk.FullyInside;
         ulong walkMask = walk.DynamicMask | chunk.DirtyTiles;
-        if (moved && !(walk.FullyInside && ChunkFullyInside(chunk.X, chunk.Y, walk.ZMin, walk.ZMax)))
+        if (viewChanged)
         {
-            walkMask |= TilesNotInside(chunk.X, chunk.Y, walk.Offset, walk.ZMin, walk.ZMax)
-                | TilesNotInside(chunk.X, chunk.Y, _offset, walk.ZMin, walk.ZMax);
-            if (walkMask == ulong.MaxValue) return null;
+            fullyInside = ChunkFullyInside(chunk.X, chunk.Y, walk.ZMin, walk.ZMax);
+            if (!(walk.FullyInside && fullyInside))
+            {
+                walkMask |= TilesNotInside(chunk.X, chunk.Y, walk.Offset, walk.MinPixel, walk.MaxPixel, walk.ZMin, walk.ZMax)
+                    | TilesNotInside(chunk.X, chunk.Y, _offset, _minPixel, _maxPixel, walk.ZMin, walk.ZMax);
+                if (walkMask == ulong.MaxValue) return null;
+            }
         }
         foreach (var (tile, light) in walk.Lights)
             if ((walkMask & (1UL << tile)) == 0)
@@ -110,7 +120,12 @@ internal partial class GameScene
                 AddLight(light, light, light.RealScreenPosition.X + 22, light.RealScreenPosition.Y + 22);
             }
         if (moved) walk.StaleTiles |= ~walkMask;
+        // The zero-mask path never calls EndChunkWalk. Advance its view record
+        // too, so a later zoom/move uses the bounds paired with this offset.
         walk.Offset = _offset;
+        walk.MinPixel = _minPixel;
+        walk.MaxPixel = _maxPixel;
+        walk.FullyInside = fullyInside;
         if (walkMask == 0) ChunksReused++;
         else TilesReused += 64 - System.Numerics.BitOperations.PopCount(walkMask);
         return walkMask;
@@ -178,6 +193,8 @@ internal partial class GameScene
         walk.LandCount = mesh.Land.Count; walk.StaticCount = mesh.Statics.Count;
         walk.Key = CurrentReuseKey(inputs);
         walk.Offset = _offset;
+        walk.MinPixel = _minPixel;
+        walk.MaxPixel = _maxPixel;
         WidenZ(chunk, walk, walkMask);
         walk.FullyInside = ChunkFullyInside(chunk.X, chunk.Y, walk.ZMin, walk.ZMax);
         // A whole walk refreshed every position it had to (see WalkChunkTiles).
@@ -233,7 +250,7 @@ internal partial class GameScene
     }
 
     /// <summary>The tiles of chunk (cx, cy) with an anchor, at view offset o and Z in [zMin, zMax], outside the pixel window.</summary>
-    private ulong TilesNotInside(int cx, int cy, Point o, int zMin, int zMax)
+    private static ulong TilesNotInside(int cx, int cy, Point o, Vector2 minPixel, Vector2 maxPixel, int zMin, int zMax)
     {
         ulong mask = 0;
         int x0 = cx << 3, y0 = cy << 3;
@@ -242,7 +259,7 @@ internal partial class GameScene
             {
                 int sx = (x0 + x - (y0 + y)) * 22 - o.X - 22;
                 int sy = (x0 + x + y0 + y) * 22 - o.Y - 22;
-                if (sx < _minPixel.X || sx > _maxPixel.X || sy - (zMax << 2) < _minPixel.Y || sy - (zMin << 2) > _maxPixel.Y)
+                if (sx < minPixel.X || sx > maxPixel.X || sy - (zMax << 2) < minPixel.Y || sy - (zMin << 2) > maxPixel.Y)
                     mask |= 1UL << ((x << 3) | y);
             }
         return mask;
