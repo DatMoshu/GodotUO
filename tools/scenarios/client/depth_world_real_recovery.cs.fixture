@@ -59,6 +59,9 @@ internal static class RealRecovery
                 byte[] restored = await Frame(prefix + "-canvas-return", false);
                 if (!expected.SequenceEqual(restored)) throw new Exception("canvas return changed pixels");
                 await Frame(prefix + "-rd-return", true);
+                long growths = OrderedWorldDevice.ResidentScratchGrowths;
+                await Frame(prefix + "-rd-stable", true);
+                if (OrderedWorldDevice.ResidentScratchGrowths != growths) throw new Exception("stable resident draw regrew scratch");
                 foreach (var test in new[] { ("early", 7, -1), ("middle", 0, 1), ("upload", 1, -1), ("recorded", 2, -1) })
                 {
                     long fallback = OrderedWorldCapture.FramesFallback;

@@ -43,3 +43,7 @@ full CUO parity, stable FPS, or remote Dell claim.
 ### Canvas reuse bookkeeping (D1)
 
 The map-backed fixture also records per-frame `ChunkWalkRecords` and `ChunkZScanObjects` in `chunk-maintenance.json`. Every canvas frame must report zero for both, and an RD-to-canvas return must exactly match the frozen canvas pixels at 1/2.5/5x. The ordinary object walk, stale screen-position refresh and dirty-tile clearing still run. An admitted RD frame rebuilds its cache after canvas; no stale key/light list can be reused. For Compatibility, skip the RD-only mask/recovery phases and check canvas repeat controls and zero bookkeeping. These are work counts, not FPS evidence.
+
+### Resident texture-binding scratch (H4)
+
+The device reuses one RID scratch array only within serialized RenderRT callbacks; DrawListEnd consumes the active prefix before another callback can rewrite it. No frame ticket retains the array. Growth is geometric and DisposeRT releases the storage. The real-map fixture asserts no ResidentScratchGrowths increase on repeated stable resident draws after canvas/RD transitions at each zoom. All12 exact-pixel recovery arms still execute. The observed growth count is allocation work, not GPU traffic or an FPS result.

@@ -122,6 +122,10 @@ internal sealed class OrderedWorldDevice
     private readonly HashSet<TextureSet> _usedTextureSets = new();
     private readonly List<TextureSet> _expiredTextureSets = new();
     private readonly List<Rid> _frameTextureSets = new();
+    // RT-only scratch. RenderRT consumes it through DrawListEnd before the
+    // next serialized callback; no frame ticket or GPU buffer retains the array.
+    private Rid[] _residentFrameTextureSets = Array.Empty<Rid>();
+    internal static long ResidentScratchGrowths;
     private readonly Color[] _clear = new Color[1];
 
     // ALL methods with RT suffix run through RenderingServer.CallOnRenderThread.
@@ -510,7 +514,13 @@ internal sealed class OrderedWorldDevice
         }
         if (next / 6 != (uint)occurrences.Length) throw new InvalidOperationException("Incomplete command stream.");
         if (resident != null && !_depthMode) throw new InvalidOperationException("Resident chunks need the depth target.");
-        Rid[] residentSets = resident == null ? Array.Empty<Rid>() : new Rid[resident.Draws.Count];
+        int residentDrawCount = resident?.Draws.Count ?? 0;
+        if (_residentFrameTextureSets.Length < residentDrawCount)
+        {
+            Array.Resize(ref _residentFrameTextureSets, Math.Max(residentDrawCount, Math.Max(16, _residentFrameTextureSets.Length * 2)));
+            ResidentScratchGrowths++;
+        }
+        Rid[] residentSets = _residentFrameTextureSets;
         if (resident != null)
         {
             for (int i = 0; i < resident.Draws.Count; i++)
@@ -627,6 +637,7 @@ internal sealed class OrderedWorldDevice
         foreach (Rid set in _residentTextureSets.Values)
             if (_rd.UniformSetIsValid(set)) _rd.FreeRid(set);
         _residentTextureSets.Clear();
+        _residentFrameTextureSets = Array.Empty<Rid>();
         _resolvedTextures.Clear();
         Free(ref _residentSet);
         Free(ref _residentQuads);
