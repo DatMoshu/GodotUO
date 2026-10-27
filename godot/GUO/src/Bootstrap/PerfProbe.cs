@@ -750,6 +750,7 @@ internal static partial class PerfProbe
             gc2 = System.GC.CollectionCount(2) - gc2Before;
         GUO.Utility.RuntimeTimings.Enabled = false;
         runner?.ObservePosition();
+        object rendererState = PerfRuntimeIdentity.SceneSnapshot();
         measurementState.Dispose();
         // Dispose validates the endpoint and observer ownership, then restores
         // the prior observer. Snapshot acceptance only after those checks.
@@ -771,6 +772,7 @@ internal static partial class PerfProbe
         var r = new Dictionary<string, object>
         {
             ["scene"] = name,
+            ["renderer_state"] = rendererState,
             ["what"] = what,
             ["at"] = player != null ? $"{player.X},{player.Y},{player.Z} map {Client.Game.UO.World.MapIndex}" : "",
             ["frames"] = n,

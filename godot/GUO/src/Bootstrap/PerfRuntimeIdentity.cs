@@ -7,6 +7,31 @@ namespace GUO.Host;
 
 internal static class PerfRuntimeIdentity
 {
+    // Once after a sample closes, before restoring its pacing. Reflection is
+    // diagnostic only; do not add frame-loop allocation or change target ownership.
+    internal static object SceneSnapshot()
+    {
+        var game = Client.Game;
+        var targets = game == null ? null : typeof(GameController)
+            .GetField("_renderTargets", System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.NonPublic)?.GetValue(game) as GUO.Renderer.RenderTargets;
+        object Size(GUO.Renderer.RenderTarget2D target) => target == null || target.IsDisposed
+            ? null : new { width = target.Width, height = target.Height };
+        return new
+        {
+            version = 1,
+            depth_world_selected = GUO.Renderer.DepthWorldProbe.Enabled,
+            resident_admitted_last_frame = GUO.Renderer.DepthWorldProbe.ResidentEnabled,
+            chunk_reuse = GUO.Game.Scenes.GameScene.ChunkReuse,
+            world = Size(targets?.WorldRenderTarget),
+            light = Size(targets?.LightRenderTarget),
+            ui = Size(targets?.UiRenderTarget),
+            engine_max_fps = Godot.Engine.MaxFps,
+            vsync = Godot.DisplayServer.WindowGetVsyncMode().ToString(),
+            active = game?.IsActive ?? false
+        };
+    }
+
     // Report generation only, outside all sample windows. No credentials/config contents.
     internal static object Capture()
     {
@@ -26,6 +51,8 @@ internal static class PerfRuntimeIdentity
             renderer = Godot.RenderingServer.GetCurrentRenderingMethod(),
             effective_flags = new
             {
+                depth_world = GUO.Renderer.DepthWorldProbe.Enabled,
+                depth_world_chunk_reuse = GUO.Game.Scenes.GameScene.ChunkReuse,
                 batched_world = GUO.Renderer.UltimaBatcher2D.BatchedWorld,
                 merged_cover = GUO.Renderer.UltimaBatcher2D.MergedCover,
                 merged_land = GUO.Renderer.MergedLand.Enabled,

@@ -47,3 +47,7 @@ The map-backed fixture also records per-frame `ChunkWalkRecords` and `ChunkZScan
 ### Resident texture-binding scratch (H4)
 
 The device reuses one RID scratch array only within serialized RenderRT callbacks; DrawListEnd consumes the active prefix before another callback can rewrite it. No frame ticket retains the array. Growth is geometric and DisposeRT releases the storage. The real-map fixture asserts no ResidentScratchGrowths increase on repeated stable resident draws after canvas/RD transitions at each zoom. All12 exact-pixel recovery arms still execute. The observed growth count is allocation work, not GPU traffic or an FPS result.
+
+### Morning comparison identity
+
+PerfRuntimeIdentity effective_flags now identifies the selected Depth World presenter and chunk reuse independently of the Godot backend. Each PerfProbe scene records renderer_state after the measured interval and before pacing restoration: actual world/light/UI target sizes, final resident admission, presenter/reuse selection, Engine.MaxFps, VSync and active state. This diagnostic snapshot allocates only after timing stops. RD versus manual canvas can share forward_plus; validate selection plus nonzero resident/drawn counters and zero unexpected fallbacks. Compatibility remains a separate cohort. The legacy perf_cohort arm schema is unchanged and is not sufficient alone for this comparison.
