@@ -301,6 +301,7 @@ namespace GUO.Game.Scenes
 
         public override void Unload()
         {
+            _overview?.Dispose(); _overview = null; _wasOverview = false; // PORT DEVIATION (GUO): ADR-0045
             ResetAmbientParticles(); // PORT DEVIATION (GUO): ADR-0042 resource lifetime
             GpuWorld.Destroy(); // PORT DEVIATION (GUO): --gpu-world's pass goes with the scene (ADR-0007)
             IO.Audio.ZoneAudio.Music.Reset();
@@ -1101,6 +1102,14 @@ namespace GUO.Game.Scenes
                 return true;
             }
 
+            // PORT DEVIATION (GUO): explicit extended zoom uses bounded overview tiles.
+            if (OverviewActive)
+            {
+                DrawOverview(batcher, renderTargets);
+                return base.Draw(batcher, renderTargets);
+            }
+            LeaveOverview();
+
             // PORT DEVIATION (GUO): upstream saves the device viewport, sets
             // it to the camera's rectangle around the world draw, and restores
             // it. There is nothing to set: the world is drawn into a render
@@ -1419,6 +1428,8 @@ namespace GUO.Game.Scenes
 
         public override void DrawUI(UltimaBatcher2D batcher)
         {
+            // PORT DEVIATION (GUO): no hidden world labels/health targets in overview.
+            if (OverviewActive) { SelectedObject.Object = null; return; }
             _healthLinesManager.Draw(batcher, 0f);
 
             if (!UIManager.IsMouseOverWorld)

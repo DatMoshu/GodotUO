@@ -1,0 +1,101 @@
+// Diagnostic fixture; inject into an external source stage only.
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Text.Json;
+using System.Threading.Tasks;
+using Godot;
+using GUO.Configuration;
+using GUO.Game.Map;
+using GUO.Game.Scenes;
+using GUO.Renderer;
+
+namespace GUO.Host;
+public partial class OverviewFixture : Node
+{
+    private int _checks;
+    private void Check(bool pass, string reason) { _checks++; if (!pass) throw new Exception(reason); }
+    private sealed class Blocks : IOverviewBlocks
+    {
+        internal int Reads, LastX;
+        public void ReadBlock(int x, int y, Span<uint> colors) { Reads++; LastX=x; colors.Fill(0xff123456); }
+    }
+    private async Task Frame() { await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame); }
+    private int Loaded()
+    {
+        var chunks=(Chunk[])typeof(Map).GetField("_terrainChunks",BindingFlags.NonPublic|BindingFlags.Static).GetValue(null);
+        return chunks?.Count(c=>c!=null && !c.IsDestroyed) ?? 0;
+    }
+    public override async void _Ready()
+    {
+        string dir=System.Environment.GetEnvironmentVariable("GUO_OVERVIEW_FIXTURE_DIR");
+        if (string.IsNullOrEmpty(dir)) return;
+        Directory.CreateDirectory(dir);
+        try
+        {
+            Check(!WorldOverview.Enabled(5) && WorldOverview.Enabled(5.01f), "exact threshold");
+            Check(!WorldOverview.KeepStatic(false,false,false,15), "small prop filtered");
+            Check(WorldOverview.KeepStatic(true,false,false,0), "thin wall preserved");
+            Check(WorldOverview.KeepStatic(false,true,false,0), "roof preserved");
+            Check(WorldOverview.KeepStatic(false,false,true,0), "floor preserved");
+            Check(WorldOverview.KeepStatic(false,false,false,16), "large feature preserved");
+            using(var cache=new OverviewMapCache())
+            {
+                var source=new Blocks();var keys=new List<Vector2I>{Vector2I.Zero};cache.SetView(keys);
+                Check(cache.Prepare(source,0,long.MaxValue)==0 && source.Reads==0,"zero budget");
+                Check(cache.Prepare(source,128,0)==0,"elapsed deadline");
+                for(int i=0;i<8;i++) Check(cache.Prepare(source,128,long.MaxValue)==128,"block cap and progress");
+                Check(cache.Visible[0].Blocks==OverviewMapCache.BlocksPerTile,"tile complete");
+                int reads=source.Reads;cache.SetView(keys);cache.Prepare(source,128,long.MaxValue);
+                Check(source.Reads==reads,"warm recall no decode");
+                var warm=cache.Visible[0];keys.Clear();for(int x=1;x<=128;x++)keys.Add(new Vector2I(x,0));cache.SetView(keys);
+                Check(cache.Count==128 && !cache.Visible.Contains(warm),"bounded eviction");
+                cache.Prepare(source,1,long.MaxValue);Check(source.LastX==32,"obsolete work cancelled; nearest first");
+                Check(cache.PixelBytes<=OverviewMapCache.Capacity*OverviewMapCache.TileSize*OverviewMapCache.TileSize*4L,"CPU pixel bound");
+                cache.Dispose();Check(cache.Count==0 && cache.PixelBytes==0,"invalidate/release");
+            }
+            for(int i=0;Client.Game?.Scene is not LoginScene;i++) {if(i>1200)throw new Exception("login timeout");await Frame();}
+            var world=Client.Game.UO.World;
+            var setup=typeof(GUO.Network.NetClient).GetMethod("SetupSocket",BindingFlags.Instance|BindingFlags.NonPublic);
+            setup.Invoke(GUO.Network.NetClient.Socket,new[]{Enum.Parse(setup.GetParameters()[0].ParameterType,"TcpSocket")});
+            ProfileManager.Load("Offline","overview-fixture","overview-fixture");
+            var profile=ProfileManager.CurrentProfile;profile.GameWindowFullSize=true;profile.TopbarGumpIsDisabled=true;
+            profile.UseCircleOfTransparency=false;profile.NoColorObjectsOutOfRange=false;profile.EnableMousewheelScaleZoom=true;
+            world.CreatePlayer(1);world.MapIndex=0;world.Player.Graphic=0x190;world.Player.Name="Overview fixture";
+            world.Player.SetInWorldTile(1431,1691,0);
+            var scene=new GameScene(world);Client.Game.SetScene(scene);scene.Camera.SetZoomRange(.5f,20,.1f);
+            var rows=new List<object>();
+            foreach(float zoom in System.Environment.GetEnvironmentVariable("GUO_OVERVIEW_FULLSCREEN")=="1" ? new[]{20f} : new[]{2.5f,5f,5.1f,10f,20f,5f,2.5f})
+            {
+                int before=Loaded();scene.Camera.Zoom=zoom;scene.Camera.Update(true,0,GUO.Compat.Point.Zero);
+                for(int i=0;i<6;i++)await Frame();
+                int frames=0;
+                if(zoom>5)
+                {
+                    while(scene.Overview.Cache.Visible.Any(t=>t.Blocks!=OverviewMapCache.BlocksPerTile))
+                    {
+                        Check(scene.Overview.Cache.LastBlocks<=128 && scene.Overview.Cache.LastUploads<=2,"runtime frame budget");
+                        if(++frames>1200)throw new Exception("overview did not converge");await Frame();
+                    }
+                    Check(Loaded()<=before+4,"overview must not load distant rich chunks");
+                    Check(GUO.Game.SelectedObject.Object==null,"no hidden picking target");
+                    Check(scene.OnMouseDoubleClick(GUO.Input.MouseButtonType.Left),"overview mouse interaction consumed");
+                }
+                else Check(!scene.OverviewActive && scene.RenderedObjectsCount>0,"normal renderer restored");
+                await ToSignal(RenderingServer.Singleton,RenderingServerInstance.SignalName.FramePostDraw);
+                string path=Path.Combine(dir,$"zoom-{rows.Count}-{zoom:F1}.png");GetViewport().GetTexture().GetImage().SavePng(path);
+                rows.Add(new{zoom,richChunks=Loaded(),visibleTiles=scene.Overview?.Cache.Visible.Count??0,cacheTiles=scene.Overview?.Cache.Count??0,pixelBytes=scene.Overview?.Cache.PixelBytes??0,overview=scene.OverviewActive});
+            }
+            scene.Camera.Zoom=20;for(int i=0;i<5;i++)await Frame();
+            var old=scene.Overview.Cache.Visible[0];Client.Game.UO.FileManager.Maps.NotifyDataChanged();
+            for(int i=0;i<3;i++)await Frame();Check(!ReferenceEquals(old,scene.Overview.Cache.Visible[0]),"map edit invalidation");
+            scene.Camera.Zoom=2.5f;
+            File.WriteAllText(Path.Combine(dir,"result.json"),JsonSerializer.Serialize(new{pass=true,checks=_checks,rows},new JsonSerializerOptions{WriteIndented=true}));
+            GD.Print($"[overview] PASS {_checks} checks; budget, cache, invalidation, no distant rich chunks, transitions");
+            GetTree().Quit(0);
+        }
+        catch(Exception ex){GD.PrintErr("[overview] FAIL "+ex);GetTree().Quit(1);}
+    }
+}

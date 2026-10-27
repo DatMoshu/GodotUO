@@ -277,6 +277,7 @@ namespace GUO.Game.Scenes
 
         internal override bool OnMouseDown(MouseButtonType button)
         {
+            if (OverviewActive) return true; // PORT DEVIATION (GUO): overview is view-only, ADR-0045
             switch (button)
             {
                 case MouseButtonType.Left:
@@ -294,6 +295,8 @@ namespace GUO.Game.Scenes
 
         internal override bool OnMouseUp(MouseButtonType button)
         {
+            // PORT DEVIATION (GUO): still deliver right-button release to stop prior movement.
+            if (OverviewActive && button != MouseButtonType.Right) return true;
             switch (button)
             {
                 case MouseButtonType.Left:
@@ -311,6 +314,7 @@ namespace GUO.Game.Scenes
 
         internal override bool OnMouseDoubleClick(MouseButtonType button)
         {
+            if (OverviewActive) return true; // PORT DEVIATION (GUO): overview is view-only, ADR-0045
             switch (button)
             {
                 case MouseButtonType.Left:
@@ -1027,6 +1031,7 @@ namespace GUO.Game.Scenes
 
         internal override bool OnMouseDragging()
         {
+            if (OverviewActive) return true; // PORT DEVIATION (GUO): overview is view-only, ADR-0045
             if (!UIManager.IsMouseOverWorld)
             {
                 return false;
