@@ -25,6 +25,10 @@
     <GuoLabs Condition="'$(GuoLabs)' == ''">false</GuoLabs>
   </PropertyGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="src/Render/DepthWorld/*.glsl.txt" LogicalName="depthworld/%(Filename)%(Extension)" />
+  </ItemGroup>
+
   <!-- Labs mirror TOOLS: explicit opt-in, Debug only, never an export. -->
   <PropertyGroup Condition="'$(GuoLabs)' == 'true' and '$(Configuration)' == 'Debug'">
     <DefineConstants>$(DefineConstants);GUO_LABS</DefineConstants>

@@ -1,0 +1,73 @@
+// Diagnostic source only. Runs paired draws with gameplay/time updates stopped.
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Text.Json;
+using System.Threading.Tasks;
+using Godot;
+using GUO.Game.Scenes;
+using GUO.Renderer.DepthWorld;
+using Point = GUO.Compat.Point;
+
+namespace GUO.Host;
+internal static class RealRecovery
+{
+    internal static async Task Run(Node driver, GameScene scene, string dir)
+    {
+        var game = Client.Game;
+        var draw = game.GetType().GetMethod("DrawFrame", BindingFlags.Instance | BindingFlags.NonPublic);
+        var results = new List<object>();
+        game.SetProcess(false);
+        try
+        {
+            async Task<byte[]> Frame(string name, bool rd, int failure = 0, int admission = -1)
+            {
+                OrderedWorldCapture.Enabled = rd;
+                OrderedWorldCapture.InjectFailure = failure;
+                OrderedWorldCapture.InjectResidentFailureAfter = admission;
+                draw.Invoke(game, null);
+                await driver.ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
+                using var image = driver.GetViewport().GetTexture().GetImage();
+                image.SavePng(Path.Combine(dir, name + ".png"));
+                return image.GetData();
+            }
+            foreach (float zoom in new[] { 1f, 2.5f, 5f })
+            {
+                scene.Camera.Zoom = zoom;
+                scene.Camera.Update(true, 0, Point.Zero);
+                string prefix = "recovery-" + zoom.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                await Frame(prefix + "-warm", false);
+                byte[] expected = await Frame(prefix + "-canvas", false);
+                byte[] repeat = await Frame(prefix + "-canvas-repeat", false);
+                int control = expected.Zip(repeat, (a, b) => a == b ? 0 : 1).Sum();
+                if (control != 0) throw new Exception(prefix + " unstable canvas control: " + control);
+                long resident = OrderedWorldCapture.ResidentFrames;
+                long plans = RenderLists.RecoveryPlans;
+                await Frame(prefix + "-rd", true);
+                bool exercisedResident = OrderedWorldCapture.ResidentFrames > resident;
+                if (!exercisedResident || RenderLists.RecoveryPlans != plans) throw new Exception("successful resident frame built recovery or was not resident");
+                foreach (var test in new[] { ("early", 7, -1), ("middle", 0, 1), ("upload", 1, -1), ("recorded", 2, -1) })
+                {
+                    long fallback = OrderedWorldCapture.FramesFallback;
+                    long meshCovers = RenderLists.RecoveryMeshCovers, flatCovers = RenderLists.RecoveryFlatCovers;
+                    byte[] actual = await Frame(prefix + "-" + test.Item1, true, test.Item2, test.Item3);
+                    int differences = expected.Zip(actual, (a, b) => a == b ? 0 : 1).Sum();
+                    results.Add(new { zoom, name = test.Item1, differences, exercisedResident,
+                        fallback = OrderedWorldCapture.FramesFallback - fallback, meshCovers = RenderLists.RecoveryMeshCovers - meshCovers, flatCovers = RenderLists.RecoveryFlatCovers - flatCovers });
+                    File.WriteAllText(Path.Combine(dir, "real-recovery.json"), JsonSerializer.Serialize(results));
+                    if (differences != 0 || OrderedWorldCapture.FramesFallback == fallback)
+                        throw new Exception(prefix + " " + test.Item1 + " failed: " + differences + " differing bytes");
+                }
+            }
+        }
+        finally
+        {
+            OrderedWorldCapture.InjectFailure = 0;
+            OrderedWorldCapture.InjectResidentFailureAfter = -1;
+            OrderedWorldCapture.Enabled = true;
+            game.SetProcess(true);
+        }
+    }
+}

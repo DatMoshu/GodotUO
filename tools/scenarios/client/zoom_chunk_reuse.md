@@ -1,7 +1,7 @@
 # Depth World zoom: chunk visibility reuse
 
-Layer: existing L4 Depth World path (ADR-0044), optimized Debug with
-`GuoLabs=true` and `--depth-world`. Ordinary canvas mode keeps the full walk.
+Layer: production Depth World presenter (ADR-0044), optimized non-Labs build.
+RD selects it by default; Compatibility/manual canvas keeps the full walk.
 No new option, input behavior, camera transform or texture sampling change.
 
 Zoom changes the pixel window even when object screen positions do not move.
@@ -24,12 +24,12 @@ project Godot slot. Do not use an account or log in to a shard.
    `godot/GUO/src/Bootstrap/ZoomReuseFixture.cs`. In the stage only, add
    `AddChild(new ZoomReuseFixture());` immediately before the `bootArgs`
    declaration in `Main.StartClient`.
-2. Build optimized Debug with `GuoLabs=true`; import the staged project.
+2. Build optimized Debug with `GuoLabs=false`; import the staged project.
    Set `GUO_ZOOM_FIXTURE_DIR` to an empty evidence directory,
    `GUO_DW_REUSE=1` and `GUO_DW_REUSE_VERIFY=0`. The zero-mask early return
    must run: the older in-loop verifier bypasses that return.
 3. Run the configured `godot-console` against the stage using
-   `--rendering-method forward_plus -- --play --depth-world --silent
+   `--rendering-method forward_plus -- --play --silent
    --no-focus --pregame-classic --window-size 1280x720`. No autologin.
    Routine runs use 720p; use 1080p when needed. A 4K repeat is only for an
    explicit large-viewport coverage check or owner request; verify the actual

@@ -15,9 +15,7 @@ public sealed partial class UltimaBatcher2D
 
     /// <summary>True when a text may be drawn from, or recorded into, a GlyphMesh now.</summary>
     internal bool CanDrawTextMesh => TextMeshes && _textRecord == null && _capture == null && !_mirroring
-#if GUO_LABS
         && !OrderedWorldRecording
-#endif
         ;
 
     internal void BeginTextRecord(GlyphMesh mesh)

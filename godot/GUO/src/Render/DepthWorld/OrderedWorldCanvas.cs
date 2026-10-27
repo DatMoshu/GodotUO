@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: BSD-2-Clause
-#if GUO_LABS
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Godot;
 
-namespace GUO.Labs.GpuRenderer;
+namespace GUO.Renderer.DepthWorld;
 
 /// <summary>Cold-path replay of captured drawing, never gameplay or atlas traversal.</summary>
 internal sealed class OrderedWorldCanvas : IDisposable
@@ -15,6 +14,7 @@ internal sealed class OrderedWorldCanvas : IDisposable
     internal struct Command
     {
         internal Kind Type;
+        internal int Group;
         internal int FirstCorner;
         internal Rid Texture;
         internal Vector2 Offset;
@@ -31,6 +31,8 @@ internal sealed class OrderedWorldCanvas : IDisposable
     private readonly Color[] _colors = new Color[4];
     private readonly float[] _normals = new float[16];
     private static readonly int[] Indices = { 0, 1, 2, 1, 3, 2 };
+    private readonly Dictionary<int, Rid> _groups = new();
+    private readonly List<Rid> _groupItems = new();
     private Rid _root;
     private bool _visible;
     private int _activeItems;
@@ -49,6 +51,9 @@ internal sealed class OrderedWorldCanvas : IDisposable
         _visible = false;
         for (int i = 0; i < _activeItems; i++) RenderingServer.CanvasItemClear(_items[i]);
         _activeItems = 0;
+        foreach (Rid group in _groupItems) RenderingServer.FreeRid(group);
+        _groupItems.Clear();
+        _groups.Clear();
         foreach (ArrayMesh mesh in _meshes) mesh.Dispose();
         _meshes.Clear();
         // Keep a small cold-path pool, not every item from the largest failed world.
@@ -62,6 +67,16 @@ internal sealed class OrderedWorldCanvas : IDisposable
     internal void Render(Rid parent, ReadOnlySpan<OrderedWorldResidency.Occurrence> occurrences,
         ReadOnlySpan<OrderedWorldResidency.Quad> dynamic, ReadOnlySpan<Command> commands)
     {
+        Begin(parent);
+        for (int i = 0; i < commands.Length; i++)
+        {
+            ref readonly Command command = ref commands[i];
+            Append(occurrences[command.FirstCorner / 4].Get(dynamic), command);
+        }
+    }
+
+    internal void Begin(Rid parent)
+    {
         if (!RenderingServer.IsOnRenderThread()) throw new InvalidOperationException("Canvas replay requires the rendering thread.");
         Clear();
         if (!_root.IsValid)
@@ -73,10 +88,33 @@ internal sealed class OrderedWorldCanvas : IDisposable
         RenderingServer.CanvasItemSetParent(_root, parent);
         RenderingServer.CanvasItemSetVisible(_root, true);
         _visible = true;
-        for (int i = 0; i < commands.Length; i++)
-        {
-            ref readonly Command command = ref commands[i];
-            ref readonly var quad = ref occurrences[command.FirstCorner / 4].Get(dynamic);
+    }
+
+    internal Rid Group(int id, int order)
+    {
+        if (_groups.TryGetValue(id, out Rid group)) return group;
+        group = RenderingServer.CanvasItemCreate();
+        RenderingServer.CanvasItemSetParent(group, _root);
+        RenderingServer.CanvasItemSetDrawIndex(group, order);
+        RenderingServer.CanvasItemSetDefaultTextureFilter(group, RenderingServer.CanvasItemTextureFilter.Nearest);
+        _groups.Add(id, group);
+        _groupItems.Add(group);
+        return group;
+    }
+
+    internal Rid RawGroup(int id)
+    {
+        Rid raw = RenderingServer.CanvasItemCreate();
+        RenderingServer.CanvasItemSetParent(raw, Group(id, id));
+        RenderingServer.CanvasItemSetDrawIndex(raw, int.MaxValue);
+        RenderingServer.CanvasItemSetDefaultTextureFilter(raw, RenderingServer.CanvasItemTextureFilter.Nearest);
+        _groupItems.Add(raw);
+        return raw;
+    }
+
+    internal void Append(in OrderedWorldResidency.Quad quad, in Command command, int? group = null)
+    {
+        int i = _activeItems;
             // A read-only view of this packet; no expanded frame buffer.
             ReadOnlySpan<OrderedWorldDevice.Vertex> vertices = MemoryMarshal.Cast<OrderedWorldResidency.Quad, OrderedWorldDevice.Vertex>(
                 MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in quad), 1));
@@ -87,10 +125,11 @@ internal sealed class OrderedWorldCanvas : IDisposable
                 item = RenderingServer.CanvasItemCreate();
                 // Raw RS items start with their own linear filter, even under a nearest parent.
                 RenderingServer.CanvasItemSetDefaultTextureFilter(item, RenderingServer.CanvasItemTextureFilter.Nearest);
-                RenderingServer.CanvasItemSetParent(item, _root);
                 RenderingServer.CanvasItemSetDrawIndex(item, i);
                 _items.Add(item);
             }
+            RenderingServer.CanvasItemSetParent(item, group.HasValue ? Group(group.Value, group.Value) : _root);
+            RenderingServer.CanvasItemSetDrawIndex(item, i);
             _activeItems = i + 1;
             RenderingServer.CanvasItemSetTransform(item, new Transform2D(0, command.Offset));
             RenderingServer.CanvasItemSetMaterial(item,
@@ -134,7 +173,6 @@ internal sealed class OrderedWorldCanvas : IDisposable
                 else RenderingServer.CanvasItemAddTriangleArray(item, Indices, _points, _colors, _uv, null, null, command.Texture);
             }
             CommandsDrawn++;
-        }
     }
 
     public void Dispose()
@@ -147,4 +185,3 @@ internal sealed class OrderedWorldCanvas : IDisposable
         // Materials and texture RIDs remain owned by the original batcher / capture ticket.
     }
 }
-#endif

@@ -23,42 +23,7 @@ namespace GUO.Game.GameObjects
 
             //Engine.DebugInfo.LandsRendered++;
 
-            ushort hue = Hue;
-
-            if (ProfileManager.CurrentProfile.HighlightGameObjects && SelectedObject.Object == this)
-            {
-                hue = Constants.HIGHLIGHT_CURRENT_OBJECT_HUE;
-            }
-            else if (
-                ProfileManager.CurrentProfile.NoColorObjectsOutOfRange
-                && Distance > World.ClientViewRange
-            )
-            {
-                hue = Constants.OUT_RANGE_COLOR;
-            }
-            else if (World.Player.IsDead && ProfileManager.CurrentProfile.EnableBlackWhiteEffect)
-            {
-                hue = Constants.DEAD_RANGE_COLOR;
-            }
-
-            Vector3 hueVec;
-            if (hue != 0)
-            {
-                hueVec.X = hue - 1;
-                hueVec.Y = IsStretched
-                    ? ShaderHueTranslator.SHADER_LAND_HUED
-                    : ShaderHueTranslator.SHADER_HUED;
-            }
-            else
-            {
-                hueVec.X = 0;
-                hueVec.Y = IsStretched
-                    ? ShaderHueTranslator.SHADER_LAND
-                    : ShaderHueTranslator.SHADER_NONE;
-            }
-            hueVec.Z = 1f;
-            // PORT DEVIATION (GUO): Wet land under a water style (ADR-0037).
-            hueVec.Y += GUO.Renderer.Water.WaterRender.Flag(TileData.IsWet);
+            Vector3 hueVec = ResolveLandDrawHue();
 
             if (IsStretched)
             {
@@ -105,6 +70,67 @@ namespace GUO.Game.GameObjects
             }
             else
             {
+                return DrawFlat(batcher, posX, posY, hueVec, depth, null);
+            }
+
+            return true;
+        }
+
+
+        // PORT DEVIATION (GUO): cold canvas recovery shares flat-land preparation.
+        // It does not rerun GameObject.Draw or mutable mobile/effect simulation.
+        internal void ReplayFlatCover(UltimaBatcher2D batcher, int group)
+        {
+            if (IsStretched || !AllowedToDraw || IsDestroyed) return;
+            ResolveTheme();
+            DrawFlat(batcher, RealScreenPosition.X, RealScreenPosition.Y,
+                ResolveLandDrawHue(), CalculateDepthZ(), group);
+        }
+
+        private Vector3 ResolveLandDrawHue()
+        {
+            ushort hue = Hue;
+
+            if (ProfileManager.CurrentProfile.HighlightGameObjects && SelectedObject.Object == this)
+            {
+                hue = Constants.HIGHLIGHT_CURRENT_OBJECT_HUE;
+            }
+            else if (
+                ProfileManager.CurrentProfile.NoColorObjectsOutOfRange
+                && Distance > World.ClientViewRange
+            )
+            {
+                hue = Constants.OUT_RANGE_COLOR;
+            }
+            else if (World.Player.IsDead && ProfileManager.CurrentProfile.EnableBlackWhiteEffect)
+            {
+                hue = Constants.DEAD_RANGE_COLOR;
+            }
+
+            Vector3 hueVec;
+            if (hue != 0)
+            {
+                hueVec.X = hue - 1;
+                hueVec.Y = IsStretched
+                    ? ShaderHueTranslator.SHADER_LAND_HUED
+                    : ShaderHueTranslator.SHADER_HUED;
+            }
+            else
+            {
+                hueVec.X = 0;
+                hueVec.Y = IsStretched
+                    ? ShaderHueTranslator.SHADER_LAND
+                    : ShaderHueTranslator.SHADER_NONE;
+            }
+            hueVec.Z = 1f;
+            // PORT DEVIATION (GUO): Wet land under a water style (ADR-0037).
+            hueVec.Y += GUO.Renderer.Water.WaterRender.Flag(TileData.IsWet);
+
+            return hueVec;
+        }
+
+        private bool DrawFlat(UltimaBatcher2D batcher, int posX, int posY, Vector3 hueVec, float depth, int? recoveryGroup)
+        {
                 ref readonly var artInfo = ref Client.Game.UO.Arts.GetLand(Graphic);
 
                 // PORT DEVIATION (GUO): themed land draws the variant PNG.
@@ -136,15 +162,15 @@ namespace GUO.Game.GameObjects
                         var hdScale = new Vector2((float)uv.Width / hdUv.Width, (float)uv.Height / hdUv.Height);
                         if (GUO.Renderer.Water.WaterRender.UpstreamWobble(ProfileManager.CurrentProfile) && TileData.IsWet)
                         {
-                            batcher.Draw(hdTex, pos, hdUv, hueVec, 0f, Vector2.Zero, hdScale, SpriteEffects.None, depth + 0.5f);
+                            EmitFlat(batcher, recoveryGroup, hdTex, pos, hdUv, hueVec, 0f, Vector2.Zero, hdScale, SpriteEffects.None, depth + 0.5f);
                             var sin = (float)Math.Sin(Time.Ticks / 1000f);
                             var cos = (float)Math.Cos(Time.Ticks / 1000f);
                             var wet = new Vector2(hdScale.X * (1.1f + sin * 0.1f), hdScale.Y * (1.1f + cos * 0.5f * 0.1f));
-                            batcher.Draw(hdTex, pos, hdUv, hueVec, 0f, Vector2.Zero, wet, SpriteEffects.None, depth + 0.5f);
+                            EmitFlat(batcher, recoveryGroup, hdTex, pos, hdUv, hueVec, 0f, Vector2.Zero, wet, SpriteEffects.None, depth + 0.5f);
                         }
                         else
                         {
-                            batcher.Draw(hdTex, pos, hdUv, hueVec, 0f, Vector2.Zero, hdScale, SpriteEffects.None, depth + 0.5f);
+                            EmitFlat(batcher, recoveryGroup, hdTex, pos, hdUv, hueVec, 0f, Vector2.Zero, hdScale, SpriteEffects.None, depth + 0.5f);
                         }
 
                         return true;
@@ -155,7 +181,7 @@ namespace GUO.Game.GameObjects
 
                     if (GUO.Renderer.Water.WaterRender.UpstreamWobble(ProfileManager.CurrentProfile) && TileData.IsWet)
                     {
-                        batcher.Draw(
+                        EmitFlat(batcher, recoveryGroup,
                             texture,
                             pos2,
                             uv,
@@ -172,7 +198,7 @@ namespace GUO.Game.GameObjects
                         scale = new Vector2(1.1f + sin * 0.1f, 1.1f + cos * 0.5f * 0.1f);
                     }
 
-                    batcher.Draw(
+                    EmitFlat(batcher, recoveryGroup,
                         texture,
                         pos2,
                         uv,
@@ -184,9 +210,16 @@ namespace GUO.Game.GameObjects
                         depth + 0.5f
                     );
                 }
-            }
-
             return true;
+        }
+
+        private static void EmitFlat(UltimaBatcher2D batcher, int? recoveryGroup,
+            Godot.Texture2D texture, Vector2 position, Rectangle? source, Vector3 hue,
+            float rotation, Vector2 origin, Vector2 scale, SpriteEffects effects, float depth)
+        {
+            if (recoveryGroup.HasValue)
+                batcher.ReplayOrderedFlatLand(texture, position, source.Value, hue, scale, recoveryGroup.Value);
+            else batcher.Draw(texture, position, source, hue, rotation, origin, scale, effects, depth);
         }
 
         public override bool CheckMouseSelection()

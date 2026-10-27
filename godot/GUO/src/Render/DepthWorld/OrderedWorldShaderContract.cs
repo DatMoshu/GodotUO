@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: BSD-2-Clause
-#if GUO_LABS
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 
-namespace GUO.Labs.GpuRenderer;
+namespace GUO.Renderer.DepthWorld;
 
 // Check the emitted ABI once at shader creation, not just the GLSL text.
 // Opcodes/decorations: Khronos SPIRV-Headers include/spirv/unified1/spirv.json.
@@ -144,4 +143,3 @@ internal sealed class OrderedWorldShaderContract
         ValidatedPrograms++;
     }
 }
-#endif

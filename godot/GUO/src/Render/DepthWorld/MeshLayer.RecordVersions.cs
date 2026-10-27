@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: BSD-2-Clause
-#if GUO_LABS
 using System;
 
 namespace GUO.Renderer;
@@ -36,4 +35,3 @@ public sealed partial class MeshLayer
         if (_recordVersions != null) _recordResetVersion = checked(++_recordSequence);
     }
 }
-#endif

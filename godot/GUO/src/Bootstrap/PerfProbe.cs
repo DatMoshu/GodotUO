@@ -235,9 +235,7 @@ internal static partial class PerfProbe
             if (_retainedCanvasParity || _coverCandidatesParity)
             {
                 bool rd = false;
-#if GUO_LABS
-                rd = GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled;
-#endif
+                rd = GUO.Renderer.DepthWorld.OrderedWorldCapture.Enabled;
                 if (!parity || GpuWorld.Enabled || rd || (_retainedCanvasParity && _coverCandidatesParity))
                     throw new System.InvalidOperationException("Select one GUO_PERF_PARITY diagnostic with --perf-parity and ordinary canvas rendering.");
                 if (_coverCandidatesParity)
@@ -602,36 +600,37 @@ internal static partial class PerfProbe
         int rebuildsBefore = LandPages.Rebuilds, bumpsBefore = LandPages.Bumps;
         long terrainRebuildsBefore = CachedLand.TotalRebuilds;
         long terrainSpritesBefore = CachedLand.TotalRebuiltSprites;
-#if GUO_LABS
-        long rdBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.FramesDrawn;
-        long rdFallbackBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.FramesFallback;
-        long rdBytesBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.UploadedBytes;
-        long rdCallsBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.DrawCalls;
-        long rdTicksBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.RecordTicks;
-        long rdSuppressedBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.SuppressedCommands;
-        long rdReplayBefore = GUO.Labs.GpuRenderer.OrderedWorldCanvas.CommandsDrawn;
+        long rdResidentBefore = GUO.Renderer.DepthWorld.OrderedWorldCapture.ResidentFrames;
+        long rdResidentBytesBefore = GUO.Renderer.DepthWorld.OrderedWorldDevice.ResidentBytes;
+        long rdResidentCallsBefore = GUO.Renderer.DepthWorld.OrderedWorldDevice.ResidentDrawCalls;
+        long rdBefore = GUO.Renderer.DepthWorld.OrderedWorldCapture.FramesDrawn;
+        long rdFallbackBefore = GUO.Renderer.DepthWorld.OrderedWorldCapture.FramesFallback;
+        long rdBytesBefore = GUO.Renderer.DepthWorld.OrderedWorldCapture.UploadedBytes;
+        long rdCallsBefore = GUO.Renderer.DepthWorld.OrderedWorldCapture.DrawCalls;
+        long rdTicksBefore = GUO.Renderer.DepthWorld.OrderedWorldCapture.RecordTicks;
+        long rdSuppressedBefore = GUO.Renderer.DepthWorld.OrderedWorldCapture.SuppressedCommands;
+        long rdReplayBefore = GUO.Renderer.DepthWorld.OrderedWorldCanvas.CommandsDrawn;
         long rdCanvasClearsBefore = UltimaBatcher2D.OrderedCanvasItemsCleared;
-        long rdGeometryBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.GeometryBytes;
-        long rdOrderBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.OrderBytes;
-        long rdStateBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.StateBytes;
-        long rdStateUploadsBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.StateUploadCalls;
-        long rdStateChangesBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.ChangedStateStreams;
-        long rdStateGrowthBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.StateBufferGrowths;
-        long rdTextureRunsBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.TextureRuns;
-        long rdTextureBatchesBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.TextureBatches;
-        long rdOccurrencesBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.Occurrences;
-        long rdUploadsBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.UploadCalls;
-        long rdDirtyBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.DirtyQuads;
-        long rdReferencedBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.ReferencedQuads;
-        long rdPacketAllocationsBefore = GUO.Labs.GpuRenderer.OrderedWorldRecords.PacketAllocations;
-        long rdDynamicCaptureBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.DynamicCaptureBytes;
-        long rdReplayQuadsBefore = GUO.Labs.GpuRenderer.OrderedWorldCapture.ReplayedQuads;
-        long rdRecordHitsBefore = GUO.Labs.GpuRenderer.OrderedWorldRecords.Hits;
-        long rdRecordsPackedBefore = GUO.Labs.GpuRenderer.OrderedWorldRecords.Packed;
-        long rdRecordChecksBefore = GUO.Labs.GpuRenderer.OrderedWorldRecords.DirtyChecks;
-        long rdGrowthBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.BufferGrowths;
-        long rdEvictionsBefore = GUO.Labs.GpuRenderer.OrderedWorldDevice.CacheEvictions;
-#endif
+        long rdGeometryBefore = GUO.Renderer.DepthWorld.OrderedWorldDevice.GeometryBytes;
+        long rdOrderBefore = GUO.Renderer.DepthWorld.OrderedWorldDevice.OrderBytes;
+        long rdStateBefore = GUO.Renderer.DepthWorld.OrderedWorldDevice.StateBytes;
+        long rdStateUploadsBefore = GUO.Renderer.DepthWorld.OrderedWorldDevice.StateUploadCalls;
+        long rdStateChangesBefore = GUO.Renderer.DepthWorld.OrderedWorldDevice.ChangedStateStreams;
+        long rdStateGrowthBefore = GUO.Renderer.DepthWorld.OrderedWorldDevice.StateBufferGrowths;
+        long rdTextureRunsBefore = GUO.Renderer.DepthWorld.OrderedWorldDevice.TextureRuns;
+        long rdTextureBatchesBefore = GUO.Renderer.DepthWorld.OrderedWorldDevice.TextureBatches;
+        long rdOccurrencesBefore = GUO.Renderer.DepthWorld.OrderedWorldDevice.Occurrences;
+        long rdUploadsBefore = GUO.Renderer.DepthWorld.OrderedWorldDevice.UploadCalls;
+        long rdDirtyBefore = GUO.Renderer.DepthWorld.OrderedWorldDevice.DirtyQuads;
+        long rdReferencedBefore = GUO.Renderer.DepthWorld.OrderedWorldCapture.ReferencedQuads;
+        long rdPacketAllocationsBefore = GUO.Renderer.DepthWorld.OrderedWorldRecords.PacketAllocations;
+        long rdDynamicCaptureBefore = GUO.Renderer.DepthWorld.OrderedWorldCapture.DynamicCaptureBytes;
+        long rdReplayQuadsBefore = GUO.Renderer.DepthWorld.OrderedWorldCapture.ReplayedQuads;
+        long rdRecordHitsBefore = GUO.Renderer.DepthWorld.OrderedWorldRecords.Hits;
+        long rdRecordsPackedBefore = GUO.Renderer.DepthWorld.OrderedWorldRecords.Packed;
+        long rdRecordChecksBefore = GUO.Renderer.DepthWorld.OrderedWorldRecords.DirtyChecks;
+        long rdGrowthBefore = GUO.Renderer.DepthWorld.OrderedWorldDevice.BufferGrowths;
+        long rdEvictionsBefore = GUO.Renderer.DepthWorld.OrderedWorldDevice.CacheEvictions;
         int landOntoBefore = GUO.Renderer.Arts.Art.LandOntoLandLayer, staticOntoBefore = GUO.Renderer.Arts.Art.StaticOntoLandLayer;
         long allocatedBefore = System.GC.GetTotalAllocatedBytes();
         System.TimeSpan pausedBefore = System.GC.GetTotalPauseDuration();
@@ -813,44 +812,46 @@ internal static partial class PerfProbe
             ["alloc_kb_per_frame"] = System.Math.Round(allocatedKb, 1),
             ["terrain_dirty_chunks_per_frame"] = System.Math.Round((double)(CachedLand.TotalRebuilds - terrainRebuildsBefore) / n, 3),
             ["terrain_rebuilt_sprites_per_frame"] = System.Math.Round((double)(CachedLand.TotalRebuiltSprites - terrainSpritesBefore) / n, 1),
-#if GUO_LABS
-            ["rd_frames_drawn"] = GUO.Labs.GpuRenderer.OrderedWorldCapture.FramesDrawn - rdBefore,
-            ["rd_frames_fallback"] = GUO.Labs.GpuRenderer.OrderedWorldCapture.FramesFallback - rdFallbackBefore,
+            ["rd_resident_frames"] = GUO.Renderer.DepthWorld.OrderedWorldCapture.ResidentFrames - rdResidentBefore,
+            ["rd_resident_upload_bytes_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldDevice.ResidentBytes - rdResidentBytesBefore) / n, 1),
+            ["rd_resident_draw_calls_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldDevice.ResidentDrawCalls - rdResidentCallsBefore) / n, 1),
+            ["rd_total_gpu_upload_bytes_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldDevice.ResidentBytes - rdResidentBytesBefore + GUO.Renderer.DepthWorld.OrderedWorldCapture.UploadedBytes - rdBytesBefore) / n, 1),
+            ["rd_frames_drawn"] = GUO.Renderer.DepthWorld.OrderedWorldCapture.FramesDrawn - rdBefore,
+            ["rd_frames_fallback"] = GUO.Renderer.DepthWorld.OrderedWorldCapture.FramesFallback - rdFallbackBefore,
             ["dw_chunks_reused_total"] = GUO.Game.Scenes.GameScene.ChunksReused,
             ["dw_chunk_reuse_mismatches"] = GUO.Game.Scenes.GameScene.ChunkReuseMismatches,
             ["dw_tiles_reused_total"] = GUO.Game.Scenes.GameScene.TilesReused,
-            ["rd_upload_bytes_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.UploadedBytes - rdBytesBefore) / n, 1),
-            ["rd_draw_calls_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.DrawCalls - rdCallsBefore) / n, 1),
-            ["rd_record_cpu_ms"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.RecordTicks - rdTicksBefore) * 1000 / System.Diagnostics.Stopwatch.Frequency / n, 3),
-            ["rd_last_fallback"] = GUO.Labs.GpuRenderer.OrderedWorldCapture.LastFallback ?? "",
-            ["rd_deferred_quads_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.SuppressedCommands - rdSuppressedBefore) / n, 1),
-            ["rd_canvas_replay_quads_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCanvas.CommandsDrawn - rdReplayBefore) / n, 1),
+            ["rd_upload_bytes_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldCapture.UploadedBytes - rdBytesBefore) / n, 1),
+            ["rd_draw_calls_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldCapture.DrawCalls - rdCallsBefore) / n, 1),
+            ["rd_record_cpu_ms"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldCapture.RecordTicks - rdTicksBefore) * 1000 / System.Diagnostics.Stopwatch.Frequency / n, 3),
+            ["rd_last_fallback"] = GUO.Renderer.DepthWorld.OrderedWorldCapture.LastFallback ?? "",
+            ["rd_deferred_quads_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldCapture.SuppressedCommands - rdSuppressedBefore) / n, 1),
+            ["rd_canvas_replay_quads_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldCanvas.CommandsDrawn - rdReplayBefore) / n, 1),
             ["rd_canvas_items_cleared_per_frame"] = System.Math.Round((double)(UltimaBatcher2D.OrderedCanvasItemsCleared - rdCanvasClearsBefore) / n, 1),
-            ["rd_geometry_bytes_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.GeometryBytes - rdGeometryBefore) / n, 1),
-            ["rd_order_bytes_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.OrderBytes - rdOrderBefore) / n, 1),
-            ["rd_state_bytes_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.StateBytes - rdStateBefore) / n, 1),
-            ["rd_state_upload_calls_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.StateUploadCalls - rdStateUploadsBefore) / n, 3),
-            ["rd_changed_state_streams_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.ChangedStateStreams - rdStateChangesBefore) / n, 3),
-            ["rd_state_buffer_growths"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.StateBufferGrowths - rdStateGrowthBefore,
-            ["rd_texture_runs_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.TextureRuns - rdTextureRunsBefore) / n, 1),
-            ["rd_texture_batches_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.TextureBatches - rdTextureBatchesBefore) / n, 1),
-            ["rd_occurrences_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.Occurrences - rdOccurrencesBefore) / n, 1),
-            ["rd_active_state_bytes"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.ActiveStateBytes,
-            ["rd_state_capacity_bytes"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.StateCapacityBytes,
-            ["rd_upload_calls_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.UploadCalls - rdUploadsBefore) / n, 3),
-            ["rd_dirty_quads_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldDevice.DirtyQuads - rdDirtyBefore) / n, 1),
-            ["rd_referenced_quads_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.ReferencedQuads - rdReferencedBefore) / n, 1),
-            ["rd_source_packet_allocations_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldRecords.PacketAllocations - rdPacketAllocationsBefore) / n, 1),
-            ["rd_dynamic_capture_bytes_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.DynamicCaptureBytes - rdDynamicCaptureBefore) / n, 1),
-            ["rd_replayed_quads_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldCapture.ReplayedQuads - rdReplayQuadsBefore) / n, 1),
-            ["rd_source_record_hits_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldRecords.Hits - rdRecordHitsBefore) / n, 1),
-            ["rd_source_records_packed_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldRecords.Packed - rdRecordsPackedBefore) / n, 1),
-            ["rd_source_dirty_checks_per_frame"] = System.Math.Round((double)(GUO.Labs.GpuRenderer.OrderedWorldRecords.DirtyChecks - rdRecordChecksBefore) / n, 1),
-            ["rd_cached_quads"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.CachedQuads,
-            ["rd_peak_cached_quads"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.PeakCachedQuads,
-            ["rd_buffer_growths"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.BufferGrowths - rdGrowthBefore,
-            ["rd_cache_evictions"] = GUO.Labs.GpuRenderer.OrderedWorldDevice.CacheEvictions - rdEvictionsBefore,
-#endif
+            ["rd_geometry_bytes_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldDevice.GeometryBytes - rdGeometryBefore) / n, 1),
+            ["rd_order_bytes_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldDevice.OrderBytes - rdOrderBefore) / n, 1),
+            ["rd_state_bytes_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldDevice.StateBytes - rdStateBefore) / n, 1),
+            ["rd_state_upload_calls_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldDevice.StateUploadCalls - rdStateUploadsBefore) / n, 3),
+            ["rd_changed_state_streams_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldDevice.ChangedStateStreams - rdStateChangesBefore) / n, 3),
+            ["rd_state_buffer_growths"] = GUO.Renderer.DepthWorld.OrderedWorldDevice.StateBufferGrowths - rdStateGrowthBefore,
+            ["rd_texture_runs_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldDevice.TextureRuns - rdTextureRunsBefore) / n, 1),
+            ["rd_texture_batches_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldDevice.TextureBatches - rdTextureBatchesBefore) / n, 1),
+            ["rd_occurrences_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldDevice.Occurrences - rdOccurrencesBefore) / n, 1),
+            ["rd_active_state_bytes"] = GUO.Renderer.DepthWorld.OrderedWorldDevice.ActiveStateBytes,
+            ["rd_state_capacity_bytes"] = GUO.Renderer.DepthWorld.OrderedWorldDevice.StateCapacityBytes,
+            ["rd_upload_calls_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldDevice.UploadCalls - rdUploadsBefore) / n, 3),
+            ["rd_dirty_quads_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldDevice.DirtyQuads - rdDirtyBefore) / n, 1),
+            ["rd_referenced_quads_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldCapture.ReferencedQuads - rdReferencedBefore) / n, 1),
+            ["rd_source_packet_allocations_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldRecords.PacketAllocations - rdPacketAllocationsBefore) / n, 1),
+            ["rd_dynamic_capture_bytes_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldCapture.DynamicCaptureBytes - rdDynamicCaptureBefore) / n, 1),
+            ["rd_replayed_quads_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldCapture.ReplayedQuads - rdReplayQuadsBefore) / n, 1),
+            ["rd_source_record_hits_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldRecords.Hits - rdRecordHitsBefore) / n, 1),
+            ["rd_source_records_packed_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldRecords.Packed - rdRecordsPackedBefore) / n, 1),
+            ["rd_source_dirty_checks_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldRecords.DirtyChecks - rdRecordChecksBefore) / n, 1),
+            ["rd_cached_quads"] = GUO.Renderer.DepthWorld.OrderedWorldDevice.CachedQuads,
+            ["rd_peak_cached_quads"] = GUO.Renderer.DepthWorld.OrderedWorldDevice.PeakCachedQuads,
+            ["rd_buffer_growths"] = GUO.Renderer.DepthWorld.OrderedWorldDevice.BufferGrowths - rdGrowthBefore,
+            ["rd_cache_evictions"] = GUO.Renderer.DepthWorld.OrderedWorldDevice.CacheEvictions - rdEvictionsBefore,
             ["cmd_rects"] = System.Math.Round(kRect / n, 1),
             ["cmd_affine_rects"] = System.Math.Round(kAffine / n, 1),
             ["cmd_meshes"] = System.Math.Round(kMesh / n, 1),
@@ -976,9 +977,7 @@ internal static partial class PerfProbe
         int testCaptures = 0, testOnPass = 0;
         int coverHitCaptures = 0, canvasHitCaptures = 0;
         var captureEvidence = new List<Dictionary<string, object>>(5);
-#if GUO_LABS
         int rdTestOnPass = 0;
-#endif
         async System.Threading.Tasks.Task PostDraw()
         {
             await host.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
@@ -1009,9 +1008,7 @@ internal static partial class PerfProbe
                 testCaptures++;
                 if (coverHits > 0) coverHitCaptures++;
                 if (compared > 0 && reused > 0) canvasHitCaptures++;
-#if GUO_LABS
-                if (GUO.Labs.GpuRenderer.OrderedWorldCapture.LastFrameOnPass) rdTestOnPass++;
-#endif
+                if (GUO.Renderer.DepthWorld.OrderedWorldCapture.LastFrameOnPass) rdTestOnPass++;
                 if (GpuWorld.LastFrameOnPass)
                 {
                     testOnPass++;
@@ -1118,9 +1115,7 @@ internal static partial class PerfProbe
                 ((!_coverCandidatesParity || coverHitCaptures == 2) && (!_retainedCanvasParity || canvasHitCaptures == 2)),
             ["parity_frames"] = new[] { "_plain.png", "_batched.png", "_plain2.png", "_batched2.png", "_plain3.png" }
                 .Select(suffix => Path.GetFileName(stem + suffix)).ToArray(),
-#if GUO_LABS
             ["rd_test_on_pass"] = rdTestOnPass,
-#endif
             ["parity_strict_max_delta"] = strictMaxDelta,
             ["gpu_test_captures"] = testCaptures, ["gpu_test_on_pass"] = testOnPass,
             ["gpu_frames_drawn"] = gpuDrawn, ["gpu_frames_fallback"] = gpuFallback,

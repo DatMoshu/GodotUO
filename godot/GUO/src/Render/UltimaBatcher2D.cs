@@ -358,10 +358,8 @@ namespace GUO.Renderer
 
         public void Dispose()
         {
-#if GUO_LABS
             _orderedWorld?.Dispose();
             _orderedPresentMaterial?.Dispose();
-#endif
             for (int i = 0; i < _items.Count; i++)
             {
                 RenderingServer.FreeRid(_items[i]);
@@ -451,12 +449,10 @@ namespace GUO.Renderer
         private void SetOnAllMaterials(string name, Variant value)
         {
             StringName param = UniformName(name);
-#if GUO_LABS
             // Canvas materials are shared: a changed global must also affect the
             // already captured prefix instead of leaving an older RD snapshot.
             if (_orderedWorld?.Deferring == true && !_material.GetShaderParameter(param).Equals(value))
                 _orderedWorld.Reject("shared material changed during world capture");
-#endif
             GpuWorld.Pass?.SetShared(param, value); // PORT DEVIATION (GUO): --gpu-world's materials share the hue uniforms
             _material.SetShaderParameter(param, value);
             _plainSpriteMaterial?.SetShaderParameter(param, value);
@@ -504,21 +500,17 @@ namespace GUO.Renderer
                 RecoverDeferredCanvasFrame(throwOnFailure: true);
             _retainCanvasFrame = RetainCanvas;
             int itemsToClear = _items.Count;
-#if GUO_LABS
             // ADR-0043: every item used last frame must be cleared once. The
             // unused tail was cleared on its first idle frame and is still empty.
-            if (GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled) itemsToClear = _itemCount;
-            if (GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled) _retainCanvasFrame = false;
+            if (GUO.Renderer.DepthWorld.OrderedWorldCapture.Enabled) itemsToClear = _itemCount;
+            if (GUO.Renderer.DepthWorld.OrderedWorldCapture.Enabled) _retainCanvasFrame = false;
             ResetOrderedWorldItems();
-#endif
             EnsureNotStarted();
             FinishCanvasCommands();
             // Select the prior used prefix only after pending work is finalized.
             // Recovery and retained transitions retain the conservative full clear.
             if (ClearUsedCanvas && !recovering && !previousRetainedFrame && !_retainCanvasFrame && !GpuWorld.Enabled
-#if GUO_LABS
-                && !GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled
-#endif
+                && !GUO.Renderer.DepthWorld.OrderedWorldCapture.Enabled
                 ) itemsToClear = _itemCount;
             // RD owns its late visibility election; legacy GPU capture keeps
             // its existing eager lifecycle. Ordinary embedded/probe callers
@@ -574,9 +566,7 @@ namespace GUO.Renderer
                     state.Commands?.Reset();
                 }
             }
-#if GUO_LABS
             OrderedCanvasItemsCleared += itemsToClear;
-#endif
         }
 
         public void Begin()
@@ -866,9 +856,7 @@ void fragment() {
         /// </summary>
         public void DrawSplatMesh(ArrayMesh mesh)
         {
-#if GUO_LABS
             _orderedWorld?.Reject("splat");
-#endif
             EnsureStarted();
             SelectSpriteSampler(null);
             EnsureMaterial(_splatMaterial);
@@ -885,9 +873,7 @@ void fragment() {
         /// </summary>
         public void DrawLayerMesh(ArrayMesh mesh, Texture2D texture)
         {
-#if GUO_LABS
             _orderedWorld?.Reject("terrain layer");
-#endif
             EnsureStarted();
             SelectSpriteSampler(null);
             EnsureMaterial(_layerMaterial);
@@ -1000,9 +986,7 @@ void fragment() {
             }
 
             var offset = new Vector2(-offsetX, -offsetY);
-#if GUO_LABS
             if (OrderedWorldRecording && _orderedWorld.MeshRecord(layer, index, offset)) return 1;
-#endif
 
             // PORT DEVIATION (GUO): --gpu-world draws covering land in the
             // pass, keyed; a tile whose texture has no land-array page (HD,
@@ -1215,9 +1199,7 @@ void fragment() {
             if (index < 0 || index >= layer.Count || !layer.Visible[index] || layer.Textures[index] == null)
                 return 0;
 
-#if GUO_LABS
             if (OrderedWorldRecording && CaptureOrderedStatic(layer, index, offsetX, offsetY)) return 1;
-#endif
 
             ref var quad = ref layer.Vertices[index];
             var uvSize = quad.TextureCoordinate3 - quad.TextureCoordinate0;
@@ -1322,9 +1304,7 @@ void fragment() {
         public void SetBlendState(BlendState blend)
         {
             blend = blend ?? BlendState.AlphaBlend;
-#if GUO_LABS
             if (!blend.IsPremultipliedAlpha) _orderedWorld?.Reject("custom blend");
-#endif
 
             // PORT DEVIATION (GUO): --gpu-world draws custom blends on the
             // canvas, after the composite (see BeginCapture).
@@ -1433,10 +1413,8 @@ void fragment() {
         /// </summary>
         public void SetSampler(SamplerState sampler)
         {
-#if GUO_LABS
             if ((sampler ?? SamplerState.PointClamp) != SamplerState.PointClamp)
                 _orderedWorld?.Reject("non-nearest sampler");
-#endif
             if (TraceSamplerCalls) SamplerCalls++;
             _hdSpriteSampler = false;
             _sampler = sampler ?? SamplerState.PointClamp;
@@ -1463,9 +1441,7 @@ void fragment() {
         /// <summary>Scoped UI transform; clip children inherit it. Pop with ClipEnd.</summary>
         public void PushUiTransform(Transform2D transform)
         {
-#if GUO_LABS
             _orderedWorld?.Reject("nested transform");
-#endif
             Rid parent = NewItem(CurrentParent, transform);
             _clipStack.Add(parent);
             Cut(CutReason.Offset);
@@ -1473,9 +1449,7 @@ void fragment() {
 
         public bool ClipBegin(int x, int y, int width, int height)
         {
-#if GUO_LABS
             _orderedWorld?.Reject("clip");
-#endif
             if (width <= 0 || height <= 0)
             {
                 return false;
@@ -2277,7 +2251,6 @@ void fragment() {
             if (_textRecord != null && RecordText(texture, destinationX, destinationY, destinationW, destinationH,
                     sourceX, sourceY, sourceW, sourceH, originX, originY, rotationSin, rotationCos, effects, color))
                 return; // PORT DEVIATION (GUO): TextMesh
-#if GUO_LABS
             if (DepthWorldProbe.Enabled) OrderedDepth = depth; // ADR-0044: the depth upstream gives this vertex
             if (OrderedWorldRecording && rotationSin == 0f && rotationCos == 1f && effects == 0)
             {
@@ -2287,7 +2260,6 @@ void fragment() {
                     new Rect2(destinationX - originX * destinationW, destinationY - originY * destinationH, destinationW, destinationH),
                     new Rect2(sourceX * textureWidth, sourceY * textureHeight, sourceW * textureWidth, sourceH * textureHeight))) return;
             }
-#endif
 
             // PORT DEVIATION (GUO): --gpu-world captures the sprite as an
             // instance: the rect path's corners and texel source rect, or the
@@ -2311,9 +2283,7 @@ void fragment() {
                 return;
             }
 
-#if GUO_LABS
             if (_orderedWorld?.Deferring != true)
-#endif
             {
                 SelectSpriteSampler(texture);
                 EnsureSpriteMaterial(texture);
@@ -2453,9 +2423,7 @@ void fragment() {
                 return;
             }
 
-#if GUO_LABS
             if (_orderedWorld?.Deferring != true)
-#endif
             {
                 SelectSpriteSampler(texture);
                 EnsureSpriteMaterial(texture);
@@ -2466,9 +2434,7 @@ void fragment() {
 
             if (BatchedWorld && !_mirroring)
             {
-#if GUO_LABS
                 if (CaptureOrderedQuad(texture, color)) return;
-#endif
                 AppendToRun(texture, _quadPoints[0], _quadPoints[1], _quadPoints[2], _quadPoints[3],
                     _quadUVs[0], _quadUVs[1], _quadUVs[2], _quadUVs[3], modulate);
                 return;
@@ -2480,7 +2446,6 @@ void fragment() {
             }
 
             _quadColors[0] = modulate;
-#if GUO_LABS
             if (CaptureOrderedQuad(texture, color)) return;
             // A rejection emitted the captured prefix; prepare this original suffix draw.
             if (OrderedWorldRecording)
@@ -2488,7 +2453,6 @@ void fragment() {
                 SelectSpriteSampler(texture);
                 EnsureSpriteMaterial(texture, triangle: true);
             }
-#endif
             // Affine quads above use rect commands and support the shared
             // shader. Only the actual triangle-array suffix lacks CUSTOM0.
             EnsureSpriteMaterial(texture, triangle: true);
@@ -2577,14 +2541,12 @@ void fragment() {
             }
 
             var region = new Rect2(left, top, right - left, bottom - top);
-#if GUO_LABS
             if (CaptureOrderedAffine(texture, hue, region, size, new Transform2D(axisX, axisY, origin))) return true;
             if (OrderedWorldRecording)
             {
                 SelectSpriteSampler(texture);
                 EnsureSpriteMaterial(texture);
             }
-#endif
 
             // PORT DEVIATION (GUO): --multimesh-sprites, the transformed rect as an instance.
             if (MultiMeshSprites && TryAppendMultiMeshAffine(texture, axisX, axisY, origin, region, modulate))

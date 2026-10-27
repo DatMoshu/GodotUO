@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: BSD-2-Clause
-#if GUO_LABS
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Godot;
 using RD = Godot.RenderingDevice;
 
-namespace GUO.Labs.GpuRenderer;
+namespace GUO.Renderer.DepthWorld;
 
 internal sealed class OrderedWorldDevice
 {
@@ -487,7 +486,7 @@ internal sealed class OrderedWorldDevice
     // compositing and is not generally byte-exact for translucent pixels.
     public void RenderRT(ReadOnlySpan<OrderedWorldResidency.Occurrence> occurrences, ReadOnlySpan<OrderedWorldResidency.Quad> dynamic,
         ReadOnlySpan<State> states, ReadOnlySpan<Segment> segments, int textureRuns, in Push frame, bool opaqueBackdrop,
-        DepthWorldResident resident = null, int cameraX = 0, int cameraY = 0, int maxGroundZ = 127)
+        DepthWorldResident resident = null, int cameraX = 0, int cameraY = 0, int maxGroundZ = 127, int landEnd = 0)
     {
         if (frame.Screen.X != Size.X || frame.Screen.Y != Size.Y)
             throw new InvalidOperationException("Stale target dimensions.");
@@ -541,36 +540,38 @@ internal sealed class OrderedWorldDevice
         if (list == RD.InvalidId) throw new InvalidOperationException("DrawListBegin failed.");
         try
         {
-            // ADR-0044: upstream draws chunk land, then chunk statics, then the
-            // rest; the depth test decides cover, draw order only breaks ties.
-            if (resident != null && resident.Draws.Count != 0)
+            // CUO order: resident land, loose land, resident statics, remaining categories.
+            // Depth resolves overlap; LessEqual ties retain the later submission.
+            Span<Push> push = stackalloc Push[1];
+            for (int phase = 0; phase < 4; phase++)
+            {
+            if ((phase == 0 || phase == 2) && resident != null && resident.Draws.Count != 0)
             {
                 _rd.DrawListBindRenderPipeline(list, _residentPipeline);
                 _rd.DrawListBindUniformSet(list, _residentSet, 0);
-                Span<Push> rpush = stackalloc Push[1];
-                for (int pass = 0; pass < 2; pass++)
                 for (int i = 0; i < resident.Draws.Count; i++)
                 {
                     var draw = resident.Draws[i];
-                    if (draw.Land != (pass == 0)) continue;
-                    rpush[0] = frame;
-                    rpush[0].FirstVertex = draw.VisibleBase;
-                    rpush[0].Reserved0 = unchecked((uint)cameraX);
-                    rpush[0].Reserved1 = unchecked((uint)cameraY);
-                    rpush[0].Reserved2 = unchecked((uint)(draw.Land ? 127 : maxGroundZ));
+                    if (draw.Land != (phase == 0)) continue;
+                    push[0] = frame;
+                    push[0].FirstVertex = draw.VisibleBase;
+                    push[0].Reserved0 = unchecked((uint)cameraX);
+                    push[0].Reserved1 = unchecked((uint)cameraY);
+                    push[0].Reserved2 = unchecked((uint)(draw.Land ? 127 : maxGroundZ));
                     _rd.DrawListBindUniformSet(list, residentSets[i], 1);
-                    _rd.DrawListSetPushConstant(list, MemoryMarshal.AsBytes(rpush), 64);
+                    _rd.DrawListSetPushConstant(list, MemoryMarshal.AsBytes(push), 64);
                     _rd.DrawListDraw(list, false, 1, draw.Count * 6);
                     ResidentDrawCalls++;
                 }
             }
-            if (!occurrences.IsEmpty)
+            if ((phase == 1 || phase == 3) && !occurrences.IsEmpty)
             {
                 _rd.DrawListBindRenderPipeline(list, _pipeline);
                 _rd.DrawListBindUniformSet(list, _storageSet, 0);
-                Span<Push> push = stackalloc Push[1];
                 for (int i = 0; i < segments.Length; i++)
                 {
+                    bool isLand = resident != null && segments[i].FirstVertex < landEnd * 6;
+                    if (isLand != (phase == 1)) continue;
                     push[0] = frame;
                     push[0].FirstVertex = segments[i].FirstVertex;
                     push[0].Reserved0 = _depthMode ? 1u : 0u; // ADR-0044: depth from the state row
@@ -584,6 +585,7 @@ internal sealed class OrderedWorldDevice
                     _rd.DrawListDraw(list, false, 1, segments[i].VertexCount);
                     OrderedWorldCapture.DrawCalls++;
                 }
+            }
             }
         }
         finally { _rd.DrawListEnd(); }
@@ -660,5 +662,3 @@ internal sealed class OrderedWorldDevice
         // Never free atlas/hue/light RIDs borrowed through TextureGetRdTexture.
     }
 }
-
-#endif

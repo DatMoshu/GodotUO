@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: BSD-2-Clause
-#if GUO_LABS
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Godot;
 using GUO.Renderer;
 
-namespace GUO.Labs.GpuRenderer;
+namespace GUO.Renderer.DepthWorld;
 
 /// <summary>
 /// ADR-0044 spike: chunk land and statics resident on the GPU. Each chunk
@@ -317,4 +316,3 @@ internal sealed class DepthWorldResident
 
     internal void Invalidate() => AllDirty = true;
 }
-#endif

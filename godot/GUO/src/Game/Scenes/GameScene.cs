@@ -1135,6 +1135,11 @@ namespace GUO.Game.Scenes
             SelectedObject.Object = null;
             Profiler.EnterContext(Profiler.ProfilerContext.RENDER_FRAME_WORLD_PREPARE);
             PrepareGpuWorld(batcher, matrix, renderTargets); // PORT DEVIATION (GUO): --gpu-world (ADR-0007)
+            // PORT DEVIATION (GUO): admit before static gather suppression.
+            DepthWorldProbe.FrameAdmitted = batcher.CanAdmitDepthWorld(
+                _splatObjects.Count == 0 && (_terrainLayers == null || _terrainLayers.Count == 0)
+                && !ProfileManager.CurrentProfile.EnhancedHD
+                && !GUO.Renderer.Water.WaterRender.IsStyled(ProfileManager.CurrentProfile));
             FillGameObjectList();
 
             // PORT DEVIATION (GUO): while the pad's interact radar is up, the
@@ -1259,10 +1264,10 @@ namespace GUO.Game.Scenes
 #endif
             DrawUnderlays(batcher);
 
-#if GUO_LABS
-            // PORT DEVIATION (GUO): ADR-0043, complete-world experimental backend.
-            batcher.BeginOrderedWorld(_splatObjects.Count == 0 && (_terrainLayers == null || _terrainLayers.Count == 0));
-#endif
+            // PORT DEVIATION (GUO): ADR-0044 production depth backend; complete canvas replay.
+            batcher.BeginOrderedWorld((!DepthWorldProbe.Enabled || DepthWorldProbe.FrameAdmitted)
+                && _splatObjects.Count == 0 && (_terrainLayers == null || _terrainLayers.Count == 0));
+            _renderLists.FinishDepthWorldAdmission(batcher, _meshChunks, _maxGroundZ);
             RenderedObjectsCount = _renderLists.DrawRenderLists(
                 batcher,
                 _maxGroundZ,
@@ -1271,9 +1276,7 @@ namespace GUO.Game.Scenes
                 _offset.Y
             );
 
-#if GUO_LABS
             batcher.EndOrderedWorld();
-#endif
             RedrawWorldOnCanvas(batcher); // PORT DEVIATION (GUO): --gpu-world (GPU-03)
 
             if (

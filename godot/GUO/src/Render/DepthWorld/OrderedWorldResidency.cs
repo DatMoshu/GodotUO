@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: BSD-2-Clause
-#if GUO_LABS
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
-namespace GUO.Labs.GpuRenderer;
+namespace GUO.Renderer.DepthWorld;
 
 /// <summary>
 /// Resident packets addressed by immutable source-revision IDs when available,
@@ -184,4 +183,3 @@ internal sealed class OrderedWorldResidency
     internal void InvalidateOrder() => _orderValid = false;
     internal void InvalidateGpu() { InvalidateGeometry(); InvalidateOrder(); }
 }
-#endif

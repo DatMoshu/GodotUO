@@ -648,11 +648,10 @@ namespace GUO.Renderer
         }
 
         // PORT DEVIATION (GUO): ADR-0043's optional record invalidation seam.
-        // Unimplemented partial calls disappear completely outside Debug Labs.
+        // Content invalidation also applies to ordinary production builds.
         partial void RecordVertexChanged(int index);
         partial void RecordLayerReset();
 
-        [System.Diagnostics.Conditional("GUO_LABS")]
         internal void InvalidateQuadRecord(int index)
         {
             // PORT DEVIATION (GUO): direct stretched-land writes must also

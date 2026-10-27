@@ -79,7 +79,7 @@ internal partial class GameScene
     /// </summary>
     private ulong? ReusableTiles(Chunk chunk, in GatherInputs inputs, bool built)
     {
-        if (!ChunkReuse || !DepthWorldProbe.Enabled || built || chunk.ScreenPositionsStale)
+        if (!ChunkReuse || !DepthWorldProbe.ResidentEnabled || built || chunk.ScreenPositionsStale)
             return null;
         if (chunk.Walk is not { Reusable: true } walk || walk.Key is not ReuseKey key) return null;
         // A moved view keeps the walk only of tiles where nothing was or is
@@ -210,7 +210,7 @@ internal partial class GameScene
     /// </summary>
     private bool SkipClearedOffScreen(Chunk chunk, bool built)
     {
-        if (!ChunkReuse || !DepthWorldProbe.Enabled || built || chunk.Walk is not { OffScreenCleared: true } walk)
+        if (!ChunkReuse || !DepthWorldProbe.ResidentEnabled || built || chunk.Walk is not { OffScreenCleared: true } walk)
             return false;
         if (!RenderLists.SkipOffScreenChunks || !ChunkOffScreen(chunk.X, chunk.Y))
         {

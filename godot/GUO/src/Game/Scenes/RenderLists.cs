@@ -106,7 +106,7 @@ namespace GUO.Game.Scenes
     /// The order is determined by the draw order, not by the insertion order.
     /// Implementation for sorting and processing is passed as delegates.
     /// </summary>
-    internal class RenderLists
+    internal partial class RenderLists
     {
         /// <summary>
         /// One thing to draw, with the depth upstream would have written into
@@ -160,6 +160,9 @@ namespace GUO.Game.Scenes
         /// answer for the sprites UO has, whose alpha is all or nothing.
         /// </remarks>
         private readonly List<Drawable> _world = [];
+        // ADR-0044: preserve upstream's transparent bucket without changing
+        // the ordinary canvas queue or enlarging each hot Drawable.
+        private HashSet<GameObject> _depthTransparents;
 
         private readonly List<GameObject> _transparentObjects = [];
 
@@ -226,14 +229,14 @@ namespace GUO.Game.Scenes
         /// </summary>
         public Land GroundHint;
 
-        private void CoverFromBelow(GameObject obj, float depth)
+        private void CoverFromBelow(GameObject obj, float depth, bool forceCanvas = false)
         {
             // Only what upstream draws at depth + 0.5, the same as land.
             // Mobiles and effects draw at + 1 there, a half nearer than this
             // sort puts them, so land in front of one by less than that half
             // does not cover it upstream; they are left out rather than hidden
             // wrongly. See ADR-0004's amendment.
-            if (obj is Mobile or GameEffect || DepthWorldProbe.Active)
+            if (obj is Mobile or GameEffect || (DepthWorldProbe.Active && !forceCanvas))
             {
                 return;
             }
@@ -467,6 +470,7 @@ namespace GUO.Game.Scenes
             _tiles?.Clear();
             _stretchedTiles?.Clear();
             _world.Clear();
+            _depthTransparents?.Clear();
             _coverStamp.NextFrame();
             _coverOwner.Release();
             LastCover = (CoverQueued, CoverOverlapping); // PORT DEVIATION (GUO): B4 fix 2 counters
@@ -490,6 +494,8 @@ namespace GUO.Game.Scenes
         /// </remarks>
         public void Add(GameObject toRender, bool isTransparent = false, int slot = 0)
         {
+            if (DepthWorldProbe.ResidentEnabled && isTransparent && toRender is not Land)
+                (_depthTransparents ??= new HashSet<GameObject>()).Add(toRender);
             if (isTransparent && toRender is Land)
             {
                 _transparentObjects.Add(toRender);
@@ -658,19 +664,20 @@ namespace GUO.Game.Scenes
 
             // Draw chunk mesh land tiles from GPU buffers with per-frame visibility
             batcher.SetWorldOffset(offsetX, offsetY);
-#if GUO_LABS
             // ADR-0043: consume each quad once. A mid-land rejection replays only
             // the captured prefix, then draws the remaining quads on canvas.
             if (batcher.OrderedWorldRecording)
             {
                 // ADR-0044: Depth World draws chunk land and statics from resident buffers.
-                if (DepthWorldProbe.Enabled)
+                if (DepthWorldProbe.ResidentEnabled)
+                {
+                    BindDepthWorldRecovery(batcher, visibleChunks, offsetX, offsetY, maxGroundZ);
                     result += batcher.DrawDepthWorldResident(visibleChunks, offsetX, offsetY, maxGroundZ);
+                }
                 else
                 foreach (var chunk in visibleChunks) result += batcher.DrawOrderedLand(chunk.Mesh.Land);
             }
             else
-#endif
             // PORT DEVIATION (GUO): --merged-land (Epic B, B4) draws every
             // visible chunk's land as one mesh per texture; see MergedLand.
             if (MergedLand.Enabled)
@@ -683,16 +690,20 @@ namespace GUO.Game.Scenes
             batcher.ResetWorldOffset();
             stageAt = PerfStages.Add(PerfStages.Stage.LandMesh, stageAt);
 
+            batcher.BeginOrderedGroup(0);
             // Draw excluded land tiles (animated water, etc.)
             result += DrawRenderList(batcher, _tiles, maxGroundZ);
             result += DrawRenderList(batcher, _stretchedTiles, maxGroundZ);
+            batcher.EndOrderedLand();
             stageAt = PerfStages.Add(PerfStages.Stage.LandLoose, stageAt);
 
+            batcher.EndOrderedGroup();
             // Cached statics and ordinary sprites share one depth-sorted pass.
             _meshOffsetX = offsetX;
             _meshOffsetY = offsetY;
             result += DrawWorld(batcher, maxGroundZ);
             stageAt = PerfStages.Now();
+            batcher.BeginOrderedGroup(int.MaxValue);
 
             if (_transparentObjects.Count > 0 || _gumps.Count > 0)
             {
@@ -751,7 +762,11 @@ namespace GUO.Game.Scenes
             for (int i = 0; i < span.Length; i++)
             {
                 System.Diagnostics.Debug.Assert(span[i].Seq == i, "a drawable's Seq must be its index");
-                _keys[i] = DepthKey.Of(span[i].Depth, span[i].Seq);
+                // Hardware depth resolves overlap; submission order resolves
+                // equal-depth ties. Preserve CUO's static/animation/effect/
+                // transparent buckets and insertion order within each.
+                float key = batcher.HasOrderedRecovery ? DepthCategory(span[i].Object) : span[i].Depth;
+                _keys[i] = DepthKey.Of(key, span[i].Seq);
             }
 
             WorldDepthSort.SortQueueKeys(_keys, span.Length, ref _sortScratch);
@@ -970,6 +985,7 @@ namespace GUO.Game.Scenes
             for (int i = 0; i < span.Length; i++)
             {
                 ref readonly Drawable next = ref span[DepthKey.Seq(_keys[i])];
+                batcher.BeginOrderedGroup(next.Seq + 1);
                 if (capturing)
                 {
                     batcher.CaptureDepthAbs = _gpuDepthAbs[i];
@@ -1041,11 +1057,20 @@ namespace GUO.Game.Scenes
                 }
             }
 
+            batcher.EndOrderedGroup();
             batcher.CurrentObjectId = 0; // PORT DEVIATION (GUO): ADR-0023
             _coverOwner.Release();
             PerfStages.Add(kind, stageAt);
             return done;
         }
+
+        private int DepthCategory(GameObject obj) => _depthTransparents?.Contains(obj) == true ? 3 : obj switch
+        {
+            Mobile => 1,
+            Item { IsCorpse: true } => 1,
+            GameEffect => 2,
+            _ => 0,
+        };
 
         private static PerfStages.Stage StageOf(GameObject obj) => obj switch
         {

@@ -9,7 +9,20 @@ Date: 2026-10-26. Status: **accepted by Moshu 2026-10-26**. Same day, Moshu resu
 
 The supporting review and sprint plan are kept with the project's performance records.
 
-**Layer.** Spike and development happen under `src/Labs/` (L4, `GuoLabs=true`, Debug only). Promotion to an L0 presenter option behind the ADR-0001 seam is a separate owner decision. The canvas batcher stays the complete fallback and the Compatibility-renderer path.
+**Production amendment, 2026-10-27.** Moshu authorized the ordinary default
+Depth World path on supported RD hardware, with Compatibility and an explicit
+manual canvas fallback. The runtime presenter now lives under
+`src/Render/DepthWorld/` behind ADR-0001's renderer seam and is built without
+`GuoLabs`. Its GLSL is embedded in `GUO.dll`. Experimental probes and unrelated
+Labs remain excluded from exports. Main merge/publication remain separately held.
+Tonight's shared-load functional comparisons do not pause other projects.
+
+**Layer.** L0 presenter, preserving CUO semantics. `--canvas-world` selects the
+ordinary complete canvas renderer; Compatibility selects it automatically.
+`--depth-world` remains an explicit diagnostic alias, and never overrides
+Compatibility. The normal frame cap is unchanged. The existing extended zoom
+defaults to 5 on Depth World; canvas retains its normal range unless `--zoom-max`
+is supplied. No profile migration or pack format changes.
 
 ## Context
 
@@ -155,3 +168,34 @@ ClassicUO evaluates these on the CPU each frame. Each stays CPU-owned and sparse
 
 - Promotion from Labs to an L0 presenter option.
 - Default-on for any renderer.
+
+
+## Production admission and recovery (2026-10-27)
+
+Capability is checked before the gather may omit resident statics. Unsupported
+underlays, HD/water profiles, mirroring, alternate GPU paths, target or render
+thread conditions keep the ordinary canvas gather. If capture admission fails
+after the gather, the cold queue reconstructs chunk/x/y/linked-object traversal,
+including equal-depth ties and covering land, before any object is drawn.
+
+A resident transaction binds its complete source owners before admitting chunks.
+On rejection it reconstructs all resident land/statics, including an unvisited
+suffix. Captured ordinary commands retain their original object-group IDs;
+canvas group order comes from the reconstructed canvas queue. Unsupported raw
+commands and subsequent groups retain that same order. Mobile/effect Draw is
+never replayed. Flat covering land shares LandView's existing preparation and
+exact rectangle math; mesh covering land reuses its baked source. The normal
+successful frame builds no cold recovery plan and preserves chunk/zoom reuse.
+
+RD draws resident land, loose land, resident statics, static/animation/effect/
+transparent buckets, then world gumps. A texture batch ends at the loose-land
+boundary so a later static cannot move before an equal-depth land occurrence.
+Original order within each bucket and contiguous resident A/B/A runs is kept.
+The hardware comparison remains LessEqual: the later equal-depth draw wins.
+
+Regression instructions: `tools/scenarios/client/depth_world_recovery.md`.
+Failure pixels are compared with the ordinary canvas renderer. That establishes
+complete fallback, not full CUO pixel parity or live-shard entity correctness.
+Existing login-range behavior remains: modern servers without a C8 reply own
+entity removals; no timeout guesses a range. Sustained retention on such servers
+remains an explicit cross-shard validation limitation.

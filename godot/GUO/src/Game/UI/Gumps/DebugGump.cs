@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: BSD-2-Clause
+// SPDX-License-Identifier: BSD-2-Clause
 
 using GUO.Configuration;
 using GUO.Game.GameObjects;
@@ -56,7 +56,6 @@ namespace GUO.Game.UI.Gumps
 
         public bool IsMinimized { get; set; }
 
-#if GUO_LABS
         private long _statsAt, _rdDrawn, _rdFallback, _rdCalls, _rdQuads, _residentDraws;
         private ulong _godotFrames;
         private string _rdLine = "";
@@ -70,14 +69,14 @@ namespace GUO.Game.UI.Gumps
             {
                 double seconds = (now - _statsAt) / (double)System.Diagnostics.Stopwatch.Frequency;
                 double n = Math.Max(1, frames - _godotFrames);
-                var capture = typeof(GUO.Labs.GpuRenderer.OrderedWorldCapture);
-                long drawn = GUO.Labs.GpuRenderer.OrderedWorldCapture.FramesDrawn, fallback = GUO.Labs.GpuRenderer.OrderedWorldCapture.FramesFallback;
-                long calls = GUO.Labs.GpuRenderer.OrderedWorldCapture.DrawCalls, quads = GUO.Labs.GpuRenderer.OrderedWorldCapture.ReferencedQuads;
-                long resident = GUO.Labs.GpuRenderer.DepthWorldResident.ResidentDraws;
+                var capture = typeof(GUO.Renderer.DepthWorld.OrderedWorldCapture);
+                long drawn = GUO.Renderer.DepthWorld.OrderedWorldCapture.FramesDrawn, fallback = GUO.Renderer.DepthWorld.OrderedWorldCapture.FramesFallback;
+                long calls = GUO.Renderer.DepthWorld.OrderedWorldCapture.DrawCalls, quads = GUO.Renderer.DepthWorld.OrderedWorldCapture.ReferencedQuads;
+                long resident = GUO.Renderer.DepthWorld.DepthWorldResident.ResidentDraws;
                 _rdLine =
-                    $"- Render ({(DepthWorldProbe.Enabled ? "Depth World" : GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled ? "RD ordered" : "canvas")})\n" +
+                    $"- Render ({(DepthWorldProbe.Enabled ? "Depth World" : GUO.Renderer.DepthWorld.OrderedWorldCapture.Enabled ? "RD ordered" : "canvas")})\n" +
                     $"    - Frame:{1000d * seconds / n:0.00}ms ({n / seconds:0} FPS) cap:{(Godot.Engine.MaxFps == 0 ? "none" : Godot.Engine.MaxFps.ToString())} vsync:{Godot.DisplayServer.WindowGetVsyncMode()}\n" +
-                    $"    - RD frames:{(drawn - _rdDrawn) / n * 100:0}% fallback:{fallback - _rdFallback} last:{GUO.Labs.GpuRenderer.OrderedWorldCapture.LastFallback ?? "-"}\n" +
+                    $"    - RD frames:{(drawn - _rdDrawn) / n * 100:0}% fallback:{fallback - _rdFallback} last:{GUO.Renderer.DepthWorld.OrderedWorldCapture.LastFallback ?? "-"}\n" +
                     $"    - RD draws/frame:{(calls - _rdCalls) / n:0} resident:{(resident - _residentDraws) / n:0} ordered quads:{(quads - _rdQuads) / n:0}\n" +
                     $"    - Godot draws:{Godot.RenderingServer.GetRenderingInfo(Godot.RenderingServer.RenderingInfo.TotalDrawCallsInFrame)} prims:{Godot.RenderingServer.GetRenderingInfo(Godot.RenderingServer.RenderingInfo.TotalPrimitivesInFrame)} vram:{Godot.RenderingServer.GetRenderingInfo(Godot.RenderingServer.RenderingInfo.VideoMemUsed) >> 20}MB\n";
                 _statsAt = now; _godotFrames = frames;
@@ -85,7 +84,6 @@ namespace GUO.Game.UI.Gumps
             }
             sb.Append(_rdLine);
         }
-#endif
 
         public override GumpType GumpType => GumpType.Debug;
 
@@ -163,9 +161,7 @@ namespace GUO.Game.UI.Gumps
                             $"    - AvgDraw:{avgDrawMs:0.0}ms {CUOEnviroment.CurrentRefreshRate} FPS\n"
                         );
                     }
-#if GUO_LABS
                     AppendLabsRenderStats(ref sb);
-#endif
                 }
                 else
                 {

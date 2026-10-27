@@ -3,7 +3,7 @@
 using System;
 using System.Linq;
 using Godot;
-using GUO.Labs.GpuRenderer;
+using GUO.Renderer.DepthWorld;
 using GUO.Renderer;
 using Rectangle = GUO.Compat.Rectangle;
 namespace GUO.Host;

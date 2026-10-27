@@ -45,6 +45,7 @@ namespace GUO.Host
                 world.Player.SetInWorldTile(1431, 1691, 0);
                 var scene = new GameScene(world);
                 Client.Game.SetScene(scene);
+                DepthWorldProbe.FrameAdmitted = true; // direct visibility-mask oracle
                 var cases = new GameScene(world).ZoomMaskCases();
                 File.WriteAllText(Path.Combine(dir, "mask-cases.json"), JsonSerializer.Serialize(cases));
                 await ToSignal(GetTree().CreateTimer(1), SceneTreeTimer.SignalName.Timeout);
@@ -68,8 +69,8 @@ namespace GUO.Host
                 File.WriteAllText(Path.Combine(dir, "world-cases.json"), JsonSerializer.Serialize(rows));
                 File.WriteAllText(Path.Combine(dir, "renderer.json"), JsonSerializer.Serialize(new {
                     enabled = DepthWorldProbe.Enabled,
-                    drawn = GUO.Labs.GpuRenderer.OrderedWorldCapture.FramesDrawn,
-                    fallback = GUO.Labs.GpuRenderer.OrderedWorldCapture.FramesFallback,
+                    drawn = GUO.Renderer.DepthWorld.OrderedWorldCapture.FramesDrawn,
+                    fallback = GUO.Renderer.DepthWorld.OrderedWorldCapture.FramesFallback,
                     width = scene.Camera.Bounds.Width, height = scene.Camera.Bounds.Height }));
                 File.WriteAllText(Path.Combine(dir, "complete"), "Offline correctness fixture; no timing measurements.");
                 GD.Print("[zoom-fixture] PASS");

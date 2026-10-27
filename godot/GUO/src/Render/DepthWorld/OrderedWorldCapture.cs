@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: BSD-2-Clause
-#if GUO_LABS
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -7,19 +6,24 @@ using System.Threading;
 using Godot;
 using GUO.Renderer;
 
-namespace GUO.Labs.GpuRenderer;
+namespace GUO.Renderer.DepthWorld;
 
 /// <summary>Capture once; construct canvas commands only when the GPU transaction cannot be used.</summary>
 internal sealed class OrderedWorldCapture : IDisposable
 {
-    internal static bool Enabled = Array.IndexOf(OS.GetCmdlineUserArgs(), "--rd-world") >= 0 || DepthWorldProbe.Enabled;
-    internal static long FramesDrawn, FramesFallback, UploadedBytes;
+    internal static bool Enabled = DepthWorldProbe.Enabled
+#if GUO_LABS
+        || Array.IndexOf(OS.GetCmdlineUserArgs(), "--rd-world") >= 0
+#endif
+        ;
+    internal static long FramesDrawn, FramesFallback, UploadedBytes, ResidentFrames;
     internal static long DrawCalls, RecordTicks;
     internal static long SuppressedCommands;
     internal static long ReferencedQuads, DynamicCaptureBytes, ReplayedQuads;
     internal static string LastFallback;
     internal static bool LastFrameOnPass;
     internal static int InjectFailure; // Probe only: 1 before upload, 2 after recording, 3/4 geometry/order, 5/6 before/after state upload.
+    internal static int InjectResidentFailureAfter = -1; // Diagnostic admission failure, no runtime option.
     internal static bool InjectStateIndexFault; // Probe-only oracle negative control; no runtime option.
     internal static bool InjectTextureSlotFault; // Probe-only wrong-slot oracle.
     internal static bool InjectInvalidTextureSlot; // Probe-only fail-closed range control.
@@ -53,19 +57,98 @@ internal sealed class OrderedWorldCapture : IDisposable
     // ADR-0044 Depth World: upstream's depth for the next captured quad, and
     // the chunk land/statics drawn from resident buffers this frame.
     internal float Depth;
+    internal int Group;
+    private int _landEnd = -1;
+    internal void EndLand() => _landEnd = _occurrences.Count;
+    internal Action RecoverCanvas;
+    internal Action Rejected;
+    internal bool HasRejected => _unsupported != null;
+    internal int CommandCount => _commands.Count;
+    internal Rid RawGroup(int group) => _fallback.RawGroup(group);
+
+    internal void BeginRecovery() => _fallback.Begin(_canvas);
+    internal void RecoveryGroup(int id, int order) => _fallback.Group(id, order);
+    internal void ReplayGroup(int id)
+    {
+        for (int i = 0; i < _commands.Count; i++)
+        {
+            var c = _commands[i];
+            if (c.Group != id) continue;
+            _fallback.Append(_occurrences[c.FirstCorner / 4].Get(CollectionsMarshal.AsSpan(_dynamic)), c, id);
+            ReplayedQuads++;
+        }
+    }
+
+    internal void ReplayRange(int first, int count, int group)
+    {
+        for (int i = first; i < first + count; i++)
+        {
+            var c = _commands[i];
+            _fallback.Append(_occurrences[c.FirstCorner / 4].Get(CollectionsMarshal.AsSpan(_dynamic)), c, group);
+            ReplayedQuads++;
+        }
+    }
+
+    internal void ReplayRect(Texture2D texture, Rect2 destination, Rect2 source, Vector3 hue, int group)
+    {
+        Color color = UltimaBatcher2D.Encode(hue);
+        var q = new OrderedWorldResidency.Quad { A = PackVertex(default, default, color, default, false, true) };
+        var command = new OrderedWorldCanvas.Command {
+            Type = OrderedWorldCanvas.Kind.Rect, Texture = texture.GetRid(), Local = Transform2D.Identity,
+            Destination = destination, Source = source
+        };
+        _fallback.Append(q, command, group);
+        ReplayedQuads++;
+    }
+
+    internal void ReplayMesh(MeshLayer layer, int index, bool isStatic, int cameraX, int cameraY, int group)
+    {
+        if (index < 0 || index >= layer.Count || !layer.Visible[index] || layer.Textures[index] == null) return;
+        var m = layer.Vertices[index];
+        var c0 = UltimaBatcher2D.Encode(m.Hue0); var c1 = UltimaBatcher2D.Encode(m.Hue1);
+        var c2 = UltimaBatcher2D.Encode(m.Hue2); var c3 = UltimaBatcher2D.Encode(m.Hue3);
+        var q = new OrderedWorldResidency.Quad {
+            A = PackVertex(m.Position0, m.TextureCoordinate0, c0, m.Normal0, !isStatic, isStatic),
+            B = PackVertex(m.Position1, m.TextureCoordinate1, c1, m.Normal1, !isStatic, isStatic),
+            C = PackVertex(m.Position2, m.TextureCoordinate2, c2, m.Normal2, !isStatic, isStatic),
+            D = PackVertex(m.Position3, m.TextureCoordinate3, c3, m.Normal3, !isStatic, isStatic)
+        };
+        var tex = layer.Textures[index];
+        var size = new Vector2(tex.GetWidth(), tex.GetHeight());
+        var command = new OrderedWorldCanvas.Command {
+            Type = isStatic ? OrderedWorldCanvas.Kind.Rect : OrderedWorldCanvas.Kind.Mesh,
+            Texture = tex.GetRid(), Offset = isStatic ? Vector2.Zero : new Vector2(-cameraX, -cameraY),
+            Local = Transform2D.Identity,
+            Destination = new Rect2(m.Position0 - new Vector2(cameraX, cameraY), m.Position3 - m.Position0),
+            Source = new Rect2(m.TextureCoordinate0 * size, (m.TextureCoordinate3 - m.TextureCoordinate0) * size),
+            Color0 = c0, Color1 = c1, Color2 = c2, Color3 = c3
+        };
+        _fallback.Append(q, command, group);
+        ReplayedQuads++;
+    }
     internal readonly DepthWorldResident Resident = DepthWorldProbe.Enabled ? new DepthWorldResident() : null;
     private int _cameraX, _cameraY, _maxGroundZ = 127;
+    internal bool CanBegin => !_disposed && Volatile.Read(ref _pending) == 0 && !_queued && !Recording;
     internal bool Recording { get; private set; }
     internal bool Deferring => Recording && _unsupported == null;
     internal Texture2Drd Texture => _device.Presenter;
 
+    // Embedded in GUO.dll: Release exports do not depend on Labs resource filters.
+    internal static string ShaderSource(string name)
+    {
+        using var stream = typeof(OrderedWorldCapture).Assembly.GetManifestResourceStream("depthworld/" + name)
+            ?? throw new InvalidOperationException("Missing Depth World shader: " + name);
+        using var reader = new System.IO.StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+
     internal OrderedWorldCapture(ShaderMaterial spriteMaterial, ShaderMaterial meshMaterial)
     {
         _fallback = new OrderedWorldCanvas(spriteMaterial, meshMaterial);
-        _vertexSource = FileAccess.GetFileAsString("res://src/Labs/GpuRenderer/resident_world_vertex.glsl.txt");
-        _fragmentSource = FileAccess.GetFileAsString("res://src/Labs/GpuRenderer/ordered_world_fragment.glsl.txt");
+        _vertexSource = ShaderSource("resident_world_vertex.glsl.txt");
+        _fragmentSource = ShaderSource("ordered_world_fragment.glsl.txt");
         if (Resident != null)
-            _residentVertexSource = FileAccess.GetFileAsString("res://src/Labs/GpuRenderer/depth_world_resident_vertex.glsl.txt");
+            _residentVertexSource = ShaderSource("depth_world_resident_vertex.glsl.txt");
         _render = Callable.From(RenderThread);
         RenderingServer.FramePreDraw += BeforeDraw;
     }
@@ -74,6 +157,7 @@ internal sealed class OrderedWorldCapture : IDisposable
         float brightness, Vector2 circle, float radius)
     {
         LastFrameOnPass = false;
+        if (InjectFailure == 7) { Fallback("injected early admission"); return false; }
         if (_disposed || Volatile.Read(ref _pending) != 0 || _queued || Recording)
         {
             Fallback("previous frame ticket still pending or capture disposed");
@@ -89,7 +173,7 @@ internal sealed class OrderedWorldCapture : IDisposable
         Records.Begin();
         _batchArtCount = _textureRuns = 0;
         _canvas = default;
-        Depth = 0f;
+        Depth = 0f; Group = 0; _landEnd = -1; RecoverCanvas = null;
         Resident?.BeginFrame();
         _hue = hue; _light = light ?? hue;
         _hueRid = _hue?.GetRid() ?? default;
@@ -115,11 +199,13 @@ internal sealed class OrderedWorldCapture : IDisposable
         // uses its own arrays and does not overwrite the batcher's current quad.
         ReplayCanvas();
         Fallback(reason);
+        Rejected?.Invoke();
     }
 
     internal bool MeshRecord(MeshLayer layer, int index, Vector2 offset)
     {
         if (!Deferring) return false;
+        if (DepthWorldProbe.Enabled) Depth = layer.Depths[index];
         if (!OrderedWorldRecords.Enabled) return Quad(layer.Textures[index], layer.Vertices[index], offset, true);
         var record = Records.Find(layer, index, false)
             ?? Records.Store(layer, index, false, layer.Vertices[index]);
@@ -181,6 +267,7 @@ internal sealed class OrderedWorldCapture : IDisposable
         }
         _commands.Add(new OrderedWorldCanvas.Command
         {
+            Group = Group,
             Type = meshColor ? OrderedWorldCanvas.Kind.Mesh : rectangle ? OrderedWorldCanvas.Kind.Rect : OrderedWorldCanvas.Kind.Triangles,
             FirstCorner = checked(_occurrences.Count * 4), Texture = textures.ArtRs, Offset = offset,
             Local = local ?? Transform2D.Identity, Destination = destination, Source = source,
@@ -224,8 +311,10 @@ internal sealed class OrderedWorldCapture : IDisposable
     {
         if (!Deferring || Resident == null) return false;
         _cameraX = cameraX; _cameraY = cameraY; _maxGroundZ = maxGroundZ;
+        int admitted = 0;
         foreach (var chunk in chunks)
         {
+            if (admitted++ == InjectResidentFailureAfter) { Reject("injected resident admission"); return false; }
             var mesh = chunk.Mesh;
             if (mesh == null) continue;
             if (!Resident.Add(mesh.Land, true, _hueRid, _lightRid, out string reason)
@@ -244,6 +333,7 @@ internal sealed class OrderedWorldCapture : IDisposable
     {
         // Read the same immutable revisions directly on rejection. No second
         // full vertex buffer is retained after a large failed frame.
+        if (RecoverCanvas != null) { RecoverCanvas(); return; }
         ReplayedQuads += _occurrences.Count;
         _fallback.Render(_canvas, CollectionsMarshal.AsSpan(_occurrences),
             CollectionsMarshal.AsSpan(_dynamic), CollectionsMarshal.AsSpan(_commands));
@@ -251,7 +341,7 @@ internal sealed class OrderedWorldCapture : IDisposable
 
     private uint AppendTextureBatch(uint first, OrderedWorldDevice.Textures textures)
     {
-        if (_segments.Count != 0)
+        if (_segments.Count != 0 && !(RecoverCanvas != null && first == _landEnd * 6))
         {
             ref var last = ref CollectionsMarshal.AsSpan(_segments)[^1];
             if (last.Textures.Hue == textures.HueRs && last.Textures.Light == textures.LightRs)
@@ -352,9 +442,10 @@ internal sealed class OrderedWorldCapture : IDisposable
             if (InjectFailure == 1) throw new InvalidOperationException("injected before upload");
             _device.RenderRT(CollectionsMarshal.AsSpan(_occurrences), CollectionsMarshal.AsSpan(_dynamic),
                 CollectionsMarshal.AsSpan(_states), CollectionsMarshal.AsSpan(_segments), _textureRuns, _push, true,
-                Resident, _cameraX, _cameraY, _maxGroundZ);
+                RecoverCanvas != null ? Resident : null, _cameraX, _cameraY, _maxGroundZ, Math.Max(0, _landEnd));
             if (InjectFailure == 2) throw new InvalidOperationException("injected after recording");
             FramesDrawn++;
+            if (RecoverCanvas != null) ResidentFrames++;
             success = true;
         }
         catch (Exception e)
@@ -396,4 +487,3 @@ internal sealed class OrderedWorldCapture : IDisposable
         }));
     }
 }
-#endif

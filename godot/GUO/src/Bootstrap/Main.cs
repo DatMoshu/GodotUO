@@ -486,6 +486,9 @@ public partial class Main : Node
     /// </remarks>
     private void StartClient()
     {
+        GD.Print("[GUO] world renderer : " + (GUO.Renderer.DepthWorldProbe.Enabled
+            ? "Depth World (RD, per-frame canvas recovery)" : "canvas")
+            + "; backend=" + RenderingServer.GetCurrentRenderingMethod());
         if (_options.SafForget)
         {
             GD.Print($"[GUO] saf           : --saf-forget released {SafFolder.Release()} grant(s)");
@@ -2049,6 +2052,10 @@ public partial class Main : Node
                     case "--batcher-probe":
                         o.Mode = RunMode.BatcherProbe;
                         break;
+                    case "--depth-world":
+                    case "--canvas-world":
+                        // Production renderer selection is read before world gathering.
+                        break;
                     case "--depth-probe":
                         o.Mode = RunMode.DepthProbe;
                         break;
@@ -2090,9 +2097,9 @@ public partial class Main : Node
                         break;
 #if GUO_LABS
                     case "--rd-world":
-                        GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled = true;
-                        GUO.Host.PerfProbe.ParityToggle = on => GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled = on;
-                        GUO.Host.PerfProbe.ParityState = () => GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled;
+                        GUO.Renderer.DepthWorld.OrderedWorldCapture.Enabled = true;
+                        GUO.Host.PerfProbe.ParityToggle = on => GUO.Renderer.DepthWorld.OrderedWorldCapture.Enabled = on;
+                        GUO.Host.PerfProbe.ParityState = () => GUO.Renderer.DepthWorld.OrderedWorldCapture.Enabled;
                         break;
 #endif
                     case "--gpu-world":

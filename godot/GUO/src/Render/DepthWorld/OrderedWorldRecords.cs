@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: BSD-2-Clause
-#if GUO_LABS
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Godot;
 using GUO.Renderer;
 
-namespace GUO.Labs.GpuRenderer;
+namespace GUO.Renderer.DepthWorld;
 
 /// <summary>Bounded source records; only a new content revision receives a new immutable ID.</summary>
 internal sealed class OrderedWorldRecords
 {
-    // Diagnostic control within the existing off-by-default RD experiment.
+    // Diagnostic bypass for the production RD content cache.
     internal static bool Enabled = Array.IndexOf(OS.GetCmdlineUserArgs(), "--rd-content-cache") < 0;
     private readonly record struct Key(MeshLayer Layer, int Index, bool Static);
     // Packets are immutable for a captured ticket. Begin retires that ticket
@@ -145,4 +144,3 @@ internal sealed class OrderedWorldRecords
 
     internal void Clear() { _records.Clear(); _expired.Clear(); _retired.Clear(); _spares.Clear(); }
 }
-#endif

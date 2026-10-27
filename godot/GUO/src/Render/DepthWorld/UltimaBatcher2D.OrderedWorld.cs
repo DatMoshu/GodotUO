@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
-#if GUO_LABS
+using System;
 using Godot;
-using GUO.Labs.GpuRenderer;
+using GUO.Renderer.DepthWorld;
 
 namespace GUO.Renderer;
 
@@ -12,6 +12,8 @@ public sealed partial class UltimaBatcher2D
     private int _orderedStackDepth;
     private ShaderMaterial _orderedPresentMaterial;
     internal static long OrderedCanvasItemsCleared;
+    internal bool HasOrderedRecovery => OrderedWorldRecording && _orderedWorld.RecoverCanvas != null;
+    internal void RejectOrderedWorld(string reason) => _orderedWorld?.Reject(reason);
     internal bool OrderedWorldRecording => _orderedWorld?.Recording == true;
 
     // Built once: a string argument makes a new StringName every frame.
@@ -21,6 +23,62 @@ public sealed partial class UltimaBatcher2D
     private static readonly StringName ParamBrightlight = "brightlight";
     private static readonly StringName ParamCircleOfTransparencyCenter = "circle_of_transparency_center";
     private static readonly StringName ParamCircleOfTransparencyRadius = "circle_of_transparency_radius";
+
+    // Capability is established before the gather can omit resident statics.
+    internal bool CanAdmitDepthWorld(bool supported) => DepthWorldProbe.Enabled && OrderedWorldCapture.Enabled && supported
+        && RenderingServer.IsOnRenderThread() && !_mirroring && !GpuWorld.Enabled && !BatchedWorld
+        && _currentTarget != null && _currentTarget.Width > 0 && _currentTarget.Height > 0
+        && _clipStack.Count == 0 && (_orderedWorld == null || _orderedWorld.CanBegin);
+
+    private bool _orderedRawGroup;
+    private int _orderedRawDepth;
+    internal void BeginOrderedGroup(int group)
+    {
+        EndOrderedGroup();
+        if (!OrderedWorldRecording) return;
+        _orderedWorld.Group = group;
+        OpenOrderedRawGroup();
+    }
+
+    private void OpenOrderedRawGroup()
+    {
+        if (!OrderedWorldRecording || !_orderedWorld.HasRejected || _orderedWorld.RecoverCanvas == null || _orderedRawGroup) return;
+        FlushRun();
+        _orderedRawDepth = _clipStack.Count;
+        _clipStack.Add(_orderedWorld.RawGroup(_orderedWorld.Group));
+        _orderedRawGroup = true;
+        Cut();
+    }
+
+    internal void EndOrderedGroup()
+    {
+        if (!_orderedRawGroup) return;
+        FlushRun();
+        while (_clipStack.Count > _orderedRawDepth) _clipStack.RemoveAt(_clipStack.Count - 1);
+        _orderedRawGroup = false;
+        Cut();
+    }
+
+    internal void EndOrderedLand() { if (OrderedWorldRecording) _orderedWorld.EndLand(); }
+
+    internal void ReplayOrderedFlatLand(Texture2D texture, Vector2 position, GUO.Compat.Rectangle source,
+        Vector3 hue, Vector2 scale, int group)
+    {
+        int width = WidthOf(texture), height = HeightOf(texture);
+        CalculateUVsSafe(source, width, height, out float sx, out float sy, out float sw, out float sh);
+        scale.X *= source.Width; scale.Y *= source.Height;
+        float ox = 0f / sw / width, oy = 0f / sh / height;
+        _orderedWorld.ReplayRect(texture,
+            new Rect2(position.X - ox * scale.X, position.Y - oy * scale.Y, scale.X, scale.Y),
+            new Rect2(sx * width, sy * height, sw * width, sh * height), hue, group);
+    }
+
+    internal void SetOrderedRecovery(Action recover) { if (OrderedWorldRecording) _orderedWorld.RecoverCanvas = recover; }
+    internal void BeginOrderedRecovery() => _orderedWorld.BeginRecovery();
+    internal void OrderedRecoveryGroup(int id, int order) => _orderedWorld.RecoveryGroup(id, order);
+    internal void ReplayOrderedGroup(int id) => _orderedWorld.ReplayGroup(id);
+    internal void ReplayOrderedMesh(MeshLayer layer, int index, bool isStatic, int x, int y, int group)
+        => _orderedWorld.ReplayMesh(layer, index, isStatic, x, y, group);
 
     internal void BeginOrderedWorld(bool supported, Vector2I probeSize = default)
     {
@@ -54,7 +112,9 @@ public sealed partial class UltimaBatcher2D
             OrderedWorldCapture.Fallback("styled water");
             return;
         }
-        _orderedWorld ??= new OrderedWorldCapture(_material, _meshMaterial);
+        try { _orderedWorld ??= new OrderedWorldCapture(_material, _meshMaterial); }
+        catch (InvalidOperationException error) { OrderedWorldCapture.Fallback(error.Message); return; }
+        _orderedWorld.Rejected = OpenOrderedRawGroup;
         if (!_orderedWorld.Begin(size, _viewTransform,
             _material.GetShaderParameter(ParamHueTexture).AsGodotObject() as Texture2D,
             _material.GetShaderParameter(ParamLightTexture).AsGodotObject() as Texture2D,
@@ -73,6 +133,7 @@ public sealed partial class UltimaBatcher2D
 
     internal void EndOrderedWorld()
     {
+        EndOrderedGroup();
         if (!OrderedWorldRecording) return;
         FlushRun();
         if (_clipStack.Count != _orderedStackDepth + 1)
@@ -190,4 +251,3 @@ public sealed partial class UltimaBatcher2D
         return _orderedWorld.Quad(texture,q,_worldOffset,false,true,local,rect,rect);
     }
 }
-#endif

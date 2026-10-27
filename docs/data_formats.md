@@ -4062,3 +4062,22 @@ prepared streams even if drawing later fails; `rd_draw_calls_per_frame` counts
 issued commands. Runs count adjacent original complete texture tuples; batches
 count the prepared bounded descriptor groups. A/B/A has three runs and one
 batch. None measures GPU duration or individually dirty state rows.
+
+
+### Production Depth World presenter (ADR-0044)
+
+The non-Labs client selects Depth World on supported RenderingDevice frames;
+Compatibility and `--canvas-world` use the complete canvas renderer. Runtime
+shaders are assembly resources named `depthworld/<filename>.glsl.txt`, independent
+of the exported Labs resource filter. Diagnostics remain outside the product
+payload. No on-disk client-data, profile or network format changes.
+
+The existing `rd_*` PerfProbe/PerfDump counters are available without Labs.
+`rd_upload_bytes_per_frame` and `rd_draw_calls_per_frame` still describe the
+captured occurrence stream. The separate `rd_resident_upload_bytes_per_frame`
+and `rd_resident_draw_calls_per_frame` describe chunk-resident GPU work;
+`rd_total_gpu_upload_bytes_per_frame` sums both upload streams. CPU dynamic
+capture bytes are not GPU traffic. `rd_resident_frames` counts successfully
+presented resident frames. Failed preparation can still have upload/draw costs;
+use frame counters and `rd_last_fallback` to bind actual presentation. These
+measure work, not GPU time or a portable FPS gain.
