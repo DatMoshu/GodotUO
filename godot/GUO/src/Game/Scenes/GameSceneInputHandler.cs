@@ -8,6 +8,7 @@ using GUO.Game.GameObjects;
 using GUO.Game.Managers;
 using GUO.Game.UI.Gumps;
 using GUO.Input;
+using GUO.Renderer;
 using GUO.Assets;
 using GUO.Network;
 using GUO.Resources;
@@ -1014,6 +1015,13 @@ namespace GUO.Game.Scenes
 
             if (Keyboard.Ctrl && ProfileManager.CurrentProfile.EnableMousewheelScaleZoom)
             {
+                // PORT DEVIATION (GUO): ADR-0045, accelerate only the explicit overview range.
+                if (DepthWorldProbe.ZoomMax >= WorldOverview.Threshold)
+                {
+                    EnsureOverviewZoomRange();
+                    Camera.Zoom = WorldOverview.WheelZoom(Camera.Zoom, up, Camera.ZoomStep);
+                    return true;
+                }
                 if (up)
                 {
                     Camera.ZoomIn();

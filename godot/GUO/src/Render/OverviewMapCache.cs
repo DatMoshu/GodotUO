@@ -10,7 +10,7 @@ namespace GUO.Renderer;
 
 internal interface IOverviewBlocks
 {
-    void ReadBlock(int x, int y, Span<uint> colors);
+    void ReadBlock(int x, int y, int step, Span<uint> colors);
 }
 
 internal sealed class OverviewMapCache : IDisposable
@@ -20,29 +20,34 @@ internal sealed class OverviewMapCache : IDisposable
     internal const int BlocksPerTile = TileSize * TileSize / 64;
     internal const int FrameBlocks = 128;
     internal const int FrameMilliseconds = 4;
+    internal const int CoarseFrameBlocks = 512;
     internal sealed class Tile
     {
-        internal readonly Vector2I Key;
+        internal readonly Vector3I Key;
         internal byte[] Pixels;
         internal ImageTexture Texture;
         internal int Blocks;
+        internal int Step => 1 << Key.Z;
+        internal int Side => TileSize * Step;
         internal long Used;
         internal bool Dirty;
-        internal Tile(Vector2I key) { Key = key; }
+        internal Tile(Vector3I key) { Key = key; }
         internal void Dispose() { Texture?.Dispose(); Texture = null; Pixels = null; }
     }
-    private readonly Dictionary<Vector2I, Tile> _tiles = new();
+    private readonly Dictionary<Vector3I, Tile> _tiles = new();
     private readonly List<Tile> _visible = new(Capacity);
     private readonly uint[] _block = new uint[64];
     private long _frame;
     internal IReadOnlyList<Tile> Visible => _visible;
     internal int Count => _tiles.Count;
+    internal IEnumerable<Tile> Cached => _tiles.Values;
+    internal static int SourceBlocks(int step) => Math.Min(step, 8) * Math.Min(step, 8);
     internal long PixelBytes { get; private set; }
     internal int LastBlocks { get; private set; }
     internal int LastUploads { get; private set; }
 
     // Caller orders nearest first. Pin all existing hits before allocating misses.
-    internal void SetView(List<Vector2I> nearest)
+    internal void SetView(List<Vector3I> nearest)
     {
         _frame++;
         _visible.Clear();
@@ -87,16 +92,17 @@ internal sealed class OverviewMapCache : IDisposable
                 PixelBytes += tile.Pixels.Length;
             }
             int before = tile.Blocks;
-            while (tile.Blocks < BlocksPerTile && LastBlocks < maxBlocks && Stopwatch.GetTimestamp() < deadline)
+            int cost = SourceBlocks(tile.Step);
+            while (tile.Blocks < BlocksPerTile && LastBlocks + cost <= maxBlocks && Stopwatch.GetTimestamp() < deadline)
             {
                 int bx = tile.Blocks % (TileSize / 8), by = tile.Blocks / (TileSize / 8);
                 Array.Clear(_block);
-                source.ReadBlock(tile.Key.X * (TileSize / 8) + bx, tile.Key.Y * (TileSize / 8) + by, _block);
+                source.ReadBlock((tile.Key.X * (TileSize / 8) + bx) * tile.Step, (tile.Key.Y * (TileSize / 8) + by) * tile.Step, tile.Step, _block);
                 var pixels = MemoryMarshal.Cast<byte, uint>(tile.Pixels.AsSpan());
                 for (int y = 0; y < 8; y++)
                     _block.AsSpan(y * 8, 8).CopyTo(pixels.Slice((by * 8 + y) * TileSize + bx * 8, 8));
                 tile.Blocks++;
-                LastBlocks++;
+                LastBlocks += cost;
             }
             if (tile.Blocks != before) { tile.Dirty = true; changed++; }
         }

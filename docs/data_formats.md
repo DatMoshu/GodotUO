@@ -4085,16 +4085,19 @@ measure work, not GPU time or a portable FPS gain.
 
 ### Wide-zoom overview (ADR-0045)
 
-With an explicit `--zoom-max` above 5, zoom greater than 5 uses a progressive
-local isometric terrain/building map. At or below 5 the ordinary renderer and
-mouse picking resume. The overview omits mobiles, labels, effects, small props
-and dynamic item/multi art, retains a player marker, and is view-only for world
-mouse actions. Server simulation and macros continue normally. Saved/restored
-zoom above 2.5 clamps to 2.5; the current session can still reach the flag's max.
+An explicit `--zoom-max` of at least 15 enables whole-facet zoom. Native detail
+and picking remain below 15; at 15 and above, a progressive local isometric
+terrain/building map takes over. It omits mobiles, labels, effects, small props
+and dynamic item/multi art; the player marker remains. World mouse actions are
+view-only; simulation and macros continue. Save/login clamps above 2.5.
 
-No profile/network/on-disk cache format is added. The scene-local cache holds
-up to 128 nearest/LRU 256x256 RGBA tiles (32 MiB CPU pixels plus 32 MiB texture
-payload), reads at most 128 map blocks and uploads at most two tiles per frame,
-with a soft 4 ms preparation deadline. Facet/map revision/season/theme changes
-invalidate it. Huge views exceeding the entry budget retain the nearest tiles.
-The offline functional scenario is `tools/scenarios/client/wide_zoom_overview.cs.fixture`.
+The camera maximum fits the complete current facet with a 32-pixel margin,
+recalculated for viewport/facet changes. Overview Ctrl+wheel steps are 20 percent;
+normal steps below 15 are unchanged. The view gradually recentres on the facet.
+No new profile/network/disk-cache format. Cache keys include resolution level;
+coarser power-of-two sampling covers the entire visible area within 128 entries.
+Existing cached levels preview the map while a new level loads. The cache is
+bounded to 32 MiB CPU pixels plus 32 MiB texture payload; at most 128 native map
+reads for fine frames, 512 for coarse, two uploads and a soft 4 ms preparation
+deadline. Map revision/facet/season/theme changes invalidate all levels.
+Scenario: `tools/scenarios/client/wide_zoom_overview.cs.fixture`.

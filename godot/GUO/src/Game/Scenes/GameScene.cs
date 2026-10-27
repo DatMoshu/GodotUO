@@ -1102,6 +1102,8 @@ namespace GUO.Game.Scenes
                 return true;
             }
 
+            // PORT DEVIATION (GUO): explicit extended zoom reaches the full current facet.
+            EnsureOverviewZoomRange();
             // PORT DEVIATION (GUO): explicit extended zoom uses bounded overview tiles.
             if (OverviewActive)
             {

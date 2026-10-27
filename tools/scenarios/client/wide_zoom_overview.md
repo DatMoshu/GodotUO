@@ -1,16 +1,18 @@
-# Wide-zoom overview
+# Wide-zoom / whole-facet overview
 
-Owner-approved explicit extended zoom; ADR-0045. No new toggle, profile field,
-external dependency or doctor. Ordinary maximum/default is unchanged.
+Owner-authorized at15 transition and entire-facet zoom, ADR-0045. Explicit
+--zoom-max>=15 enables dynamic fit range; defaults and saved2.5 clamp unchanged.
 
 Inject wide_zoom_overview.cs.fixture as Bootstrap/OverviewFixture.cs and add
-its Node to Main in an external source stage only. Set GUO_OVERVIEW_FIXTURE_DIR
-to a private evidence folder, launch --play --zoom-max=20 --window-size 1280x720
-with no credentials. The fixture creates an offline player from local map
-data, checks bounded cache/preparation and transition behavior, and saves
-screenshots. Repeat with gl_compatibility. No network login or timing sweep.
-Remove both the injected source and Main hook before required full smoke.
+its Node to Main in an external stage. Set GUO_OVERVIEW_FIXTURE_DIR, then run
+--play --zoom-max=20 --window-size1280x720 without credentials. Repeat on
+gl_compatibility. GUO_OVERVIEW_FULLSCREEN=1 checks only full-facet fit at a
+resolution appropriate to the owner's fullscreen issue. No network or benchmark.
 
-Expected smoke line: [overview] PASS ... checks. Output result.json records
-checks, rich chunk counts, tile counts and pixel storage, not FPS. Inspect
-5.1/20 and returned 2.5 screenshots for map coverage and restored native art.
+Checks include exact15 threshold, unchanged ordinary wheel and accelerated
+overview wheel, all facet corners inside viewport across player positions,
+multiresolution cache/source-read budgets, no visible-tile truncation, warm
+return, actual offline world/full-map/native transitions and invalidation.
+result.json records correctness counters, not FPS. Remove injection before
+full smoke. Expected line: [overview] PASS ... checks. Inspect whole-facet and
+returned-native screenshots. Cold map regions may fill progressively.

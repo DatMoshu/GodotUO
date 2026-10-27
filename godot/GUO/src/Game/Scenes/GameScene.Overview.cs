@@ -9,8 +9,19 @@ internal partial class GameScene
 {
     private WorldOverview _overview;
     private bool _wasOverview;
-    internal bool OverviewActive => DepthWorldProbe.ZoomMax > 5f && WorldOverview.Enabled(Camera.Zoom);
+    internal bool OverviewActive => DepthWorldProbe.ZoomMax >= WorldOverview.Threshold && WorldOverview.Enabled(Camera.Zoom);
     internal WorldOverview Overview => _overview;
+
+    private void EnsureOverviewZoomRange()
+    {
+        if (DepthWorldProbe.ZoomMax < WorldOverview.Threshold || _world.Map == null
+            || Camera.Bounds.Width <= 64 || Camera.Bounds.Height <= 64) return;
+        var maps = Client.Game.UO.FileManager.Maps;
+        int map = _world.Map.Index;
+        float max = WorldOverview.FitZoom(maps.MapBlocksSize[map, 0] * 8, maps.MapBlocksSize[map, 1] * 8,
+            Camera.Bounds.Width, Camera.Bounds.Height);
+        if (Camera.ZoomMax != max) Camera.SetZoomRange(Camera.ZoomMin, max, Camera.ZoomStep);
+    }
 
     private void DrawOverview(UltimaBatcher2D batcher, RenderTargets targets)
     {
