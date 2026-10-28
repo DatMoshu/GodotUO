@@ -240,6 +240,27 @@ are laid out afresh; known quirks of the originals are kept and commented.
 `DfiItemTests.cs` constructs every item and checks the bags, deeds, balls,
 shrinking and the Emblem.
 
+### `patches/0010-dfi-spawns.patch`
+
+Requires `0009-dfi-player-items.patch`. DFI Network's world spawns, as
+ModernUO spawner JSON under `Distribution/Data/Spawns/dfi/`:
+
+| File | Spawners | From |
+|---|---:|---|
+| `felucca.json`, `ilshenar.json`, `malas.json` | 1,398 | DFI's 2008 ESpawner exports (`*-ESS.xml`) |
+| `dfi-boss-arena.json` | 13 | staff-placed spawners in DFI's 2018 save (Green Acres) |
+| `kopia-free-items.json`, `kopia-faction-extras.json` | 40 | staff-placed spawners in kopia's 2018 save |
+
+`[DfiSpawns` (Administrator) deletes the classic monster and wildlife
+spawners those layouts replace, by the guids in ModernUO's own spawn files,
+and imports the DFI files. Vendors, townspeople, reagents, sea life and the
+Mondain's Legacy areas stay. It is safe to run again. Spawn types that wait on
+unported DFI systems (Cursed Cave, PriestOfMondain, stealable rares, tokens)
+were left out of the files; ModernUO's renames (ToxicElemental as
+AcidElemental, crops as Farmable*) were applied. Delays keep DFI's values,
+up to the month-long rare spawns. `DfiSpawnTests.cs` and ModernUO's
+`AllSpawnFilesLoadTests` load every file.
+
 ### Retired
 
 `0004-multi-tile-enumerator` fixed tile lookups that stopped at a multi with no
