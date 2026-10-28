@@ -4157,6 +4157,7 @@ local page pack is one folder holding a manifest and each page's MUL files:
 
 The whole manifest is refused on its first invalid entry. A page whose files
 fail verification is refused when entered; the client says so, names the
-doctor (`launchers/dev/paging_doctor`) and continues on facet 0. No server
+doctor (`launchers/dev/paging_doctor`) and disconnects without building a
+map, so the client never plays on a facet the server did not choose. No server
 packet or protocol changes; the shard must already send the page's facet ID
 in its standard map-change packet.

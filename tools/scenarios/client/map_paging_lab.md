@@ -46,7 +46,41 @@ bounce, `[paging] facet N ready` before every map change, at most 2 pages
 resident (cap 2). The driver is kept with the evidence, not in the repository;
 never point it at the shared dev shard.
 
-Not yet run: a corrupted page or revised manifest during a live session,
-blocked landings, other players, followers, reconnect and shard restart.
+## Milestone 2 on the private fixture shard
+
+Run 2026-10-28 (same evidence run, `data/m2/data/m2_report.json`, 20 checks,
+all PASS). The client runs with cap 2. The pages are full size, 7168x4096:
+
+- **Real content:** two pages, facets 32/33 from the connected-pages v3 export.
+  Crossed both ways on one of its seams, landing where the export says.
+- **Synthetic content:** a 2x2 grid on facets 40–43, flat land with cardinal
+  neighbours. Crossings E, S, W, N close a corner loop through all four pages
+  within the cap (`-paging check` OK; the evicted pages' files are closed).
+
+Also covered:
+
+- **Evicted page:** a world-map free view on an evicted page (41) neither
+  crashes nor reloads it. The upstream world map logs its own load error and
+  shows no map (observation, not a fix).
+- **Blocked landing:** the crossing is refused, and client and server agree
+  on position afterwards.
+- **Followers:** a following dog crosses with the player; a ridden horse
+  stays mounted.
+- **Revised manifest:** after `-paging reload`, the revised pages are rebuilt
+  on entry.
+- **Corrupt page (one byte appended mid-session):** readiness is refused. The
+  client disconnects with the doctor's name and builds no map, while the server
+  had already moved the player.
+- **Restarts:** a fresh client logs in onto the page. A kicked client
+  reconnects onto it (the auto-reconnect needs the login saved, as upstream).
+  After a shard restart the player is still on the page.
+
+Each `facet N ready` line logs load time, working set and managed heap; these
+are observations only.
+
+Not covered: the world's other real seams and pages, other players on a page,
+and a live map-patch shard (refused before the swap; probe only). The driver
+lives with the evidence, not in the repository; never point it at the shared
+dev shard.
 
 Save captures and logs under the central GUO evidence run, never the checkout.

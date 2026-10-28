@@ -40,9 +40,10 @@ resource.
    bounds and hashes match. Nothing is downloaded.
 5. **Readiness before the crossing completes.** The client verifies and
    indexes the target page before it builds the new map. A page that cannot
-   be made ready is refused out loud; the client then does what the stock
-   client does with an unknown facet (facet 0). Only a server can refuse the
-   move itself, which needs negotiation (deferred).
+   be made ready is refused out loud: the client disconnects with a message
+   naming the doctor and builds no map, so it never plays on a facet the
+   server did not choose. Only a server can refuse the move itself, which
+   needs negotiation (deferred).
 6. **Version invalidation.** A resident page built from content that no longer
    matches the manifest (new version, new hash, replaced or truncated file) is
    dropped and rebuilt on next entry. Every entry bumps a generation; a
@@ -51,7 +52,7 @@ resource.
    negotiation, server page registry and generalised crossings, UOP page
    archives, page-aware world map/minimap/markers.
 
-## Implementation (milestone 1)
+## Implementation
 
 L4 only: `src/Labs/Paging`, compiled in `GuoLabs=true` Debug builds and never
 exported. Off unless `GUO_LABS_PAGING` names a manifest. With it set, the
@@ -60,7 +61,9 @@ MapLoader subclass widened to 80 facets the way upstream's UltimaLive loader
 widens it; stock facets load exactly as before. One `PORT DEVIATION (GUO)`
 seam in `World.MapIndex`, inside `#if GUO_LABS`. The manifest, verifier and
 residency session are engine-free and tested with dotnet
-(`tools/paging_tests`). Doctor: `launchers/dev/paging_doctor`.
+(`tools/paging_tests`). Doctor: `launchers/dev/paging_doctor`. Before the
+swap a preflight refuses paging when the stock loader carries applied map
+patches, a custom `MapsLayouts` or the UltimaLive loader.
 
 ## ADR Dependencies
 
@@ -96,8 +99,9 @@ milestone 1 (Moshu via chief, mail 19516/19517/19528, 2026-10-28).
   `20261028_guo-worker-paging_l4-milestone1`, `data/offstate_dll_parity.txt`).
 - While paging is active `MapLoader.MAPS_COUNT` is 80, so the world map's
   free-view menu lists 80 facets, as it lists 127 under UltimaLive.
-- The loader swap does not carry map patches (`ApplyPatches`) already applied
-  by the old loader; it happens on the first page facet, normally at login.
-- A world map in free view on an evicted page is not pinned (known gap).
+- Paging and shard map patches are exclusive: with patches applied the
+  preflight refuses paging (and disconnects) instead of dropping them.
+- A world map in free view on an evicted page shows no map and pins nothing
+  (known gap; the page is not reloaded for it).
 - The shard side (map registration for 32–79, crossings, persistence,
   negotiation) is unchanged and needs its own decision.

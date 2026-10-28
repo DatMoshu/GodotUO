@@ -1,4 +1,4 @@
-# Map paging (L4, milestone 1)
+# Map paging (L4)
 
 Owner scope: Moshu via chief, 2026-10-28 (mail 19516/19517/19528). Decision
 draft: [ADR-0046](../../../../../docs/architecture/ADR-0046-map-paging-lab.md).
@@ -23,13 +23,22 @@ launchers\game\play.bat
 When the shard first moves the player to a page facet, the client replaces
 its map loader with `PagedMapLoader` (stock facets load exactly as before),
 verifies the page's files against the manifest and builds its block index
-before the new map exists. A page that cannot be used is refused in the
-journal with the reason and this doctor's name, and the client continues on
-facet 0 as the stock client does with any facet it has no files for.
+before the new map exists. A page that cannot be used is refused: the client
+logs the reason, disconnects and shows a login popup naming this doctor. It
+never builds a map for a facet the server did not choose, so there is no
+playable wrong-facet state.
+
+The swap is refused before it replaces anything when the stock loader carries
+applied shard map patches (mapdif/stadif blocks moved off their original
+address or count), a custom `MapsLayouts`, or upstream's UltimaLive loader;
+paging cannot carry those across yet.
 
 In game: `-paging` (status), `-paging verify` (check every page now),
 `-paging reload` (reread the manifest; revised resident pages are dropped,
-the current one is rebuilt when next entered).
+the current one is rebuilt when next entered), `-paging check` (residency
+invariants: current page resident, within the cap, open files match),
+`-paging worldmap <facet>` (open the world map in free view on a facet, a
+test hook for the evicted-page case).
 
 ## Dependency doctor
 
@@ -60,14 +69,18 @@ synthetic test data, never map content; keep it outside the checkout.
 `tools/paging_tests` compiles the engine-free files with dotnet; the smoke runs
 it on every run and the probe when `GuoLabs=true`.
 
-## Limits (milestone 1)
+## Limits
 
 - Needs a shard that already sends page facet IDs; the dev shard does not
-  register facets 32–79. A private fixture copy did (scenario, live crossing).
+  register facets 32–79. A private fixture copy did (scenario, live runs).
 - MUL pages only; no UOP page archives.
 - World map, minimap and markers are not page-aware; the free-view menu lists
-  80 facets while paging is active.
-- Map patches applied before the loader swap are not carried over.
-- No performance claims: residency is bounded by count, not measured.
+  80 facets while paging is active. A free view on an evicted page shows no
+  map (the upstream world map catches its own load error) and pins nothing.
+- Applied map patches are refused, not carried over: no paging on a shard
+  that sends map patches. Proven by the probe only (the test install is UOP,
+  which loads no difs).
+- Readiness is bounded by count; load time and memory are logged on each
+  `facet N ready` line as observations, not budgets.
 
 Scenario: [`tools/scenarios/client/map_paging_lab.md`](../../../../../tools/scenarios/client/map_paging_lab.md).
