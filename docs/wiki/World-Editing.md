@@ -1,5 +1,10 @@
 # World Editing
 
+![World tools and inspector in GUO](../images/guides/world-tools.png)
+
+Britain in the editor with brush library, picker and minimap. No live shard is connected. [Capture conditions and limits](Visual-Guide.md#world-tools).
+
+
 How to change the map in the GUO editor: find a spot, select what is there,
 place and move things, and take it back if you change your mind. This page is
 for a shard owner opening the editor for the first time. For how the editor
@@ -283,3 +288,22 @@ Read the status line under the map first; it says why. The usual answers:
 
 With **Select**, a click only fills the UO Inspector and never changes the map.
 To change something, pick a tool from the rail first.
+
+## Current workspace and bounded brushes
+
+The [World editing workspace](../world_workspace.md) is the detailed source
+guide for the compact Tools/Inspector column, brush library, Precision and
+Focus modes. Use it when an older layout illustration differs from your build.
+
+A brush is bounded to 31 tiles across and a stroke to 8,192 cells. Static
+preview draws at most 128 ghosts while cell highlights retain the planned
+footprint. Density/spacing use a deterministic world-cell lattice and seed;
+they are not continuous-distance foliage packing. Keep existing statics,
+avoid-water, slope and allowed-land rules can exclude cells from a stroke.
+Lock terrain blocks terrain painting/sculpting. Release applies a stroke;
+Escape cancels; Ctrl+Z undoes and Ctrl+Y / Ctrl+Shift+Z redoes.
+
+Roof ghosting is an editor guide, limited to 512 static roof pieces in view.
+It does not change the runtime roof renderer. Export and read-back still need
+the [world tools](../../tools/world/README.md); a changed viewport alone is not
+proof that a server or exported client loaded the project.

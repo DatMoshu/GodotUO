@@ -1,0 +1,396 @@
+{
+  "baseline": "fc9e35880bcd201d4ed78aa9de562b2d971cc496",
+  "date": "2026-10-28",
+  "engine": "4.7.2.stable.mono.official.ed1daf0bf",
+  "configuration": "Debug editor, GuoLabs=false, isolated profile, no live shard",
+  "client_version": "7.0.107.76",
+  "images": [
+    {
+      "id": "login",
+      "raw_sha256": "66b92861649d9de917391810ebcd6846b641375c9caba796fe55a4c84a535168",
+      "raw_size": [
+        640,
+        480
+      ],
+      "crop": null,
+      "public_size": [
+        640,
+        480
+      ],
+      "public_sha256": "d72aacdcc45892707ab9519244cfff77ec8d9e2ed1c846c710b5353e67a1977c"
+    },
+    {
+      "id": "uoplus-options",
+      "raw_sha256": "45b05f6b720cc7857f30d392c94f90302e424276690c58e6f41e325afeda11cd",
+      "raw_size": [
+        1280,
+        720
+      ],
+      "crop": null,
+      "public_size": [
+        1280,
+        720
+      ],
+      "public_sha256": "75ebf5b90813d0a7b8db3c33af39bf1924c0786f99daeee4a37dd7efad76302e"
+    },
+    {
+      "id": "assets-workbench",
+      "raw_sha256": "0b14599feda6606c504fbaacdf7c8e6f973e40a2d20ed9ab07a46e6b05e87681",
+      "raw_size": [
+        2049,
+        1350
+      ],
+      "crop": null,
+      "public_size": [
+        2049,
+        1350
+      ],
+      "public_sha256": "ed5bd323ecee96a3d5e531cdeb6c3e523af6512138e03e7abb7fefe45b1fcac0"
+    },
+    {
+      "id": "asset-search",
+      "raw_sha256": "8b3612b77a78774bc3b6bd4090974112f4d1b741e24f96260683eddb3ae13788",
+      "raw_size": [
+        1920,
+        1080
+      ],
+      "crop": [
+        225,
+        50,
+        1695,
+        990
+      ],
+      "public_size": [
+        1470,
+        940
+      ],
+      "public_sha256": "81fdea207c3f81b5d62f3ce1caf01006437284ffe7c96a71f2fa71cb435a6570"
+    },
+    {
+      "id": "gump-browser",
+      "raw_sha256": "8f24813ed47800c4421ee87df5f078feeae5481e895f2d005c554c1e13900a32",
+      "raw_size": [
+        1920,
+        1080
+      ],
+      "crop": [
+        0,
+        0,
+        1920,
+        900
+      ],
+      "public_size": [
+        1920,
+        900
+      ],
+      "public_sha256": "5a99a0032db3b700eb44057fb5a91743c417309d1b85f8a23ab8f4b21ce367b8"
+    },
+    {
+      "id": "animation-browser",
+      "raw_sha256": "66c68df7e0781f34da168b6f193b15096613a42563c063d081234cda22aa410d",
+      "raw_size": [
+        1920,
+        1080
+      ],
+      "crop": [
+        0,
+        0,
+        1920,
+        880
+      ],
+      "public_size": [
+        1920,
+        880
+      ],
+      "public_sha256": "a342c3eb8746e99213e86b0024dbd2527ea033eae45fe5ef5ff4acf1649fb2fb"
+    },
+    {
+      "id": "hue-operations",
+      "raw_sha256": "89e47b6b6cd27b74f5805c1a35308a9367b2146f70925dbfc01f777717d7c83b",
+      "raw_size": [
+        2049,
+        1350
+      ],
+      "crop": null,
+      "public_size": [
+        2049,
+        1350
+      ],
+      "public_sha256": "3ddc933af888ee8cd6c36545336cca2a1619d427cd7a05fff19e50aa5885d392"
+    },
+    {
+      "id": "hue-import",
+      "raw_sha256": "cff8e669ff850ac09505a41562936c4e065aff9f377ca2bae01c5ad2e824604f",
+      "raw_size": [
+        975,
+        666
+      ],
+      "crop": null,
+      "public_size": [
+        975,
+        666
+      ],
+      "public_sha256": "c87da2aa1fe27f0cd3ba300dc0b4fe01fc569feb004e58d1f87d20f3cac3cfd7"
+    },
+    {
+      "id": "cliloc-import",
+      "raw_sha256": "95c38fcd5dc854e854dc8d17987fbfef99d1db08978487a34afd93694287ea94",
+      "raw_size": [
+        1230,
+        680
+      ],
+      "crop": null,
+      "public_size": [
+        1230,
+        680
+      ],
+      "public_sha256": "f6db3383576bcf12884a3cc2125d51976921ba9849d683083fff6a4dcb5d2fd0"
+    },
+    {
+      "id": "cliloc-japanese",
+      "raw_sha256": "01a1b3786ed680b9cdbb88992baa704b28dcce62817993fe07b45ce412a88166",
+      "raw_size": [
+        2049,
+        1350
+      ],
+      "crop": null,
+      "public_size": [
+        2049,
+        1350
+      ],
+      "public_sha256": "0eb629e92224e3ac2cecd83586730e4f74245b6f84b8bec657c21d2d3bd1793b"
+    },
+    {
+      "id": "sound-browser",
+      "raw_sha256": "ed73c49062ebc4edf66c43dd6cf2a61a96e52f142875173f7989b37938064c35",
+      "raw_size": [
+        1920,
+        1080
+      ],
+      "crop": [
+        0,
+        0,
+        1920,
+        880
+      ],
+      "public_size": [
+        1920,
+        880
+      ],
+      "public_sha256": "28a593fe74903ec03584cbf22efac6c0ff7d8579c3d0d9fafa33642fc9172787"
+    },
+    {
+      "id": "sound-import",
+      "raw_sha256": "7b8948f974b9954de08bfe30531658b6ae199c5b2c7afdeebd4ef4ad328bbf0e",
+      "raw_size": [
+        990,
+        654
+      ],
+      "crop": null,
+      "public_size": [
+        990,
+        654
+      ],
+      "public_sha256": "0afd9748b9d0d3c345b85e190beadc56aff8b3ebf0aaa45f5a8e60fe54d240fc"
+    },
+    {
+      "id": "sound-export-review",
+      "raw_sha256": "631cb47306e4ca6f74f8a11e4228b3d1fec8d323978e3893bf228899bfbd18b5",
+      "raw_size": [
+        1320,
+        657
+      ],
+      "crop": null,
+      "public_size": [
+        1320,
+        657
+      ],
+      "public_sha256": "7ef7b689f1e8a59e7d3c82698bcc8776e45ed8c30d606ceca712012b4f91ac55"
+    },
+    {
+      "id": "multi-browser",
+      "raw_sha256": "0c581c479b744ab412b17fe206427602bc47978f5eb30584c4c41c0ab657e843",
+      "raw_size": [
+        1920,
+        1080
+      ],
+      "crop": [
+        0,
+        0,
+        1920,
+        900
+      ],
+      "public_size": [
+        1920,
+        900
+      ],
+      "public_sha256": "a35a8267ecc2d817117dd9d95734e363a9793beda0d1f44cc2862a98dc119ac9"
+    },
+    {
+      "id": "world-tools",
+      "raw_sha256": "93921eea1b4c3a489a89587d69c1a65eb69034ce9b69a5a140c4cc77280ee543",
+      "raw_size": [
+        1920,
+        1080
+      ],
+      "crop": [
+        0,
+        0,
+        1920,
+        880
+      ],
+      "public_size": [
+        1920,
+        880
+      ],
+      "public_sha256": "f29ccfb75d12ad2430c6826e572470606a7021b30f764d76ab7315265ba1552a"
+    },
+    {
+      "id": "world-guides",
+      "raw_sha256": "7216f5ff9ba8b3f1347b249e1aed1cab6b3b98a19f3eb6fa0625790c67db22d3",
+      "raw_size": [
+        1920,
+        1080
+      ],
+      "crop": [
+        0,
+        0,
+        1920,
+        880
+      ],
+      "public_size": [
+        1920,
+        880
+      ],
+      "public_sha256": "c28c93df9b6cd620d46cabc1c6e2a1664d6277fb80c86ac788253301ae9afa29"
+    },
+    {
+      "id": "world-map",
+      "raw_sha256": "e2abca5e4d3f8302a18c131ac7ec8486ff6e7651d28bb95ae3c0f8faad34bef5",
+      "raw_size": [
+        1920,
+        1080
+      ],
+      "crop": [
+        0,
+        0,
+        1920,
+        900
+      ],
+      "public_size": [
+        1920,
+        900
+      ],
+      "public_sha256": "e98ca6b77966010469b74f1791a90bf7fc72df174f8540ce17bc08d5ea493e86"
+    },
+    {
+      "id": "water-authoring",
+      "raw_sha256": "9abf75259794e9694c0d15db4c703a44fd283f9497a7f7654f4a6cf15a77c034",
+      "raw_size": [
+        1920,
+        1080
+      ],
+      "crop": [
+        0,
+        0,
+        1920,
+        880
+      ],
+      "public_size": [
+        1920,
+        880
+      ],
+      "public_sha256": "7833719064c4171668c483fb6e252d8db311b3d312e22a357dcebdb5b2232f13"
+    },
+    {
+      "id": "ai-chat",
+      "raw_sha256": "f8b91e6558b7935646d3faae485baa5fe13287886b96503c60f02870447e6e87",
+      "raw_size": [
+        1920,
+        1080
+      ],
+      "crop": [
+        0,
+        720,
+        1920,
+        1035
+      ],
+      "public_size": [
+        1920,
+        315
+      ],
+      "public_sha256": "482791ccb5b0e2ea28d661ad1c5fbf2035ffcee919487ddd7b19a9ffdfbe8e4b"
+    },
+    {
+      "id": "ai-queue",
+      "raw_sha256": "bce5b1a521f79f11c38d8ca9f18b730cef1b53033bdf608d5d348594bc2ef30d",
+      "raw_size": [
+        1920,
+        1080
+      ],
+      "crop": [
+        0,
+        810,
+        1920,
+        1035
+      ],
+      "public_size": [
+        1920,
+        225
+      ],
+      "public_sha256": "0e9783458f3f76e5efac4bde213eb2d1bd5614f99f2660fe0448826221315813"
+    },
+    {
+      "id": "content-store",
+      "raw_sha256": "7f40db81670cf92f09adb40aa8ae6b74fddb739a6b07c941101c6a31031c0f0e",
+      "raw_size": [
+        1920,
+        1080
+      ],
+      "crop": [
+        450,
+        190,
+        1920,
+        1035
+      ],
+      "public_size": [
+        1470,
+        845
+      ],
+      "public_sha256": "332e3433f094dbff06b722a507bbb9a5ad9556d5c7ad3b0131059d7262f61b2d"
+    },
+    {
+      "id": "gump-studio",
+      "raw_sha256": "49c555ee6b52634eaa0c56ae596c4a91b444c38c34fd0fffdbc94a7707708f62",
+      "raw_size": [
+        1600,
+        1000
+      ],
+      "crop": null,
+      "public_size": [
+        1600,
+        1000
+      ],
+      "public_sha256": "8f5d7c750bed53a2e5abb718239c14e638b2ff2697faa41da8308b4297b16fff"
+    },
+    {
+      "id": "editor-runbar",
+      "raw_sha256": "318ccbd1c26976b79b667dfd1c8a9eda92a023cb746ac10e4dbfd1165602e56d",
+      "raw_size": [
+        1920,
+        1080
+      ],
+      "crop": [
+        1530,
+        0,
+        1920,
+        205
+      ],
+      "public_size": [
+        390,
+        205
+      ],
+      "public_sha256": "28ada35cc3b861df1653645603513429f6c1fe958f75aeb22cd7657e5676d563"
+    }
+  ]
+}
