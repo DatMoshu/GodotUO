@@ -249,7 +249,11 @@ ModernUO spawner JSON under `Distribution/Data/Spawns/dfi/`:
 |---|---:|---|
 | `felucca.json`, `ilshenar.json`, `malas.json` | 1,398 | DFI's 2008 ESpawner exports (`*-ESS.xml`) |
 | `dfi-boss-arena.json` | 13 | staff-placed spawners in DFI's 2018 save (Green Acres) |
-| `kopia-free-items.json`, `kopia-faction-extras.json` | 40 | staff-placed spawners in kopia's 2018 save |
+| `kopia-faction-extras.json` | 13 | staff-placed spawners in kopia's 2018 save |
+
+kopia's free-items room (27 spawners handing out deeds, ethereals and a bank
+check) was dropped at the owner's request; `[DfiSpawns` deletes any spawner
+still named `kopia-free-items`, and what it spawned.
 
 `[DfiSpawns` (Administrator) deletes the classic monster and wildlife
 spawners those layouts replace, by the guids in ModernUO's own spawn files,
