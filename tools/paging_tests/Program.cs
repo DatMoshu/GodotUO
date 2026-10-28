@@ -51,7 +51,7 @@ static class Program
             Directory.Delete(root, true);
         }
 
-        Console.WriteLine(_failures == 0 ? "[paging] PASS" : $"[paging] FAIL ({_failures})");
+        Console.WriteLine(_failures == 0 ? $"[paging] PASS ({_checks} checks)" : $"[paging] FAIL ({_failures} of {_checks} checks)");
         return _failures == 0 ? 0 : 1;
     }
 
@@ -273,6 +273,7 @@ static class Program
 
         PinnedRevisionTests(root, runner);
         MultipleViewTests(root, runner);
+        TeardownTests(root, runner);
 
         var bad = g.ByFacet(42);
         File.AppendAllText(bad.MapPath, "x");
@@ -360,6 +361,38 @@ static class Program
             "queued: every pin released and residency back to the cap");
     }
 
+    // Logout or disconnect while a render holds a page: nothing it reads goes until it ends, nothing leaks.
+    static void TeardownTests(string root, DeferredRunner runner)
+    {
+        string grid = PageFixture.WriteGrid(Path.Combine(root, "teardown"), 16, 16, 2, new Dictionary<int, string>(), 40, 41, 42, 43);
+        var backend = new FakeBackend();
+        var s = new PagingSession(PageCatalog.Load(grid), backend, cap: 2, run: runner.Run);
+        Check(s.Enter(40, out _) && s.View(41, out _), "teardown: enter 40, render 41 pending");
+        backend.Log.Clear();
+        s.Clear();
+        Check(backend.Log.SequenceEqual(new[] { "unload 40" }) && s.Resident.SequenceEqual(new[] { 41 }) && s.PendingDrops == 1 && s.Current == -1,
+            "teardown: clear releases the unpinned page now, keeps the one the render reads");
+        s.Unpin(41);
+        Check(backend.Log.Last() == "unload 41" && s.Resident.Count == 0 && s.PinnedCount == 0 && s.PendingDrops == 0,
+            "teardown: the render's page goes when it ends; nothing resident, no pin left");
+
+        backend = new FakeBackend();
+        s = new PagingSession(PageCatalog.Load(grid), backend, cap: 2, run: runner.Run);
+        Check(s.Enter(40, out _) && s.View(41, out _), "teardown reconnect: render 41 pending");
+        s.Clear();
+        backend.Log.Clear();
+        Check(s.Enter(41, out _) && backend.Log.Count == 0 && s.PendingDrops == 0, "teardown reconnect: re-entering the held page reuses it");
+        s.Unpin(41);
+        Check(s.Resident.Contains(41) && s.Current == 41 && s.PinnedCount == 0, "teardown reconnect: the entered page stays after the render ends");
+        Check(s.View(42, out _) && s.View(42, out _), "teardown twice: two renders of 42");
+        s.Clear();
+        s.Unpin(42);
+        Check(s.Resident.Contains(42) && s.PendingDrops == 1, "teardown twice: one render still holds 42");
+        s.Unpin(42);
+        s.Unpin(42);
+        Check(s.Resident.Count == 0 && s.PinnedCount == 0 && s.PendingDrops == 0, "teardown twice: released after the last render; extra unpins are harmless");
+    }
+
     sealed class FakeBackend : IPageBackend
     {
         public readonly List<string> Log = new();
@@ -385,10 +418,12 @@ static class Program
         }
     }
 
+    static int _checks;
+
     static void Check(bool condition, string name)
     {
-        if (condition) return;
-        _failures++;
-        Console.WriteLine($"[paging] FAIL {name}");
+        _checks++;
+        Console.WriteLine($"[paging] {(condition ? "ok  " : "FAIL")} {name}");
+        if (!condition) _failures++;
     }
 }

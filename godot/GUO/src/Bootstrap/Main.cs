@@ -789,7 +789,14 @@ public partial class Main : Node
 
         if (_options.ObjectsWatch.Length > 0)
         {
+#if GUO_LABS
+            // Labs soak runs outlast the watch's 15 minutes; GUO_LABS_WATCH_SECONDS lengthens it.
+            await ObjectsDump.Watch(this, _options.ObjectsWatch,
+                double.TryParse(System.Environment.GetEnvironmentVariable("GUO_LABS_WATCH_SECONDS"), out double watchSeconds) && watchSeconds > 0
+                    ? watchSeconds : 900);
+#else
             await ObjectsDump.Watch(this, _options.ObjectsWatch);
+#endif
         }
 
         if (_options.ObjectsDump.Length > 0)
