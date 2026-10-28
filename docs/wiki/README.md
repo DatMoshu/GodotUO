@@ -46,4 +46,4 @@ directly, or the next sync overwrites it.
   passwords or private account names. The three game master test accounts
   may be named; the owner and trade-partner accounts are referred to by
   their `config.bat` variable only.
-- No game data, and no captures rendered from game data.
+- No raw game data or extracted client artwork. Owner-authorized illustrative GUO screenshots may be published only after removing credentials, chat/account identifiers and personal paths, with build/profile/resolution provenance; diagrams must not be presented as screenshots.

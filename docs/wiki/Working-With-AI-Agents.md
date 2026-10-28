@@ -89,3 +89,5 @@ with a port and token in its environment. Editor Settings > GUO > MCP Access
 has one switch per group of tools; anything that changes your server starts
 off, and each call is checked against your choices. See
 `tools\editor_mcp\README.md`.
+
+For the current gate defaults, client/editor/reference boundaries, permissions and inspect–act–verify loop, see [AI and MCP](AI-and-MCP.md).
