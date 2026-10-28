@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: BSD-2-Clause
 #if GUO_LABS
 using System;
+using System.Diagnostics;
 using System.Linq;
 using GUO.Game;
 using GUO.Game.Data;
+using GUO.Game.Managers;
+using GUO.Game.Scenes;
+using GUO.Game.UI.Gumps;
+using GUO.Network;
 using GUO.Utility.Logging;
 
 namespace GUO.Labs.Paging;
@@ -29,41 +34,71 @@ internal static class PagingLab
     internal static PagingSession Session => _session;
 
     /// <summary>
-    /// World.MapIndex calls this before the stock loader sees a new facet.
-    /// A page facet that cannot be made ready is refused out loud and the
-    /// client continues on facet 0, which is what the stock client does with
-    /// any facet it has no files for; only a server can refuse the move itself.
+    /// World.MapIndex calls this before the stock loader sees a new facet and
+    /// builds no map when it returns false. A page facet that cannot be made
+    /// ready is never replaced by another facet: the server has already put
+    /// the player there, so the client disconnects and says why on the login
+    /// screen instead of playing on with a map the server does not agree with.
     /// </summary>
-    internal static void BeforeMapChange(World world, ref int value)
+    internal static bool BeforeMapChange(World world, ref int value)
     {
-        if (_loader == null && (!PageCatalog.IsPageFacet(value) || !Enabled)) return;
+        if (_loader == null && (!PageCatalog.IsPageFacet(value) || !Enabled)) return true;
 
         if (_loader != null && !ReferenceEquals(Client.Game.UO.FileManager.Maps, _loader))
         {
             // UltimaLive (or anything else) replaced the loader; pages are gone with it.
-            Report(world, "map paging stopped: another map loader replaced it (UltimaLive?).");
             _session = null;
             _loader = null;
-            if (PageCatalog.IsPageFacet(value)) value = 0;
-            return;
+            if (!PageCatalog.IsPageFacet(value)) return true;
+            Refuse(world, $"page facet {value} refused: another map loader replaced map paging (UltimaLive?).");
+            return false;
         }
 
         if (!PageCatalog.IsPageFacet(value))
         {
             _session?.Leave();
-            return;
+            return true;
         }
 
+        var timer = Stopwatch.StartNew();
         if (!EnsureStarted(world, out string error) || !_session.Enter(value, out error))
         {
-            Report(world, $"page facet {value} refused: {error} Continuing on facet 0. Run {Doctor}.");
-            value = 0;
-            return;
+            Refuse(world, $"page facet {value} refused: {error}");
+            return false;
         }
 
-        Log.Info($"[paging] facet {value} ready (page {_session.Catalog.ByFacet(value).Id}); " +
-                 $"resident {string.Join(",", _session.Resident)} of cap {_session.Cap}, generation {_session.Generation}");
+        timer.Stop();
+        var page = _session.Catalog.ByFacet(value);
+        using var process = Process.GetCurrentProcess();
+        // Observations for the evidence log, not measurements of anything.
+        Log.Info($"[paging] facet {value} ready (page {page.Id}, version {page.Version}) in {timer.ElapsedMilliseconds} ms; " +
+                 $"resident {string.Join(",", _session.Resident)} of cap {_session.Cap}, open {_loader.OpenPages}, " +
+                 $"generation {_session.Generation}; working set {process.WorkingSet64 >> 20} MiB, managed heap {GC.GetTotalMemory(false) >> 20} MiB");
+        return true;
     }
+
+    /// <summary>
+    /// The client cannot follow the server onto this facet: disconnect, as
+    /// upstream does when the server agrees to a logout (0x1D), and show the
+    /// reason on the login screen. Nothing of the game world stays playable.
+    /// </summary>
+    private static void Refuse(World world, string reason)
+    {
+        string message = $"{reason} Disconnected so the client never plays on a map the server did not choose. Run {Doctor}.";
+        Log.Error("[paging] " + message);
+        LastRefusal = message;
+        NetClient.Socket.Disconnect();
+        var login = Client.Game.GetScene<LoginScene>();
+        if (login == null)
+        {
+            login = new LoginScene(world);
+            Client.Game.SetScene(login);
+        }
+        login.PopupMessage = message;
+        login.CurrentLoginStep = LoginSteps.PopUpMessage;
+    }
+
+    internal static string LastRefusal { get; private set; }
 
     private static bool EnsureStarted(World world, out string error)
     {
@@ -71,16 +106,10 @@ internal static class PagingLab
         if (_session != null) return true;
 
         var stock = Client.Game.UO.FileManager.Maps;
-        if (!string.IsNullOrEmpty(stock.MapsLayouts))
-        {
-            error = "the maps_layouts setting is in use; paging needs the stock facet layout.";
-            return false;
-        }
-        if (stock is GUO.Game.UltimaLive.ULMapLoader)
-        {
-            error = "this shard uses UltimaLive maps; paging cannot share the loader.";
-            return false;
-        }
+        // Every refusal is decided here, before anything is replaced: the
+        // stock loader, with whatever the shard has patched, stays as it is.
+        error = Preflight(stock);
+        if (error != null) return false;
 
         PageCatalog catalog;
         try
@@ -112,7 +141,19 @@ internal static class PagingLab
         return true;
     }
 
-    /// <summary>-paging [status|reload|verify]</summary>
+    /// <summary>Why paging cannot replace <paramref name="stock"/>, or null.</summary>
+    internal static string Preflight(Assets.MapLoader stock)
+    {
+        if (!string.IsNullOrEmpty(stock.MapsLayouts))
+            return "the maps_layouts setting is in use; paging needs the stock facet layout.";
+        if (stock is GUO.Game.UltimaLive.ULMapLoader)
+            return "this shard uses UltimaLive maps; paging cannot share the loader.";
+        string patched = PagedMapLoader.AppliedPatch(stock);
+        return patched == null ? null
+            : $"the shard has applied map patches ({patched}); paging cannot carry them across its loader yet.";
+    }
+
+    /// <summary>-paging [status|reload|verify|check|worldmap facet]</summary>
     internal static void Command(World world, string[] args)
     {
         string verb = args.Length > 1 ? args[1].ToLowerInvariant() : "status";
@@ -164,10 +205,61 @@ internal static class PagingLab
                 }
                 return;
 
+            case "check":
+                GameActions.Print(world, Check(world));
+                return;
+
+            case "worldmap":
+                // Test hook for the evidence run: the world map's free view
+                // pointed at any facet, evicted pages included (ADR-0046 gap).
+                if (args.Length < 3 || !int.TryParse(args[2], out int facet))
+                {
+                    GameActions.Print(world, "-paging worldmap <facet>");
+                    return;
+                }
+                var gump = UIManager.GetGump<WorldMapGump>() ?? new WorldMapGump(world);
+                if (gump.Parent == null && !UIManager.Gumps.Contains(gump)) UIManager.Add(gump);
+                gump.FreeView = true;
+                Log.Info($"[paging] world map free view -> facet {facet}; resident {string.Join(",", _session?.Resident ?? Array.Empty<int>())}");
+                gump.ChangeMap(facet);
+                Log.Info($"[paging] world map free view on facet {facet} returned; {Check(world)}");
+                return;
+
             default:
                 GameActions.Print(world, Status());
                 return;
         }
+    }
+
+    /// <summary>
+    /// The residency invariants, logged and printed: the current facet is
+    /// indexed, every page outside the resident set has no index and no
+    /// open files, and the open count matches the resident count.
+    /// </summary>
+    internal static string Check(World world)
+    {
+        if (_session == null || _loader == null) return "[paging] check: paging not started";
+        var problems = new System.Collections.Generic.List<string>();
+        int current = world.MapIndex;
+        if (PageCatalog.IsPageFacet(current) && (_loader.BlockData[current] == null || !_session.Resident.Contains(current)))
+            problems.Add($"current facet {current} is not resident");
+        for (int f = PageCatalog.FirstFacet; f <= PageCatalog.LastFacet; f++)
+        {
+            bool resident = _session.Resident.Contains(f);
+            if (!resident && (_loader.BlockData[f] != null || _loader.GetMapFile(f) != null))
+                problems.Add($"evicted facet {f} still has an index or open files");
+            if (resident && _loader.BlockData[f] == null)
+                problems.Add($"resident facet {f} has no index");
+        }
+        if (_loader.OpenPages != _session.Resident.Count)
+            problems.Add($"open pages {_loader.OpenPages} != resident {_session.Resident.Count}");
+        if (_session.Resident.Count > _session.Cap)
+            problems.Add($"resident {_session.Resident.Count} over cap {_session.Cap}");
+        string result = problems.Count == 0
+            ? $"[paging] check OK: current {current}, resident {string.Join(",", _session.Resident)} (cap {_session.Cap}), open {_loader.OpenPages}"
+            : "[paging] check FAILED: " + string.Join("; ", problems);
+        Log.Info(result);
+        return result;
     }
 
     internal static string Status()

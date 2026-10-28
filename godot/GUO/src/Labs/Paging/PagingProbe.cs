@@ -26,8 +26,8 @@ public partial class PagingProbe : Node
             string saved = Environment.GetEnvironmentVariable(PagingLab.ManifestVariable);
             Environment.SetEnvironmentVariable(PagingLab.ManifestVariable, null);
             int facet = 32;
-            PagingLab.BeforeMapChange(null, ref facet);
-            Require(!PagingLab.Enabled && facet == 32 && PagingLab.Session == null, "paging must be inert while its variable is unset");
+            bool proceed = PagingLab.BeforeMapChange(null, ref facet);
+            Require(proceed && !PagingLab.Enabled && facet == 32 && PagingLab.Session == null, "paging must be inert while its variable is unset");
             Environment.SetEnvironmentVariable(PagingLab.ManifestVariable, saved);
 
             string data = Environment.GetEnvironmentVariable("UO_CLIENT_DATA");
@@ -37,6 +37,22 @@ public partial class PagingProbe : Node
             int stockCount = MapLoader.MAPS_COUNT;
             files.Maps.LoadMap(0);
             var stockIndex = files.Maps.GetIndex(0, 180, 210);
+
+            // Applied shard patches: paging refuses before it replaces anything.
+            Require(PagingLab.Preflight(files.Maps) == null, "an unpatched stock loader must pass the preflight");
+            ref var patchedBlock = ref files.Maps.BlockData[0][1234];
+            ulong original = patchedBlock.MapAddress;
+            patchedBlock.MapAddress = original + 196; // what ApplyPatches does to a block's live address
+            string refusal = PagingLab.Preflight(files.Maps);
+            Require(refusal != null && refusal.Contains("map patches") && refusal.Contains("facet 0 block 1234"),
+                "an applied map patch must be refused: " + refusal);
+            patchedBlock.MapAddress = original;
+            ref var patchedStatics = ref files.Maps.BlockData[0][4321];
+            uint count = patchedStatics.StaticCount;
+            patchedStatics.StaticCount = count + 1;
+            Require(PagingLab.Preflight(files.Maps)?.Contains("facet 0 block 4321") == true, "an applied statics patch must be refused");
+            patchedStatics.StaticCount = count;
+            Require(PagingLab.Preflight(files.Maps) == null, "a reset patch table must pass again");
 
             var loader = new PagedMapLoader(files);
             loader.Load();
@@ -74,7 +90,7 @@ public partial class PagingProbe : Node
             session.Clear();
             Require(loader.OpenPages == 0 && loader.BlockData[33] == null && loader.BlockData[34] == null, "clearing must close every page");
             MapLoader.MAPS_COUNT = stockCount;
-            GD.Print("[paging] PASS: inert when unset, stock facet unchanged, page index from verified files, cap eviction closes files, truncated/unknown pages refused");
+            GD.Print("[paging] PASS: inert when unset, stock facet unchanged, page index from verified files, cap eviction closes files, truncated/unknown pages refused, applied patches refused before the swap");
             GetTree().Quit();
         }
         catch (Exception ex)

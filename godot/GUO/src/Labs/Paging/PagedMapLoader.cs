@@ -43,6 +43,30 @@ internal sealed class PagedMapLoader : MapLoader, IPageBackend
         for (int i = PageCatalog.FirstFacet; i <= PageCatalog.LastFacet; i++) ClearSlot(i);
     }
 
+    /// <summary>
+    /// Where <paramref name="stock"/> carries an applied shard map patch
+    /// (mapdif/stadif), or null. ApplyPatches moves a block's live address
+    /// or count away from its original one and ResetPatchesInBlockTable moves
+    /// it back; content overlays change both, so they do not count.
+    /// </summary>
+    internal static string AppliedPatch(MapLoader stock)
+    {
+        var data = stock.BlockData;
+        for (int map = 0; map < data.Length; map++)
+        {
+            var blocks = data[map];
+            if (blocks == null) continue;
+            for (int b = 0; b < blocks.Length; b++)
+            {
+                ref var e = ref blocks[b];
+                if (e.MapAddress != e.OriginalMapAddress || e.StaticAddress != e.OriginalStaticAddress ||
+                    e.StaticCount != e.OriginalStaticCount)
+                    return $"facet {map} block {b}";
+            }
+        }
+        return null;
+    }
+
     public void LoadPage(PageEntry page)
     {
         int i = page.Facet;

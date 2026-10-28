@@ -169,9 +169,12 @@ namespace GUO.Game
                     }
 
 #if GUO_LABS
-                    // PORT DEVIATION (GUO): L4 map paging readies a page facet (or refuses it
-                    // out loud) before the stock loader sees it; Labs/Paging/README.md.
-                    GUO.Labs.Paging.PagingLab.BeforeMapChange(this, ref value);
+                    // PORT DEVIATION (GUO): L4 map paging readies a page facet before the stock
+                    // loader sees it, or disconnects and builds no map; Labs/Paging/README.md.
+                    if (!GUO.Labs.Paging.PagingLab.BeforeMapChange(this, ref value))
+                    {
+                        return;
+                    }
 #endif
                     if (Map != null)
                     {
