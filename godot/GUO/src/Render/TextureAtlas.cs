@@ -94,9 +94,10 @@ namespace GUO.Renderer
         private readonly List<ImageTexture> _textures = new List<ImageTexture>();
         private readonly List<bool> _dirty = new List<bool>();
 
-        // PORT DEVIATION (GUO): not upstream's. How many times each page was
-        // uploaded, so LandPages (--merged-land=array, Epic B) can tell when
-        // its copy of a page is stale.
+        // PORT DEVIATION (GUO): not upstream's. How many times each page's
+        // CPU content changed, so LandPages (--merged-land=array, Epic B) can
+        // tell when its copy of a page is stale -- it copies the CPU image, so
+        // it must not wait for the GPU upload.
         private readonly List<int> _versions = new List<int>();
 
         private Packer _packer;
@@ -156,7 +157,6 @@ namespace GUO.Renderer
                     ObserveUpload(i, uploadTicks, false);
                     PageUploads++;
                     _dirty[i] = false;
-                    _versions[i]++;
                 }
             }
         }
@@ -232,6 +232,7 @@ namespace GUO.Renderer
             );
 
             atlas._dirty[index] = true;
+            atlas._versions[index]++;
 
             return true;
         }
@@ -341,6 +342,7 @@ namespace GUO.Renderer
             // Not uploaded here. See the remarks: the upload is the expensive
             // half and it happens once a frame, in Flush.
             _dirty[index] = true;
+            _versions[index]++;
 
             return _textures[index];
         }

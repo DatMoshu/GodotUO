@@ -190,6 +190,9 @@ namespace GUO
             Scene.Draw(_uoSpriteBatch, _renderTargets);
             _uoSpriteBatch.SetRenderTarget(null);
             _renderTargets.Draw(_uoSpriteBatch);
+            // PORT DEVIATION (GUO): as DrawFrame, upload what the draw decoded.
+            TextureAtlas.FlushAll();
+            LandPages.Sync();
         }
 
         internal void UnloadEmbedded()
@@ -1240,6 +1243,9 @@ namespace GUO
                 // a new action or direction, a new gump or glyph) would show as
                 // blank this frame. Upload them before the frame is rendered.
                 TextureAtlas.FlushAll();
+                // The land array copies the pages as well; bring it up to date
+                // for the same frame. A no-op when no page changed.
+                LandPages.Sync();
 
                 canvasFrameCompleted = true;
             }
