@@ -67,3 +67,26 @@ native/15/20/full-facet/back transitions and invalidation on RD and Compatibilit
 Inspect whole-facet and native-return screenshots. Clean diagnostic injection
 before required full smoke/export. No benchmark or FPS claim. Engine APIs
 reuse compiled/exercised patterns from the pinned Godot build. See data_formats.
+
+## Owner revision, 2026-10-27 evening
+
+Moshu superseded the 15x launch-argument experiment: standard Ultima zoom is
+the default; one off-by-default UO+ toggle enables native detail through 5x,
+then cached overview strictly above 5x. He confirmed a prominent player pin,
+floating city labels and several shader effects. This revision supersedes
+the earlier threshold, CLI gate and omission of labels in this ADR.
+
+L1 profile fields and behavior are specified in data_formats, Wide-zoom
+overview. Natural map is the default style. Parchment, relief edges and
+moonlight are optional map-only shaders; labels and pin stay readable.
+City data uses server-provided positions and loaded city marker packs rather
+than assuming standard coordinates on a custom shard. All resources have
+explicit disposal; the bounded cache and nearest sampling remain unchanged.
+No shader touches ordinary native world rendering. Turning the toggle off
+restores the standard camera bound on the next draw. A saved zoom above 2.5
+never reopens automatically, even when the option was left enabled.
+
+Acceptance includes profile defaults, native 5x versus overview above 5x,
+toggle-off while at full-facet zoom, cache/read limits, map invalidation,
+RD and Compatibility transitions, all style screenshots, pin and label
+visibility, plus a clean full smoke with the fixture removed. No FPS claim.

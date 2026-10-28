@@ -101,8 +101,9 @@ namespace GUO.Game.Scenes
 
             // PORT DEVIATION (GUO): --zoom-max=N lets the camera zoom out past
             // upstream's 2.5 (DepthWorldProbe.ZoomMax); off unless given.
-            if (DepthWorldProbe.ZoomMax > Camera.ZoomMax)
-                Camera.SetZoomRange(Camera.ZoomMin, DepthWorldProbe.ZoomMax, Camera.ZoomStep);
+            // The player option is the sole runtime gate; legacy launch flags
+            // must not silently enable an experimental player feature.
+            Camera.SetZoomRange(Camera.ZoomMin, 2.5f, Camera.ZoomStep);
 
             Camera.Zoom = ProfileManager.CurrentProfile.DefaultScale;
             Camera.Bounds.X = Math.Max(0, ProfileManager.CurrentProfile.GameWindowPosition.X);

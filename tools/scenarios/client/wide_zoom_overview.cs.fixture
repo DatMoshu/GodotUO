@@ -47,12 +47,12 @@ public partial class OverviewFixture : Node
             int level=WorldOverview.ChooseLevel(fit,Vector2.Zero,(Vector2)map-Vector2.One);
             int side=OverviewMapCache.TileSize<<level;
             Check(((map.X+side-1)/side)*((map.Y+side-1)/side)<=OverviewMapCache.Capacity,"whole facet within cache entry budget");
-            float zoom=15;int turns=0;while(zoom<fit && turns<80){zoom=Math.Min(fit,WorldOverview.WheelZoom(zoom,false,.1f));turns++;}
+            float zoom=5;int turns=0;while(zoom<fit && turns<80){zoom=Math.Min(fit,WorldOverview.WheelZoom(zoom,false,.1f));turns++;}
             Check(zoom==fit && turns<40,"world fit reachable with accelerated wheel");
-            while(zoom>15 && turns<160){zoom=WorldOverview.WheelZoom(zoom,true,.1f);turns++;}
-            Check(zoom==15 && WorldOverview.WheelZoom(zoom,true,.1f)<15,"wheel returns across threshold");
+            while(zoom>5 && turns<160){zoom=WorldOverview.WheelZoom(zoom,true,.1f);turns++;}
+            Check(zoom==5 && WorldOverview.WheelZoom(zoom,true,.1f)<5,"wheel returns across threshold");
         }
-        Check(WorldOverview.WheelZoom(14.9f,false,.1f)==15,"snap crossing to exact threshold");
+        Check(WorldOverview.WheelZoom(4.9f,false,.1f)==5,"snap crossing to exact threshold");
         Check(Math.Abs(WorldOverview.WheelZoom(2.5f,false,.1f)-2.6f)<.0001f,"ordinary wheel step unchanged");
     }
 
@@ -60,11 +60,15 @@ public partial class OverviewFixture : Node
     {
         string dir=System.Environment.GetEnvironmentVariable("GUO_OVERVIEW_FIXTURE_DIR");
         if (string.IsNullOrEmpty(dir)) return;
-        Directory.CreateDirectory(dir);
+        Directory.CreateDirectory(dir); GUO.Input.Gamepad.PadWizard.OfferAllowed=false;
         try
         {
-            Check(!WorldOverview.Enabled(14.999f) && WorldOverview.Enabled(15), "exact 15x threshold");
+            Check(!WorldOverview.Enabled(5) && WorldOverview.Enabled(5.001f), "native at 5, overview above 5");
             GeometryCases();
+            Check(!WorldOverview.EligibleCity(new CityInfo(0,"Old city","","",105,130,0,0,false),0,7168,4096), "legacy illustration coordinates excluded");
+            Check(WorldOverview.EligibleCity(new CityInfo(0,"New city","","",1431,1691,0,0,true),0,7168,4096), "authoritative world city accepted");
+            Check(!WorldOverview.EligibleCity(new CityInfo(0,"Wrong facet","","",1431,1691,0,1,true),0,7168,4096), "wrong city facet excluded");
+            Check(!WorldOverview.EligibleCity(new CityInfo(0,"Outside","","",7168,1691,0,0,true),0,7168,4096), "out-of-bounds city excluded");
             Check(!WorldOverview.KeepStatic(false,false,false,15), "small prop filtered");
             Check(WorldOverview.KeepStatic(true,false,false,0), "thin wall preserved");
             Check(WorldOverview.KeepStatic(false,true,false,0), "roof preserved");
@@ -94,7 +98,11 @@ public partial class OverviewFixture : Node
             var setup=typeof(GUO.Network.NetClient).GetMethod("SetupSocket",BindingFlags.Instance|BindingFlags.NonPublic);
             setup.Invoke(GUO.Network.NetClient.Socket,new[]{Enum.Parse(setup.GetParameters()[0].ParameterType,"TcpSocket")});
             ProfileManager.Load("Offline","overview-fixture","overview-fixture");
-            var profile=ProfileManager.CurrentProfile;profile.GameWindowFullSize=true;profile.TopbarGumpIsDisabled=true;
+            var profile=ProfileManager.CurrentProfile;
+            Check(!new Profile().ExperimentalWorldOverview, "new profile defaults off");
+            profile.ExperimentalWorldOverview=true;
+            WorldOverview.Cities=new[]{new CityInfo(0,"Britain","","",1431,1691,0,0,true),new CityInfo(1,"Southern city","","",2087,2861,0,0,true)};
+            profile.GameWindowFullSize=true;profile.TopbarGumpIsDisabled=true;
             profile.UseCircleOfTransparency=false;profile.NoColorObjectsOutOfRange=false;profile.EnableMousewheelScaleZoom=true;
             world.CreatePlayer(1);world.MapIndex=0;world.Player.Graphic=0x190;world.Player.Name="Overview fixture";
             world.Player.SetInWorldTile(1431,1691,0);
@@ -105,12 +113,12 @@ public partial class OverviewFixture : Node
             float fit=WorldOverview.FitZoom(mapWidth,mapHeight,scene.Camera.Bounds.Width,scene.Camera.Bounds.Height);
             Check(scene.Camera.ZoomMax==fit,"live camera range fits active facet");
             var rows=new List<object>();
-            foreach(float zoom in System.Environment.GetEnvironmentVariable("GUO_OVERVIEW_FULLSCREEN")=="1" ? new[]{fit} : new[]{2.5f,5f,14.9f,15f,20f,fit,20f,15f,2.5f})
+            foreach(float zoom in System.Environment.GetEnvironmentVariable("GUO_OVERVIEW_FULLSCREEN")=="1" ? new[]{fit} : new[]{2.5f,5f,6f,20f,fit,20f,6f,2.5f})
             {
                 int before=Loaded();scene.Camera.Zoom=zoom;scene.Camera.Update(true,0,GUO.Compat.Point.Zero);
                 for(int i=0;i<6;i++)await Frame();
                 int frames=0;
-                if(zoom>=15)
+                if(zoom>5)
                 {
                     while(scene.Overview.Cache.Visible.Any(t=>t.Blocks!=OverviewMapCache.BlocksPerTile))
                     {
@@ -137,12 +145,25 @@ public partial class OverviewFixture : Node
                 string path=Path.Combine(dir,$"zoom-{rows.Count}-{zoom:F1}.png");GetViewport().GetTexture().GetImage().SavePng(path);
                 rows.Add(new{zoom,maxZoom=scene.Camera.ZoomMax,level=scene.Overview?.Level??0,requestedTiles=scene.Overview?.RequestedTiles??0,richChunks=Loaded(),visibleTiles=scene.Overview?.Cache.Visible.Count??0,cacheTiles=scene.Overview?.Cache.Count??0,pixelBytes=scene.Overview?.Cache.PixelBytes??0,overview=scene.OverviewActive});
             }
+            scene.Camera.Zoom=fit;
+            for(int style=0;style<4;style++)
+            {
+                profile.WorldOverviewStyle=style;
+                for(int i=0;i<4;i++)await Frame();
+                await ToSignal(RenderingServer.Singleton,RenderingServerInstance.SignalName.FramePostDraw);
+                GetViewport().GetTexture().GetImage().SavePng(Path.Combine(dir,$"style-{style}.png"));
+            }
+            profile.ExperimentalWorldOverview=false;
+            for(int i=0;i<4;i++)await Frame();
+            Check(scene.Camera.Zoom<=2.5f && scene.Camera.ZoomMax==2.5f && !scene.OverviewActive,"disable during overview restores native range");
+            profile.ExperimentalWorldOverview=true;
+            for(int i=0;i<3;i++)await Frame();
             scene.Camera.Zoom=20;for(int i=0;i<5;i++)await Frame();
             var old=scene.Overview.Cache.Visible[0];Client.Game.UO.FileManager.Maps.NotifyDataChanged();
             for(int i=0;i<3;i++)await Frame();Check(!ReferenceEquals(old,scene.Overview.Cache.Visible[0]),"map edit invalidation");
             scene.Camera.Zoom=2.5f;
             File.WriteAllText(Path.Combine(dir,"result.json"),JsonSerializer.Serialize(new{pass=true,checks=_checks,rows},new JsonSerializerOptions{WriteIndented=true}));
-            GD.Print($"[overview] PASS {_checks} checks; 15x, whole facet, LOD, read budget, warm return, native return");
+            GD.Print($"[overview] PASS {_checks} checks; 5x gate, whole facet, LOD, read budget, warm return, native return");
             GetTree().Quit(0);
         }
         catch(Exception ex){GD.PrintErr("[overview] FAIL "+ex);GetTree().Quit(1);}

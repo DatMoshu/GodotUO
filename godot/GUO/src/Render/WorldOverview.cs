@@ -14,7 +14,7 @@ using Color = GUO.Compat.Color;
 
 namespace GUO.Renderer;
 
-internal sealed class WorldOverview : IDisposable, IOverviewBlocks
+internal sealed partial class WorldOverview : IDisposable, IOverviewBlocks
 {
     private readonly OverviewMapCache _cache = new();
     private readonly List<Vector3I> _keys = new();
@@ -27,8 +27,8 @@ internal sealed class WorldOverview : IDisposable, IOverviewBlocks
     private Vector2 _centre;
     private readonly Comparison<Vector3I> _nearest;
     internal OverviewMapCache Cache => _cache;
-    internal const float Threshold = 15f;
-    internal static bool Enabled(float zoom) => zoom >= Threshold;
+    internal const float Threshold = 5f;
+    internal static bool Enabled(float zoom) => zoom > Threshold;
     internal int Level { get; private set; }
     internal int RequestedTiles => _keys.Count;
     private readonly uint[] _sampleBlock = new uint[64];
@@ -66,7 +66,7 @@ internal sealed class WorldOverview : IDisposable, IOverviewBlocks
     internal static int ChooseLevel(float zoom, Vector2 lo, Vector2 hi)
     {
         int level = 0;
-        while (level < 12 && (1 << (level + 1)) <= zoom / Threshold) level++;
+        while (level < 12 && (1 << (level + 1)) <= zoom / 15f) level++;
         while (level < 12)
         {
             int side = OverviewMapCache.TileSize << level;
@@ -127,6 +127,7 @@ internal sealed class WorldOverview : IDisposable, IOverviewBlocks
             Stopwatch.GetTimestamp() + Stopwatch.Frequency * OverviewMapCache.FrameMilliseconds / 1000);
         _cache.Upload();
 
+        EnsureStyle();
         batcher.Begin();
         batcher.SetSampler(SamplerState.PointClamp);
         batcher.SetCircleOfTransparencyRadius(0);
@@ -141,13 +142,13 @@ internal sealed class WorldOverview : IDisposable, IOverviewBlocks
             if (tile.Texture != null) DrawTile(batcher, tile);
         batcher.ClipEnd();
         var player = transform * new Vector2(world.Player.X + .5f, world.Player.Y + .5f);
-        batcher.Draw(SolidColorTextureCache.GetTexture(Color.Black), new Rectangle((int)player.X - 4, (int)player.Y - 4, 9, 9), Vector3.Back, 0);
-        batcher.Draw(SolidColorTextureCache.GetTexture(Color.White), new Rectangle((int)player.X - 2, (int)player.Y - 2, 5, 5), Vector3.Back, 0);
+        DrawLabels(batcher, transform, world.Map.Index, width, height, size, player);
+        DrawPlayerPin(batcher, player);
         batcher.End();
     }
 
-    private static void DrawTile(UltimaBatcher2D batcher, OverviewMapCache.Tile tile) =>
-        batcher.Draw(tile.Texture, new Rectangle(tile.Key.X * tile.Side, tile.Key.Y * tile.Side, tile.Side, tile.Side), Vector3.Back, 0);
+    private void DrawTile(UltimaBatcher2D batcher, OverviewMapCache.Tile tile) =>
+        batcher.DrawOverviewTexture(tile.Texture, new Rect2(tile.Key.X * tile.Side, tile.Key.Y * tile.Side, tile.Side, tile.Side), _mapMaterial);
 
     public void ReadBlock(int x, int y, int step, Span<uint> colors)
     {
@@ -234,5 +235,5 @@ internal sealed class WorldOverview : IDisposable, IOverviewBlocks
         }
     }
     internal static bool KeepStatic(bool wall, bool roof, bool surface, int height) => wall || roof || surface || height >= 16;
-    public void Dispose() { _cache.Dispose(); _world = null; _maps = null; }
+    public void Dispose() { _cache.Dispose(); _pinMaterial?.Dispose(); _pinShader?.Dispose(); _pinMaterial = null; _pinShader = null; _mapMaterial?.Dispose(); _mapShader?.Dispose(); _mapMaterial = null; _mapShader = null; _world = null; _maps = null; }
 }

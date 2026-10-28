@@ -63,6 +63,11 @@ namespace GUO.Configuration
         // been through; absent (0) in every profile saved before it existed.
         public int ProfileVersion { get; set; }
 
+        // PORT DEVIATION (GUO): owner-approved optional overview, ADR-0045.
+        public bool ExperimentalWorldOverview { get; set; }
+        public int WorldOverviewStyle { get; set; } // 0 natural, 1 parchment, 2 relief, 3 moonlight
+
+
         // sounds
         public bool EnableSound { get; set; } = true;
         public int SoundVolume { get; set; } = 100;

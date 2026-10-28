@@ -3601,7 +3601,13 @@ twice a second on a timer thread from Windows `GetSystemTimes` /
 The count gate requires `export_template: release`, `engine_debug_build:
 false`, `quiet_fixture: true` and `p50_ms`. PerfDump receipts add
 `engine_debug_build`, `export_template` and `quiet_fixture`
-(`GUO_PERF_QUIET=1`, `tools/perf_dump --only guo --quiet`).
+(`GUO_PERF_QUIET=1`, `tools/perf_dump --only guo --quiet`). The report's
+top-level `atlas_page_1024` is true when `GUO_ATLAS_PAGE_1024=1` (off by
+default) gave the art, animation, gump and glyph atlases 1024 pages
+(`docs/perf/2026-10-24_atlas_1024_pages.md`).
+top-level `minimap_texture` is true when `GUO_MINIMAP_TEXTURE=1` (off by
+default) gave the minimap its own texture instead of its gump atlas region
+(`docs/perf/2026-10-24_minimap_texture.md`).
 
 **Probe JSON**, `perf_<label>.json`, written by the client's `--perf-probe`
 (`src/Bootstrap/PerfProbe.cs`): `{label, window "WxH", zoom, optimized,
@@ -4085,19 +4091,35 @@ measure work, not GPU time or a portable FPS gain.
 
 ### Wide-zoom overview (ADR-0045)
 
-An explicit `--zoom-max` of at least 15 enables whole-facet zoom. Native detail
-and picking remain below 15; at 15 and above, a progressive local isometric
-terrain/building map takes over. It omits mobiles, labels, effects, small props
-and dynamic item/multi art; the player marker remains. World mouse actions are
-view-only; simulation and macros continue. Save/login clamps above 2.5.
+The UO+ option **Experimental zoom + world map** is off by default.
+Profile `experimental_world_overview` enables native zoom through 5x and a
+cached isometric terrain/building map strictly above 5x. Disabling it while
+zoomed out immediately restores the standard 2.5 maximum. Legacy `--zoom-max`
+arguments do not enable the player option. Saved/default zoom still clamps
+above 2.5, including after a forced exit.
 
-The camera maximum fits the complete current facet with a 32-pixel margin,
-recalculated for viewport/facet changes. Overview Ctrl+wheel steps are 20 percent;
-normal steps below 15 are unchanged. The view gradually recentres on the facet.
-No new profile/network/disk-cache format. Cache keys include resolution level;
-coarser power-of-two sampling covers the entire visible area within 128 entries.
-Existing cached levels preview the map while a new level loads. The cache is
-bounded to 32 MiB CPU pixels plus 32 MiB texture payload; at most 128 native map
-reads for fine frames, 512 for coarse, two uploads and a soft 4 ms preparation
-deadline. Map revision/facet/season/theme changes invalidate all levels.
+`world_overview_style` selects Natural (0, default), Parchment (1), Relief
+edges (2), or Moonlight (3); invalid values render as a clamped supported style.
+Shaders affect only cached map textures. A fixed-size animated player pin and
+floating city labels draw separately. City coordinates come from the latest
+server city list with authoritative world coordinates (legacy illustration coordinates are excluded) and already-loaded city/town marker packs; hidden marker
+files stay hidden. Labels avoid the player pin and each other, cap at 63,
+and stay a fixed screen size. At most 2048 loaded markers are inspected per frame. Facets without city data have no invented labels.
+
+Overview omits detailed mobiles, small props, effects and dynamic item/multi
+art. World mouse actions are view-only; simulation and macros continue.
+The camera fits the current facet with a 32-pixel margin and recentres as the
+view widens. Above 5x, Ctrl+wheel steps are 20 percent; native steps are unchanged.
+Cache keys include resolution level. Sampling quality is independent of the
+transition threshold. Existing cached levels preview while new levels load.
+The cache is bounded to 32 MiB CPU pixels plus 32 MiB texture payload; at most
+128 native map reads for fine frames, 512 for coarse, two uploads and a soft
+4 ms preparation deadline. Map revision/facet/season/theme changes invalidate
+all levels. No disk-cache or network-format change.
 Scenario: `tools/scenarios/client/wide_zoom_overview.cs.fixture`.
+
+The effective performance cohort requires boolean `atlas_page_1024` and
+`minimap_texture` flags from runtime identity. Undeclared drift rejects a
+comparison without replacing its baseline; intentionally varied flags require
+explicit experiment arms. Older incomplete receipts need a fresh baseline.
+This metadata change does not authorize benchmarking.

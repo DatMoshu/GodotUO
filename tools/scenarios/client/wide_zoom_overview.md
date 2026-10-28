@@ -1,18 +1,19 @@
-# Wide-zoom / whole-facet overview
+# Experimental zoom and cached overview
 
-Owner-authorized at15 transition and entire-facet zoom, ADR-0045. Explicit
---zoom-max>=15 enables dynamic fit range; defaults and saved2.5 clamp unchanged.
+Inject wide_zoom_overview.cs.fixture as Bootstrap/OverviewFixture.cs into an
+external source stage and add its Node to Main. Set GUO_OVERVIEW_FIXTURE_DIR.
+Run --play --window-size 1280x720 without credentials, on forward_plus and
+gl_compatibility. The fixture explicitly enables the profile toggle; no
+--zoom-max flag is required. It disables only its own controller setup offer.
 
-Inject wide_zoom_overview.cs.fixture as Bootstrap/OverviewFixture.cs and add
-its Node to Main in an external stage. Set GUO_OVERVIEW_FIXTURE_DIR, then run
---play --zoom-max=20 --window-size1280x720 without credentials. Repeat on
-gl_compatibility. GUO_OVERVIEW_FULLSCREEN=1 checks only full-facet fit at a
-resolution appropriate to the owner's fullscreen issue. No network or benchmark.
+Checks: new-profile default off, exact native 5x/overview above 5x boundary,
+wheel steps, whole-facet geometry, bounded cache/source reads/uploads, warm
+return, map invalidation, hidden selection, no distant detailed chunks, and
+toggle-off at full-map zoom restoring standard 2.5 maximum. Capture each of
+the four styles and inspect the prominent player pin and floating city label.
+Fixture city names are synthetic. Counts include per-frame budget checks;
+they vary with loading and are correctness assertions, not benchmarks.
 
-Checks include exact15 threshold, unchanged ordinary wheel and accelerated
-overview wheel, all facet corners inside viewport across player positions,
-multiresolution cache/source-read budgets, no visible-tile truncation, warm
-return, actual offline world/full-map/native transitions and invalidation.
-result.json records correctness counters, not FPS. Remove injection before
-full smoke. Expected line: [overview] PASS ... checks. Inspect whole-facet and
-returned-native screenshots. Cold map regions may fill progressively.
+Expected smoke line: [overview] PASS ... checks; 5x gate, whole facet, LOD,
+read budget, warm return, native return. Remove injected sources and Main hook
+before full smoke and export. Cold terrain fills progressively.

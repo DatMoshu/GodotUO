@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 // PORT DEVIATION (GUO): owner-approved wide-zoom overview, ADR-0045.
 using Godot;
+using GUO.Configuration;
 using GUO.Game.GameObjects;
 using GUO.Renderer;
 
@@ -9,12 +10,18 @@ internal partial class GameScene
 {
     private WorldOverview _overview;
     private bool _wasOverview;
-    internal bool OverviewActive => DepthWorldProbe.ZoomMax >= WorldOverview.Threshold && WorldOverview.Enabled(Camera.Zoom);
+    internal bool OverviewEnabled => ProfileManager.CurrentProfile?.ExperimentalWorldOverview == true;
+    internal bool OverviewActive => OverviewEnabled && WorldOverview.Enabled(Camera.Zoom);
     internal WorldOverview Overview => _overview;
 
     private void EnsureOverviewZoomRange()
     {
-        if (DepthWorldProbe.ZoomMax < WorldOverview.Threshold || _world.Map == null
+        if (!OverviewEnabled)
+        {
+            if (Camera.ZoomMax != 2.5f) Camera.SetZoomRange(Camera.ZoomMin, 2.5f, Camera.ZoomStep);
+            return;
+        }
+        if (_world.Map == null
             || Camera.Bounds.Width <= 64 || Camera.Bounds.Height <= 64) return;
         var maps = Client.Game.UO.FileManager.Maps;
         int map = _world.Map.Index;

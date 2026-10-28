@@ -1016,7 +1016,7 @@ namespace GUO.Game.Scenes
             if (Keyboard.Ctrl && ProfileManager.CurrentProfile.EnableMousewheelScaleZoom)
             {
                 // PORT DEVIATION (GUO): ADR-0045, accelerate only the explicit overview range.
-                if (DepthWorldProbe.ZoomMax >= WorldOverview.Threshold)
+                if (OverviewEnabled)
                 {
                     EnsureOverviewZoomRange();
                     Camera.Zoom = WorldOverview.WheelZoom(Camera.Zoom, up, Camera.ZoomStep);
