@@ -15,20 +15,26 @@ static class Program
         if (args.Length == 2 && args[0] == "--validate") return Validate(args[1]);
         if (args.Length >= 2 && args[0] == "--fixture")
         {
-            int w = 64, h = 64;
-            if (args.Length == 4 && args[2] == "--size")
+            int w = 64, h = 64, rows = 1, cols = 2, first = 32;
+            for (int a = 2; a + 1 < args.Length; a += 2)
             {
-                var parts = args[3].Split('x');
-                w = int.Parse(parts[0]);
-                h = int.Parse(parts[1]);
+                var parts = args[a + 1].Split('x');
+                switch (args[a])
+                {
+                    case "--size": w = int.Parse(parts[0]); h = int.Parse(parts[1]); break;
+                    case "--grid": rows = int.Parse(parts[0]); cols = int.Parse(parts[1]); break;
+                    case "--first-facet": first = int.Parse(args[a + 1]); break;
+                    default: Console.Error.WriteLine("unknown option " + args[a]); return 2;
+                }
             }
-            string manifest = PageFixture.WriteTwoPages(args[1], w, h);
+            string manifest = PageFixture.WriteGrid(args[1], w, h, rows, new Dictionary<int, string>(),
+                Enumerable.Range(first, rows * cols).ToArray());
             Console.WriteLine($"[paging] fixture written: {manifest}");
             return Validate(manifest);
         }
         if (args.Length != 0)
         {
-            Console.Error.WriteLine("usage: PagingTests [--validate <manifest.json> | --fixture <dir> [--size WxH]]");
+            Console.Error.WriteLine("usage: PagingTests [--validate <manifest.json> | --fixture <dir> [--size WxH] [--grid RxC] [--first-facet N]]");
             return 2;
         }
 
@@ -216,6 +222,16 @@ static class Program
         runner.CompleteAll();
         Check(!late.IsVerified(33) && late.StaleResultsDropped >= 1, "late neighbour result from an older generation dropped");
         Check(late.Resident.Count <= late.Cap, "resident count within the cap");
+
+        string grid = PageFixture.WriteGrid(Path.Combine(root, "grid"), 16, 16, 2, new Dictionary<int, string>(), 40, 41, 42, 43);
+        var g = PageCatalog.Load(grid);
+        Check(g.ByFacet(40).Neighbors["east"] == "p41" && g.ByFacet(40).Neighbors["south"] == "p42" &&
+              g.ByFacet(43).Neighbors["north"] == "p41" && g.ByFacet(43).Neighbors["west"] == "p42" &&
+              !g.ByFacet(40).Neighbors.ContainsKey("north"), "2x2 grid neighbours");
+        var loop = new PagingSession(g, new FakeBackend(), cap: 2, run: runner.Run);
+        foreach (int f in new[] { 40, 41, 43, 42, 40 }) Check(loop.Enter(f, out _), $"grid loop enters {f}");
+        Check(loop.Resident.Count == 2 && loop.Resident.First() == 40 && loop.Resident.Contains(42) && loop.Evictions == 3,
+            "a corner loop through four pages keeps two");
 
         var one = new PagingSession(PageCatalog.Load(manifest), new FakeBackend(), cap: 0, run: runner.Run);
         Check(one.Cap == 1, "cap clamps to at least one page");

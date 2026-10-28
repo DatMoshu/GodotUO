@@ -42,9 +42,18 @@ internal static class PageFixture
         WritePages(dir, width, height, new Dictionary<int, string>(), facets);
 
     /// <summary>A west-to-east row of pages; <paramref name="versions"/> revises chosen pages.</summary>
-    internal static string WritePages(string dir, int width, int height, Dictionary<int, string> versions, params int[] facets)
+    internal static string WritePages(string dir, int width, int height, Dictionary<int, string> versions, params int[] facets) =>
+        WriteGrid(dir, width, height, 1, versions, facets);
+
+    /// <summary>
+    /// Pages in <paramref name="rows"/> rows, row-major from the north-west,
+    /// each the cardinal neighbour of the next one along its row and column.
+    /// </summary>
+    internal static string WriteGrid(string dir, int width, int height, int rows, Dictionary<int, string> versions, params int[] facets)
     {
         Directory.CreateDirectory(dir);
+        int cols = facets.Length / rows;
+        if (rows < 1 || cols * rows != facets.Length) throw new ArgumentException("facets do not fill the grid");
         var pages = new List<string>();
         for (int i = 0; i < facets.Length; i++)
         {
@@ -74,11 +83,13 @@ internal static class PageFixture
             File.WriteAllBytes(Path.Combine(dir, idxName), idx);
             File.WriteAllBytes(Path.Combine(dir, staName), statics);
 
+            int row = i / cols, col = i % cols;
             var neighbors = new Dictionary<string, string>
             {
-                ["north"] = null, ["south"] = null,
-                ["west"] = i > 0 ? $"p{facets[i - 1]}" : null,
-                ["east"] = i + 1 < facets.Length ? $"p{facets[i + 1]}" : null,
+                ["north"] = row > 0 ? $"p{facets[i - cols]}" : null,
+                ["south"] = row + 1 < rows ? $"p{facets[i + cols]}" : null,
+                ["west"] = col > 0 ? $"p{facets[i - 1]}" : null,
+                ["east"] = col + 1 < cols ? $"p{facets[i + 1]}" : null,
             };
             pages.Add(JsonSerializer.Serialize(new Dictionary<string, object>
             {
