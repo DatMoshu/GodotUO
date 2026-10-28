@@ -24,9 +24,13 @@ When the shard first moves the player to a page facet, the client replaces
 its map loader with `PagedMapLoader` (stock facets load exactly as before),
 verifies the page's files against the manifest and builds its block index
 before the new map exists. A page that cannot be used is refused: the client
-logs the reason, disconnects and shows a login popup naming this doctor. It
-never builds a map for a facet the server did not choose, so there is no
-playable wrong-facet state.
+logs the reason, disconnects and shows a short login popup that points to
+the log and names this doctor. It never builds a map for a facet the server
+did not choose, so there is no playable wrong-facet state.
+
+Pages go with the world: `World.Clear` (logout, disconnect, scene change)
+releases every page at once, except one a world-map render still reads,
+which goes when that render ends (or stays, if it is entered again first).
 
 The swap is refused before it replaces anything when the stock loader carries
 applied shard map patches (mapdif/stadif blocks moved off their original
@@ -34,11 +38,20 @@ address or count), a custom `MapsLayouts`, or upstream's UltimaLive loader;
 paging cannot carry those across yet.
 
 In game: `-paging` (status), `-paging verify` (check every page now),
-`-paging reload` (reread the manifest; revised resident pages are dropped,
-the current one is rebuilt when next entered), `-paging check` (residency
-invariants: current page resident, within the cap, open files match),
-`-paging worldmap [facet]` (open the world map, then point its free view at
-a facet; a test hook).
+`-paging reload` (reread the manifest; revised resident pages are dropped
+unless current or read by a world map, which are rebuilt on their next entry
+or when the map is done), `-paging check` (residency invariants: current page
+resident, within the bound, open files match).
+
+Test hooks for the evidence runs:
+- `-paging worldmap [facet]` opens the world map, then points its free view at
+  a facet.
+- `-paging worldmap-offscreen <facet>` renders the world map of a facet in a
+  gump that is never drawn, and disposes it when its renders end (the soak).
+- `-paging minimap` opens the minimap.
+- `-paging logout` runs the upstream quit prompt's "yes".
+- `-paging mem [gc]` logs the working set and managed heap, after a full
+  collection when `gc` is given.
 
 The world map works on page facets. Before `WorldMapGump.ChangeMap` asks the
 stock loader for a page facet, paging makes it readable: a resident page is
@@ -52,9 +65,12 @@ it:
 - A second world-map view of that page is refused until the render ends.
 - A pinned page whose own files changed on disk is refused.
 
-When the last pin goes (on the main thread), a stale copy that is not the
-current page is dropped, and residency is trimmed back to the cap at once,
-without waiting for a crossing.
+Pins are held per world map gump until all of that gump's renders have
+ended, not per render. Upstream's render reads the gump's map field when it
+runs, so a render queued for one facet can read the facet a later request
+chose. When the last pin goes (on the main thread), a stale copy that is not
+the current page is dropped, and residency is trimmed back to the cap at
+once, without waiting for a crossing.
 
 Residency is bounded by the cap, or, when more pages are pinned than that,
 by the pinned pages plus the current one (`PagingSession.Bound`; queued
@@ -103,6 +119,14 @@ it on every run and the probe when `GuoLabs=true`.
 - An empty statics file breaks upstream's world map (no reader for a
   zero-length file); real data never has one, and the synthetic fixture
   writes one marker static per page.
+- Port defect found by the soak, not paging's (L0, open): `WorldMapGump.LoadMap`
+  disposes the gump's texture on its background task while the main thread
+  may be drawing it. In GUO the draw then throws `ObjectDisposedException`,
+  and `UltimaBatcher2D` stays begun, so every later frame fails. Upstream
+  does the same dispose under FNA. Both sides are ported code, not paging;
+  it was seen once in a 15-minute run of visible world-map switching with
+  paging on, and is not yet reproduced with paging off. The soak renders
+  offscreen to measure paging alone.
 - Applied map patches are refused, not carried over: no paging on a shard
   that sends map patches. Proven by the probe only (the test install is UOP,
   which loads no difs).

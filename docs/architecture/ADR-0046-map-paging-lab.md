@@ -64,7 +64,8 @@ residency session are engine-free and tested with dotnet
 (`tools/paging_tests`). Doctor: `launchers/dev/paging_doctor`. Before the
 swap a preflight refuses paging when the stock loader carries applied map
 patches, a custom `MapsLayouts` or the UltimaLive loader. The world map's
-`ChangeMap` has the same kind of seam for page facets.
+`ChangeMap` has the same kind of seam for page facets, and `World.Clear` one
+that releases the pages with the world (logout, disconnect).
 
 ## ADR Dependencies
 

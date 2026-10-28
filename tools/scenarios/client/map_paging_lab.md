@@ -28,7 +28,7 @@ every run and the probe when `GuoLabs=true`. Covered:
 ## Off state
 
 1. Default build (`GuoLabs` unset): Labs sources are not compiled, and the
-   seams in `World.MapIndex`, `WorldMapGump.ChangeMap` and the objects watch
+   seams in `World.MapIndex`, `World.Clear`, `WorldMapGump.ChangeMap` and the objects watch
    are inside `#if GUO_LABS`. A deterministic default build of `GUO.dll` is
    byte-identical with and without them.
 2. `launchers\dev\smoke.bat` passes with `GuoLabs` and `GUO_LABS_PAGING` unset.
@@ -91,6 +91,41 @@ PASS. Driver: `run_m2_worldmap.py`, kept with the evidence.
 - No `error loading worldmap` in the run. Attempts 7 and 8 are kept: 7 hit
   the empty statics file of the old fixture, and 8 crossed after the render
   had already ended, so it did not test the overlap.
+
+## Pinned-page lifecycle, teardown and soak (m2 follow-up 3)
+
+Run 2026-10-28 with the driver `run_m3.py`, kept with the evidence.
+`data/m2/attempt16/data/m3_report.json`: every case passed except the soak,
+which the client's 15-minute objects-watch limit cut short. The soak was
+rerun on its own in attempt17. Shake-outs are kept as attempts 11–15.
+
+- **Revision while a render holds a page, then a crossing (real page 33):**
+  the entry keeps the previous copy. The log order is: view, reload, entered
+  on the previous copy, render ended. Nothing is unloaded mid-render.
+- **Then a view:** a second view of revised page 41 is refused while its
+  render runs. The stale copy goes when the render ends, and the next view
+  loads v1b.
+- **Queued views 42, 40, 42, 43 with crossings:** residency went to 3, which
+  is the bound at cap 2 (43 was refused for lack of room). All pins were
+  released, then `-paging check` was OK.
+- **Disconnect (shard kick, auto-reconnect), logout (fresh client) and quit
+  (fresh client), each while a render runs:** no crash. The world is cleared
+  with the rendered page left to its render, which releases it. No pin is
+  left, and the quit exits 0.
+- **Stale current page (real 33, revised with a sand patch):** the world and
+  the minimap show the old content, and the world map draws the previous
+  copy. After re-entry, the world and minimap switch together. The two world
+  map renders differ only inside the patch, and all of it changed
+  (`attempt16/data/worldmap_stale_vs_revised.json`).
+- **Soak, 32 minutes at cap 2** (attempt17, `data/soak_samples.json`): 355
+  crossings and 182 offscreen world-map renders, sampled every 30 s.
+  - The live heap after GC goes from 198 to 225 MiB in the first minute,
+    stays flat for about 20 minutes, then rises to 234 MiB in the last 12.
+  - Private memory stays at about 2.2–2.3 GiB.
+  - The working set falls, as the OS trims it.
+  - This is a trend, not a budget.
+- **Popup:** the refusal popup is shorter and fits the box (see the m2 fix1
+  still in `attempt18/regression`).
 
 Each `facet N ready` line logs load time, working set and managed heap; these
 are observations only.
