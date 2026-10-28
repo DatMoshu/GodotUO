@@ -111,7 +111,8 @@ REM  names the shared .git, whose parent is the main checkout. Read from the
 REM  files, so git need not be on PATH.
 :find_main_checkout
 set "UO_MAIN_CHECKOUT="
-if exist "%UO_ROOT%\.git\" exit /b 0
+REM A trailing slash alone also matches a .git FILE in cmd.exe.
+if exist "%UO_ROOT%\.git\HEAD" exit /b 0
 if not exist "%UO_ROOT%\.git" exit /b 0
 set "UO__GITDIR="
 for /f "usebackq tokens=1,*" %%A in ("%UO_ROOT%\.git") do if /i "%%A"=="gitdir:" set "UO__GITDIR=%%B"

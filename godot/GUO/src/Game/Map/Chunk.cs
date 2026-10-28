@@ -128,6 +128,13 @@ namespace GUO.Game.Map
         // objects' screen positions are refreshed on the next visit.
         public bool ScreenPositionsStale;
 
+        // PORT DEVIATION (GUO): ADR-0044 Depth World walk reuse
+        // (GameScene.ChunkReuse.cs): bumped whenever an object enters or
+        // leaves one of this chunk's tiles, and the last walk's record.
+        internal int ObjectsVersion;
+        internal ulong DirtyTiles; // one bit per tile, (x << 3) | y
+        internal Scenes.GameScene.ChunkWalk Walk;
+
 
         public static Chunk Create(World world, int x, int y)
         {
@@ -272,6 +279,7 @@ namespace GUO.Game.Map
 
         public void AddGameObject(GameObject obj, int x, int y)
         {
+            ObjectsVersion++; DirtyTiles |= 1UL << ((x << 3) | y); // PORT DEVIATION (GUO): ChunkReuse
             Mesh.MarkDirtyIfNeeded(obj);
             obj.RemoveFromTile();
             // PORT DEVIATION (GUO): old ownership was invalidated by unlink;
@@ -462,6 +470,7 @@ namespace GUO.Game.Map
 
         public void RemoveGameObject(GameObject obj, int x, int y)
         {
+            ObjectsVersion++; DirtyTiles |= 1UL << ((x << 3) | y); // PORT DEVIATION (GUO): ChunkReuse
             Mesh.MarkDirtyIfNeeded(obj);
             ref GameObject firstNode = ref Tiles[x, y];
 

@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: BSD-2-Clause
+// SPDX-License-Identifier: BSD-2-Clause
 
 using System.Collections.Generic;
 using GUO.Assets;
@@ -51,6 +51,10 @@ namespace GUO.Game.Scenes
 
         private readonly RenderLists _renderLists = new();
         private readonly List<Map.Chunk> _visibleChunks = new();
+        // PORT DEVIATION (GUO): ADR-0044. The chunks whose meshes are drawn:
+        // _visibleChunks less the off-screen ones already cleared, which
+        // would draw nothing (every quad of theirs is invisible).
+        private readonly List<Map.Chunk> _meshChunks = new();
 
         public sbyte FoliageIndex { get; private set; }
 
@@ -499,18 +503,50 @@ namespace GUO.Game.Scenes
                 return false;
             }
 
-            if (mob._surfaceOverheadCacheX == mob.X && mob._surfaceOverheadCacheY == mob.Y && mob._surfaceOverheadCacheMaxZ == _maxZ)
+            // PORT DEVIATION (GUO): movement can advance the canvas depth key
+            // before the tile position changes. At a roof edge this briefly
+            // paints a walking body over the roof, then hides it on arrival.
+            // Keep an already-covered source hidden; also cover a begun,
+            // adjacent, level step into the same full overhead test. Do not
+            // anticipate queued movement, turns, stairs or teleports.
+            int stepX = mob.X, stepY = mob.Y;
+            if ((mob.Offset.X != 0 || mob.Offset.Y != 0) && mob.Offset.Z == 0 && mob.Steps.Count != 0)
+            {
+                ref Mobile.Step step = ref mob.Steps.Front();
+                if (step.Z == mob.Z && Math.Abs(step.X - mob.X) <= 1 && Math.Abs(step.Y - mob.Y) <= 1)
+                {
+                    stepX = step.X;
+                    stepY = step.Y;
+                }
+            }
+
+            if (mob._surfaceOverheadCacheX == mob.X && mob._surfaceOverheadCacheY == mob.Y
+                && mob._surfaceOverheadCacheMaxZ == _maxZ
+                && mob._surfaceOverheadStepCacheX == stepX && mob._surfaceOverheadStepCacheY == stepY)
             {
                 return mob._surfaceOverheadCache;
             }
 
+            bool found = HasSurfaceOverheadAt(mob, mob.X, mob.Y)
+                || ((stepX != mob.X || stepY != mob.Y) && HasSurfaceOverheadAt(mob, stepX, stepY));
+            mob._surfaceOverheadCacheX = (ushort)mob.X;
+            mob._surfaceOverheadCacheY = (ushort)mob.Y;
+            mob._surfaceOverheadCacheMaxZ = _maxZ;
+            mob._surfaceOverheadStepCacheX = stepX;
+            mob._surfaceOverheadStepCacheY = stepY;
+            mob._surfaceOverheadCache = found;
+            return found;
+        }
+
+        private bool HasSurfaceOverheadAt(Mobile mob, int tileX, int tileY)
+        {
             bool found = false;
 
             for (int y = -1; y <= 2; ++y)
             {
                 for (int x = -1; x <= 2; ++x)
                 {
-                    GameObject tile = _world.Map.GetTile(mob.X + x, mob.Y + y);
+                    GameObject tile = _world.Map.GetTile(tileX + x, tileY + y);
 
                     found = false;
 
@@ -547,11 +583,6 @@ namespace GUO.Game.Scenes
                     break;
                 }
             }
-
-            mob._surfaceOverheadCacheX = (ushort)mob.X;
-            mob._surfaceOverheadCacheY = (ushort)mob.Y;
-            mob._surfaceOverheadCacheMaxZ = _maxZ;
-            mob._surfaceOverheadCache = found;
 
             return found;
         }
@@ -610,7 +641,8 @@ namespace GUO.Game.Scenes
 
                 mesh.Statics.SetVisible(obj.MeshSpriteIndex, obj.AlphaHue, cot);
                 ApplyMeshHue(obj, mesh.Statics, gatherInputs);
-                _renderLists.AddMeshStatic(obj, mesh.Statics);
+                if (!DepthWorldProbe.Active)
+                    _renderLists.AddMeshStatic(obj, mesh.Statics);
 
                 if (itemData.IsLight)
                 {
@@ -839,6 +871,7 @@ namespace GUO.Game.Scenes
 
             for (; obj != null; obj = obj.TNext)
             {
+                if (!obj.InChunkMesh) _walkDynamic = true; // PORT DEVIATION (GUO): ChunkReuse
                 // PORT DEVIATION (GUO): _forcePositions, see FillGameObjectList.
                 if (UpdateDrawPosition || _forcePositions || obj.IsPositionChanged)
                 {
@@ -891,6 +924,10 @@ namespace GUO.Game.Scenes
                         {
                             CalculateAlpha(ref obj.AlphaHue, 0xFF);
                         }
+
+                        // PORT DEVIATION (GUO): ChunkReuse, as for statics below.
+                        if (obj.AlphaHue != (obj.Z > _maxGroundZ ? 0 : 0xFF))
+                            _walkDynamic = true;
 
                         if (obj.AlphaHue != 0)
                         {
@@ -966,6 +1003,12 @@ namespace GUO.Game.Scenes
                         CalculateAlpha(ref obj.AlphaHue, 0xFF);
                     }
 
+                    // PORT DEVIATION (GUO): ChunkReuse. Short of its target the
+                    // alpha still moves, on the alpha timer's frames, even while
+                    // no vertex changes (a static seen first has AlphaHue 0).
+                    if (!meshFadingOut && obj.AlphaHue != (meshItemData.IsTranslucent ? 178 : 0xFF))
+                        _walkDynamic = true;
+
                     if (obj.AlphaHue == 0)
                     {
                         if (gpu) mesh.Instances.SetDrawn(gpuIndex, false);
@@ -987,6 +1030,7 @@ namespace GUO.Game.Scenes
                     // Instead, draw them via the CPU transparent list (rendered after mobiles).
                     if (meshFadingOut)
                     {
+                        _walkDynamic = true; // PORT DEVIATION (GUO): ChunkReuse, queued every frame
                         if (gpu)
                             QueueInstanced(obj, mesh, gpuIndex, false);
                         else
@@ -1002,6 +1046,7 @@ namespace GUO.Game.Scenes
                     // so depth buffer doesn't block mobiles underneath.
                     if (meshCot && _cotGradientMode)
                     {
+                        _walkDynamic = true; // PORT DEVIATION (GUO): ChunkReuse
                         if (gpu) mesh.Instances.SetDrawn(gpuIndex, false);
                         obj.AlphaHue = GetGradientCotAlpha(obj);
                         if (obj.AlphaHue > 0)
@@ -1051,11 +1096,13 @@ namespace GUO.Game.Scenes
 
                     mesh.Statics.SetVisible(obj.MeshSpriteIndex, obj.AlphaHue, meshCot);
                     ApplyMeshHue(obj, mesh.Statics, gatherInputs);
-                    _renderLists.AddMeshStatic(obj, mesh.Statics);
+                    if (!DepthWorldProbe.Active)
+                        _renderLists.AddMeshStatic(obj, mesh.Statics);
 
                     if (meshItemData.IsLight)
                     {
                         AddLight(obj, obj, obj.RealScreenPosition.X + 22, obj.RealScreenPosition.Y + 22);
+                        _walkLights?.Add((_walkTile, obj)); // PORT DEVIATION (GUO): ChunkReuse
                     }
 
                     TrySelectObject(obj, meshAllowSelection && !(meshCot && gatherInputs.MouseInsideCot));

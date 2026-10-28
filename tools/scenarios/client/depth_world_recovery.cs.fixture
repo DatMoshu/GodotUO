@@ -1,0 +1,141 @@
+// Diagnostic source: synthetic geometry, no account, shard or proprietary art.
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using Godot;
+using GUO.Game.GameObjects;
+using GUO.Game.Map;
+using GUO.Game.Scenes;
+using GUO.Renderer;
+using GUO.Renderer.DepthWorld;
+using Rectangle = GUO.Compat.Rectangle;
+
+namespace GUO.Game.Scenes
+{
+    internal partial class RenderLists
+    {
+        internal void AddRecoverySprite(GameObject obj) => _world.Add(new Drawable(obj, obj.CalculateDepthZ(), _world.Count));
+    }
+}
+
+namespace GUO.Host
+{
+    internal sealed class RecoverySprite(Texture2D texture, ushort depthX) : GameObject(null)
+    {
+        internal int DrawCount;
+        internal bool RejectClip;
+        public override bool CheckMouseSelection() => false;
+        internal void Init() { X = depthX; AlphaHue = 255; }
+        public override bool Draw(UltimaBatcher2D b, int x, int y, float depth)
+        {
+            DrawCount++;
+            b.Draw(texture, depthX >= 5 ? new Rectangle(6, 6, 2, 2) : new Rectangle(1, 1, 6, 6), new Rectangle(0, 0, 1, 1), new Vector3(0, 0, 1), depth + .5f);
+            if (RejectClip) b.ClipBegin(0, 0, 3, 3);
+            b.Draw(texture, depthX >= 5 ? new Rectangle(7, 7, 1, 1) : new Rectangle(0, 0, 3, 3), new Rectangle(0, 0, 1, 1), new Vector3(0, 0, 1), depth + .5f);
+            if (RejectClip) b.ClipEnd();
+            return true;
+        }
+    }
+
+    public partial class BatcherProbe
+    {
+        private async Task VerifyResidentRecovery(UltimaBatcher2D batcher, SubViewport viewport, Texture2D palette)
+        {
+            string dir = System.Environment.GetEnvironmentVariable("GUO_RECOVERY_FIXTURE_DIR");
+            using var red = BuildSolid(new byte[] { 255, 0, 0 });
+            using var green = BuildSolid(new byte[] { 0, 255, 0 });
+            using var blue = BuildSolid(new byte[] { 0, 0, 255 });
+            using var black = BuildSolid(new byte[] { 0, 0, 0 });
+            MergedLand.Enabled = false; UltimaBatcher2D.MergedCover = false; var chunks = new List<Chunk>();
+            void Quad(MeshLayer layer, Texture2D tex, int x, int y, int w, int h, float depth)
+            {
+                layer.Count = 1;
+                layer.WriteQuadAt(0, tex, new Rectangle(0, 0, 1, 1), x, y, new Vector3(0, 0, 1), depth);
+                layer.Vertices[0].Position1 = new Vector2(x + w, y);
+                layer.Vertices[0].Position2 = new Vector2(x, y + h);
+                layer.Vertices[0].Position3 = new Vector2(x + w, y + h);
+                layer.InvalidateQuadRecord(0);
+                layer.SetVisible(0, 255);
+            }
+            for (int i = 0; i < 3; i++)
+            {
+                var chunk = new Chunk(null);
+                var obj = new RecoverySprite(red, (ushort)(2 + i * 2)) { X = (ushort)(2 + i * 2), InChunkMesh = true, MeshSpriteIndex = 0, AlphaHue = 255 };
+                chunk.Tiles[0, 0] = obj;
+                Quad(chunk.Mesh.Statics, i == 1 ? green : red, i * 2, i, 4, 5, obj.CalculateDepthZ() + .5f);
+                Quad(chunk.Mesh.Land, black, 0, 0, 8, 8, 0);
+                chunks.Add(chunk);
+            }
+            var first = new RecoverySprite(blue, 3); first.Init();
+            var last = new RecoverySprite(green, 5); last.Init();
+            chunks[0].Tiles[0, 1] = first; chunks[1].Tiles[0, 1] = last; var result = new List<object>();
+            async Task<byte[]> Frame(string name, bool rd, int failure, int residentFailure, bool clip, bool early = false)
+            {
+                OrderedWorldCapture.Enabled = rd;
+                OrderedWorldCapture.InjectFailure = failure;
+                OrderedWorldCapture.InjectResidentFailureAfter = residentFailure;
+                DepthWorldProbe.FrameAdmitted = rd;
+                first.RejectClip = clip;
+                first.DrawCount = last.DrawCount = 0;
+                var list = new RenderLists();
+                list.Clear(); if (rd) { list.AddRecoverySprite(first); list.AddRecoverySprite(last); }
+                if (!rd)
+                    foreach (var chunk in chunks)
+                    for (int y = 0; y < 2; y++) {
+                        var obj = chunk.Tiles[0, y]; if (obj == null) continue;
+                        if (obj.InChunkMesh) list.AddMeshStatic(obj, chunk.Mesh.Statics);
+                        else list.AddRecoverySprite(obj);
+                    }
+                batcher.BeginFrame(); batcher.SetSampler(SamplerState.PointClamp);
+                batcher.Begin(); batcher.BeginOrderedWorld(!early, viewport.Size);
+                list.FinishDepthWorldAdmission(batcher, chunks, 127);
+                list.DrawRenderLists(batcher, 127, chunks, 0, 0);
+                batcher.EndOrderedWorld(); batcher.End();
+                await ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
+                using Image image = viewport.GetTexture().GetImage();
+                image.SavePng(Path.Combine(dir, name + ".png"));
+                CheckThat(name + " draws once", first.DrawCount == 1 && last.DrawCount == 1, $"{first.DrawCount}/{last.DrawCount}");
+                return image.GetData();
+            }
+            foreach (var test in new[] {
+                ("early", 0, -1, false, true),
+                ("resident-middle", 0, 1, false, false),
+                ("before-upload", 1, -1, false, false),
+                ("equal-depth-before-upload", 1, -1, false, false),
+                ("equal-depth-early", 0, -1, false, true),
+                ("equal-depth-inverse-upload", 1, -1, false, false),
+                ("equal-depth-inverse-early", 0, -1, false, true),
+                ("after-recording", 2, -1, false, false),
+                ("dynamic-clip", 0, -1, true, false),
+                ("successful-resident", 0, -1, false, false) })
+            {
+                first.X = (ushort)(test.Item1.StartsWith("equal-depth") ? 2 : 3);
+                bool inverse = test.Item1.Contains("inverse");
+                // Locate by mesh ownership: baseline ordering comes from the tile walk.
+                var residentObject = chunks[0].Tiles[0, 0].InChunkMesh ? chunks[0].Tiles[0, 0] : chunks[0].Tiles[0, 1];
+                chunks[0].Tiles[0, 0] = inverse ? first : residentObject;
+                chunks[0].Tiles[0, 1] = inverse ? residentObject : first;
+                byte[] expected = await Frame(test.Item1 + "-canvas", false, 0, -1, test.Item4);
+                long fallback = OrderedWorldCapture.FramesFallback, drawn = OrderedWorldCapture.FramesDrawn;
+                byte[] actual = await Frame(test.Item1, true, test.Item2, test.Item3, test.Item4, test.Item5);
+                int differences = expected.Zip(actual, (a, b) => a == b ? 0 : 1).Sum();
+                CheckThat(test.Item1 + " complete pixels", differences == 0, differences + " bytes differ");
+                bool success = test.Item1 == "successful-resident";
+                CheckThat(test.Item1 + " backend", success ? OrderedWorldCapture.FramesDrawn == drawn + 1
+                    : OrderedWorldCapture.FramesFallback > fallback, OrderedWorldCapture.LastFallback ?? "none");
+                result.Add(new { name = test.Item1, differences, drawn = OrderedWorldCapture.FramesDrawn - drawn,
+                    fallback = OrderedWorldCapture.FramesFallback - fallback });
+            }
+            OrderedWorldCapture.InjectFailure = 0;
+            OrderedWorldCapture.InjectResidentFailureAfter = -1;
+            DepthWorldProbe.FrameAdmitted = false;
+            File.WriteAllText(Path.Combine(dir, "results.json"), System.Text.Json.JsonSerializer.Serialize(result));
+            GD.Print($"[resident-recovery] {_checks} checks, {_failures} failures");
+            batcher.Dispose(); foreach (var chunk in chunks) { chunk.Mesh.Land.Dispose(); chunk.Mesh.Statics.Dispose(); }
+            await ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
+            GetTree().Quit(_failures == 0 ? 0 : 1);
+        }
+    }
+}

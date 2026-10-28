@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json.Nodes;
+using System.Threading;
 
 /// <summary>One agent session found on this machine (the Sessions tab, ADR-0028).</summary>
 public sealed record SessionInfo(string Source, string Project, string Id, string Path, DateTime Last, string First, string QueueName, bool IsFolder);
@@ -50,13 +51,16 @@ public sealed class SessionScanner
     /// <summary>The override the dock honours (smoke and tour): a folder to treat as the home.</summary>
     public static string HomeOverride => System.Environment.GetEnvironmentVariable("GUO_AI_HOME");
 
-    public List<SessionInfo> Scan()
+    public List<SessionInfo> Scan(CancellationToken cancellationToken = default)
     {
         var all = new List<SessionInfo>();
         if (!AiFeatures.Enabled) return all;
-        Safe(() => ScanClaude(all));
-        Safe(() => ScanCodex(all));
-        Safe(() => ScanCursor(all));
+        using var lifetime = AiFeatures.Link(cancellationToken);
+        CancellationToken ct = lifetime.Token;
+        Safe(() => ScanClaude(all, ct));
+        Safe(() => ScanCodex(all, ct));
+        Safe(() => ScanCursor(all, ct));
+        ct.ThrowIfCancellationRequested();
         return all.OrderByDescending(s => s.Last).Take(Total).ToList();
     }
 
@@ -73,7 +77,7 @@ public sealed class SessionScanner
 
     // --- Claude Code -----------------------------------------------------------------------------
 
-    private void ScanClaude(List<SessionInfo> into)
+    private void ScanClaude(List<SessionInfo> into, CancellationToken ct)
     {
         string root = Path.Combine(_home, ".claude", "projects");
         if (!Directory.Exists(root))
@@ -83,12 +87,15 @@ public sealed class SessionScanner
 
         foreach (string dir in Directory.EnumerateDirectories(root))
         {
-            var files = new DirectoryInfo(dir).EnumerateFiles("*.jsonl").OrderByDescending(f => f.LastWriteTimeUtc).Take(PerProject);
+            ct.ThrowIfCancellationRequested();
+            var files = CancellableFiles(new DirectoryInfo(dir).EnumerateFiles("*.jsonl"), ct)
+                .OrderByDescending(f => f.LastWriteTimeUtc).Take(PerProject);
             foreach (FileInfo f in files)
             {
+                ct.ThrowIfCancellationRequested();
                 string cwd = null;
                 string first = null;
-                foreach (JsonNode line in HeadLines(f.FullName))
+                foreach (JsonNode line in HeadLines(f.FullName, ct))
                 {
                     cwd ??= (string)line?["cwd"];
                     if ((string)line?["type"] == "user" && (bool?)line["isMeta"] != true && first == null)
@@ -115,21 +122,22 @@ public sealed class SessionScanner
 
     // --- Codex -----------------------------------------------------------------------------------
 
-    private void ScanCodex(List<SessionInfo> into)
+    private void ScanCodex(List<SessionInfo> into, CancellationToken ct)
     {
         string root = Path.Combine(_home, ".codex");
         string sessions = Path.Combine(root, "sessions");
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (Directory.Exists(sessions))
         {
-            var files = new DirectoryInfo(sessions).EnumerateFiles("*.jsonl", SearchOption.AllDirectories)
+            var files = CancellableFiles(new DirectoryInfo(sessions).EnumerateFiles("*.jsonl", SearchOption.AllDirectories), ct)
                 .OrderByDescending(f => f.LastWriteTimeUtc).Take(Total);
             foreach (FileInfo f in files)
             {
+                ct.ThrowIfCancellationRequested();
                 string cwd = null;
                 string id = null;
                 string first = null;
-                foreach (JsonNode line in HeadLines(f.FullName))
+                foreach (JsonNode line in HeadLines(f.FullName, ct))
                 {
                     JsonNode p = line?["payload"];
                     if ((string)line?["type"] == "session_meta")
@@ -160,7 +168,7 @@ public sealed class SessionScanner
         if (File.Exists(index))
         {
             DateTime when = File.GetLastWriteTime(index);
-            foreach (JsonNode line in HeadLines(index))
+            foreach (JsonNode line in HeadLines(index, ct))
             {
                 string id = (string)line?["id"];
                 if (string.IsNullOrEmpty(id) || seen.Contains(id))
@@ -176,13 +184,14 @@ public sealed class SessionScanner
 
     // --- Cursor ----------------------------------------------------------------------------------
 
-    private void ScanCursor(List<SessionInfo> into)
+    private void ScanCursor(List<SessionInfo> into, CancellationToken ct)
     {
         string projects = Path.Combine(_home, ".cursor", "projects");
         if (Directory.Exists(projects))
         {
             foreach (string dir in Directory.EnumerateDirectories(projects))
             {
+                ct.ThrowIfCancellationRequested();
                 string name = Path.GetFileName(dir);
                 into.Add(new SessionInfo("Cursor", name, name, dir, Directory.GetLastWriteTime(dir), "", QueueName(name, name), true));
             }
@@ -193,6 +202,7 @@ public sealed class SessionScanner
         {
             foreach (string dir in Directory.EnumerateDirectories(storage))
             {
+                ct.ThrowIfCancellationRequested();
                 string meta = Path.Combine(dir, "workspace.json");
                 if (!File.Exists(meta))
                 {
@@ -200,7 +210,7 @@ public sealed class SessionScanner
                 }
 
                 string folder = null;
-                foreach (JsonNode j in HeadLines(meta, wholeFileIsOneObject: true))
+                foreach (JsonNode j in HeadLines(meta, ct, wholeFileIsOneObject: true))
                 {
                     folder = (string)j?["folder"] ?? (string)j?["workspace"];
                 }
@@ -219,19 +229,31 @@ public sealed class SessionScanner
 
     // --- reading ---------------------------------------------------------------------------------
 
-    /// <summary>The JSON lines in the first <see cref="HeadBytes"/> of a file; a cut last line is dropped.</summary>
-    private IEnumerable<JsonNode> HeadLines(string path, bool wholeFileIsOneObject = false)
+    private static IEnumerable<FileInfo> CancellableFiles(IEnumerable<FileInfo> files, CancellationToken ct)
     {
+        foreach (FileInfo file in files)
+        {
+            ct.ThrowIfCancellationRequested();
+            yield return file;
+        }
+    }
+
+    /// <summary>The JSON lines in the first <see cref="HeadBytes"/> of a file; a cut last line is dropped.</summary>
+    private IEnumerable<JsonNode> HeadLines(string path, CancellationToken ct, bool wholeFileIsOneObject = false)
+    {
+        ct.ThrowIfCancellationRequested();
         if (!AiFeatures.Enabled) yield break;
         string text;
         bool cut;
         _opened?.Invoke(path);
+        ct.ThrowIfCancellationRequested();
         using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
         {
             var buf = new byte[HeadBytes];
             int n = 0;
             while (n < buf.Length)
             {
+                ct.ThrowIfCancellationRequested();
                 int r = fs.Read(buf, n, buf.Length - n);
                 if (r <= 0)
                 {
@@ -260,6 +282,7 @@ public sealed class SessionScanner
         int count = cut ? lines.Length - 1 : lines.Length;
         for (int i = 0; i < count; i++)
         {
+            ct.ThrowIfCancellationRequested();
             string l = lines[i].Trim();
             if (l.Length == 0)
             {

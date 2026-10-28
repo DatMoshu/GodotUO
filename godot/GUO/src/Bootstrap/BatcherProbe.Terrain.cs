@@ -14,6 +14,7 @@ public partial class BatcherProbe
     private async Task VerifyMergedLand(UltimaBatcher2D batcher, SubViewport viewport)
     {
         VerifyLandPageScales();
+        VerifyLandArrayFreshness();
         bool oldArray = MergedLand.Array, oldOrdered = MergedLand.Ordered;
         MergedLand.Array = MergedLand.Ordered = true;
         using var atlas = new TextureAtlas(16, 16);
@@ -306,6 +307,30 @@ public partial class BatcherProbe
                 before == new Vector2(3f / TextureAtlas.MaxPageSize, 5f / TextureAtlas.MaxPageSize)
                 && LandPages.ScaleOf(standalone) == new Vector2(7f / TextureAtlas.MaxPageSize, 9f / TextureAtlas.MaxPageSize)
                 && !LandPages.Holds(standalone), "standalone 3x5 -> 7x9");
+        }
+        finally
+        {
+            LandPages.Reset();
+        }
+    }
+
+    // A sprite packed into a page the land array already holds, before the
+    // page's GPU upload, must reach the array at its next Sync.
+    private void VerifyLandArrayFreshness()
+    {
+        using var atlas = new TextureAtlas(16, 8);
+        try
+        {
+            Texture2D page = atlas.AddSprite(new uint[] { 0xFF0000FF }, 1, 1, out _);
+            atlas.Flush();
+            int layer = LandPages.LayerOf(page);
+            LandPages.Sync();
+            atlas.AddSprite(new uint[] { 0xFF00FF00 }, 1, 1, out var added);
+            LandPages.Sync();
+            using Image copy = LandPages.Array.GetLayerData(layer);
+            Color c = copy.GetPixel(added.X, added.Y);
+            CheckThat("land array copies a sprite added to an existing page before its upload",
+                c.G > 0.9f && c.R < 0.1f && c.A > 0.9f, $"{c}");
         }
         finally
         {

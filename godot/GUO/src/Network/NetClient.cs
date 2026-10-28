@@ -319,8 +319,15 @@ namespace GUO.Network
                 return buffer;
 
             var size = 65536;
+            bool decompressed;
+            // PORT DEVIATION (GUO): time only Huffman decode, not failure callbacks.
+            // Nested inside receive; the buffers and disconnect order are unchanged.
+            using (var timing = new GUO.Renderer.PerfStages.Scope(GUO.Renderer.PerfStages.Stage.NetworkDecompress))
+            {
+                decompressed = _huffman.Decompress(buffer, _uncompressedBuffer, ref size);
+            }
 
-            if (!_huffman.Decompress(buffer, _uncompressedBuffer, ref size))
+            if (!decompressed)
             {
                 Disconnect();
                 Disconnected?.Invoke(this, SocketError.SocketError);

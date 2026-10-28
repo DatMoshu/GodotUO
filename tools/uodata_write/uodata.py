@@ -15,8 +15,9 @@ Containers written (append-only, so nothing existing moves):
   in place       tiledata.mul item records (the 7.0.9.0+ layout only), hues.mul blocks
 
 A MUL + IDX slot that already holds data is refused unless the caller asks to
-replace it, as a UOP name that already exists is always refused: an id the client
-or a shard already uses is never overwritten by accident (ADR-0022). Every record
+replace it. Existing UOP names are refused except for explicit occupied sound
+replacement; static replacement uses its separate reviewed adapter. An id the
+client or shard uses is never overwritten by accident (ADR-0022). Every record
 is checked before anything is written, so a refused call leaves the stage as it was.
   multis         MultiCollection.uop: a new entry per multi (UOP layout, zlib, flag 1),
                  or multi.mul / multi.idx on installs without it (the index grown if needed)
@@ -29,6 +30,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import struct
 import sys
@@ -39,6 +41,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from guo.uomap import UOP_MAGIC, uop_entries, uop_hash  # noqa: E402
 from guo.uorecord import AssetRecord  # noqa: E402
+from guo import cliloc_records, sound_records  # noqa: E402
 
 LAND_COUNT = 0x4000
 TILE_LAND_BLOCK = 4 + 32 * 30          # new (7.0.9.0+) land group
@@ -93,12 +96,8 @@ class Stage:
     def __init__(self, root: Path, install: Path):
         self.root = root.resolve()
         self.install = install.resolve()
-        try:
-            self.root.relative_to(self.install)
+        if self.root.is_relative_to(self.install):
             raise ValueError(f"a staged set inside the install is refused: {self.root}")
-        except ValueError as e:
-            if "refused" in str(e):
-                raise
         self.root.mkdir(parents=True, exist_ok=True)
         self.meta_path = self.root / "stage.json"
         self.meta = json.loads(self.meta_path.read_text(encoding="utf-8")) if self.meta_path.exists() else \
@@ -114,13 +113,15 @@ class Stage:
             raise ValueError(f"{path} resolves outside the staged set ({real}); nothing is written there") from None
         return real
 
-    def target(self, name: str) -> Path:
+    def target(self, name: str, *, allow_new: bool = False) -> Path:
         """Where path(name) writes, checked under the root, without copying anything."""
         key = name.lower()
         if key in self.meta["files"]:
             return self.inside(self.root / self.meta["files"][key]["name"])
         src = self.install_file(name)
         if src is None:
+            if allow_new and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", name):
+                return self.inside(self.root / name)
             raise FileNotFoundError(f"{name} is not in the install")
         return self.inside(self.root / src.name)
 
@@ -134,15 +135,19 @@ class Stage:
                 return p
         return None
 
-    def path(self, name: str) -> Path:
+    def path(self, name: str, *, allow_new: bool = False) -> Path:
         """The staged copy of an install file, copied on first use (copy on write)."""
         key = name.lower()
-        dst = self.target(name)
+        dst = self.target(name, allow_new=allow_new)
         if key in self.meta["files"]:
             return dst
         src = self.install_file(name)
-        shutil.copyfile(src, dst)
-        self.meta["files"][key] = {"name": src.name, "source_sha1": sha1(src), "source_size": src.stat().st_size}
+        if src is None:
+            dst.write_bytes(b"")
+            self.meta["files"][key] = {"name": name, "source_exists": False, "source_sha1": "", "source_size": 0}
+        else:
+            shutil.copyfile(src, dst)
+            self.meta["files"][key] = {"name": src.name, "source_sha1": sha1(src), "source_size": src.stat().st_size}
         self.save()
         return dst
 
@@ -175,6 +180,9 @@ class Stage:
         changed = []
         for key, info in self.meta["files"].items():
             src = self.install_file(key)
+            if info.get("source_exists", True) is False:
+                if src is not None: changed.append(key)
+                continue
             if src is None or src.stat().st_size != info["source_size"] or sha1(src) != info["source_sha1"]:
                 changed.append(key)
         return changed
@@ -257,6 +265,66 @@ def mul_occupied(idx: Path, index: int) -> bool:
     return idx_entry(idx, index)[1] > 0
 
 
+def replace_static_record(stage: Stage, item: int, data: bytes) -> None:
+    replace_static_records(stage, {item: data})
+
+
+def replace_static_records(stage: Stage, records: dict[int, bytes]) -> None:
+    """Explicit occupied-static replacement, in a disposable candidate stage only.
+
+    Owner approval: Fiddler parity terminal, 2026-10-20. The transactional
+    adapter owns preview, independent verification and publication/recovery;
+    this low-level writer never broadens write_records' append-only UOP policy.
+    """
+    if not records or any(not 0 <= item < 0x10000 for item in records):
+        raise ValueError("static id is outside 0x0000-0xFFFF")
+    check_outputs(stage, [AssetRecord("static", item, data) for item, data in records.items()])
+    if _exists(stage, "artLegacyMUL.uop"):
+        path = stage.path("artLegacyMUL.uop")
+        raw = path.read_bytes()
+        targets = {uop_hash(ART_PATTERN.format(LAND_COUNT + item)): data for item, data in records.items()}
+        block = struct.unpack_from("<q", raw, 12)[0]
+        found, seen = [], set()
+        while block:
+            if block in seen or block < 28 or block + 12 > len(raw):
+                raise ValueError("invalid UOP block chain")
+            seen.add(block)
+            count, nxt = struct.unpack_from("<iq", raw, block)
+            if count < 0 or block + 12 + count * 34 > len(raw):
+                raise ValueError("invalid UOP entry table")
+            for n in range(count):
+                at = block + 12 + n * 34
+                offset, header, stored, length, key, checksum, flag = struct.unpack_from("<qiiiQIh", raw, at)
+                if key in targets and offset:
+                    if flag != 0:
+                        raise ValueError("compressed static replacement is not certified")
+                    if min(offset, header, stored, length) < 0 or offset + header + stored > len(raw):
+                        raise ValueError("invalid occupied UOP payload")
+                    found.append((at, key, raw[offset:offset + header]))
+            block = nxt
+        if len(found) != len(targets) or len({key for _, key, _ in found}) != len(targets):
+            raise ValueError("replacement requires exactly one occupied record per static ID")
+        with path.open("r+b") as stream:
+            for at, key, header_bytes in found:
+                data = targets[key]
+                stream.seek(0, 2)
+                offset = stream.tell()
+                stream.write(header_bytes)
+                stream.write(data)
+                stream.seek(at)
+                stream.write(struct.pack("<qiiiQIh", offset, len(header_bytes), len(data), len(data), key, zlib.adler32(data), 0))
+        _UOP_CACHE.clear()
+    else:
+        for item in records:
+            if not mul_occupied(stage.read_path("artidx.mul"), LAND_COUNT + item):
+                raise ValueError("replacement requires an occupied static record")
+        for item, data in records.items():
+            index = LAND_COUNT + item
+            extra = idx_entry(stage.read_path("artidx.mul"), index)[2]
+            mul_append(stage.path("art.mul"), stage.path("artidx.mul"), index, data, extra, replace=True)
+    stage.save()
+
+
 def mul_append(mul: Path, idx: Path, index: int, data: bytes, extra: int = 0, replace: bool = False) -> None:
     size = idx.stat().st_size // 12
     if index >= size:
@@ -270,6 +338,50 @@ def mul_append(mul: Path, idx: Path, index: int, data: bytes, extra: int = 0, re
     with idx.open("r+b") as x:
         x.seek(index * 12)
         x.write(struct.pack("<iii", at, len(data), extra))
+
+
+def check_texmaps(mul: Path, idx: Path, records: list[tuple[int, bytes]], *, occupied: bool = True) -> None:
+    """Validate a whole texture batch before copying or appending any bytes.
+
+    IDs are physical rows, not TexTerr.def aliases. The caller resolves and reviews
+    remaps. Existing world exports may fill empty rows; typed replacement cannot.
+    """
+    size, length = idx.stat().st_size, mul.stat().st_size
+    if not size or size % 12 or size > 0x4000 * 12:
+        raise ValueError("texidx.mul must contain 1..16384 complete index rows")
+    if length > 0x7fffffff:
+        raise ValueError("texmaps.mul exceeds signed 32-bit index offsets")
+    raw = idx.read_bytes()
+    for at, count, _ in struct.iter_unpack("<iii", raw):
+        if at >= 0 and count > 0 and (count not in (8192, 32768) or at + count > length):
+            raise ValueError("texidx.mul contains an invalid native texture range")
+    seen = set()
+    for ident, payload in records:
+        if type(ident) is not int or not 0 <= ident < size // 12 or ident in seen:
+            raise ValueError("Texture IDs must be unique existing physical index rows")
+        seen.add(ident)
+        at, count, _ = struct.unpack_from("<iii", raw, ident * 12)
+        if occupied and (at < 0 or count <= 0):
+            raise ValueError("Texture replacement requires an occupied physical row")
+        if not isinstance(payload, bytes) or len(payload) not in (8192, 32768):
+            raise ValueError("Texture payload must be exactly 8192 or 32768 native bytes")
+        length += len(payload)
+        if length > 0x7fffffff:
+            raise ValueError("Texture append exceeds signed 32-bit index offsets")
+
+
+def write_texmaps(mul: Path, idx: Path, records: list[tuple[int, bytes]], *, occupied: bool = True,
+                  skip_identical: bool = True) -> None:
+    """Append/repoint via the shared MUL writer, preserving each opaque extra word."""
+    check_texmaps(mul, idx, records, occupied=occupied)
+    for ident, payload in records:
+        at, count, extra = idx_entry(idx, ident)
+        if skip_identical and at >= 0 and count == len(payload):
+            with mul.open("rb") as stream:
+                stream.seek(at)
+                if stream.read(count) == payload:
+                    continue
+        mul_append(mul, idx, ident, payload, extra, replace=True)
 
 
 # --- tiledata --------------------------------------------------------------------
@@ -298,10 +410,7 @@ def tile_offset(item: int) -> int:
 
 
 def read_tile(tiledata: Path, item: int) -> dict:
-    check_tiledata(tiledata)
-    with tiledata.open("rb") as f:
-        f.seek(tile_offset(item))
-        raw = f.read(TILE_STATIC_RECORD)
+    raw = read_tile_record(tiledata, item)
     flags, weight, layer, count, anim, hue, light, height = struct.unpack("<QBBiHHHB", raw[:21])
     return {"flags": flags, "weight": weight, "layer": layer, "count": count, "anim": anim, "hue": hue,
             "light": light, "height": height, "name": raw[21:41].split(b"\0")[0].decode("latin-1")}
@@ -311,9 +420,26 @@ def write_tile(tiledata: Path, item: int, fields: dict) -> None:
     t = {**read_tile(tiledata, item), **fields}
     raw = struct.pack("<QBBiHHHB", t["flags"], t["weight"], t["layer"], t["count"], t["anim"], t["hue"], t["light"],
                       t["height"]) + t["name"].encode("latin-1")[:20].ljust(20, b"\0")
-    with tiledata.open("r+b") as f:
-        f.seek(tile_offset(item))
-        f.write(raw)
+    write_tile_record(tiledata, item, raw)
+
+
+def read_tile_record(tiledata: Path, item: int) -> bytes:
+    check_tiledata(tiledata)
+    if type(item) is not int or not 0 <= item < min(0x10000, static_count(tiledata)):
+        raise ValueError("Item metadata ID must be inside the existing modern tiledata")
+    with tiledata.open("rb") as stream:
+        stream.seek(tile_offset(item))
+        return stream.read(TILE_STATIC_RECORD)
+
+
+def write_tile_record(tiledata: Path, item: int, raw: bytes) -> None:
+    """Write one reviewed native record without transcoding names or padding."""
+    if not isinstance(raw, bytes) or len(raw) != TILE_STATIC_RECORD:
+        raise ValueError("Native item metadata must retain exactly 41 bytes")
+    read_tile_record(tiledata, item)
+    with tiledata.open("r+b") as stream:
+        stream.seek(tile_offset(item))
+        stream.write(raw)
 
 
 def static_count(tiledata: Path) -> int:
@@ -523,6 +649,22 @@ def _exists(stage: Stage, name: str) -> bool:
         return False
 
 
+def cliloc_name(record: AssetRecord) -> str:
+    name = record.meta.get("filename")
+    if type(record.id) is not int or record.id != 0 or set(record.meta) != {"filename"} or not isinstance(name, str) or not re.fullmatch(r"[Cc][Ll][Ii][Ll][Oo][Cc]\.[A-Za-z0-9_-]{1,32}", name):
+        raise ValueError("Native Cliloc requires id 0 and one Cliloc.<safe suffix> filename")
+    return name
+
+
+def sound_library(stage: Stage, packaging: str) -> sound_records.Library:
+    files = {}
+    for name in sound_records.filenames(packaging):
+        path = stage.read_path(name)
+        if path.stat().st_size > sound_records.MAX_FILE: raise ValueError("Sound file exceeds 512 MiB")
+        files[name] = path.read_bytes()
+    return sound_records.parse(files, packaging)
+
+
 def check_records(stage: Stage, records: list[AssetRecord], replace: bool = False) -> None:
     """Refuses, before anything is written, a record the writers would refuse or
     get wrong: an existing UOP name, an occupied MUL slot (unless replace), the old
@@ -535,7 +677,22 @@ def check_records(stage: Stage, records: list[AssetRecord], replace: bool = Fals
             raise ValueError(f"{mul_idx} entry {index} already holds data; the writer only adds (replace to overwrite)")
 
     for r in records:
-        if r.kind in ("static", "land"):
+        if r.kind == "sound":
+            if not replace or set(r.meta) != {"packaging"}:
+                raise ValueError("Native sound requires explicit replacement and packaging metadata")
+            sound_records.filenames(r.meta["packaging"])
+            sound_records.validate(r.data)
+            for name in sound_records.filenames(r.meta["packaging"]):
+                target = stage.target(name)
+                if target.exists() and (target.stat().st_nlink > 1 or name.lower() not in stage.meta["files"]):
+                    raise ValueError("Hardlinked or unregistered native sound output refused")
+        elif r.kind == "cliloc-file":
+            name = cliloc_name(r); target = stage.target(name, allow_new=True)
+            if not replace: raise ValueError("Native Cliloc requires explicit replacement")
+            if target.exists() and (target.stat().st_nlink > 1 or name.lower() not in stage.meta["files"]):
+                raise ValueError("Aliased or unregistered staged Cliloc output refused")
+            cliloc_records.check_container(r.data)
+        elif r.kind in ("static", "land"):
             slot("artLegacyMUL.uop", ART_PATTERN, "artidx.mul", r.id if r.kind == "land" else LAND_COUNT + r.id)
         elif r.kind == "gump":
             slot("gumpartLegacyMUL.uop", GUMP_PATTERN, "gumpidx.mul", r.id)
@@ -544,16 +701,34 @@ def check_records(stage: Stage, records: list[AssetRecord], replace: bool = Fals
             if not replace and mul_occupied(stage.read_path("anim.idx"), index):
                 raise ValueError(f"anim.idx entry {index} (body {r.id}, action {r.meta['action']}, direction "
                                  f"{r.meta['direction']}) already holds data; the writer only adds (replace to overwrite)")
+        elif r.kind == "texmap" and not replace:
+            raise ValueError("Texture records require explicit replacement approval")
         elif r.kind == "multi" and 0 <= r.id < MULTI_LIMIT:
             slot("MultiCollection.uop", MULTI_PATTERN, "multi.idx", r.id)
         elif r.kind == "tiledata-item":
             check_tiledata(stage.read_path("tiledata.mul"))
+            if r.data:
+                if not replace or r.meta or not isinstance(r.data, bytes) or len(r.data) != TILE_STATIC_RECORD:
+                    raise ValueError("Raw item metadata requires one 41-byte record, empty meta and explicit replacement")
+                read_tile_record(stage.read_path("tiledata.mul"), r.id)
         elif r.kind == "hue":
             size = stage.read_path("hues.mul").stat().st_size
             h = r.id - 1
             at = (h // 8) * HUE_GROUP + 4 + (h % 8) * HUE_RECORD if h >= 0 else -1
             if len(r.data) != HUE_RECORD or r.id < 1 or at + HUE_RECORD > size:
                 raise ValueError(f"hue {r.id} ({len(r.data)} bytes) is not one {HUE_RECORD}-byte hue inside hues.mul")
+    textures = [(r.id, r.data) for r in records if r.kind == "texmap"]
+    if textures:
+        check_texmaps(stage.read_path("texmaps.mul"), stage.read_path("texidx.mul"), textures)
+    names = [cliloc_name(r).lower() for r in records if r.kind == "cliloc-file"]
+    if len(names) != len(set(names)): raise ValueError("Duplicate native Cliloc output filename")
+    sounds = [r for r in records if r.kind == "sound"]
+    if sounds:
+        packagings = {r.meta["packaging"] for r in sounds}
+        if len(packagings) != 1: raise ValueError("One explicit sound packaging per batch is required")
+        if len({r.id for r in sounds}) != len(sounds): raise ValueError("Duplicate physical sound ID")
+        library = sound_library(stage, sounds[0].meta["packaging"])
+        sound_records.patch(library, {r.id: r.data for r in sounds})
 
 
 def output_files(stage: Stage, records: list[AssetRecord]) -> list[str]:
@@ -575,14 +750,20 @@ def output_files(stage: Stage, records: list[AssetRecord]) -> list[str]:
         names.append("tiledata.mul")
     if "hue" in kinds:
         names.append("hues.mul")
+    if "texmap" in kinds:
+        names += ["texmaps.mul", "texidx.mul"]
+    for packaging in {r.meta.get("packaging") for r in records if r.kind == "sound"}:
+        names += list(sound_records.filenames(packaging))
+    names += [cliloc_name(r) for r in records if r.kind == "cliloc-file"]
     return names
 
 
 def check_outputs(stage: Stage, records: list[AssetRecord]) -> None:
     """Refuses, before anything is written, a call any of whose output paths (the staged
     copies and the stage's own files) resolves outside the stage root."""
+    new_files = {cliloc_name(r) for r in records if r.kind == "cliloc-file"}
     for name in output_files(stage, records):
-        stage.target(name)
+        stage.target(name, allow_new=name in new_files)
     for path in stage.own_files():
         stage.inside(path)
 
@@ -626,6 +807,16 @@ def write_records(stage: Stage, records: list[AssetRecord], replace: bool = Fals
         for r in anims:
             mul_append(mul, idx, anim_index(r.id, r.meta["action"], r.meta["direction"]), r.data, replace=replace)
         done.append(f"anim: {len(anims)} body/action/direction payload(s) for bodies {sorted({r.id for r in anims})}")
+    textures = [(r.id, r.data) for r in records if r.kind == "texmap"]
+    if textures:
+        write_texmaps(stage.path("texmaps.mul"), stage.path("texidx.mul"), textures)
+        done += [f"texmap {ident:#x} ({len(payload)} bytes)" for ident, payload in textures]
+    sounds = [r for r in records if r.kind == "sound"]
+    if sounds:
+        packaging = sounds[0].meta["packaging"]
+        for name, data in sound_records.patch(sound_library(stage, packaging), {r.id: r.data for r in sounds}).items():
+            stage.path(name).write_bytes(data)
+        done += [f"sound {r.id:#x} ({len(r.data) - 40} PCM bytes)" for r in sounds]
     multis = [r for r in records if r.kind == "multi"]
     if multis:
         for r in multis:
@@ -647,8 +838,14 @@ def write_records(stage: Stage, records: list[AssetRecord], replace: bool = Fals
                 mul_append(mul, idx, r.id, multi_to_mul(r.data), replace=replace)
         done += [f"multi {r.id:#x} ({struct.unpack_from('<i', r.data, 4)[0]} components)" for r in multis]
     for r in records:
-        if r.kind == "tiledata-item":
-            write_tile(stage.path("tiledata.mul"), r.id, {k: v for k, v in r.meta.items() if k in TILE_FIELDS})
+        if r.kind == "cliloc-file":
+            name = cliloc_name(r); stage.path(name, allow_new=True).write_bytes(r.data)
+            done.append(f"Cliloc {name} ({len(r.data)} bytes)")
+        elif r.kind == "tiledata-item":
+            if r.data:
+                write_tile_record(stage.path("tiledata.mul"), r.id, r.data)
+            else:
+                write_tile(stage.path("tiledata.mul"), r.id, {k: v for k, v in r.meta.items() if k in TILE_FIELDS})
             done.append(f"tiledata item {r.id:#x}: {r.meta}")
         elif r.kind == "hue":
             h = r.id - 1
@@ -670,6 +867,17 @@ def write_records(stage: Stage, records: list[AssetRecord], replace: bool = Fals
 
 def read_back(stage: Stage, r: AssetRecord) -> bytes | dict | None:
     """What the staged set now holds for a record (for verify)."""
+    if r.kind == "sound":
+        return sound_library(stage, r.meta["packaging"]).records.get(r.id)
+    if r.kind == "cliloc-file":
+        return stage.read_path(cliloc_name(r)).read_bytes()
+    if r.kind == "texmap":
+        at, count, _ = idx_entry(stage.read_path("texidx.mul"), r.id)
+        if at < 0 or count <= 0:
+            return None
+        with stage.read_path("texmaps.mul").open("rb") as stream:
+            stream.seek(at)
+            return stream.read(count)
     if r.kind in ("static", "land"):
         index = r.id if r.kind == "land" else LAND_COUNT + r.id
         try:
@@ -687,6 +895,8 @@ def read_back(stage: Stage, r: AssetRecord) -> bytes | dict | None:
             f.seek(o)
             return f.read(n)
     if r.kind == "tiledata-item":
+        if r.data:
+            return read_tile_record(stage.read_path("tiledata.mul"), r.id)
         return read_tile(stage.read_path("tiledata.mul"), r.id)
     if r.kind == "multi":
         try:

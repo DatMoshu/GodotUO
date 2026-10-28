@@ -438,10 +438,10 @@ public partial class EditorSmoke
         panel.OpenContext(item);
         PopupMenu menu = panel.GetChildren().OfType<PopupMenu>().Single();
         var labels = Enumerable.Range(0, menu.ItemCount).Select(menu.GetItemText).ToArray();
-        ArtCheck("asset_context_single_actions", new[] { "Copy ID", "Properties", "Edit in Pixelorama", "Edit in the Pixelorama tab", "Open configured image editor (Pinta)", "Export PNG...", "Replace from image..." }.All(labels.Contains));
+        ArtCheck("asset_context_single_actions", new[] { "Copy ID", "Properties", "Open Pixelorama window", "Open Pixelorama tab", "Open configured image editor (Pinta)", "Export PNG…", "Replace from image…" }.All(labels.Contains));
         menu.Hide(); list.Select(item == 0 ? 1 : 0, false); panel.OpenContext(item);
         labels = Enumerable.Range(0, menu.ItemCount).Select(menu.GetItemText).ToArray();
-        ArtCheck("asset_context_multiple_actions", list.GetSelectedItems().Length == 2 && labels.Contains("Copy IDs") && labels.Contains("Export selected PNGs...") && !labels.Contains("Replace from image..."));
+        ArtCheck("asset_context_multiple_actions", list.GetSelectedItems().Length == 2 && labels.Contains("Copy IDs") && labels.Contains("Export selected PNGs...") && !labels.Contains("Replace from image…"));
         menu.Hide();
     }
 

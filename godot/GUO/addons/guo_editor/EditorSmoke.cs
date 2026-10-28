@@ -176,6 +176,12 @@ public partial class EditorSmoke : Node
         _elapsed += delta;
         _frames++;
 
+        if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-multi-text-proof") >= 0)
+        { StepMultiTextProof(); return; }
+
+        if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-assets-workbench") >= 0)
+        { StepAssetWorkbenchProof(); return; }
+
         if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-editor-header-only") >= 0)
         {
             if (!_world.IsBooted) { _frames = 0; return; }
@@ -242,6 +248,10 @@ public partial class EditorSmoke : Node
                     CheckClientProfiles();
                     CheckGumpStudio();
                     CheckAssetFields();
+                    CheckGridRefreshWork();
+                    CheckSearchIndexWork();
+                    MeasureSoundMetadataWork();
+                    MeasureInspectorPreviewWork();
                     if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-gump-studio-only") >= 0)
                     {
                         if (!Headless && Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-gump-studio-visual") >= 0 && _failures.Count == 0)
@@ -814,6 +824,8 @@ public partial class EditorSmoke : Node
             WorldFail($"the world did not start: {host.Error}");
             return;
         }
+
+        CheckPathfinder();
 
         // The client writes default tables under CUOEnviroment.ExecutablePath;
         // the world view must have pointed that away from the project.

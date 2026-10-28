@@ -113,6 +113,7 @@ public partial class EditorSmoke
         }
 
         Directory.CreateDirectory(dir);
+        await CheckLogIdleWorkAsync(dir);
 
         // The real dock first: it exists, is in the tree and found its sources by itself.
         LogsCheck("dock_in_tree", Logs.IsInsideTree() && Logs.Panel != null);
@@ -236,7 +237,7 @@ public partial class EditorSmoke
         string utcLog = Path.Combine(dir, "client.log");
         File.WriteAllText(utcLog, "2026-10-02 12:00:00 | Info | connected\nno stamp here\n");
         LogView utc = panel.AddSource("utc", "utc", new LogTailer(utcLog) { PollMilliseconds = 50 }, utc: true);
-        LogsCheck("utc_local_time", await LogWait(() => utc.BufferCount >= 2) && utc.Lines.First().Text.Contains(" local] 2026-10-02 12:00:00", StringComparison.Ordinal) && utc.Lines.Last().Text == "no stamp here" && utc.StatusText.Contains("UTC", StringComparison.Ordinal), utc.Lines.FirstOrDefault()?.Text);
+        LogsCheck("utc_local_time", await LogWait(() => utc.BufferCount >= 2) && utc.Lines.First().Text.Contains(" local] 2026-10-02 12:00:00", StringComparison.Ordinal) && utc.Lines.Last().Text == "no stamp here" && utc.StatusText.Contains("UTC", StringComparison.Ordinal), utc.Lines.FirstOrDefault().Text);
 
         // --- the user's extra files are remembered -----------------------------------------------------------------
         string extra = Path.Combine(dir, "extra.log");
@@ -263,10 +264,128 @@ public partial class EditorSmoke
         _logsReport["views"] = string.Join(",", Logs.Panel?.Views.Keys ?? Enumerable.Empty<string>());
     }
 
+    private async Task CheckLogIdleWorkAsync(string dir)
+    {
+        string file = Path.Combine(dir, "idle-work.log");
+        File.WriteAllText(file, "");
+        var view = new LogView();
+        AddChild(view);
+        view.SetProcess(false);
+        var tailer = new LogTailer(file) { PollMilliseconds = 50 };
+        view.Attach(tailer);
+        try
+        {
+            LogsCheck("idle_tailer_ready", await LogWait(() => tailer.State == "following"));
+            view.SetCap(200000);
+            view.SetFilter("not present in fixture");
+            foreach (int count in new[] { 0, 5000, 200000 })
+            {
+                view.ClearView();
+                for (int i = 0; i < count; i++)
+                {
+                    tailer.Queue.Enqueue(new TailItem(false, "synthetic idle line"));
+                    if ((i + 1) % 3000 == 0) view.Pump();
+                }
+                view.Pump();
+                LogsCheck($"idle_buffer_{count}", view.BufferCount == count && view.ShownCount == 0);
+                foreach (bool visible in new[] { true, false })
+                {
+                    view.Visible = visible;
+                    for (int i = 0; i < 10; i++) view.Pump();
+                    string status = view.StatusText;
+                    long allocated = GC.GetAllocatedBytesForCurrentThread();
+                    long start = Stopwatch.GetTimestamp();
+                    for (int i = 0; i < 120; i++) view.Pump();
+                    double ms = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+                    long bytes = GC.GetAllocatedBytesForCurrentThread() - allocated;
+                    string key = $"idle_{count}_{(visible ? "visible" : "hidden")}";
+                    _logsReport[key + "_120_pumps_ms"] = ms;
+                    _logsReport[key + "_120_pumps_bytes"] = bytes;
+                    LogsCheck(key + "_no_idle_allocations", bytes == 0, $"{bytes} bytes");
+                    LogsCheck(key + "_stable", view.StatusText == status && view.BufferCount == count
+                        && view.ShownCount == view.Lines.Count(l => l.Shown));
+                }
+            }
+
+            // Mixed retained/filtered lines and notices exercise every count mutation.
+            view.ClearView();
+            view.SetFilter("");
+            view.SetCap(100);
+            for (int i = 0; i < 150; i++)
+                tailer.Queue.Enqueue(new TailItem(i % 11 == 0, i % 2 == 0 ? "ERROR: match" : "plain"));
+            view.Pump();
+            void CheckCount(string name)
+            {
+                view.Pump();
+                LogsCheck(name, view.ShownCount == view.Lines.Count(l => l.Shown)
+                    && view.StatusText.Contains($"{view.ShownCount}/{view.BufferCount} lines", StringComparison.Ordinal));
+            }
+            CheckCount("count_after_trim");
+            LogLine original = view.Lines.First();
+            LogLine changedCopy = original with { Shown = !original.Shown, Text = "changed copy" };
+            LogsCheck("lines_value_copy_isolated", changedCopy != original && view.Lines.First() == original);
+            LogsCheck("lines_hide_mutable_list", view.Lines is not List<LogLine>);
+            var readOnly = (IList<LogLine>)view.Lines;
+            bool replaceRejected = false, clearRejected = false, addRejected = false, removeRejected = false;
+            try { readOnly[0] = changedCopy; } catch (NotSupportedException) { replaceRejected = true; }
+            try { readOnly.Clear(); } catch (NotSupportedException) { clearRejected = true; }
+            try { readOnly.Add(changedCopy); } catch (NotSupportedException) { addRejected = true; }
+            try { readOnly.RemoveAt(0); } catch (NotSupportedException) { removeRejected = true; }
+            LogsCheck("lines_mutation_rejected", readOnly.IsReadOnly && replaceRejected && clearRejected
+                && addRejected && removeRejected && view.Lines.First() == original && view.BufferCount == 100);
+            CheckCount("count_after_rejected_mutation");
+            view.SetFilter("match"); CheckCount("count_after_filter");
+            view.SetMinLevel(LogLevel.Error); CheckCount("count_after_level");
+            view.SetCap(200);
+            for (int i = 0; i < 50; i++) tailer.Queue.Enqueue(new TailItem(false, "plain"));
+            CheckCount("count_after_filtered_append");
+            view.SetCap(100); CheckCount("count_after_cap_change");
+            view.SetFind("match"); CheckCount("count_after_find");
+            view.SetPaused(true);
+            tailer.Queue.Enqueue(new TailItem(false, "ERROR: match"));
+            view.Pump();
+            LogsCheck("idle_pause_status", view.StatusText.Contains("paused, 1 waiting", StringComparison.Ordinal));
+            tailer.Queue.Enqueue(new TailItem(false, "plain"));
+            view.Pump();
+            LogsCheck("idle_pause_queue_change", view.StatusText.Contains("paused, 2 waiting", StringComparison.Ordinal));
+            view.Note = "synthetic note";
+            view.Utc = true;
+            view.Pump();
+            LogsCheck("idle_metadata_status", view.StatusText.Contains("synthetic note", StringComparison.Ordinal)
+                && view.StatusText.Contains("UTC", StringComparison.Ordinal));
+            view.SetPaused(false); CheckCount("count_after_resume");
+            view.ClearView(); CheckCount("count_after_clear");
+            LogsCheck("lines_readonly_view_stays_live", readOnly.Count == 0);
+            RemoveChild(view);
+            LogsCheck("idle_exit_stops_tailer", !tailer.Running);
+            AddChild(view);
+            CheckCount("count_after_reparent");
+        }
+        finally
+        {
+            view.Release();
+            view.Free();
+        }
+    }
+
     private static bool ProcessGone(int pid)
     {
         try { using var p = Process.GetProcessById(pid); return p.HasExited; }
         catch (ArgumentException) { return true; }
+    }
+
+    private static bool FixturePidReady(string path, int previous)
+    {
+        // A PID file can exist while write_text is truncating/writing it. The
+        // newline is a completion marker; sharing/retry belongs in this wait,
+        // not in the production process controller or a weakened assertion.
+        try
+        {
+            byte[] bytes = ReadShared(path);
+            return bytes.Length > 1 && bytes[^1] == (byte)'\n'
+                && int.TryParse(Encoding.ASCII.GetString(bytes), out int pid) && pid > 0 && pid != previous;
+        }
+        catch (IOException) { return false; }
     }
 
     private static bool ConsoleReleased(string path)
@@ -289,6 +408,15 @@ public partial class EditorSmoke
         {
             Workspace.RootOverride = root;
             Directory.CreateDirectory(home);
+            string pidProbe = Path.Combine(dir, "fixture-pid-probe.txt");
+            File.WriteAllText(pidProbe, "123");
+            LogsCheck("fixture_pid_waits_for_complete_write", !FixturePidReady(pidProbe, 0));
+            using (var writing = new FileStream(pidProbe, FileMode.Create, System.IO.FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
+            {
+                writing.Write(Encoding.ASCII.GetBytes("123\n")); writing.Flush();
+                LogsCheck("fixture_pid_reads_shared_writer", FixturePidReady(pidProbe, 0));
+                LogsCheck("fixture_pid_refuses_previous_child", !FixturePidReady(pidProbe, 123));
+            }
             string console = LogSources.ServerConsole(id);
             LogsCheck("server_console_workspace_path", console == Path.Combine(home, "server.console.log") && LogSources.ServerConsole("../bad") == "");
             if (_afterReload)
@@ -305,9 +433,9 @@ public partial class EditorSmoke
             var profile = new ServerProfile { Id = id, Name = "Console fixture", Host = "127.0.0.1", Port = 2619, ServerDirectory = home };
             string script = Path.Combine(home, "console fixture.py");
             File.WriteAllText(script, "import os, sys, time\nfrom pathlib import Path\n"
-                + "Path(__file__).with_name('fixture.pid').write_text(str(os.getpid()))\n"
+                + "Path(__file__).with_name('fixture.pid').write_text(str(os.getpid()) + '\\n')\n"
                 + "print('fixture stdout ready', flush=True)\nprint('fixture stderr ready', file=sys.stderr, flush=True)\n"
-                + "print('password=fixture-only-value', flush=True)\nprint('argument=' + sys.argv[1], flush=True)\ntime.sleep(0.3 if len(sys.argv) > 2 else 180)\n");
+                + "print('password=fixture-only-value', flush=True)\nprint('argument=' + sys.argv[1], flush=True)\ntime.sleep(0.3 if len(sys.argv) > 2 else 600)\n");
             string python = EditorData.Setting("UO_PYTHON", OperatingSystem.IsWindows() ? "python" : "python3");
             profile.Executable = Path.IsPathFullyQualified(python) ? python : (System.Environment.GetEnvironmentVariable("PATH") ?? "")
                 .Split(Path.PathSeparator).Select(p => Path.Combine(p.Trim('"'), python + (OperatingSystem.IsWindows() && !python.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? ".exe" : "")))
@@ -333,7 +461,7 @@ public partial class EditorSmoke
             LogsCheck("server_console_stop_cleanup", await LogWait(() => ProcessGone(child) && ConsoleReleased(console)) && !File.Exists(state));
             byte[] first = ReadShared(console);
             ManagedServerProcess.Start(profile, state);
-            LogsCheck("server_console_restart", await LogWait(() => File.Exists(childFile) && File.ReadAllText(childFile) != child.ToString() && ReadShared(console).Length > first.Length));
+            LogsCheck("server_console_restart", await LogWait(() => FixturePidReady(childFile, child) && ReadShared(console).Length > first.Length));
             int restarted = int.Parse(File.ReadAllText(childFile));
             ManagedServerProcess.Stop(state);
             LogsCheck("server_console_restart_cleanup", await LogWait(() => ProcessGone(restarted) && ConsoleReleased(console)) && !ManagedServerProcess.Running(state));
@@ -350,9 +478,9 @@ public partial class EditorSmoke
             // are files, not static addon objects, and all tailers below are shut down before reload.
             if (_reloadTest && !_afterReload && _failures.Count == 0)
             {
-                string previousChild = File.ReadAllText(childFile);
+                int previousChild = int.Parse(File.ReadAllText(childFile));
                 ManagedServerProcess.Start(profile, state);
-                LogsCheck("server_console_reload_fixture_ready", await LogWait(() => File.ReadAllText(childFile) != previousChild));
+                LogsCheck("server_console_reload_fixture_ready", await LogWait(() => FixturePidReady(childFile, previousChild)));
                 leaveForReload = _failures.Count == 0;
             }
             _logsReport["server_console_path"] = console;

@@ -18,7 +18,7 @@ namespace GUO.Renderer
     /// </summary>
     /// <remarks>
     /// <para>
-    /// PORT DEVIATION (GUO) — uploads are deferred to one per page per frame.
+    /// PORT DEVIATION (GUO) — uploads are batched at frame start and after drawing.
     /// Upstream uploads just the packed rectangle through FNA's
     /// <c>SetDataPointerEXT</c>. Godot has no partial texture upload at all:
     /// <c>ImageTexture.Update</c> and <c>RenderingServer.Texture2DUpdate</c>
@@ -40,7 +40,7 @@ namespace GUO.Renderer
     /// milliseconds — a dropped frame — for every sprite decoded, and a walk
     /// across a map decodes many per second. Two things follow from the
     /// numbers. The blit into the CPU-side page is free, so sprites are
-    /// blitted as they arrive and the page is uploaded at most once a frame,
+    /// blitted as they arrive and dirty pages are uploaded at frame boundaries,
     /// by <see cref="FlushAll"/>. And the page is capped at
     /// <see cref="MaxPageSize"/>: 2048 measured no dearer than 1024 while
     /// needing a quarter as many pages, and 4096 is six times dearer again.
@@ -59,6 +59,17 @@ namespace GUO.Renderer
         /// See the cost table above.
         /// </summary>
         public const int MaxPageSize = 2048;
+
+        /// <summary>
+        /// PORT DEVIATION (GUO): atlas split B (docs/perf/2026-10-24_atlas_1024_pages.md).
+        /// With <c>GUO_ATLAS_PAGE_1024=1</c> (off by default) the dynamic atlases
+        /// (art, animation, gump, glyph) use <see cref="DynamicPageSize"/> pages,
+        /// a quarter of the bytes per whole-page upload. Read once at start;
+        /// the batcher probe flips it for atlases it makes itself.
+        /// </summary>
+        public static bool SmallDynamicPages { get; internal set; } = System.Environment.GetEnvironmentVariable("GUO_ATLAS_PAGE_1024") == "1";
+
+        public const int DynamicPageSize = 1024;
 
         // Every live atlas, so one call a frame can flush all of them without
         // each owner having to remember to. An atlas whose page is stale draws
@@ -83,9 +94,10 @@ namespace GUO.Renderer
         private readonly List<ImageTexture> _textures = new List<ImageTexture>();
         private readonly List<bool> _dirty = new List<bool>();
 
-        // PORT DEVIATION (GUO): not upstream's. How many times each page was
-        // uploaded, so LandPages (--merged-land=array, Epic B) can tell when
-        // its copy of a page is stale.
+        // PORT DEVIATION (GUO): not upstream's. How many times each page's
+        // CPU content changed, so LandPages (--merged-land=array, Epic B) can
+        // tell when its copy of a page is stale -- it copies the CPU image, so
+        // it must not wait for the GPU upload.
         private readonly List<int> _versions = new List<int>();
 
         private Packer _packer;
@@ -93,19 +105,25 @@ namespace GUO.Renderer
 
         public TextureAtlas(int width, int height) : this(width, height, "unclassified") { }
 
-        internal TextureAtlas(int width, int height, string diagnosticOwner)
+        internal TextureAtlas(int width, int height, bool dynamicPages) : this(width, height, "unclassified", dynamicPages) { }
+
+        internal TextureAtlas(int width, int height, string diagnosticOwner, bool dynamicPages = false)
         {
             if (width <= 0 || height <= 0)
                 throw new ArgumentOutOfRangeException(nameof(width), "Atlas dimensions must be positive.");
 
-            _width = Math.Min(width, MaxPageSize);
-            _height = Math.Min(height, MaxPageSize);
+            int cap = dynamicPages && SmallDynamicPages ? DynamicPageSize : MaxPageSize;
+            _width = Math.Min(width, cap);
+            _height = Math.Min(height, cap);
             _diagnosticOwner = diagnosticOwner;
 
             _live.Add(this);
         }
 
         public int TexturesCount => _textures.Count;
+
+        /// <summary>Page width after the cap; for the batcher probe.</summary>
+        internal int PageWidth => _width;
 
         /// <summary>
         /// PORT DEVIATION (GUO): whole pages re-sent to the GPU by
@@ -139,7 +157,6 @@ namespace GUO.Renderer
                     ObserveUpload(i, uploadTicks, false);
                     PageUploads++;
                     _dirty[i] = false;
-                    _versions[i]++;
                 }
             }
         }
@@ -215,13 +232,14 @@ namespace GUO.Renderer
             );
 
             atlas._dirty[index] = true;
+            atlas._versions[index]++;
 
             return true;
         }
 
         /// <summary>
         /// The CPU copy of the atlas page <paramref name="texture"/> is, and how
-        /// many times it has been uploaded; false when it is not an atlas page.
+        /// many times its content has changed; false when it is not an atlas page.
         /// </summary>
         /// <remarks>PORT DEVIATION (GUO): for LandPages (Epic B), not upstream's.</remarks>
         internal static bool TryGetPage(Texture2D texture, out Image page, out int version)
@@ -324,6 +342,7 @@ namespace GUO.Renderer
             // Not uploaded here. See the remarks: the upload is the expensive
             // half and it happens once a frame, in Flush.
             _dirty[index] = true;
+            _versions[index]++;
 
             return _textures[index];
         }

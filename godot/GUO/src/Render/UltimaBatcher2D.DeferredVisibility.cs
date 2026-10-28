@@ -58,6 +58,9 @@ public sealed partial class UltimaBatcher2D
         _canvasCommands = null;
         _runPoints.Clear(); _runUVs.Clear(); _runColors.Clear(); _runIndices.Clear();
         _runTexture = null; _runItem = default;
+        // Pending instanced/replay sprites belong to the abandoned frame too.
+        // Never let the next Begin/NewItem flush them back into cleared owners.
+        _mmCount = 0; _mmTexture = null; _mmItem = default;
         _cover.Clear();
         _capture = null; _captureSuspended = false;
         _clipStack.Clear();

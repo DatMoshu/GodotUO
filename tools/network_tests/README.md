@@ -2,6 +2,24 @@
 
 Checks for the client's packet parse loop that run without the engine.
 
+The linked production `PerfStages` also checks disabled scopes, gate transitions,
+exception unwinding, nested inclusive totals and reset/export behavior. These
+checks do not exercise live socket/plugin dispatch or measure observer overhead.
+
+The Debug-only `DiagnosticsFunctionalProbe.tscn` exercises production TCP,
+Huffman decode, packet framing and plugin dispatch with counters off and on.
+It sends fragmented synthetic traffic over a temporary loopback port, checks
+callback mutation/veto/injection order, queued sends and reconnect/reset.
+It requires no shard, account or client data and performs no FPS sampling:
+
+```
+godot-console --headless --path godot/GUO res://addons/guo_editor/Tests/DiagnosticsFunctionalProbe.tscn
+```
+
+The full smoke launcher includes this probe. Editor smoke additionally checks
+repeatable movement queries against installed terrain and temporary custom-house
+walls, preview/internal flags, customization bounds and scratch-buffer cleanup.
+
 ```
 dotnet run --project tools/network_tests
 ```

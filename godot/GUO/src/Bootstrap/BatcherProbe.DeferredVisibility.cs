@@ -17,8 +17,8 @@ public partial class BatcherProbe
         bool oldBatched = UltimaBatcher2D.BatchedWorld;
         bool oldGpu = GpuWorld.Enabled;
 #if GUO_LABS
-        bool oldRd = GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled;
-        GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled = false;
+        bool oldRd = GUO.Renderer.DepthWorld.OrderedWorldCapture.Enabled;
+        GUO.Renderer.DepthWorld.OrderedWorldCapture.Enabled = false;
 #endif
         using var image = Image.CreateEmpty(2, 2, false, Image.Format.Rgba8);
         image.Fill(Colors.Red);
@@ -235,13 +235,13 @@ public partial class BatcherProbe
                 "no deferred frame marker or ownership competition");
             GpuWorld.Enabled = false;
 #if GUO_LABS
-            GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled = true;
+            GUO.Renderer.DepthWorld.OrderedWorldCapture.Enabled = true;
             batcher.BeginFrame(true); DrawPair();
             aborts = UltimaBatcher2D.CanvasFrameAborts;
             batcher.BeginFrame();
             CheckThat("RD retains eager lifecycle", UltimaBatcher2D.CanvasFrameAborts == aborts,
                 "late presenter election remains outside deferred ownership");
-            GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled = false;
+            GUO.Renderer.DepthWorld.OrderedWorldCapture.Enabled = false;
 #endif
         }
         finally
@@ -250,7 +250,7 @@ public partial class BatcherProbe
             UltimaBatcher2D.BatchedWorld = oldBatched;
             GpuWorld.Enabled = oldGpu;
 #if GUO_LABS
-            GUO.Labs.GpuRenderer.OrderedWorldCapture.Enabled = oldRd;
+            GUO.Renderer.DepthWorld.OrderedWorldCapture.Enabled = oldRd;
 #endif
             // Actually clear test commands while their texture still lives.
             UltimaBatcher2D.RetainCanvas = false;

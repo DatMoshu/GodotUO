@@ -9,7 +9,14 @@
   kind "anim"              id = body; meta {"action", "direction"}; data = the raw MUL payload for that
                            body/action/direction (palette, frame count, lookup table, frames)
   kind "tiledata-item"     id = item id; data = b""; meta = the fields to set (see uodata_write.TILE_FIELDS)
+                           or data = exact modern 41-byte record, meta = {}, explicit replace required
   kind "hue"               id = hue number (1-based); data = the 88-byte hues.mul block
+  kind "texmap"            id = physical texidx row (resolve TexTerr.def before writing);
+                           data = 8,192 or 32,768 raw bytes, including every original 16-bit color
+  kind "cliloc-file"       id = 0; data = complete native file, meta {"filename": "Cliloc.<suffix>"};
+                           explicit replacement required; no runtime language registration
+  kind "sound"             id = occupied physical sound row; data = 40-byte name plus mono 16-bit PCM;
+                           meta {"packaging": "mul" or "uop"}; explicit replacement, resolve Sound.def first
   kind "multi"             id = multi id (below 0x4000); data = the MultiCollection.uop record:
                            uint32 id, int32 count, then per component uint16 item, int16 x, y, z,
                            uint16 flags (0 shown, 1 hidden), uint32 0
@@ -21,7 +28,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-KINDS = {"static", "land", "gump", "anim", "tiledata-item", "hue", "multi"}
+KINDS = {"static", "land", "gump", "anim", "tiledata-item", "hue", "multi", "texmap", "cliloc-file", "sound"}
 
 
 @dataclass

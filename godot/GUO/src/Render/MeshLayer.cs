@@ -86,6 +86,14 @@ namespace GUO.Renderer
         public Texture2D[] Textures = new Texture2D[INITIAL_CAPACITY];
         public int Count;
 
+        // PORT DEVIATION (GUO): ADR-0044. Upstream keeps each quad's depth in
+        // its vertex Z; the canvas path had no use for it. Depth World reads it
+        // back, with the object's Z for the draw-time maxGroundZ test, and
+        // ContentStamp to know when a chunk's resident copy is stale.
+        public float[] Depths = new float[INITIAL_CAPACITY];
+        public sbyte[] ObjectZ = new sbyte[INITIAL_CAPACITY];
+        public int ContentStamp;
+
         // Per-frame visibility filtering
         public bool[] Visible = new bool[INITIAL_CAPACITY];
         public int VisibleSpriteCount;
@@ -147,14 +155,20 @@ namespace GUO.Renderer
             Array.Resize(ref Vertices, newSize);
             Array.Resize(ref Textures, newSize);
             Array.Resize(ref Visible, newSize);
+            Array.Resize(ref Depths, newSize);
+            Array.Resize(ref ObjectZ, newSize);
         }
 
         /// <summary>
         /// Resets all visibility flags to false. Called each frame before
         /// AddTileToRenderList marks visible sprites.
         /// </summary>
+        /// <summary>PORT DEVIATION (GUO): ADR-0044, bumped by every reset; an unchanged stamp means Visible is as last read.</summary>
+        public int VisibilityStamp;
+
         public void ResetVisibility()
         {
+            VisibilityStamp++;
             if (Count > 0)
                 Array.Clear(Visible, 0, Count);
         }
@@ -218,6 +232,7 @@ namespace GUO.Renderer
 
             _alphaDirty = true;
             _alphaDirtyCount = 0;
+            ContentStamp++;
         }
 
         /// <summary>
@@ -242,6 +257,7 @@ namespace GUO.Renderer
         private void MarkVertexDirty()
         {
             _alphaDirty = true;
+            ContentStamp++;
         }
 
         /// <summary>
@@ -263,6 +279,7 @@ namespace GUO.Renderer
             int destW, int destH, Vector3 hue, float depth, float uvInset = 0f)
         {
             ref var vertex = ref Vertices[index];
+            Depths[index] = depth;
 
             float sourceX = (sourceRect.X + uvInset) / (float)texture.GetWidth();
             float sourceY = (sourceRect.Y + uvInset) / (float)texture.GetHeight();
@@ -631,11 +648,16 @@ namespace GUO.Renderer
         }
 
         // PORT DEVIATION (GUO): ADR-0043's optional record invalidation seam.
-        // Unimplemented partial calls disappear completely outside Debug Labs.
+        // Content invalidation also applies to ordinary production builds.
         partial void RecordVertexChanged(int index);
         partial void RecordLayerReset();
 
-        [System.Diagnostics.Conditional("GUO_LABS")]
-        internal void InvalidateQuadRecord(int index) => RecordVertexChanged(index);
+        internal void InvalidateQuadRecord(int index)
+        {
+            // PORT DEVIATION (GUO): direct stretched-land writes must also
+            // invalidate Depth World's layer-wide resident content stamp.
+            ContentStamp++;
+            RecordVertexChanged(index);
+        }
     }
 }

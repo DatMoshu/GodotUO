@@ -190,6 +190,9 @@ namespace GUO
             Scene.Draw(_uoSpriteBatch, _renderTargets);
             _uoSpriteBatch.SetRenderTarget(null);
             _renderTargets.Draw(_uoSpriteBatch);
+            // PORT DEVIATION (GUO): as DrawFrame, upload what the draw decoded.
+            TextureAtlas.FlushAll();
+            LandPages.Sync();
         }
 
         internal void UnloadEmbedded()
@@ -594,8 +597,15 @@ namespace GUO
             Scene?.Load();
         }
 
+#if GUO_LABS
+        private bool _uncappedOpened;
+#endif
+
         public void SetVSync(bool value)
         {
+#if GUO_LABS
+            if (DepthWorldProbe.Uncapped) value = false;
+#endif
             DisplayServer.WindowSetVsyncMode(
                 value ? DisplayServer.VSyncMode.Enabled : DisplayServer.VSyncMode.Disabled
             );
@@ -637,6 +647,14 @@ namespace GUO
             // early. Godot paces the loop, so the cap is set here and the
             // sleep is gone -- see Update for what is left of the throttle.
             Engine.MaxFps = rate;
+#if GUO_LABS
+            if (DepthWorldProbe.Uncapped)
+            {
+                // Not zero: Update wraps elapsed time with %=; x % 0 is NaN.
+                Engine.MaxFps = 0;
+                _intervalFixedUpdate[0] = _intervalFixedUpdate[1] = 0.001f;
+            }
+#endif
         }
 
         private void SetWindowPosition(int x, int y)
@@ -1005,14 +1023,21 @@ namespace GUO
             Mouse.Refresh();
             runtimeAt = RuntimeTimings.Add(RuntimeTimings.Stage.Input, runtimeAt);
 
+            // PORT DEVIATION (GUO): opt-in diagnostics for work outside UPDATE_WORLD.
+            // Receive and parse are inclusive; nested network stages must not be added.
+            long networkStage = PerfStages.Now();
             var data = NetClient.Socket.CollectAvailableData();
+            networkStage = PerfStages.Add(PerfStages.Stage.NetworkReceive, networkStage);
             var packetsCount = PacketHandlers.Handler.ParsePackets(NetClient.Socket, UO.World, data);
+            networkStage = PerfStages.Add(PerfStages.Stage.NetworkParse, networkStage);
 
             NetClient.Socket.Statistics.TotalPacketsReceived += (uint)packetsCount;
             NetClient.Socket.Flush();
+            networkStage = PerfStages.Add(PerfStages.Stage.NetworkFlush, networkStage);
             runtimeAt = RuntimeTimings.Add(RuntimeTimings.Stage.Packets, runtimeAt);
 
             Plugin.Tick();
+            PerfStages.Add(PerfStages.Stage.PluginTick, networkStage);
             runtimeAt = RuntimeTimings.Add(RuntimeTimings.Stage.Plugins, runtimeAt);
 
             if (Scene != null && Scene.IsLoaded && !Scene.IsDestroyed)
@@ -1023,7 +1048,21 @@ namespace GUO
             }
             runtimeAt = RuntimeTimings.Add(RuntimeTimings.Stage.SceneUpdate, runtimeAt);
 
+#if GUO_LABS
+            if (DepthWorldProbe.Uncapped && !_uncappedOpened && Scene is GameScene && UO?.World?.Player != null)
+            {
+                _uncappedOpened = true;
+                SetVSync(false);
+                SetRefreshRate(Settings.GlobalSettings.FPS);
+                Profiler.Enabled = true;
+                var debug = UIManager.GetGump<Game.UI.Gumps.DebugGump>();
+                if (debug == null) UIManager.Add(debug = new Game.UI.Gumps.DebugGump(UO.World, 100, 100));
+                debug.IsMinimized = true; // upstream's name for the detailed view
+            }
+#endif
+            long uiStage = PerfStages.Now();
             UIManager.Update();
+            PerfStages.Add(PerfStages.Stage.UiUpdate, uiStage);
             runtimeAt = RuntimeTimings.Add(RuntimeTimings.Stage.UiUpdate, runtimeAt);
 
             _totalElapsed += elapsedMilliseconds;
@@ -1089,7 +1128,10 @@ namespace GUO
         /// </remarks>
         private void DrawFrame()
         {
-            Rectangle windowBounds = Window.ClientBounds;
+            // PORT DEVIATION (GUO): upstream reads Window.ClientBounds; only its
+            // size is used, and the position is a costly OS query every frame.
+            Vector2I windowSize = DisplayServer.WindowGetSize();
+            Rectangle windowBounds = new Rectangle(0, 0, windowSize.X, windowSize.Y);
 
             if (windowBounds.Width <= 0 || windowBounds.Height <= 0)
             {
@@ -1173,7 +1215,10 @@ namespace GUO
                 // PORT DEVIATION (GUO): the idle screen saver, over everything
                 // but the cursor. A no-op unless the profile turns it on.
                 _uoSpriteBatch.Begin();
-                GUO.Game.Managers.ScreenSaver.Draw(_uoSpriteBatch, new Rectangle(0, 0, ClientBounds.Width, ClientBounds.Height));
+                // PORT DEVIATION (GUO): ClientBounds' size, without its window-position query.
+                GUO.Game.Managers.ScreenSaver.Draw(_uoSpriteBatch, _embedded
+                    ? new Rectangle(0, 0, _embeddedClientBounds.Width, _embeddedClientBounds.Height)
+                    : new Rectangle(0, 0, (int)((float)windowBounds.Width / DpiScale), (int)((float)windowBounds.Height / DpiScale)));
                 _uoSpriteBatch.End();
 
                 _uoSpriteBatch.Begin();
@@ -1192,6 +1237,15 @@ namespace GUO
                 _uoSpriteBatch.SetRenderTarget(null);
 
                 _renderTargets.Draw(_uoSpriteBatch);
+
+                // PORT DEVIATION (GUO): BeginFrame uploads what Update decoded;
+                // sprites first decoded while drawing (a mobile's equipment for
+                // a new action or direction, a new gump or glyph) would show as
+                // blank this frame. Upload them before the frame is rendered.
+                TextureAtlas.FlushAll();
+                // The land array copies the pages as well; bring it up to date
+                // for the same frame. A no-op when no page changed.
+                LandPages.Sync();
 
                 canvasFrameCompleted = true;
             }
@@ -1222,11 +1276,26 @@ namespace GUO
         /// PORT DEVIATION (GUO): upstream reads
         /// <c>SDL_GetWindowDisplayScale</c>, which is the scale of the display
         /// the window is currently on. Godot states the same fact per screen.
+        /// The display's scale is read at most every half second, and at once
+        /// after a DPI change: finding the window's screen enumerates the
+        /// monitors, and this is read several times a frame.
         /// </summary>
         public float DpiScale
         {
-            get => DisplayServer.ScreenGetScale(DisplayServer.WindowGetCurrentScreen()) * ScreenScale;
+            get
+            {
+                long now = System.Environment.TickCount64;
+                if (now - _screenScaleReadAt >= 500 || _screenDpi <= 0)
+                {
+                    _screenDpi = DisplayServer.ScreenGetScale(DisplayServer.WindowGetCurrentScreen());
+                    _screenScaleReadAt = now;
+                }
+                return _screenDpi * ScreenScale;
+            }
         }
+
+        private float _screenDpi;
+        private long _screenScaleReadAt;
 
         public int ScaleWithDpi(int value, float previousDpi = 1)
         {
@@ -1238,7 +1307,13 @@ namespace GUO
             // Godot's notification constants are long; the override takes int.
             switch ((long)what)
             {
+                case NotificationWMDpiChange:
+                    _screenDpi = 0; // PORT DEVIATION (GUO): see DpiScale
+
+                    break;
+
                 case NotificationWMSizeChanged:
+                    _screenDpi = 0; // PORT DEVIATION (GUO): see DpiScale
                     Vector2I size = DisplayServer.WindowGetSize();
 
                     WindowOnClientSizeChanged(size.X, size.Y);

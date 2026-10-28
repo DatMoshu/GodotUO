@@ -221,6 +221,35 @@ public partial class EditorSmoke
 
                 Directory.CreateDirectory(_out);
                 _inspector.Current?.Image?.SavePng(Path.Combine(_out, $"asset_static{Suffix}.png"));
+                bool stageAction = _inspector.Current?.Actions.Exists(a => a.Label == "Export verified static stage…") == true;
+                _assetReport["static_stage_action"] = stageAction;
+                if (!stageAction) AssetFail("replaced static is missing verified-stage export");
+                var stageDialog = new StaticStageDialog();
+                stageDialog.Build(_data, FixtureStatic, FixtureStaticImage());
+                AddChild(stageDialog);
+                bool stageReady = stageDialog.GetOkButton().Text == "Prepare verified copy"
+                    && !stageDialog.GetOkButton().Disabled;
+                _assetReport["static_stage_dialog_ready"] = stageReady;
+                if (!stageReady) AssetFail("static-stage dialog did not start in prepare state");
+                stageDialog.Free(); // teardown/cancel without starting a process or changing a stage
+                bool metadataAction = _inspector.Current?.Actions.Exists(a => a.Label == "Edit item metadata…") == true;
+                _assetReport["item_metadata_action"] = metadataAction;
+                if (!metadataAction) AssetFail("static inspector is missing metadata document editing");
+                CheckItemMetadataDocument();
+                CheckAssetWorkbench(art, FixtureStatic);
+                CheckMetadataNativeRecovery();
+                CheckBatchStaticReview();
+                CheckClilocDocuments();
+                CheckSoundWaveExport();
+        CheckSoundDocuments();
+        CheckSoundImport();
+        CheckSoundExports();
+        CheckHueDocuments();
+        CheckHueRanges();
+        CheckHueText();
+        CheckHueStage();
+        CheckTextures();
+        CheckTextureDocuments();
             }
 
             foreach (var (name, when) in AssetStamp())

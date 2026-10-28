@@ -468,9 +468,15 @@ texture; export warns about it.
 |---|---|
 | `format` | `1` |
 | `hue` | Hue number, 1-based: group `(hue-1)/8`, entry `(hue-1)%8` of `hues.mul` |
-| `name` | Up to 20 ASCII characters |
+| `name` | Project hue name, up to 4,096 UTF-8 bytes with no NUL or line breaks; native output uses the first 20 ASCII bytes |
 | `table_start`, `table_end` | Hex strings, as `hues.mul` stores them |
 | `colors` | 32 hex strings, the 16-bit colours as stored (four rows of eight) |
+| `source_sha256`, `source_record_base64` | Optional paired F08a binding to the active loader's complete original 88-byte hue record; saved documents check both, legacy unbound copies remain readable |
+
+[Hue working documents](editor/hue_documents.md) retain invalid drafts locally,
+check source and saved-copy conflicts, and save format 1 atomically. Editing or
+importing PNG changes the working document first; **Save copy** reapplies the
+existing overlay. This binding does not certify the separate native export path.
 
 **`animations/0xNNNN.json`** (editor preview only; not yet exported to anim.mul/UOP):
 `{"format":1,"body":int,"clips":[{"action":int,"direction":int,"fps":number,"frames":[{"image":str,"center":[x,y]}]}]}`.
@@ -514,6 +520,93 @@ Layouts, as `ArtLoader` and `GumpsLoader` read them (and as
 
 None of these files are committed: they derive from the install.
 ---
+
+### Item metadata working documents (F06a)
+
+`<world-project>/metadata/items/0xNNNN.json` is editor-only inert JSON, schema 1:
+`kind: guo/item-metadata`, `layout: modern-41`, item `id`, base64 `original`
+(exactly 41 source bytes), original-record `source_sha256`, UTF-8 `name`,
+hexadecimal-string `flags` (unsigned 64-bit) and integer `height` (0–255).
+Only name, flags and height are editable. The source record and all other fields
+are retained; an unchanged name retains its raw bytes. A changed name is at most
+20 UTF-8 bytes, without NUL, and zero-padded in the in-memory preview.
+The document does not modify runtime loaders or emit native tiledata. A changed
+source, mismatched ID/layout/hash or document larger than 16 KiB is refused.
+Writes remain in the project and refuse resolved installation/escaping paths.
+See [item metadata workflow](editor/item_metadata.md) and
+[synthetic recipe](../tools/scenarios/fiddler-f06a/README.md).
+
+### Cliloc working documents and CSV (F15a/F15c/F15d/F15e)
+
+`<world-project>/metadata/cliloc/<language>.json` is inert editor-only schema 1
+`guo/cliloc-document`, containing three-letter `language`, `encoding: UTF-8`,
+source SHA-256, compression state, base64 six-byte header and changed rows
+(`id`, `deleted`, preserved byte `flag`, `text`). Tombstones omit active text;
+new IDs use flag zero. The source-bound patch is limited to 10,000 changes and
+2 MiB of text; edited strings fit 32,767 UTF-8 bytes without NUL.
+
+Custom sources use language `custom1` or `custom2` and additionally require
+`source_identity`: lowercase SHA-256 of the resolved absolute source path's
+UTF-8 bytes (uppercase path on Windows). Their project path is
+`metadata/cliloc/custom/<source_identity>/<source_sha256>/<language>.json`.
+Path identity, content version and slot isolate project patches and editor-local
+recovery. Raw source paths are remembered only in private editor metadata;
+installed-language documents remain unchanged. See [custom sources](editor/cliloc_custom_sources.md).
+
+Standard CSV exchange uses UTF-8 `Number;Text;Flag`, decimal IDs, Fiddler flag
+names (or unknown decimal bytes) and CRLF output. The explicit Fiddler dialect
+has line-based unquoted records and trims imported text. Input also detects
+BOM-marked UTF-16/UTF-32 LE/BE; unmarked input is strict UTF-8. Quoted UTF-8 supports
+multiline fields, semicolons and doubled quotes as a separate lossless dialect.
+Imports merge text only, preserve source flags, leave omitted IDs untouched and
+apply atomically as one undo step after review. A blank string is not deletion.
+CSV files are bounded to 64 MiB/500,000 records; malformed or duplicate rows
+refuse the whole import. Export omits tombstones and uses atomic standard-file
+replacement outside the installation. See [working documents](editor/cliloc_documents.md)
+and [CSV exchange](editor/cliloc_csv_exchange.md). Neither emits native cliloc data;
+[separate native staging](editor/cliloc_native_staging.md) consumes the working
+snapshot after its own comparison and confirmation.
+
+[Tiledata-name synchronization](editor/cliloc_tiledata_sync.md) uses the same
+Cliloc JSON/tombstone contract. Legacy 37-byte and modern 41-byte item tables
+map IDs below `0x4000` to ID+1020000, below `0x8000` to ID+1078872, and the rest
+through `0xFFFF` to ID+1084024. Source name fields decode first-NUL ASCII;
+explicit project name edits retain authored Unicode. Captured saved/draft item
+metadata is validated against source records. Selected changes apply atomically,
+preserving existing flags and binding review to source/document/name snapshots.
+
+### Sound working documents (F14b/F14c)
+
+`<world-project>/metadata/sounds/0xNNNN.json` is editor-only inert JSON, schema 2:
+`kind: guo/sound-effect`, effect `id`, `source_sha256`, working `name` and
+`pcm_sha256` (null for source PCM, otherwise lowercase SHA-256 of raw PCM).
+Legacy schema 1 `guo/sound-name` documents remain readable and upgrade on save.
+The fingerprint is SHA-256 of ASCII decimal UTF-8 source-name byte count plus
+`:` followed by those complete name bytes and the active loader's PCM bytes.
+The displayed source name stops at its first NUL; bytes after it still bind
+the document to that source. New names fit 32 UTF-8 bytes without NUL.
+The original display name may retain a larger decoded size unchanged.
+Documents larger than 16 KiB, mismatched IDs/hashes and invalid names are refused.
+Saves recheck the active source and use atomic project-only replacement with
+resolved installation/path-escape protection. Changed PCM is stored in canonical
+WAV blobs at `assets/sound-documents/<pcm_sha256>.wav`, derived only from validated
+hashes. Blob decoding and raw PCM checksums are verified on reopen and reuse;
+missing/corrupt references are refused. Blob writes precede atomic manifest
+replacement. Unreferenced blobs are retained; no automatic deletion is implied.
+Recovery also materializes blobs and stores references with saved-name/PCM
+baselines. It can therefore write project audio before an explicit Save copy.
+Imports accept one fmt-16 PCM mono 16-bit 22050 Hz format before one nonempty,
+even data chunk (at most 64 MiB; file at most 65 MiB), validating RIFF and padded
+chunk bounds. No native sound header is emitted and no runtime sound is changed.
+See [naming](editor/sound_documents.md) and [WAV import](editor/sound_wav_import.md).
+
+F14e standard [sound-list exports](editor/sound_list_export.md) use semicolon
+`ID;Name;Length` CSV: hexadecimal ID (minimum three digits), quoted name and
+two-decimal seconds. UTF-8 without BOM uses invariant decimals; strict CP1252
+uses locale decimals for the Fiddler profile. Optional POL (+1) shifts CSV IDs
+only. WAV folders contain exact reviewed PCM plus UTF-8 `SoundList.csv` with
+native IDs. Filename normalization/collision checks and whole-folder publication
+are editor export behavior, not a new pack or native sound archive format.
 
 ## 12. GUO Asset Store packs (ADR-0019)
 
@@ -894,9 +987,23 @@ file of the same shape in `--ranges` / `UO_DATA_RANGES`):
 | `anim` | One direction's frame group as `anim.mul` stores it | `action`, `direction` |
 | `tiledata-item` | empty | Any of `flags weight layer count anim hue light height name`; the rest keep their value |
 | `hue` | One 88-byte hue entry | |
+| `cliloc-file` | Complete bounded native Cliloc; ID is zero. Explicit replacement required. | Only `filename: Cliloc.<safe suffix>`; no runtime language registration |
+| `sound` | Complete 40-byte native name plus mono 16-bit LE 22050 Hz PCM; occupied physical ID only. Explicit replacement required. | Only `packaging: mul` or `packaging: uop`; resolve/review Sound.def aliases before writing |
 | `multi` | The `MultiCollection.uop` record: `uint32 id, int32 count`, then per component `uint16 item, int16 x, y, z, uint16 flags` (0 shown, 1 hidden), `uint32 0` (no cliloc list). Ids stay below 0x4000, which the shard masks to | |
 
 **Writes** (all append-only except the in-place records):
+
+Native Cliloc staging uses the existing project snapshot and a separate reviewed
+candidate transaction; see [native Cliloc staging](editor/cliloc_native_staging.md).
+Native sound staging captures source fingerprint, working name and a hashed
+raw PCM file in a schema-1 `domain: sound` snapshot, with explicit packaging and
+logical ID. Its separate native-payload manifest binds the resolved physical row
+and affected aliases; see [native sound staging](editor/sound_native_staging.md).
+The private stage's `cliloc_sources` map binds each target to a document source
+path/hash. A new native filename records `source_exists: false`, an empty
+`source_sha1` and zero `source_size`; installation checks require it to remain
+absent. Existing file provenance remains unchanged. Edited BWT sources emit plain
+UTF-8 while identity exports retain their compressed bytes.
 
 - **LegacyMUL UOP.** The data is appended, then one new block
   (`int32 count, int64 next = 0`, then `count` × 34-byte entries:
@@ -1735,9 +1842,36 @@ Same parameters and seed, same bytes.
   `guo.multi.orient/1` (`wall` `{id: {axis, ew, ns}}`, `map` `{rot90, mirror_x, mirror_y: {id: id}}`, `door_bases`, and
   `lossy` `{id: id}` for window sets that share one art on the other axis, which come back as the first set), built from
   the styles, and with `run.py orient-table` from the mined catalogue and tiledata names.
-- `import` / `export`: `format` is one of `txt` (UOFiddler and Ultima SDK text, `0xID x y z flags`), `uoa` (UO Architect
+- `import` / `export`: `format` is one of `txt` (GUO legacy TXT: decimal IDs unless `0x`-prefixed), `txt-fiddler`
+  (Fiddler TXT: hexadecimal uint16 IDs, decimal int16 X/Y/Z, signed int32 flags), `uoa-fiddler`
+  (Fiddler UOA text: four headers, decimal uint16 IDs/int16 offsets/int32 flags), `uoa` (GUO legacy UO Architect
   text, 4 header lines), `uoab` (UO Architect binary designs, version 1 or 2), `wsc`, `csv-punt`, `csv-swerv`,
-  `centred` (CentrED# `id,x,y,z,hue,flags`) and `uox3`. Import detects the format from the name and head and recentres.
+  `centred` (CentrED# `id,x,y,z,hue,flags`) and `uox3`. Import detects legacy formats from the name/head and recentres.
+  `txt-fiddler` and `uoa-fiddler` must be selected explicitly and preserve coordinates by default (`recentre: true` opts in).
+  Their `text_flags` result/parameter parallels `components`; TXT export writes canonical `0xID X Y Z Flags` CRLF lines.
+  Each accepts 1–65,535 entries and at most 4 MiB. Editor text review covers hue loss and stale source/document/output.
+  Rotate/mirror `preserve_entries: true` refuses splitting, recombination or order changes so opaque per-entry
+  metadata cannot be assigned to a different part merely because aggregate counts match.
+  UOA's first three header values are ignored as in Fiddler; output normalizes them to version 6/template 1/item −1,
+  with the current count in the fourth line. Both profiles retain signed raw `text_flags` and review hue loss.
+  `wsc-fiddler` is separately explicit: complete decimal ID/X/Y/Z sections, pinned Fiddler world-coordinate
+  normalization and optional `dynamic_ids` uint16 list (listed IDs import hidden). It ignores Color and exports
+  canonical tab-separated CRLF with Color 0 and no stored flags. Editor export requires hue/flag-loss consent.
+  ID 65535, incomplete/duplicate fields and overflow are refused; input/output are bounded to 4 MiB and 65,535
+  components. Automatic detection keeps the existing color-retaining `wsc` profile. See
+  `docs/editor/multi_fiddler_wsc.md` for the seeded-minimum heuristic and explicit sentinel refusal.
+  `uox3-fiddler` is an explicit export-only profile: numbered HOUSE ITEM blocks,
+  uppercase four-digit hexadecimal IDs, decimal int16 offsets, no indentation,
+  Windows CRLF and a blank line after each block. It retains order/duplicates but
+  omits flags, hue and level. The editor reviews hue/flag loss; nonzero CSV Unk1
+  is refused. Legacy `uox3` import/export and detection stay separate. The pinned
+  Fiddler source supplies an exporter only; no independent importer is claimed.
+  `csv-fiddler` is also explicit: hexadecimal uint16 IDs/int32 flag bit patterns, decimal int16 offsets and
+  trailing signed int32 Unk1 (decimal or 0x hex on input, empty/absent means zero). Its parallel `text_extra`
+  array preserves Unk1 alongside `text_flags`; both arrays must match component count and int32 bounds.
+  Canonical output is `TileID,OffsetX,OffsetY,OffsetZ,Flag,Unk1` plus lower-case hex ID/flags/extra and CRLF.
+  Coordinates are preserved by default; count/byte budgets match reviewed TXT. Nonzero extra values block
+  lossy legacy/text/native export. See `docs/editor/multi_fiddler_csv.md` for project retention and review.
 
 The validator (section 16) also refuses a roof with floor open to the sky, a door with nowhere to stand on a side, and
 a stair whose foot is unreachable, whose arrival is not floor above, whose hole is not cut, or that does not climb the
@@ -1755,7 +1889,7 @@ diffable (one component per line) and keeps the hue, which a multi record cannot
 | `name` | The multi's name in a stage |
 | `source` | The client multi id it was opened from, or `null` |
 | `floor_z`, `storey_height` | `7` and `20`, the client's story heights |
-| `components` | `[item, x, y, z, shown, hue]` per component, in list order (the order breaks ties in painting): `item` and `hue` numbers, `shown` `1` or `0`, x/y from the centre |
+| `components` | `[item, x, y, z, shown, hue, text_flags?, text_extra?]` per component, in list order (the order breaks ties in painting): `item` and `hue` numbers, `shown` `1` or `0`, x/y from the centre. Optional seventh column retains original signed int32 Fiddler text flags; omitted for existing six-column documents. Optional eighth column retains CSV's signed int32 `Unk1`; a null seventh placeholder is allowed when only the eighth is present. CSV export retains both fields; TXT/UOA retain flags while visibility matches, otherwise emit edited visibility as 0/1. Exporters that cannot retain nonzero `text_extra` refuse it. Native flag/extra translation is separate and refuses opaque effective flags or nonzero extra values. |
 
 Writing it to a stage goes through the built form of §16 (`components.json`: `[item, x, y, z]` with a
 fifth element `0` when hidden, plus a `multi.json` with `valid`, `problems`, `doors`, `size`,
@@ -3284,6 +3418,56 @@ game thread. An exception drops that packet and is logged
 (`[mods] <id>: dropped packet ...`).
 ## 41. Perf probe and perf lab reports (`build/perf`, `tools/perf_probe`, `tools/perf_lab`)
 
+Task698 measurement readiness adds opt-in private artifacts (see
+`tools/perf_probe/README.md`). `GUO_PERF_RAW_FRAMES=1` adds a scene `raw_frames`
+reference to `guo/raw-frames@1`: chronological `frame_ms`, `frames`,
+`initial_capacity`, `dropped: 0`, `storage_grew: false`. Serialization occurs
+after the sample window and fails on count/capacity/nonfinite-duration errors.
+`minimap_open` records actual scene state; `GUO_PERF_MINIMAP=1` opens it for the
+explicit diagnostic cohort only.
+
+`--release --manifest` on Windows export creates `guo/release-build@1` beside
+the executable. `--manifest-inputs` on the perf probe/gate requires this receipt,
+hashes caller-listed configuration/fixture files before and after, enables raw
+samples and runtime identity, and creates `guo/measured-build@1`. It binds source
+head/tree, build command/SDK/engine/config, all exported dependency hashes,
+actual loaded executable/client/GodotSharp hashes and MVIDs, Release/optimized
+state, runtime/OS/renderer, effective switches and raw-file hashes. Ambiguous or
+changed exports, changed inputs and missing/mismatched samples fail. These
+artifacts prove identity and sample accounting, not quiet-host performance or
+completeness of a caller's fixture inventory. They remain private external output.
+
+The measured manifest's `cohort` binds actual global and per-scene window, zoom,
+renderer and minimap state; profile/PostFX, warm-up/sample/frame-target/route
+settings; and effective diagnostic modes (including interval counters, parity,
+raw sampling and the minimap request). Requested diagnostic environment values
+also remain in `requested.diagnostics`; route content is identified by the loaded
+route hash. Old manifests missing cohort fields require a fresh baseline.
+In manifest mode the local gate rejects cohort drift and preserves the baseline.
+The renderer cohort also binds effective shared-cover path, shader/reference and
+MultiMesh flags, plus the integer `runtime_identity.parameters.multimesh_min_run`.
+Declared boolean experiment arms may vary the named paths; changing the run
+threshold requires a distinct cohort. A shader-only parity switch remains a
+diagnostic mode, not an ordinary shared-cover timing arm.
+
+`--perf-profile lean` is a probe-only effects-off variant of `plain`: it also
+disables Enhanced HD, sprite/static/terrain shadows and animated water. Its
+effective profile description includes these values and ambient density. The
+ordinary client defaults and the existing `plain` preset are unchanged.
+
+`GUO_CANVAS_CLEAR_USED=1` is an off-by-default ordinary-canvas experiment:
+after a non-retained frame it clears the previous used item prefix, leaving
+the already-empty unused tail alone. Retained frames and transitions out of
+retention or recovery keep full-pool processing; the legacy GPU path is unchanged.
+`clear_used_canvas` is an effective boolean experiment-arm dimension. The
+scene's `canvas_owner_clears` counts native ownership clears per measured frame.
+`items_allocated` is the pooled item high-water size, not new allocations per
+frame; compare it with `batcher_items` to identify unused capacity. Reduced
+clear calls alone do not establish a frame-time improvement.
+`--experiment-arm FILE` permits only explicitly named boolean optimization
+dimensions to vary; each arm records its name and expected effective flags.
+Undeclared flags, scene state and diagnostics still bind. See the perf probe README.
+
 **Sustained GUO PerfDump**, `guo-samples.jsonl`: opt-in through
 `tools/perf_dump --only guo --sample-seconds N` (0 disables; 1–300 seconds),
 which sets the client diagnostic `GUO_PERF_SAMPLE_SECONDS`. After settling,
@@ -3417,7 +3601,13 @@ twice a second on a timer thread from Windows `GetSystemTimes` /
 The count gate requires `export_template: release`, `engine_debug_build:
 false`, `quiet_fixture: true` and `p50_ms`. PerfDump receipts add
 `engine_debug_build`, `export_template` and `quiet_fixture`
-(`GUO_PERF_QUIET=1`, `tools/perf_dump --only guo --quiet`).
+(`GUO_PERF_QUIET=1`, `tools/perf_dump --only guo --quiet`). The report's
+top-level `atlas_page_1024` is true when `GUO_ATLAS_PAGE_1024=1` (off by
+default) gave the art, animation, gump and glyph atlases 1024 pages
+(`docs/perf/2026-10-24_atlas_1024_pages.md`).
+top-level `minimap_texture` is true when `GUO_MINIMAP_TEXTURE=1` (off by
+default) gave the minimap its own texture instead of its gump atlas region
+(`docs/perf/2026-10-24_minimap_texture.md`).
 
 **Probe JSON**, `perf_<label>.json`, written by the client's `--perf-probe`
 (`src/Bootstrap/PerfProbe.cs`): `{label, window "WxH", zoom, optimized,
@@ -3532,7 +3722,22 @@ Since PERF-03 each scene also carries `render_frame_ms`, `ui_ms`,
 sorted-list stages only, absent when none). Since review item B
 (2026-10-24) each scene also carries `chunks_skipped`: chunks per frame
 the tile walk skipped because no object anchor in them can reach the
-screen (0 with `--chunk-skip=off`). Scenes `cave-roof` and
+screen (0 with `--chunk-skip=off`), `items_allocated` (the batcher's
+pooled canvas items) and `cuts_total` with `cuts_cover`, `cuts_material`,
+`cuts_offset`, `cuts_sampler`, `cuts_clip`, `cuts_begin`, `cuts_other`
+(canvas items started per frame, by why; `UltimaBatcher2D.CutReason`).
+The off-by-default `--shared-cover` prototype makes the parity toggle
+compare cut versus shared cover submission under the new sprite shader.
+Use `--shared-cover-shader-parity` instead to compare the original sprite
+shader against the new shader with cut submission on both sides. Both
+comparisons need `--perf-parity`; neither proves the other's gate.
+Real 2 x 4096 sprite textures use the original material, reserving that
+texture-size discriminator for cover meshes under the shared material.
+Triangle-array sprites (including `--batched-world`) also use the original
+material: their vertex format lacks the shared shader's `CUSTOM0` input.
+Cover following those commands uses the existing cut path.
+
+Scenes `cave-roof` and
 `open-sea` were added after `dungeon`. With `--perf-parity`, each standing
 scene also carries `parity_stable_px`, `parity_violations`,
 `parity_strict`, `parity_strict_max_delta` (pixels: stable across the plain
@@ -3553,6 +3758,15 @@ default) are compared as given, in either flag order, and a strict run with
 whose `[go` did not arrive within three tiles in x and y, and two in z when
 the `[go` names one, has no row. A parity row whose test captures did not
 all come from the pass fails the run.
+Since PERF-MM-01 each scene also carries `p50_ms`, `multimesh_sprites`
+(whether `--multimesh-sprites` was on), `mm_instances` (sprites drawn as
+MultiMesh instances), `mm_runs` (MultiMeshes drawn), `mm_calls`
+(RenderingServer calls those runs made), `mm_fallbacks` (sprites the switch
+left on the per-sprite path), `mm_replayed` (sprites of runs shorter than
+`mm_min_run`, sent as their own commands) and `mm_min_run`, all per frame
+except the last. The integrated probe retains the PERF-LANE-01 timing
+controls and fields above (`GUO_PERF_WARMUP_SECONDS` and
+`GUO_PERF_MEASURE_SECONDS`); PR156's earlier timing switches are superseded.
 Since PERF-01, `system` is `{gpu, gpu_vendor, gpu_api, driver,
 driver_version, rendering_method, cpu, cpu_threads, ram_gib, os, os_version,
 screen "WxH", refresh_hz, engine}`, from Godot's `RenderingServer`, `OS`
@@ -3854,3 +4068,58 @@ prepared streams even if drawing later fails; `rd_draw_calls_per_frame` counts
 issued commands. Runs count adjacent original complete texture tuples; batches
 count the prepared bounded descriptor groups. A/B/A has three runs and one
 batch. None measures GPU duration or individually dirty state rows.
+
+
+### Production Depth World presenter (ADR-0044)
+
+The non-Labs client selects Depth World on supported RenderingDevice frames;
+Compatibility and `--canvas-world` use the complete canvas renderer. Runtime
+shaders are assembly resources named `depthworld/<filename>.glsl.txt`, independent
+of the exported Labs resource filter. Diagnostics remain outside the product
+payload. No on-disk client-data, profile or network format changes.
+
+The existing `rd_*` PerfProbe/PerfDump counters are available without Labs.
+`rd_upload_bytes_per_frame` and `rd_draw_calls_per_frame` still describe the
+captured occurrence stream. The separate `rd_resident_upload_bytes_per_frame`
+and `rd_resident_draw_calls_per_frame` describe chunk-resident GPU work;
+`rd_total_gpu_upload_bytes_per_frame` sums both upload streams. CPU dynamic
+capture bytes are not GPU traffic. `rd_resident_frames` counts successfully
+presented resident frames. Failed preparation can still have upload/draw costs;
+use frame counters and `rd_last_fallback` to bind actual presentation. These
+measure work, not GPU time or a portable FPS gain.
+
+
+### Wide-zoom overview (ADR-0045)
+
+The UO+ option **Experimental zoom + world map** is off by default.
+Profile `experimental_world_overview` enables native zoom through 5x and a
+cached isometric terrain/building map strictly above 5x. Disabling it while
+zoomed out immediately restores the standard 2.5 maximum. Legacy `--zoom-max`
+arguments do not enable the player option. Saved/default zoom still clamps
+above 2.5, including after a forced exit.
+
+`world_overview_style` selects Natural (0, default), Parchment (1), Relief
+edges (2), or Moonlight (3); invalid values render as a clamped supported style.
+Shaders affect only cached map textures. A fixed-size animated player pin and
+floating city labels draw separately. City coordinates come from the latest
+server city list with authoritative world coordinates (legacy illustration coordinates are excluded) and already-loaded city/town marker packs; hidden marker
+files stay hidden. Labels avoid the player pin and each other, cap at 63,
+and stay a fixed screen size. At most 2048 loaded markers are inspected per frame. Facets without city data have no invented labels.
+
+Overview omits detailed mobiles, small props, effects and dynamic item/multi
+art. World mouse actions are view-only; simulation and macros continue.
+The camera fits the current facet with a 32-pixel margin and recentres as the
+view widens. Above 5x, Ctrl+wheel steps are 20 percent; native steps are unchanged.
+Cache keys include resolution level. Sampling quality is independent of the
+transition threshold. Existing cached levels preview while new levels load.
+The cache is bounded to 32 MiB CPU pixels plus 32 MiB texture payload; at most
+128 native map reads for fine frames, 512 for coarse, two uploads and a soft
+4 ms preparation deadline. Map revision/facet/season/theme changes invalidate
+all levels. No disk-cache or network-format change.
+Scenario: `tools/scenarios/client/wide_zoom_overview.cs.fixture`.
+
+The effective performance cohort requires boolean `atlas_page_1024` and
+`minimap_texture` flags from runtime identity. Undeclared drift rejects a
+comparison without replacing its baseline; intentionally varied flags require
+explicit experiment arms. Older incomplete receipts need a fresh baseline.
+This metadata change does not authorize benchmarking.

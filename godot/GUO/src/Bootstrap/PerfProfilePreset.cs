@@ -19,6 +19,8 @@ namespace GUO.Host;
 /// lights, spell lights, ambient particles, water ripples and every UO+ flag
 /// off; Classic water; HD filter Auto. The caller pairs it with
 /// <c>--merged-land=off --merged-cover=off --postfx off</c>.</item>
+/// <item><c>lean</c>: plain with optional HD, sprite/static/terrain shadows
+/// and animated water explicitly disabled, for an effects-off FPS cohort.</item>
 /// <item><c>defaults</c>: the profile untouched (a new scratch profile is
 /// GUO's shipped defaults).</item>
 /// <item><c>uoplus-max</c>: realtime lights with spell lights, every
@@ -32,7 +34,7 @@ namespace GUO.Host;
 /// </remarks>
 internal static class PerfProfilePreset
 {
-    public static readonly string[] Names = { "plain", "defaults", "uoplus-max" };
+    public static readonly string[] Names = { "plain", "lean", "defaults", "uoplus-max" };
 
     /// <summary>Applies the named preset to the current profile; returns what was set, for the report.</summary>
     public static string Apply(string name, GUO.Game.World world)
@@ -45,12 +47,21 @@ internal static class PerfProfilePreset
 
         switch (name)
         {
+            case "lean":
             case "plain":
                 UoPlusOptions.DisableAll(p);
                 p.RealtimeLights = false;
                 p.AmbientParticleDensity = 0;
                 p.WaterStyle = GUO.Renderer.Water.WaterRender.Classic;
                 p.HdFilter = HdFilterMode.Auto;
+                if (name == "lean")
+                {
+                    p.EnhancedHD = false;
+                    p.ShadowsEnabled = false;
+                    p.ShadowsStatics = false;
+                    p.TerrainShadowsLevel = 0;
+                    p.AnimatedWaterEffect = false;
+                }
                 break;
             case "defaults":
                 break;
@@ -98,8 +109,9 @@ internal static class PerfProfilePreset
             }
         }
 
-        return $"lights {(p.RealtimeLights ? "realtime" : "classic")}, water {p.WaterStyle}, hd {p.HdFilter}, "
-               + $"shadows {(p.ShadowsEnabled ? "on" : "off")}, particle cap {p.AmbientParticleCap}, "
+        return $"lights {(p.RealtimeLights ? "realtime" : "classic")}, water {p.WaterStyle}, hd {p.HdFilter}, enhanced HD {p.EnhancedHD}, "
+               + $"shadows {(p.ShadowsEnabled ? "on" : "off")}, static shadows {p.ShadowsStatics}, terrain shadows {p.TerrainShadowsLevel}, "
+               + $"animated water {p.AnimatedWaterEffect}, ambient density {p.AmbientParticleDensity}, particle cap {p.AmbientParticleCap}, "
                + $"uo+ [{(on.Count == 0 ? "none" : string.Join("; ", on))}]";
     }
 }

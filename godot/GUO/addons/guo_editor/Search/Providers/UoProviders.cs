@@ -47,6 +47,8 @@ public sealed class UoArtProvider : UoProvider
 
     public override string Name => "art names";
 
+    public override bool CanStep => DataReady;
+
     public override bool Done => _done;
 
     public override double Progress => _done ? 1 : (double)_next / _total;
@@ -152,6 +154,8 @@ public sealed class UoHueProvider : UoProvider
 
     public override string Name => "hues";
 
+    public override bool CanStep => DataReady && Panel != null;
+
     public override bool Done => _done;
 
     public override IEnumerable<SearchEntry> Entries => _entries;
@@ -218,6 +222,8 @@ public sealed class UoSoundProvider : UoProvider
 
     public override string Name => "sounds";
 
+    public override bool CanStep => DataReady;
+
     public override bool Done => _done;
 
     public override double Progress => _done ? 1 : (double)_next / (MaxSound + MaxMusic);
@@ -254,7 +260,7 @@ public sealed class UoSoundProvider : UoProvider
 
     private SearchEntry Effect(int id)
     {
-        if (!Data.Files.Sounds.TryGetSound(id, out byte[] data, out string name) || data == null || data.Length == 0)
+        if (!Data.Files.Sounds.TryGetSoundMetadata(id, out string name, out int bytes) || bytes == 0)
         {
             return null;
         }
@@ -475,6 +481,8 @@ public sealed class UoClilocProvider : UoProvider
     }
 
     public override string Name => "cliloc text";
+
+    public override bool CanStep => DataReady;
 
     public override bool Done => _done;
 

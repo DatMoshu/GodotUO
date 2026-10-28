@@ -1,0 +1,92 @@
+// Functional fixture injected into an external diagnostic stage, not the client.
+using System;
+using System.IO;
+using System.Collections.Generic;
+using System.Reflection;
+using System.Text.Json;
+using GUO.Game;
+using GUO.Game.GameObjects;
+using GUO.Utility;
+namespace GUO.Host;
+internal static class ViewRangeFixture
+{
+    internal static void Run(string dir)
+    {
+        var results = new List<object>();
+        var world = new World();
+        void Check(string name, bool pass) => results.Add(new { name, pass });
+        bool CanCull(ClientVersion version)
+        {
+            var method = typeof(World).GetMethod("CanCullByViewRange", BindingFlags.Instance | BindingFlags.NonPublic);
+            return method == null || (bool)method.Invoke(world, new object[] { version });
+        }
+        void CreatePlayer()
+        {
+            world.CreatePlayer(0x00FFFFF0);
+            world.Player.X = 1000; world.Player.Y = 1000;
+            world.RangeSize = new GUO.Compat.Point(1000, 1000);
+            // Keep a distance anchor, without running a second player input loop.
+            world.Mobiles.Remove(world.Player.Serial);
+        }
+        Mobile MobileAt(uint id, int distance)
+        {
+            var mob = world.GetOrCreateMobile(id);
+            mob.X = (ushort)(1000 + distance); mob.Y = 1000;
+            return mob;
+        }
+        Item ItemAt(uint id, int distance)
+        {
+            var item = world.GetOrCreateItem(id);
+            item.X = (ushort)(1000 + distance); item.Y = 1000;
+            item.Container = uint.MaxValue;
+            return item;
+        }
+        void Tick()
+        {
+            typeof(World).GetField("_timeToDelete", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(world, 0u);
+            world.Update();
+        }
+        try
+        {
+            Check("default requested range remains 24", world.ClientViewRange == 24);
+            Check("modern login awaits range", !CanCull(ClientVersion.CV_305D));
+            Check("legacy clients retain default pruning", CanCull(ClientVersion.CV_200));
+            CreatePlayer();
+            var mob = MobileAt(0x00FFFFF1, 40);
+            var item = ItemAt(0x40FFFFF1, 40);
+            Tick();
+            Check("initial mobile beyond provisional range survives", world.Get(mob.Serial) == mob && !mob.IsDestroyed);
+            Check("initial ground item beyond provisional range survives", world.Get(item.Serial) == item && !item.IsDestroyed);
+            world.ClientViewRange = 72; // Same setter used by 0xC8.
+            Tick();
+            Check("reply enables local pruning", CanCull(ClientVersion.CV_305D));
+            Check("range72 preserves already-received mobile and item", world.Get(mob.Serial) == mob && world.Get(item.Serial) == item);
+            var edge = MobileAt(0x00FFFFF2, 72);
+            var outside = MobileAt(0x00FFFFF3, 73);
+            Tick();
+            Check("inclusive range boundary survives", world.Get(edge.Serial) == edge);
+            Check("confirmed range removes beyond boundary", world.Get(outside.Serial) == null && outside.IsDestroyed);
+            world.ClientViewRange = 24;
+            Tick();
+            Check("explicit range reduction removes distant mobile and item", world.Get(mob.Serial) == null && world.Get(item.Serial) == null);
+            world.Clear();
+            Check("logout resets known range and request", world.ClientViewRange == 24 && !CanCull(ClientVersion.CV_305D));
+            CreatePlayer();
+            mob = MobileAt(0x00FFFFF4, 40); item = ItemAt(0x40FFFFF4, 40);
+            Tick();
+            Check("second login awaits its own reply", world.Get(mob.Serial) == mob && world.Get(item.Serial) == item);
+            world.RemoveMobile(mob.Serial, true); world.RemoveItem(item.Serial, true);
+            Check("explicit server removal works while range pending", world.Get(mob.Serial) == null && world.Get(item.Serial) == null);
+            world.ClientViewRange = 255;
+            edge = MobileAt(0x00FFFFF5, 255); outside = MobileAt(0x00FFFFF6, 256);
+            Tick();
+            Check("full byte range preserved without clamping", world.Get(edge.Serial) == edge && world.Get(outside.Serial) == null);
+        }
+        catch (Exception ex) { results.Add(new { name="fixture exception", pass=false, error=ex.ToString() }); }
+        finally
+        {
+            world.Clear();
+            File.WriteAllText(Path.Combine(dir, "view-range-cases.json"), JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented=true }));
+        }
+    }
+}

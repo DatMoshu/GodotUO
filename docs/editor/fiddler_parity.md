@@ -1,10 +1,177 @@
 # UOFiddler parity: a workbench for UO modders
 
+## Owner implementation decision, 2026-10-20
+
+Moshu approved implementation on this branch in the guo-worker-fiddler-parity
+terminal: independent static-art verification first, then select existing item
+art, replace its image, preview it, and export a verified staged copy. Occupied
+static-art replacement is approved only in staged copies, with explicit
+preview/confirmation, recovery of the prior stage and independent verification.
+Item metadata follows, then the recommended sequence below. This supersedes
+the earlier F02a owner hold for that narrow static-art workflow; it does not
+approve deletion, other-domain replacement, map maintenance, publication or a
+merge. The remaining catalogue is a proposed backlog, not one implementation PR.
+
+### First implementation milestone
+
+Moshu subsequently approved the recommended implementation order and native
+export testing on this branch (2026-10-20 evening). Native hue staging follows
+the hue working document and interchange slices; textures and native saves for
+the existing metadata, Cliloc and sound documents follow as separate milestones.
+All outputs remain reviewed staged copies. This does not authorize writing the
+source installation, unrelated deletion, publication, a push or a merge.
+
+F08a–e now cover [hue documents and interchange](hue_documents.md): all 32 colors,
+names/raw bounds, history/recovery, RGB picking, PNG exchange, palette range
+operations, reviewed TXT import, explicit Windows-1252/UTF-8 output and names
+lists. F08f adds [verified native hue staging](hue_native_staging.md), reusing the
+typed native writer and recoverable promotion, with independent ClassicUO
+read-back. The original catalogue below remains a scope inventory rather than a
+count of certified operations.
+
+F09a adds the [texture browser](texture_workbench.md): native 64/128-size filters,
+ID/referring-land-name search, guarded loader decoding, inspector references and
+PNG export. F09b adds reviewed PNG replacement documents, history, source
+comparison, source/saved-copy guards and recovery. F09c adds
+[verified native texture staging](texture_native_staging.md), with explicit
+physical-row/shared-alias review, exact raw-record preservation, independent
+ClassicUO decoding and prior-stage recovery.
+
+`tools/fiddler_parity` now contains an independent static-art reader and a
+single-record candidate/verify/promote adapter. The existing art inspector
+offers verified-stage export after image replacement; its editor-only dialog
+requires preparation and a separate Apply click and offers prior-stage recovery.
+The source installation remains read-only. This implements F01a and the narrow
+static-art F02a workflow; the original catalogue statuses are retained until
+operation-specific review records the implementation commit and visual proof.
+
+Run `20261020_guo-worker-fiddler-parity_static-art-verification` contains the
+synthetic reports and full-smoke logs. Thirty-four synthetic checks passed for
+direct decoding, free insertion, occupied replacement, corruption refusals,
+stale inputs, promotion rollback/recovery and stage locking. Both MUL/IDX and
+uncompressed, zero-entry-header UOP are covered separately. The .NET editor
+build and full headless smoke passed; the latter checks action registration,
+initial dialog state and teardown. No real-install replacement, compressed UOP
+or windowed visual-certification claim is made.
+
+The follow-on F06a [item metadata working document](item_metadata.md) adds
+name, 64-bit flags and height editing to the static-art inspector, with
+undo/redo/revert and project JSON save/reload. It preserves the original modern
+41-byte record and does not emit binary tiledata or mutate runtime metadata.
+F06b adds [verified native item metadata staging](item_metadata_native_staging.md),
+with current/export review, preserved unexposed staged fields, pinned ClassicUO
+read-back, exact untouched-byte checks and recoverable promotion.
+The subsequent F03a [batch static PNG replacement](batch_static_replacement.md)
+adds folder/ID collision review, per-image source comparison and a whole-batch
+candidate/verify/apply workflow. It shares F02a's recovery and rechecks every
+selected image before applying. Other domains and deletion remain separate.
+F01-UOP subsequently adds opaque per-entry header preservation. The private
+`20261020_guo-worker-fiddler-parity_uop-entry-headers` run verifies a disposable
+stage from the configured 7.0.107.76 archive: two edited IDs, 42,528 untouched
+records and all 42,530 entry headers preserved, with apply/recovery and an
+unchanged source installation. Compressed UOP remains outside certification.
+The headless asset report passes all 13 metadata checks, including the unsaved
+close/discard-cancel path. The editor rebuild/reload run also passed with an
+empty top-level failure list; neither result substitutes for windowed visual
+review.
+
+F15a [localized-string working documents](cliloc_documents.md) follow batch
+replacement. They support installed plain/BWT language files, edit/add/remove,
+preserved header/flags/IDs, undo, source-bound project JSON and editor-local
+draft recovery. They do not modify runtime strings or emit native cliloc files;
+F15b adds [verified native Cliloc staging](cliloc_native_staging.md), including
+source-bound custom output, exact unchanged-record preservation, explicit encoding
+review, pinned ClassicUO read-back and recoverable staged promotion.
+
+F15c/d [Cliloc CSV exchange](cliloc_csv_exchange.md) adds explicit Fiddler and
+quoted UTF-8 dialects, language-scoped merge review, atomic batch undo, preserved
+source flags, source/revision checks and all/browser/selected standard CSV export.
+It does not write native cliloc files or merge runtime fallback strings.
+
+F15e [custom Cliloc sources](cliloc_custom_sources.md) adds Fiddler-style Custom
+1/2 file slots, arbitrary filenames, plain/BWT exact-file loading and isolated
+working copies/recovery by source path, content version and slot. Invalid file
+choices leave the previous assignment intact; empty sources can receive Add/CSV.
+Sources outside the installation also receive shared export/project write guards.
+F15b supplies separately reviewed native custom-file output; runtime language
+registration remains separate.
+
+F16a/b [tiledata-to-Cliloc synchronization](cliloc_tiledata_sync.md) previews the
+three Fiddler item-ID ranges using ASCII source names plus valid project name
+edits/recovery, and applies selected adds/updates/removals to the Cliloc working
+document as one undo step. It includes paged/filterable selection, source/draft
+stale guards and atomic patch budgets. Reverse sync and variant navigation remain.
+
+F14a [sound-effect WAV export](sound_wav_export.md) adds standard RIFF output
+from the active effect's PCM, typed Play/Stop/Export actions and audio-specific
+inspector fields. It preserves sample bytes and leaves native archives unchanged.
+Sound documents, WAV replacement and staged native writing remain separate.
+
+F14b [sound naming documents](sound_documents.md) subsequently add project-only
+effect names, retained invalid drafts, undo/redo/revert, source-bound JSON saves
+and editor-local recovery. Saved names participate in the browser's name search;
+PCM import, native sound writing and music editing remain separate milestones.
+
+F14c [WAV import and project PCM](sound_wav_import.md) then adds validated PCM
+import with current/incoming review, name retention, undo/revert, project audio
+preview/export, schema 2 WAV-blob documents and source-bound draft recovery.
+The legacy naming schema remains readable. Native sound staging, names/list
+exchange, slot controls and music editing are still separate milestones.
+
+F14e [sound lists and WAV batches](sound_list_export.md) adds explicit scope
+review, UTF-8/Fiddler CP1252 CSV, optional POL CSV IDs, reviewed filenames,
+cancellable new-folder WAV output, working-PCM validation and name/duration
+sorting. Native sound staging, CSV name import, free slots and deletion remain
+outside these standard-file exports.
+
+F14f [sound audition and slot browsing](sound_audition_slots.md) adds working-PCM
+loop audition, active-library occupied/empty counts, all/empty views and next-empty
+navigation. Empty inspectors stay read-only and export reviews explicitly exclude
+empty rows. Native insertion/removal and sound archive staging remain separate.
+
+F14d adds [verified native sound staging](sound_native_staging.md): explicit
+current/export audition, physical-row/shared-alias review, exact preservation of
+untouched records and opaque headers, pinned ClassicUO name/PCM read-back and
+recoverable staged promotion. MUL/IDX and uncompressed UOP are separate proofs;
+compressed sound archives, insertion/removal and music editing remain separate.
+
+F24a adds [explicit Fiddler TXT multi interchange](multi_fiddler_txt.md) in the
+existing Multi Editor: hexadecimal IDs, preserved signed flags/order/duplicates,
+coordinate review and optional centering, project/history retention and explicit
+hue-loss confirmation. The existing decimal-ID TXT profile remains separate.
+The independent pinned Fiddler probe checks scalar TXT contracts in both
+directions; native multi flag translation, spatial rendering and other external
+multi formats remain separate certification work.
+The next F24a leaf adds [Fiddler UOA text](multi_fiddler_uoa.md): explicit decimal
+IDs, matching header normalization, retained signed flags and the shared
+coordinate/hue-loss review. It has its own pinned reader/exporter comparison;
+UO Architect binary and other multi formats remain separate.
+
+F24a's [reviewed Fiddler WSC](multi_fiddler_wsc.md) adds explicit coordinate-heuristic
+review, optional dynamic-ID classification, canonical text output and hue/flag-loss
+consent. It preserves the legacy color-retaining WSC profile and refuses Fiddler's
+65535 sentinel defect. Its independent probe records the legacy differences;
+spatial rendering, settings migration and other formats remain separate.
+
+F24a's [reviewed Fiddler CSV](multi_fiddler_csv.md) retains hexadecimal IDs,
+signed flags and the trailing `Unk1` int32 through project/history, stamps and
+one-to-one transforms. It adds an extra review column and refuses nonzero
+extra-field loss to other formats/native staging. Legacy CSV dialects remain
+separate; native translation and spatial rendering are not certified here.
+
+F24a's [reviewed Fiddler UOX3 export](multi_fiddler_uox3.md) adds canonical
+HOUSE ITEM output with explicit hue/flag-loss consent and protected atomic
+writing. It is export-only; the legacy GUO UOX3 reader remains separate.
+Independent verification compares bytes with Fiddler's unchanged exporter;
+no Fiddler import or UOX3 server-behavior certification is implied.
+
 Phase 1 proposal, 2026-10-19. guo-director first-pass review received;
 catalogue and survey await guo-director and exec-fable sign-off.
 F01a has separate director authorization for assignment (inbox #11093);
 that narrow read-only brief does not approve the remaining plan.
-No implementation, dispatch, sprint edits, publication or licence approval is implied.
+That original survey implied no implementation, dispatch, sprint edits,
+publication or licence approval. Subsequent implementation decisions are
+recorded at the top of this document.
 
 ## Variant survey: which tools deserve parity coverage first?
 
@@ -239,7 +406,7 @@ The CSV uses the same shorthand; `tools/` paths are repository-relative.
 | Find item or land art | `Panels/ArtPanel.cs`, `Panels/GridPanel.cs`, `Search/Providers/UoProviders.cs` | ID/name search, pixel preview and tiledata inspection; no full metadata editing panel. |
 | Replace art or gumps | `Panels/AssetActions.cs`, `Overlay/AssetOverlay.cs`, `Art/ArtExchange.cs` | PNG import/export, external image editor exchange and revert in an overlay; not arbitrary deletion or complete MUL/UOP save parity. |
 | Batch asset exchange | `Panels/BulkPanel.cs`, `tools/uopack/run.py` | Art/land/gumps/animation/item-tiledata PNG+JSON workflows and stage verification; Fiddler image/CSV/XML matrices differ. |
-| Preview/edit hue strips | `Panels/HuePanel.cs`, `Panels/AssetActions.cs:AddHue` | Full/partial hue preview and strip replacement; no complete palette-design UI or Fiddler text exchange. |
+| Preview/edit hue strips | `Panels/HuePanel.cs`, `Panels/HueEditor.cs`, `Overlay/HueDocument.cs`, `Overlay/HueRange.cs`, `Overlay/HueText.cs` | F08a–e add 32-color documents, names/raw bounds, undo/recovery, PNG and reviewed text exchange, spread/exponential gradients, reverse/RGB shifts and Fiddler name-list export. Native stage certification remains F08f. See [hue documents](hue_documents.md). |
 | Edit animation working copy | `Animation/AnimationWorkspace.cs`, `Animation/AnimationDocument.cs`, `Panels/AnimationPanel.cs` | Frame centres, playback, sequence/sheet PNG, palette JSON, classic VD and overlay application exist. GIF, arbitrary frame operations, bulk directions and complete save workflow differ. |
 | Build/edit a multi | `MultiEdit/MultiEditView.cs`, `MultiDocument.cs`, `MultiCanvas.cs`, `MultiValidator.cs` | Draw/select/erase/line/rectangle, stories, visibility, movement, undo/redo, validation and reserved-ID staging already exist. Certify compatibility; do not rebuild the editor. |
 | Exchange multis | `MultiEdit/MultiEditView.Formats.cs`, `tools/multi` | TXT, UOA text/binary, WSC, CSV variants, CentrED and UOX3 are exposed. XML and batch preview export remain gaps. |
@@ -504,8 +671,9 @@ certifies the new third-party formats or their visual behavior.
 
 Phase 1 delivery is these two documents and a director review note. Phase 2
 review is in progress; the first-pass director decisions are recorded above.
-Phase 3 remains held until plan approval, except the separately authorized
-F01a read-only runner brief. This branch adds no implementation or dispatch.
+At that planning milestone, Phase 3 remained held except for the separately
+authorized F01a read-only runner brief. Subsequent owner authorizations and
+implemented slices are recorded at the top of this document.
 
 Completion review run: `20261020_guo-worker-fiddler_parity-plan-review`.
 Catalogue structure/count checks, documentation links, privacy scan and the

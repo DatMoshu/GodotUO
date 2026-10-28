@@ -629,6 +629,57 @@ public partial class EditorSmoke
         var (explicitMessage, addressError) = await q.ShowAsync(addressed);
         AiCheck("sessions_explicit_queue_address", addressed > id && explicitMessage?.To == "reviewer", $"{addressError} {tab.StatusText}");
         _aiReport["sessions_queue_name"] = name;
+        await CheckSessionRetirementAsync(home);
+    }
+
+    private async Task CheckSessionRetirementAsync(string home)
+    {
+        // Cancellation must stop an existing scan, not only reject a new scan.
+        using (var cancelled = new CancellationTokenSource())
+        {
+            int opened = 0;
+            bool stopped = false;
+            var scanner = new SessionScanner(home, opened: _ => { opened++; cancelled.Cancel(); });
+            try { scanner.Scan(cancelled.Token); }
+            catch (OperationCanceledException) { stopped = true; }
+            AiCheck("sessions_cancel_between_files", stopped && opened == 1);
+            opened = 0;
+            stopped = false;
+            try { scanner.Scan(cancelled.Token); }
+            catch (OperationCanceledException) { stopped = true; }
+            AiCheck("sessions_precancel_opens_nothing", stopped && opened == 0);
+        }
+
+        // Both success and failure continuations must leave retired Godot controls alone.
+        foreach (var (fail, shutdown) in new[] { (false, true), (true, true), (false, false) })
+        {
+            using var release = new ManualResetEventSlim();
+            var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            int opened = 0;
+            var retiring = new AiSessionsTab(Ai.Hub, () => null)
+            {
+                Home = home,
+                Opened = _ =>
+                {
+                    Interlocked.Increment(ref opened);
+                    entered.TrySetResult(true);
+                    if (!release.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException("scan retirement fixture");
+                    if (fail) throw new InvalidOperationException("scan retirement fixture");
+                },
+            };
+            AddChild(retiring);
+            Task scan = retiring.RefreshAsync();
+            bool reached = await Task.WhenAny(entered.Task, Task.Delay(4000)) == entered.Task;
+            if (shutdown) retiring.Shutdown();
+            retiring.Free();
+            release.Set();
+            bool completed = true;
+            try { await scan; }
+            catch (Exception) { completed = false; }
+            AiCheck(!shutdown ? "sessions_tree_exit_cancels_scan"
+                : fail ? "sessions_retired_failure_safe" : "sessions_retired_scan_stops",
+                reached && completed && opened == 1 && retiring.Sessions.Count == 0);
+        }
     }
 
     private async Task CheckServicesAndToolsAsync(StubServer stub, string temp)
@@ -814,8 +865,12 @@ public partial class EditorSmoke
             await Delay(0.3);
             JsonNode pointer = JsonNode.Parse(await tools.RunAsync("world_state", null, CancellationToken.None));
             var picked = _world.Host.Picked as GUO.Game.GameObjects.GameObject;
-            AiCheck("tools_world_pointer_pick", picked != null && pointer["picked"] != null &&
-                (string)pointer["position_source"] == "pointer" && (int)pointer["x"] == picked.X && (int)pointer["y"] == picked.Y &&
+            var hover = _world.Modes.Hover;
+            // Height-mode pointer cells and the renderer's picked object can
+            // differ. Verify each against its own documented source.
+            AiCheck("tools_world_pointer_pick", picked != null && hover != null && pointer["picked"] != null &&
+                (string)pointer["position_source"] == "pointer" && (int)pointer["x"] == hover.Value.Item1 && (int)pointer["y"] == hover.Value.Item2 &&
+                (int)pointer["picked"]["x"] == picked.X && (int)pointer["picked"]["y"] == picked.Y &&
                 (int)pointer["picked"]["graphic"] == picked.Graphic && (int)pointer["picked"]["hue"] == picked.Hue &&
                 (int)pointer["picked"]["z"] == picked.Z && !string.IsNullOrEmpty((string)pointer["picked"]["kind"]), pointer.ToJsonString());
             _world.ForcedMouse = null;

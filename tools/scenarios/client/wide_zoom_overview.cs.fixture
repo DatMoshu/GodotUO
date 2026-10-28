@@ -1,0 +1,171 @@
+// Diagnostic fixture; inject into an external source stage only.
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Text.Json;
+using System.Threading.Tasks;
+using Godot;
+using GUO.Configuration;
+using GUO.Game.Map;
+using GUO.Game.Scenes;
+using GUO.Renderer;
+
+namespace GUO.Host;
+public partial class OverviewFixture : Node
+{
+    private int _checks;
+    private void Check(bool pass, string reason) { _checks++; if (!pass) throw new Exception(reason); }
+    private sealed class Blocks : IOverviewBlocks
+    {
+        internal int Reads, LastX;
+        public void ReadBlock(int x, int y, int step, Span<uint> colors) { Reads+=OverviewMapCache.SourceBlocks(step); LastX=x; colors.Fill(0xff123456); }
+    }
+    private async Task Frame() { await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame); }
+    private int Loaded()
+    {
+        var chunks=(Chunk[])typeof(Map).GetField("_terrainChunks",BindingFlags.NonPublic|BindingFlags.Static).GetValue(null);
+        return chunks?.Count(c=>c!=null && !c.IsDestroyed) ?? 0;
+    }
+
+    private void GeometryCases()
+    {
+        foreach(var map in new[]{new Vector2I(7168,4096),new Vector2I(6144,4096),new Vector2I(2304,1600),new Vector2I(128,128)})
+        foreach(var view in new[]{new Vector2I(1280,720),new Vector2I(3840,2054),new Vector2I(720,1280)})
+        foreach(var player in new[]{Vector2I.Zero,map/2,map-new Vector2I(1,1)})
+        {
+            float fit=WorldOverview.FitZoom(map.X,map.Y,view.X,view.Y);
+            var camera=new Camera(.5f,fit,.1f){Bounds=new GUO.Compat.Rectangle(0,0,view.X,view.Y),Zoom=fit};
+            var offset=new GUO.Compat.Point((player.X-player.Y)*22-view.X/2,(player.X+player.Y)*22-view.Y/2);
+            var transform=WorldOverview.MapTransform(camera,offset,0,map.X,map.Y);
+            foreach(var corner in new[]{Vector2.Zero,new Vector2(map.X,0),new Vector2(0,map.Y),(Vector2)map})
+            {
+                var p=transform*corner;
+                Check(p.X>=31 && p.Y>=31 && p.X<=view.X-31 && p.Y<=view.Y-31,"facet fit across sizes/player positions");
+            }
+            int level=WorldOverview.ChooseLevel(fit,Vector2.Zero,(Vector2)map-Vector2.One);
+            int side=OverviewMapCache.TileSize<<level;
+            Check(((map.X+side-1)/side)*((map.Y+side-1)/side)<=OverviewMapCache.Capacity,"whole facet within cache entry budget");
+            float zoom=5;int turns=0;while(zoom<fit && turns<80){zoom=Math.Min(fit,WorldOverview.WheelZoom(zoom,false,.1f));turns++;}
+            Check(zoom==fit && turns<40,"world fit reachable with accelerated wheel");
+            while(zoom>5 && turns<160){zoom=WorldOverview.WheelZoom(zoom,true,.1f);turns++;}
+            Check(zoom==5 && WorldOverview.WheelZoom(zoom,true,.1f)<5,"wheel returns across threshold");
+        }
+        Check(WorldOverview.WheelZoom(4.9f,false,.1f)==5,"snap crossing to exact threshold");
+        Check(Math.Abs(WorldOverview.WheelZoom(2.5f,false,.1f)-2.6f)<.0001f,"ordinary wheel step unchanged");
+    }
+
+    public override async void _Ready()
+    {
+        string dir=System.Environment.GetEnvironmentVariable("GUO_OVERVIEW_FIXTURE_DIR");
+        if (string.IsNullOrEmpty(dir)) return;
+        Directory.CreateDirectory(dir); GUO.Input.Gamepad.PadWizard.OfferAllowed=false;
+        try
+        {
+            Check(!WorldOverview.Enabled(5) && WorldOverview.Enabled(5.001f), "native at 5, overview above 5");
+            GeometryCases();
+            Check(!WorldOverview.EligibleCity(new CityInfo(0,"Old city","","",105,130,0,0,false),0,7168,4096), "legacy illustration coordinates excluded");
+            Check(WorldOverview.EligibleCity(new CityInfo(0,"New city","","",1431,1691,0,0,true),0,7168,4096), "authoritative world city accepted");
+            Check(!WorldOverview.EligibleCity(new CityInfo(0,"Wrong facet","","",1431,1691,0,1,true),0,7168,4096), "wrong city facet excluded");
+            Check(!WorldOverview.EligibleCity(new CityInfo(0,"Outside","","",7168,1691,0,0,true),0,7168,4096), "out-of-bounds city excluded");
+            Check(!WorldOverview.KeepStatic(false,false,false,15), "small prop filtered");
+            Check(WorldOverview.KeepStatic(true,false,false,0), "thin wall preserved");
+            Check(WorldOverview.KeepStatic(false,true,false,0), "roof preserved");
+            Check(WorldOverview.KeepStatic(false,false,true,0), "floor preserved");
+            Check(WorldOverview.KeepStatic(false,false,false,16), "large feature preserved");
+            using(var cache=new OverviewMapCache())
+            {
+                var source=new Blocks();var keys=new List<Vector3I>{Vector3I.Zero};cache.SetView(keys);
+                Check(cache.Prepare(source,0,long.MaxValue)==0 && source.Reads==0,"zero budget");
+                Check(cache.Prepare(source,128,0)==0,"elapsed deadline");
+                for(int i=0;i<8;i++) Check(cache.Prepare(source,128,long.MaxValue)==128,"block cap and progress");
+                Check(cache.Visible[0].Blocks==OverviewMapCache.BlocksPerTile,"tile complete");
+                int reads=source.Reads;cache.SetView(keys);cache.Prepare(source,128,long.MaxValue);
+                Check(source.Reads==reads,"warm recall no decode");
+                var warm=cache.Visible[0];keys.Clear();for(int x=1;x<=128;x++)keys.Add(new Vector3I(x,0,0));cache.SetView(keys);
+                Check(cache.Count==128 && !cache.Visible.Contains(warm),"bounded eviction");
+                cache.Prepare(source,1,long.MaxValue);Check(source.LastX==32,"obsolete work cancelled; nearest first");
+                Check(cache.PixelBytes<=OverviewMapCache.Capacity*OverviewMapCache.TileSize*OverviewMapCache.TileSize*4L,"CPU pixel bound");
+                keys.Clear();keys.Add(new Vector3I(0,0,4));cache.SetView(keys);
+                Check(cache.Prepare(source,63,long.MaxValue)==0,"coarse unit respects remaining source-read budget");
+                int prior=source.Reads;Check(cache.Prepare(source,128,long.MaxValue)==128 && source.Reads-prior==128,"coarse actual source-read accounting");
+                Check(cache.Visible[0].Blocks==2,"coarse progress counts raster blocks separately");
+                cache.Dispose();Check(cache.Count==0 && cache.PixelBytes==0,"invalidate/release");
+            }
+            for(int i=0;Client.Game?.Scene is not LoginScene;i++) {if(i>1200)throw new Exception("login timeout");await Frame();}
+            var world=Client.Game.UO.World;
+            var setup=typeof(GUO.Network.NetClient).GetMethod("SetupSocket",BindingFlags.Instance|BindingFlags.NonPublic);
+            setup.Invoke(GUO.Network.NetClient.Socket,new[]{Enum.Parse(setup.GetParameters()[0].ParameterType,"TcpSocket")});
+            ProfileManager.Load("Offline","overview-fixture","overview-fixture");
+            var profile=ProfileManager.CurrentProfile;
+            Check(!new Profile().ExperimentalWorldOverview, "new profile defaults off");
+            profile.ExperimentalWorldOverview=true;
+            WorldOverview.Cities=new[]{new CityInfo(0,"Britain","","",1431,1691,0,0,true),new CityInfo(1,"Southern city","","",2087,2861,0,0,true)};
+            profile.GameWindowFullSize=true;profile.TopbarGumpIsDisabled=true;
+            profile.UseCircleOfTransparency=false;profile.NoColorObjectsOutOfRange=false;profile.EnableMousewheelScaleZoom=true;
+            world.CreatePlayer(1);world.MapIndex=0;world.Player.Graphic=0x190;world.Player.Name="Overview fixture";
+            world.Player.SetInWorldTile(1431,1691,0);
+            var scene=new GameScene(world);Client.Game.SetScene(scene);scene.Camera.SetZoomRange(.5f,20,.1f);
+            for(int i=0;i<3;i++)await Frame();
+            int mapWidth=Client.Game.UO.FileManager.Maps.MapBlocksSize[0,0]*8;
+            int mapHeight=Client.Game.UO.FileManager.Maps.MapBlocksSize[0,1]*8;
+            float fit=WorldOverview.FitZoom(mapWidth,mapHeight,scene.Camera.Bounds.Width,scene.Camera.Bounds.Height);
+            Check(scene.Camera.ZoomMax==fit,"live camera range fits active facet");
+            var rows=new List<object>();
+            foreach(float zoom in System.Environment.GetEnvironmentVariable("GUO_OVERVIEW_FULLSCREEN")=="1" ? new[]{fit} : new[]{2.5f,5f,6f,20f,fit,20f,6f,2.5f})
+            {
+                int before=Loaded();scene.Camera.Zoom=zoom;scene.Camera.Update(true,0,GUO.Compat.Point.Zero);
+                for(int i=0;i<6;i++)await Frame();
+                int frames=0;
+                if(zoom>5)
+                {
+                    while(scene.Overview.Cache.Visible.Any(t=>t.Blocks!=OverviewMapCache.BlocksPerTile))
+                    {
+                        Check(scene.Overview.Cache.LastBlocks<=512 && scene.Overview.Cache.LastUploads<=2,"runtime frame budget");
+                        if(++frames>6000)throw new Exception("overview did not converge");await Frame();
+                    }
+                    Check(scene.Overview.RequestedTiles==scene.Overview.Cache.Visible.Count,"no visible tile truncation");
+                    if(zoom==fit)
+                    {
+                        var transform=WorldOverview.MapTransform(scene.Camera,scene.DrawOffset,world.Player.Z,mapWidth,mapHeight);
+                        foreach(var corner in new[]{Vector2.Zero,new Vector2(mapWidth,0),new Vector2(0,mapHeight),new Vector2(mapWidth,mapHeight)})
+                        {
+                            var point=transform*corner;
+                            Check(point.X>=31 && point.Y>=31 && point.X<=scene.Camera.Bounds.Width-31 && point.Y<=scene.Camera.Bounds.Height-31,"entire facet inside live frame");
+                        }
+                    }
+                    if(rows.Count>5 && zoom==20)Check(scene.Overview.Cache.LastBlocks==0,"warm local overview returns after world zoom");
+                    Check(Loaded()<=before+4,"overview must not load distant rich chunks");
+                    Check(GUO.Game.SelectedObject.Object==null,"no hidden picking target");
+                    Check(scene.OnMouseDoubleClick(GUO.Input.MouseButtonType.Left),"overview mouse interaction consumed");
+                }
+                else Check(!scene.OverviewActive && scene.RenderedObjectsCount>0,"normal renderer restored");
+                await ToSignal(RenderingServer.Singleton,RenderingServerInstance.SignalName.FramePostDraw);
+                string path=Path.Combine(dir,$"zoom-{rows.Count}-{zoom:F1}.png");GetViewport().GetTexture().GetImage().SavePng(path);
+                rows.Add(new{zoom,maxZoom=scene.Camera.ZoomMax,level=scene.Overview?.Level??0,requestedTiles=scene.Overview?.RequestedTiles??0,richChunks=Loaded(),visibleTiles=scene.Overview?.Cache.Visible.Count??0,cacheTiles=scene.Overview?.Cache.Count??0,pixelBytes=scene.Overview?.Cache.PixelBytes??0,overview=scene.OverviewActive});
+            }
+            scene.Camera.Zoom=fit;
+            for(int style=0;style<4;style++)
+            {
+                profile.WorldOverviewStyle=style;
+                for(int i=0;i<4;i++)await Frame();
+                await ToSignal(RenderingServer.Singleton,RenderingServerInstance.SignalName.FramePostDraw);
+                GetViewport().GetTexture().GetImage().SavePng(Path.Combine(dir,$"style-{style}.png"));
+            }
+            profile.ExperimentalWorldOverview=false;
+            for(int i=0;i<4;i++)await Frame();
+            Check(scene.Camera.Zoom<=2.5f && scene.Camera.ZoomMax==2.5f && !scene.OverviewActive,"disable during overview restores native range");
+            profile.ExperimentalWorldOverview=true;
+            for(int i=0;i<3;i++)await Frame();
+            scene.Camera.Zoom=20;for(int i=0;i<5;i++)await Frame();
+            var old=scene.Overview.Cache.Visible[0];Client.Game.UO.FileManager.Maps.NotifyDataChanged();
+            for(int i=0;i<3;i++)await Frame();Check(!ReferenceEquals(old,scene.Overview.Cache.Visible[0]),"map edit invalidation");
+            scene.Camera.Zoom=2.5f;
+            File.WriteAllText(Path.Combine(dir,"result.json"),JsonSerializer.Serialize(new{pass=true,checks=_checks,rows},new JsonSerializerOptions{WriteIndented=true}));
+            GD.Print($"[overview] PASS {_checks} checks; 5x gate, whole facet, LOD, read budget, warm return, native return");
+            GetTree().Quit(0);
+        }
+        catch(Exception ex){GD.PrintErr("[overview] FAIL "+ex);GetTree().Quit(1);}
+    }
+}
