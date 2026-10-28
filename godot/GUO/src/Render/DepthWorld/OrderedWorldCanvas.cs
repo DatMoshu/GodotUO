@@ -44,6 +44,8 @@ internal sealed class OrderedWorldCanvas : IDisposable
         _meshMaterial = meshMaterial;
     }
 
+    internal int ActiveItems => _activeItems; // Probe only.
+
     internal void Clear()
     {
         // Clearing a pooled parent does NOT clear its private children. Hide before reuse.

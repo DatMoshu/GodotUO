@@ -156,12 +156,14 @@ public sealed partial class UltimaBatcher2D
     private Vector2I _orderedProbeSize;
     private void AbortOrderedWorldFrame()
     {
-        _orderedWorld?.AbortFrame();
         // The pool clear that follows empties and hides these items.
         _orderedCanvas = _orderedPresenter = default;
         _orderedRawGroup = false;
         _orderedStackDepth = 0;
+        _orderedWorld?.AbortFrame();
     }
+
+    internal OrderedWorldCapture OrderedWorldProbe => _orderedWorld; // Probe only.
 
     private void ResetOrderedWorldItems()
     {

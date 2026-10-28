@@ -26,6 +26,7 @@ internal sealed class OrderedWorldCapture : IDisposable
     internal static int InjectResidentFailureAfter = -1; // Diagnostic admission failure, no runtime option.
     internal static bool InjectStateIndexFault; // Probe-only oracle negative control; no runtime option.
     internal static bool InjectTextureSlotFault; // Probe-only wrong-slot oracle.
+    internal static bool InjectAbortFailure; // Probe only: AbortFrame's canvas cleanup throws once.
     internal static bool InjectInvalidTextureSlot; // Probe-only fail-closed range control.
     private readonly OrderedWorldDevice _device = new();
     private readonly OrderedWorldCanvas _fallback;
@@ -419,15 +420,24 @@ internal sealed class OrderedWorldCapture : IDisposable
     }
 
     /// <summary>Abandons a frame whose draw threw: an open recording or an
-    /// unsubmitted ticket is dropped, never rendered. A ticket already on the
-    /// render thread is left to finish.</summary>
+    /// unsubmitted ticket is dropped, never rendered. A submitted ticket is
+    /// left to finish with its canvas fallback intact.</summary>
     internal void AbortFrame()
     {
         if (Recording || _queued) Fallback("frame aborted");
         Recording = false;
         _queued = false;
+        // A submitted ticket's render-thread failure replays into _fallback.
+        // Begin refuses a frame while one is pending, so the aborted frame
+        // recorded nothing there; leave it to the ticket.
+        if (Volatile.Read(ref _pending) != 0) return;
+        if (InjectAbortFailure) { InjectAbortFailure = false; throw new InvalidOperationException("injected abort cleanup failure"); }
         _fallback.Clear();
     }
+
+    // Probe only: hold or release the pending mark of a submitted ticket.
+    internal void ProbeHoldTicket(bool held) => Volatile.Write(ref _pending, held ? 1 : 0);
+    internal int FallbackItems => _fallback.ActiveItems; // Probe only.
 
     private void BeforeDraw()
     {

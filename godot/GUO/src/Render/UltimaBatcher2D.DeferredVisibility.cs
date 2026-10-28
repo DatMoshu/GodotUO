@@ -71,9 +71,6 @@ public sealed partial class UltimaBatcher2D
         _mmCount = 0; _mmTexture = null; _mmItem = default;
         _cover.Clear();
         _capture = null; _captureSuspended = false;
-        // The aborted frame's Depth World ticket must never reach the render
-        // thread, and a recording left open would refuse every later frame.
-        AbortOrderedWorldFrame();
         _clipStack.Clear();
         _started = false;
         _current = default; _lastItem = -1;
@@ -83,6 +80,12 @@ public sealed partial class UltimaBatcher2D
         _mirroring = false;
 
         bool recovered = true;
+        // The aborted frame's Depth World ticket must never reach the render
+        // thread, and a recording left open would refuse every later frame.
+        // Its canvas cleanup is native work too: a failure leaves recovery
+        // pending, retried before the next frame opens.
+        try { AbortOrderedWorldFrame(); }
+        catch { recovered = false; }
         for (int i = 0; i < _items.Count; i++)
         {
             ref ItemState state = ref _itemStates[i];
