@@ -104,7 +104,9 @@ milestone 1 (Moshu via chief, mail 19516/19517/19528, 2026-10-28).
 - Paging and shard map patches are exclusive: with patches applied the
   preflight refuses paging (and disconnects) instead of dropping them.
 - The world map loads an evicted page on demand within the cap and pins it
-  while it renders; a second `PORT DEVIATION (GUO)` seam in
+  while it renders. A pinned page is never evicted, replaced or rebuilt; a
+  revision waits for the unpin, which also trims back to the cap at once.
+  Residency is bounded by max(cap, pinned pages + the current page); a second `PORT DEVIATION (GUO)` seam in
   `WorldMapGump.ChangeMap`, inside `#if GUO_LABS`. A page it cannot load is
   named in the journal and the gump keeps its map.
 - The shard side (map registration for 32–79, crossings, persistence,

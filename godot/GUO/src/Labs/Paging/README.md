@@ -44,11 +44,23 @@ The world map works on page facets. Before `WorldMapGump.ChangeMap` asks the
 stock loader for a page facet, paging makes it readable: a resident page is
 used as is, an evicted one is verified and loaded within the cap (evicting a
 page that is neither current nor pinned), and the page is pinned until the
-gump's render task ends, so a crossing mid-render never evicts it (the cap
-may be exceeded by the pinned page until then). A page that cannot be
-loaded (failed verification, or every resident page current or pinned) is
-named in the journal with the reason and this doctor; the gump keeps the map
-it shows.
+gump's render task ends. While pinned, nothing evicts, replaces or rebuilds
+it:
+
+- A crossing onto a pinned page whose manifest version changed keeps the
+  copy the render reads; the revision is built on the next entry.
+- A second world-map view of that page is refused until the render ends.
+- A pinned page whose own files changed on disk is refused.
+
+When the last pin goes (on the main thread), a stale copy that is not the
+current page is dropped, and residency is trimmed back to the cap at once,
+without waiting for a crossing.
+
+Residency is bounded by the cap, or, when more pages are pinned than that,
+by the pinned pages plus the current one (`PagingSession.Bound`; queued
+world-map views each pin their page). A page that cannot be loaded (failed
+verification, or every resident page current or pinned) is named in the
+journal with the reason and this doctor; the gump keeps the map it shows.
 
 ## Dependency doctor
 
