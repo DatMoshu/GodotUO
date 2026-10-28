@@ -9,12 +9,14 @@ using System.Text.Json;
 namespace GUO.Labs.Paging;
 
 /// <summary>
-/// Synthetic page packs for tests, the doctor and the probe: flat land, no
-/// statics, a west-to-east row of pages. Never real map data.
+/// Synthetic page packs for tests, the doctor and the probe: flat land with
+/// one marker static in the north-west block (so the statics file is never
+/// empty, as in real data), in a row or a grid. Never real map data.
 /// </summary>
 internal static class PageFixture
 {
     internal const ushort Land = 0x0003; // a grass land tile ID; the pixels come from the user's own install
+    internal const ushort Marker = 0x0CCA; // a tree item ID, the marker static
 
     internal static string Page(string id, int facet, int width = 64, int height = 64, string version = "v1",
         string map = null, string sha = null, string east = null, string west = null)
@@ -76,7 +78,14 @@ internal static class PageFixture
                 BitConverter.GetBytes(0xFFFF_FFFFu).CopyTo(idx, b * 12);
                 BitConverter.GetBytes(0u).CopyTo(idx, b * 12 + 4);
             }
-            var statics = Array.Empty<byte>();
+            // The marker: graphic, x, y, z, hue in the first block's index entry.
+            var statics = new byte[7];
+            BitConverter.GetBytes(Marker).CopyTo(statics, 0);
+            statics[2] = 3;
+            statics[3] = 3;
+            statics[4] = (byte)z;
+            BitConverter.GetBytes(0u).CopyTo(idx, 0);
+            BitConverter.GetBytes(7u).CopyTo(idx, 4);
             string suffix = version == "v1" ? "" : "." + version;
             string mapName = $"map{facet}{suffix}.mul", idxName = $"staidx{facet}{suffix}.mul", staName = $"statics{facet}{suffix}.mul";
             File.WriteAllBytes(Path.Combine(dir, mapName), mapBytes);
