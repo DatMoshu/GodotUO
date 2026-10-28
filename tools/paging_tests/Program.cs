@@ -264,11 +264,15 @@ static class Program
         Check(!tight.View(41, out error) && error.Contains("not loaded") && !tight.Resident.Contains(41) && tight.Resident.Count == 1,
             "cap 1 refuses a view of another page and changes nothing");
         Check(tight.View(40, out _), "cap 1 still views the current page");
-        Check(tight.Enter(41, out _) && tight.Resident.Count == 2 && tight.Resident.Contains(40),
-            "a page pinned by a render may hold the cap over by one");
+        Check(tight.Enter(41, out _) && tight.Resident.Count == 2 && tight.Resident.Contains(40) && tight.Bound == 2,
+            "a page pinned by a render stays past the cap, within the bound");
+        // (b) Idle reclamation: the unpin itself trims, with no further crossing.
         tight.Unpin(40);
-        tight.Trim();
-        Check(tight.Resident.Count == 1 && tight.Resident.First() == 41, "unpinned, the extra page goes at the next trim");
+        Check(tight.Resident.Count == 1 && tight.Resident.First() == 41 && tight.Bound == 1,
+            "unpinning reclaims down to the cap at once");
+
+        PinnedRevisionTests(root, runner);
+        MultipleViewTests(root, runner);
 
         var bad = g.ByFacet(42);
         File.AppendAllText(bad.MapPath, "x");
@@ -277,6 +281,83 @@ static class Program
         File.AppendAllText(g.ByFacet(43).MapPath, "x");
         Check(view.View(43, out _) && view.Resident.Contains(43), "a view of the current page never re-verifies or drops it");
         view.Unpin(43);
+    }
+
+    // (a) A render holds a page while the manifest revises it: nothing it reads is unloaded.
+    static void PinnedRevisionTests(string root, DeferredRunner runner)
+    {
+        string dir = Path.Combine(root, "pinned");
+        string v1 = PageFixture.WriteGrid(dir, 16, 16, 2, new Dictionary<int, string>(), 40, 41, 42, 43);
+        string v2 = PageFixture.WriteGrid(dir, 16, 16, 2, new Dictionary<int, string> { [41] = "v2" }, 40, 41, 42, 43);
+
+        // Enter: the crossing keeps the pinned copy; the revision is used on the next entry.
+        var backend = new FakeBackend();
+        var s = new PagingSession(PageCatalog.Load(v1), backend, cap: 2, run: runner.Run);
+        Check(s.Enter(40, out _) && s.View(41, out _) && s.IsPinned(41), "pinned: view 41 from 40");
+        backend.Log.Clear();
+        s.Reload(PageCatalog.Load(v2));
+        Check(!backend.Log.Contains("unload 41") && s.Resident.Contains(41) && s.IsStale(41), "pinned: a reload keeps the pinned stale copy");
+        Check(s.Enter(41, out var error) && error == null && !backend.Log.Contains("unload 41") && s.DeferredReplacements == 1,
+            "pinned: entering keeps the copy the render reads");
+        s.Unpin(41);
+        Check(!backend.Log.Contains("unload 41") && s.IsStale(41), "pinned: unpinned current stale page waits for its next entry");
+        Check(s.Enter(40, out _) && s.Enter(41, out _) && backend.Log.Contains("unload 41") && backend.Log.Last() == "load 41" && !s.IsStale(41),
+            "pinned: the next entry rebuilds the revised page");
+
+        // View: a second view of the revised page is refused until the render ends; then it gets the revision.
+        backend = new FakeBackend();
+        s = new PagingSession(PageCatalog.Load(v1), backend, cap: 2, run: runner.Run);
+        Check(s.Enter(40, out _) && s.View(41, out _), "pinned view: view 41 from 40");
+        s.Reload(PageCatalog.Load(v2));
+        backend.Log.Clear();
+        Check(!s.View(41, out error) && error.Contains("still drawing") && backend.Log.Count == 0 && s.Resident.Contains(41),
+            "pinned view: a view of the revised page waits for the render, nothing unloaded");
+        s.Unpin(41);
+        Check(backend.Log.SequenceEqual(new[] { "unload 41" }) && !s.Resident.Contains(41), "pinned view: the stale copy goes when the render ends");
+        Check(s.View(41, out _) && backend.Log.Last() == "load 41" && !s.IsStale(41), "pinned view: the next view loads the revision");
+        s.Unpin(41);
+
+        // Files replaced under a pinned copy: neither entry nor view touches it until the render ends.
+        backend = new FakeBackend();
+        s = new PagingSession(PageCatalog.Load(v1), backend, cap: 2, run: runner.Run);
+        Check(s.Enter(40, out _) && s.View(42, out _), "pinned disk: view 42 from 40");
+        var p42 = s.Catalog.ByFacet(42);
+        byte[] bytes = File.ReadAllBytes(p42.MapPath);
+        bytes[10] ^= 0xFF;
+        File.WriteAllBytes(p42.MapPath, bytes);
+        File.SetLastWriteTimeUtc(p42.MapPath, DateTime.UtcNow.AddMinutes(2));
+        backend.Log.Clear();
+        Check(!s.Enter(42, out error) && error.Contains("changed on disk") && backend.Log.Count == 0 && s.Current == 40,
+            "pinned disk: entering a page changed under a render is refused, nothing unloaded");
+        s.Unpin(42);
+        Check(backend.Log.SequenceEqual(new[] { "unload 42" }), "pinned disk: the changed copy goes when the render ends");
+        Check(!s.Enter(42, out error) && error.Contains("hash"), "pinned disk: then it is verified like any page and refused");
+    }
+
+    // (c) Several world map views queued at once: the bound holds and every pin is released.
+    static void MultipleViewTests(string root, DeferredRunner runner)
+    {
+        string grid = PageFixture.WriteGrid(Path.Combine(root, "queued"), 16, 16, 2, new Dictionary<int, string>(), 40, 41, 42, 43);
+        var s = new PagingSession(PageCatalog.Load(grid), new FakeBackend(), cap: 2, run: runner.Run);
+        bool within = true;
+        void Bounded() => within &= s.Resident.Count <= s.Bound;
+        Check(s.Enter(40, out _), "queued: enter 40");
+        Check(s.View(40, out _) && s.View(41, out _) && s.View(41, out _), "queued: views of 40, 41 and 41 again");
+        Bounded();
+        Check(!s.View(42, out var error) && error.Contains("in use"), "queued: no room for a third page at cap 2");
+        Check(s.Enter(42, out _) && s.Resident.Count == 3 && s.Bound == 3, "queued: crossing to 42 keeps both pinned pages (bound 3)");
+        Bounded();
+        Check(s.View(42, out _) && s.Enter(43, out _) && s.Resident.Count == 4 && s.Bound == 4,
+            "queued: pins accumulate the bound, pinned pages plus the current one");
+        Bounded();
+        foreach (int f in new[] { 40, 41, 41, 42 })
+        {
+            s.Unpin(f);
+            Bounded();
+        }
+        Check(within, "queued: resident never exceeded the bound");
+        Check(s.PinnedCount == 0 && s.Resident.Count == 2 && s.Resident.First() == 43 && s.Bound == 2,
+            "queued: every pin released and residency back to the cap");
     }
 
     sealed class FakeBackend : IPageBackend

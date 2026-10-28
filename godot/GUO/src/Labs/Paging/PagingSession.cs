@@ -24,9 +24,12 @@ internal interface IPageBackend
 /// page are verified in the background but not loaded. Every entry bumps a
 /// generation, and background results from an older generation are dropped.
 /// The world map may also view a page (<see cref="View"/>): it is loaded
-/// within the cap and pinned until its render ends, so no crossing evicts it
-/// mid-read. Main-thread only, apart from the verification tasks it starts
-/// and <see cref="Unpin"/>.
+/// within the cap and pinned until its render ends, so nothing evicts,
+/// replaces or rebuilds it mid-read. A pinned page that goes stale keeps its
+/// copy until <see cref="Unpin"/>, which then replaces or reclaims it at once.
+/// The bound is <see cref="Bound"/>: the cap, or the pinned pages plus the
+/// current one when more than the cap are pinned. Main-thread only, apart
+/// from the verification tasks it starts.
 /// </summary>
 internal sealed class PagingSession
 {
@@ -40,6 +43,7 @@ internal sealed class PagingSession
     private readonly ConcurrentDictionary<int, (string key, string fingerprint)> _verified = new();
     private readonly HashSet<int> _prefetching = new();
     private readonly Dictionary<int, int> _pinned = new();
+    private readonly Dictionary<int, (PageEntry page, string fingerprint)> _residentCopy = new();
     private int _generation;
 
     /// <param name="run">Runs a verification off the main thread; tests pass a deterministic runner.</param>
@@ -61,6 +65,8 @@ internal sealed class PagingSession
     internal int Evictions { get; private set; }
     internal int StaleResultsDropped { get; private set; }
     internal string LastError { get; private set; }
+    /// <summary>Entries that kept a pinned page's previous copy instead of rebuilding it.</summary>
+    internal int DeferredReplacements { get; private set; }
 
     internal bool IsVerified(int facet)
     {
@@ -76,7 +82,7 @@ internal sealed class PagingSession
     internal bool Enter(int facet, out string error)
     {
         _generation++;
-        if (!Ready(facet, out var page, out error)) return false;
+        if (!Ready(facet, false, out var page, out error)) return false;
 
         _lru.Remove(facet);
         _lru.AddFirst(facet);
@@ -105,14 +111,15 @@ internal sealed class PagingSession
             lock (_pinned) _pinned[facet] = _pinned.TryGetValue(facet, out int c) ? c + 1 : 1;
             return true;
         }
-        bool resident = _residentKey.ContainsKey(facet) && !IsStale(facet) && IsVerified(facet);
+        // A resident copy, stale or not, needs no room: it is reused or replaced in place.
+        bool resident = _residentKey.ContainsKey(facet);
         if (!resident && Catalog.ByFacet(facet) != null && _lru.Count >= Cap && !_lru.Any(f => f != facet && Evictable(f)))
         {
             error = $"page {Catalog.ByFacet(facet).Id} (facet {facet}) is not loaded: all {Cap} resident page(s) are in use " +
                     $"(current or on a world map); raise the cap or travel there.";
             return false;
         }
-        if (!Ready(facet, out _, out error)) return false;
+        if (!Ready(facet, true, out _, out error)) return false;
 
         _lru.Remove(facet);
         // Behind the current page, so a view never outranks where the player is.
@@ -123,14 +130,40 @@ internal sealed class PagingSession
         return true;
     }
 
-    /// <summary>Ends one <see cref="View"/>; any thread. Over-cap pages go at the next <see cref="Trim"/>.</summary>
+    /// <summary>
+    /// Ends one <see cref="View"/> (main thread). When the last pin on a page
+    /// goes, a copy that went stale while pinned is dropped now unless it is
+    /// the current page (rebuilt on its next entry, as after a reload), and
+    /// residency is trimmed back to the cap without waiting for a crossing.
+    /// </summary>
     internal void Unpin(int facet)
     {
         lock (_pinned)
         {
             if (!_pinned.TryGetValue(facet, out int n)) return;
-            if (n > 1) _pinned[facet] = n - 1;
-            else _pinned.Remove(facet);
+            if (n > 1)
+            {
+                _pinned[facet] = n - 1;
+                return;
+            }
+            _pinned.Remove(facet);
+        }
+        if (facet != Current && _residentKey.ContainsKey(facet) && Outdated(facet)) Drop(facet);
+        Trim();
+    }
+
+    /// <summary>
+    /// The most pages that can be resident: the cap, or, when more pages are
+    /// pinned than that, every pinned page plus the current one. Trim reaches
+    /// it after any entry, view or unpin.
+    /// </summary>
+    internal int Bound
+    {
+        get
+        {
+            int others;
+            lock (_pinned) others = _pinned.Keys.Count(f => f != Current);
+            return Math.Max(Cap, others + (Current >= 0 ? 1 : 0));
         }
     }
 
@@ -146,7 +179,7 @@ internal sealed class PagingSession
 
     /// <summary>
     /// Evicts least recently used pages down to the cap, never the current or
-    /// a pinned one; while pages are pinned the cap may be exceeded by them.
+    /// a pinned one, so it stops at <see cref="Bound"/> while pages are pinned.
     /// </summary>
     internal void Trim()
     {
@@ -170,7 +203,7 @@ internal sealed class PagingSession
     private bool Evictable(int facet) => facet != Current && !IsPinned(facet);
 
     /// <summary>Verifies <paramref name="facet"/> and builds its index if it is not resident.</summary>
-    private bool Ready(int facet, out PageEntry page, out string error)
+    private bool Ready(int facet, bool viewing, out PageEntry page, out string error)
     {
         error = null;
         page = Catalog.ByFacet(facet);
@@ -184,9 +217,35 @@ internal sealed class PagingSession
         }
 
         // A resident copy built from other content (new version, new hash or a
-        // replaced file) is dropped and rebuilt rather than reused.
+        // replaced file) is dropped and rebuilt rather than reused, except
+        // while a world map render reads it: then its own files must still be
+        // what was loaded, a view is refused, and an entry keeps the previous
+        // copy until the pin ends (Unpin drops it; the next entry rebuilds).
         if (_residentKey.TryGetValue(facet, out var loadedKey) && (loadedKey != page.ContentKey || !IsVerified(facet)))
-            Drop(facet);
+        {
+            if (!IsPinned(facet))
+            {
+                Drop(facet);
+            }
+            else if (CopyChangedOnDisk(facet))
+            {
+                error = $"page {page.Id} (facet {facet}) changed on disk while the world map reads it; it cannot be used until that ends.";
+                LastError = error;
+                return false;
+            }
+            else if (viewing)
+            {
+                error = $"page {page.Id} (facet {facet}) has a new version and the world map is still drawing the previous one; " +
+                        "open it again when that finishes.";
+                LastError = error;
+                return false;
+            }
+            else
+            {
+                DeferredReplacements++;
+                return true;
+            }
+        }
 
         if (!IsVerified(facet))
         {
@@ -206,10 +265,17 @@ internal sealed class PagingSession
         {
             _backend.LoadPage(page);
             _residentKey[facet] = page.ContentKey;
+            _residentCopy[facet] = (page, _verified[facet].fingerprint);
             Loads++;
         }
         return true;
     }
+
+    /// <summary>The resident copy is not the manifest's current content, or its files changed.</summary>
+    private bool Outdated(int facet) => IsStale(facet) || Catalog.ByFacet(facet) == null || CopyChangedOnDisk(facet);
+
+    private bool CopyChangedOnDisk(int facet) =>
+        _residentCopy.TryGetValue(facet, out var copy) && PageVerifier.Fingerprint(copy.page) != copy.fingerprint;
 
     /// <summary>The client left the page range (a stock facet); pages stay resident within the cap.</summary>
     internal void Leave()
@@ -258,6 +324,7 @@ internal sealed class PagingSession
     {
         _backend.UnloadPage(facet);
         _residentKey.Remove(facet);
+        _residentCopy.Remove(facet);
         _lru.Remove(facet);
     }
 

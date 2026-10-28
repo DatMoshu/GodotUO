@@ -130,16 +130,23 @@ internal static class PagingLab
         return false;
     }
 
-    /// <summary>Unpins a viewed page once the world map's render task for it ends.</summary>
+    /// <summary>
+    /// Unpins a viewed page once the world map's render task for it ends. The
+    /// task ends on a pool thread; the unpin, and the replacement or reclaim
+    /// it triggers, run on the main thread (Godot's deferred calls are
+    /// thread-safe).
+    /// </summary>
     internal static void AfterWorldMap(int facet, System.Threading.Tasks.Task render)
     {
         var session = _session;
         if (session == null || !PageCatalog.IsPageFacet(facet) || render == null) return;
-        render.ContinueWith(_ =>
+        render.ContinueWith(_ => global::Godot.Callable.From(() =>
         {
             session.Unpin(facet);
-            Log.Info($"[paging] world map render for facet {facet} ended ({render.Status}); unpinned");
-        });
+            Log.Info($"[paging] world map render for facet {facet} ended ({render.Status}); unpinned; " +
+                     $"resident {string.Join(",", session.Resident)} of cap {session.Cap}, pinned {session.PinnedCount}, " +
+                     $"bound {session.Bound}, open {_loader?.OpenPages ?? 0}");
+        }).CallDeferred());
     }
 
     private static bool EnsureStarted(World world, out string error)
@@ -287,8 +294,6 @@ internal static class PagingLab
     internal static string Check(World world)
     {
         if (_session == null || _loader == null) return "[paging] check: paging not started";
-        // Pages a finished world map kept past the cap go now, as on a crossing.
-        _session.Trim();
         var problems = new System.Collections.Generic.List<string>();
         int current = world.MapIndex;
         if (PageCatalog.IsPageFacet(current) && (_loader.BlockData[current] == null || !_session.Resident.Contains(current)))
@@ -303,8 +308,10 @@ internal static class PagingLab
         }
         if (_loader.OpenPages != _session.Resident.Count)
             problems.Add($"open pages {_loader.OpenPages} != resident {_session.Resident.Count}");
-        if (_session.Resident.Count > _session.Cap + _session.PinnedCount)
-            problems.Add($"resident {_session.Resident.Count} over cap {_session.Cap} with {_session.PinnedCount} pinned");
+        if (_session.Resident.Count > _session.Bound)
+            problems.Add($"resident {_session.Resident.Count} over the bound {_session.Bound} (cap {_session.Cap}, {_session.PinnedCount} pinned)");
+        if (_session.PinnedCount == 0 && _session.Resident.Count > _session.Cap)
+            problems.Add($"resident {_session.Resident.Count} over cap {_session.Cap} with nothing pinned");
         string result = problems.Count == 0
             ? $"[paging] check OK: current {current}, resident {string.Join(",", _session.Resident)} (cap {_session.Cap}, pinned {_session.PinnedCount}), open {_loader.OpenPages}"
             : "[paging] check FAILED: " + string.Join("; ", problems);
