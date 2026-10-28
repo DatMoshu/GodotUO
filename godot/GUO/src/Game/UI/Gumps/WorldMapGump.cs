@@ -546,7 +546,7 @@ namespace GUO.Game.UI.Gumps
             // PORT DEVIATION (GUO): L4 map paging loads a page facet for the world
             // map, pinned while it renders, or keeps this map and says why;
             // Labs/Paging/README.md.
-            if (!GUO.Labs.Paging.PagingLab.BeforeWorldMap(World, index))
+            if (!GUO.Labs.Paging.PagingLab.BeforeWorldMap(this, World, index))
             {
                 return;
             }
@@ -560,7 +560,7 @@ namespace GUO.Game.UI.Gumps
             else
                 _loadingTask = Task.Run(() => LoadMap(index));
 #if GUO_LABS
-            GUO.Labs.Paging.PagingLab.AfterWorldMap(index, _loadingTask);
+            GUO.Labs.Paging.PagingLab.AfterWorldMap(this, index, _loadingTask);
 #endif
         }
 

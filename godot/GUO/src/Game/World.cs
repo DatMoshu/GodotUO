@@ -857,6 +857,11 @@ namespace GUO.Game
             _clientViewRangeKnown = false;
             Map?.Destroy();
             Map = null;
+#if GUO_LABS
+            // PORT DEVIATION (GUO): L4 map paging releases its pages with the world;
+            // Labs/Paging/README.md.
+            GUO.Labs.Paging.PagingLab.OnWorldCleared();
+#endif
             Light.Overall = Light.RealOverall = 0;
             Light.Personal = Light.RealPersonal = 0;
             ClientLockedFeatures.SetFlags(0);

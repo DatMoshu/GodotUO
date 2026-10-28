@@ -44,6 +44,7 @@ internal sealed class PagingSession
     private readonly HashSet<int> _prefetching = new();
     private readonly Dictionary<int, int> _pinned = new();
     private readonly Dictionary<int, (PageEntry page, string fingerprint)> _residentCopy = new();
+    private readonly HashSet<int> _dropOnUnpin = new();
     private int _generation;
 
     /// <param name="run">Runs a verification off the main thread; tests pass a deterministic runner.</param>
@@ -84,6 +85,7 @@ internal sealed class PagingSession
         _generation++;
         if (!Ready(facet, false, out var page, out error)) return false;
 
+        _dropOnUnpin.Remove(facet);
         _lru.Remove(facet);
         _lru.AddFirst(facet);
         Current = facet;
@@ -121,6 +123,7 @@ internal sealed class PagingSession
         }
         if (!Ready(facet, true, out _, out error)) return false;
 
+        _dropOnUnpin.Remove(facet);
         _lru.Remove(facet);
         // Behind the current page, so a view never outranks where the player is.
         if (Current >= 0 && _lru.First?.Value == Current) _lru.AddAfter(_lru.First, facet);
@@ -148,7 +151,15 @@ internal sealed class PagingSession
             }
             _pinned.Remove(facet);
         }
-        if (facet != Current && _residentKey.ContainsKey(facet) && Outdated(facet)) Drop(facet);
+        if (_dropOnUnpin.Remove(facet))
+        {
+            // Released by Clear while a render still read it.
+            if (_residentKey.ContainsKey(facet)) Drop(facet);
+        }
+        else if (facet != Current && _residentKey.ContainsKey(facet) && Outdated(facet))
+        {
+            Drop(facet);
+        }
         Trim();
     }
 
@@ -310,12 +321,24 @@ internal sealed class PagingSession
     }
 
     /// <summary>Drops every resident page (shutdown or loader replaced).</summary>
+    /// <summary>
+    /// Releases every page (logout, disconnect or shutdown). A page a world
+    /// map render still reads is dropped when its pin ends instead, unless it
+    /// is entered or viewed again first.
+    /// </summary>
     internal void Clear()
     {
         _generation++;
-        foreach (var facet in _lru.ToArray()) Drop(facet);
         Current = -1;
+        foreach (var facet in _lru.ToArray())
+        {
+            if (IsPinned(facet)) _dropOnUnpin.Add(facet);
+            else Drop(facet);
+        }
     }
+
+    /// <summary>Pages Clear left for their render to finish with.</summary>
+    internal int PendingDrops => _dropOnUnpin.Count;
 
     internal bool IsStale(int facet) =>
         _residentKey.TryGetValue(facet, out var key) && Catalog.ByFacet(facet)?.ContentKey != key;

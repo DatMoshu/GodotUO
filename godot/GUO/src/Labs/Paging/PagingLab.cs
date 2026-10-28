@@ -61,6 +61,7 @@ internal static class PagingLab
         }
 
         var timer = Stopwatch.StartNew();
+        int deferred = _session?.DeferredReplacements ?? 0;
         if (!EnsureStarted(world, out string error) || !_session.Enter(value, out error))
         {
             Refuse(world, $"page facet {value} refused: {error}");
@@ -68,11 +69,13 @@ internal static class PagingLab
         }
 
         timer.Stop();
+        if (_session.DeferredReplacements > deferred)
+            Log.Info($"[paging] facet {value} entered on its previous copy: a world map render still reads it; the revision is built on the next entry");
         var page = _session.Catalog.ByFacet(value);
         using var process = Process.GetCurrentProcess();
         // Observations for the evidence log, not measurements of anything.
         Log.Info($"[paging] facet {value} ready (page {page.Id}, version {page.Version}) in {timer.ElapsedMilliseconds} ms; " +
-                 $"resident {string.Join(",", _session.Resident)} of cap {_session.Cap}, open {_loader.OpenPages}, " +
+                 $"resident {string.Join(",", _session.Resident)} of cap {_session.Cap}, pinned {_session.PinnedCount}, bound {_session.Bound}, open {_loader.OpenPages}, " +
                  $"generation {_session.Generation}; working set {process.WorkingSet64 >> 20} MiB, managed heap {GC.GetTotalMemory(false) >> 20} MiB");
         return true;
     }
@@ -87,6 +90,9 @@ internal static class PagingLab
         string message = $"{reason} Disconnected so the client never plays on a map the server did not choose. Run {Doctor}.";
         Log.Error("[paging] " + message);
         LastRefusal = message;
+        // The login popup fits about five short lines: the reason stays in the log.
+        string popup = $"A map page could not be readied, so the client disconnected rather than play on the wrong map. " +
+                       $"Details are in the log. Run {Doctor}.";
         NetClient.Socket.Disconnect();
         var login = Client.Game.GetScene<LoginScene>();
         if (login == null)
@@ -94,11 +100,23 @@ internal static class PagingLab
             login = new LoginScene(world);
             Client.Game.SetScene(login);
         }
-        login.PopupMessage = message;
+        login.PopupMessage = popup;
         login.CurrentLoginStep = LoginSteps.PopUpMessage;
     }
 
     internal static string LastRefusal { get; private set; }
+
+    /// <summary>
+    /// World.Clear (logout, disconnect) calls this: every page is released;
+    /// one a world map render still reads goes when that render ends.
+    /// </summary>
+    internal static void OnWorldCleared()
+    {
+        if (_session == null) return;
+        _session.Clear();
+        Log.Info($"[paging] world cleared: resident {string.Join(",", _session.Resident)}, pinned {_session.PinnedCount}, " +
+                 $"left for their render {_session.PendingDrops}, open {_loader?.OpenPages ?? 0}");
+    }
 
     /// <summary>
     /// WorldMapGump.ChangeMap calls this before the stock loader is asked for
@@ -107,7 +125,7 @@ internal static class PagingLab
     /// until <see cref="AfterWorldMap"/>'s render task ends; one that cannot be
     /// loaded is named in the journal with the reason instead.
     /// </summary>
-    internal static bool BeforeWorldMap(World world, int facet)
+    internal static bool BeforeWorldMap(WorldMapGump gump, World world, int facet)
     {
         if (!PageCatalog.IsPageFacet(facet) || (_session == null && !Enabled)) return true;
 
@@ -118,8 +136,11 @@ internal static class PagingLab
             error = "map paging has not started; enter a page facet first.";
         else if (_session.View(facet, out error))
         {
+            var pins = PinsOf(gump);
+            pins.Session ??= _session;
+            pins.Facets.Add(facet);
             var page = _session.Catalog.ByFacet(facet);
-            Log.Info($"[paging] world map on facet {facet} (page {page.Id}): loaded and pinned; resident {string.Join(",", _session.Resident)} " +
+            Log.Info($"[paging] world map on facet {facet} (page {page.Id}, version {page.Version}{(_session.IsStale(facet) ? ", previous copy" : "")}): loaded and pinned; resident {string.Join(",", _session.Resident)} " +
                      $"of cap {_session.Cap}, pinned {_session.PinnedCount}, open {_loader.OpenPages}");
             return true;
         }
@@ -130,22 +151,54 @@ internal static class PagingLab
         return false;
     }
 
-    /// <summary>
-    /// Unpins a viewed page once the world map's render task for it ends. The
-    /// task ends on a pool thread; the unpin, and the replacement or reclaim
-    /// it triggers, run on the main thread (Godot's deferred calls are
-    /// thread-safe).
-    /// </summary>
-    internal static void AfterWorldMap(int facet, System.Threading.Tasks.Task render)
+    /// <summary>The pages one world map gump has pinned, and its renders still running.</summary>
+    private sealed class GumpPins
     {
-        var session = _session;
-        if (session == null || !PageCatalog.IsPageFacet(facet) || render == null) return;
+        internal PagingSession Session;
+        internal readonly System.Collections.Generic.List<int> Facets = new();
+        internal int InFlight;
+        internal Action Done;
+    }
+
+    private static readonly System.Collections.Generic.Dictionary<WorldMapGump, GumpPins> _gumpPins = new();
+
+    private static GumpPins PinsOf(WorldMapGump gump)
+    {
+        if (!_gumpPins.TryGetValue(gump, out var pins)) _gumpPins[gump] = pins = new GumpPins();
+        return pins;
+    }
+
+    /// <summary>
+    /// Counts one render of <paramref name="gump"/> and, when the gump's last
+    /// running render ends, unpins every page it was pointed at meanwhile.
+    /// Upstream's render reads the gump's map field when it runs, not when it
+    /// was asked for, so a render may read a facet a later ChangeMap chose:
+    /// no page the gump was pointed at may go while any of its renders runs.
+    /// The task ends on a pool thread; the unpin, and the replacement or
+    /// reclaim it triggers, run on the main thread (Godot's deferred calls
+    /// are thread-safe).
+    /// </summary>
+    internal static void AfterWorldMap(WorldMapGump gump, int facet, System.Threading.Tasks.Task render)
+    {
+        if (render == null || !_gumpPins.TryGetValue(gump, out var pins)) return;
+        pins.InFlight++;
         render.ContinueWith(_ => global::Godot.Callable.From(() =>
         {
-            session.Unpin(facet);
-            Log.Info($"[paging] world map render for facet {facet} ended ({render.Status}); unpinned; " +
-                     $"resident {string.Join(",", session.Resident)} of cap {session.Cap}, pinned {session.PinnedCount}, " +
-                     $"bound {session.Bound}, open {_loader?.OpenPages ?? 0}");
+            pins.InFlight--;
+            var session = pins.Session;
+            string state = pins.InFlight > 0
+                ? $"{pins.InFlight} more render(s) of this map running, pins kept"
+                : $"unpinned {string.Join(",", pins.Facets)}";
+            if (pins.InFlight == 0)
+            {
+                foreach (int f in pins.Facets) session?.Unpin(f);
+                pins.Facets.Clear();
+                _gumpPins.Remove(gump);
+            }
+            Log.Info($"[paging] world map render for facet {facet} ended ({render.Status}); {state}; " +
+                     $"resident {string.Join(",", session?.Resident ?? Array.Empty<int>())} of cap {session?.Cap ?? 0}, " +
+                     $"pinned {session?.PinnedCount ?? 0}, bound {session?.Bound ?? 0}, open {_loader?.OpenPages ?? 0}");
+            if (pins.InFlight == 0) pins.Done?.Invoke();
         }).CallDeferred());
     }
 
@@ -223,10 +276,14 @@ internal static class PagingLab
                 try
                 {
                     var changed = _session.Reload(PageCatalog.Load(ManifestPath));
-                    GameActions.Print(world, changed.Count == 0
+                    var kept = changed.Where(_session.Resident.Contains).ToArray();
+                    var dropped = changed.Except(kept).ToArray();
+                    string text = changed.Count == 0
                         ? "Page manifest reloaded; no resident page changed."
-                        : $"Page manifest reloaded; revised resident facets {string.Join(",", changed)} dropped " +
-                          "(the current page is rebuilt when next entered).");
+                        : $"Page manifest reloaded; revised resident facets {string.Join(",", changed)}: dropped {string.Join(",", dropped)}; " +
+                          $"kept {string.Join(",", kept)} (current or read by a world map; rebuilt on the next entry or when the map is done).";
+                    Log.Info("[paging] " + text);
+                    GameActions.Print(world, text);
                 }
                 catch (PageManifestException e)
                 {
@@ -279,6 +336,62 @@ internal static class PagingLab
                 gump.ChangeMap(facet);
                 Log.Info($"[paging] world map free view on facet {facet} returned; {Check(world)}");
                 return;
+
+            case "worldmap-offscreen":
+            {
+                // Soak hook: a world map gump that is rendered but never drawn, disposed once its
+                // renders end. Upstream's render disposes the texture the visible gump draws.
+                if (args.Length < 3 || !int.TryParse(args[2], out int target))
+                {
+                    GameActions.Print(world, "-paging worldmap-offscreen <facet>");
+                    return;
+                }
+                var hidden = new WorldMapGump(world);
+                hidden.FreeView = true;
+                hidden.ChangeMap(target);
+                if (_gumpPins.TryGetValue(hidden, out var pins)) pins.Done = hidden.Dispose;
+                else hidden.Dispose();
+                Log.Info($"[paging] offscreen world map on facet {target}");
+                return;
+            }
+
+            case "minimap":
+                // Test hook: open the minimap for the stale-content evidence.
+                if (UIManager.GetGump<MiniMapGump>() == null) UIManager.Add(new MiniMapGump(world));
+                Log.Info($"[paging] minimap open on facet {world.MapIndex}");
+                return;
+
+            case "logout":
+            {
+                // Test hook: the upstream quit prompt's "yes", for the teardown evidence.
+                var game = Client.Game.GetScene<GameScene>();
+                Log.Info($"[paging] logout requested on facet {world.MapIndex}");
+                if (game != null && (world.ClientFeatures.Flags & CharacterListFlags.CLF_OWERWRITE_CONFIGURATION_BUTTON) != 0)
+                {
+                    game.DisconnectionRequested = true;
+                    NetClient.Socket.Send_LogoutNotification();
+                }
+                else
+                {
+                    NetClient.Socket.Disconnect();
+                    Client.Game.SetScene(new LoginScene(world));
+                }
+                return;
+            }
+
+            case "mem":
+            {
+                // Soak samples: observations, not budgets. "gc" collects first to show the live heap.
+                bool collect = args.Length > 2 && args[2] == "gc";
+                long before = GC.GetTotalMemory(false);
+                long live = collect ? GC.GetTotalMemory(true) : before;
+                using var process = Process.GetCurrentProcess();
+                Log.Info($"[paging] mem: working set {process.WorkingSet64 >> 20} MiB, private {process.PrivateMemorySize64 >> 20} MiB, " +
+                         $"managed heap {before >> 20} MiB" + (collect ? $", after GC {live >> 20} MiB" : "") +
+                         $"; resident {string.Join(",", _session?.Resident ?? Array.Empty<int>())}, pinned {_session?.PinnedCount ?? 0}, " +
+                         $"open {_loader?.OpenPages ?? 0}, loads {_session?.Loads ?? 0}, evictions {_session?.Evictions ?? 0}");
+                return;
+            }
 
             default:
                 GameActions.Print(world, Status());
