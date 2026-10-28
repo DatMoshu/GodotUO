@@ -4123,3 +4123,18 @@ The effective performance cohort requires boolean `atlas_page_1024` and
 comparison without replacing its baseline; intentionally varied flags require
 explicit experiment arms. Older incomplete receipts need a fresh baseline.
 This metadata change does not authorize benchmarking.
+
+
+### Offline art-capacity contract lab (Proposed ADR-0046)
+
+The L4 art-capacity harness uses synthetic GAC1 files and GAF1 complete-buffer
+frames described in docs/architecture/ADR-0046-bounded-art-capacity.md. These
+are not installed UO data formats or assigned game packet opcodes. No live
+loader, packet table, command or option consumes them. Default and exported
+clients exclude src/Labs/ArtCapacity/. Static art is bounded to 0x40000 slots;
+land remains 0x4000. The 9-byte static layout preserves signed-byte Z; 14/18-byte
+multi layouts preserve signed-short Z. No wider-Z support is implied.
+
+Run launchers/dev/art_capacity.bat doctor, then the launcher without arguments;
+see 	ools/scenarios/art-capacity/README.md and docs/art_capacity_audit.md.
+Promotion requires an Accepted ADR and matched client/server/tool qualification.
