@@ -242,6 +242,41 @@ static class Program
         Check(one.Resident.Count == 1 && one.Resident.First() == 33, "cap 1 keeps only the current page");
         one.Clear();
         Check(one.Resident.Count == 0 && one.Current == -1, "clear drops every page");
+
+        // World map views: loaded within the cap, pinned while rendering.
+        var view = new PagingSession(g, new FakeBackend(), cap: 2, run: runner.Run);
+        Check(view.Enter(40, out _) && view.Enter(41, out _) && view.Enter(43, out _), "view: enter 40, 41, 43");
+        Check(!view.Resident.Contains(40), "view: 40 evicted before it is viewed");
+        Check(view.View(40, out error) && view.Resident.Contains(40) && view.Resident.Contains(43) && view.Resident.Count == 2,
+            "view loads an evicted page within the cap, keeping the current one");
+        Check(view.IsPinned(40) && view.Current == 43, "a viewed page is pinned and does not become current");
+        Check(view.Enter(42, out _) && view.Resident.Contains(40) && view.Resident.Contains(42) && view.Resident.Count == 2,
+            "a crossing while the view renders evicts around the pinned page");
+        Check(view.Enter(41, out _) && view.Resident.Count == 2 && view.Resident.Contains(40) && !view.Resident.Contains(42),
+            "the next crossing evicts the unpinned page, not the viewed one");
+        view.Unpin(40);
+        Check(view.Enter(43, out _) && !view.Resident.Contains(40), "unpinned, the viewed page is evicted like any other");
+        Check(view.View(43, out _) && view.Resident.Count == 2, "viewing the current page loads nothing");
+        view.Unpin(43);
+
+        var tight = new PagingSession(g, new FakeBackend(), cap: 1, run: runner.Run);
+        Check(tight.Enter(40, out _), "cap 1: enter 40");
+        Check(!tight.View(41, out error) && error.Contains("not loaded") && !tight.Resident.Contains(41) && tight.Resident.Count == 1,
+            "cap 1 refuses a view of another page and changes nothing");
+        Check(tight.View(40, out _), "cap 1 still views the current page");
+        Check(tight.Enter(41, out _) && tight.Resident.Count == 2 && tight.Resident.Contains(40),
+            "a page pinned by a render may hold the cap over by one");
+        tight.Unpin(40);
+        tight.Trim();
+        Check(tight.Resident.Count == 1 && tight.Resident.First() == 41, "unpinned, the extra page goes at the next trim");
+
+        var bad = g.ByFacet(42);
+        File.AppendAllText(bad.MapPath, "x");
+        Check(!view.View(42, out error) && error.Contains("map file") && !view.Resident.Contains(42) && view.Resident.Contains(43),
+            "a corrupt page is refused for the world map and the current page stays");
+        File.AppendAllText(g.ByFacet(43).MapPath, "x");
+        Check(view.View(43, out _) && view.Resident.Contains(43), "a view of the current page never re-verifies or drops it");
+        view.Unpin(43);
     }
 
     sealed class FakeBackend : IPageBackend

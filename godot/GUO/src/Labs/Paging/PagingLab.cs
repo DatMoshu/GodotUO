@@ -100,6 +100,48 @@ internal static class PagingLab
 
     internal static string LastRefusal { get; private set; }
 
+    /// <summary>
+    /// WorldMapGump.ChangeMap calls this before the stock loader is asked for
+    /// <paramref name="facet"/>, and keeps its current map when it returns
+    /// false. A page facet is loaded for the view (within the cap) and pinned
+    /// until <see cref="AfterWorldMap"/>'s render task ends; one that cannot be
+    /// loaded is named in the journal with the reason instead.
+    /// </summary>
+    internal static bool BeforeWorldMap(World world, int facet)
+    {
+        if (!PageCatalog.IsPageFacet(facet) || (_session == null && !Enabled)) return true;
+
+        string error = null;
+        if (_loader != null && !ReferenceEquals(Client.Game.UO.FileManager.Maps, _loader))
+            error = "another map loader replaced map paging.";
+        else if (_session == null)
+            error = "map paging has not started; enter a page facet first.";
+        else if (_session.View(facet, out error))
+        {
+            var page = _session.Catalog.ByFacet(facet);
+            Log.Info($"[paging] world map on facet {facet} (page {page.Id}): loaded and pinned; resident {string.Join(",", _session.Resident)} " +
+                     $"of cap {_session.Cap}, pinned {_session.PinnedCount}, open {_loader.OpenPages}");
+            return true;
+        }
+
+        string message = $"World map: page facet {facet} is not loaded: {error} See {Doctor}.";
+        Log.Warn("[paging] " + message);
+        if (world?.Player != null) GameActions.Print(world, message, 0x0021);
+        return false;
+    }
+
+    /// <summary>Unpins a viewed page once the world map's render task for it ends.</summary>
+    internal static void AfterWorldMap(int facet, System.Threading.Tasks.Task render)
+    {
+        var session = _session;
+        if (session == null || !PageCatalog.IsPageFacet(facet) || render == null) return;
+        render.ContinueWith(_ =>
+        {
+            session.Unpin(facet);
+            Log.Info($"[paging] world map render for facet {facet} ended ({render.Status}); unpinned");
+        });
+    }
+
     private static bool EnsureStarted(World world, out string error)
     {
         error = null;
@@ -210,15 +252,21 @@ internal static class PagingLab
                 return;
 
             case "worldmap":
-                // Test hook for the evidence run: the world map's free view
-                // pointed at any facet, evicted pages included (ADR-0046 gap).
+                // Test hook for the evidence run: open the world map, then
+                // point its free view at any facet, evicted pages included.
+                // Open first and let it finish: the gump's own load reads its
+                // map field late, so switching mid-load mixes facets (upstream).
+                var gump = UIManager.GetGump<WorldMapGump>();
+                if (gump == null)
+                {
+                    gump = new WorldMapGump(world);
+                    UIManager.Add(gump);
+                }
                 if (args.Length < 3 || !int.TryParse(args[2], out int facet))
                 {
-                    GameActions.Print(world, "-paging worldmap <facet>");
+                    Log.Info($"[paging] world map open on facet {world.MapIndex}");
                     return;
                 }
-                var gump = UIManager.GetGump<WorldMapGump>() ?? new WorldMapGump(world);
-                if (gump.Parent == null && !UIManager.Gumps.Contains(gump)) UIManager.Add(gump);
                 gump.FreeView = true;
                 Log.Info($"[paging] world map free view -> facet {facet}; resident {string.Join(",", _session?.Resident ?? Array.Empty<int>())}");
                 gump.ChangeMap(facet);
@@ -239,6 +287,8 @@ internal static class PagingLab
     internal static string Check(World world)
     {
         if (_session == null || _loader == null) return "[paging] check: paging not started";
+        // Pages a finished world map kept past the cap go now, as on a crossing.
+        _session.Trim();
         var problems = new System.Collections.Generic.List<string>();
         int current = world.MapIndex;
         if (PageCatalog.IsPageFacet(current) && (_loader.BlockData[current] == null || !_session.Resident.Contains(current)))
@@ -253,10 +303,10 @@ internal static class PagingLab
         }
         if (_loader.OpenPages != _session.Resident.Count)
             problems.Add($"open pages {_loader.OpenPages} != resident {_session.Resident.Count}");
-        if (_session.Resident.Count > _session.Cap)
-            problems.Add($"resident {_session.Resident.Count} over cap {_session.Cap}");
+        if (_session.Resident.Count > _session.Cap + _session.PinnedCount)
+            problems.Add($"resident {_session.Resident.Count} over cap {_session.Cap} with {_session.PinnedCount} pinned");
         string result = problems.Count == 0
-            ? $"[paging] check OK: current {current}, resident {string.Join(",", _session.Resident)} (cap {_session.Cap}), open {_loader.OpenPages}"
+            ? $"[paging] check OK: current {current}, resident {string.Join(",", _session.Resident)} (cap {_session.Cap}, pinned {_session.PinnedCount}), open {_loader.OpenPages}"
             : "[paging] check FAILED: " + string.Join("; ", problems);
         Log.Info(result);
         return result;

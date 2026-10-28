@@ -23,7 +23,10 @@ internal interface IPageBackend
 /// resident; the current page is never evicted. Neighbours of the current
 /// page are verified in the background but not loaded. Every entry bumps a
 /// generation, and background results from an older generation are dropped.
-/// Main-thread only, apart from the verification tasks it starts.
+/// The world map may also view a page (<see cref="View"/>): it is loaded
+/// within the cap and pinned until its render ends, so no crossing evicts it
+/// mid-read. Main-thread only, apart from the verification tasks it starts
+/// and <see cref="Unpin"/>.
 /// </summary>
 internal sealed class PagingSession
 {
@@ -36,6 +39,7 @@ internal sealed class PagingSession
     private readonly Dictionary<int, string> _residentKey = new();
     private readonly ConcurrentDictionary<int, (string key, string fingerprint)> _verified = new();
     private readonly HashSet<int> _prefetching = new();
+    private readonly Dictionary<int, int> _pinned = new();
     private int _generation;
 
     /// <param name="run">Runs a verification off the main thread; tests pass a deterministic runner.</param>
@@ -72,8 +76,104 @@ internal sealed class PagingSession
     internal bool Enter(int facet, out string error)
     {
         _generation++;
+        if (!Ready(facet, out var page, out error)) return false;
+
+        _lru.Remove(facet);
+        _lru.AddFirst(facet);
+        Current = facet;
+        Trim();
+
+        LastError = null;
+        Prefetch(page);
+        return true;
+    }
+
+    /// <summary>
+    /// Makes <paramref name="facet"/> readable for the world map without the
+    /// player entering it, and pins it until <see cref="Unpin"/>. A page that
+    /// is not resident is verified and loaded only when the cap has room or a
+    /// page other than the current or a pinned one can make room; otherwise,
+    /// or when it fails verification, it is refused with a plain reason and
+    /// nothing changes.
+    /// </summary>
+    internal bool View(int facet, out string error)
+    {
         error = null;
-        var page = Catalog.ByFacet(facet);
+        if (facet == Current)
+        {
+            // The player's page is already in use; a view never rebuilds or drops it.
+            lock (_pinned) _pinned[facet] = _pinned.TryGetValue(facet, out int c) ? c + 1 : 1;
+            return true;
+        }
+        bool resident = _residentKey.ContainsKey(facet) && !IsStale(facet) && IsVerified(facet);
+        if (!resident && Catalog.ByFacet(facet) != null && _lru.Count >= Cap && !_lru.Any(f => f != facet && Evictable(f)))
+        {
+            error = $"page {Catalog.ByFacet(facet).Id} (facet {facet}) is not loaded: all {Cap} resident page(s) are in use " +
+                    $"(current or on a world map); raise the cap or travel there.";
+            return false;
+        }
+        if (!Ready(facet, out _, out error)) return false;
+
+        _lru.Remove(facet);
+        // Behind the current page, so a view never outranks where the player is.
+        if (Current >= 0 && _lru.First?.Value == Current) _lru.AddAfter(_lru.First, facet);
+        else _lru.AddFirst(facet);
+        lock (_pinned) _pinned[facet] = _pinned.TryGetValue(facet, out int n) ? n + 1 : 1;
+        Trim();
+        return true;
+    }
+
+    /// <summary>Ends one <see cref="View"/>; any thread. Over-cap pages go at the next <see cref="Trim"/>.</summary>
+    internal void Unpin(int facet)
+    {
+        lock (_pinned)
+        {
+            if (!_pinned.TryGetValue(facet, out int n)) return;
+            if (n > 1) _pinned[facet] = n - 1;
+            else _pinned.Remove(facet);
+        }
+    }
+
+    internal bool IsPinned(int facet)
+    {
+        lock (_pinned) return _pinned.ContainsKey(facet);
+    }
+
+    internal int PinnedCount
+    {
+        get { lock (_pinned) return _pinned.Count; }
+    }
+
+    /// <summary>
+    /// Evicts least recently used pages down to the cap, never the current or
+    /// a pinned one; while pages are pinned the cap may be exceeded by them.
+    /// </summary>
+    internal void Trim()
+    {
+        while (_lru.Count > Cap)
+        {
+            int victim = -1;
+            for (var node = _lru.Last; node != null; node = node.Previous)
+            {
+                if (Evictable(node.Value))
+                {
+                    victim = node.Value;
+                    break;
+                }
+            }
+            if (victim < 0) return;
+            Drop(victim);
+            Evictions++;
+        }
+    }
+
+    private bool Evictable(int facet) => facet != Current && !IsPinned(facet);
+
+    /// <summary>Verifies <paramref name="facet"/> and builds its index if it is not resident.</summary>
+    private bool Ready(int facet, out PageEntry page, out string error)
+    {
+        error = null;
+        page = Catalog.ByFacet(facet);
         if (page == null)
         {
             error = PageCatalog.IsPageFacet(facet)
@@ -108,20 +208,6 @@ internal sealed class PagingSession
             _residentKey[facet] = page.ContentKey;
             Loads++;
         }
-
-        _lru.Remove(facet);
-        _lru.AddFirst(facet);
-        Current = facet;
-
-        while (_lru.Count > Cap)
-        {
-            // Oldest first; the current page is at the front and never reached.
-            Drop(_lru.Last.Value);
-            Evictions++;
-        }
-
-        LastError = null;
-        Prefetch(page);
         return true;
     }
 
@@ -147,7 +233,7 @@ internal sealed class PagingSession
             var page = catalog.ByFacet(facet);
             if (page != null && page.ContentKey == _residentKey[facet]) continue;
             changed.Add(facet);
-            if (facet != Current) Drop(facet);
+            if (facet != Current && !IsPinned(facet)) Drop(facet);
         }
         foreach (var facet in _verified.Keys.ToArray())
         {
