@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
+// PORT DEVIATION (GUO): the debug overlay also reports Godot rendering and
+// Depth World counters, including ordered-canvas fallback, in production builds.
 
 using GUO.Configuration;
 using GUO.Game.GameObjects;
