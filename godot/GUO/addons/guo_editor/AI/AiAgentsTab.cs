@@ -298,9 +298,10 @@ public partial class AiAgentsTab : VBoxContainer
         return await done.Task;
     }
 
-    private void StopSelected()
+    private void StopSelected() => StopSession(SelectedSession);
+
+    internal void StopSession(AgentSession s)
     {
-        AgentSession s = SelectedSession;
         if (s == null)
         {
             return;

@@ -1423,6 +1423,14 @@ Legacy clients should stop before migration; after migration all writers must us
 
 ## 22. The AI dock's endpoints (`ai_endpoints.json`)
 
+The optional editor AI setup window uses `guo/ai/setup_completed` in Godot
+Editor Settings as an onboarding marker. It stores no credentials or provider
+entitlements. Completion requires a live ready ACP session and an explicit
+Finish action; readiness alone does not prove inference. The dock keeps a
+reopen action after completion. The window and ACP sign-in share `AiFeatures`
+and its cancellation lifetime. See [AI setup](editor/ai_setup.md) for supported
+subscription routes, API-billing boundaries and the Google Antigravity migration.
+
 Written by the editor's AI dock (ADR-0028) to `%APPDATA%/GUO/ai_endpoints.json` (`~/.config/guo/` elsewhere),
 never to a project or `.godot`. A JSON array of `{ "Name", "Url", "Model", "AllowClientArt", "Key" }` for the OpenAI-compatible
 endpoints the user added. `AllowClientArt` (default false) is the per-endpoint leave to send client art (asset

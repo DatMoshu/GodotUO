@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -45,13 +46,18 @@ public static class AgentCatalog
         "gemini   (sign in with Google once; newer versions use --acp instead of --experimental-acp)",
         "your Google account");
 
+    public static readonly AgentPreset Antigravity = new("antigravity", "Google Gemini (Antigravity)", "agy_acp_server", Array.Empty<string>(),
+        "Install Google's official Antigravity ACP server from https://github.com/agentclientprotocol/registry/tree/main/antigravity-acp and add its folder to PATH",
+        "choose Google account sign-in in AI setup after Check connection",
+        "your eligible Google AI plan or free tier");
+
     public static readonly AgentPreset Custom = new("custom", "Custom command", "", Array.Empty<string>(),
         "type the command line, for example: my-agent --acp",
         "whatever that CLI needs",
         "whatever that CLI uses");
 
     /// <summary>The presets in the order the picker shows them.</summary>
-    public static IReadOnlyList<AgentPreset> Presets { get; } = new[] { OpenCode, Codex, ClaudeCode, Gemini, Custom };
+    public static IReadOnlyList<AgentPreset> Presets { get; } = new[] { OpenCode, Codex, ClaudeCode, Antigravity, Gemini, Custom };
 
     /// <summary>
     /// The executable for a command name, searching PATH the way the shell does but without one:
@@ -177,16 +183,19 @@ public sealed class AgentSession : IDisposable
     private readonly AcpClient _client = new();
     private readonly Dictionary<string, string> _tools = new();
     private CancellationTokenSource _turn;
+    private volatile bool _signingIn;
 
     public string Name { get; }
     public AgentPreset Preset { get; }
     public AcpClient Client => _client;
-    public bool Ready { get; private set; }
+    private volatile bool _ready;
+    public bool Ready { get => _ready && _client.Running; private set => _ready = value; }
     public bool Busy { get; private set; }
     public string Error { get; private set; }
 
     /// <summary>Every transcript line (worker thread; the dock queues them to the main thread).</summary>
     public event Action<Line> Transcript;
+    internal event Action<string> SignInPage;
 
     /// <summary>The agent asked for permission. Return the ACP result; set by the dock.</summary>
     public Func<JsonNode, Task<JsonNode>> Ask
@@ -200,7 +209,16 @@ public sealed class AgentSession : IDisposable
         Preset = preset;
         Name = name ?? preset.Name;
         _client.Update += OnUpdate;
-        _client.Log += s => Transcript?.Invoke(new Line("info", s));
+        _client.Log += s =>
+        {
+            if (_signingIn && Preset.Id == "antigravity" && TrySignInPage(s, out string url))
+            {
+                SignInPage?.Invoke(url);
+                Transcript?.Invoke(new Line("info", "Google sign-in page available; complete account sign-in in your browser."));
+                return; // OAuth state belongs only to the temporary browser action, never the transcript.
+            }
+            Transcript?.Invoke(new Line("info", s));
+        };
         _client.Closed += why =>
         {
             Ready = false;
@@ -243,6 +261,10 @@ public sealed class AgentSession : IDisposable
             Ready = true;
             return true;
         }
+        catch (AcpException ex) when (ex.Message.Contains("no longer supported", StringComparison.OrdinalIgnoreCase))
+        {
+            Error = $"{Name} is unavailable: {ex.Message}. Follow the provider's migration guidance; repeating sign-in will not resolve this response.";
+        }
         catch (AcpException ex) when (ex.Code == -32000 || ex.Message.Contains("auth", StringComparison.OrdinalIgnoreCase))
         {
             Error = $"{Name} needs you to sign in first ({ex.Message}). Sign-in: {Preset.Login}";
@@ -253,6 +275,44 @@ public sealed class AgentSession : IDisposable
         }
 
         Transcript?.Invoke(new Line("error", Error));
+        return false;
+    }
+
+    /// <summary>Explicit setup action: authenticate with an advertised method, then verify session readiness. Never prompts.</summary>
+    internal async Task<bool> SignInAsync(string methodId, string cwd)
+    {
+        AiFeatures.RequireEnabled();
+        if (_client.AgentInfo?["authMethods"] is not JsonArray methods ||
+            !System.Linq.Enumerable.Any(methods, m => (string)m?["id"] == methodId))
+            throw new InvalidOperationException("Choose a sign-in method offered by this agent.");
+        Error = null;
+        _signingIn = true;
+        try
+        {
+            await _client.AuthenticateAsync(methodId, TimeSpan.FromMinutes(5)).ConfigureAwait(false);
+            await _client.NewSessionAsync(cwd, HandshakeTimeout, EditorMcpConnection.Servers()).ConfigureAwait(false);
+            Ready = true;
+            Transcript?.Invoke(new Line("info", "sign-in complete; session ready (no prompt sent)"));
+        }
+        catch (Exception ex)
+        {
+            Error = $"{Name}: {ex.Message}. Use the sign-in command, then check the connection again.";
+            Transcript?.Invoke(new Line("error", Error));
+        }
+        finally { _signingIn = false; }
+        return Ready;
+    }
+
+    internal static bool TrySignInPage(string line, out string url)
+    {
+        url = null;
+        foreach (Match match in Regex.Matches(line ?? "", @"https://[^\s<>""\x1b]+"))
+        {
+            string candidate = match.Value.TrimEnd(')', ']', ',', '.');
+            if (Uri.TryCreate(candidate, UriKind.Absolute, out Uri uri) && uri.Scheme == "https"
+                && uri.Host == "accounts.google.com" && uri.UserInfo.Length == 0 && uri.IsDefaultPort)
+            { url = uri.AbsoluteUri; return true; }
+        }
         return false;
     }
 

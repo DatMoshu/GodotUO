@@ -55,6 +55,7 @@ public sealed class AcpClient : IDisposable
 
     /// <summary>What <c>initialize</c> answered (agent capabilities, auth methods), or null.</summary>
     public JsonNode AgentInfo { get; private set; }
+    public JsonNode SessionInfo { get; private set; }
 
     public string SessionId { get; private set; }
 
@@ -349,6 +350,7 @@ public sealed class AcpClient : IDisposable
             ["mcpServers"] = mcpServers?.DeepClone() ?? new JsonArray(),
         }, timeout).ConfigureAwait(false);
         SessionId = (string)r?["sessionId"] ?? throw new InvalidDataException("session/new returned no sessionId");
+        SessionInfo = r;
         return SessionId;
     }
 

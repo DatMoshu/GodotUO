@@ -42,6 +42,7 @@ public sealed class AiProvider : SearchProvider
         Add("AI: new chat", "AI dock, Chat tab: clear it and type", "ai chat new ollama model llm ask", () => _ctx.Ai.NewChat());
         Add("AI: show queue", "AI dock: requests to running agent sessions and their replies", "ai queue agent request reply post", () => _ctx.Ai.ShowTab("Queue"));
         Add("AI: show agents", "AI dock: agents over ACP", "ai agents acp codex opencode claude gemini", () => _ctx.Ai.ShowTab("Agents"));
+        Add("AI: setup", "Connect a coding subscription, check an adapter or configure API/local services", "ai setup wizard login sign in subscription acp", () => _ctx.Ai.ShowTab("Setup"));
         foreach (AgentPreset preset in AgentCatalog.Presets)
         {
             if (preset.IsCustom)
