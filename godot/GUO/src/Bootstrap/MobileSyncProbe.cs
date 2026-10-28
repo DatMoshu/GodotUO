@@ -64,6 +64,10 @@ internal static class MobileSyncProbe
         MobileRenderTrace.CaptureHost = host;
         for (int i = 0; i < 600 && !world.Mobiles.ContainsKey(peer); i++) await InputProbe.Wait(host, 1);
         if (!world.Mobiles.ContainsKey(peer)) return false;
+#if GUO_LABS
+        if (System.Environment.GetEnvironmentVariable("GUO_MOBILE_GIZMOS") == "1")
+            GUO.Labs.MobileDebug.MobileInspector.Open(world, peer);
+#endif
         GD.Print($"[mobile-sync] ready role={role} local={player.Serial} peer={peer}");
         bool moved = false;
         int capture = 0;
@@ -102,6 +106,10 @@ internal static class MobileSyncProbe
                 image.SavePng(Path.Combine(folder, $"{role}-phase{phase}-dir{direction}.png"));
             }
         }
+#if GUO_LABS
+        if (System.Environment.GetEnvironmentVariable("GUO_MOBILE_GIZMOS") == "1")
+            GUO.Labs.MobileDebug.MobileInspector.CaptureProof(Path.Combine(folder, role + "-inspector.png"));
+#endif
         MobileRenderTrace.Close();
         GD.Print($"[mobile-sync] complete role={role} moved={moved} peerVisible={world.Mobiles.ContainsKey(peer)} staleFrames={MobileRenderTrace.StaleFrames}");
         return moved && world.Mobiles.ContainsKey(peer) && MobileRenderTrace.StaleFrames == 0

@@ -38,6 +38,9 @@ internal static class MobileRenderTrace
     internal static void Frame(Mobile mobile, Item item, ushort animation, byte action,
         byte direction, byte frame, int count, string result)
     {
+#if GUO_LABS
+        GUO.Labs.MobileDebug.MobileInspector.Observe(mobile, item, animation, action, direction, frame, count, result);
+#endif
 #if DEBUG
         if (!_opened)
         {
@@ -75,6 +78,9 @@ internal static class MobileRenderTrace
     [Conditional("DEBUG")]
     internal static void Movement(uint serial, ushort x, ushort y, sbyte z, byte direction)
     {
+#if GUO_LABS
+        GUO.Labs.MobileDebug.MobileInspector.Movement(serial, x, y, z, direction);
+#endif
 #if DEBUG
         if (_writer == null) return;
         _writer.WriteLine(JsonSerializer.Serialize(new {
@@ -87,6 +93,10 @@ internal static class MobileRenderTrace
     [Conditional("DEBUG")]
     internal static void CompleteFrame()
     {
+#if GUO_LABS
+        if (GUO.Labs.MobileDebug.MobileInspector.IsOpen)
+            GUO.Labs.MobileDebug.MobileInspector.Presented(GUO.Renderer.TextureAtlas.PendingPages);
+#endif
 #if DEBUG
         if (_writer == null) return;
         int pending = GUO.Renderer.TextureAtlas.PendingPages;

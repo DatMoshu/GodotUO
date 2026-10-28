@@ -4123,3 +4123,25 @@ The effective performance cohort requires boolean `atlas_page_1024` and
 comparison without replacing its baseline; intentionally varied flags require
 explicit experiment arms. Older incomplete receipts need a fresh baseline.
 This metadata change does not authorize benchmarking.
+
+## 49. Mobile frame inspector (Labs)
+
+The opt-in Debug `GuoLabs=true` mobile inspector exports
+`UO_BUILD_DIR/mobile_debug/mobile-<serial>-<UTC>.json`, schema
+`guo/mobile-debug@1`. `frames` contains at most 300 chronological snapshots of
+one selected mobile. Changing selection clears history; freezing stops capture
+without pausing the game. The feature is absent from normal and exported clients.
+
+Each snapshot contains process-frame ID, client tick, serial, XYZ, interpolation
+offset XYZ, queued-step count, direction, animation index, observed-draw flag,
+focus/idle-reduction flags and pending atlas pages (`-1`: no presentation observed).
+Optional `Packet` contains the last observed movement update's arrival tick,
+destination and direction; arrival age is not network latency. `Layers` contains
+the draw-selected body/equipment animation, action, direction, frame/count and
+result. Submission is not proof of visible pixels. Screen coordinates retain the
+historical tile anchor and interpolated feet for the gizmos.
+
+Exports contain character serials and positions, never raw packet payloads or
+credentials. Keep them private. Recording/UI/GPU capture overhead makes these
+diagnostics unsuitable for performance comparisons. Doctor:
+`launchers/dev/mobile_debug_doctor`; scenario: `tools/scenarios/client/mobile_debug.md`.

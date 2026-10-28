@@ -26,8 +26,12 @@ def main():
     parser.add_argument('--skip-build', action='store_true')
     parser.add_argument('--renderer', choices=('depth', 'canvas'), default='depth')
     parser.add_argument('--laps', type=int, choices=(1, 2), default=2)
+    parser.add_argument('--labs', action='store_true', help='Build the optional Labs diagnostics')
+    parser.add_argument('--gizmos', action='store_true', help='Open and capture each Labs mobile inspector')
     parser.add_argument('--negative-control', action='store_true', help='Remove only the late flush in the disposable snapshot; expected to fail')
     args = parser.parse_args()
+    if args.gizmos and not args.labs:
+        parser.error('--gizmos requires --labs')
     if args.negative_control and args.skip_build:
         parser.error('Negative control must rebuild its disposable snapshot')
     cfg = load_config()
@@ -71,7 +75,8 @@ def main():
             controller.write_text(source.replace(needle, 'GUO.Host.MobileRenderTrace.CompleteFrame();'), encoding='utf-8')
         (stage / 'README.txt').write_text('Disposable mobile_sync build. Regenerate with tools/mobile_sync/run.py. Retain only through fix verification. No client data copied.\n')
         with (out / 'build.log').open('w') as log:
-            result = subprocess.run(['dotnet', 'build', str(stage / 'godot/GUO/GUO.csproj'), '-v:q', '--nologo'], env=env, stdout=log, stderr=subprocess.STDOUT)
+            result = subprocess.run(['dotnet', 'build', str(stage / 'godot/GUO/GUO.csproj'), '-v:q', '--nologo',
+                                     '-p:GuoLabs=' + str(args.labs).lower()], env=env, stdout=log, stderr=subprocess.STDOUT)
         if result.returncode:
             print('Build failed:', out / 'build.log')
             return result.returncode
@@ -83,6 +88,7 @@ def main():
         manifest = {
             'head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=cfg.root, text=True).strip(),
             'negative_control': args.negative_control,
+            'labs': args.labs,
             'assembly_sha256': hashlib.sha256((stage / 'godot/GUO/.godot/mono/temp/bin/Debug/GUO.dll').read_bytes()).hexdigest(),
             'sources': {rel: hashlib.sha256((stage / rel).read_bytes()).hexdigest()
                         for rel in sorted(set(files)) if (stage / rel).is_file()},
@@ -90,6 +96,8 @@ def main():
         (stage / 'source-manifest.json').write_text(json.dumps(manifest, indent=2))
     shutil.copy2(stage / 'source-manifest.json', out / 'source-manifest.json')
     built = json.loads((stage / 'source-manifest.json').read_text())
+    if args.gizmos and not built.get('labs', False):
+        parser.error('The frozen snapshot has no Labs inspector; rebuild with --labs')
     (out / 'settings.json').write_text(json.dumps({'renderer': args.renderer, 'reuse': True, 'laps': args.laps,
                                                   'negative_control': built.get('negative_control', False)}, indent=2))
     if args.build_only:
@@ -105,7 +113,8 @@ def main():
             (home / 'cache').mkdir(parents=True, exist_ok=True)
             child = dict(env, UO_CACHE_DIR=str(home / 'cache'), UO_WORKSPACE_DIR=str(home / 'workspace'),
                          GUO_MOBILE_TRACE=str(out / (role + '.jsonl')), GUO_MOBILE_PROBE=role,
-                         GUO_MOBILE_LAPS=str(args.laps), GUO_DW_REUSE='1')
+                         GUO_MOBILE_LAPS=str(args.laps), GUO_DW_REUSE='1', UO_BUILD_DIR=str(out),
+                         GUO_MOBILE_GIZMOS='1' if args.gizmos else '0')
             cmd = [str(cfg.godot_console_exe), '--path', str(stage / 'godot/GUO'), '--', '--play', '--no-focus',
                    '--account', cfg.shard_gm_accounts[i], '--character', cfg.shard_gm_accounts[i].capitalize(),
                    '--window-size', '1280x720', '--window-position', f'{i * 640},0', '--silent']

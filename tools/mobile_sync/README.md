@@ -42,3 +42,8 @@ the altered snapshot. Empty decoded source frames get separate trace rows.
 The production fix uploads late-decoded sprites after drawing and before Godot
 presentation. The frame-start upload remains for existing consumers. All trace
 and probe calls compile out of Release. No new player setting or gameplay command.
+
+Optional `--labs --gizmos` builds the L4 mobile inspector, selects the peer in each
+client, and saves each inspector PNG plus its 300-frame JSON history. This opt-in
+Labs build also exposes `-mobiledebug` and the shared Labs Options action for manual
+inspection. See `godot/GUO/src/Labs/MobileDebug/README.md` and its doctor launcher.
