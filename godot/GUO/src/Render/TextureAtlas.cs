@@ -239,7 +239,7 @@ namespace GUO.Renderer
 
         /// <summary>
         /// The CPU copy of the atlas page <paramref name="texture"/> is, and how
-        /// many times it has been uploaded; false when it is not an atlas page.
+        /// many times its content has changed; false when it is not an atlas page.
         /// </summary>
         /// <remarks>PORT DEVIATION (GUO): for LandPages (Epic B), not upstream's.</remarks>
         internal static bool TryGetPage(Texture2D texture, out Image page, out int version)
