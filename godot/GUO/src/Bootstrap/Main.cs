@@ -422,6 +422,12 @@ public partial class Main : Node
                 {
                     EffectsProbeThenQuit();
                 }
+#if DEBUG
+                else if (!string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("GUO_MOBILE_PROBE")))
+                {
+                    MobileSyncThenQuit();
+                }
+#endif
                 else if (_options.ShardCommands.Count > 0 && _options.Stay)
                 {
                     ShardCommandsThenStay();
@@ -805,6 +811,21 @@ public partial class Main : Node
 
         Quit(ShardCommands.Passed ? 0 : 1);
     }
+
+#if DEBUG
+    private async void MobileSyncThenQuit()
+    {
+        bool passed = false;
+        try
+        {
+            await Preamble();
+            passed = await MobileSyncProbe.Run(this);
+        }
+        catch (Exception e) { GD.PrintErr($"[mobile-sync] FAIL {e}"); }
+        finally { MobileRenderTrace.Close(); }
+        Quit(passed ? 0 : 1);
+    }
+#endif
 
     /// <summary>
     /// The commands, then nothing: a person takes over. How

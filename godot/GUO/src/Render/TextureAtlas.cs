@@ -18,7 +18,7 @@ namespace GUO.Renderer
     /// </summary>
     /// <remarks>
     /// <para>
-    /// PORT DEVIATION (GUO) — uploads are deferred to one per page per frame.
+    /// PORT DEVIATION (GUO) — uploads are batched at frame start and after drawing.
     /// Upstream uploads just the packed rectangle through FNA's
     /// <c>SetDataPointerEXT</c>. Godot has no partial texture upload at all:
     /// <c>ImageTexture.Update</c> and <c>RenderingServer.Texture2DUpdate</c>
@@ -40,7 +40,7 @@ namespace GUO.Renderer
     /// milliseconds — a dropped frame — for every sprite decoded, and a walk
     /// across a map decodes many per second. Two things follow from the
     /// numbers. The blit into the CPU-side page is free, so sprites are
-    /// blitted as they arrive and the page is uploaded at most once a frame,
+    /// blitted as they arrive and dirty pages are uploaded at frame boundaries,
     /// by <see cref="FlushAll"/>. And the page is capped at
     /// <see cref="MaxPageSize"/>: 2048 measured no dearer than 1024 while
     /// needing a quarter as many pages, and 4096 is six times dearer again.
@@ -143,6 +143,24 @@ namespace GUO.Renderer
                 _live[i].Flush();
             }
         }
+
+#if DEBUG
+        internal static bool IsPending(Texture2D texture)
+            => TryFindPage(texture, out var atlas, out int index) && atlas._dirty[index];
+
+        // Diagnostic invariant: no decoded pixels may remain pending at presentation.
+        internal static int PendingPages
+        {
+            get
+            {
+                int count = 0;
+                foreach (var atlas in _live)
+                    foreach (bool dirty in atlas._dirty)
+                        if (dirty) count++;
+                return count;
+            }
+        }
+#endif
 
         public void Flush()
         {

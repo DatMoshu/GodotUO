@@ -710,6 +710,8 @@ namespace GUO.Game.GameObjects
 
             if (frames.Length == 0)
             {
+                // PORT DEVIATION (GUO): opt-in debug evidence; compiled out of release.
+                if (!hasShadow) Host.MobileRenderTrace.Frame(owner, entity, id, animGroup, dir, frameIndex, 0, "no-frames");
                 return;
             }
 
@@ -723,6 +725,11 @@ namespace GUO.Game.GameObjects
             }
 
             ref var spriteInfo = ref frames[frameIndex % frames.Length];
+
+            // PORT DEVIATION (GUO): distinguish equipment state/frame misses from GPU visibility.
+            if (!hasShadow) Host.MobileRenderTrace.Frame(owner, entity, id, animGroup, dir, frameIndex,
+                frames.Length, spriteInfo.Texture == null ? "no-texture" : "submit");
+            if (!hasShadow) Host.MobileRenderTrace.Sprite(owner, entity, spriteInfo.Texture, spriteInfo.UV);
 
             if (spriteInfo.Texture == null)
             {

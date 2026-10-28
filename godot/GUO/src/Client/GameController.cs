@@ -1235,6 +1235,11 @@ namespace GUO
 
                 _renderTargets.Draw(_uoSpriteBatch);
 
+                // PORT DEVIATION (GUO): equipment and other sprites can first
+                // decode during Draw, after BeginFrame's upload. Publish those
+                // pixels before Godot presents this frame, as upstream does.
+                TextureAtlas.FlushAll();
+                GUO.Host.MobileRenderTrace.CompleteFrame();
                 canvasFrameCompleted = true;
             }
             finally
