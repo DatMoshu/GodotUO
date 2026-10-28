@@ -3,7 +3,7 @@
 L4, offline, default off. Status: candidate contract proof; no live client support.
 The owner-authorized experiment tests whether explicit formats and bounded IDs
 can reject malformed or incompatible content before state changes. The Proposed
-[ADR](../../../../../docs/architecture/ADR-0046-bounded-art-capacity.md) owns the
+[ADR](../../../../../docs/architecture/ADR-0047-bounded-art-capacity.md) owns the
 design; it does not authorize a core/network change.
 
 `CapacityContract.cs` only compiles in an opted-in Debug `GuoLabs=true` client.

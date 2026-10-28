@@ -13,6 +13,6 @@ legacy lengths. Only optional mod lookup and logging are stubbed. It never reads
 client data, writes an installation, opens sockets or runs Godot.
 
 Layer: L4 offline candidate, explicit harness opt-in. Default and export clients
-exclude Labs. See `docs/architecture/ADR-0046-bounded-art-capacity.md` (Proposed),
+exclude Labs. See `docs/architecture/ADR-0047-bounded-art-capacity.md` (Proposed),
 `docs/art_capacity_audit.md`, and `tools/scenarios/art-capacity/README.md`.
 No runtime expanded-art or end-to-end interoperability claim is made.

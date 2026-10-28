@@ -4125,10 +4125,10 @@ explicit experiment arms. Older incomplete receipts need a fresh baseline.
 This metadata change does not authorize benchmarking.
 
 
-### Offline art-capacity contract lab (Proposed ADR-0046)
+### Offline art-capacity contract lab (Proposed ADR-0047)
 
 The L4 art-capacity harness uses synthetic GAC1 files and GAF1 complete-buffer
-frames described in docs/architecture/ADR-0046-bounded-art-capacity.md. These
+frames described in docs/architecture/ADR-0047-bounded-art-capacity.md. These
 are not installed UO data formats or assigned game packet opcodes. No live
 loader, packet table, command or option consumes them. Default and exported
 clients exclude src/Labs/ArtCapacity/. Static art is bounded to 0x40000 slots;

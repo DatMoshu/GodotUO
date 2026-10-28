@@ -2,7 +2,7 @@
 
 Source audit: 2026-10-28, GUO base `6bcc3d6f`. Layer: L4 contract experiment.
 Status: implementation design, **not expanded-art runtime support**. The
-[Proposed ADR](architecture/ADR-0046-bounded-art-capacity.md) describes the candidate.
+[Proposed ADR](architecture/ADR-0047-bounded-art-capacity.md) describes the candidate.
 Only public source and the current checkout support the findings below. No private
 implementation is incorporated. No real assets or private-server changes were tested.
 

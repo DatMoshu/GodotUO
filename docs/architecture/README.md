@@ -49,6 +49,6 @@ it is taken even if its file has not landed yet.
 | 0038 | Packet mods and the mod ABI | work/modding-mod02-20261018 (proposed) |
 | 0040 | One Input page for keyboard and mouse, controller and touch | work/input-05-20261018 (proposed) |
 | 0044 | Depth World: the world drawn with ClassicUO's depth rules on RenderingDevice | docs/adr-0044-cuo-depth-world-20261026 (accepted 2026-10-26) |
-| 0046 | Bounded item-art capacity with explicit content profiles | work/art-capacity-20261028 (proposed; offline contract only) |
+| 0047 | Bounded item-art capacity with explicit content profiles | work/art-capacity-20261028 (proposed; offline contract only) |
 
-Next free: 0047 (0045 already exists as the wide-zoom overview ADR).
+Next free: 0048 (0045 is the wide-zoom overview ADR; 0046 is reserved by the map paging lab branch).

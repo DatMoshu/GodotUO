@@ -1,4 +1,4 @@
-# ADR-0046: Bounded item-art capacity with explicit content profiles
+# ADR-0047: Bounded item-art capacity with explicit content profiles
 
 ## Status
 
