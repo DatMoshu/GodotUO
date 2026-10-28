@@ -670,12 +670,150 @@ index 000000000..8416abc59
 +    ]
 +  }
 +]
+diff --git a/Distribution/Data/Spawns/dfi/dfi-town-rares.json b/Distribution/Data/Spawns/dfi/dfi-town-rares.json
+new file mode 100644
+index 000000000..7650b95bb
+--- /dev/null
++++ b/Distribution/Data/Spawns/dfi/dfi-town-rares.json
+@@ -0,0 +1,132 @@
++[
++  {
++    "$type": "Spawner",
++    "guid": "4790b19c-118d-5efe-98db-f7aeeb71d3ab",
++    "name": "dfi-town-rares blacksmith-wires",
++    "location": [
++      1419,
++      1547,
++      30
++    ],
++    "map": "Felucca",
++    "count": 4,
++    "minDelay": "03:00:00",
++    "maxDelay": "04:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 2,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRECopperWire",
++        "maxCount": 1,
++        "probability": 100
++      },
++      {
++        "name": "SREGoldWire",
++        "maxCount": 1,
++        "probability": 100
++      },
++      {
++        "name": "SREIronWire",
++        "maxCount": 1,
++        "probability": 100
++      },
++      {
++        "name": "SRESilverWire",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "022a055b-67aa-5779-aea8-674c1872946e",
++    "name": "dfi-town-rares blacksmith-horseshoes",
++    "location": [
++      1417,
++      1547,
++      30
++    ],
++    "map": "Felucca",
++    "count": 3,
++    "minDelay": "00:30:00",
++    "maxDelay": "00:37:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 2,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRHorseShoes",
++        "maxCount": 1,
++        "probability": 100
++      },
++      {
++        "name": "IronOre",
++        "maxCount": 2,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "aebc076c-6ad7-50aa-890a-0ee9e360a4fe",
++    "name": "dfi-town-rares bowyer-arrowshafts",
++    "location": [
++      1471,
++      1578,
++      20
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "06:00:00",
++    "maxDelay": "08:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 2,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRArrowShafts",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "a102efc1-735a-5762-9815-143499c4fdc8",
++    "name": "dfi-town-rares herbalist-dried",
++    "location": [
++      1499,
++      1659,
++      27
++    ],
++    "map": "Felucca",
++    "count": 3,
++    "minDelay": "02:00:00",
++    "maxDelay": "03:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 2,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRDriedHerbs",
++        "maxCount": 1,
++        "probability": 100
++      },
++      {
++        "name": "SRDriedFlowers",
++        "maxCount": 1,
++        "probability": 100
++      },
++      {
++        "name": "SRDriedOnions",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  }
++]
 diff --git a/Distribution/Data/Spawns/dfi/felucca.json b/Distribution/Data/Spawns/dfi/felucca.json
 new file mode 100644
-index 000000000..2a2169ede
+index 000000000..7dee3e75e
 --- /dev/null
 +++ b/Distribution/Data/Spawns/dfi/felucca.json
-@@ -0,0 +1,40163 @@
+@@ -0,0 +1,40313 @@
 +[
 +  {
 +    "$type": "Spawner",
@@ -8194,31 +8332,6 @@ index 000000000..2a2169ede
 +  },
 +  {
 +    "$type": "Spawner",
-+    "guid": "d83e7955-e30b-5566-9fd0-5bd3bef3c848",
-+    "name": "DFI Felucca (83, 49)",
-+    "location": [
-+      83,
-+      49,
-+      0
-+    ],
-+    "map": "Felucca",
-+    "count": 2,
-+    "minDelay": "00:30:00",
-+    "maxDelay": "00:37:00",
-+    "team": 0,
-+    "group": false,
-+    "homeRange": 4,
-+    "walkingRange": -1,
-+    "entries": [
-+      {
-+        "name": "IronOre",
-+        "maxCount": 2,
-+        "probability": 100
-+      }
-+    ]
-+  },
-+  {
-+    "$type": "Spawner",
 +    "guid": "ddbc5897-90ed-582e-a239-7af946ee5742",
 +    "name": "DFI Felucca (5512, 1197)",
 +    "location": [
@@ -10698,6 +10811,56 @@ index 000000000..2a2169ede
 +      {
 +        "name": "ShadowWisp",
 +        "maxCount": 20,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "169b9440-3911-54ee-8126-014c0fe2adcd",
++    "name": "DFI Felucca (5512, 3118)",
++    "location": [
++      5512,
++      3118,
++      -4
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "1.00:00:00",
++    "maxDelay": "1.01:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "Rock",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "b6ac81a8-43a6-5b01-8fba-e5f57b3d8fac",
++    "name": "DFI Felucca (2683, 2056)",
++    "location": [
++      2683,
++      2056,
++      17
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "1.00:00:00",
++    "maxDelay": "1.01:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "Rocks",
++        "maxCount": 1,
 +        "probability": 100
 +      }
 +    ]
@@ -30269,6 +30432,81 @@ index 000000000..2a2169ede
 +  },
 +  {
 +    "$type": "Spawner",
++    "guid": "3505202c-4fdd-56df-9e12-3438d6903a9d",
++    "name": "DFI Felucca (3788, 1121)",
++    "location": [
++      3788,
++      1121,
++      26
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "1.00:00:00",
++    "maxDelay": "1.01:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "LockedFruitBasket",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "dcb799ff-5c6a-5da5-86c1-b45e91310015",
++    "name": "DFI Felucca (3778, 1250)",
++    "location": [
++      3778,
++      1250,
++      6
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "1.00:00:00",
++    "maxDelay": "1.01:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "LockedFruitBasket",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "3bbcf657-5e28-526f-b541-23fc6627bd82",
++    "name": "DFI Felucca (3778, 1251)",
++    "location": [
++      3778,
++      1251,
++      6
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "1.00:00:00",
++    "maxDelay": "1.01:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "LockedFruitBasket",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
 +    "guid": "ac9237a9-da30-5a9c-8a20-fcdc5e6b4adf",
 +    "name": "DFI Felucca (5675, 1444)",
 +    "location": [
@@ -32093,6 +32331,31 @@ index 000000000..2a2169ede
 +      {
 +        "name": "EvilWanderingHealer",
 +        "maxCount": 3,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "8fb95b8d-8ea2-57fe-bf73-344707fe6fb0",
++    "name": "DFI Felucca (5999, 3772)",
++    "location": [
++      5999,
++      3772,
++      21
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "1.00:00:00",
++    "maxDelay": "1.01:18:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "Hay",
++        "maxCount": 1,
 +        "probability": 100
 +      }
 +    ]
@@ -39204,6 +39467,31 @@ index 000000000..2a2169ede
 +  },
 +  {
 +    "$type": "Spawner",
++    "guid": "df1d461f-f4b1-510d-878a-adf087813434",
++    "name": "DFI Felucca (5191, 587)",
++    "location": [
++      5191,
++      587,
++      7
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "1.00:00:00",
++    "maxDelay": "1.01:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "NClosedBarrel",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
 +    "guid": "8f80192a-64ec-504e-bd66-06ff0a9ba9c6",
 +    "name": "DFI Felucca (5265, 1683)",
 +    "location": [
@@ -40839,10 +41127,9 @@ index 000000000..2a2169ede
 +    ]
 +  }
 +]
-\ No newline at end of file
 diff --git a/Distribution/Data/Spawns/dfi/ilshenar.json b/Distribution/Data/Spawns/dfi/ilshenar.json
 new file mode 100644
-index 000000000..b2423267f
+index 000000000..847c8b3a4
 --- /dev/null
 +++ b/Distribution/Data/Spawns/dfi/ilshenar.json
 @@ -0,0 +1,13277 @@
@@ -54123,7 +54410,6 @@ index 000000000..b2423267f
 +    ]
 +  }
 +]
-\ No newline at end of file
 diff --git a/Distribution/Data/Spawns/dfi/kopia-faction-extras.json b/Distribution/Data/Spawns/dfi/kopia-faction-extras.json
 new file mode 100644
 index 000000000..af160188e
@@ -54485,10 +54771,10 @@ index 000000000..af160188e
 \ No newline at end of file
 diff --git a/Distribution/Data/Spawns/dfi/malas.json b/Distribution/Data/Spawns/dfi/malas.json
 new file mode 100644
-index 000000000..52bfd1797
+index 000000000..4b2833643
 --- /dev/null
 +++ b/Distribution/Data/Spawns/dfi/malas.json
-@@ -0,0 +1,5082 @@
+@@ -0,0 +1,5637 @@
 +[
 +  {
 +    "$type": "Spawner",
@@ -55647,6 +55933,156 @@ index 000000000..52bfd1797
 +  },
 +  {
 +    "$type": "Spawner",
++    "guid": "bb7b7485-0c8c-51d5-bac9-5ecfb506a860",
++    "name": "DFI Malas (381, 375)",
++    "location": [
++      381,
++      375,
++      10
++    ],
++    "map": "Malas",
++    "count": 1,
++    "minDelay": "3.00:00:00",
++    "maxDelay": "3.03:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRDRBloodyWater",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "15937244-e957-55a0-8c10-4fa762b81612",
++    "name": "DFI Malas (378, 372)",
++    "location": [
++      378,
++      372,
++      -1
++    ],
++    "map": "Malas",
++    "count": 1,
++    "minDelay": "1.00:00:00",
++    "maxDelay": "2.00:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRDRDamagedBooks",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "ceda386b-de6e-500a-af8b-86f621832685",
++    "name": "DFI Malas (369, 371)",
++    "location": [
++      369,
++      371,
++      0
++    ],
++    "map": "Malas",
++    "count": 1,
++    "minDelay": "1.00:00:00",
++    "maxDelay": "2.00:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRDRBottle",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "d03bb237-77f0-5d8a-8bab-bcefab9fb676",
++    "name": "DFI Malas (497, 368)",
++    "location": [
++      497,
++      368,
++      7
++    ],
++    "map": "Malas",
++    "count": 1,
++    "minDelay": "16.00:00:00",
++    "maxDelay": "06:25:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRDRReversedBackPack",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "1265de99-17c7-51be-bc75-ec9f55fd2af9",
++    "name": "DFI Malas (489, 370)",
++    "location": [
++      489,
++      370,
++      5
++    ],
++    "map": "Malas",
++    "count": 1,
++    "minDelay": "16.00:00:00",
++    "maxDelay": "16.01:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRDRTarot",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "fe40d192-5e47-593e-b85e-fdba300c616f",
++    "name": "DFI Malas (312, 55)",
++    "location": [
++      312,
++      55,
++      -1
++    ],
++    "map": "Malas",
++    "count": 1,
++    "minDelay": "2.00:00:00",
++    "maxDelay": "3.00:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRDRRock",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
 +    "guid": "0ad005ac-6efc-5c95-a770-1b8ba7276cb8",
 +    "name": "DFI Malas (479, 56)",
 +    "location": [
@@ -55912,6 +56348,36 @@ index 000000000..52bfd1797
 +  },
 +  {
 +    "$type": "Spawner",
++    "guid": "aba5a342-5807-552b-8801-d96c5a82cfe1",
++    "name": "DFI Malas (419, 200)",
++    "location": [
++      419,
++      200,
++      0
++    ],
++    "map": "Malas",
++    "count": 1,
++    "minDelay": "2.02:00:00",
++    "maxDelay": "2.20:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRDRStackedBooks",
++        "maxCount": 1,
++        "probability": 100
++      },
++      {
++        "name": "SRDRStackedBooks2",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
 +    "guid": "36cfa6c0-37da-51ae-8495-633b25dd32e0",
 +    "name": "DFI Malas (276, 230)",
 +    "location": [
@@ -56012,6 +56478,31 @@ index 000000000..52bfd1797
 +  },
 +  {
 +    "$type": "Spawner",
++    "guid": "c15a1b94-d234-5c44-9061-62018ef43c6d",
++    "name": "DFI Malas (471, 92)",
++    "location": [
++      471,
++      92,
++      -1
++    ],
++    "map": "Malas",
++    "count": 1,
++    "minDelay": "3.00:00:00",
++    "maxDelay": "5.11:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRDRLampPost",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
 +    "guid": "2d948019-7598-5262-82d7-ebb69dc04eaa",
 +    "name": "DFI Malas (2357, 1263)",
 +    "location": [
@@ -56062,6 +56553,106 @@ index 000000000..52bfd1797
 +  },
 +  {
 +    "$type": "Spawner",
++    "guid": "b5a57d26-3dbf-5fd3-92be-8c671d49a0a7",
++    "name": "DFI Malas (482, 364)",
++    "location": [
++      482,
++      364,
++      -1
++    ],
++    "map": "Malas",
++    "count": 1,
++    "minDelay": "28.00:00:00",
++    "maxDelay": "32.00:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRDRRuinedPainting",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "ca0cea33-6ce6-55f6-ab8c-2058173dade0",
++    "name": "DFI Malas (347, 42)",
++    "location": [
++      347,
++      42,
++      -1
++    ],
++    "map": "Malas",
++    "count": 1,
++    "minDelay": "4.14:00:00",
++    "maxDelay": "5.20:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRDRSkinnedGoat",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "f0f5c547-e84e-5717-a4e7-8375c8c223cf",
++    "name": "DFI Malas (497, 53)",
++    "location": [
++      497,
++      53,
++      -1
++    ],
++    "map": "Malas",
++    "count": 1,
++    "minDelay": "2.00:00:00",
++    "maxDelay": "3.00:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRDRGruesomeStandard",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "855be2e9-dff6-59eb-8eaf-3057849daf24",
++    "name": "DFI Malas (429, 192)",
++    "location": [
++      429,
++      192,
++      -1
++    ],
++    "map": "Malas",
++    "count": 1,
++    "minDelay": "2.00:00:00",
++    "maxDelay": "2.08:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRDRRuinedBooks",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
 +    "guid": "22a123e4-6a72-565a-abd7-d8da314d394d",
 +    "name": "DFI Malas (354, 176)",
 +    "location": [
@@ -56105,6 +56696,231 @@ index 000000000..52bfd1797
 +    "entries": [
 +      {
 +        "name": "ZyronicClaw",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "2731c749-7327-5692-893e-565804ea067f",
++    "name": "DFI Malas (422, 25)",
++    "location": [
++      422,
++      25,
++      0
++    ],
++    "map": "Malas",
++    "count": 1,
++    "minDelay": "1.07:00:00",
++    "maxDelay": "1.17:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRDREggCase",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "456e9486-db3f-5c47-af43-87e320dc103f",
++    "name": "DFI Malas (425, 23)",
++    "location": [
++      425,
++      23,
++      -1
++    ],
++    "map": "Malas",
++    "count": 1,
++    "minDelay": "6.21:00:00",
++    "maxDelay": "7.03:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRDRCocoon",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "9b10f5fb-68fd-52ba-8d02-d89d24ecfd7e",
++    "name": "DFI Malas (432, 19)",
++    "location": [
++      432,
++      19,
++      -1
++    ],
++    "map": "Malas",
++    "count": 1,
++    "minDelay": "2.00:00:00",
++    "maxDelay": "3.00:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRDRStretchedHide",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "b04c24af-631b-5372-9fb4-ea6a52d8c0b2",
++    "name": "DFI Malas (432, 12)",
++    "location": [
++      432,
++      12,
++      -1
++    ],
++    "map": "Malas",
++    "count": 1,
++    "minDelay": "14.14:00:00",
++    "maxDelay": "17.02:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRDRSaddle",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "38cb216f-06d8-5395-8684-8a1a2bd55d8a",
++    "name": "DFI Malas (443, 9)",
++    "location": [
++      443,
++      9,
++      -1
++    ],
++    "map": "Malas",
++    "count": 1,
++    "minDelay": "2.00:00:00",
++    "maxDelay": "3.00:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRDRHangingStuddedLeggings",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "9f9b61d1-eb33-57c2-8e00-8730579f327a",
++    "name": "DFI Malas (460, 9)",
++    "location": [
++      460,
++      9,
++      0
++    ],
++    "map": "Malas",
++    "count": 1,
++    "minDelay": "5.00:00:00",
++    "maxDelay": "6.06:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRDRHangingLeatherTunic",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "3bc8d866-2dcd-52ef-91de-5b92bad1a933",
++    "name": "DFI Malas (462, 10)",
++    "location": [
++      462,
++      10,
++      -1
++    ],
++    "map": "Malas",
++    "count": 1,
++    "minDelay": "3.00:00:00",
++    "maxDelay": "5.01:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRDRBrazier",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "14bbe1f5-b361-5728-ac65-3b25cd4e64a3",
++    "name": "DFI Malas (492, 8)",
++    "location": [
++      492,
++      8,
++      7
++    ],
++    "map": "Malas",
++    "count": 1,
++    "minDelay": "5.01:00:00",
++    "maxDelay": "7.02:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRDRHangingStuddedTunic",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "4c0a7904-e0b1-5143-bedb-4f7e5a964d24",
++    "name": "DFI Malas (352, 31)",
++    "location": [
++      352,
++      31,
++      -1
++    ],
++    "map": "Malas",
++    "count": 1,
++    "minDelay": "7.04:00:00",
++    "maxDelay": "7.05:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRDRSkinnedDeer",
 +        "maxCount": 1,
 +        "probability": 100
 +      }
@@ -59402,6 +60218,31 @@ index 000000000..52bfd1797
 +  },
 +  {
 +    "$type": "Spawner",
++    "guid": "3ca64050-1f8c-5636-ae3f-6dcceeb150eb",
++    "name": "DFI Malas (361, 31)",
++    "location": [
++      361,
++      31,
++      5
++    ],
++    "map": "Malas",
++    "count": 1,
++    "minDelay": "1.23:00:00",
++    "maxDelay": "2.03:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRDRSkullCandle",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
 +    "guid": "a72bbd2a-8f8c-5c0b-aefa-da26502472c6",
 +    "name": "DFI Malas (2394, 1330)",
 +    "location": [
@@ -59571,13 +60412,12 @@ index 000000000..52bfd1797
 +    ]
 +  }
 +]
-\ No newline at end of file
 diff --git a/Projects/UOContent.Tests/Tests/Custom/DfiSpawnTests.cs b/Projects/UOContent.Tests/Tests/Custom/DfiSpawnTests.cs
 new file mode 100644
-index 000000000..7eda808c1
+index 000000000..74ff48cb1
 --- /dev/null
 +++ b/Projects/UOContent.Tests/Tests/Custom/DfiSpawnTests.cs
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,77 @@
 +using System.Collections.Generic;
 +using System.IO;
 +using System.Text.Json;
@@ -59605,6 +60445,7 @@ index 000000000..7eda808c1
 +    [InlineData("dfi/dfi-boss-arena.json", 13)]
 +    [InlineData("dfi/kopia-faction-extras.json", 13)]
 +    [InlineData("dfi/dfi-custom-monsters.json", 12)]
++    [InlineData("dfi/dfi-town-rares.json", 4)]
 +    public void DfiSpawnFile_LoadsAtLeastTheConvertedSpawners(string file, int minimum)
 +    {
 +        var dtos = Load(file);
@@ -59628,10 +60469,13 @@ index 000000000..7eda808c1
 +            }
 +        }
 +
-+        Assert.All(
-+            Load("dfi/dfi-custom-monsters.json"),
-+            dto => Assert.False(taken.Contains((dto.Map.Name, dto.Location)), $"{dto.Location} is already a layout spawner")
-+        );
++        foreach (var placed in new[] { "dfi-custom-monsters", "dfi-town-rares" })
++        {
++            Assert.All(
++                Load($"dfi/{placed}.json"),
++                dto => Assert.False(taken.Contains((dto.Map.Name, dto.Location)), $"{placed}: {dto.Location} is already a layout spawner")
++            );
++        }
 +    }
 +
 +    [Fact]
@@ -59653,10 +60497,10 @@ index 000000000..7eda808c1
 +}
 diff --git a/Projects/UOContent/Custom/DFI/Spawns/DfiSpawnSwap.cs b/Projects/UOContent/Custom/DFI/Spawns/DfiSpawnSwap.cs
 new file mode 100644
-index 000000000..94bad6fa2
+index 000000000..54c43e5ee
 --- /dev/null
 +++ b/Projects/UOContent/Custom/DFI/Spawns/DfiSpawnSwap.cs
-@@ -0,0 +1,141 @@
+@@ -0,0 +1,193 @@
 +// [DfiSpawns swaps ModernUO's classic monster and wildlife spawners on Felucca, Ilshenar and Malas for the
 +// DFI Network layouts (DFI's 2008 ESpawner exports) and the staff-placed setups recovered from the DFI and
 +// kopia 2012 world saves, all in Data/Spawns/dfi. Vendors, townspeople, reagents, sea life and the newer
@@ -59727,6 +60571,58 @@ index 000000000..94bad6fa2
 +
 +        CommandSystem.Handle(from, $"{CommandSystem.Prefix}GenerateSpawners Data/Spawns/dfi/*.json");
 +        ReportCustomSpawns(from);
++        ReportRares(from);
++    }
++
++    private static void ReportRares(Mobile from)
++    {
++        var byType = new SortedDictionary<string, int>();
++        int spawners = 0, filled = 0;
++
++        foreach (var item in World.Items.Values)
++        {
++            if (item is Server.Items.IStealable && item.Parent == null)
++            {
++                var name = item.GetType().Name;
++                byType[name] = byType.GetValueOrDefault(name) + 1;
++            }
++            else if (item is BaseSpawner spawner)
++            {
++                var holdsRare = false;
++
++                foreach (var entry in spawner.Entries)
++                {
++                    var type = AssemblyHandler.FindTypeByName(entry.SpawnedName);
++
++                    if (type != null && typeof(Server.Items.IStealable).IsAssignableFrom(type))
++                    {
++                        holdsRare = true;
++                        break;
++                    }
++                }
++
++                if (holdsRare)
++                {
++                    spawners++;
++
++                    if (spawner.Spawned?.Count > 0)
++                    {
++                        filled++;
++                    }
++                }
++            }
++        }
++
++        var total = 0;
++
++        foreach (var (name, count) in byType)
++        {
++            total += count;
++            logger.Information("rare {Name}: {Count} on the ground", name, count);
++        }
++
++        logger.Information("{Total} rares on the ground; {Filled}/{Spawners} rare spawners holding one", total, filled, spawners);
++        from.SendMessage($"DfiSpawns: {total} rares on the ground; {filled}/{spawners} rare spawners holding one.");
 +    }
 +
 +    // The custom-monster spawners were placed by hand; one that spawned nothing sits where nothing can stand.

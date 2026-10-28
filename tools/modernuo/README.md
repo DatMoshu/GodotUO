@@ -272,11 +272,30 @@ still named `kopia-free-items`, and what it spawned.
 spawners those layouts replace, by the guids in ModernUO's own spawn files,
 and imports the DFI files. Vendors, townspeople, reagents, sea life and the
 Mondain's Legacy areas stay. It is safe to run again. Spawn types that wait on
-unported DFI systems (Cursed Cave, PriestOfMondain, stealable rares, tokens)
-were left out of the files; ModernUO's renames (ToxicElemental as
-AcidElemental, crops as Farmable*) were applied. Delays keep DFI's values,
-up to the month-long rare spawns. `DfiSpawnTests.cs` and ModernUO's
-`AllSpawnFilesLoadTests` load every file.
+unported DFI systems (Cursed Cave, PriestOfMondain, tokens) were left out
+of the files; ModernUO's renames (ToxicElemental as AcidElemental, crops as
+Farmable*) were applied. Delays keep DFI's values, up to the month-long
+artifact spawns. `DfiSpawnTests.cs` and ModernUO's `AllSpawnFilesLoadTests`
+load every file.
+
+### `patches/0011-dfi-rares.patch`
+
+DFI's stealable rares: 9 town rares (dried onions, herbs and flowers,
+horseshoes, arrow shafts, four wires) a thief takes from 80 Stealing (sure
+at 100), and 22 Doom rares with an artifact rarity (tarot, skull candle,
+ruined painting, hanging armour, a reversed backpack and more) from 100
+(sure at 150); plus DFI's dungeon decoration (hay, rocks, a closed barrel)
+and an eatable locked fruit basket. A rare is fixed on the ground until
+stolen; the spawner that placed it puts a new one back after DFI's delay.
+DFI never connected its rares to the Stealing skill; one branch in
+`Skills/Stealing.cs` does, at the owner's request.
+
+0010's layouts place the Doom rares where DFI's 2008 export did. DFI kept
+the town rares in shop containers that did not survive, so
+`dfi-town-rares.json` puts them in Britain's blacksmith, bowyer and
+herbalist, with DFI's delays. `[DfiSpawns` reports the rares on the ground
+and how many rare spawners hold one. `DfiRareTests.cs` covers every rare
+and the steal rules.
 
 ### Retired
 
