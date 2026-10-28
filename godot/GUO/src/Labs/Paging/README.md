@@ -63,7 +63,7 @@ it on every run and the probe when `GuoLabs=true`.
 ## Limits (milestone 1)
 
 - Needs a shard that already sends page facet IDs; the dev shard does not
-  register facets 32–79 (server work is outside this milestone).
+  register facets 32–79. A private fixture copy did (scenario, live crossing).
 - MUL pages only; no UOP page archives.
 - World map, minimap and markers are not page-aware; the free-view menu lists
   80 facets while paging is active.

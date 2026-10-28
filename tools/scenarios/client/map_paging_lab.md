@@ -34,18 +34,19 @@ every run and the probe when `GuoLabs=true`. Covered:
 3. Labs build with `GUO_LABS_PAGING` unset: the probe's first check — the
    seam returns before touching the client and leaves the facet alone.
 
-## Live (needs a shard that registers page facets; NOT RUN in milestone 1)
+## Live crossing on a private fixture shard
 
-1. Write a pack: `paging_doctor.bat --fixture <dir outside the checkout>`;
-   set `GUO_LABS_PAGING` to its `pages.json`.
-2. Shard: register facets 32 and 33 with the same files and enable a
-   crossing between them (the proof-v7 crossing patch, generalised).
-3. Log in with a scratch account, walk across the seam both ways several
-   times. Expect `[paging] facet N ready` in the client log before each map
-   change, `-paging` showing at most the cap resident, client and server
-   coordinates matching, no bounce.
-4. Corrupt one page file, re-enter it: the journal names the problem and
-   the doctor; `-paging verify` lists it.
-5. Edit the manifest version, `-paging reload`, re-enter: the page rebuilds.
+Run 2026-10-28 (evidence run `20261028_guo-worker-paging_l4-milestone1`,
+`data/crossing_report.json`): a private loopback copy of the dev shard with
+facets 32/33 added to its `Data/map-definitions.json`, the fixture pack first
+in its `dataDirectories`, a fresh owner account from the headless boot and one
+standard `Teleporter` per side on lane y=128. Four crossings in one login,
+32→33→32→33→32: client facet and position matched the landing each time, no
+bounce, `[paging] facet N ready` before every map change, at most 2 pages
+resident (cap 2). The driver is kept with the evidence, not in the repository;
+never point it at the shared dev shard.
+
+Not yet run: a corrupted page or revised manifest during a live session,
+blocked landings, other players, followers, reconnect and shard restart.
 
 Save captures and logs under the central GUO evidence run, never the checkout.
