@@ -1235,6 +1235,12 @@ namespace GUO
 
                 _renderTargets.Draw(_uoSpriteBatch);
 
+                // PORT DEVIATION (GUO): BeginFrame uploads what Update decoded;
+                // sprites first decoded while drawing (a mobile's equipment for
+                // a new action or direction, a new gump or glyph) would show as
+                // blank this frame. Upload them before the frame is rendered.
+                TextureAtlas.FlushAll();
+
                 canvasFrameCompleted = true;
             }
             finally
