@@ -332,6 +332,344 @@ index 000000000..5a20d6546
 +  }
 +]
 \ No newline at end of file
+diff --git a/Distribution/Data/Spawns/dfi/dfi-custom-monsters.json b/Distribution/Data/Spawns/dfi/dfi-custom-monsters.json
+new file mode 100644
+index 000000000..8416abc59
+--- /dev/null
++++ b/Distribution/Data/Spawns/dfi/dfi-custom-monsters.json
+@@ -0,0 +1,332 @@
++[
++  {
++    "$type": "Spawner",
++    "guid": "1823cccf-90d0-5403-832e-25b109a2f2c5",
++    "name": "dfi-custom stalker",
++    "location": [
++      2052,
++      837,
++      -28
++    ],
++    "map": "Ilshenar",
++    "count": 1,
++    "minDelay": "00:30:00",
++    "maxDelay": "01:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 10,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "Stalker",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "f3b2b0bf-20ee-5803-a199-09da8624a386",
++    "name": "dfi-custom vampire-lair",
++    "location": [
++      721,
++      1121,
++      0
++    ],
++    "map": "Felucca",
++    "count": 5,
++    "minDelay": "00:05:00",
++    "maxDelay": "00:10:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 8,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "VampireKnight",
++        "maxCount": 2,
++        "probability": 100
++      },
++      {
++        "name": "VampireFighter",
++        "maxCount": 2,
++        "probability": 100
++      },
++      {
++        "name": "VampireNecro",
++        "maxCount": 2,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "d47586cf-6efe-53a6-bcaa-841d1180f0c0",
++    "name": "dfi-custom despise-ambush",
++    "location": [
++      5474,
++      828,
++      60
++    ],
++    "map": "Felucca",
++    "count": 4,
++    "minDelay": "00:05:00",
++    "maxDelay": "00:10:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 8,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "NightStalker",
++        "maxCount": 2,
++        "probability": 100
++      },
++      {
++        "name": "DarkSentinel",
++        "maxCount": 1,
++        "probability": 100
++      },
++      {
++        "name": "PoisonousRat",
++        "maxCount": 2,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "b75ba617-319a-532a-b33f-04ed2dba71b3",
++    "name": "dfi-custom covetous-ambush",
++    "location": [
++      5580,
++      1858,
++      0
++    ],
++    "map": "Felucca",
++    "count": 4,
++    "minDelay": "00:05:00",
++    "maxDelay": "00:10:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 8,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "HorrorDaemon",
++        "maxCount": 2,
++        "probability": 100
++      },
++      {
++        "name": "PoisonousRat",
++        "maxCount": 2,
++        "probability": 100
++      },
++      {
++        "name": "NightStalker",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "415beb87-2ac3-5de9-b58e-0a2e1267a6e0",
++    "name": "dfi-custom sphynx",
++    "location": [
++      1290,
++      494,
++      15
++    ],
++    "map": "Ilshenar",
++    "count": 1,
++    "minDelay": "01:00:00",
++    "maxDelay": "02:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 6,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "Sphynx",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "9879aa6c-32bd-5bb5-897c-a7570cc3cb2d",
++    "name": "dfi-custom valorite-dragon",
++    "location": [
++      5247,
++      947,
++      -40
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "02:00:00",
++    "maxDelay": "04:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 6,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "ValoriteDragon",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "515941ba-5d49-5470-914f-d1f1b892b8fd",
++    "name": "dfi-custom chameleon",
++    "location": [
++      5754,
++      142,
++      10
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "03:00:00",
++    "maxDelay": "06:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 6,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "Chameleon",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "92e67362-5be5-5682-a9eb-1265b4cb9672",
++    "name": "dfi-custom young-chameleons",
++    "location": [
++      690,
++      753,
++      0
++    ],
++    "map": "Felucca",
++    "count": 3,
++    "minDelay": "00:20:00",
++    "maxDelay": "00:40:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 10,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "YChameleon",
++        "maxCount": 3,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "0e756beb-45bc-53fd-bb67-d2e897946948",
++    "name": "dfi-custom zealot-of-mondain",
++    "location": [
++      5858,
++      554,
++      15
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "02:00:00",
++    "maxDelay": "04:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 6,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "ZealotOfMondain",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "4ec5db01-6acd-5644-a830-85015dd4bc9d",
++    "name": "dfi-custom opticons-pet",
++    "location": [
++      5731,
++      1372,
++      4
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "02:00:00",
++    "maxDelay": "04:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 6,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "OpticonWyrm",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "d52d8d0a-b4b4-5c36-a136-917a4e0f8645",
++    "name": "dfi-custom harvester",
++    "location": [
++      5443,
++      1115,
++      0
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "06:00:00",
++    "maxDelay": "12:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 4,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "Harvester",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "fca69c34-443d-5978-b3ff-35b6774274bc",
++    "name": "dfi-custom royalty-defender",
++    "location": [
++      5441,
++      1115,
++      0
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "06:00:00",
++    "maxDelay": "12:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 4,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "RoyaltyDefender",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  }
++]
 diff --git a/Distribution/Data/Spawns/dfi/felucca.json b/Distribution/Data/Spawns/dfi/felucca.json
 new file mode 100644
 index 000000000..2a2169ede
@@ -59236,10 +59574,10 @@ index 000000000..52bfd1797
 \ No newline at end of file
 diff --git a/Projects/UOContent.Tests/Tests/Custom/DfiSpawnTests.cs b/Projects/UOContent.Tests/Tests/Custom/DfiSpawnTests.cs
 new file mode 100644
-index 000000000..709ab75e7
+index 000000000..7eda808c1
 --- /dev/null
 +++ b/Projects/UOContent.Tests/Tests/Custom/DfiSpawnTests.cs
-@@ -0,0 +1,51 @@
+@@ -0,0 +1,73 @@
 +using System.Collections.Generic;
 +using System.IO;
 +using System.Text.Json;
@@ -59266,12 +59604,34 @@ index 000000000..709ab75e7
 +    [InlineData("dfi/malas.json", 130)]
 +    [InlineData("dfi/dfi-boss-arena.json", 13)]
 +    [InlineData("dfi/kopia-faction-extras.json", 13)]
++    [InlineData("dfi/dfi-custom-monsters.json", 12)]
 +    public void DfiSpawnFile_LoadsAtLeastTheConvertedSpawners(string file, int minimum)
 +    {
 +        var dtos = Load(file);
 +
 +        Assert.True(dtos.Count >= minimum, $"{file}: {dtos.Count} spawners, expected at least {minimum}");
 +        Assert.All(dtos, d => Assert.NotEmpty(d.EntryView));
++    }
++
++    // The importer replaces a same-type spawner on the same tile, so a hand-placed spawner sharing a tile
++    // with a layout spawner silently disappears when the layout file loads after it.
++    [Fact]
++    public void DfiCustomSpawners_ShareNoTileWithTheLayouts()
++    {
++        var taken = new HashSet<(string, Point3D)>();
++
++        foreach (var file in new[] { "felucca", "ilshenar", "malas", "dfi-boss-arena", "kopia-faction-extras" })
++        {
++            foreach (var dto in Load($"dfi/{file}.json"))
++            {
++                taken.Add((dto.Map.Name, dto.Location));
++            }
++        }
++
++        Assert.All(
++            Load("dfi/dfi-custom-monsters.json"),
++            dto => Assert.False(taken.Contains((dto.Map.Name, dto.Location)), $"{dto.Location} is already a layout spawner")
++        );
 +    }
 +
 +    [Fact]
@@ -59293,10 +59653,10 @@ index 000000000..709ab75e7
 +}
 diff --git a/Projects/UOContent/Custom/DFI/Spawns/DfiSpawnSwap.cs b/Projects/UOContent/Custom/DFI/Spawns/DfiSpawnSwap.cs
 new file mode 100644
-index 000000000..b87ccdc78
+index 000000000..94bad6fa2
 --- /dev/null
 +++ b/Projects/UOContent/Custom/DFI/Spawns/DfiSpawnSwap.cs
-@@ -0,0 +1,119 @@
+@@ -0,0 +1,141 @@
 +// [DfiSpawns swaps ModernUO's classic monster and wildlife spawners on Felucca, Ilshenar and Malas for the
 +// DFI Network layouts (DFI's 2008 ESpawner exports) and the staff-placed setups recovered from the DFI and
 +// kopia 2012 world saves, all in Data/Spawns/dfi. Vendors, townspeople, reagents, sea life and the newer
@@ -59366,6 +59726,28 @@ index 000000000..b87ccdc78
 +        logger.Information("{User} removed {Count} classic spawners for the DFI layouts", from, doomed.Count);
 +
 +        CommandSystem.Handle(from, $"{CommandSystem.Prefix}GenerateSpawners Data/Spawns/dfi/*.json");
++        ReportCustomSpawns(from);
++    }
++
++    // The custom-monster spawners were placed by hand; one that spawned nothing sits where nothing can stand.
++    private static void ReportCustomSpawns(Mobile from)
++    {
++        foreach (var item in World.Items.Values)
++        {
++            if (item is BaseSpawner spawner && spawner.Name?.StartsWith("dfi-custom", StringComparison.Ordinal) == true)
++            {
++                var spawned = spawner.Spawned?.Count ?? 0;
++                logger.Information(
++                    "{Name} at {Location} ({Map}): {Spawned}/{Count} spawned",
++                    spawner.Name,
++                    spawner.Location,
++                    spawner.Map,
++                    spawned,
++                    spawner.Count
++                );
++                from.SendMessage($"{spawner.Name}: {spawned}/{spawner.Count} spawned");
++            }
++        }
 +    }
 +
 +    private static bool IsRetired(string name)

@@ -250,6 +250,19 @@ ModernUO spawner JSON under `Distribution/Data/Spawns/dfi/`:
 | `felucca.json`, `ilshenar.json`, `malas.json` | 1,398 | DFI's 2008 ESpawner exports (`*-ESS.xml`) |
 | `dfi-boss-arena.json` | 13 | staff-placed spawners in DFI's 2018 save (Green Acres) |
 | `kopia-faction-extras.json` | 13 | staff-placed spawners in kopia's 2018 save |
+| `dfi-custom-monsters.json` | 12 | the custom monsters from `0008`, placed for this shard |
+
+The custom monsters' spots are new: DFI's live placements did not survive,
+and only the Stalker's hideouts are in its code. Each sits one tile from a
+layout spawner in the right area (the importer would replace a same-type
+spawner on the same tile; a test guards it): Stalker at its Ilshenar
+hideouts, a vampire lair in the Yew graveyard, stealth ambushers in Despise
+and Covetous, the Sphynx near Compassion, the Valorite Dragon in Destard,
+the Chameleon in Ice and young ones in the Yew woods, the Zealot of Mondain
+in Wrong, Opticon's Pet in Fire, and the Harvester and Royalty Defender in
+the Green Acres boss arena. Undying (killable only by a hue 2121 weapon
+nothing makes yet) and the GM event QuestMobile are not spawned.
+`[DfiSpawns` reports each custom spawner's spawned count.
 
 kopia's free-items room (27 spawners handing out deeds, ethereals and a bank
 check) was dropped at the owner's request; `[DfiSpawns` deletes any spawner
