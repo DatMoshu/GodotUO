@@ -63,7 +63,8 @@ seam in `World.MapIndex`, inside `#if GUO_LABS`. The manifest, verifier and
 residency session are engine-free and tested with dotnet
 (`tools/paging_tests`). Doctor: `launchers/dev/paging_doctor`. Before the
 swap a preflight refuses paging when the stock loader carries applied map
-patches, a custom `MapsLayouts` or the UltimaLive loader.
+patches, a custom `MapsLayouts` or the UltimaLive loader. The world map's
+`ChangeMap` has the same kind of seam for page facets.
 
 ## ADR Dependencies
 
@@ -95,13 +96,16 @@ milestone 1 (Moshu via chief, mail 19516/19517/19528, 2026-10-28).
 ## Consequences
 
 - Default builds and exports are unchanged: the deterministic default-build
-  `GUO.dll` is byte-identical with and without the seam (run
-  `20261028_guo-worker-paging_l4-milestone1`, `data/offstate_dll_parity.txt`).
+  `GUO.dll` is byte-identical with and without the seams (run
+  `20261028_guo-worker-paging_l4-milestone1`, `data/offstate_dll_parity.txt`,
+  and for the world map seam `data/m2/attempt9/data/offstate_dll_parity_worldmap.txt`).
 - While paging is active `MapLoader.MAPS_COUNT` is 80, so the world map's
   free-view menu lists 80 facets, as it lists 127 under UltimaLive.
 - Paging and shard map patches are exclusive: with patches applied the
   preflight refuses paging (and disconnects) instead of dropping them.
-- A world map in free view on an evicted page shows no map and pins nothing
-  (known gap; the page is not reloaded for it).
+- The world map loads an evicted page on demand within the cap and pins it
+  while it renders; a second `PORT DEVIATION (GUO)` seam in
+  `WorldMapGump.ChangeMap`, inside `#if GUO_LABS`. A page it cannot load is
+  named in the journal and the gump keeps its map.
 - The shard side (map registration for 32–79, crossings, persistence,
   negotiation) is unchanged and needs its own decision.

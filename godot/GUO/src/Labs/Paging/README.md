@@ -37,8 +37,18 @@ In game: `-paging` (status), `-paging verify` (check every page now),
 `-paging reload` (reread the manifest; revised resident pages are dropped,
 the current one is rebuilt when next entered), `-paging check` (residency
 invariants: current page resident, within the cap, open files match),
-`-paging worldmap <facet>` (open the world map in free view on a facet, a
-test hook for the evicted-page case).
+`-paging worldmap [facet]` (open the world map, then point its free view at
+a facet; a test hook).
+
+The world map works on page facets. Before `WorldMapGump.ChangeMap` asks the
+stock loader for a page facet, paging makes it readable: a resident page is
+used as is, an evicted one is verified and loaded within the cap (evicting a
+page that is neither current nor pinned), and the page is pinned until the
+gump's render task ends, so a crossing mid-render never evicts it (the cap
+may be exceeded by the pinned page until then). A page that cannot be
+loaded (failed verification, or every resident page current or pinned) is
+named in the journal with the reason and this doctor; the gump keeps the map
+it shows.
 
 ## Dependency doctor
 
@@ -74,9 +84,13 @@ it on every run and the probe when `GuoLabs=true`.
 - Needs a shard that already sends page facet IDs; the dev shard does not
   register facets 32–79. A private fixture copy did (scenario, live runs).
 - MUL pages only; no UOP page archives.
-- World map, minimap and markers are not page-aware; the free-view menu lists
-  80 facets while paging is active. A free view on an evicted page shows no
-  map (the upstream world map catches its own load error) and pins nothing.
+- The free-view menu lists 80 facets while paging is active; markers are
+  not page-aware. Upstream's world map reads its map field late in its
+  render task, so switching facets while a render runs can mix two facets
+  in that render (upstream race, not fixed here).
+- An empty statics file breaks upstream's world map (no reader for a
+  zero-length file); real data never has one, and the synthetic fixture
+  writes one marker static per page.
 - Applied map patches are refused, not carried over: no paging on a shard
   that sends map patches. Proven by the probe only (the test install is UOP,
   which loads no difs).

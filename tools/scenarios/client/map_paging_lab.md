@@ -27,9 +27,10 @@ every run and the probe when `GuoLabs=true`. Covered:
 
 ## Off state
 
-1. Default build (`GuoLabs` unset): Labs sources are not compiled and the
-   `World.MapIndex` seam is inside `#if GUO_LABS`. A deterministic default
-   build of `GUO.dll` is byte-identical with and without the seam.
+1. Default build (`GuoLabs` unset): Labs sources are not compiled, and the
+   seams in `World.MapIndex`, `WorldMapGump.ChangeMap` and the objects watch
+   are inside `#if GUO_LABS`. A deterministic default build of `GUO.dll` is
+   byte-identical with and without them.
 2. `launchers\dev\smoke.bat` passes with `GuoLabs` and `GUO_LABS_PAGING` unset.
 3. Labs build with `GUO_LABS_PAGING` unset: the probe's first check — the
    seam returns before touching the client and leaves the facet alone.
@@ -59,9 +60,9 @@ all PASS). The client runs with cap 2. The pages are full size, 7168x4096:
 
 Also covered:
 
-- **Evicted page:** a world-map free view on an evicted page (41) neither
-  crashes nor reloads it. The upstream world map logs its own load error and
-  shows no map (observation, not a fix).
+- **Evicted page (attempt 6):** a world-map free view on evicted page 41 did
+  not crash, but the world map threw a NullReferenceException and showed no
+  map: a defect, fixed below.
 - **Blocked landing:** the crossing is refused, and client and server agree
   on position afterwards.
 - **Followers:** a following dog crosses with the player; a ridden horse
@@ -74,6 +75,22 @@ Also covered:
 - **Restarts:** a fresh client logs in onto the page. A kicked client
   reconnects onto it (the auto-reconnect needs the login saved, as upstream).
   After a shard restart the player is still on the page.
+
+## World map on page facets (m2 follow-up)
+
+Run 2026-10-28, `data/m2/attempt9/data/worldmap_report.json`, 11 checks, all
+PASS. Driver: `run_m2_worldmap.py`, kept with the evidence.
+
+- The world map renders the current page (40), a resident page that is not
+  current (real 33) and an evicted page (real 32), which is loaded on demand
+  within cap 2 and unpinned when the render ends. `-paging check` OK after.
+- Crossing to 41 while evicted page 42 renders: 42 stays pinned (resident
+  41,42), the render completes, then the cap applies again.
+- A corrupt page (43): the journal says it is not loaded and why, the gump
+  keeps its map and play continues.
+- No `error loading worldmap` in the run. Attempts 7 and 8 are kept: 7 hit
+  the empty statics file of the old fixture, and 8 crossed after the render
+  had already ended, so it did not test the overlap.
 
 Each `facet N ready` line logs load time, working set and managed heap; these
 are observations only.
