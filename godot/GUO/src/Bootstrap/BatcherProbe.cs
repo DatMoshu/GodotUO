@@ -79,6 +79,19 @@ public partial class BatcherProbe : Node
             HueTexture = palette,
         };
 
+        // --depth-world --frame-abort: the main frame's abort recovery on the
+        // production Depth World alone. The stages below assume the canvas world.
+        if (DepthWorldProbe.Enabled && System.Array.IndexOf(OS.GetCmdlineUserArgs(), "--frame-abort") >= 0)
+        {
+            await VerifyFrameAbort(batcher, viewport);
+            Stage("main frame abort recovery");
+            await VerifyOrderedFrameAbort(batcher, viewport, palette);
+            Stage("Depth World frame abort recovery");
+            GD.Print($"[batcher-probe] {(_failures == 0 ? "PASS" : "FAIL")}");
+            GetTree().Quit(_failures == 0 ? 0 : 1);
+            return;
+        }
+
         // First, with no hueing at all: SHADER_NONE passes the sampled texel
         // straight through, so this says what red the shader actually sees.
         // Without it a wrong palette entry and a wrong sample look identical.
@@ -146,6 +159,8 @@ public partial class BatcherProbe : Node
         Stage("active-prefix canvas clear");
         await VerifyDeferredVisibility(batcher, viewport);
         Stage("deferred retained visibility");
+        await VerifyFrameAbort(batcher, viewport);
+        Stage("main frame abort recovery");
         await VerifyUiTextureCommands(batcher, viewport);
         Stage("typed UI texture commands");
             VerifyWorldDepthSort();

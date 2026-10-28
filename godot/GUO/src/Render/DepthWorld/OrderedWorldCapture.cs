@@ -418,6 +418,17 @@ internal sealed class OrderedWorldCapture : IDisposable
         _queued = false;
     }
 
+    /// <summary>Abandons a frame whose draw threw: an open recording or an
+    /// unsubmitted ticket is dropped, never rendered. A ticket already on the
+    /// render thread is left to finish.</summary>
+    internal void AbortFrame()
+    {
+        if (Recording || _queued) Fallback("frame aborted");
+        Recording = false;
+        _queued = false;
+        _fallback.Clear();
+    }
+
     private void BeforeDraw()
     {
         if (!_queued || _disposed) return;

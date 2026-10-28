@@ -516,6 +516,7 @@ namespace GUO.Renderer
             // its existing eager lifecycle. Ordinary embedded/probe callers
             // retain the default behavior without needing an EndFrame call.
             _deferredCanvasFrameOpen = deferRetainedHiding && _retainCanvasFrame && !GpuWorld.Enabled;
+            _canvasFrameTransaction = deferRetainedHiding;
 
             LastFrame = (TextureSwitches, _itemCount, Commands);
             LastNativeTextureMeasurements = NativeTextureMeasurements;
@@ -617,6 +618,7 @@ namespace GUO.Renderer
         {
             EnsureStarted();
             FlushRun();
+            if (InjectEndFailure) { InjectEndFailure = false; throw new InvalidOperationException("injected End failure"); }
             FinishCanvasCommands();
 
             _started = false;
