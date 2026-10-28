@@ -1156,7 +1156,7 @@ internal static partial class PerfProbe
                       + $"profile {(string.IsNullOrWhiteSpace(_profilePreset) ? "as saved" : "preset " + _profilePreset)}: {_profileSummary}.");
         md.AppendLine();
         md.AppendLine($"Loaded Godot managed API JIT optimized: {apiOptimized}; engine debug build: {OS.IsDebugBuild()}.");
-        md.AppendLine($"Engine debug build: {OS.IsDebugBuild()}; export template: {ExportTemplate()}; quiet fixture: {PerfFixture.Quiet}; "
+        md.AppendLine($"Engine debug build: {OS.IsDebugBuild()}; export template: {ExportTemplate()}; quiet fixture: {PerfFixture.Quiet}; 1024 pages: {TextureAtlas.SmallDynamicPages}; minimap texture: {GUO.Game.UI.Gumps.MiniMapGump.OwnTexture}; "
                       + $"warm-up {_warmupSeconds} s, measured {(_measureSeconds > 0 ? _measureSeconds + " s" : Frames + " frames")} per standing scene; host load: {PerfHostLoad.Source}.");
         md.AppendLine();
         // Frame times first, FPS last (PERF-LANE-01): a mean hides the slow
@@ -1243,6 +1243,8 @@ internal static partial class PerfProbe
                     ["godot_api_jit_optimized"] = apiOptimized, ["godot_api_mvid"] = godotApi.ManifestModule.ModuleVersionId.ToString(),
                     ["runtime_identity"] = PerfRuntimeIdentity.Capture(),
                     ["engine_debug_build"] = OS.IsDebugBuild(), ["export_template"] = ExportTemplate(), ["quiet_fixture"] = PerfFixture.Quiet,
+                    ["atlas_page_1024"] = TextureAtlas.SmallDynamicPages,
+                    ["minimap_texture"] = GUO.Game.UI.Gumps.MiniMapGump.OwnTexture,
                     ["warmup_seconds"] = _warmupSeconds, ["measure_seconds"] = _measureSeconds, ["host_load"] = PerfHostLoad.Launch(),
                     ["system"] = SystemInfo(), ["scenes"] = results,
                 },

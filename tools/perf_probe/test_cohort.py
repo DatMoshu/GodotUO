@@ -77,7 +77,7 @@ def test_requested_minimap_drift_rejects_even_if_effective_state_matches(cohort_
     assert baseline_path(cfg).read_bytes() == before
 
 
-@pytest.mark.parametrize("flag", ["retained_canvas", "clear_used_canvas", "reclaim_empty_retained_canvas"])
+@pytest.mark.parametrize("flag", ["retained_canvas", "clear_used_canvas", "reclaim_empty_retained_canvas", "atlas_page_1024", "minimap_texture"])
 def test_unexpected_optimization_flag_drift_rejects(cohort_gate, flag):
     cfg, _, state = cohort_gate
     assert run_gate([*ARGS, "--record-baseline"]) == 0
@@ -195,3 +195,11 @@ def test_reclamation_explicit_arm_and_missing_identity(cohort_gate, tmp_path):
     del state["report"]["runtime_identity"]["effective_flags"][flag]
     with pytest.raises(ValueError, match="Incomplete optimization flags"):
         effective_cohort(state["report"])
+
+
+@pytest.mark.parametrize("flag", ["atlas_page_1024", "minimap_texture"])
+def test_missing_atlas_flags_require_fresh_baseline(flag):
+    report = cohort_report()
+    del report["runtime_identity"]["effective_flags"][flag]
+    with pytest.raises(ValueError, match="Incomplete optimization flags"):
+        effective_cohort(report)

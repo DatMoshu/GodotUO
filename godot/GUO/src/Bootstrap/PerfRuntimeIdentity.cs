@@ -51,6 +51,8 @@ internal static class PerfRuntimeIdentity
             renderer = Godot.RenderingServer.GetCurrentRenderingMethod(),
             effective_flags = new
             {
+                atlas_page_1024 = GUO.Renderer.TextureAtlas.SmallDynamicPages,
+                minimap_texture = GUO.Game.UI.Gumps.MiniMapGump.OwnTexture,
                 depth_world = GUO.Renderer.DepthWorldProbe.Enabled,
                 depth_world_chunk_reuse = GUO.Game.Scenes.GameScene.ChunkReuse,
                 batched_world = GUO.Renderer.UltimaBatcher2D.BatchedWorld,

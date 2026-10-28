@@ -128,6 +128,8 @@ public partial class BatcherProbe : Node
         Stage("persistent ordered terrain");
         await VerifyAtlasMetadata(batcher, viewport);
         Stage("atlas page metadata");
+        VerifyAtlasPages1024();
+        Stage("atlas 1024 dynamic pages");
         VerifyAtlasProfiling();
         VerifyPerfIntervals();
         VerifyPerfWalkReplay();
