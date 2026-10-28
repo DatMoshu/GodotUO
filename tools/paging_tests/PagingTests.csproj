@@ -9,5 +9,6 @@
     <Compile Include="../../godot/GUO/src/Labs/Paging/PageCatalog.cs" Link="PageCatalog.cs" />
     <Compile Include="../../godot/GUO/src/Labs/Paging/PageVerifier.cs" Link="PageVerifier.cs" />
     <Compile Include="../../godot/GUO/src/Labs/Paging/PagingSession.cs" Link="PagingSession.cs" />
+    <Compile Include="../../godot/GUO/src/Labs/Paging/PageFixture.cs" Link="PageFixture.cs" />
   </ItemGroup>
 </Project>

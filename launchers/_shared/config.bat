@@ -32,6 +32,10 @@ REM --- Optional Labs weather proof outputs (empty disables capture) --------
 if not defined GUO_WEATHER_PROOF     set "GUO_WEATHER_PROOF="
 if not defined GUO_WEATHER_PROOF_DIR set "GUO_WEATHER_PROOF_DIR="
 
+REM --- Optional Labs map paging (empty keeps paging off; ADR-0046) --------
+if not defined GUO_LABS_PAGING          set "GUO_LABS_PAGING="
+if not defined GUO_LABS_PAGING_RESIDENT set "GUO_LABS_PAGING_RESIDENT="
+
 REM  Where the pinned build and the upstream reference live. Both are
 REM  gitignored, so a git worktree has neither: leave these unset and a
 REM  worktree uses the main checkout's copies (common.bat and

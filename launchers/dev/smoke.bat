@@ -91,6 +91,8 @@ dotnet build "%UO_ROOT%\docs\modding\samples\announce\Announce.csproj" -nologo -
 echo [smoke] login preflight: allocated account, no typing, no creation, arrival with z (synthetic; no shard)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" -- --login-preflight-probe --pregame-classic --silent || set "FAIL=1"
 dotnet run --project "%UO_ROOT%\tools\probe_rules_tests\ProbeRulesTests.csproj" --artifacts-path "%UO_BUILD_DIR%\probe-rules-tests" --nologo || set "FAIL=1"
+echo [smoke] L4 paging core: manifest, verifier, residency (dotnet; no engine, no client data)
+dotnet run --project "%UO_ROOT%\tools\paging_tests\PagingTests.csproj" --artifacts-path "%UO_BUILD_DIR%\paging-tests" || set "FAIL=1"
 echo [smoke] keyboard: key-ups on focus loss, AltGr text (synthetic; no shard)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" -- --keyboard-probe --pregame-classic --silent || set "FAIL=1"
 echo [smoke] controller regressions and Set controls (synthetic pad; no shard)
@@ -102,6 +104,8 @@ if "%GuoLabs%"=="true" (
     echo [smoke] UO+ weather Labs contract
     "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" --quit-after 60 res://src/Labs/Weather/WeatherProbe.tscn || set "FAIL=1"
     "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" --quit-after 60 res://src/Labs/WaterRain/WaterRainProbe.tscn || set "FAIL=1"
+    echo [smoke] L4 map paging loader contract - needs UO_CLIENT_DATA
+    "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" --quit-after 120 res://src/Labs/Paging/PagingProbe.tscn || set "FAIL=1"
 )
 
 echo.

@@ -49,5 +49,7 @@ it is taken even if its file has not landed yet.
 | 0038 | Packet mods and the mod ABI | work/modding-mod02-20261018 (proposed) |
 | 0040 | One Input page for keyboard and mouse, controller and touch | work/input-05-20261018 (proposed) |
 | 0044 | Depth World: the world drawn with ClassicUO's depth rules on RenderingDevice | docs/adr-0044-cuo-depth-world-20261026 (accepted 2026-10-26) |
+| 0045 | Wide zoom overview | integration |
+| 0046 | Map paging in Labs: stable page facets, bounded residency | work/paging-l4-20261028 (proposed) |
 
-Next free: 0045.
+Next free: 0047.

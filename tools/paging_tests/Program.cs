@@ -3,7 +3,6 @@
 // residency session), compiled on its own and run with dotnet. No engine,
 // no client data, no shard. Also the paging doctor's manifest check and a
 // synthetic two-page fixture writer.
-using System.Security.Cryptography;
 using System.Text.Json;
 using GUO.Labs.Paging;
 
@@ -23,7 +22,7 @@ static class Program
                 w = int.Parse(parts[0]);
                 h = int.Parse(parts[1]);
             }
-            string manifest = Fixture.WriteTwoPages(args[1], w, h);
+            string manifest = PageFixture.WriteTwoPages(args[1], w, h);
             Console.WriteLine($"[paging] fixture written: {manifest}");
             return Validate(manifest);
         }
@@ -84,32 +83,32 @@ static class Program
         Directory.CreateDirectory(dir);
         string path = Path.Combine(dir, "pages.json");
 
-        var ok = PageCatalog.Parse(Fixture.Manifest(Fixture.Page("first", 32, east: "last"), Fixture.Page("last", 79, west: "first")), path);
+        var ok = PageCatalog.Parse(PageFixture.Manifest(PageFixture.Page("first", 32, east: "last"), PageFixture.Page("last", 79, west: "first")), path);
         Check(ok.Pages.Count == 2 && ok.ByFacet(32).Id == "first" && ok.ByFacet(79).Id == "last", "facets 32 and 79 accepted");
         Check(ok.ByFacet(32).Neighbors["east"] == "last", "neighbors kept");
         Check(ok.ByFacet(32).MapPath == Path.Combine(dir, "map32.mul"), "files resolve beside the manifest");
 
         foreach (int facet in new[] { 0, 5, 31, 80, 126, 127, 255, -1 })
-            Refused(Fixture.Manifest(Fixture.Page("p", facet)), path, $"facet {facet} refused");
+            Refused(PageFixture.Manifest(PageFixture.Page("p", facet)), path, $"facet {facet} refused");
 
-        Refused(Fixture.Manifest(Fixture.Page("a", 40), Fixture.Page("b", 40)), path, "duplicate facet refused");
-        Refused(Fixture.Manifest(Fixture.Page("a", 40), Fixture.Page("a", 41)), path, "duplicate page id refused");
-        Refused(Fixture.Manifest(Fixture.Page("a", 40, width: 60)), path, "width not a multiple of 8 refused");
-        Refused(Fixture.Manifest(Fixture.Page("a", 40, height: 0)), path, "zero height refused");
-        Refused(Fixture.Manifest(Fixture.Page("a", 40, width: 0x8008)), path, "width beyond packet range refused");
-        Refused(Fixture.Manifest(Fixture.Page("a", 40, height: 0x4008)), path, "height beyond packet range refused");
-        Refused(Fixture.Manifest(Fixture.Page("a", 40, map: "../map40.mul")), path, "file leaving the pack refused");
-        Refused(Fixture.Manifest(Fixture.Page("a", 40, map: Path.Combine(root, "map40.mul"))), path, "rooted file refused");
-        Refused(Fixture.Manifest(Fixture.Page("a", 40, sha: "zz")), path, "bad sha refused");
-        Refused(Fixture.Manifest(Fixture.Page("a", 40, east: "nowhere")), path, "unknown neighbor refused");
-        Refused(Fixture.Manifest(Fixture.Page("a", 40, east: "a")), path, "self neighbor refused");
-        Refused(Fixture.Manifest(Fixture.Page("a", 40, version: "")), path, "empty version refused");
-        Refused(Fixture.Manifest(Fixture.Page("bad id", 40)), path, "bad page id refused");
+        Refused(PageFixture.Manifest(PageFixture.Page("a", 40), PageFixture.Page("b", 40)), path, "duplicate facet refused");
+        Refused(PageFixture.Manifest(PageFixture.Page("a", 40), PageFixture.Page("a", 41)), path, "duplicate page id refused");
+        Refused(PageFixture.Manifest(PageFixture.Page("a", 40, width: 60)), path, "width not a multiple of 8 refused");
+        Refused(PageFixture.Manifest(PageFixture.Page("a", 40, height: 0)), path, "zero height refused");
+        Refused(PageFixture.Manifest(PageFixture.Page("a", 40, width: 0x8008)), path, "width beyond packet range refused");
+        Refused(PageFixture.Manifest(PageFixture.Page("a", 40, height: 0x4008)), path, "height beyond packet range refused");
+        Refused(PageFixture.Manifest(PageFixture.Page("a", 40, map: "../map40.mul")), path, "file leaving the pack refused");
+        Refused(PageFixture.Manifest(PageFixture.Page("a", 40, map: Path.Combine(root, "map40.mul"))), path, "rooted file refused");
+        Refused(PageFixture.Manifest(PageFixture.Page("a", 40, sha: "zz")), path, "bad sha refused");
+        Refused(PageFixture.Manifest(PageFixture.Page("a", 40, east: "nowhere")), path, "unknown neighbor refused");
+        Refused(PageFixture.Manifest(PageFixture.Page("a", 40, east: "a")), path, "self neighbor refused");
+        Refused(PageFixture.Manifest(PageFixture.Page("a", 40, version: "")), path, "empty version refused");
+        Refused(PageFixture.Manifest(PageFixture.Page("bad id", 40)), path, "bad page id refused");
         Refused("{\"kind\":\"guo-page-manifest\",\"format\":2,\"pages\":[]}", path, "unknown format refused");
         Refused("{\"kind\":\"other\",\"format\":1,\"pages\":[]}", path, "wrong kind refused");
         Refused("{\"kind\":\"guo-page-manifest\",\"format\":1,\"pages\":[]}", path, "empty manifest refused");
         Refused("{not json", path, "invalid JSON refused");
-        Refused(Fixture.Manifest(Fixture.Page("a", 40)).Replace("\"north\"", "\"up\""), path, "unknown direction refused");
+        Refused(PageFixture.Manifest(PageFixture.Page("a", 40)).Replace("\"north\"", "\"up\""), path, "unknown direction refused");
     }
 
     static void Refused(string json, string path, string name)
@@ -130,7 +129,7 @@ static class Program
     static void VerifierTests(string root)
     {
         string dir = Path.Combine(root, "verify");
-        string manifest = Fixture.WriteTwoPages(dir, 16, 24);
+        string manifest = PageFixture.WriteTwoPages(dir, 16, 24);
         var catalog = PageCatalog.Load(manifest);
         var page = catalog.ByFacet(32);
         Check(PageVerifier.Verify(page) == null, "fixture page verifies");
@@ -162,7 +161,7 @@ static class Program
     static void SessionTests(string root)
     {
         string dir = Path.Combine(root, "session");
-        string manifest = Fixture.WritePages(dir, 16, 16, 32, 33, 34, 35);
+        string manifest = PageFixture.WritePages(dir, 16, 16, 32, 33, 34, 35);
         var catalog = PageCatalog.Load(manifest);
         var backend = new FakeBackend();
         var runner = new DeferredRunner();
@@ -182,7 +181,7 @@ static class Program
         Check(session.Current == 34, "a refused entry keeps the current page");
 
         // Content versioning: a revised page with the same facet replaces the resident copy.
-        string revised = Fixture.WritePages(dir, 16, 16, new Dictionary<int, string> { [34] = "v2", [32] = "v2" }, 32, 33, 34, 35);
+        string revised = PageFixture.WritePages(dir, 16, 16, new Dictionary<int, string> { [34] = "v2", [32] = "v2" }, 32, 33, 34, 35);
         var changed = session.Reload(PageCatalog.Load(revised));
         Check(changed.OrderBy(f => f).SequenceEqual(new[] { 32, 34 }), "reload reports revised resident pages");
         Check(backend.Log.Last() == "unload 32" && !session.Resident.Contains(32), "revised non-current page dropped at once");
@@ -260,93 +259,4 @@ static class Program
         _failures++;
         Console.WriteLine($"[paging] FAIL {name}");
     }
-}
-
-/// <summary>Synthetic page packs: flat land, no statics. Never real map data.</summary>
-static class Fixture
-{
-    const ushort Land = 0x0003; // a grass land tile ID; the pixels come from the user's own install
-
-    internal static string Page(string id, int facet, int width = 64, int height = 64, string version = "v1",
-        string map = null, string sha = null, string east = null, string west = null)
-    {
-        string hash = sha ?? new string('0', 64);
-        var neighbors = new Dictionary<string, string> { ["north"] = null, ["east"] = east, ["south"] = null, ["west"] = west };
-        return JsonSerializer.Serialize(new Dictionary<string, object>
-        {
-            ["page"] = id, ["facet"] = facet, ["width"] = width, ["height"] = height, ["version"] = version,
-            ["map"] = map ?? $"map{facet}.mul", ["staidx"] = $"staidx{facet}.mul", ["statics"] = $"statics{facet}.mul",
-            ["sha256"] = new Dictionary<string, string> { ["map"] = hash, ["staidx"] = hash, ["statics"] = hash },
-            ["neighbors"] = neighbors,
-        });
-    }
-
-    internal static string Manifest(params string[] pages) =>
-        "{\"kind\":\"guo-page-manifest\",\"format\":1,\"pages\":[" + string.Join(",", pages) + "]}";
-
-    internal static string WriteTwoPages(string dir, int width, int height)
-    {
-        return WritePages(dir, width, height, 32, 33);
-    }
-
-    internal static string WritePages(string dir, int width, int height, params int[] facets) =>
-        WritePages(dir, width, height, new Dictionary<int, string>(), facets);
-
-    /// <summary>A west-to-east row of pages; <paramref name="versions"/> revises chosen pages.</summary>
-    internal static string WritePages(string dir, int width, int height, Dictionary<int, string> versions, params int[] facets)
-    {
-        Directory.CreateDirectory(dir);
-        var pages = new List<string>();
-        for (int i = 0; i < facets.Length; i++)
-        {
-            int facet = facets[i];
-            string version = versions.TryGetValue(facet, out var v) ? v : "v1";
-            // A revised version carries different terrain height, so its hashes change too.
-            sbyte z = (sbyte)(version == "v1" ? 0 : 5);
-            int blocks = (width >> 3) * (height >> 3);
-            var mapBytes = new byte[blocks * 196];
-            for (int b = 0; b < blocks; b++)
-                for (int c = 0; c < 64; c++)
-                {
-                    int o = b * 196 + 4 + c * 3;
-                    BitConverter.GetBytes(Land).CopyTo(mapBytes, o);
-                    mapBytes[o + 2] = (byte)z;
-                }
-            var idx = new byte[blocks * 12];
-            for (int b = 0; b < blocks; b++)
-            {
-                BitConverter.GetBytes(0xFFFF_FFFFu).CopyTo(idx, b * 12);
-                BitConverter.GetBytes(0u).CopyTo(idx, b * 12 + 4);
-            }
-            var statics = Array.Empty<byte>();
-            string suffix = version == "v1" ? "" : "." + version;
-            string mapName = $"map{facet}{suffix}.mul", idxName = $"staidx{facet}{suffix}.mul", staName = $"statics{facet}{suffix}.mul";
-            File.WriteAllBytes(Path.Combine(dir, mapName), mapBytes);
-            File.WriteAllBytes(Path.Combine(dir, idxName), idx);
-            File.WriteAllBytes(Path.Combine(dir, staName), statics);
-
-            var neighbors = new Dictionary<string, string>
-            {
-                ["north"] = null, ["south"] = null,
-                ["west"] = i > 0 ? $"p{facets[i - 1]}" : null,
-                ["east"] = i + 1 < facets.Length ? $"p{facets[i + 1]}" : null,
-            };
-            pages.Add(JsonSerializer.Serialize(new Dictionary<string, object>
-            {
-                ["page"] = $"p{facet}", ["facet"] = facet, ["width"] = width, ["height"] = height, ["version"] = version,
-                ["map"] = mapName, ["staidx"] = idxName, ["statics"] = staName,
-                ["sha256"] = new Dictionary<string, string>
-                {
-                    ["map"] = Sha(mapBytes), ["staidx"] = Sha(idx), ["statics"] = Sha(statics),
-                },
-                ["neighbors"] = neighbors,
-            }));
-        }
-        string name = versions.Count == 0 ? "pages.json" : "pages.revised.json";
-        string path = Path.Combine(dir, name);
-        File.WriteAllText(path, Manifest(pages.ToArray()));
-        return path;
-    }
-
-    static string Sha(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
 }

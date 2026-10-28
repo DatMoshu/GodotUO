@@ -58,6 +58,8 @@ Every key resolves as: **environment variable → `config.local.bat` →
 | `UO_LOG_LEVEL` | `DEBUG` \| `INFO` \| `WARN` \| `ERROR` |
 | `GUO_WEATHER_PROOF` | Optional PNG destination for the synthetic Labs weather surface probe; empty disables capture. Debug Labs only |
 | `GUO_WEATHER_PROOF_DIR` | Optional capture folder for the explicit `-uopweather proof` scratch-client test; empty disables the test. Debug Labs only; use an external evidence folder |
+| `GUO_LABS_PAGING` | Page manifest (§49) for L4 map paging; empty keeps paging off. Debug Labs only; keep the pack outside the checkout |
+| `GUO_LABS_PAGING_RESIDENT` | Most pages kept indexed at once, 1–5; empty means 3. Debug Labs only |
 | `UO_EVIDENCE_DIR` | Where `tools/evidence_archive` keeps gate evidence copied out of worktrees; default the main checkout's `build/director_evidence`. Never inside a linked worktree |
 | `UO_LAYOUT_CDDA_DIR` | Read-only local CDDA source folder for layout `scan` and `engine-bake`; blank by default |
 | `UO_LAYOUT_ZOMBOID_DIR` | Read-only local Project Zomboid installation for `zomboid-scan`, `zomboid-resolve` and `hybrid`; blank by default |
@@ -4123,3 +4125,38 @@ The effective performance cohort requires boolean `atlas_page_1024` and
 comparison without replacing its baseline; intentionally varied flags require
 explicit experiment arms. Older incomplete receipts need a fresh baseline.
 This metadata change does not authorize benchmarking.
+
+## 49. L4 map paging manifest (`GUO_LABS_PAGING`, `src/Labs/Paging`, ADR-0046)
+
+Labs only (Debug, `GuoLabs=true`); off while `GUO_LABS_PAGING` is empty. A
+local page pack is one folder holding a manifest and each page's MUL files:
+
+```json
+{"kind": "guo-page-manifest", "format": 1, "pages": [
+  {"page": "r0c3", "facet": 32, "width": 7168, "height": 4096, "version": "2026-10-28a",
+   "map": "map32.mul", "staidx": "staidx32.mul", "statics": "statics32.mul",
+   "sha256": {"map": "<64 hex>", "staidx": "<64 hex>", "statics": "<64 hex>"},
+   "neighbors": {"north": null, "east": "r0c4", "south": "r1c3", "west": null}}]}
+```
+
+- `page`: permanent logical ID, 1–64 letters, digits, `-` or `_`; unique.
+- `facet`: native facet ID, 32–79, unique. 0–31, 127 and 255 are refused.
+  Never renumber a deployed page.
+- `width`/`height`: tiles, positive multiples of 8, at most 32768 × 16384
+  (legacy packet coordinate masks).
+- `version`: 1–64 characters. Any change to version, dimensions or a hash is
+  new content: a resident copy is dropped and rebuilt.
+- `map`/`staidx`/`statics`: paths relative to the manifest folder; may not
+  leave it. MUL only in format 1 (no UOP). `map` must be exactly
+  blocks × 196 bytes, `staidx` blocks × 12, `statics` a multiple of 7; every
+  non-empty staidx entry (position ≠ 0xFFFFFFFF, size ≠ 0) must lie inside
+  `statics`.
+- `sha256`: lowercase or uppercase hex of each file; all three must match.
+- `neighbors`: optional; `north`/`east`/`south`/`west` name another page or
+  null. Neighbours are verified in the background, never loaded early.
+
+The whole manifest is refused on its first invalid entry. A page whose files
+fail verification is refused when entered; the client says so, names the
+doctor (`launchers/dev/paging_doctor`) and continues on facet 0. No server
+packet or protocol changes; the shard must already send the page's facet ID
+in its standard map-change packet.
