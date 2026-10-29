@@ -4136,5 +4136,5 @@ land remains 0x4000. The 9-byte static layout preserves signed-byte Z; 14/18-byt
 multi layouts preserve signed-short Z. No wider-Z support is implied.
 
 Run launchers/dev/art_capacity.bat doctor, then the launcher without arguments;
-see 	ools/scenarios/art-capacity/README.md and docs/art_capacity_audit.md.
+see tools/scenarios/art-capacity/README.md and docs/art_capacity_audit.md.
 Promotion requires an Accepted ADR and matched client/server/tool qualification.

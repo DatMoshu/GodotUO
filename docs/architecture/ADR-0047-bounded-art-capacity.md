@@ -77,6 +77,9 @@ extents only, not full metadata semantics. A production profile must require eac
 referenced art/metadata row to exist while permitting sparse unreferenced slots.
 Keep 12-byte art/static indices only within validated offset/length limits; the
 proof's art-slice budget is 64 MiB, **not a production archive-size limit**.
+The art index's four-byte extra field is not validated by this proof; only its
+offset and length are checked. Any production profile must define that field's
+semantics and validation separately.
 
 Validate count*stride, complete extent, nonnegative offsets, `length <= total-offset`,
 record flags and every ID before allocation/publication. No partial records,

@@ -128,11 +128,29 @@ internal static class Program
             Check($"record_limit_{kind}_accepted", () => Equal(4096, CapacityFiles.Read(File(kind, new uint[4096]), Profile, kind).Length));
             Check($"excess_count_{kind}_refused", () => Refuse(() => CapacityFiles.Read(File(kind, new uint[4097]), Profile, kind)));
         }
-        Check("static_wrong_xy_refused", () =>
+        Check("static_wrong_x_refused", () =>
         {
             byte[] bad = File(RecordKind.Static9, 65536); bad[60] = 8;
             Refuse(() => CapacityFiles.Read(bad, Profile, RecordKind.Static9));
         });
+        Check("static_wrong_y_refused", () =>
+        {
+            byte[] bad = File(RecordKind.Static9, 65536); bad[61] = 8;
+            Refuse(() => CapacityFiles.Read(bad, Profile, RecordKind.Static9));
+        });
+        Check("static_positive_z_and_max_hue_preserved", () =>
+        {
+            byte[] good = File(RecordKind.Static9, 65536);
+            good[62] = 127; good[63] = 255; good[64] = 255;
+            var row = CapacityFiles.Read(good, Profile, RecordKind.Static9).Single();
+            Equal((short)127, row.Z); Equal(ushort.MaxValue, row.Hue);
+        });
+        foreach (var kind in new[] { RecordKind.Multi14, RecordKind.Multi18 })
+            Check($"multi_hidden_{kind}_accepted", () =>
+            {
+                byte[] good = File(kind, 65536); good[66] = 0;
+                Equal(0u, CapacityFiles.Read(good, Profile, kind).Single().Flags);
+            });
         Check("multi_unknown_flags_refused", () =>
         {
             byte[] bad = File(RecordKind.Multi14, 65536); bad[66] = 2;
