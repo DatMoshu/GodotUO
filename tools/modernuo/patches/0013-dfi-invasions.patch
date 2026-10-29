@@ -1,0 +1,1469 @@
+diff --git a/Projects/UOContent.Tests/Tests/Custom/DfiInvasionTests.cs b/Projects/UOContent.Tests/Tests/Custom/DfiInvasionTests.cs
+new file mode 100644
+index 000000000..332e11f13
+--- /dev/null
++++ b/Projects/UOContent.Tests/Tests/Custom/DfiInvasionTests.cs
+@@ -0,0 +1,213 @@
++using System;
++using Server;
++using Server.Custom.Dfi;
++using Server.Misc;
++using Server.Mobiles;
++using Server.Regions;
++using Xunit;
++
++namespace UOContent.Tests.Custom;
++
++[Collection("Sequential UOContent Tests")]
++public class DfiInvasionTests : IDisposable
++{
++    private readonly TownRegion _britain;
++
++    public DfiInvasionTests()
++    {
++        if (NameList.GetNameList("male") == null)
++        {
++            NameList.Configure();
++        }
++
++        // The test server loads no regions.json; a stand-in Britain the invasions can find by name.
++        if (Invasions.FindTown("Britain") == null)
++        {
++            _britain = new TownRegion("Britain", Map.Felucca, 50, new Rectangle3D(1416, 1498, -128, 324, 279, 256))
++            {
++                GoLocation = new Point3D(1495, 1629, 0)
++            };
++            _britain.Register();
++        }
++    }
++
++    public void Dispose()
++    {
++        Invasions.StopAll();
++        _britain?.Unregister();
++    }
++
++    public static TheoryData<string> Presets
++    {
++        get
++        {
++            var data = new TheoryData<string>();
++
++            foreach (var preset in Invasions.Presets)
++            {
++                data.Add(preset.Name);
++            }
++
++            return data;
++        }
++    }
++
++    [Theory]
++    [MemberData(nameof(Presets))]
++    public void Preset_EveryCreatureAndTheBossConstruct(string name)
++    {
++        var preset = Invasions.FindPreset(name);
++
++        Assert.Equal(Invasion.Levels, preset.Levels.Length);
++
++        foreach (var level in preset.Levels)
++        {
++            Assert.NotEmpty(level);
++
++            foreach (var type in level)
++            {
++                type.CreateInstance<BaseCreature>().Delete();
++            }
++        }
++
++        preset.Boss.CreateInstance<BaseCreature>().Delete();
++    }
++
++    [Theory]
++    [InlineData("britain", "Britain")]
++    [InlineData("SERP", "Serpent's Hold")]
++    [InlineData("skara", "Skara Brae")]
++    [InlineData("nujelm", "Nujel'm")]
++    [InlineData("bucc", "Buccaneer's Den")]
++    [InlineData("m", null)]
++    [InlineData("atlantis", null)]
++    public void MatchTown_TakesAnyCaseOrAUniqueBeginning(string text, string expected)
++    {
++        Assert.Equal(expected, Invasions.MatchTown(text));
++    }
++
++    [Fact]
++    public void Settings_RejectBadValues_AndTakeGoodOnes()
++    {
++        var s = new InvasionSettings();
++
++        Assert.NotNull(s.Set("bosskills", "3"));
++        Assert.NotNull(s.Set("maxalive", "lots"));
++        Assert.NotNull(s.Set("preset", "pirates"));
++        Assert.NotNull(s.Set("boss", "Backpack"));
++        Assert.NotNull(s.Set("colour", "red"));
++
++        Assert.Null(s.Set("bosskills", "200"));
++        Assert.Null(s.Set("preset", "UNDEAD"));
++        Assert.Null(s.Set("boss", "balron"));
++        Assert.Null(s.Set("guards", "on"));
++        Assert.Null(s.Set("buffs", "off"));
++
++        Assert.Equal(200, s.BossKills);
++        Assert.Equal("undead", s.Preset);
++        Assert.Equal("Balron", s.Boss);
++        Assert.False(s.GuardsOff);
++        Assert.False(s.Buffs);
++    }
++
++    [Fact]
++    public void Buff_DoublesHitsAndAddsDamage()
++    {
++        var orc = new Orc();
++        var hits = orc.HitsMaxSeed;
++        var damage = orc.DamageMax;
++
++        Invasion.Buff(orc);
++
++        Assert.Equal(hits * 2, orc.HitsMaxSeed);
++        Assert.Equal(damage + 5, orc.DamageMax);
++        orc.Delete();
++    }
++
++    [Fact]
++    public void Level_RisesWithKillsTowardsTheBoss()
++    {
++        var invasion = new Invasion("Britain", new InvasionSettings { BossKills = 840 });
++
++        Assert.Equal(0, invasion.Level);
++        Assert.Equal("Britain", invasion.Town);
++    }
++
++    [Fact]
++    public void Command_StartsChangesAndStopsAnInvasion()
++    {
++        Assert.Contains("started", InvasionCommand.Run(["start", "britain", "undead"]));
++
++        var invasion = Invasions.Find("Britain");
++        Assert.NotNull(invasion);
++        Assert.Equal("undead", invasion.Settings.Preset);
++        Assert.True(invasion.Region.GuardsDisabled);
++
++        Assert.Contains("already", InvasionCommand.Run(["start", "britain"]));
++
++        InvasionCommand.Run(["set", "bosskills", "50"]);
++        Assert.Equal(50, invasion.Settings.BossKills);
++
++        Assert.Contains("Britain", InvasionCommand.Status());
++
++        Assert.Contains("stopped", InvasionCommand.Run(["stop", "britain"]));
++        Assert.Null(Invasions.Find("Britain"));
++        Assert.False(invasion.Region.GuardsDisabled);
++        Assert.Empty(invasion.Invaders);
++    }
++
++    [Fact]
++    public void Kills_CountCreditAndSummonTheBoss()
++    {
++        Assert.Null(Invasions.Start("Britain", new InvasionSettings { BossKills = 10, MaxAlive = 12, Buffs = false }));
++        var invasion = Invasions.Find("Britain");
++
++        Assert.True(invasion.Invaders.Count > 0, "nothing spawned in the test Britain");
++
++        var player = new PlayerMobile(World.NewMobile);
++        player.DefaultMobileInit();
++
++        try
++        {
++            while (invasion.Kills < 10)
++            {
++                var invaders = new BaseCreature[invasion.Invaders.Count];
++                ((System.Collections.Generic.ICollection<BaseCreature>)invasion.Invaders).CopyTo(invaders, 0);
++
++                foreach (var bc in invaders)
++                {
++                    if (invasion.Kills >= 10)
++                    {
++                        break;
++                    }
++
++                    invasion.Credit(player);
++                    invasion.OnCreatureDeath(bc);
++                    bc.Delete();
++                }
++
++                invasion.Spawn(12);
++            }
++
++            Assert.True(invasion.BossPhase);
++            Assert.IsType<OgreLord>(invasion.BossCreature);
++            Assert.Equal(0, invasion.Spawn());
++
++            var top = invasion.TopList();
++            Assert.Equal(player, Assert.Single(top).Player);
++            Assert.Equal(10, top[0].Kills);
++
++            var boss = invasion.BossCreature;
++            invasion.OnCreatureDeath(boss);
++            boss.Delete();
++
++            Assert.Null(Invasions.Find("Britain"));
++            Assert.True(invasion.Finished);
++            Assert.False(invasion.Region.GuardsDisabled);
++        }
++        finally
++        {
++            player.Delete();
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Invasion/InvasionCommand.cs b/Projects/UOContent/Custom/DFI/Invasion/InvasionCommand.cs
+new file mode 100644
+index 000000000..2fd1766ce
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Invasion/InvasionCommand.cs
+@@ -0,0 +1,338 @@
++// [invasion: the staff control for DFI's town invasions. With no arguments it opens the control gump;
++// typed, it starts, stops, lists and changes them.
++
++using System;
++using System.Collections.Generic;
++using Server.Commands;
++using Server.Gumps;
++using Server.Network;
++
++namespace Server.Custom.Dfi;
++
++public static class InvasionCommand
++{
++    public static void Configure()
++    {
++        CommandSystem.Register("Invasion", AccessLevel.GameMaster, OnCommand);
++    }
++
++    [Usage("Invasion [start <town> [preset] | stop <town|all> | status | set <setting> <value> | presets | towns]")]
++    [Description("Starts, stops and changes DFI's town invasions. With no arguments, opens the invasion control gump.")]
++    private static void OnCommand(CommandEventArgs e)
++    {
++        var from = e.Mobile;
++
++        if (e.Length == 0)
++        {
++            from.SendGump(new InvasionGump(), true);
++            return;
++        }
++
++        from.SendMessage(Run(e.Arguments));
++    }
++
++    // Runs a typed [invasion and returns what to tell the one who typed it.
++    public static string Run(string[] args)
++    {
++        var verb = args[0].ToLowerInvariant();
++
++        switch (verb)
++        {
++            case "start" when args.Length >= 2:
++                {
++                    var settings = Invasions.Defaults.Clone();
++                    var town = args[1];
++
++                    // "start skara brae undead": the last word is a preset when it names one.
++                    var townWords = args.Length - 1;
++
++                    if (args.Length >= 3 && Invasions.FindPreset(args[^1]) is { } preset)
++                    {
++                        settings.Preset = preset.Name;
++                        townWords--;
++                    }
++
++                    town = string.Join(" ", args, 1, townWords);
++                    var error = Invasions.Start(town, settings);
++                    return error ?? $"Invasion of {Invasions.MatchTown(town)} started ({settings.Preset}).";
++                }
++            case "stop" when args.Length >= 2:
++                {
++                    if (args[1].Equals("all", StringComparison.OrdinalIgnoreCase))
++                    {
++                        return $"Stopped {Invasions.StopAll()} invasions.";
++                    }
++
++                    var town = string.Join(" ", args, 1, args.Length - 1);
++                    return Invasions.Stop(town) ?? $"Invasion of {Invasions.MatchTown(town)} stopped.";
++                }
++            case "set" when args.Length >= 3:
++                {
++                    var value = string.Join(" ", args, 2, args.Length - 2);
++                    return Invasions.Set(args[1], value) ?? $"Invasion {args[1]} set to {value}.";
++                }
++            case "status":
++                {
++                    return Status();
++                }
++            case "presets":
++                {
++                    return $"Presets: {Invasions.PresetNames()}";
++                }
++            case "towns":
++                {
++                    return $"Towns: {string.Join(", ", Invasions.Towns)}";
++                }
++            default:
++                {
++                    return "Usage: [invasion start <town> [preset] | stop <town|all> | status | set <setting> <value> | presets | towns";
++                }
++        }
++    }
++
++    public static string Status()
++    {
++        var d = Invasions.Defaults;
++        var text =
++            $"Defaults: preset {d.Preset}, boss at {d.BossKills} kills, {d.MaxAlive} alive, radius {d.Radius}, buffs {(d.Buffs ? "on" : "off")}, guards {(d.GuardsOff ? "off" : "on")}, boss {(d.Boss == "" ? "preset's" : d.Boss)}.";
++
++        if (Invasions.Running.Count == 0)
++        {
++            return $"{text} No invasions running.";
++        }
++
++        foreach (var invasion in Invasions.Running)
++        {
++            text += $" {invasion.Town}: {invasion.Settings.Preset}, level {invasion.Level + 1}, {invasion.Kills}/{invasion.Settings.BossKills} kills, {invasion.Invaders.Count} alive{(invasion.BossPhase ? ", boss up" : "")}.";
++        }
++
++        return text;
++    }
++}
++
++// The control gump: the default settings at the top, then every town with its invasion's progress and a
++// start or stop button.
++public class InvasionGump : DynamicGump
++{
++    private const int StartTown = 100;
++    private const int StopTown = 200;
++    private const int NextPreset = 1;
++    private const int ToggleBuffs = 2;
++    private const int ToggleGuards = 3;
++    private const int Apply = 4;
++    private const int StopEverything = 5;
++    private const int Refresh = 6;
++
++    private const int KillsEntry = 1;
++    private const int AliveEntry = 2;
++    private const int RadiusEntry = 3;
++    private const int BossEntry = 4;
++
++    public InvasionGump() : base(40, 40)
++    {
++    }
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        var d = Invasions.Defaults;
++        var preset = Invasions.FindPreset(d.Preset);
++        var height = 230 + Invasions.Towns.Length * 22;
++
++        builder.AddPage();
++        builder.AddBackground(0, 0, 520, height, 9270);
++        builder.AddAlphaRegion(10, 10, 500, height - 20);
++        builder.AddLabel(195, 18, 0x480, "Town Invasions");
++
++        builder.AddLabel(25, 48, 0x34, "Preset");
++        builder.AddButton(110, 48, 4005, 4007, NextPreset);
++        builder.AddLabel(145, 48, 0x481, $"{preset?.DisplayName ?? d.Preset} ({d.Preset})");
++
++        builder.AddLabel(25, 72, 0x34, "Boss at kills");
++        builder.AddImageTiled(140, 72, 70, 20, 0xBBC);
++        builder.AddTextEntry(142, 72, 66, 20, 0, KillsEntry, $"{d.BossKills}");
++
++        builder.AddLabel(240, 72, 0x34, "Max alive");
++        builder.AddImageTiled(320, 72, 50, 20, 0xBBC);
++        builder.AddTextEntry(322, 72, 46, 20, 0, AliveEntry, $"{d.MaxAlive}");
++
++        builder.AddLabel(390, 72, 0x34, "Radius");
++        builder.AddImageTiled(450, 72, 40, 20, 0xBBC);
++        builder.AddTextEntry(452, 72, 36, 20, 0, RadiusEntry, $"{d.Radius}");
++
++        builder.AddLabel(25, 96, 0x34, "Boss");
++        builder.AddImageTiled(140, 96, 170, 20, 0xBBC);
++        builder.AddTextEntry(142, 96, 166, 20, 0, BossEntry, d.Boss);
++        builder.AddLabel(320, 96, 0x3B2, $"empty: {preset?.Boss.Name}");
++
++        builder.AddButton(25, 122, d.Buffs ? 0xD3 : 0xD2, d.Buffs ? 0xD2 : 0xD3, ToggleBuffs);
++        builder.AddLabel(50, 122, 0x481, "DFI invasion buffs");
++        builder.AddButton(200, 122, d.GuardsOff ? 0xD3 : 0xD2, d.GuardsOff ? 0xD2 : 0xD3, ToggleGuards);
++        builder.AddLabel(225, 122, 0x481, "Guards off in the town");
++
++        builder.AddButton(390, 122, 4023, 4025, Apply);
++        builder.AddLabel(425, 122, 0x481, "Apply");
++
++        builder.AddLabel(25, 155, 0x34, "Town");
++        builder.AddLabel(170, 155, 0x34, "Invasion");
++
++        for (var i = 0; i < Invasions.Towns.Length; i++)
++        {
++            var town = Invasions.Towns[i];
++            var invasion = Invasions.Find(town);
++            var y = 178 + i * 22;
++
++            builder.AddLabel(25, y, 0x481, town);
++
++            if (invasion == null)
++            {
++                builder.AddLabel(170, y, 0x3B2, "-");
++                builder.AddButton(440, y, 4005, 4007, StartTown + i);
++                builder.AddLabel(475, y, 0x481, "Start");
++            }
++            else
++            {
++                builder.AddLabel(
++                    170,
++                    y,
++                    0x22,
++                    $"{invasion.Settings.Preset}, level {invasion.Level + 1}, {invasion.Kills}/{invasion.Settings.BossKills}{(invasion.BossPhase ? ", boss up" : "")}"
++                );
++                builder.AddButton(440, y, 4017, 4019, StopTown + i);
++                builder.AddLabel(475, y, 0x22, "Stop");
++            }
++        }
++
++        var bottom = height - 40;
++        builder.AddButton(25, bottom, 4017, 4019, StopEverything);
++        builder.AddLabel(60, bottom, 0x22, "Stop all");
++        builder.AddButton(390, bottom, 4029, 4031, Refresh);
++        builder.AddLabel(425, bottom, 0x481, "Refresh");
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        var from = sender.Mobile;
++
++        if (from == null || from.AccessLevel < AccessLevel.GameMaster || info.ButtonID == 0)
++        {
++            return;
++        }
++
++        var d = Invasions.Defaults;
++        var buttonID = info.ButtonID;
++
++        // Whatever button was pressed, the typed settings count.
++        var messages = new List<string>();
++        ApplyEntry(info, KillsEntry, "bosskills", $"{d.BossKills}", messages);
++        ApplyEntry(info, AliveEntry, "maxalive", $"{d.MaxAlive}", messages);
++        ApplyEntry(info, RadiusEntry, "radius", $"{d.Radius}", messages);
++        ApplyEntry(info, BossEntry, "boss", d.Boss, messages);
++
++        switch (buttonID)
++        {
++            case NextPreset:
++                {
++                    var index = Array.FindIndex(Invasions.Presets, p => p.Name == d.Preset);
++                    d.Preset = Invasions.Presets[(index + 1) % Invasions.Presets.Length].Name;
++                    break;
++                }
++            case ToggleBuffs:
++                {
++                    messages.Add(Invasions.Set("buffs", d.Buffs ? "off" : "on"));
++                    break;
++                }
++            case ToggleGuards:
++                {
++                    messages.Add(Invasions.Set("guards", d.GuardsOff ? "on" : "off"));
++                    break;
++                }
++            case StopEverything:
++                {
++                    messages.Add($"Stopped {Invasions.StopAll()} invasions.");
++                    break;
++                }
++            case >= StopTown and < StopTown + 100:
++                {
++                    var town = Invasions.Towns[Math.Clamp(buttonID - StopTown, 0, Invasions.Towns.Length - 1)];
++                    messages.Add(Invasions.Stop(town) ?? $"Invasion of {town} stopped.");
++                    break;
++                }
++            case >= StartTown and < StartTown + 100:
++                {
++                    var town = Invasions.Towns[Math.Clamp(buttonID - StartTown, 0, Invasions.Towns.Length - 1)];
++                    messages.Add(Invasions.Start(town, d) ?? $"Invasion of {town} started ({d.Preset}).");
++                    break;
++                }
++        }
++
++        foreach (var message in messages)
++        {
++            if (message != null)
++            {
++                from.SendMessage(message);
++            }
++        }
++
++        from.SendGump(new InvasionGump(), true);
++    }
++
++    private static void ApplyEntry(in RelayInfo info, int entryID, string key, string current, List<string> messages)
++    {
++        var text = info.GetTextEntry(entryID)?.Trim();
++
++        if (text != null && text != current)
++        {
++            messages.Add(Invasions.Set(key, text));
++        }
++    }
++}
++
++public class InvasionTopListGump : StaticGump<InvasionTopListGump>
++{
++    private readonly string _town;
++    private readonly List<InvasionParticipant> _top;
++
++    public InvasionTopListGump(string town, List<InvasionParticipant> top) : base(50, 50)
++    {
++        _town = town;
++        _top = top;
++    }
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref StaticGumpBuilder builder)
++    {
++        builder.AddPage();
++        builder.AddBackground(0, 0, 461, 320, 2620);
++        builder.AddAlphaRegion(4, 6, 452, 307);
++        builder.AddLabelPlaceholder(110, 15, 955, "title");
++        builder.AddLabel(15, 45, 955, "Position");
++        builder.AddLabel(90, 45, 955, "Player Name");
++        builder.AddLabel(330, 45, 955, "Creatures Killed");
++
++        for (var i = 0; i < 10; ++i)
++        {
++            var y = 65 + i * 20;
++            builder.AddLabelPlaceholder(35, y, 955, $"pos{i}");
++            builder.AddLabelPlaceholder(91, y, 955, $"name{i}");
++            builder.AddLabelPlaceholder(372, y, 955, $"kills{i}");
++        }
++
++        builder.AddButton(415, 280, 4017, 4018, 0);
++    }
++
++    protected override void BuildStrings(ref GumpStringsBuilder builder)
++    {
++        builder.SetStringSlot("title", $"Top 10 Defenders of {_town}");
++
++        for (var i = 0; i < 10; ++i)
++        {
++            var entry = i < _top.Count ? _top[i] : null;
++            builder.SetStringSlot($"pos{i}", entry == null ? "" : $"{i + 1}");
++            builder.SetStringSlot($"name{i}", entry?.Player.Name ?? "");
++            builder.SetStringSlot($"kills{i}", entry == null ? "" : $"{entry.Kills}");
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Invasion/Invasions.cs b/Projects/UOContent/Custom/DFI/Invasion/Invasions.cs
+new file mode 100644
+index 000000000..5e18dd291
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Invasion/Invasions.cs
+@@ -0,0 +1,900 @@
++// DFI Network's town invasions, ported from DFI RUNUO Scripts/Custom/Engines/InvasionSystem (Invasion.cs,
++// InvasionAltar.cs, InvasionSpawner.cs, InvasionKillGump.cs). DFI set an invasion up by hand with an altar
++// and spawners placed by staff; here [invasion starts and stops one in a town and changes its settings.
++// The flow is DFI's: invaders come stronger than their kind, every kill fills the invasion, the kill
++// count raises its level and with it the creatures sent, and at the kill target a boss rises; when the
++// boss falls the invasion ends and its ten best killers are shown two minutes later.
++
++using System;
++using System.Collections.Generic;
++using ModernUO.CodeGeneratedEvents;
++using Server.Gumps;
++using Server.Items;
++using Server.Logging;
++using Server.Mobiles;
++using Server.Regions;
++
++namespace Server.Custom.Dfi;
++
++public sealed class InvasionPreset
++{
++    public InvasionPreset(string name, string displayName, Type boss, params Type[][] levels)
++    {
++        Name = name;
++        DisplayName = displayName;
++        Boss = boss;
++        Levels = levels;
++    }
++
++    public string Name { get; }
++    public string DisplayName { get; }
++    public Type Boss { get; }
++
++    // The creatures sent at each level, from level 0 up.
++    public Type[][] Levels { get; }
++}
++
++// The settings an invasion starts with. [invasion set changes the defaults and every running invasion.
++public sealed class InvasionSettings
++{
++    public const int MinBossKills = 10;
++
++    public string Preset { get; set; } = "orcs";
++
++    // DFI's altar: ten kills a skull, 84 skulls to the champion.
++    public int BossKills { get; set; } = 840;
++
++    public int MaxAlive { get; set; } = 40;
++
++    // Invaders roam this far from the town's centre.
++    public int Radius { get; set; } = 25;
++
++    // DFI's invasion buffs: double hits, +5% strength, +10% dexterity, intelligence, skills, fame and
++    // karma, 30% faster, +5 damage.
++    public bool Buffs { get; set; } = true;
++
++    public bool GuardsOff { get; set; } = true;
++
++    // A creature type name for the boss; empty for the preset's own.
++    public string Boss { get; set; } = "";
++
++    public InvasionSettings Clone() => (InvasionSettings)MemberwiseClone();
++
++    public void Serialize(IGenericWriter writer)
++    {
++        writer.WriteEncodedInt(0); // version
++        writer.Write(Preset);
++        writer.WriteEncodedInt(BossKills);
++        writer.WriteEncodedInt(MaxAlive);
++        writer.WriteEncodedInt(Radius);
++        writer.Write(Buffs);
++        writer.Write(GuardsOff);
++        writer.Write(Boss);
++    }
++
++    public static InvasionSettings Deserialize(IGenericReader reader)
++    {
++        reader.ReadEncodedInt(); // version
++
++        return new InvasionSettings
++        {
++            Preset = reader.ReadString(),
++            BossKills = reader.ReadEncodedInt(),
++            MaxAlive = reader.ReadEncodedInt(),
++            Radius = reader.ReadEncodedInt(),
++            Buffs = reader.ReadBool(),
++            GuardsOff = reader.ReadBool(),
++            Boss = reader.ReadString() ?? ""
++        };
++    }
++
++    // Sets one setting by name from text, as [invasion set takes it; null when it worked, else why not.
++    public string Set(string key, string value)
++    {
++        switch (key.ToLowerInvariant())
++        {
++            case "preset":
++                {
++                    if (Invasions.FindPreset(value) == null)
++                    {
++                        return $"No preset '{value}'. Presets: {Invasions.PresetNames()}";
++                    }
++
++                    Preset = Invasions.FindPreset(value).Name;
++                    return null;
++                }
++            case "bosskills":
++            case "kills":
++                {
++                    if (!int.TryParse(value, out var kills) || kills < MinBossKills)
++                    {
++                        return $"Boss kills must be a number of at least {MinBossKills}.";
++                    }
++
++                    BossKills = kills;
++                    return null;
++                }
++            case "maxalive":
++            case "alive":
++                {
++                    if (!int.TryParse(value, out var alive) || alive is < 1 or > 200)
++                    {
++                        return "Max alive must be a number from 1 to 200.";
++                    }
++
++                    MaxAlive = alive;
++                    return null;
++                }
++            case "radius":
++                {
++                    if (!int.TryParse(value, out var radius) || radius is < 5 or > 80)
++                    {
++                        return "Radius must be a number from 5 to 80.";
++                    }
++
++                    Radius = radius;
++                    return null;
++                }
++            case "buffs":
++                {
++                    if (!TryParseBool(value, out var buffs))
++                    {
++                        return "Buffs must be on or off.";
++                    }
++
++                    Buffs = buffs;
++                    return null;
++                }
++            case "guards":
++                {
++                    if (!TryParseBool(value, out var guards))
++                    {
++                        return "Guards must be on or off.";
++                    }
++
++                    GuardsOff = !guards;
++                    return null;
++                }
++            case "boss":
++                {
++                    if (value is "" or "default" or "none")
++                    {
++                        Boss = "";
++                        return null;
++                    }
++
++                    var type = AssemblyHandler.FindTypeByName(value);
++
++                    if (type == null || !typeof(BaseCreature).IsAssignableFrom(type) || type.IsAbstract)
++                    {
++                        return $"'{value}' is not a creature type.";
++                    }
++
++                    Boss = type.Name;
++                    return null;
++                }
++            default:
++                {
++                    return "Settings: preset, bosskills, maxalive, radius, buffs, guards, boss.";
++                }
++        }
++    }
++
++    private static bool TryParseBool(string value, out bool result)
++    {
++        switch (value.ToLowerInvariant())
++        {
++            case "on" or "true" or "yes" or "1":
++                {
++                    result = true;
++                    return true;
++                }
++            case "off" or "false" or "no" or "0":
++                {
++                    result = false;
++                    return true;
++                }
++            default:
++                {
++                    result = false;
++                    return false;
++                }
++        }
++    }
++}
++
++public sealed class InvasionParticipant
++{
++    public InvasionParticipant(PlayerMobile player, int kills)
++    {
++        Player = player;
++        Kills = kills;
++    }
++
++    public PlayerMobile Player { get; }
++    public int Kills { get; set; }
++}
++
++public sealed class Invasion
++{
++    public const int Levels = 5;
++    public static readonly TimeSpan TopListDelay = TimeSpan.FromMinutes(2.0);
++
++    private const double HitsBuff = 2.0;
++    private const double StrBuff = 1.05;
++    private const double IntBuff = 1.10;
++    private const double DexBuff = 1.10;
++    private const double SkillsBuff = 1.10;
++    private const double SpeedBuff = 1.30;
++    private const double FameBuff = 1.20;
++    private const double KarmaBuff = 1.20;
++    private const int DamageBuff = 5;
++
++    private readonly HashSet<BaseCreature> _invaders = [];
++    private readonly List<InvasionParticipant> _participants = [];
++    private bool _restoreGuards;
++
++    public Invasion(string town, InvasionSettings settings)
++    {
++        Town = town;
++        Settings = settings;
++    }
++
++    public string Town { get; }
++    public InvasionSettings Settings { get; }
++    public int Kills { get; private set; }
++    public BaseCreature BossCreature { get; private set; }
++    public bool Finished { get; private set; }
++
++    public IReadOnlyCollection<BaseCreature> Invaders => _invaders;
++    public IReadOnlyList<InvasionParticipant> Participants => _participants;
++
++    public InvasionPreset Preset => Invasions.FindPreset(Settings.Preset) ?? Invasions.Presets[0];
++
++    public int Level => Math.Min(Levels - 1, Kills * Levels / Math.Max(1, Settings.BossKills));
++
++    public bool BossPhase => BossCreature != null;
++
++    public TownRegion Region => Invasions.FindTown(Town);
++
++    public Point3D Center => Region?.GoLocation ?? Point3D.Zero;
++
++    public Type BossType =>
++        string.IsNullOrEmpty(Settings.Boss) ? Preset.Boss : AssemblyHandler.FindTypeByName(Settings.Boss) ?? Preset.Boss;
++
++    public void Begin()
++    {
++        if (Settings.GuardsOff && Region is { GuardsDisabled: false } region)
++        {
++            region.GuardsDisabled = true;
++            _restoreGuards = true;
++        }
++    }
++
++    public void End(bool removeCreatures)
++    {
++        Finished = true;
++
++        if (removeCreatures)
++        {
++            foreach (var bc in new List<BaseCreature>(_invaders))
++            {
++                bc.Delete();
++            }
++
++            BossCreature?.Delete();
++        }
++
++        _invaders.Clear();
++
++        if (_restoreGuards && Region is { } region)
++        {
++            region.GuardsDisabled = false;
++        }
++
++        _restoreGuards = false;
++    }
++
++    // Tops the invasion up towards its limit, a few at a time, while it is still sending creatures.
++    public int Spawn(int most = 5)
++    {
++        if (Finished || BossPhase || Region == null)
++        {
++            return 0;
++        }
++
++        _invaders.RemoveWhere(bc => bc.Deleted);
++
++        var spawned = 0;
++
++        while (spawned < most && _invaders.Count < Settings.MaxAlive)
++        {
++            var bc = CreateInvader();
++
++            if (bc == null || !TryPlace(bc))
++            {
++                bc?.Delete();
++                break;
++            }
++
++            _invaders.Add(bc);
++            spawned++;
++        }
++
++        return spawned;
++    }
++
++    private BaseCreature CreateInvader()
++    {
++        var levels = Preset.Levels;
++        var level = Math.Min(Level, levels.Length - 1);
++
++        // Mostly this level's creatures, some of the level below.
++        var pick = level > 0 && Utility.RandomDouble() < 0.3 ? levels[level - 1] : levels[level];
++        var bc = pick.RandomElement().CreateInstance<BaseCreature>();
++
++        if (Settings.Buffs)
++        {
++            Buff(bc);
++        }
++
++        return bc;
++    }
++
++    private bool TryPlace(BaseCreature bc)
++    {
++        var map = Map.Felucca;
++        var center = Center;
++        var region = Region;
++        var radius = Settings.Radius;
++
++        for (var i = 0; i < 20; i++)
++        {
++            var x = center.X + Utility.RandomMinMax(-radius, radius);
++            var y = center.Y + Utility.RandomMinMax(-radius, radius);
++            var z = map.GetAverageZ(x, y);
++            var p = new Point3D(x, y, z);
++
++            if (!region.Contains(p) || !map.CanSpawnMobile(p))
++            {
++                continue;
++            }
++
++            bc.Home = center;
++            bc.RangeHome = radius;
++            bc.MoveToWorld(p, map);
++            Effects.SendLocationEffect(p, map, 0x3728, 10);
++            return true;
++        }
++
++        return false;
++    }
++
++    public static void Buff(BaseCreature bc)
++    {
++        bc.HitsMaxSeed = (int)(bc.HitsMaxSeed * HitsBuff);
++        bc.RawStr = (int)(bc.RawStr * StrBuff);
++        bc.RawInt = (int)(bc.RawInt * IntBuff);
++        bc.RawDex = (int)(bc.RawDex * DexBuff);
++        bc.Hits = bc.HitsMax;
++
++        for (var i = 0; i < bc.Skills.Length; i++)
++        {
++            var skill = bc.Skills[i];
++
++            if (skill.Base > 0.0)
++            {
++                skill.Base *= SkillsBuff;
++            }
++        }
++
++        bc.SetSpeed(bc.ActiveSpeed / SpeedBuff, bc.PassiveSpeed / SpeedBuff);
++        bc.DamageMin += DamageBuff;
++        bc.DamageMax += DamageBuff;
++
++        if (bc.Fame > 0)
++        {
++            bc.Fame = (int)(bc.Fame * FameBuff);
++        }
++
++        if (bc.Karma != 0)
++        {
++            bc.Karma = (int)(bc.Karma * KarmaBuff);
++        }
++    }
++
++    // A creature of this invasion died: count it, credit the player who killed it, and summon the boss
++    // once the kill target is reached. True when the creature was one of ours.
++    public bool OnCreatureDeath(BaseCreature bc)
++    {
++        if (bc == BossCreature)
++        {
++            BossCreature = null;
++            Invasions.OnBossKilled(this, bc);
++            return true;
++        }
++
++        if (!_invaders.Remove(bc))
++        {
++            return false;
++        }
++
++        var oldLevel = Level;
++        Kills++;
++
++        if (bc.LastKiller is PlayerMobile pm)
++        {
++            Credit(pm);
++        }
++
++        if (Level > oldLevel)
++        {
++            Invasions.Announce($"The invasion of {Town} grows stronger! (level {Level + 1})");
++        }
++
++        if (Kills >= Settings.BossKills && !BossPhase)
++        {
++            SummonBoss();
++        }
++
++        return true;
++    }
++
++    public void Credit(PlayerMobile pm)
++    {
++        foreach (var entry in _participants)
++        {
++            if (entry.Player == pm)
++            {
++                entry.Kills++;
++                return;
++            }
++        }
++
++        _participants.Add(new InvasionParticipant(pm, 1));
++    }
++
++    public void SummonBoss()
++    {
++        var boss = BossType.CreateInstance<BaseCreature>();
++
++        if (Settings.Buffs)
++        {
++            Buff(boss);
++        }
++
++        boss.Home = Center;
++        boss.RangeHome = Settings.Radius;
++        boss.MoveToWorld(Center, Map.Felucca);
++        Effects.SendLocationParticles(
++            EffectItem.Create(Center, Map.Felucca, EffectItem.DefaultDuration),
++            0x3709,
++            10,
++            30,
++            5052
++        );
++        Effects.PlaySound(Center, Map.Felucca, 0x225);
++
++        BossCreature = boss;
++        Invasions.Announce($"{boss.Name} leads the invasion of {Town}!");
++    }
++
++    public List<InvasionParticipant> TopList(int count = 10)
++    {
++        var sorted = new List<InvasionParticipant>(_participants);
++        sorted.RemoveAll(p => p.Player == null || p.Player.Deleted);
++        sorted.Sort((a, b) => b.Kills.CompareTo(a.Kills));
++
++        if (sorted.Count > count)
++        {
++            sorted.RemoveRange(count, sorted.Count - count);
++        }
++
++        return sorted;
++    }
++
++    public void Serialize(IGenericWriter writer)
++    {
++        writer.WriteEncodedInt(0); // version
++        writer.Write(Town);
++        Settings.Serialize(writer);
++        writer.WriteEncodedInt(Kills);
++        writer.Write(BossCreature);
++        writer.Write(_restoreGuards);
++
++        _invaders.RemoveWhere(bc => bc.Deleted);
++        writer.WriteEncodedInt(_invaders.Count);
++
++        foreach (var bc in _invaders)
++        {
++            writer.Write(bc);
++        }
++
++        writer.WriteEncodedInt(_participants.Count);
++
++        foreach (var entry in _participants)
++        {
++            writer.Write(entry.Player);
++            writer.WriteEncodedInt(entry.Kills);
++        }
++    }
++
++    public static Invasion Deserialize(IGenericReader reader)
++    {
++        reader.ReadEncodedInt(); // version
++
++        var invasion = new Invasion(reader.ReadString(), InvasionSettings.Deserialize(reader))
++        {
++            Kills = reader.ReadEncodedInt(),
++            BossCreature = reader.ReadEntity<BaseCreature>()
++        };
++
++        invasion._restoreGuards = reader.ReadBool();
++
++        var count = reader.ReadEncodedInt();
++
++        for (var i = 0; i < count; i++)
++        {
++            if (reader.ReadEntity<BaseCreature>() is { Deleted: false } bc)
++            {
++                invasion._invaders.Add(bc);
++            }
++        }
++
++        count = reader.ReadEncodedInt();
++
++        for (var i = 0; i < count; i++)
++        {
++            var pm = reader.ReadEntity<PlayerMobile>();
++            var kills = reader.ReadEncodedInt();
++
++            if (pm != null)
++            {
++                invasion._participants.Add(new InvasionParticipant(pm, kills));
++            }
++        }
++
++        return invasion;
++    }
++
++    // Guards are not saved with the region; an invasion still running after a restart takes them off again.
++    public void AfterLoad()
++    {
++        if (_restoreGuards && Region is { } region)
++        {
++            region.GuardsDisabled = true;
++        }
++    }
++}
++
++public class Invasions : GenericPersistence
++{
++    private static readonly ILogger logger = LogFactory.GetLogger(typeof(Invasions));
++
++    public static readonly string[] Towns =
++    [
++        "Britain", "Minoc", "Trinsic", "Vesper", "Yew", "Moonglow", "Skara Brae", "Jhelom", "Magincia", "Cove",
++        "Ocllo", "Nujel'm", "Serpent's Hold", "Buccaneer's Den"
++    ];
++
++    public static readonly InvasionPreset[] Presets =
++    [
++        new(
++            "orcs",
++            "Orcs",
++            typeof(OgreLord),
++            [typeof(Orc), typeof(OrcishMage), typeof(OrcScout)],
++            [typeof(OrcishLord), typeof(OrcBomber), typeof(OrcChopper)],
++            [typeof(OrcCaptain), typeof(OrcBrute), typeof(Ettin)],
++            [typeof(Ogre), typeof(Troll), typeof(Cyclops)],
++            [typeof(OgreLord), typeof(Titan)]
++        ),
++        new(
++            "undead",
++            "Undead",
++            typeof(Neira),
++            [typeof(Skeleton), typeof(Zombie), typeof(Ghoul)],
++            [typeof(SkeletalMage), typeof(Wraith), typeof(Mummy)],
++            [typeof(BoneKnight), typeof(SkeletalKnight), typeof(Spectre)],
++            [typeof(Lich), typeof(RottingCorpse), typeof(BoneMagi)],
++            [typeof(LichLord), typeof(AncientLich)]
++        ),
++        new(
++            "daemons",
++            "Daemons",
++            typeof(Semidar),
++            [typeof(Imp), typeof(Gargoyle), typeof(Gazer)],
++            [typeof(FireGargoyle), typeof(StoneGargoyle), typeof(ElderGazer)],
++            [typeof(IceFiend), typeof(Succubus)],
++            [typeof(Daemon), typeof(ChaosDaemon)],
++            [typeof(Balron), typeof(Devourer)]
++        ),
++        new(
++            "reptiles",
++            "Lizardmen and dragons",
++            typeof(Rikktor),
++            [typeof(Lizardman), typeof(Snake)],
++            [typeof(Drake), typeof(OphidianWarrior)],
++            [typeof(Wyvern), typeof(OphidianMage)],
++            [typeof(Dragon), typeof(OphidianKnight)],
++            [typeof(WhiteWyrm), typeof(Dragon)]
++        ),
++        new(
++            "vermin",
++            "Ratmen",
++            typeof(Barracoon),
++            [typeof(Ratman), typeof(GiantRat)],
++            [typeof(RatmanArcher), typeof(RatmanMage)],
++            [typeof(RatmanArcher), typeof(RatmanMage), typeof(Ratman)],
++            [typeof(RatmanMage), typeof(Ettin)],
++            [typeof(RatmanMage), typeof(Troll)]
++        ),
++        new(
++            "arachnids",
++            "Spiders and terathans",
++            typeof(Mephitis),
++            [typeof(GiantSpider), typeof(Scorpion)],
++            [typeof(TerathanDrone), typeof(GiantBlackWidow)],
++            [typeof(TerathanWarrior), typeof(DreadSpider)],
++            [typeof(TerathanAvenger), typeof(TerathanMatriarch)],
++            [typeof(TerathanAvenger), typeof(DreadSpider)]
++        ),
++        new(
++            "cursed",
++            "The Cursed",
++            typeof(Hephaestus),
++            [typeof(TheCursed), typeof(CursedSkeleton)],
++            [typeof(TheCursedArcher), typeof(TheCursedMage)],
++            [typeof(TheCursedNecro), typeof(TheCursedWarrior)],
++            [typeof(TheCursedGuardian), typeof(TheCursedWarrior)],
++            [typeof(DevaTheCursedOne), typeof(TheCursedGuardian)]
++        )
++    ];
++
++    private static readonly Dictionary<string, Invasion> _running = new(StringComparer.OrdinalIgnoreCase);
++    private static Timer _timer;
++
++    public static InvasionSettings Defaults { get; private set; } = new();
++
++    public static IReadOnlyCollection<Invasion> Running => _running.Values;
++
++    public Invasions() : base("Invasions", 10)
++    {
++    }
++
++    public static void Configure()
++    {
++        _ = new Invasions();
++    }
++
++    public static void Initialize()
++    {
++        foreach (var invasion in _running.Values)
++        {
++            invasion.AfterLoad();
++        }
++
++        CheckTimer();
++    }
++
++    public static InvasionPreset FindPreset(string name)
++    {
++        foreach (var preset in Presets)
++        {
++            if (preset.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
++            {
++                return preset;
++            }
++        }
++
++        return null;
++    }
++
++    public static string PresetNames() => string.Join(", ", Array.ConvertAll(Presets, p => p.Name));
++
++    // The town's name as the list has it, from any case or a unique beginning ("serp", "bucc").
++    public static string MatchTown(string text)
++    {
++        string match = null;
++
++        foreach (var town in Towns)
++        {
++            if (town.Equals(text, StringComparison.OrdinalIgnoreCase))
++            {
++                return town;
++            }
++
++            if (town.Replace("'", "").StartsWith(text.Replace("'", ""), StringComparison.OrdinalIgnoreCase))
++            {
++                if (match != null)
++                {
++                    return null;
++                }
++
++                match = town;
++            }
++        }
++
++        return match;
++    }
++
++    public static TownRegion FindTown(string town) =>
++        Map.Felucca.Regions.TryGetValue(town, out var region) ? region as TownRegion : null;
++
++    public static Invasion Find(string town) => _running.GetValueOrDefault(town);
++
++    // Starts an invasion; null when it started, else why not.
++    public static string Start(string town, InvasionSettings settings)
++    {
++        var name = MatchTown(town);
++
++        if (name == null)
++        {
++            return $"No town '{town}'. Towns: {string.Join(", ", Towns)}";
++        }
++
++        if (_running.ContainsKey(name))
++        {
++            return $"{name} is already under invasion.";
++        }
++
++        if (FindTown(name) == null)
++        {
++            return $"{name} has no town region on Felucca.";
++        }
++
++        var invasion = new Invasion(name, settings.Clone());
++        _running[name] = invasion;
++        invasion.Begin();
++        invasion.Spawn(invasion.Settings.MaxAlive);
++
++        Announce($"{name} is under attack! {invasion.Preset.DisplayName} are invading the town!");
++        logger.Information("Invasion of {Town} started ({Preset})", name, invasion.Settings.Preset);
++        CheckTimer();
++        return null;
++    }
++
++    // Stops an invasion and removes its creatures; null when it stopped, else why not.
++    public static string Stop(string town)
++    {
++        var name = MatchTown(town) ?? town;
++
++        if (!_running.Remove(name, out var invasion))
++        {
++            return $"{name} is not under invasion.";
++        }
++
++        invasion.End(true);
++        Announce($"The invasion of {name} has been called off.");
++        logger.Information("Invasion of {Town} stopped after {Kills} kills", name, invasion.Kills);
++        CheckTimer();
++        return null;
++    }
++
++    public static int StopAll()
++    {
++        var towns = new List<string>(_running.Keys);
++
++        foreach (var town in towns)
++        {
++            Stop(town);
++        }
++
++        return towns.Count;
++    }
++
++    // Changes a setting in the defaults and in every running invasion; null when it worked, else why not.
++    public static string Set(string key, string value)
++    {
++        var error = Defaults.Set(key, value);
++
++        if (error != null)
++        {
++            return error;
++        }
++
++        foreach (var invasion in _running.Values)
++        {
++            // A running invasion keeps the creatures it set out with.
++            if (!key.Equals("preset", StringComparison.OrdinalIgnoreCase))
++            {
++                invasion.Settings.Set(key, value);
++            }
++        }
++
++        return null;
++    }
++
++    public static void Announce(string text) => World.Broadcast(0x22, false, text);
++
++    [OnEvent(nameof(CreatureEvents.CreatureDeathEvent))]
++    public static void OnCreatureDeath(BaseCreature bc)
++    {
++        foreach (var invasion in _running.Values)
++        {
++            if (invasion.OnCreatureDeath(bc))
++            {
++                return;
++            }
++        }
++    }
++
++    internal static void OnBossKilled(Invasion invasion, BaseCreature boss)
++    {
++        _running.Remove(invasion.Town);
++        invasion.End(false);
++
++        Announce($"{boss.Name} has fallen! {invasion.Town} is saved!");
++        logger.Information("Invasion of {Town} won after {Kills} kills", invasion.Town, invasion.Kills);
++
++        var top = invasion.TopList();
++
++        foreach (var entry in top)
++        {
++            entry.Player.SendMessage($"The ten best defenders of {invasion.Town} will be shown in two minutes.");
++        }
++
++        Timer.StartTimer(
++            Invasion.TopListDelay,
++            () =>
++            {
++                foreach (var entry in top)
++                {
++                    if (entry.Player.NetState != null)
++                    {
++                        entry.Player.SendGump(new InvasionTopListGump(invasion.Town, top), true);
++                    }
++                }
++            }
++        );
++
++        CheckTimer();
++    }
++
++    private static void CheckTimer()
++    {
++        if (_running.Count > 0)
++        {
++            _timer ??= Timer.DelayCall(TimeSpan.FromSeconds(5.0), TimeSpan.FromSeconds(5.0), Tick);
++        }
++        else
++        {
++            _timer?.Stop();
++            _timer = null;
++        }
++    }
++
++    private static void Tick()
++    {
++        foreach (var invasion in _running.Values)
++        {
++            invasion.Spawn();
++        }
++    }
++
++    public override void Serialize(IGenericWriter writer)
++    {
++        writer.WriteEncodedInt(0); // version
++        Defaults.Serialize(writer);
++        writer.WriteEncodedInt(_running.Count);
++
++        foreach (var invasion in _running.Values)
++        {
++            invasion.Serialize(writer);
++        }
++    }
++
++    public override void Deserialize(IGenericReader reader)
++    {
++        reader.ReadEncodedInt(); // version
++        Defaults = InvasionSettings.Deserialize(reader);
++
++        var count = reader.ReadEncodedInt();
++
++        for (var i = 0; i < count; i++)
++        {
++            var invasion = Invasion.Deserialize(reader);
++            _running[invasion.Town] = invasion;
++        }
++    }
++}
