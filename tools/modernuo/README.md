@@ -462,6 +462,72 @@ book, which would hand them back as crafting deeds. `DfiHuntingBodTests.cs`
 covers the decor, the creature lists, corpse targeting, rewards at every
 level, large combining, the Hunter's offers and the warfork.
 
+### `patches/0016-dfi-events.patch`
+
+DFI's events, from `Scripts/Custom/Items/Containers/ItemChest`,
+`Custom/Engines/EventRewardSystem`, `Custom/Items/Misc/LastManPentagram.cs`
+and `Custom/Misc/CursedArtifactSystem.cs`. `[DfiEvents` places the pentagram
+and the vendor; `[SpawnEIC` places the chests.
+
+- **Treasure chests** (levels 1 to 7). `[SpawnEIC` turns each locked
+  decorative chest in a dungeon into a treasure chest of the same look, its
+  art setting the level. Picking one fills it with gold, reagents, scrolls,
+  magic items and potions by level; level 7 adds the Cursed Cave's key and
+  confusion blast potions. 20 to 40 minutes later it empties, locks and may
+  trap itself again, and one time in ten calls a guard from the dungeon's
+  own creatures.
+- **Copper bars** are staff event prizes. `[CreateCopperBars` hands a game
+  master up to 25 a day (administrators have no limit), logged with the
+  event's name. The Event Reward Vendor by Britain's bank sells 36 rewards
+  across game items, house decorations and fancy items, at DFI's prices:
+  skill balls, temporary regeneration robes and cloaks, a 50-day ethereal
+  horse, deeds (layered sash, personalisation, anti-bless, kill reset, name
+  and sex change, pet and war horse bonding), fountains, statues, fires, a
+  crystal pedestal, dyes, the magic sewing kit and the whispering rose.
+- **The Last Man Pentagram** in Luna starts every day at 19:15 UTC. After a
+  10-minute countdown, the first player to stand alone on it for 60 seconds
+  wins. Hiding on it kills you, and everyone near it is attackable. The prize
+  is a named statue, runic tools, ingots, gold, a minor or stealable
+  artifact, scrolls, deeds or copper bars, and sometimes Barracoon. It stays
+  cursed for 10 minutes and hues its carrier, who cannot bank it.
+  `[CurseArtifact` does the same to any item.
+
+The temporary items delete themselves when their days run out. DFI's
+wedding deed, kill book and donation items are left out; the kill book's
+share of pentagram prizes is copper bars. `DfiEventTests.cs` covers every
+type, the addon deeds, the catalogue, buying, the daily limit, temporary
+items, the sewing kit, the kill reset deed, chest locking and relocking,
+loot at every level, every pentagram prize and the pentagram's controls.
+
+### `patches/0017-dfi-creatures.patch`
+
+From `Scripts/Custom/Mobiles/Monsters/SphynxFortuneGump.cs` and DFI's
+`PlayerMobile` fortune code, `Custom/Opticon/Paladin AI`,
+`Custom/Engines/Faction/Mobiles`, `Custom/Mobiles/Ethereal Mounts`,
+`Custom/Items/Staff` and `Custom/Items/Misc/AncientMIB.cs`.
+
+- **Sphynx fortunes.** Ask a sphynx for your fortune; for 5,000 gold you
+  get one of DFI's twenty for a day: a resistance, luck, enhance potions,
+  defend chance or mana regeneration, raised or lowered. Fortunes survive a
+  restart. One call at the end of `AosAttributes.GetValue` adds the
+  non-resistance ones. In Felucca a sphynx also drops a copper bar.
+- **The Paladin** ("the Dark Knight") wears plate and the Holy Avenger, and
+  fights with chivalry. It cleanses poison, closes wounds, lifts curses, and
+  casts divine fury, enemy of one, consecrate weapon, holy light or dispel
+  evil. One blow in ten deals a mortal wound, and pets and provoked creatures
+  cannot hurt it. DFI's AI was a 936-line copy of RunUO's mage AI; this one
+  is ModernUO's melee AI with the same spell choices.
+- **Faction creatures**: a daemon (Shadowlords), an ogre lord (Minax), a
+  silver serpent (True Britannians) and a wisp (Council of Mages), each
+  peaceful to its own faction's players. Staff spawn them.
+- **Items**: the ethereal skeletal steed; the ethereal war horse, which only
+  faction members may ride; the counselor's staff, which only staff can
+  wield; and the ancient message in a bottle and SOS.
+
+`DfiCreatureTests.cs` covers every type, each fortune's attribute, the
+fortune's resistance, its expiry, a reading, the Paladin's AI, the staff and
+the ancient bottle.
+
 ### Retired
 
 `0004-multi-tile-enumerator` fixed tile lookups that stopped at a multi with no

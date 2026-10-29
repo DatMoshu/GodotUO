@@ -1,0 +1,916 @@
+diff --git a/Projects/UOContent.Tests/Tests/Custom/DfiCreatureTests.cs b/Projects/UOContent.Tests/Tests/Custom/DfiCreatureTests.cs
+new file mode 100644
+index 000000000..e04409830
+--- /dev/null
++++ b/Projects/UOContent.Tests/Tests/Custom/DfiCreatureTests.cs
+@@ -0,0 +1,159 @@
++using System;
++using System.Collections.Generic;
++using Server;
++using Server.Custom.Dfi;
++using Server.Items;
++using Server.Misc;
++using Server.Mobiles;
++using Xunit;
++
++namespace UOContent.Tests.Custom;
++
++[Collection("Sequential UOContent Tests")]
++public class DfiCreatureTests : IDisposable
++{
++    private readonly List<IEntity> _created = new();
++
++    public DfiCreatureTests()
++    {
++        if (NameList.GetNameList("male") == null)
++        {
++            NameList.Configure();
++        }
++    }
++
++    public static TheoryData<Type> Types =>
++    [
++        typeof(Paladin), typeof(FactionDaemon), typeof(FactionOgreLord), typeof(FactionSilverSerpent), typeof(FactionWisp),
++        typeof(EtherealSkeletalMount), typeof(EtherealWarHorse), typeof(CounselorStaff), typeof(AncientMIB), typeof(AncientSOS)
++    ];
++
++    public void Dispose()
++    {
++        foreach (var e in _created)
++        {
++            if (e is Mobile m)
++            {
++                SphynxFortunes.End(m);
++            }
++
++            e?.Delete();
++        }
++
++        _created.Clear();
++    }
++
++    private T Track<T>(T e) where T : IEntity
++    {
++        _created.Add(e);
++        return e;
++    }
++
++    private PlayerMobile Player()
++    {
++        var m = Track(new PlayerMobile());
++        m.Player = true;
++        m.Body = 0x190;
++        m.AddItem(new Backpack());
++        m.MoveToWorld(new Point3D(1500, 1600, 0), Map.Felucca);
++        return m;
++    }
++
++    [Theory]
++    [MemberData(nameof(Types))]
++    public void Type_Constructs(Type type)
++    {
++        var entity = Track(type.CreateInstance<IEntity>());
++
++        Assert.False(entity.Deleted);
++    }
++
++    [Theory]
++    [InlineData(6, 40, AosAttribute.Luck, 40)]
++    [InlineData(18, 70, AosAttribute.Luck, -70)]
++    [InlineData(7, 15, AosAttribute.EnhancePotions, 15)]
++    [InlineData(19, 5, AosAttribute.DefendChance, -5)]
++    [InlineData(10, 2, AosAttribute.RegenMana, 2)]
++    [InlineData(1, 10, AosAttribute.Luck, 0)]
++    public void Fortune_AddsToItsAttributeOnly(int type, int power, AosAttribute attribute, int expected)
++    {
++        var player = Player();
++
++        SphynxFortunes.Apply(player, type, power, Core.Now.AddHours(1));
++
++        Assert.Equal(expected, SphynxFortunes.GetBonus(player, attribute));
++    }
++
++    [Fact]
++    public void Fortune_ResistanceComesAndGoes()
++    {
++        var player = Player();
++        var before = player.PhysicalResistance;
++
++        SphynxFortunes.Apply(player, 11, 8, Core.Now.AddHours(1));
++        Assert.Equal(before - 8, player.PhysicalResistance);
++
++        SphynxFortunes.End(player);
++        Assert.Equal(before, player.PhysicalResistance);
++        Assert.False(SphynxFortunes.HasFortune(player));
++    }
++
++    [Fact]
++    public void Fortune_OneAtATimeAndItExpires()
++    {
++        var player = Player();
++
++        SphynxFortunes.Apply(player, 6, 40, Core.Now.AddHours(1));
++        SphynxFortunes.Apply(player, 8, 90, Core.Now.AddHours(1));
++        Assert.Equal(40, SphynxFortunes.GetBonus(player, AosAttribute.Luck));
++
++        SphynxFortunes.End(player);
++        SphynxFortunes.Apply(player, 6, 40, Core.Now.AddSeconds(-1));
++        Assert.False(SphynxFortunes.HasFortune(player));
++        Assert.Equal(0, SphynxFortunes.GetBonus(player, AosAttribute.Luck));
++    }
++
++    [Fact]
++    public void Fortune_ReadingAlwaysGivesOne()
++    {
++        for (var i = 0; i < 50; i++)
++        {
++            var player = Player();
++
++            SphynxFortunes.TellFortune(player);
++
++            Assert.True(SphynxFortunes.HasFortune(player));
++        }
++    }
++
++    [Fact]
++    public void Paladin_FightsWithItsOwnAI()
++    {
++        var paladin = Track(new Paladin());
++
++        Assert.IsType<PaladinAI>(paladin.AIObject);
++        Assert.NotNull(paladin.Backpack.FindItemByType<BookOfChivalry>());
++        Assert.Equal(1000, paladin.TithingPoints);
++    }
++
++    [Fact]
++    public void CounselorStaff_RefusesPlayers()
++    {
++        var player = Player();
++        player.RawStr = 100;
++        // The test server loads no tiledata, so the staff gets its layer here.
++        var staff = Track(new CounselorStaff { Layer = Layer.TwoHanded });
++
++        Assert.False(player.EquipItem(staff));
++
++        player.AccessLevel = AccessLevel.Counselor;
++        Assert.True(player.EquipItem(staff));
++    }
++
++    [Fact]
++    public void AncientBottle_HoldsAnAncientSOS()
++    {
++        Assert.Equal(4, Track(new AncientMIB()).Level);
++        Assert.True(Track(new AncientSOS()).IsAncient);
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Mobiles/FactionCreatures.cs b/Projects/UOContent/Custom/DFI/Mobiles/FactionCreatures.cs
+new file mode 100644
+index 000000000..61bd0595f
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Mobiles/FactionCreatures.cs
+@@ -0,0 +1,140 @@
++// DFI Network's faction creatures and items, ported from DFI RUNUO Scripts/Custom/Engines/Faction/Mobiles,
++// Custom/Mobiles/Ethereal Mounts, Custom/Items/Staff/CounselorStaff.cs and Custom/Items/Misc/AncientMIB.cs,
++// AncientSOS.cs. Each faction creature serves one faction and leaves that faction's players alone.
++
++using ModernUO.Serialization;
++using Server.Factions;
++using Server.Items;
++
++namespace Server.Mobiles
++{
++    [SerializationGenerator(0)]
++    public partial class FactionDaemon : Daemon
++    {
++        [Constructible]
++        public FactionDaemon()
++        {
++        }
++
++        public override Faction FactionAllegiance => Shadowlords.Instance;
++
++        public override bool IsEnemy(Mobile m) =>
++            !(m.Player && Faction.Find(m) == Shadowlords.Instance) && base.IsEnemy(m);
++    }
++
++    [SerializationGenerator(0)]
++    public partial class FactionOgreLord : OgreLord
++    {
++        [Constructible]
++        public FactionOgreLord()
++        {
++        }
++
++        public override Faction FactionAllegiance => Minax.Instance;
++
++        public override bool IsEnemy(Mobile m) => !(m.Player && Faction.Find(m) == Minax.Instance) && base.IsEnemy(m);
++    }
++
++    [SerializationGenerator(0)]
++    public partial class FactionSilverSerpent : SilverSerpent
++    {
++        [Constructible]
++        public FactionSilverSerpent()
++        {
++        }
++
++        public override Faction FactionAllegiance => TrueBritannians.Instance;
++
++        public override bool IsEnemy(Mobile m) =>
++            !(m.Player && Faction.Find(m) == TrueBritannians.Instance) && base.IsEnemy(m);
++    }
++
++    [SerializationGenerator(0)]
++    public partial class FactionWisp : Wisp
++    {
++        [Constructible]
++        public FactionWisp()
++        {
++        }
++
++        public override Faction FactionAllegiance => CouncilOfMages.Instance;
++
++        public override bool IsEnemy(Mobile m) =>
++            !(m.Player && Faction.Find(m) == CouncilOfMages.Instance) && base.IsEnemy(m);
++    }
++
++    [SerializationGenerator(0)]
++    public partial class EtherealSkeletalMount : EtherealMount
++    {
++        [Constructible]
++        public EtherealSkeletalMount() : base(9751, 16059)
++        {
++        }
++
++        public override string DefaultName => "Ethereal Skeletal Steed Statuette";
++        public override int EtherealHue => 0;
++    }
++
++    // Only a faction member may ride it.
++    [SerializationGenerator(0)]
++    public partial class EtherealWarHorse : EtherealMount
++    {
++        [Constructible]
++        public EtherealWarHorse() : base(11676, 16018)
++        {
++        }
++
++        public override string DefaultName => "Ethereal War Horse Statuette";
++        public override int EtherealHue => 0;
++
++        public override void OnDoubleClick(Mobile from)
++        {
++            if (Faction.Find(from) == null)
++            {
++                from.SendMessage("You have to be a faction member to use this item!");
++                return;
++            }
++
++            base.OnDoubleClick(from);
++        }
++    }
++}
++
++namespace Server.Items
++{
++    [SerializationGenerator(0)]
++    public partial class CounselorStaff : BlackStaff
++    {
++        [Constructible(AccessLevel.Counselor)]
++        public CounselorStaff()
++        {
++            Hue = 3;
++            Attributes.NightSight = 1;
++        }
++
++        public override string DefaultName => "Counselor's Staff";
++        public override int InitMinHits => 10;
++        public override int InitMaxHits => 10;
++
++        public override bool OnEquip(Mobile from) => from.AccessLevel > AccessLevel.Player && base.OnEquip(from);
++    }
++
++    // A message in a bottle that always holds an ancient SOS.
++    [SerializationGenerator(0)]
++    public partial class AncientMIB : MessageInABottle
++    {
++        [Constructible]
++        public AncientMIB(Map map = null) : base(map ?? Map.Felucca, 4)
++        {
++        }
++    }
++
++    [SerializationGenerator(0)]
++    public partial class AncientSOS : SOS
++    {
++        [Constructible]
++        public AncientSOS(Map map = null) : base(map ?? Map.Felucca, 4)
++        {
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Mobiles/Paladin.cs b/Projects/UOContent/Custom/DFI/Mobiles/Paladin.cs
+new file mode 100644
+index 000000000..d0cc4ff2c
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Mobiles/Paladin.cs
+@@ -0,0 +1,232 @@
++// DFI Network's Paladin, "the Dark Knight", ported from DFI RUNUO Scripts/Custom/Opticon/Paladin AI (Paladin.cs,
++// PaladinAI.cs). DFI's 936-line AI was a copy of the RunUO mage AI casting chivalry; this one keeps what it did
++// in a fight on top of ModernUO's melee AI: cleanse when poisoned, close wounds when hurt, lift curses, and
++// otherwise open with divine fury, enemy of one, consecrate weapon, holy light or dispel evil. Its blows deal a
++// mortal wound one time in ten.
++
++using System;
++using ModernUO.Serialization;
++using Server.Items;
++using Server.Spells;
++using Server.Spells.Chivalry;
++using Server.Spells.Fourth;
++using Server.Spells.First;
++
++namespace Server.Mobiles;
++
++[SerializationGenerator(0)]
++public partial class Paladin : BaseCreature
++{
++    private static readonly TimeSpan PlayerWound = TimeSpan.FromSeconds(6.0);
++    private static readonly TimeSpan CreatureWound = TimeSpan.FromSeconds(12.0);
++
++    [Constructible]
++    public Paladin() : base(AIType.AI_Melee, FightMode.Closest)
++    {
++        Title = "the Dark Knight";
++        Hue = Race.Human.RandomSkinHue();
++        Female = Utility.RandomBool();
++        Body = Female ? 0x191 : 0x190;
++        Name = NameList.RandomName(Female ? "female" : "male");
++        HairItemID = Race.Human.RandomHair(Female);
++        HairHue = Race.Human.RandomHairHue();
++        SetSpeed(0.2, 0.4);
++
++        TithingPoints = 1000;
++
++        SetStr(150);
++        SetDex(100);
++        SetInt(100);
++
++        SetHits(250, 300);
++        SetMana(400);
++
++        SetDamage(10, 20);
++
++        SetDamageType(ResistanceType.Physical, 60);
++        SetDamageType(ResistanceType.Fire, 20);
++        SetDamageType(ResistanceType.Energy, 20);
++
++        SetResistance(ResistanceType.Physical, 65);
++        SetResistance(ResistanceType.Fire, 50);
++        SetResistance(ResistanceType.Cold, 50);
++        SetResistance(ResistanceType.Poison, 100);
++        SetResistance(ResistanceType.Energy, 50);
++
++        SetSkill(SkillName.Chivalry, 95.1, 100.1);
++        SetSkill(SkillName.Focus, 90.1, 100.1);
++        SetSkill(SkillName.Meditation, 100.0);
++        SetSkill(SkillName.MagicResist, 85.1, 95.0);
++        SetSkill(SkillName.Magery, 95.1, 100.0);
++        SetSkill(SkillName.Anatomy, 90.1, 100.1);
++        SetSkill(SkillName.Parry, 85.1, 95.1);
++        SetSkill(SkillName.Tactics, 100.0);
++        SetSkill(SkillName.Swords, 100.0);
++
++        Fame = 5000;
++        Karma = -5000;
++        VirtualArmor = 35;
++
++        var weapon = new VikingSword
++        {
++            DamageLevel = (WeaponDamageLevel)Utility.Random(3, 3),
++            DurabilityLevel = (WeaponDurabilityLevel)Utility.Random(0, 1),
++            AccuracyLevel = (WeaponAccuracyLevel)Utility.Random(3, 3),
++            Skill = SkillName.Swords,
++            Speed = 40,
++            Hue = 0x8A5,
++            Weight = 0.5,
++            Quality = WeaponQuality.Exceptional,
++            Name = "Holy Avenger"
++        };
++        weapon.Attributes.SpellChanneling = 1;
++
++        Wear(weapon);
++        Wear(Female ? new FemalePlateChest { Hue = 0x47E } : new PlateChest { Hue = 0x47E });
++        Wear(new PlateGloves { Hue = 0x47E });
++        Wear(new PlateArms { Hue = 0x47E });
++        Wear(new PlateGorget { Hue = 0x47E });
++        Wear(new PlateHelm { Hue = 0x47E });
++        Wear(new OrderShield());
++        Wear(new PlateLegs { Hue = 0x47E });
++        Wear(new BodySash(0xCF));
++        Wear(new Cloak(0xCF));
++
++        PackItem(new BookOfChivalry { LootType = LootType.Blessed });
++        PackGold(200, 300);
++        PackGem(5, 8);
++        PackGem(3, 6);
++        PackMagicItems(3, 5, 0.50, 0.75);
++        PackMagicItems(3, 5, 0.50, 0.75);
++    }
++
++    public override string CorpseName => "a paladin's corpse";
++    public override Poison PoisonImmune => Poison.Lethal;
++    public override bool AlwaysMurderer => true;
++    public override bool ShowFameTitle => false;
++    public override bool BardImmune => true;
++    public override bool Unprovokable => true;
++    public override bool Uncalmable => true;
++
++    protected override BaseAI ForcedAI => new PaladinAI(this);
++
++    private void Wear(Item item)
++    {
++        item.Movable = false;
++        AddItem(item);
++    }
++
++    // Immune to pets and provoked creatures.
++    public override void AlterMeleeDamageFrom(Mobile from, ref int damage)
++    {
++        if (from is BaseCreature bc && (bc.Controlled || bc.BardTarget == this))
++        {
++            damage = 0;
++        }
++    }
++
++    public override void OnGaveMeleeAttack(Mobile defender, int damage)
++    {
++        base.OnGaveMeleeAttack(defender, damage);
++
++        if (Utility.RandomDouble() < 0.1)
++        {
++            defender.SendLocalizedMessage(1060087); // You have been mortally wounded!
++            defender.PlaySound(0x1E1);
++            defender.FixedParticles(0x37B9, 244, 25, 9944, 31, 0, EffectLayer.Waist);
++            MortalStrike.BeginWound(defender, defender.Player ? PlayerWound : CreatureWound);
++        }
++    }
++}
++
++public class PaladinAI : MeleeAI
++{
++    private long _nextCast;
++
++    public PaladinAI(BaseCreature m) : base(m) => _nextCast = Core.TickCount;
++
++    public override bool Think()
++    {
++        // Every chivalry spell it casts that wants a target is one it means for itself.
++        if (Mobile.Target is SpellTarget<Mobile> target && Mobile.Spell is not null)
++        {
++            target.Invoke(Mobile, Mobile);
++            return true;
++        }
++
++        return base.Think();
++    }
++
++    public override bool DoActionWander()
++    {
++        if (Mobile.Poisoned || Mobile.Hits < Mobile.HitsMax * 0.8)
++        {
++            TryCast(SelfCare());
++        }
++
++        return base.DoActionWander();
++    }
++
++    public override bool DoActionCombat()
++    {
++        var combatant = Mobile.Combatant;
++
++        if (combatant != null && Mobile.InRange(combatant, 12) && Core.TickCount - _nextCast >= 0)
++        {
++            TryCast(SelfCare() ?? Attack(combatant));
++        }
++
++        return base.DoActionCombat();
++    }
++
++    private Spell SelfCare()
++    {
++        if (Mobile.Poisoned)
++        {
++            return new CleanseByFireSpell(Mobile);
++        }
++
++        if (Mobile.Hits < Mobile.HitsMax / 2 && !MortalStrike.IsWounded(Mobile))
++        {
++            return new CloseWoundsSpell(Mobile);
++        }
++
++        if (CurseSpell.UnderEffect(Mobile))
++        {
++            return new RemoveCurseSpell(Mobile);
++        }
++
++        return null;
++    }
++
++    private Spell Attack(Mobile combatant)
++    {
++        // Someone healing with a spell gets the paladin's fury.
++        if (combatant.Spell is GreaterHealSpell or HealSpell)
++        {
++            return new DivineFurySpell(Mobile);
++        }
++
++        return Utility.Random(13) switch
++        {
++            < 3  => new DivineFurySpell(Mobile),
++            < 6  => new EnemyOfOneSpell(Mobile),
++            < 9  => new ConsecrateWeaponSpell(Mobile),
++            < 11 => new HolyLightSpell(Mobile),
++            _    => new DispelEvilSpell(Mobile)
++        };
++    }
++
++    private void TryCast(Spell spell)
++    {
++        if (spell == null || Mobile.Spell?.IsCasting == true || Core.TickCount - _nextCast < 0)
++        {
++            return;
++        }
++
++        if (spell.Cast())
++        {
++            _nextCast = Core.TickCount + Utility.RandomMinMax(4000, 8000);
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Mobiles/Sphynx.cs b/Projects/UOContent/Custom/DFI/Mobiles/Sphynx.cs
+index 1fce78665..d0d8ffe2c 100644
+--- a/Projects/UOContent/Custom/DFI/Mobiles/Sphynx.cs
++++ b/Projects/UOContent/Custom/DFI/Mobiles/Sphynx.cs
+@@ -1,8 +1,10 @@
+-// DFI Network sphynx, ported from DFI RunUO Scripts/Custom/Mobiles/Monsters/Sphynx.cs.
+-// TODO: the paid fortune reading (context menu and gump) needs DFI's PlayerMobile fortune buffs, and
+-// the Felucca copper bar drop needs the event reward system; both are still to be ported.
++// DFI Network sphynx, ported from DFI RunUO Scripts/Custom/Mobiles/Monsters/Sphynx.cs. Players may ask it for
++// their fortune (SphynxFortune.cs); in Felucca it drops a copper bar.
+ 
+ using ModernUO.Serialization;
++using Server.Collections;
++using Server.ContextMenus;
++using Server.Custom.Dfi;
+ 
+ namespace Server.Mobiles;
+ 
+@@ -51,6 +53,26 @@ public Sphynx() : base(AIType.AI_Mage, FightMode.Aggressor)
+     public override Poison PoisonImmune => Poison.Regular;
+     public override bool AutoDispel => true;
+ 
++    public override void GetContextMenuEntries(Mobile from, ref PooledRefList<ContextMenuEntry> list)
++    {
++        base.GetContextMenuEntries(from, ref list);
++
++        if (from is PlayerMobile && !SphynxFortunes.HasFortune(from))
++        {
++            list.Add(new SphynxFortuneEntry());
++        }
++    }
++
++    public override bool OnBeforeDeath()
++    {
++        if (Map == Map.Felucca)
++        {
++            PackItem(new CopperBar());
++        }
++
++        return base.OnBeforeDeath();
++    }
++
+     public override void GenerateLoot()
+     {
+         AddLoot(LootPack.FilthyRich, 3);
+diff --git a/Projects/UOContent/Custom/DFI/Mobiles/SphynxFortune.cs b/Projects/UOContent/Custom/DFI/Mobiles/SphynxFortune.cs
+new file mode 100644
+index 000000000..0063533e3
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Mobiles/SphynxFortune.cs
+@@ -0,0 +1,303 @@
++// The sphynx's paid fortune reading, ported from DFI RUNUO Scripts/Custom/Mobiles/Monsters/SphynxFortuneGump.cs
++// and the Sphynx region of Mobiles/PlayerMobile.cs. For 5,000 gold a player gets one of twenty fortunes for a day:
++// a resistance, luck, enhance potions, defend chance or mana regeneration, raised or lowered. DFI kept the
++// fortune on PlayerMobile; here it is saved alongside, and AosAttributes.GetValue adds the non-resistance ones.
++
++using System;
++using System.Collections.Generic;
++using Server.ContextMenus;
++using Server.Gumps;
++using Server.Items;
++using Server.Mobiles;
++using Server.Network;
++
++namespace Server.Custom.Dfi;
++
++public class SphynxFortunes : GenericPersistence
++{
++    public const int Price = 5000;
++    public static readonly TimeSpan Duration = TimeSpan.FromHours(24.0);
++    private const string ModName = "SphynxFortune";
++
++    private static readonly Dictionary<Mobile, Fortune> _fortunes = [];
++
++    public SphynxFortunes() : base("SphynxFortunes", 10)
++    {
++    }
++
++    public static void Configure()
++    {
++        _ = new SphynxFortunes();
++    }
++
++    public readonly record struct Fortune(int Type, int Power, DateTime Expires);
++
++    public static bool HasFortune(Mobile m) => GetFortune(m) != null;
++
++    public static Fortune? GetFortune(Mobile m)
++    {
++        if (m == null || !_fortunes.TryGetValue(m, out var fortune))
++        {
++            return null;
++        }
++
++        if (fortune.Expires > Core.Now && !m.Deleted)
++        {
++            return fortune;
++        }
++
++        End(m);
++        return null;
++    }
++
++    // DFI's twenty outcomes, half of them blessings and half curses.
++    public static void TellFortune(Mobile m)
++    {
++        var type = Utility.Random(20) + 1;
++
++        var power = type switch
++        {
++            6 or 16   => Utility.RandomMinMax(10, 50),
++            7 or 17   => Utility.RandomMinMax(1, 5) * 5,
++            8 or 18   => Utility.RandomMinMax(50, 100),
++            10 or 20  => Utility.RandomMinMax(1, 3),
++            19        => Utility.RandomMinMax(1, 10),
++            _         => Utility.RandomMinMax(1, 15)
++        };
++
++        Apply(m, type, power, Core.Now + Duration);
++    }
++
++    public static void Apply(Mobile m, int type, int power, DateTime expires)
++    {
++        if (HasFortune(m))
++        {
++            return;
++        }
++
++        m.SendLocalizedMessage(type switch
++        {
++            1  => 1060886, // Your endurance shall protect you from your enemies blows.
++            2  => 1060887, // A smile will be upon your lips, as you gaze into the infernos.
++            3  => 1060888, // The ice of ages will embrace you, and you will embrace it alike.
++            4  => 1060889, // Your blood runs pure and strong.
++            5  => 1060890, // Your flesh shall endure the power of storms.
++            6  => 1060891, // Seek riches and they will seek you.
++            7  => 1060892, // The power of alchemy shall thrive within you.
++            8  => 1060893, // Fate smiles upon you this day.
++            9  => 1060894, // A keen mind in battle will help you avoid injury.
++            10 => 1060895, // The flow of the ether is strong within you.
++            11 => 1060901, // Your wounds in battle shall run deep.
++            12 => 1060902, // The fires of the abyss shall tear asunder your flesh!
++            13 => 1060903, // Winter's touch shall be your undoing.
++            14 => 1060904, // Your veins will freeze with poison's chill.
++            15 => 1060905, // The wise will seek to avoid the anger of storms.
++            16 => 1060906, // Your dreams of wealth shall vanish like smoke.
++            17 => 1060907, // The strength of alchemy will fail you.
++            18 => 1060908, // Only fools take risks in fate's shadow.
++            19 => 1060909, // Your lack of focus in battle shall be your undoing.
++            _  => 1060910  // Your connection with the ether is weak, take heed.
++        });
++
++        _fortunes[m] = new Fortune(type, power, expires);
++        AddResistance(m, type, power);
++        m.Delta(MobileDelta.Stat);
++    }
++
++    private static void AddResistance(Mobile m, int type, int power)
++    {
++        var (resistance, sign) = type switch
++        {
++            1 or 11  => (ResistanceType.Physical, 1),
++            2 or 12  => (ResistanceType.Fire, 1),
++            3 or 13  => (ResistanceType.Cold, 1),
++            4 or 14  => (ResistanceType.Poison, 1),
++            5 or 15  => (ResistanceType.Energy, 1),
++            _        => (ResistanceType.Physical, 0)
++        };
++
++        if (sign == 0)
++        {
++            return;
++        }
++
++        m.RemoveResistanceMod(ModName);
++        m.AddResistanceMod(new ResistanceMod(resistance, ModName, type > 10 ? -power : power));
++    }
++
++    public static void End(Mobile m)
++    {
++        if (_fortunes.Remove(m))
++        {
++            m.RemoveResistanceMod(ModName);
++            m.Delta(MobileDelta.Stat);
++        }
++    }
++
++    // What the fortune adds to an attribute; AosAttributes.GetValue calls this for every attribute it sums.
++    public static int GetBonus(Mobile m, AosAttribute attribute)
++    {
++        if (_fortunes.Count == 0 || GetFortune(m) is not { } f)
++        {
++            return 0;
++        }
++
++        return (attribute, f.Type) switch
++        {
++            (AosAttribute.Luck, 6 or 8)             => f.Power,
++            (AosAttribute.Luck, 16 or 18)           => -f.Power,
++            (AosAttribute.EnhancePotions, 7)        => f.Power,
++            (AosAttribute.EnhancePotions, 17)       => -f.Power,
++            (AosAttribute.DefendChance, 9)          => f.Power,
++            (AosAttribute.DefendChance, 19)         => -f.Power,
++            (AosAttribute.RegenMana, 10)            => f.Power,
++            (AosAttribute.RegenMana, 20)            => -f.Power,
++            _                                       => 0
++        };
++    }
++
++    public override void Serialize(IGenericWriter writer)
++    {
++        writer.WriteEncodedInt(0); // version
++
++        var live = new List<(Mobile, Fortune)>();
++
++        foreach (var (m, f) in _fortunes)
++        {
++            if (!m.Deleted && f.Expires > Core.Now)
++            {
++                live.Add((m, f));
++            }
++        }
++
++        writer.WriteEncodedInt(live.Count);
++
++        foreach (var (m, f) in live)
++        {
++            writer.Write(m);
++            writer.WriteEncodedInt(f.Type);
++            writer.WriteEncodedInt(f.Power);
++            writer.Write(f.Expires);
++        }
++    }
++
++    public override void Deserialize(IGenericReader reader)
++    {
++        reader.ReadEncodedInt(); // version
++
++        var count = reader.ReadEncodedInt();
++
++        for (var i = 0; i < count; i++)
++        {
++            var m = reader.ReadEntity<Mobile>();
++            var type = reader.ReadEncodedInt();
++            var power = reader.ReadEncodedInt();
++            var expires = reader.ReadDateTime();
++
++            if (m != null && expires > Core.Now)
++            {
++                _fortunes[m] = new Fortune(type, power, expires);
++                Timer.DelayCall(() => AddResistance(m, type, power));
++            }
++        }
++    }
++}
++
++public class SphynxFortuneEntry : ContextMenuEntry
++{
++    public SphynxFortuneEntry() : base(6199, 8) // Ask for my fortune
++    {
++    }
++
++    public override void OnClick(Mobile from, IEntity target)
++    {
++        if (target is Sphynx sphynx && from is PlayerMobile && !SphynxFortunes.HasFortune(from))
++        {
++            from.SendGump(new SphynxFortuneGump(sphynx), true);
++        }
++    }
++}
++
++public class SphynxFortuneGump : StaticGump<SphynxFortuneGump>
++{
++    private readonly Sphynx _sphynx;
++
++    public SphynxFortuneGump(Sphynx sphynx) : base(150, 50) => _sphynx = sphynx;
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref StaticGumpBuilder builder)
++    {
++        builder.SetNoClose();
++        builder.SetNoDispose();
++        builder.AddPage();
++
++        builder.AddImage(0, 0, 3600);
++        builder.AddImageTiled(0, 14, 15, 200, 3603);
++        builder.AddImageTiled(380, 14, 14, 200, 3605);
++        builder.AddImage(0, 201, 3606);
++        builder.AddImageTiled(15, 201, 370, 16, 3607);
++        builder.AddImageTiled(15, 0, 370, 16, 3601);
++        builder.AddImage(380, 0, 3602);
++        builder.AddImage(380, 201, 3608);
++        builder.AddImageTiled(15, 15, 365, 190, 2624);
++
++        builder.AddRadio(30, 140, 9727, 9730, false, 1);
++        builder.AddHtmlLocalized(65, 145, 300, 25, 1060863, 32767); // Pay for the reading.
++        builder.AddRadio(30, 175, 9727, 9730, true, 2);
++        builder.AddHtmlLocalized(65, 178, 300, 25, 1060862, 32767); // No thanks. I decide my own destiny!
++
++        // Interested in your fortune, are you?  The ancient Sphynx can read the future for you - for a price of course...
++        builder.AddHtmlLocalized(30, 20, 360, 35, 1060864, 32767);
++        builder.AddImage(65, 72, 5605);
++        builder.AddImageTiled(80, 90, 200, 1, 9107);
++        builder.AddImageTiled(95, 92, 200, 1, 9157);
++        builder.AddLabel(90, 70, 140, "5000");
++        builder.AddHtmlLocalized(140, 70, 100, 25, 1023823, 32767); // gold coins
++        builder.AddButton(290, 175, 247, 248, 1);
++
++        builder.AddImageTiled(15, 14, 365, 1, 9107);
++        builder.AddImageTiled(380, 14, 1, 190, 9105);
++        builder.AddImageTiled(15, 205, 365, 1, 9107);
++        builder.AddImageTiled(15, 14, 1, 190, 9105);
++        builder.AddImageTiled(0, 0, 395, 1, 9157);
++        builder.AddImageTiled(394, 0, 1, 217, 9155);
++        builder.AddImageTiled(0, 216, 395, 1, 9157);
++        builder.AddImageTiled(0, 0, 1, 217, 9155);
++
++        // Do you accept this offer?  The funds will be withdrawn from your backpack.
++        builder.AddHtmlLocalized(30, 105, 340, 40, 1060865, 0x5B2D);
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        var m = sender.Mobile;
++
++        if (_sphynx.Deleted || m == null)
++        {
++            return;
++        }
++
++        if (info.ButtonID != 1 || !info.IsSwitched(1))
++        {
++            m.SendLocalizedMessage(1061007); // You decide against having your fortune told.
++            return;
++        }
++
++        if (SphynxFortunes.HasFortune(m))
++        {
++            return;
++        }
++
++        if (m.Backpack?.ConsumeTotal(typeof(Gold), SphynxFortunes.Price) == true)
++        {
++            m.SendLocalizedMessage(1060867); // You pay the fee.
++            SphynxFortunes.TellFortune(m);
++        }
++        else
++        {
++            // You haven't got the coin to make the proper donation to the Sphynx.  Your fortune has not been read.
++            m.SendLocalizedMessage(1061006);
++        }
++    }
++}
+diff --git a/Projects/UOContent/Misc/AOS.cs b/Projects/UOContent/Misc/AOS.cs
+index 6a9ec278c..6daa526d8 100644
+--- a/Projects/UOContent/Misc/AOS.cs
++++ b/Projects/UOContent/Misc/AOS.cs
+@@ -707,7 +707,7 @@ public static int GetValue(Mobile m, AosAttribute attribute)
+                 }
+             }
+ 
+-            return value;
++            return value + Server.Custom.Dfi.SphynxFortunes.GetBonus(m, attribute);
+         }
+ 
+         public override string ToString() => "...";
