@@ -618,6 +618,30 @@ reads its direction from its target. `DfiLostLandsTests.cs` covers the zone,
 prices, insurance, the gate's costs, refusals and passage, gems for gold, the
 shop and the knight.
 
+### `patches/0021-dfi-lottery-poker.patch`
+
+DFI's lottery and video poker, from `Scripts/Custom/Engines/LotterySystem` and
+`Custom/Engines/PokerSystem`. `[DfiGames` places a lottery master and the three
+poker machines on Britain's main street, by the Lost Lands gate.
+
+- **The lottery**: at a lottery master, pick four numbers from 1 to 49 per
+  ticket, up to five tickets at 100 gp each from the bank. The drawing is
+  every day at 17:00 UTC: 5,000 gp for two correct numbers, 30,000 for three,
+  and the jackpot, 80% of the money in the system (never under a million),
+  split between all four-number tickets. Winnings go to the bank and the
+  report waits at the lottery master. Lottery masters advertise every minute.
+- **Poker machines** (low 10-50 gp, medium 100-500, high 1,000-5,000 bets):
+  five-card draw paid from the backpack or the bank. Hold any cards and draw
+  once; a pair or better pays DFI's table times the bet, and a royal flush
+  takes a third of the machine's gold. Winnings go to the bank, and machines
+  under 50,000 gold refill every two hours.
+
+GUO's choices: the poker hands are scored by one evaluator over DFI's nine
+hands (DFI's checks tested sorted card positions); the drawing is at 17:00
+UTC (DFI used the server's local time). `DfiGamesTests.cs` covers every
+poker hand, dealing and holding, payouts, bets, buying, refunds and drawing
+lottery tickets, and the jackpot split.
+
 ### Retired
 
 `0004-multi-tile-enumerator` fixed tile lookups that stopped at a multi with no
