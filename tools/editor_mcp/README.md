@@ -161,3 +161,4 @@ help are valid. Rebuild the dependency through `launchers/shard/fetch.bat` and
 `launchers/shard/build.bat` (or `.sh`), then provision the private shard from that
 build and reinstall its bridge. The Admin acceptance check deliberately requires
 real `[where` output and retains dangerous-command confirmation checks.
+multi_layer_preview and approved multi_layer_edit share the manual Layers panel operations. Read multi_document for Revision and selection_key; stale edits are rejected. See [layered multi editing](../../docs/layered_multi_editor.md).

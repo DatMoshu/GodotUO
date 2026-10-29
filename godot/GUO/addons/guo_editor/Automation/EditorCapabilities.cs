@@ -184,8 +184,27 @@ internal static class EditorCapabilities
         {
             MultiDocument d = ctx.MultiEdit?.Doc ?? throw new InvalidOperationException("Multi Editor unavailable");
             int offset = Num(a, "offset", 0, 0, int.MaxValue), limit = Num(a, "limit", 50, 1, 100);
-            return Json(new { d.Name, d.Source, total = d.Parts.Count, d.CanUndo, d.CanRedo, components = d.Parts.Skip(offset).Take(limit).Select(p => new { p.Uid, p.Id, p.X, p.Y, p.Z, p.Shown, p.Hue }) });
+            return Json(new { d.Name, d.Source, total = d.Parts.Count, d.Revision, layers = d.Layers, d.ActiveLayerId, selection_key = string.Join(",", d.Selection.OrderBy(id => id)), d.CanUndo, d.CanRedo, components = d.Parts.Skip(offset).Take(limit).Select(p => new { p.Uid, p.Id, p.X, p.Y, p.Z, p.Shown, p.Hue, p.LayerId }) });
         }, true, ("offset", "integer"), ("limit", "integer"));
+        foreach (bool preview in new[] { true, false })
+        {
+            Add(preview ? "multi_layer_preview" : "multi_layer_edit",
+                "Layer operation: create, rename, visible, lock, activate, select, assign, move or replace. Supply expected_revision from multi_document; assign also requires its selection_key. Preview never changes state; edits require approval.",
+                a =>
+                {
+                    var d = ctx.MultiEdit.Doc;
+                    if (Str(a, "action") == "assign" && Str(a, "selection_key", "<missing>") != string.Join(",", d.Selection.OrderBy(id => id)))
+                        throw new InvalidOperationException("Selection changed. Read multi_document again.");
+                    return Json(d.EditLayer(
+                    (long?)a["expected_revision"] ?? throw new ArgumentException("expected_revision is required"),
+                    Str(a, "action"), (int?)a["layer_id"] ?? 0, Str(a, "name"),
+                    (int?)a["dx"] ?? 0, (int?)a["dy"] ?? 0, (int?)a["dz"] ?? 0,
+                    (int?)a["tile"] ?? -1, (int?)a["replacement"] ?? -1, Bool(a, "value"), !preview));
+                },
+                preview, ("expected_revision", "integer"), ("action", "string"), ("layer_id", "integer"),
+                ("name", "string"), ("dx", "integer"), ("dy", "integer"), ("dz", "integer"),
+                ("tile", "integer"), ("replacement", "integer"), ("value", "boolean"), ("selection_key", "string"));
+        }
         Add("multi_validate", "Validate the active multi with the editor's existing tiledata and house legality rules.", _ =>
         {
             if (ctx.Data?.IsLoaded != true) throw new InvalidOperationException("UO data is not loaded");

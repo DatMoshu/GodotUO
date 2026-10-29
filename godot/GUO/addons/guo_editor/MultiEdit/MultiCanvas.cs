@@ -258,6 +258,7 @@ public partial class MultiCanvas : Control
     /// <summary>Whether a part is drawn and how opaque, by the client's vision rules and the cut/z filters.</summary>
     public (bool Visible, float Alpha) Display(MultiPart p)
     {
+        if (!_doc.LayerVisible(p.LayerId)) return (false, 0);
         if (p.Z < ZMin || p.Z > ZMax)
         {
             return (false, 0);

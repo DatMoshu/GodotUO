@@ -13,6 +13,7 @@ public struct MultiPart
     public short X, Y, Z;
     public bool Shown;
     public ushort Hue;
+    public int LayerId;
     /// <summary>Original signed Fiddler TXT/UOA flags. Native flags have a separate contract.</summary>
     public int? TextFlags;
     /// <summary>Original signed Fiddler CSV Unk1. Native translation is separate.</summary>
@@ -20,7 +21,7 @@ public struct MultiPart
     public readonly int ExportTextFlags => TextFlags is int raw && (raw != 0) == Shown ? raw : (Shown ? 1 : 0);
 
     public readonly bool SameAs(in MultiPart o) =>
-        Id == o.Id && X == o.X && Y == o.Y && Z == o.Z && Shown == o.Shown && Hue == o.Hue && TextFlags == o.TextFlags && TextExtra == o.TextExtra;
+        Id == o.Id && X == o.X && Y == o.Y && Z == o.Z && Shown == o.Shown && Hue == o.Hue && TextFlags == o.TextFlags && TextExtra == o.TextExtra && LayerId == o.LayerId;
 }
 
 /// <summary>The client's story heights: floor n is at z 7 + 20 n, the foundation below 7.</summary>
@@ -41,11 +42,11 @@ public static class Stories
 /// history keeps a snapshot per action, so the list can jump to any state and redo survives a jump back.
 /// Selection is by part identity and is not history.
 /// </summary>
-public sealed class MultiDocument
+public sealed partial class MultiDocument
 {
     public const int HistoryCap = 500;
 
-    private sealed record Snap(string Name, MultiPart[] Parts);
+    private sealed record Snap(string Name, MultiPart[] Parts, MultiLayer[] Layers);
 
     private readonly List<Snap> _history = new();
     private int _cursor;
@@ -72,26 +73,29 @@ public sealed class MultiDocument
     public bool CanRedo => _cursor < _history.Count - 1;
 
     /// <summary>Starts again from these parts with a fresh history.</summary>
-    public void Reset(IEnumerable<MultiPart> parts, string what)
+    public void Reset(IEnumerable<MultiPart> parts, string what, IEnumerable<MultiLayer> layers = null)
     {
+        Layers = layers?.ToList() ?? new() { new MultiLayer(0, "Components") };
+        ActiveLayerId = Layers[0].Id;
         Parts = new List<MultiPart>();
         foreach (MultiPart p in parts)
         {
             MultiPart q = p;
             q.Uid = _nextUid++;
+            if (!Layers.Any(l => l.Id == q.LayerId)) q.LayerId = ActiveLayerId;
             Parts.Add(q);
         }
 
         Selection.Clear();
         _history.Clear();
-        _history.Add(new Snap(what, Parts.ToArray()));
+        _history.Add(new Snap(what, Parts.ToArray(), Layers.ToArray()));
         _cursor = 0;
         Revision++;
         Changed?.Invoke();
     }
 
     public MultiPart Make(ushort id, int x, int y, int z, bool shown = true, ushort hue = 0, int? textFlags = null, int? textExtra = null) =>
-        new() { Uid = _nextUid++, Id = id, X = (short)x, Y = (short)y, Z = (short)z, Shown = shown, Hue = hue, TextFlags = textFlags, TextExtra = textExtra };
+        new() { Uid = _nextUid++, Id = id, X = (short)x, Y = (short)y, Z = (short)z, Shown = shown, Hue = hue, TextFlags = textFlags, TextExtra = textExtra, LayerId = ActiveLayerId };
 
     /// <summary>
     /// One named transaction. <paramref name="change"/> edits <see cref="Parts"/>; nothing is recorded when
@@ -100,8 +104,29 @@ public sealed class MultiDocument
     public bool Do(string name, Action<List<MultiPart>> change)
     {
         MultiPart[] before = Parts.ToArray();
-        change(Parts);
-        if (SameParts(before, Parts))
+        MultiLayer[] beforeLayers = Layers.ToArray();
+        LastEditError = null;
+        try
+        {
+            change(Parts);
+            var next = Parts.ToDictionary(p => p.Uid);
+            var oldIds = before.Select(p => p.Uid).ToHashSet();
+            if (before.Any(p => beforeLayers.Any(l => l.Id == p.LayerId && l.Locked)
+                && (!next.TryGetValue(p.Uid, out var q) || !p.SameAs(q)))
+                || Parts.Any(p => (!oldIds.Contains(p.Uid) || before.Any(q => q.Uid == p.Uid && q.LayerId != p.LayerId))
+                    && Layers.Any(l => l.Id == p.LayerId && l.Locked)))
+                throw new InvalidOperationException("Unlock the affected layer before editing its components.");
+            if (Parts.Any(p => !Layers.Any(l => l.Id == p.LayerId)))
+                throw new InvalidOperationException("A component refers to a missing layer.");
+        }
+        catch (Exception ex)
+        {
+            Parts = before.ToList();
+            Layers = beforeLayers.ToList();
+            LastEditError = ex.Message;
+            return false;
+        }
+        if (SameParts(before, Parts) && beforeLayers.SequenceEqual(Layers))
         {
             return false;
         }
@@ -111,7 +136,7 @@ public sealed class MultiDocument
             _history.RemoveRange(_cursor + 1, _history.Count - _cursor - 1);
         }
 
-        _history.Add(new Snap(name, Parts.ToArray()));
+        _history.Add(new Snap(name, Parts.ToArray(), Layers.ToArray()));
         if (_history.Count > HistoryCap)
         {
             _history.RemoveAt(0);
@@ -138,6 +163,8 @@ public sealed class MultiDocument
 
         _cursor = index;
         Parts = _history[index].Parts.ToList();
+        Layers = _history[index].Layers.ToList();
+        if (!Layers.Any(l => l.Id == ActiveLayerId)) ActiveLayerId = Layers[0].Id;
         PruneSelection();
         Revision++;
         Changed?.Invoke();

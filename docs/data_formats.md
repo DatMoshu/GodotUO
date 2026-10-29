@@ -4123,3 +4123,7 @@ The effective performance cohort requires boolean `atlas_page_1024` and
 comparison without replacing its baseline; intentionally varied flags require
 explicit experiment arms. Older incomplete receipts need a fresh baseline.
 This metadata change does not authorize benchmarking.
+
+### Layered multi authoring metadata (components format 1)
+
+The optional editor_layers version-1 extension preserves named layer IDs, visibility, locks and a component-order membership array. Legacy descriptions remain one-layer documents; native writers consume the unchanged components array. See [layered multi editing](layered_multi_editor.md) for the schema and shared editing API. Editor-hidden layers still export; retain the authoring JSON for future edits.

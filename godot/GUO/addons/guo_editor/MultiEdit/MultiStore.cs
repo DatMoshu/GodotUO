@@ -109,6 +109,16 @@ internal static class MultiStore
         return path;
     }
 
+    public static string SaveDocument(string name, MultiDocument doc)
+    {
+        Directory.CreateDirectory(EditDir);
+        string path = Path.Combine(EditDir, SafeName(name) + ".multi.json");
+        string temporary = path + ".tmp";
+        File.WriteAllText(temporary, MultiLayerCodec.Encode(doc, ToJson(name, doc.Source, doc.Parts)), new UTF8Encoding(false));
+        File.Move(temporary, path, true);
+        return path;
+    }
+
     // --- the stage ---------------------------------------------------------------------
 
     /// <summary>The stage's MultiCollection.uop (or multi.mul) read back: id to parts. Null when the stage has neither.</summary>

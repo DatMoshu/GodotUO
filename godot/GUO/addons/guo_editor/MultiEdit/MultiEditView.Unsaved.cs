@@ -59,6 +59,8 @@ public partial class MultiEditView
             h.Add(p.Hue);
         }
 
+        foreach (var layer in _doc.Layers) h.Add(layer);
+        foreach (var p in _doc.Parts) { h.Add(p.LayerId); h.Add(p.TextFlags); h.Add(p.TextExtra); }
         return h.ToHashCode();
     }
 
@@ -167,7 +169,7 @@ public partial class MultiEditView
     /// <summary>Writes the document beside the other descriptions as NAME.recovery.multi.json (a close with changes does this).</summary>
     public string SaveRecovery()
     {
-        string path = MultiStore.SaveDescription(MultiStore.SafeName(_doc.Name) + ".recovery", _doc.Source, _doc.Parts);
+        string path = MultiStore.SaveDocument(MultiStore.SafeName(_doc.Name) + ".recovery", _doc);
         _status.Text = $"unsaved changes were kept in {Path.GetFileName(path)}";
         return path;
     }

@@ -385,6 +385,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
 
     private void BuildTabs()
     {
+        BuildLayersTab();
         _partsList = new ItemList { Name = "Parts", SelectMode = ItemList.SelectModeEnum.Multi, SizeFlagsVertical = SizeFlags.ExpandFill, TextureFilter = TextureFilterEnum.Nearest };
         _partsList.MultiSelected += (_, _) => SelectFromParts();
         _tabs.AddChild(_partsList);
@@ -503,6 +504,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
 
     private void OnDocChanged()
     {
+        RefreshLayers();
         _dirty = true;
         _since = 0;
         _stamp++;
@@ -668,10 +670,10 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
         return true;
     }
 
-    public void OpenParts(string name, IEnumerable<MultiPart> parts, int? source = null)
+    public void OpenParts(string name, IEnumerable<MultiPart> parts, int? source = null, IEnumerable<MultiLayer> layers = null)
     {
         CloseFromWorld();
-        _doc.Reset(parts, $"open {name}");
+        _doc.Reset(parts, $"open {name}", layers);
         _doc.Name = name;
         _doc.Source = source;
         _name.Text = name;
@@ -685,8 +687,10 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
     {
         try
         {
-            (string name, int? source, List<MultiPart> parts) = MultiStore.FromJson(File.ReadAllText(path));
-            OpenParts(name, parts, source);
+            string json = File.ReadAllText(path);
+            (string name, int? source, List<MultiPart> parts) = MultiStore.FromJson(json);
+            var layers = MultiLayerCodec.Decode(json, parts);
+            OpenParts(name, parts, source, layers);
             MarkSaved(path);
             return true;
         }
@@ -720,7 +724,7 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
     public string SaveDescription()
     {
         string name = _name.Text.Trim().Length > 0 ? _name.Text.Trim() : _doc.Name;
-        string path = MultiStore.SaveDescription(name, _doc.Source, _doc.Parts);
+        string path = MultiStore.SaveDocument(name, _doc);
         _saveLog.Text = $"saved {path}";
         _doc.Name = name;
         MarkSaved(path);

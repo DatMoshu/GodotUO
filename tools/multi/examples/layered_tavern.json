@@ -1,0 +1,259 @@
+{
+  "format": 1,
+  "name": "layered_tavern",
+  "size": [
+    12,
+    10
+  ],
+  "materials": {
+    "wall": "plaster",
+    "foundation": "stone",
+    "floor": "wooden",
+    "steps": "stone",
+    "roof": "slate",
+    "stairs": "wooden"
+  },
+  "storeys": [
+    {
+      "openings": [
+        {
+          "kind": "door",
+          "side": "S",
+          "offset": 6
+        },
+        {
+          "kind": "window",
+          "side": "S",
+          "offset": 2
+        },
+        {
+          "kind": "window",
+          "side": "S",
+          "offset": 10
+        },
+        {
+          "kind": "window",
+          "side": "E",
+          "offset": 4
+        },
+        {
+          "kind": "window",
+          "side": "W",
+          "offset": 4
+        }
+      ],
+      "stairs": [
+        {
+          "at": [
+            10,
+            8
+          ],
+          "rise": "N"
+        }
+      ]
+    },
+    {
+      "openings": [
+        {
+          "kind": "window",
+          "side": "S",
+          "offset": 3
+        },
+        {
+          "kind": "window",
+          "side": "S",
+          "offset": 9
+        },
+        {
+          "kind": "window",
+          "side": "E",
+          "offset": 4
+        },
+        {
+          "kind": "window",
+          "side": "W",
+          "offset": 4
+        },
+        {
+          "kind": "door",
+          "at": [
+            6,
+            5
+          ]
+        }
+      ],
+      "partitions": [
+        {
+          "x": 6,
+          "from": 0,
+          "to": 10
+        }
+      ]
+    }
+  ],
+  "roof": {
+    "style": "gable",
+    "ridge": "y"
+  },
+  "yard": {
+    "box": [
+      -3,
+      -3,
+      15,
+      14
+    ],
+    "fence": "wooden fence",
+    "height": 6,
+    "gate": {
+      "side": "S",
+      "offset": 9
+    },
+    "path": "cobblestones"
+  },
+  "decor": [
+    {
+      "item": "0x0c84",
+      "at": [
+        -1,
+        12
+      ]
+    },
+    {
+      "item": "0x0c85",
+      "at": [
+        0,
+        12
+      ]
+    },
+    {
+      "item": "0x0c83",
+      "at": [
+        1,
+        12
+      ]
+    },
+    {
+      "item": "0x0e77",
+      "at": [
+        2,
+        2
+      ],
+      "storey": 0
+    },
+    {
+      "item": "0x0e77",
+      "at": [
+        3,
+        2
+      ],
+      "storey": 0
+    },
+    {
+      "item": "0x0b7d",
+      "at": [
+        3,
+        4
+      ],
+      "storey": 0
+    },
+    {
+      "item": "0x0b2c",
+      "at": [
+        2,
+        4
+      ],
+      "storey": 0
+    },
+    {
+      "item": "0x0995",
+      "at": [
+        3,
+        4
+      ],
+      "storey": 0,
+      "z": 6
+    },
+    {
+      "item": "0x0b7d",
+      "at": [
+        3,
+        7
+      ],
+      "storey": 0
+    },
+    {
+      "item": "0x0b2c",
+      "at": [
+        2,
+        7
+      ],
+      "storey": 0
+    },
+    {
+      "item": "0x0995",
+      "at": [
+        3,
+        7
+      ],
+      "storey": 0,
+      "z": 6
+    },
+    {
+      "item": "0x0b7d",
+      "at": [
+        8,
+        3
+      ],
+      "storey": 0
+    },
+    {
+      "item": "0x0b2c",
+      "at": [
+        7,
+        3
+      ],
+      "storey": 0
+    },
+    {
+      "item": "0x0995",
+      "at": [
+        8,
+        3
+      ],
+      "storey": 0,
+      "z": 6
+    },
+    {
+      "item": "0x0a2c",
+      "at": [
+        2,
+        2
+      ],
+      "storey": 1
+    },
+    {
+      "item": "0x0a2c",
+      "at": [
+        8,
+        2
+      ],
+      "storey": 1
+    },
+    {
+      "item": "0x0a59",
+      "at": [
+        3,
+        2
+      ],
+      "storey": 1
+    },
+    {
+      "item": "0x0a59",
+      "at": [
+        9,
+        2
+      ],
+      "storey": 1
+    }
+  ]
+}

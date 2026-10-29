@@ -143,6 +143,10 @@ internal sealed class OrderedWorldCapture : IDisposable
         return reader.ReadToEnd();
     }
 
+    // Keep the exact native callable identity through editor assembly serialization.
+    private readonly OrderedWorldDrawHook _drawHook;
+    private readonly Callable _beforeDraw;
+
     internal OrderedWorldCapture(ShaderMaterial spriteMaterial, ShaderMaterial meshMaterial)
     {
         _fallback = new OrderedWorldCanvas(spriteMaterial, meshMaterial);
@@ -151,7 +155,9 @@ internal sealed class OrderedWorldCapture : IDisposable
         if (Resident != null)
             _residentVertexSource = ShaderSource("depth_world_resident_vertex.glsl.txt");
         _render = Callable.From(RenderThread);
-        RenderingServer.FramePreDraw += BeforeDraw;
+        _drawHook = new OrderedWorldDrawHook { Draw = BeforeDraw };
+        _beforeDraw = new Callable(_drawHook, nameof(OrderedWorldDrawHook.Dispatch));
+        RenderingServer.Singleton.Connect(RenderingServer.SignalName.FramePreDraw, _beforeDraw);
     }
 
     internal bool Begin(Vector2I size, Transform2D transform, Texture2D hue, Texture2D light,
@@ -497,7 +503,10 @@ internal sealed class OrderedWorldCapture : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        RenderingServer.FramePreDraw -= BeforeDraw;
+        if (RenderingServer.Singleton.IsConnected(RenderingServer.SignalName.FramePreDraw, _beforeDraw))
+            RenderingServer.Singleton.Disconnect(RenderingServer.SignalName.FramePreDraw, _beforeDraw);
+        _drawHook.Draw = null;
+        _drawHook.Dispose();
         // Queued after outstanding callbacks; their immutable lists remain alive until then.
         RenderingServer.CallOnRenderThread(Callable.From(() =>
         {

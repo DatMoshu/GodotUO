@@ -372,6 +372,7 @@ public partial class EditorSmoke
         MeCheck("from_world_bar_closes_on_new", view.FromWorldNotice == "");
         await RunMultiEditPhase2Async(view, root, floorId);
 
+        await CheckLayeredTavern(view, root);
         await SplatWorldCheckAsync();
 
         // The install's multi file is as it was.

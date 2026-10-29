@@ -238,6 +238,13 @@ public partial class EditorSmoke : Node
                 if (_data.IsLoaded || _data.Error != null)
                 {
                     CheckLoaded();
+                    if (System.Environment.GetEnvironmentVariable("GUO_LAYERED_MULTI_ONLY") == "1")
+                    {
+                        _meReport["ok"] = true;
+                        _meTask = CheckLayeredTavern(MultiEdit, _out);
+                        _stage = 181;
+                        break;
+                    }
                     if (ArgValue("--guo-editor-multi-inspect") is string multiText)
                     {
                         InspectMulti(multiText);
@@ -280,6 +287,16 @@ public partial class EditorSmoke : Node
 
                 break;
 
+            case 181:
+                if (_meTask.IsCompleted)
+                {
+                    if (_meTask.IsFaulted) MeCheck("layered_completed", false, _meTask.Exception.GetBaseException().ToString());
+                    if (_meTask.IsCanceled) MeCheck("layered_completed", false, "cancelled");
+                    _report["multiedit"] = _meReport;
+                    if (_reloadTest && !_afterReload && _failures.Count == 0) { RequestReload(); _stage = 4; }
+                    else Finish();
+                }
+                break;
             case 70:
                 if (_frames > 45)
                 {
