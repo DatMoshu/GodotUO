@@ -196,7 +196,7 @@ namespace GUO.Game.UI.Gumps
         // video
         private Checkbox _use_old_status_gump, _statusGumpBarMutuallyExclusive, _windowBorderless, _enableDeathScreen, _enableBlackWhiteEffect, _altLights, _enableLight, _enableShadows, _enableShadowsStatics, _auraMouse, _runMouseInSeparateThread, _useColoredLights, _darkNights, _partyAura, _hideChatGradient, _animatedWaterEffect;
         private Checkbox _enhancedHD; // PORT DEVIATION (GUO): Enhanced HD repaint detail
-        private Checkbox _lightingSpeedMode; // PORT DEVIATION (GUO): ADR-0046
+        private Checkbox _lightingSpeedMode; // PORT DEVIATION (GUO): ADR-0048
         private Checkbox _realtimeLights; // PORT DEVIATION (GUO): Realtime lights (ADR-0039)
         private Combobox _lightLevelType;
         private Combobox _hdFilter; // PORT DEVIATION (GUO): optional HD pack sampling.
@@ -2143,7 +2143,7 @@ namespace GUO.Game.UI.Gumps
                 )
             );
 
-            // PORT DEVIATION (GUO): ADR-0046, capability reason remains visible.
+            // PORT DEVIATION (GUO): ADR-0048, capability reason remains visible.
             section4.Add(_lightingSpeedMode = AddCheckBox(null,
                 "Lighting speed mode (GPU per-pixel lights)", _currentProfile.LightingSpeedMode, startX, startY));
             _lightingSpeedMode.IsEnabled = Renderer.SpeedMode.SpeedModeDebug.Supported;
@@ -4802,7 +4802,7 @@ namespace GUO.Game.UI.Gumps
             }
 
             _currentProfile.HdFilter = (HdFilterMode)Math.Clamp(_hdFilter.SelectedIndex, 0, 3);
-            _currentProfile.LightingSpeedMode = _lightingSpeedMode.IsChecked; // PORT DEVIATION (GUO): ADR-0046
+            _currentProfile.LightingSpeedMode = _lightingSpeedMode.IsChecked; // PORT DEVIATION (GUO): ADR-0048
             _currentProfile.RealtimeLights = _realtimeLights.IsChecked; // PORT DEVIATION (GUO): ADR-0039
 
             // PORT DEVIATION (GUO): the renderer rebuilds the meshes when it sees the change.

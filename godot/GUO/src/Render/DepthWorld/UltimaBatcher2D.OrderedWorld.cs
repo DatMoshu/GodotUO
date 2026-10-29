@@ -12,6 +12,9 @@ public sealed partial class UltimaBatcher2D
     private Rid _orderedCanvas, _orderedPresenter;
     private int _orderedStackDepth;
     private ShaderMaterial _orderedPresentMaterial;
+    private bool _orderedSurfaceDebugShown;
+    private static readonly StringName ParamSurfaceDebug = "surface_debug";
+    private static readonly StringName ParamSurfaceBuffer = "surface_buffer";
     internal static long OrderedCanvasItemsCleared;
     internal bool HasOrderedRecovery => OrderedWorldRecording && _orderedWorld.RecoverCanvas != null;
     internal void RejectOrderedWorld(string reason) => _orderedWorld?.Reject(reason);
@@ -144,9 +147,14 @@ public sealed partial class UltimaBatcher2D
         {
             Shader = new Shader { Code = "shader_type canvas_item; render_mode unshaded, blend_disabled; uniform bool surface_debug = false; uniform sampler2D surface_buffer : filter_nearest; void fragment() {             COLOR = texture(TEXTURE, UV);             if (surface_debug) { int data = int(texture(surface_buffer, UV).w); int k = data & 15;                 vec3 c = k == 1 ? vec3(1,0,0) : k == 2 ? vec3(0,1,0) : k == 3 ? vec3(0,0,1) :                     k == 4 ? vec3(1) : k == 5 ? vec3(1,0,1) : k == 6 ? vec3(0,1,1) : vec3(0);                 if ((data & 16) != 0 && (int((FRAGCOORD.x + FRAGCOORD.y)/4.0) % 2) == 0) c = vec3(0.2);                 COLOR = vec4(c,1); } }" }
         };
-        _orderedPresentMaterial.SetShaderParameter("surface_debug", SpeedMode.SpeedModeDebug.Active && SpeedMode.SpeedModeDebug.GBuffer);
-        if (SpeedMode.SpeedModeDebug.Active && SpeedMode.SpeedModeDebug.GBuffer)
-            _orderedPresentMaterial.SetShaderParameter("surface_buffer", _orderedWorld.SurfaceTexture);
+        bool surfaceDebug = SpeedMode.SpeedModeDebug.Active && SpeedMode.SpeedModeDebug.GBuffer;
+        if (surfaceDebug != _orderedSurfaceDebugShown)
+        {
+            _orderedPresentMaterial.SetShaderParameter(ParamSurfaceDebug, surfaceDebug);
+            if (surfaceDebug) _orderedPresentMaterial.SetShaderParameter(ParamSurfaceBuffer, _orderedWorld.SurfaceTexture);
+            else _orderedPresentMaterial.SetShaderParameter(ParamSurfaceBuffer, default);
+            _orderedSurfaceDebugShown = surfaceDebug;
+        }
         _orderedPresenter = NewItem(CurrentParent, _viewTransform.AffineInverse());
         ItemSetMaterial(_orderedPresenter, _orderedPresentMaterial);
         RenderingServer.CanvasItemSetVisible(_orderedPresenter, false);

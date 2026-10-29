@@ -414,7 +414,7 @@ namespace GUO.Configuration
         // shard's light level colours; off is the classic light target,
         // byte-identical. Default off.
         public bool RealtimeLights { get; set; } = false;
-        // PORT DEVIATION (GUO): ADR-0046; no GPU resources while disabled.
+        // PORT DEVIATION (GUO): ADR-0048; no GPU resources while disabled.
         public bool LightingSpeedMode { get; set; } = false;
         public int SpeedModeNightFloor { get; set; } = 3;
         public int SpeedModeSoften { get; set; } = 3;

@@ -482,7 +482,7 @@ namespace GUO.Game.Map
                 if (variantTexture != null)
                 {
                     int idx = land.MeshSpriteIndex;
-                    // PORT DEVIATION (GUO): ADR-0046 parallel surface metadata.
+                    // PORT DEVIATION (GUO): ADR-0048 parallel surface metadata.
                     Land.SurfaceData[idx] = Renderer.SpeedMode.SurfaceRow.For(land).Data;
                     land.MeshSpriteIndex = idx;
                     WriteStretchedLand(
@@ -504,7 +504,7 @@ namespace GUO.Game.Map
                 else if (texmapInfo.Texture != null)
                 {
                     int idx = land.MeshSpriteIndex;
-                    // PORT DEVIATION (GUO): ADR-0046 parallel surface metadata.
+                    // PORT DEVIATION (GUO): ADR-0048 parallel surface metadata.
                     Land.SurfaceData[idx] = Renderer.SpeedMode.SurfaceRow.For(land).Data;
                     land.MeshSpriteIndex = idx;
                     WriteStretchedLand(
@@ -529,7 +529,7 @@ namespace GUO.Game.Map
                     if (artInfo.Texture != null)
                     {
                         int idx = land.MeshSpriteIndex;
-                    // PORT DEVIATION (GUO): ADR-0046 parallel surface metadata.
+                    // PORT DEVIATION (GUO): ADR-0048 parallel surface metadata.
                     Land.SurfaceData[idx] = Renderer.SpeedMode.SurfaceRow.For(land).Data;
                         land.MeshSpriteIndex = idx;
                         // PORT DEVIATION (GUO): Enhanced HD stretched
@@ -553,7 +553,7 @@ namespace GUO.Game.Map
             else if (variantTexture != null)
             {
                 int idx = land.MeshSpriteIndex;
-                    // PORT DEVIATION (GUO): ADR-0046 parallel surface metadata.
+                    // PORT DEVIATION (GUO): ADR-0048 parallel surface metadata.
                     Land.SurfaceData[idx] = Renderer.SpeedMode.SurfaceRow.For(land).Data;
                 land.MeshSpriteIndex = idx;
                 Land.WriteQuadAt(idx, variantTexture, variantUv, baseX, baseY, hueVec, depth);
@@ -565,7 +565,7 @@ namespace GUO.Game.Map
                 if (artInfo.Texture != null)
                 {
                     int idx = land.MeshSpriteIndex;
-                    // PORT DEVIATION (GUO): ADR-0046 parallel surface metadata.
+                    // PORT DEVIATION (GUO): ADR-0048 parallel surface metadata.
                     Land.SurfaceData[idx] = Renderer.SpeedMode.SurfaceRow.For(land).Data;
                     land.MeshSpriteIndex = idx;
                     // PORT DEVIATION (GUO): Enhanced HD flat land bake.
@@ -735,7 +735,7 @@ namespace GUO.Game.Map
             {
                 Statics.WriteQuadAt(idx, artInfo.Texture, artInfo.UV, posX, posY, hueVec, depth);
                 Statics.ObjectZ[idx] = obj.Z; // PORT DEVIATION (GUO): ADR-0044
-                // PORT DEVIATION (GUO): ADR-0046 parallel surface metadata.
+                // PORT DEVIATION (GUO): ADR-0048 parallel surface metadata.
                 Statics.SurfaceData[idx] = Renderer.SpeedMode.SurfaceRow.For(obj).Data;
             }
 

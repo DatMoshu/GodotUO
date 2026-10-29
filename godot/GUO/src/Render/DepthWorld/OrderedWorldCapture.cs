@@ -60,7 +60,7 @@ internal sealed class OrderedWorldCapture : IDisposable
     internal float Depth;
     internal SpeedMode.SurfaceRow Surface;
     private bool _speedMode;
-    private readonly List<SpeedMode.SurfaceRow> _surfaceRows = new(8192);
+    private List<SpeedMode.SurfaceRow> _surfaceRows;
     internal int Group;
     private int _landEnd = -1;
     internal void EndLand() => _landEnd = _occurrences.Count;
@@ -177,7 +177,7 @@ internal sealed class OrderedWorldCapture : IDisposable
         _occurrences.Clear(); _dynamic.Clear(); _states.Clear(); _segments.Clear(); _textures.Clear(); _commands.Clear();
         Records.Begin();
         _speedMode = SpeedMode.SpeedModeDebug.Active;
-        _surfaceRows.Clear();
+        if (_speedMode) { _surfaceRows ??= new(8192); _surfaceRows.Clear(); }
         _batchArtCount = _textureRuns = 0;
         _canvas = default;
         Depth = 0f; Group = 0; _landEnd = -1; RecoverCanvas = null;
@@ -516,6 +516,7 @@ internal sealed class OrderedWorldCapture : IDisposable
         {
             _device.DisposeRT();
             _device.Presenter.Dispose();
+            _device.SurfaceTexture.Dispose();
             _fallback.Dispose();
             Records.Clear();
         }));

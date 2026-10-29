@@ -5,8 +5,8 @@
   "requires": {"build": "debug"},
   "timeouts": {"step_s": 60, "run_s": 180},
   "steps": [
-    {"id": "launch", "do": {"kind": "launch", "args": ["--lighting-speed-probe"], "settings": {"autologin": false, "username": "", "password": ""}},
-     "say": "Supply --lighting-speed-out as the external evidence directory. RD launch checks actual surface pixels; headless contract explicitly does not.",
+    {"id": "launch", "do": {"kind": "launch", "args": ["--lighting-speed-probe", "--lighting-speed-out=$surface_out", "--no-focus"], "settings": {"autologin": false, "username": "", "password": ""}},
+     "say": "Set scenario variable surface_out to the external evidence directory. RD launch checks actual surface pixels; headless contract explicitly does not.",
      "expect": {"log.contains": "[lighting-speed-probe] PASS", "within_s": 45}},
     {"id": "summary", "do": {"kind": "note", "text": "Inspect surface-classes.png and per-class counts. Live zero-pixel off-state comparison and unchanged draw calls remain separate acceptance; no timing claim follows from this fixture."}}
   ]

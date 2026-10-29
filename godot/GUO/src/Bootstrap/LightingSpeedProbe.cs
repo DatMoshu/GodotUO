@@ -43,7 +43,7 @@ public partial class LightingSpeedProbe : Node
                 GD.Print("[lighting-speed-probe] CONTRACT PASS defaults=off stride=8; GPU NOT RUN (headless dummy renderer)");
                 exit=0; return;
             }
-            using var image = Image.CreateEmpty(2, 2, false, Image.Format.Rgba8); image.Fill(Colors.White);
+            using var image = Image.CreateEmpty(2, 2, false, Image.Format.Rgba8); image.Fill(Colors.White); image.SetPixel(0,0,Colors.Transparent);
             art = ImageTexture.CreateFromImage(image);
             await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
             Exception failure = null;
@@ -54,6 +54,7 @@ public partial class LightingSpeedProbe : Node
                     device.InitializeRT(new Vector2I(960, 240), OrderedWorldCapture.ShaderSource("resident_world_vertex.glsl.txt"),
                         OrderedWorldCapture.ShaderSource("ordered_world_fragment.glsl.txt"),
                         OrderedWorldCapture.ShaderSource("depth_world_resident_vertex.glsl.txt"));
+                    if (device.HasSurfaceResources) throw new InvalidOperationException("Surface resources created while mode is off.");
                     var resident = new DepthWorldResident();
                     var textures = new OrderedWorldDevice.TextureSet(new OrderedWorldDevice.Textures(art.GetRid(), art.GetRid(), art.GetRid()));
                     for (int i = 0; i < 6; i++)
@@ -67,16 +68,47 @@ public partial class LightingSpeedProbe : Node
                         resident.Quads[i] = new DepthWorldResident.Quad {
                             A=V(left,top,0,0), B=V(left+60,top,1,0), C=V(left,top+90,0,1), D=V(left+60,top+90,1,1),
                             Aux=new OrderedWorldDevice.Float4(x+y+1.77f,0,0,BitConverter.UInt32BitsToSingle(row.Data)) };
+                        if(i==0) {
+                            resident.Quads[i].A.Normal.W=0; resident.Quads[i].B.Normal.W=0;
+                            resident.Quads[i].C.Normal.W=0; resident.Quads[i].D.Normal.W=0;
+                        }
                         resident.Merged[i]=(uint)i;
                     }
                     resident.QuadCount=resident.MergedCount=6;
                     resident.Draws.Add(new DepthWorldResident.Draw { Count=6, Land=false, Textures=textures });
                     var push = new OrderedWorldDevice.Push { Row0=new Vector4(1,0,0,1), Row1=new Vector4(0,1,0,0), Screen=new Vector4(960,240,0,0) };
-                    device.RenderRT(Array.Empty<OrderedWorldResidency.Occurrence>(), Array.Empty<OrderedWorldResidency.Quad>(),
-                        Array.Empty<OrderedWorldDevice.State>(), Array.Empty<OrderedWorldDevice.Segment>(),0,push,true,resident,-80,4300);
+                    // Reuse one dynamic geometry slot twice, with different state and surface rows.
+                    // Separate runs catch draw-local row indexing on the second occurrence.
+                    var quad = new OrderedWorldResidency.Quad { A=resident.Quads[3].A, B=resident.Quads[3].B,
+                        C=resident.Quads[3].C, D=resident.Quads[3].D };
+                    quad.A.PositionUv.X+=400; quad.B.PositionUv.X+=400;
+                    quad.C.PositionUv.X+=400; quad.D.PositionUv.X+=400;
+                    var occurrences = new[] { new OrderedWorldResidency.Occurrence(0), new OrderedWorldResidency.Occurrence(0),
+                        new OrderedWorldResidency.Occurrence(0) };
+                    var geometry = new[] { quad };
+                    var states = new[] {
+                        new OrderedWorldDevice.State { Xx=1,Yy=1,OriginX=80,OriginY=-4300,Pad1=202 },
+                        new OrderedWorldDevice.State { Xx=1,Yy=1,OriginX=154,OriginY=-4300,Pad1=203 },
+                        new OrderedWorldDevice.State { Xx=1,Yy=1,OriginX=80,OriginY=-4300,Pad1=201 } };
+                    var segments = new[] { new OrderedWorldDevice.Segment(0,6,textures), new OrderedWorldDevice.Segment(6,6,textures),new OrderedWorldDevice.Segment(12,6,textures) };
+                    var rows = new[] { new SurfaceRow(119,81,0,20,4), new SurfaceRow(120,80,0,0,6,3),new SurfaceRow(119,81,0,20,3) };
+                    device.RenderRT(occurrences,geometry,states,segments,3,push,true,resident,-80,4300);
                     byte[] before = device.ReadColorRT();
-                    device.RenderSurfaceRT(Array.Empty<SurfaceRow>(),Array.Empty<OrderedWorldDevice.Segment>(),push,resident,-80,4300,127,0);
+                    device.RenderSurfaceRT(rows,segments,push,resident,-80,4300,127,0);
                     byte[] data=device.ReadSurfaceRT();
+                    int ReadClass(int x,int y) => (int)(float)BitConverter.UInt16BitsToHalf(BitConverter.ToUInt16(data,(y*960+x)*8+6)) & 15;
+                    float ReadValue(int x,int y,int channel) => (float)BitConverter.UInt16BitsToHalf(
+                        BitConverter.ToUInt16(data,(y*960+x)*8+channel*2));
+                    // A flat rectangular land image still uses the colour mesh diagonal.
+                    // Its world position must lie on the floor plane, not a stretched diamond.
+                    float expectedX=(100.5f-80+40.5f+4300+22)/44f;
+                    float expectedY=(40.5f+4300+22-(100.5f-80))/44f;
+                    if (Math.Abs(ReadValue(100,40,0)-expectedX)>0.07f || Math.Abs(ReadValue(100,40,1)-expectedY)>0.07f
+                        || ReadValue(100,40,2)!=0) throw new InvalidOperationException("Flat-land surface plane is incorrect.");
+                    if (ReadClass(60,40)!=0 || ReadClass(100,40)!=1)
+                        throw new InvalidOperationException("Surface art-alpha cutout does not match colour.");
+                    if (ReadClass(876,80)!=4 || ReadClass(945,80)!=6)
+                        throw new InvalidOperationException("Dynamic occurrence rows do not follow ordered state indices.");
                     int[] counts=new int[7];
                     byte[] debug=new byte[960*240*4];
                     for (int n=0;n<960*240;n++)
@@ -94,7 +126,12 @@ public partial class LightingSpeedProbe : Node
                     if(dump.SavePng(Path.Combine(output,"surface-classes.png"))!=Error.Ok) throw new IOException("Cannot save surface dump.");
                     File.WriteAllBytes(Path.Combine(output,"surface.rgba16f"),data);
                     File.WriteAllText(Path.Combine(output,"surface-counts.json"),System.Text.Json.JsonSerializer.Serialize(counts));
-                    GD.Print("[lighting-speed-probe] PASS classes="+string.Join(",",counts)+" colour-diff=0");
+                    device.DisableSurfaceRT();
+                    if (device.HasSurfaceResources) throw new InvalidOperationException("Disabled surface resources remain allocated.");
+                    device.RenderRT(occurrences,geometry,states,segments,3,push,true,resident,-80,4300);
+                    if (device.HasSurfaceResources || !before.AsSpan().SequenceEqual(device.ReadColorRT()))
+                        throw new InvalidOperationException("Off-state colour or resource lifetime changed.");
+                    GD.Print("[lighting-speed-probe] PASS classes="+string.Join(",",counts)+" colour-diff=0 dynamic-rows=3 alpha=pass depth=pass off-resources=0");
                 }
                 catch(Exception e) { failure=e; }
                 finally { device.DisposeRT(); }

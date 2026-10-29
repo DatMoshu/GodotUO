@@ -4125,7 +4125,7 @@ explicit experiment arms. Older incomplete receipts need a fresh baseline.
 This metadata change does not authorize benchmarking.
 
 
-## 49. Lighting speed surface buffer (ADR-0046, first head)
+## 49. Lighting speed surface buffer (ADR-0048, first head)
 
 L1 option `LightingSpeedMode` is off by default, exposed in Classic Options and
 UO+. Compatibility and explicit canvas world disable its control with a reason.
@@ -4144,8 +4144,11 @@ Canvas recovery, disable and resize retire the surface resources.
 Surface pixels contain tile position X/Y, UO Z, and `class + 16 * flags`.
 Classes: 0 none, 1 floor, 2 south wall, 3 east wall, 4 upright card, 5 roof,
 6 water. Flags: 1 covered, 2 wet candidate, 4 window, 8 translucent. Resident
-`aux.w` transports a bit-preserved uint: low 12 bits class/flags, bits 12..19
-base Z plus 128, bits 20..27 height. Resident corners and upstream depth
+`aux.w` transports a bit-preserved uint: low 8 bits class/flags, bits 8..11 roof X gradient plus 8, bits 12..19
+base Z plus 128, bits 20..27 height, bits 28..31 roof Y gradient plus 8. Roof gradients clamp to -6..6; missing loaded neighbours fall back to the opposite neighbour or zero.
+For upright cards those two four-bit slots instead store the foot's sub-tile
+X/Y fractions in sixteenths; tile identity incorporates integer carries. The
+walking offset uses the existing light-offer inverse isometric projection. Resident corners and upstream depth
 reconstruct tile identity. Dynamic occurrences use a separate eight-byte row:
 uint packed X/Y (unsigned 16 bits each), then the same uint surface metadata.
 These rows never enter the colour shader's records or storage descriptor set.
@@ -4165,13 +4168,14 @@ checks default-off persistence and every signed-Z/class/flag transport value.
 On a rendered RD launch it also draws a synthetic six-class scene, saves
 `surface-classes.png`, raw `surface.rgba16f` and `surface-counts.json`, checks
 all classes occur, and verifies the colour target is byte-identical before
-and after the surface draw. Headless uses Godot's dummy renderer: the probe
+and after the surface draw. The scenario takes `--var surface_out=<external-evidence-folder>`.
+Headless uses Godot's dummy renderer: the probe
 explicitly prints `GPU NOT RUN` after the CPU contract; this is never GPU
 acceptance. Rendered validation requires the project's Godot lease.
 
 Known first-head limits: absolute half-float tile coordinates lose sub-tile
 precision at bank coordinates (contract decision pending); roof neighbour
-slopes and ambiguous-wall neighbour resolution are not complete. The current
-corner-wall split is diagnostic groundwork, not accepted lighting geometry.
+slopes and ambiguous-wall neighbour resolution require rendered validation. The
+corner-wall split handles unresolved two-face corners and also needs visual proof.
 Off-state live captures and draw counts, rendered fixtures and frame-time
 acceptance remain required before the light consumer is accepted.

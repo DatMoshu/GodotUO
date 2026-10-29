@@ -8,7 +8,7 @@ using RD = Godot.RenderingDevice;
 
 namespace GUO.Renderer.DepthWorld;
 
-// ADR-0046: second pipelines only. All methods run on the rendering thread.
+// ADR-0048: second pipelines only. All methods run on the rendering thread.
 internal sealed partial class OrderedWorldDevice
 {
     private Rid _surfaceColor, _surfaceDepth, _surfaceFramebuffer;
@@ -21,6 +21,7 @@ internal sealed partial class OrderedWorldDevice
     private Rid[] _surfaceDynamicSets = Array.Empty<Rid>(), _surfaceResidentSets = Array.Empty<Rid>();
     internal static long SurfaceDrawCalls;
     internal bool SurfaceReady { get; private set; }
+    internal bool HasSurfaceResources => _surfaceColor.IsValid || _surfaceShader.IsValid || _surfaceRows.IsValid;
 
     internal static string SpeedShader(string name)
     {
@@ -103,8 +104,9 @@ internal sealed partial class OrderedWorldDevice
     private Rid SurfaceTexturesRT(TextureSet textures, bool resident)
     {
         var cache = resident ? _surfaceResidentTextures : _surfaceTextures;
-        var key = new TextureSet(ResolveTextureRT(textures.Art0), ResolveTextureRT(textures.Art1),
-            ResolveTextureRT(textures.Art2), ResolveTextureRT(textures.Art3), default, default);
+        if (!_resolvedTextures.TryGetValue(textures,out var resolved))
+            throw new InvalidOperationException("Surface run has no matching colour texture transaction.");
+        var key = new TextureSet(resolved.Art0,resolved.Art1,resolved.Art2,resolved.Art3,default,default);
         if (cache.TryGetValue(key, out var existing) && _rd.UniformSetIsValid(existing)) return existing;
         using var a = SamplerUniform(new RDUniform { UniformType = RD.UniformType.SamplerWithTexture, Binding = 0 }, key.Art0);
         using var b = SamplerUniform(new RDUniform { UniformType = RD.UniformType.SamplerWithTexture, Binding = 1 }, key.Art1);
@@ -146,6 +148,10 @@ internal sealed partial class OrderedWorldDevice
                     _surfaceResidentGeometry = _residentQuads; _surfaceResidentOrder = _residentVisible;
                 }
             }
+            // Descriptor sets borrow art views. Bound growth during long walks,
+            // using the same deferred-free lifetime as the colour device cache.
+            TrimSurfaceCacheRT(_surfaceTextures);
+            TrimSurfaceCacheRT(_surfaceResidentTextures);
             // Resolve all borrowed views before opening the draw list.
             if (_surfaceDynamicSets.Length < segments.Length) Array.Resize(ref _surfaceDynamicSets, Math.Max(16,segments.Length * 2));
             for (int i=0;i<segments.Length;i++) _surfaceDynamicSets[i]=SurfaceTexturesRT(segments[i].Textures,false);
@@ -199,6 +205,13 @@ internal sealed partial class OrderedWorldDevice
             SurfaceReady = true;
         }
         catch { DisposeSurfaceRT(); throw; }
+    }
+
+    private void TrimSurfaceCacheRT(Dictionary<TextureSet,Rid> cache)
+    {
+        if (cache.Count <= 512) return;
+        foreach (var set in cache.Values) if (_rd.UniformSetIsValid(set)) _rd.FreeRid(set);
+        cache.Clear();
     }
 
     internal void DisableSurfaceRT() { SurfaceReady = false; if (_surfaceColor.IsValid) DisposeSurfaceRT(); }

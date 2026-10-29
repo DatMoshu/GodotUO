@@ -30,6 +30,11 @@ vec3 surface_position(vec2 pixel, vec2 tile, uint data) {
     float u = pixel.x / 22.0;
     float v = (pixel.y + 22.0 + 4.0 * base_z) / 22.0;
     vec3 result = vec3((u + v) * 0.5, (v - u) * 0.5, base_z);
+    if (kind == 5u) {
+        vec2 gradient = vec2(float(int((data >> 8u) & 15u)-8), float(int((data >> 28u) & 15u)-8));
+        float dz = dot(gradient,result.xy-tile) / max(0.3,1.0-(gradient.x+gradient.y)/11.0);
+        result.xy += vec2(dz/11.0); result.z += dz;
+    }
     if (kind == 2u || kind == 7u) {
         result.y = tile.y + 1.0; result.x = u + result.y;
         result.z = ((result.x + result.y) * 22.0 - pixel.y - 22.0) / 4.0;
@@ -37,9 +42,10 @@ vec3 surface_position(vec2 pixel, vec2 tile, uint data) {
         result.x = tile.x + 1.0; result.y = result.x - u;
         result.z = ((result.x + result.y) * 22.0 - pixel.y - 22.0) / 4.0;
     } else if (kind == 4u) {
-        float t = (pixel.x - (tile.x - tile.y) * 22.0) / 44.0;
-        result.xy = tile + vec2(t, -t);
-        result.z = ((tile.x + tile.y) * 22.0 - pixel.y + 22.0) / 4.0;
+        vec2 foot = tile + vec2(float((data >> 8u) & 15u),float((data >> 28u) & 15u)) / 16.0;
+        float t = (pixel.x - (foot.x - foot.y) * 22.0) / 44.0;
+        result.xy = foot + vec2(t, -t);
+        result.z = ((foot.x + foot.y) * 22.0 - pixel.y + 22.0) / 4.0;
     }
     return result;
 }
@@ -77,7 +83,8 @@ void main() {
     vec2 local_pixel = inverse(view) * (pixel - vec2(pc.row0.z, pc.row1.z));
     vec2 world_pixel = local_pixel + vec2(float(int(pc.draw.z)), float(int(pc.draw.w)));
     surface_point = surface_position(world_pixel, surface_tile, surface_data);
-    if (vertices[base].normal.w < 0.5 && ((surface_data & 15u) == 1u || (surface_data & 15u) == 6u)) {
+    if (vertices[base].normal.w < 0.5 && vertices[base].position_uv.x == vertices[base+3u].position_uv.x
+        && ((surface_data & 15u) == 1u || (surface_data & 15u) == 6u)) {
         surface_point.xy = surface_tile + vec2(corner == 1u || corner == 3u ? 1.0 : 0.0, corner >= 2u ? 1.0 : 0.0);
         surface_point.z = ((surface_point.x + surface_point.y) * 22.0 - world_pixel.y - 22.0) / 4.0;
     }

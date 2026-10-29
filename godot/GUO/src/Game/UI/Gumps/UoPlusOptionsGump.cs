@@ -11,7 +11,7 @@ namespace GUO.Game.UI.Gumps;
 internal sealed class UoPlusOptionsGump : Gump
 {
     private readonly Profile _profile;
-    private Checkbox _speedMode; // PORT DEVIATION (GUO): ADR-0046
+    private Checkbox _speedMode; // PORT DEVIATION (GUO): ADR-0048
     private readonly Dictionary<UoPlusFeature, (Checkbox Toggle, HSliderBar Density)> _rows = new();
     private readonly HSliderBar _cap;
     private readonly Checkbox _overview;
@@ -53,7 +53,7 @@ internal sealed class UoPlusOptionsGump : Gump
             _profile.TouchUi.HasValue ? (_profile.TouchUi.Value ? 1 : 2) : 0);
         area.Add(_touchUi);
         int y = 50;
-        // PORT DEVIATION (GUO): ADR-0046; same profile field as Classic Options.
+        // PORT DEVIATION (GUO): ADR-0048; same profile field as Classic Options.
         _speedMode = new Checkbox(0xD2, 0xD3, "Lighting speed mode (GPU per-pixel lights)", 1, 0xFFFF)
             { X=4, Y=y, IsChecked=_profile.LightingSpeedMode, IsEnabled=Renderer.SpeedMode.SpeedModeDebug.Supported };
         area.Add(_speedMode); y += 30;
