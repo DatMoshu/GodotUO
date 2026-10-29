@@ -272,7 +272,7 @@ still named `kopia-free-items`, and what it spawned.
 spawners those layouts replace, by the guids in ModernUO's own spawn files,
 and imports the DFI files. Vendors, townspeople, reagents, sea life and the
 Mondain's Legacy areas stay. It is safe to run again. Spawn types that wait on
-unported DFI systems (Cursed Cave, PriestOfMondain, tokens) were left out
+unported DFI systems (PriestOfMondain, tokens) were left out
 of the files; ModernUO's renames (ToxicElemental as AcidElemental, crops as
 Farmable*) were applied. Delays keep DFI's values, up to the month-long
 artifact spawns. `DfiSpawnTests.cs` and ModernUO's `AllSpawnFilesLoadTests`
@@ -296,6 +296,57 @@ the town rares in shop containers that did not survive, so
 herbalist, with DFI's delays. `[DfiSpawns` reports the rares on the ground
 and how many rare spawners hold one. `DfiRareTests.cs` covers every rare
 and the steal rules.
+
+### `patches/0012-dfi-cursed-cave.patch`
+
+DFI's Cursed Cave quest zone, from `Scripts/Custom/Engines/Quest System/CursedCave`
+and its summoning altar engine. Two regions on Felucca: levels 1 and 2, a pair
+of walled halls at 6026,266 (107 by 108), and level 3, a cave at 5124,1412
+(246 by 101). Both stand on the stock map. Inside, players cannot cast and the
+bard skills fail, as on DFI.
+
+- **Creatures:** the cursed, cursed archers, mages and necromancers (ModernUO
+  has no necromancer AI; the mage AI casts), cursed warriors that rise again
+  as cursed skeletons, cursed guardians that drop the cave key, four named
+  townsfolk that may drop their trade's sturdy tool, Deva on her cursed
+  steed, who calls for help below half health, and Hephaestus, the god of
+  fire. A player who dies in the cave rises as a cursed copy carrying their
+  gear, five at most per player.
+- **Quest:** Warren the Guard gives "Cursed Cave": six rounds of kills inside
+  the cave, then a reward bag that can hold the Longsword of Justice or the
+  Bow of Hephaestus. He also takes ten cave rares for a reward bag that may
+  hold the Harvester of the Ghost.
+- **Artifacts:** the three talking weapons level from 1 to 10 on the cave's
+  kills.
+- **Rares:** 13, fixed on the ground and stolen from 100 Stealing, like
+  RunUO's stealable artifacts.
+- **Hephaestus' chamber:** a cave key opens it from outside and queues a
+  summoning on its altar. Party members on level 3 are asked to follow.
+
+None of DFI's saves kept the cave's placed fixtures, so `[CursedCave`
+(Administrator) places GUO's layout, replacing any placed before:
+
+- Warren and a dark gate north of Minoc Mines, where DFI's hint gump put the
+  cave.
+- Walk-on passages from the entrance to level 1 and from level 2 to level 3.
+- Keyword doors between levels 1 and 2 (say "hephaestus").
+- Level 3's south-west dead end sealed as the chamber: the magic door,
+  blockers, the altar and an exit passage.
+
+`dfi-cursed-cave.json` holds 40 spawners:
+
+- Levels 1 and 2: DFI's 2008 layout. Its four spawners that 0010 kept with
+  the cursed entries stripped move here from `felucca.json`.
+- The rares: at the spots in DFI's stealable artifact list, with its delays.
+  The mortar and pestle stands where the 2008 layout had it.
+- Level 3: GUO's layout. DFI's files have no spawns there.
+
+Run `[CursedCave`, then `[DfiSpawns`. DFI's blood-draining toolkit, the
+blood pentagram and Elda's blood quest were switched off on DFI (their
+double-click handlers return at once) and are not ported. The tent camp
+multis are ported but not placed. `DfiCursedCaveTests.cs` covers the
+creatures, items, rares, levelling, altar, doors, quest rounds, Warren's
+rewards, the fixtures and the spawn file.
 
 ### Retired
 
