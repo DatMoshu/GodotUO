@@ -432,6 +432,36 @@ sells ModernUO's mage stock. `DfiQuestTests.cs` covers every type, the
 plague rules, Zuleika's count, all six Midas rounds, plant picking, the bag
 refill, the Sun Armor set bonus and the evil orc helm.
 
+### `patches/0015-dfi-hunting-bods.patch`
+
+DFI's hunting bulk orders, from `Scripts/Custom/Engines/HuntingBods` and the
+hunting branches DFI added to RunUO's bulk order deeds. The Hunter stands by
+the fur traders in Britain and Trinsic (`dfi-hunters.json`), where DFI's hint
+gump put him, sells hunting and bone-working goods, and gives contracts to
+fighters with 60 in a fighting skill (archery, fencing, macing, swords,
+magery, necromancy, taming or provocation).
+
+- **Small contracts** ask for 10 to 20 kills of one creature. Target each
+  corpse with the deed half a minute after the kill, if the corpse is yours
+  to loot. Difficulty grows with skill: easy, medium, hard, very hard, from
+  DFI's creature lists in `Data/Bulk Orders/Hunting`.
+- **Large contracts** (80 skill) ask for a set, from orcs and ratmen up to
+  Doom's creatures and wyrms, and take finished small contracts as crafting
+  deeds do.
+- **Rewards**: gold, fame and a bag of magic items, with carpets, banners,
+  stretched hides, Powder of Temperament, pet skill balls or a treasure map;
+  large contracts add the Necklace of Fortune, ModernUO's bone furniture,
+  sometimes a power scroll, and at very hard one in ten the Warfork of Chaos,
+  which levels on pixies, ki-rin and unicorns.
+- A contract is offered an hour after the last, two at 80 skill and six at
+  100, and right away once a contract is handed in.
+
+DFI kept the level in the deed's material field; here it is its own field,
+so the deed shows no material. Hunting contracts cannot go into a bulk order
+book, which would hand them back as crafting deeds. `DfiHuntingBodTests.cs`
+covers the decor, the creature lists, corpse targeting, rewards at every
+level, large combining, the Hunter's offers and the warfork.
+
 ### Retired
 
 `0004-multi-tile-enumerator` fixed tile lookups that stopped at a multi with no

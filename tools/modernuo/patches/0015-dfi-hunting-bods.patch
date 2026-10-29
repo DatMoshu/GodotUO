@@ -1,0 +1,2326 @@
+diff --git a/Distribution/Data/Bulk Orders/Hunting/largeblacksolen.cfg b/Distribution/Data/Bulk Orders/Hunting/largeblacksolen.cfg
+new file mode 100644
+index 000000000..6709b9c6f
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/largeblacksolen.cfg	
+@@ -0,0 +1,5 @@
++# Medium
++
++BlackSolenWorker		9732
++BlackSolenWarrior		9731
++BlackSolenQueen		9730
+\ No newline at end of file
+diff --git a/Distribution/Data/Bulk Orders/Hunting/largedoom.cfg b/Distribution/Data/Bulk Orders/Hunting/largedoom.cfg
+new file mode 100644
+index 000000000..160d19dda
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/largedoom.cfg	
+@@ -0,0 +1,6 @@
++# Hard
++
++FleshGolem			9764
++Devourer			9763
++Ravager			9774
++DarkGuardian		9637
+diff --git a/Distribution/Data/Bulk Orders/Hunting/largedragon.cfg b/Distribution/Data/Bulk Orders/Hunting/largedragon.cfg
+new file mode 100644
+index 000000000..ad7dd2404
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/largedragon.cfg	
+@@ -0,0 +1,6 @@
++# Medium
++
++Dragon	8406
++Drake		8406
++Wyvern	8406
++
+diff --git a/Distribution/Data/Bulk Orders/Hunting/largeelemental.cfg b/Distribution/Data/Bulk Orders/Hunting/largeelemental.cfg
+new file mode 100644
+index 000000000..1784bdfad
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/largeelemental.cfg	
+@@ -0,0 +1,8 @@
++# Medium
++
++AirElemental	9687
++FireElemental	9689
++EarthElemental	8407
++SnowElemental	9692
++IceElemental	9690
++
+diff --git a/Distribution/Data/Bulk Orders/Hunting/largegargoyle.cfg b/Distribution/Data/Bulk Orders/Hunting/largegargoyle.cfg
+new file mode 100644
+index 000000000..8507ca358
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/largegargoyle.cfg	
+@@ -0,0 +1,5 @@
++# Medium
++
++Gargoyle	8409
++StoneGargoyle	9614
++FireGargoyle	9613
+\ No newline at end of file
+diff --git a/Distribution/Data/Bulk Orders/Hunting/largegargoylehard.cfg b/Distribution/Data/Bulk Orders/Hunting/largegargoylehard.cfg
+new file mode 100644
+index 000000000..9cd0d5aea
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/largegargoylehard.cfg	
+@@ -0,0 +1,5 @@
++# Hard
++
++EnslavedGargoyle		9613
++GargoyleEnforcer		9613
++GargoyleDestroyer		9613
+diff --git a/Distribution/Data/Bulk Orders/Hunting/largeharpy.cfg b/Distribution/Data/Bulk Orders/Hunting/largeharpy.cfg
+new file mode 100644
+index 000000000..2718d2fc4
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/largeharpy.cfg	
+@@ -0,0 +1,6 @@
++# Easy
++
++StoneHarpy		9620
++Harpy			8412
++Scorpion		9657
++Lizardman		8414
+diff --git a/Distribution/Data/Bulk Orders/Hunting/largejuka.cfg b/Distribution/Data/Bulk Orders/Hunting/largejuka.cfg
+new file mode 100644
+index 000000000..dea54d13e
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/largejuka.cfg	
+@@ -0,0 +1,6 @@
++# Medium
++
++JukaLord	9724
++JukaMage	9758
++JukaWarrior	9759
++
+diff --git a/Distribution/Data/Bulk Orders/Hunting/largemeer.cfg b/Distribution/Data/Bulk Orders/Hunting/largemeer.cfg
+new file mode 100644
+index 000000000..2e56d2cc0
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/largemeer.cfg	
+@@ -0,0 +1,6 @@
++# Medium
++
++MeerWarrior		9757
++MeerMage		9756
++MeerEternal		9720
++MeerCaptain		9722
+\ No newline at end of file
+diff --git a/Distribution/Data/Bulk Orders/Hunting/largeogre.cfg b/Distribution/Data/Bulk Orders/Hunting/largeogre.cfg
+new file mode 100644
+index 000000000..ee1ba8459
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/largeogre.cfg	
+@@ -0,0 +1,5 @@
++# Medium
++
++Ogre				8415
++OgreLord			9640
++ArcticOgreLord		9640
+\ No newline at end of file
+diff --git a/Distribution/Data/Bulk Orders/Hunting/largeophidian.cfg b/Distribution/Data/Bulk Orders/Hunting/largeophidian.cfg
+new file mode 100644
+index 000000000..292589743
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/largeophidian.cfg	
+@@ -0,0 +1,8 @@
++# Medium
++
++OphidianArchmage		9643
++OphidianKnight		9645
++OphidianMage		9643
++OphidianMatriarch		9644
++OphidianWarrior		9645
++
+diff --git a/Distribution/Data/Bulk Orders/Hunting/largeorc.cfg b/Distribution/Data/Bulk Orders/Hunting/largeorc.cfg
+new file mode 100644
+index 000000000..928002acc
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/largeorc.cfg	
+@@ -0,0 +1,7 @@
++# Easy
++
++Orc			9646
++OrcishMage		9646
++OrcCaptain		9647
++OrcBomber		9646
++OrcishLord		9647
+diff --git a/Distribution/Data/Bulk Orders/Hunting/largeplant.cfg b/Distribution/Data/Bulk Orders/Hunting/largeplant.cfg
+new file mode 100644
+index 000000000..c3d5089f1
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/largeplant.cfg	
+@@ -0,0 +1,5 @@
++# Easy
++
++Bogling		9735
++BogThing		9736
++SwampTentacle	9672
+diff --git a/Distribution/Data/Bulk Orders/Hunting/largeratmen.cfg b/Distribution/Data/Bulk Orders/Hunting/largeratmen.cfg
+new file mode 100644
+index 000000000..71b5060a9
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/largeratmen.cfg	
+@@ -0,0 +1,5 @@
++# Easy
++
++Ratman		9655
++RatmanArcher	9655
++RatmanMage		9655
+diff --git a/Distribution/Data/Bulk Orders/Hunting/largeredsolen.cfg b/Distribution/Data/Bulk Orders/Hunting/largeredsolen.cfg
+new file mode 100644
+index 000000000..5668ac800
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/largeredsolen.cfg	
+@@ -0,0 +1,5 @@
++# Medium
++
++RedSolenWorker		9732
++RedSolenWarrior		9731
++RedSolenQueen		9730
+\ No newline at end of file
+diff --git a/Distribution/Data/Bulk Orders/Hunting/largesavage.cfg b/Distribution/Data/Bulk Orders/Hunting/largesavage.cfg
+new file mode 100644
+index 000000000..3fbd93bfa
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/largesavage.cfg	
+@@ -0,0 +1,5 @@
++# Easy
++
++Savage		8454
++SavageRider		8455
++SavageShaman	8455
+diff --git a/Distribution/Data/Bulk Orders/Hunting/largeserpent.cfg b/Distribution/Data/Bulk Orders/Hunting/largeserpent.cfg
+new file mode 100644
+index 000000000..bc350afe6
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/largeserpent.cfg	
+@@ -0,0 +1,7 @@
++# Easy
++
++GiantSerpent	9663
++IceSerpent		9664
++LavaSerpent		9665
++SilverSerpent	9666
++
+diff --git a/Distribution/Data/Bulk Orders/Hunting/largeskeleton.cfg b/Distribution/Data/Bulk Orders/Hunting/largeskeleton.cfg
+new file mode 100644
+index 000000000..1624727d8
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/largeskeleton.cfg	
+@@ -0,0 +1,5 @@
++# Easy
++
++Skeleton		9660
++SkeletalKnight	9661
++SkeletalMage	9662
+diff --git a/Distribution/Data/Bulk Orders/Hunting/largesnake.cfg b/Distribution/Data/Bulk Orders/Hunting/largesnake.cfg
+new file mode 100644
+index 000000000..a59e23333
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/largesnake.cfg	
+@@ -0,0 +1,5 @@
++# Easy
++
++Snake			9666
++IceSnake		9666
++LavaSnake		9666
+diff --git a/Distribution/Data/Bulk Orders/Hunting/largespider.cfg b/Distribution/Data/Bulk Orders/Hunting/largespider.cfg
+new file mode 100644
+index 000000000..0ee3391ee
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/largespider.cfg	
+@@ -0,0 +1,6 @@
++# Easy
++
++GiantBlackWidow	9667
++DreadSpider		9668
++FrostSpider		9669
++GiantSpider		9670
+\ No newline at end of file
+diff --git a/Distribution/Data/Bulk Orders/Hunting/largeundead.cfg b/Distribution/Data/Bulk Orders/Hunting/largeundead.cfg
+new file mode 100644
+index 000000000..3f7ee5114
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/largeundead.cfg	
+@@ -0,0 +1,7 @@
++# Easy
++
++Lich			9636
++Bogle			9617
++Wraith		9671
++Zombie		9656
++
+diff --git a/Distribution/Data/Bulk Orders/Hunting/largeveryhard.cfg b/Distribution/Data/Bulk Orders/Hunting/largeveryhard.cfg
+new file mode 100644
+index 000000000..b04850b60
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/largeveryhard.cfg	
+@@ -0,0 +1,6 @@
++# Very Hard
++
++AncientWyrm				8406
++Balron				9606
++BloodElemental			9688
++PoisonElemental			9691
+\ No newline at end of file
+diff --git a/Distribution/Data/Bulk Orders/Hunting/largewyrm.cfg b/Distribution/Data/Bulk Orders/Hunting/largewyrm.cfg
+new file mode 100644
+index 000000000..d75e6c30c
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/largewyrm.cfg	
+@@ -0,0 +1,6 @@
++# Hard
++
++ShadowWyrm		8406
++WhiteWyrm		8406
++SerpentineDragon	8406
++
+diff --git a/Distribution/Data/Bulk Orders/Hunting/smalleasy.cfg b/Distribution/Data/Bulk Orders/Hunting/smalleasy.cfg
+new file mode 100644
+index 000000000..9ffc6fbf2
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/smalleasy.cfg	
+@@ -0,0 +1,41 @@
++# Easy
++
++Orc				9646
++OrcishMage			9646
++OrcCaptain			9647
++OrcBomber			9646
++OrcishLord			9647
++Bogle				9617
++Wraith			9671
++Zombie			9656
++DreadSpider			9668
++GiantBlackWidow		9667
++FrostSpider			9669
++GiantSpider			9670
++Snake				9666
++IceSnake			9666
++LavaSnake			9666
++Skeleton			9660
++SkeletalKnight		9661
++SkeletalMage		9662
++GiantSerpent		9663
++IceSerpent			9664
++LavaSerpent			9665
++RedSolenWorker		9732
++BlackSolenWorker		9732
++Ratman			9655
++RatmanArcher		9655
++RatmanMage			9655
++Bogling			9735
++SwampTentacle		9672
++Ogre				8415
++StoneHarpy			9620
++Harpy				8412
++Scorpion			9657
++Lizardman			8414
++Gargoyle			8409
++AirElemental		9687
++FireElemental		9689
++EarthElemental		8407
++SnowElemental		9692
++IceElemental		9690
+\ No newline at end of file
+diff --git a/Distribution/Data/Bulk Orders/Hunting/smallhard.cfg b/Distribution/Data/Bulk Orders/Hunting/smallhard.cfg
+new file mode 100644
+index 000000000..0cd01e7b0
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/smallhard.cfg	
+@@ -0,0 +1,16 @@
++# Hard
++
++WhiteWyrm			8406
++SerpentineDragon		8406
++BloodElemental		9688
++PoisonElemental		9691
++EnslavedGargoyle		9613
++GargoyleEnforcer		9613
++GargoyleDestroyer		9613
++Dragon			8406
++
++# Doom AOS
++FleshGolem			9764
++Devourer			9763
++Ravager			9774
++DarkGuardian		9637
+\ No newline at end of file
+diff --git a/Distribution/Data/Bulk Orders/Hunting/smallmedium.cfg b/Distribution/Data/Bulk Orders/Hunting/smallmedium.cfg
+new file mode 100644
+index 000000000..445bb15b6
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/smallmedium.cfg	
+@@ -0,0 +1,30 @@
++# Medium
++
++Lich				9636
++SilverSerpent		9666
++Savage			8454
++SavageRider			8455
++SavageShaman		8455
++RedSolenWarrior		9731
++RedSolenQueen		9730
++BogThing			9736
++OphidianArchmage		9643
++OphidianKnight		9645
++OphidianMage		9643
++OphidianMatriarch		9644
++OphidianWarrior		9645
++OgreLord			9640
++ArcticOgreLord		9640
++MeerWarrior			9757
++MeerMage			9756
++MeerEternal			9720
++MeerCaptain			9722
++JukaLord			9724
++JukaMage			9758
++JukaWarrior			9759
++StoneGargoyle		9614
++FireGargoyle		9613
++Drake				8406
++Wyvern			8406
++BlackSolenWarrior		9731
++BlackSolenQueen		9730
+diff --git a/Distribution/Data/Bulk Orders/Hunting/smallveryhard.cfg b/Distribution/Data/Bulk Orders/Hunting/smallveryhard.cfg
+new file mode 100644
+index 000000000..2aeded72e
+--- /dev/null
++++ b/Distribution/Data/Bulk Orders/Hunting/smallveryhard.cfg	
+@@ -0,0 +1,5 @@
++# Very Hard
++
++ShadowWyrm			8406
++AncientWyrm			8406
++Balron			9606
+\ No newline at end of file
+diff --git a/Distribution/Data/Spawns/dfi/dfi-hunters.json b/Distribution/Data/Spawns/dfi/dfi-hunters.json
+new file mode 100644
+index 000000000..227530c14
+--- /dev/null
++++ b/Distribution/Data/Spawns/dfi/dfi-hunters.json
+@@ -0,0 +1,52 @@
++[
++  {
++    "$type": "Spawner",
++    "guid": "456617a1-946c-53aa-b1ee-86ff1874199e",
++    "name": "dfi-hunters britain-furtrader",
++    "location": [
++      1432,
++      1613,
++      20
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "00:05:00",
++    "maxDelay": "00:10:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 2,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "Hunter",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "6efadef8-0a57-5455-a688-50dad5f22187",
++    "name": "dfi-hunters trinsic-furtrader",
++    "location": [
++      1992,
++      2868,
++      20
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "00:05:00",
++    "maxDelay": "00:10:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 2,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "Hunter",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  }
++]
+diff --git a/Projects/UOContent.Tests/Tests/Custom/DfiHuntingBodTests.cs b/Projects/UOContent.Tests/Tests/Custom/DfiHuntingBodTests.cs
+new file mode 100644
+index 000000000..157b30f1f
+--- /dev/null
++++ b/Projects/UOContent.Tests/Tests/Custom/DfiHuntingBodTests.cs
+@@ -0,0 +1,222 @@
++using System;
++using System.Collections.Generic;
++using Server;
++using Server.Engines.BulkOrders;
++using Server.Items;
++using Server.Misc;
++using Server.Mobiles;
++using Xunit;
++
++namespace UOContent.Tests.Custom;
++
++[Collection("Sequential UOContent Tests")]
++public class DfiHuntingBodTests : IDisposable
++{
++    private readonly List<IEntity> _created = new();
++
++    public DfiHuntingBodTests()
++    {
++        if (NameList.GetNameList("male") == null)
++        {
++            NameList.Configure();
++        }
++    }
++
++    public static TheoryData<Type> Deeds
++    {
++        get
++        {
++            var data = new TheoryData<Type>();
++
++            foreach (var type in HuntDecor)
++            {
++                data.Add(type);
++            }
++
++            return data;
++        }
++    }
++
++    private static readonly Type[] HuntDecor =
++    [
++        typeof(SmallBrownCarpetDeed), typeof(VerySmallBlueCarpetDeed), typeof(VerySmallRedCarpetDeed),
++        typeof(SmallRedCarpetDeed), typeof(RedCarpetDeed), typeof(BlueCarpetDeed), typeof(FancyBlueCarpetDeed),
++        typeof(FancyRedCarpetDeed), typeof(RoyalRedCarpetDeed), typeof(RoyalBlueCarpetDeed), typeof(LargeGoldCarpetDeed),
++        typeof(LargeBlueCarpetDeed), typeof(LargeRedCarpetDeed), typeof(LargeBrownCarpetDeed),
++        typeof(LargeStretchedHideSouthDeed), typeof(LargeStretchedHideEastDeed), typeof(OrcishBannerSouthDeed),
++        typeof(OrcishBannerEastDeed), typeof(LargeBannerEast2AddonDeed), typeof(LargeBannerEast3AddonDeed),
++        typeof(LargeBannerEastAddonDeed), typeof(LargeBannerSouth2AddonDeed), typeof(LargeBannerSouth3AddonDeed),
++        typeof(LargeBannerSouthAddonDeed)
++    ];
++
++    public void Dispose()
++    {
++        foreach (var e in _created)
++        {
++            e?.Delete();
++        }
++
++        _created.Clear();
++    }
++
++    private T Track<T>(T e) where T : IEntity
++    {
++        _created.Add(e);
++        return e;
++    }
++
++    private PlayerMobile Fighter(double swords)
++    {
++        var m = Track(new PlayerMobile());
++        m.Player = true;
++        m.Body = 0x190;
++        m.AddItem(new Backpack());
++        m.Skills.Swords.Base = swords;
++        m.MoveToWorld(new Point3D(1432, 1615, 20), Map.Felucca);
++        return m;
++    }
++
++    [Theory]
++    [MemberData(nameof(Deeds))]
++    public void Decor_DeedBuildsItsAddonAndBack(Type type)
++    {
++        var deed = Track(type.CreateInstance<BaseAddonDeed>());
++        var addon = Track(deed.Addon);
++
++        Assert.NotEmpty(addon.Components);
++        Assert.Equal(type, addon.Deed.GetType());
++    }
++
++    [Theory]
++    [InlineData("smalleasy")]
++    [InlineData("smallmedium")]
++    [InlineData("smallhard")]
++    [InlineData("smallveryhard")]
++    [InlineData("largeorc")]
++    [InlineData("largedoom")]
++    [InlineData("largeveryhard")]
++    public void Entries_LoadFromTheHuntingFiles(string name)
++    {
++        var entries = SmallBulkEntry.GetEntries("Hunting", name);
++
++        Assert.NotEmpty(entries);
++        Assert.All(entries, e => Assert.True(typeof(BaseCreature).IsAssignableFrom(e.Type)));
++    }
++
++    [Fact]
++    public void SmallContract_AsksForACreature()
++    {
++        var bod = Track(new SmallHuntBOD(100.0));
++
++        Assert.NotNull(bod.Type);
++        Assert.InRange(bod.Level, 0, 3);
++        Assert.Contains(bod.AmountMax, new[] { 10, 15, 20 });
++    }
++
++    [Fact]
++    public void SmallContract_TakesOnlyItsCreaturesSettledCorpses()
++    {
++        var player = Fighter(100);
++        var bod = Track(new SmallHuntBOD(100.0) { Type = typeof(Orc), AmountMax = 10 });
++
++        // The test server makes no corpse on death; this one stands in for a fresh orc's. A corpse made this way
++        // reads as innocent, so the hunter acts as staff to get past the looting-rights check.
++        player.AccessLevel = AccessLevel.GameMaster;
++        var orc = Track(new Orc());
++        var corpse = Track(new Corpse(orc, []));
++        corpse.MoveToWorld(new Point3D(1433, 1615, 20), Map.Felucca);
++
++        bod.AddCorpse(player, corpse);
++        Assert.Equal(0, bod.AmountCur);
++
++        corpse.TimeOfDeath = Core.Now - TimeSpan.FromMinutes(1);
++        bod.Type = typeof(Ettin);
++        bod.AddCorpse(player, corpse);
++        Assert.Equal(0, bod.AmountCur);
++
++        bod.Type = typeof(Orc);
++        bod.AddCorpse(player, corpse);
++        Assert.Equal(1, bod.AmountCur);
++        Assert.True(corpse.Deleted);
++    }
++
++    [Theory]
++    [InlineData(0)]
++    [InlineData(1)]
++    [InlineData(2)]
++    [InlineData(3)]
++    public void Rewards_AreABagWithADecorPrize(int level)
++    {
++        var small = Track(new SmallHuntBOD(100.0) { Level = level });
++        small.GetRewards(out var reward, out var gold, out var fame);
++        Track(reward);
++
++        Assert.IsType<Bag>(reward);
++        Assert.True(gold >= (level + 1) * 300);
++        Assert.True(fame >= 10);
++
++        var large = Track(new LargeHuntBOD(100.0) { Level = level });
++        large.GetRewards(out var largeReward, out var largeGold, out _);
++        Track(largeReward);
++
++        Assert.IsType<Bag>(largeReward);
++        Assert.True(largeGold >= 3000 + level * 2000);
++    }
++
++    [Fact]
++    public void LargeContract_TakesFinishedSmallContractsOnly()
++    {
++        var player = Fighter(100);
++        var large = Track(new LargeHuntBOD(100.0) { AmountMax = 10 });
++        var type = large.Entries[0].Details.Type;
++
++        var smith = Track(new SmallSmithBOD());
++        large.EndCombine(player, smith);
++        Assert.Equal(0, large.Entries[0].Amount);
++
++        var small = Track(new SmallHuntBOD(100.0) { Type = type, AmountMax = 10, AmountCur = 10 });
++        player.Backpack.DropItem(small);
++        large.EndCombine(player, small);
++
++        Assert.Equal(10, large.Entries[0].Amount);
++        Assert.True(small.Deleted);
++    }
++
++    [Fact]
++    public void Hunter_GivesAContractThenMakesTheFighterWait()
++    {
++        var hunter = Track(new Hunter());
++        var player = Fighter(100);
++
++        var first = Track(hunter.CreateBulkOrder(player, true));
++
++        Assert.True(first is SmallHuntBOD or LargeHuntBOD);
++        Assert.True(hunter.GetNextBulkOrder(player) > TimeSpan.FromHours(5.9));
++        Assert.Null(hunter.CreateBulkOrder(player, true));
++
++        hunter.OnSuccessfulBulkOrderReceive(player);
++        Assert.Equal(TimeSpan.Zero, hunter.GetNextBulkOrder(player));
++    }
++
++    [Fact]
++    public void Hunter_RefusesContractsFromTheUnskilled()
++    {
++        var hunter = Track(new Hunter());
++        var novice = Fighter(30);
++
++        Assert.False(HuntBodUtility.CanUseContract(novice));
++        Assert.False(hunter.OnDragDrop(novice, Track(new SmallHuntBOD(100.0))));
++    }
++
++    [Fact]
++    public void WarForkOfChaos_LevelsOnTheFey()
++    {
++        var fork = Track(new WarForkOfChaos());
++
++        LevelItemManager.CheckLevelable(fork, Track(new Orc()));
++        Assert.Equal(0, fork.Experience);
++
++        LevelItemManager.CheckLevelable(fork, Track(new Pixie()));
++        Assert.True(fork.Experience > 0);
++    }
++}
+diff --git a/Projects/UOContent.Tests/Tests/Custom/DfiSpawnTests.cs b/Projects/UOContent.Tests/Tests/Custom/DfiSpawnTests.cs
+index 83bc675b2..5d13ce17d 100644
+--- a/Projects/UOContent.Tests/Tests/Custom/DfiSpawnTests.cs
++++ b/Projects/UOContent.Tests/Tests/Custom/DfiSpawnTests.cs
+@@ -28,6 +28,7 @@ private static List<SpawnerDto> Load(string relative) =>
+     [InlineData("dfi/dfi-town-rares.json", 4)]
+     [InlineData("dfi/dfi-cursed-cave.json", 40)]
+     [InlineData("dfi/dfi-rare-plants.json", 4)]
++    [InlineData("dfi/dfi-hunters.json", 2)]
+     public void DfiSpawnFile_LoadsAtLeastTheConvertedSpawners(string file, int minimum)
+     {
+         var dtos = Load(file);
+@@ -51,7 +52,7 @@ public void DfiCustomSpawners_ShareNoTileWithTheLayouts()
+             }
+         }
+ 
+-        foreach (var placed in new[] { "dfi-custom-monsters", "dfi-town-rares", "dfi-cursed-cave", "dfi-rare-plants" })
++        foreach (var placed in new[] { "dfi-custom-monsters", "dfi-town-rares", "dfi-cursed-cave", "dfi-rare-plants", "dfi-hunters" })
+         {
+             Assert.All(
+                 Load($"dfi/{placed}.json"),
+diff --git a/Projects/UOContent/Custom/DFI/HuntingBods/HuntRewardDecor.cs b/Projects/UOContent/Custom/DFI/HuntingBods/HuntRewardDecor.cs
+new file mode 100644
+index 000000000..604e0dbc0
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/HuntingBods/HuntRewardDecor.cs
+@@ -0,0 +1,833 @@
++// The hunting contract reward decor, generated from DFI RUNUO Scripts/Custom/Engines/HuntingBods/Rewards
++// (Carpets.cs, LargeCarpets.cs, LargeStretchedHide.cs, OrcishBanner.cs, LargeBanners).
++
++using ModernUO.Serialization;
++
++namespace Server.Items;
++
++[SerializationGenerator(0)]
++public partial class SmallBrownCarpetAddon : BaseAddon
++{
++    [Constructible]
++    public SmallBrownCarpetAddon()
++    {
++        AddComponent(new AddonComponent(0xAE4), -1, -1, 0);
++        AddComponent(new AddonComponent(0xAE7), -1, 0, 0);
++        AddComponent(new AddonComponent(0xAE5), -1, 1, 0);
++        AddComponent(new AddonComponent(0xAE8), 0, -1, 0);
++        AddComponent(new AddonComponent(0xAEC), 0, 0, 0);
++        AddComponent(new AddonComponent(0xAEA), 0, 1, 0);
++        AddComponent(new AddonComponent(0xAE6), 1, -1, 0);
++        AddComponent(new AddonComponent(0xAE9), 1, 0, 0);
++        AddComponent(new AddonComponent(0xAE3), 1, 1, 0);
++    }
++
++    public override BaseAddonDeed Deed => new SmallBrownCarpetDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class SmallBrownCarpetDeed : BaseAddonDeed
++{
++    [Constructible]
++    public SmallBrownCarpetDeed()
++    {
++        LootType = LootType.Blessed;
++    }
++
++    public override BaseAddon Addon => new SmallBrownCarpetAddon();
++    public override string DefaultName => "a small brown carpet deed";
++}
++
++[SerializationGenerator(0)]
++public partial class VerySmallBlueCarpetAddon : BaseAddon
++{
++    [Constructible]
++    public VerySmallBlueCarpetAddon()
++    {
++        AddComponent(new AddonComponent(0xAC3), -1, -1, 0);
++        AddComponent(new AddonComponent(0xAF6), -1, 0, 0);
++        AddComponent(new AddonComponent(0xAC4), -1, 1, 0);
++        AddComponent(new AddonComponent(0xAF7), 0, -1, 0);
++        AddComponent(new AddonComponent(0xAFA), 0, 0, 0);
++        AddComponent(new AddonComponent(0xAF9), 0, 1, 0);
++        AddComponent(new AddonComponent(0xAC5), 1, -1, 0);
++        AddComponent(new AddonComponent(0xAF8), 1, 0, 0);
++        AddComponent(new AddonComponent(0xAC2), 1, 1, 0);
++    }
++
++    public override BaseAddonDeed Deed => new VerySmallBlueCarpetDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class VerySmallBlueCarpetDeed : BaseAddonDeed
++{
++    [Constructible]
++    public VerySmallBlueCarpetDeed()
++    {
++        LootType = LootType.Blessed;
++    }
++
++    public override BaseAddon Addon => new VerySmallBlueCarpetAddon();
++    public override string DefaultName => "a very small blue carpet deed";
++}
++
++[SerializationGenerator(0)]
++public partial class VerySmallRedCarpetAddon : BaseAddon
++{
++    [Constructible]
++    public VerySmallRedCarpetAddon()
++    {
++        AddComponent(new AddonComponent(0xACA), -1, -1, 0);
++        AddComponent(new AddonComponent(0xACD), -1, 0, 0);
++        AddComponent(new AddonComponent(0xACB), -1, 1, 0);
++        AddComponent(new AddonComponent(0xACE), 0, -1, 0);
++        AddComponent(new AddonComponent(0xAEC), 0, 0, 0);
++        AddComponent(new AddonComponent(0xAD0), 0, 1, 0);
++        AddComponent(new AddonComponent(0xACC), 1, -1, 0);
++        AddComponent(new AddonComponent(0xACF), 1, 0, 0);
++        AddComponent(new AddonComponent(0xAC9), 1, 1, 0);
++    }
++
++    public override BaseAddonDeed Deed => new VerySmallRedCarpetDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class VerySmallRedCarpetDeed : BaseAddonDeed
++{
++    [Constructible]
++    public VerySmallRedCarpetDeed()
++    {
++        LootType = LootType.Blessed;
++    }
++
++    public override BaseAddon Addon => new VerySmallRedCarpetAddon();
++    public override string DefaultName => "a very small red carpet deed";
++}
++
++[SerializationGenerator(0)]
++public partial class SmallRedCarpetAddon : BaseAddon
++{
++    [Constructible]
++    public SmallRedCarpetAddon()
++    {
++        AddComponent(new AddonComponent(0xACD), -2, 0, 0);
++        AddComponent(new AddonComponent(0xAC6), -1, 0, 0);
++        AddComponent(new AddonComponent(0xAC6), 0, 0, 0);
++        AddComponent(new AddonComponent(0xACF), 1, 0, 0);
++        AddComponent(new AddonComponent(0xACB), -2, 1, 0);
++        AddComponent(new AddonComponent(0xAD0), -1, 1, 0);
++        AddComponent(new AddonComponent(0xAD0), 0, 1, 0);
++        AddComponent(new AddonComponent(0xAC9), 1, 1, 0);
++        AddComponent(new AddonComponent(0xACA), -2, -1, 0);
++        AddComponent(new AddonComponent(0xACE), -1, -1, 0);
++        AddComponent(new AddonComponent(0xACE), 0, -1, 0);
++        AddComponent(new AddonComponent(0xACC), 1, -1, 0);
++    }
++
++    public override BaseAddonDeed Deed => new SmallRedCarpetDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class SmallRedCarpetDeed : BaseAddonDeed
++{
++    [Constructible]
++    public SmallRedCarpetDeed()
++    {
++        LootType = LootType.Blessed;
++    }
++
++    public override BaseAddon Addon => new SmallRedCarpetAddon();
++    public override string DefaultName => "a small red carpet deed";
++}
++
++[SerializationGenerator(0)]
++public partial class RedCarpetAddon : BaseAddon
++{
++    [Constructible]
++    public RedCarpetAddon()
++    {
++        AddComponent(new AddonComponent(0xACD), -2, 0, 0);
++        AddComponent(new AddonComponent(0xAC6), -1, 0, 0);
++        AddComponent(new AddonComponent(0xAC6), 0, 0, 0);
++        AddComponent(new AddonComponent(0xAC6), 1, 0, 0);
++        AddComponent(new AddonComponent(0xACF), 2, 0, 0);
++        AddComponent(new AddonComponent(0xACB), -2, 1, 0);
++        AddComponent(new AddonComponent(0xAD0), -1, 1, 0);
++        AddComponent(new AddonComponent(0xAD0), 0, 1, 0);
++        AddComponent(new AddonComponent(0xAD0), 1, 1, 0);
++        AddComponent(new AddonComponent(0xAC9), 2, 1, 0);
++        AddComponent(new AddonComponent(0xACA), -2, -1, 0);
++        AddComponent(new AddonComponent(0xACE), -1, -1, 0);
++        AddComponent(new AddonComponent(0xACE), 0, -1, 0);
++        AddComponent(new AddonComponent(0xACE), 1, -1, 0);
++        AddComponent(new AddonComponent(0xACC), 2, -1, 0);
++    }
++
++    public override BaseAddonDeed Deed => new RedCarpetDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class RedCarpetDeed : BaseAddonDeed
++{
++    [Constructible]
++    public RedCarpetDeed()
++    {
++        LootType = LootType.Blessed;
++    }
++
++    public override BaseAddon Addon => new RedCarpetAddon();
++    public override string DefaultName => "a red carpet deed";
++}
++
++[SerializationGenerator(0)]
++public partial class BlueCarpetAddon : BaseAddon
++{
++    [Constructible]
++    public BlueCarpetAddon()
++    {
++        AddComponent(new AddonComponent(0xAC3), -2, -1, 0);
++        AddComponent(new AddonComponent(0xAF7), -1, -1, 0);
++        AddComponent(new AddonComponent(0xAF7), 0, -1, 0);
++        AddComponent(new AddonComponent(0xAF7), 1, -1, 0);
++        AddComponent(new AddonComponent(0xAC5), 2, -1, 0);
++        AddComponent(new AddonComponent(0xAF6), -2, 0, 0);
++        AddComponent(new AddonComponent(0xABF), -1, 0, 0);
++        AddComponent(new AddonComponent(0xABF), 0, 0, 0);
++        AddComponent(new AddonComponent(0xABF), 1, 0, 0);
++        AddComponent(new AddonComponent(0xAF8), 2, 0, 0);
++        AddComponent(new AddonComponent(0xAC4), -2, 1, 0);
++        AddComponent(new AddonComponent(0xAF9), -1, 1, 0);
++        AddComponent(new AddonComponent(0xAF9), 0, 1, 0);
++        AddComponent(new AddonComponent(0xAF9), 1, 1, 0);
++        AddComponent(new AddonComponent(0xAC2), 2, 1, 0);
++    }
++
++    public override BaseAddonDeed Deed => new BlueCarpetDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class BlueCarpetDeed : BaseAddonDeed
++{
++    [Constructible]
++    public BlueCarpetDeed()
++    {
++        LootType = LootType.Blessed;
++    }
++
++    public override BaseAddon Addon => new BlueCarpetAddon();
++    public override string DefaultName => "a blue carpet deed";
++}
++
++[SerializationGenerator(0)]
++public partial class FancyBlueCarpetAddon : BaseAddon
++{
++    [Constructible]
++    public FancyBlueCarpetAddon()
++    {
++        AddComponent(new AddonComponent(0xAD3), -2, -1, 0);
++        AddComponent(new AddonComponent(0xAD7), -1, -1, 0);
++        AddComponent(new AddonComponent(0xAD7), 0, -1, 0);
++        AddComponent(new AddonComponent(0xAD7), 1, -1, 0);
++        AddComponent(new AddonComponent(0xAD5), 2, -1, 0);
++        AddComponent(new AddonComponent(0xAD6), -2, 0, 0);
++        AddComponent(new AddonComponent(0xAD1), -1, 0, 0);
++        AddComponent(new AddonComponent(0xAD1), 0, 0, 0);
++        AddComponent(new AddonComponent(0xAD1), 1, 0, 0);
++        AddComponent(new AddonComponent(0xAD8), 2, 0, 0);
++        AddComponent(new AddonComponent(0xAD4), -2, 1, 0);
++        AddComponent(new AddonComponent(0xAD9), -1, 1, 0);
++        AddComponent(new AddonComponent(0xAD9), 0, 1, 0);
++        AddComponent(new AddonComponent(0xAD9), 1, 1, 0);
++        AddComponent(new AddonComponent(0xAD2), 2, 1, 0);
++    }
++
++    public override BaseAddonDeed Deed => new FancyBlueCarpetDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class FancyBlueCarpetDeed : BaseAddonDeed
++{
++    [Constructible]
++    public FancyBlueCarpetDeed()
++    {
++        LootType = LootType.Blessed;
++    }
++
++    public override BaseAddon Addon => new FancyBlueCarpetAddon();
++    public override string DefaultName => "a fancy blue carpet deed";
++}
++
++[SerializationGenerator(0)]
++public partial class FancyRedCarpetAddon : BaseAddon
++{
++    [Constructible]
++    public FancyRedCarpetAddon()
++    {
++        AddComponent(new AddonComponent(0xADC), -2, -1, 0);
++        AddComponent(new AddonComponent(0xAE0), -1, -1, 0);
++        AddComponent(new AddonComponent(0xAE0), 0, -1, 0);
++        AddComponent(new AddonComponent(0xAE0), 1, -1, 0);
++        AddComponent(new AddonComponent(0xADE), 2, -1, 0);
++        AddComponent(new AddonComponent(0xADF), -2, 0, 0);
++        AddComponent(new AddonComponent(0xADA), -1, 0, 0);
++        AddComponent(new AddonComponent(0xADA), 0, 0, 0);
++        AddComponent(new AddonComponent(0xADA), 1, 0, 0);
++        AddComponent(new AddonComponent(0xAE1), 2, 0, 0);
++        AddComponent(new AddonComponent(0xADD), -2, 1, 0);
++        AddComponent(new AddonComponent(0xAE2), -1, 1, 0);
++        AddComponent(new AddonComponent(0xAE2), 0, 1, 0);
++        AddComponent(new AddonComponent(0xAE2), 1, 1, 0);
++        AddComponent(new AddonComponent(0xADB), 2, 1, 0);
++    }
++
++    public override BaseAddonDeed Deed => new FancyRedCarpetDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class FancyRedCarpetDeed : BaseAddonDeed
++{
++    [Constructible]
++    public FancyRedCarpetDeed()
++    {
++        LootType = LootType.Blessed;
++    }
++
++    public override BaseAddon Addon => new FancyRedCarpetAddon();
++    public override string DefaultName => "a fancy red carpet deed";
++}
++
++[SerializationGenerator(0)]
++public partial class RoyalRedCarpetAddon : BaseAddon
++{
++    [Constructible]
++    public RoyalRedCarpetAddon()
++    {
++        AddComponent(new AddonComponent(0xAE4), -2, -1, 0);
++        AddComponent(new AddonComponent(0xAE8), -1, -1, 0);
++        AddComponent(new AddonComponent(0xAE8), 0, -1, 0);
++        AddComponent(new AddonComponent(0xAE8), 1, -1, 0);
++        AddComponent(new AddonComponent(0xAE6), 2, -1, 0);
++        AddComponent(new AddonComponent(0xAE7), -2, 0, 0);
++        AddComponent(new AddonComponent(0xAEB), -1, 0, 0);
++        AddComponent(new AddonComponent(0xAEB), 0, 0, 0);
++        AddComponent(new AddonComponent(0xAEB), 1, 0, 0);
++        AddComponent(new AddonComponent(0xAE9), 2, 0, 0);
++        AddComponent(new AddonComponent(0xAE5), -2, 1, 0);
++        AddComponent(new AddonComponent(0xAEA), -1, 1, 0);
++        AddComponent(new AddonComponent(0xAEA), 0, 1, 0);
++        AddComponent(new AddonComponent(0xAEA), 1, 1, 0);
++        AddComponent(new AddonComponent(0xAE3), 2, 1, 0);
++    }
++
++    public override BaseAddonDeed Deed => new RoyalRedCarpetDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class RoyalRedCarpetDeed : BaseAddonDeed
++{
++    [Constructible]
++    public RoyalRedCarpetDeed()
++    {
++        LootType = LootType.Blessed;
++    }
++
++    public override BaseAddon Addon => new RoyalRedCarpetAddon();
++    public override string DefaultName => "a royal red carpet deed";
++}
++
++[SerializationGenerator(0)]
++public partial class RoyalBlueCarpetAddon : BaseAddon
++{
++    [Constructible]
++    public RoyalBlueCarpetAddon()
++    {
++        AddComponent(new AddonComponent(0xAEF), -2, -1, 0);
++        AddComponent(new AddonComponent(0xAF3), -1, -1, 0);
++        AddComponent(new AddonComponent(0xAF3), 0, -1, 0);
++        AddComponent(new AddonComponent(0xAF3), 1, -1, 0);
++        AddComponent(new AddonComponent(0xAF1), 2, -1, 0);
++        AddComponent(new AddonComponent(0xAF2), -2, 0, 0);
++        AddComponent(new AddonComponent(0xAED), -1, 0, 0);
++        AddComponent(new AddonComponent(0xAED), 0, 0, 0);
++        AddComponent(new AddonComponent(0xAED), 1, 0, 0);
++        AddComponent(new AddonComponent(0xAF4), 2, 0, 0);
++        AddComponent(new AddonComponent(0xAF0), -2, 1, 0);
++        AddComponent(new AddonComponent(0xAF5), -1, 1, 0);
++        AddComponent(new AddonComponent(0xAF5), 0, 1, 0);
++        AddComponent(new AddonComponent(0xAF5), 1, 1, 0);
++        AddComponent(new AddonComponent(0xAEE), 2, 1, 0);
++    }
++
++    public override BaseAddonDeed Deed => new RoyalBlueCarpetDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class RoyalBlueCarpetDeed : BaseAddonDeed
++{
++    [Constructible]
++    public RoyalBlueCarpetDeed()
++    {
++        LootType = LootType.Blessed;
++    }
++
++    public override BaseAddon Addon => new RoyalBlueCarpetAddon();
++    public override string DefaultName => "a royal blue carpet deed";
++}
++
++[SerializationGenerator(0)]
++public partial class LargeGoldCarpetAddon : BaseAddon
++{
++    [Constructible]
++    public LargeGoldCarpetAddon()
++    {
++        AddComponent(new AddonComponent(0xADC), -2, -2, 0);
++        AddComponent(new AddonComponent(0xAE0), -1, -2, 0);
++        AddComponent(new AddonComponent(0xAE0), 0, -2, 0);
++        AddComponent(new AddonComponent(0xAE0), 1, -2, 0);
++        AddComponent(new AddonComponent(0xADE), 2, -2, 0);
++        AddComponent(new AddonComponent(0xADF), -2, -1, 0);
++        AddComponent(new AddonComponent(0xADA), -1, -1, 0);
++        AddComponent(new AddonComponent(0xADA), 0, -1, 0);
++        AddComponent(new AddonComponent(0xADA), 1, -1, 0);
++        AddComponent(new AddonComponent(0xAE1), 2, -1, 0);
++        AddComponent(new AddonComponent(0xADF), -2, 0, 0);
++        AddComponent(new AddonComponent(0xADA), -1, 0, 0);
++        AddComponent(new AddonComponent(0xADA), 0, 0, 0);
++        AddComponent(new AddonComponent(0xADA), 1, 0, 0);
++        AddComponent(new AddonComponent(0xAE1), 2, 0, 0);
++        AddComponent(new AddonComponent(0xADF), -2, 1, 0);
++        AddComponent(new AddonComponent(0xADA), -1, 1, 0);
++        AddComponent(new AddonComponent(0xADA), 0, 1, 0);
++        AddComponent(new AddonComponent(0xADA), 1, 1, 0);
++        AddComponent(new AddonComponent(0xAE1), 2, 1, 0);
++        AddComponent(new AddonComponent(0xADD), -2, 2, 0);
++        AddComponent(new AddonComponent(0xAE2), -1, 2, 0);
++        AddComponent(new AddonComponent(0xAE2), 0, 2, 0);
++        AddComponent(new AddonComponent(0xAE2), 1, 2, 0);
++        AddComponent(new AddonComponent(0xADB), 2, 2, 0);
++    }
++
++    public override BaseAddonDeed Deed => new LargeGoldCarpetDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class LargeGoldCarpetDeed : BaseAddonDeed
++{
++    [Constructible]
++    public LargeGoldCarpetDeed()
++    {
++        LootType = LootType.Blessed;
++    }
++
++    public override BaseAddon Addon => new LargeGoldCarpetAddon();
++    public override string DefaultName => "a large gold carpet deed";
++}
++
++[SerializationGenerator(0)]
++public partial class LargeBlueCarpetAddon : BaseAddon
++{
++    [Constructible]
++    public LargeBlueCarpetAddon()
++    {
++        AddComponent(new AddonComponent(0xAC3), -2, -2, 0);
++        AddComponent(new AddonComponent(0xAF7), -1, -2, 0);
++        AddComponent(new AddonComponent(0xAF7), 0, -2, 0);
++        AddComponent(new AddonComponent(0xAF7), 1, -2, 0);
++        AddComponent(new AddonComponent(0xAC5), 2, -2, 0);
++        AddComponent(new AddonComponent(0xAF6), -2, -1, 0);
++        AddComponent(new AddonComponent(0xAC0), -1, -1, 0);
++        AddComponent(new AddonComponent(0xAC0), 0, -1, 0);
++        AddComponent(new AddonComponent(0xAC0), 1, -1, 0);
++        AddComponent(new AddonComponent(0xAF8), 2, -1, 0);
++        AddComponent(new AddonComponent(0xAF6), -2, 0, 0);
++        AddComponent(new AddonComponent(0xAC0), -1, 0, 0);
++        AddComponent(new AddonComponent(0xAC0), 0, 0, 0);
++        AddComponent(new AddonComponent(0xAC0), 1, 0, 0);
++        AddComponent(new AddonComponent(0xAF8), 2, 0, 0);
++        AddComponent(new AddonComponent(0xAF6), -2, 1, 0);
++        AddComponent(new AddonComponent(0xAC0), -1, 1, 0);
++        AddComponent(new AddonComponent(0xAC0), 0, 1, 0);
++        AddComponent(new AddonComponent(0xAC0), 1, 1, 0);
++        AddComponent(new AddonComponent(0xAF8), 2, 1, 0);
++        AddComponent(new AddonComponent(0xAC4), -2, 2, 0);
++        AddComponent(new AddonComponent(0xAF9), -1, 2, 0);
++        AddComponent(new AddonComponent(0xAF9), 0, 2, 0);
++        AddComponent(new AddonComponent(0xAF9), 1, 2, 0);
++        AddComponent(new AddonComponent(0xAC2), 2, 2, 0);
++    }
++
++    public override BaseAddonDeed Deed => new LargeBlueCarpetDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class LargeBlueCarpetDeed : BaseAddonDeed
++{
++    [Constructible]
++    public LargeBlueCarpetDeed()
++    {
++        LootType = LootType.Blessed;
++    }
++
++    public override BaseAddon Addon => new LargeBlueCarpetAddon();
++    public override string DefaultName => "a large blue carpet deed";
++}
++
++[SerializationGenerator(0)]
++public partial class LargeRedCarpetAddon : BaseAddon
++{
++    [Constructible]
++    public LargeRedCarpetAddon()
++    {
++        AddComponent(new AddonComponent(0xACA), -2, -2, 0);
++        AddComponent(new AddonComponent(0xACE), -1, -2, 0);
++        AddComponent(new AddonComponent(0xACE), 0, -2, 0);
++        AddComponent(new AddonComponent(0xACE), 1, -2, 0);
++        AddComponent(new AddonComponent(0xACC), 2, -2, 0);
++        AddComponent(new AddonComponent(0xACD), -2, -1, 0);
++        AddComponent(new AddonComponent(0xAC7), -1, -1, 0);
++        AddComponent(new AddonComponent(0xAC7), 0, -1, 0);
++        AddComponent(new AddonComponent(0xAC7), 1, -1, 0);
++        AddComponent(new AddonComponent(0xACF), 2, -1, 0);
++        AddComponent(new AddonComponent(0xACD), -2, 0, 0);
++        AddComponent(new AddonComponent(0xAC7), -1, 0, 0);
++        AddComponent(new AddonComponent(0xAC7), 0, 0, 0);
++        AddComponent(new AddonComponent(0xAC7), 1, 0, 0);
++        AddComponent(new AddonComponent(0xACF), 2, 0, 0);
++        AddComponent(new AddonComponent(0xACD), -2, 1, 0);
++        AddComponent(new AddonComponent(0xAC7), -1, 1, 0);
++        AddComponent(new AddonComponent(0xAC7), 0, 1, 0);
++        AddComponent(new AddonComponent(0xAC7), 1, 1, 0);
++        AddComponent(new AddonComponent(0xACF), 2, 1, 0);
++        AddComponent(new AddonComponent(0xACB), -2, 2, 0);
++        AddComponent(new AddonComponent(0xAD0), -1, 2, 0);
++        AddComponent(new AddonComponent(0xAD0), 0, 2, 0);
++        AddComponent(new AddonComponent(0xAD0), 1, 2, 0);
++        AddComponent(new AddonComponent(0xAC9), 2, 2, 0);
++    }
++
++    public override BaseAddonDeed Deed => new LargeRedCarpetDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class LargeRedCarpetDeed : BaseAddonDeed
++{
++    [Constructible]
++    public LargeRedCarpetDeed()
++    {
++        LootType = LootType.Blessed;
++    }
++
++    public override BaseAddon Addon => new LargeRedCarpetAddon();
++    public override string DefaultName => "a large red carpet deed";
++}
++
++[SerializationGenerator(0)]
++public partial class LargeBrownCarpetAddon : BaseAddon
++{
++    [Constructible]
++    public LargeBrownCarpetAddon()
++    {
++        AddComponent(new AddonComponent(0xAE4), -2, -2, 0);
++        AddComponent(new AddonComponent(0xAE8), -1, -2, 0);
++        AddComponent(new AddonComponent(0xAE8), 0, -2, 0);
++        AddComponent(new AddonComponent(0xAE8), 1, -2, 0);
++        AddComponent(new AddonComponent(0xAE6), 2, -2, 0);
++        AddComponent(new AddonComponent(0xAE7), -2, -1, 0);
++        AddComponent(new AddonComponent(0xAEB), -1, -1, 0);
++        AddComponent(new AddonComponent(0xAEB), 0, -1, 0);
++        AddComponent(new AddonComponent(0xAEB), 1, -1, 0);
++        AddComponent(new AddonComponent(0xAE9), 2, -1, 0);
++        AddComponent(new AddonComponent(0xAE7), -2, 0, 0);
++        AddComponent(new AddonComponent(0xAEB), -1, 0, 0);
++        AddComponent(new AddonComponent(0xAEB), 0, 0, 0);
++        AddComponent(new AddonComponent(0xAEB), 1, 0, 0);
++        AddComponent(new AddonComponent(0xAE9), 2, 0, 0);
++        AddComponent(new AddonComponent(0xAE7), -2, 1, 0);
++        AddComponent(new AddonComponent(0xAEB), -1, 1, 0);
++        AddComponent(new AddonComponent(0xAEB), 0, 1, 0);
++        AddComponent(new AddonComponent(0xAEB), 1, 1, 0);
++        AddComponent(new AddonComponent(0xAE9), 2, 1, 0);
++        AddComponent(new AddonComponent(0xAE5), -2, 2, 0);
++        AddComponent(new AddonComponent(0xAEA), -1, 2, 0);
++        AddComponent(new AddonComponent(0xAEA), 0, 2, 0);
++        AddComponent(new AddonComponent(0xAEA), 1, 2, 0);
++        AddComponent(new AddonComponent(0xAE3), 2, 2, 0);
++    }
++
++    public override BaseAddonDeed Deed => new LargeBrownCarpetDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class LargeBrownCarpetDeed : BaseAddonDeed
++{
++    [Constructible]
++    public LargeBrownCarpetDeed()
++    {
++        LootType = LootType.Blessed;
++    }
++
++    public override BaseAddon Addon => new LargeBrownCarpetAddon();
++    public override string DefaultName => "a large brown carpet deed";
++}
++
++[SerializationGenerator(0)]
++public partial class LargeStretchedHideSouthAddon : BaseAddon
++{
++    [Constructible]
++    public LargeStretchedHideSouthAddon()
++    {
++        AddComponent(new AddonComponent(0x107D), 0, 0, 0);
++        AddComponent(new AddonComponent(0x107E), 1, 0, 0);
++    }
++
++    public override BaseAddonDeed Deed => new LargeStretchedHideSouthDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class LargeStretchedHideSouthDeed : BaseAddonDeed
++{
++    [Constructible]
++    public LargeStretchedHideSouthDeed()
++    {
++    }
++
++    public override BaseAddon Addon => new LargeStretchedHideSouthAddon();
++    public override string DefaultName => "a large stretched hide deed facing south";
++}
++
++[SerializationGenerator(0)]
++public partial class LargeStretchedHideEastAddon : BaseAddon
++{
++    [Constructible]
++    public LargeStretchedHideEastAddon()
++    {
++        AddComponent(new AddonComponent(0x106C), 0, 0, 0);
++        AddComponent(new AddonComponent(0x106D), 0, 1, 0);
++    }
++
++    public override BaseAddonDeed Deed => new LargeStretchedHideEastDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class LargeStretchedHideEastDeed : BaseAddonDeed
++{
++    [Constructible]
++    public LargeStretchedHideEastDeed()
++    {
++    }
++
++    public override BaseAddon Addon => new LargeStretchedHideEastAddon();
++    public override string DefaultName => "a large stretched hide deed facing east";
++}
++
++[SerializationGenerator(0)]
++public partial class OrcishBannerSouthAddon : BaseAddon
++{
++    [Constructible]
++    public OrcishBannerSouthAddon()
++    {
++        AddComponent(new AddonComponent(0x42D), 0, 0, 0);
++        AddComponent(new AddonComponent(0x42C), 1, 0, 0);
++    }
++
++    public override BaseAddonDeed Deed => new OrcishBannerSouthDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class OrcishBannerSouthDeed : BaseAddonDeed
++{
++    [Constructible]
++    public OrcishBannerSouthDeed()
++    {
++    }
++
++    public override BaseAddon Addon => new OrcishBannerSouthAddon();
++    public override string DefaultName => "an orcish banner deed facing south";
++}
++
++[SerializationGenerator(0)]
++public partial class OrcishBannerEastAddon : BaseAddon
++{
++    [Constructible]
++    public OrcishBannerEastAddon()
++    {
++        AddComponent(new AddonComponent(0x42A), 0, 0, 0);
++        AddComponent(new AddonComponent(0x42B), 0, 1, 0);
++    }
++
++    public override BaseAddonDeed Deed => new OrcishBannerEastDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class OrcishBannerEastDeed : BaseAddonDeed
++{
++    [Constructible]
++    public OrcishBannerEastDeed()
++    {
++    }
++
++    public override BaseAddon Addon => new OrcishBannerEastAddon();
++    public override string DefaultName => "an orcish banner deed facing east";
++}
++
++[SerializationGenerator(0)]
++public partial class LargeBannerEast2Addon : BaseAddon
++{
++    [Constructible]
++    public LargeBannerEast2Addon()
++    {
++        AddComponent(new AddonComponent(0x162B), 0, 1, 0);
++        AddComponent(new AddonComponent(0x162C), 0, 0, 0);
++        AddComponent(new AddonComponent(0x162D), 0, -1, 0);
++    }
++
++    public override BaseAddonDeed Deed => new LargeBannerEast2AddonDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class LargeBannerEast2AddonDeed : BaseAddonDeed
++{
++    [Constructible]
++    public LargeBannerEast2AddonDeed()
++    {
++        LootType = LootType.Blessed;
++    }
++
++    public override BaseAddon Addon => new LargeBannerEast2Addon();
++    public override string DefaultName => "A Large Black Banner Deed Facing East";
++}
++
++[SerializationGenerator(0)]
++public partial class LargeBannerEast3Addon : BaseAddon
++{
++    [Constructible]
++    public LargeBannerEast3Addon()
++    {
++        AddComponent(new AddonComponent(0x161D), 0, 1, 0);
++        AddComponent(new AddonComponent(0x161E), 0, 0, 0);
++        AddComponent(new AddonComponent(0x161F), 0, -1, 0);
++    }
++
++    public override BaseAddonDeed Deed => new LargeBannerEast3AddonDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class LargeBannerEast3AddonDeed : BaseAddonDeed
++{
++    [Constructible]
++    public LargeBannerEast3AddonDeed()
++    {
++        LootType = LootType.Blessed;
++    }
++
++    public override BaseAddon Addon => new LargeBannerEast3Addon();
++    public override string DefaultName => "A Large Silver Banner Deed Facing East";
++}
++
++[SerializationGenerator(0)]
++public partial class LargeBannerEastAddon : BaseAddon
++{
++    [Constructible]
++    public LargeBannerEastAddon()
++    {
++        AddComponent(new AddonComponent(0x1623), 0, 1, 0);
++        AddComponent(new AddonComponent(0x1624), 0, 0, 0);
++        AddComponent(new AddonComponent(0x1625), 0, -1, 0);
++    }
++
++    public override BaseAddonDeed Deed => new LargeBannerEastAddonDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class LargeBannerEastAddonDeed : BaseAddonDeed
++{
++    [Constructible]
++    public LargeBannerEastAddonDeed()
++    {
++        LootType = LootType.Blessed;
++    }
++
++    public override BaseAddon Addon => new LargeBannerEastAddon();
++    public override string DefaultName => "A Large Golden Banner Deed Facing East";
++}
++
++[SerializationGenerator(0)]
++public partial class LargeBannerSouth2Addon : BaseAddon
++{
++    [Constructible]
++    public LargeBannerSouth2Addon()
++    {
++        AddComponent(new AddonComponent(0x1594), -1, 0, 0);
++        AddComponent(new AddonComponent(0x1595), 0, 0, 0);
++        AddComponent(new AddonComponent(0x1596), 1, 0, 0);
++    }
++
++    public override BaseAddonDeed Deed => new LargeBannerSouth2AddonDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class LargeBannerSouth2AddonDeed : BaseAddonDeed
++{
++    [Constructible]
++    public LargeBannerSouth2AddonDeed()
++    {
++        LootType = LootType.Blessed;
++    }
++
++    public override BaseAddon Addon => new LargeBannerSouth2Addon();
++    public override string DefaultName => "A Large Black Banner Deed Facing South";
++}
++
++[SerializationGenerator(0)]
++public partial class LargeBannerSouth3Addon : BaseAddon
++{
++    [Constructible]
++    public LargeBannerSouth3Addon()
++    {
++        AddComponent(new AddonComponent(0x1586), -1, 0, 0);
++        AddComponent(new AddonComponent(0x1587), 0, 0, 0);
++        AddComponent(new AddonComponent(0x1588), 1, 0, 0);
++    }
++
++    public override BaseAddonDeed Deed => new LargeBannerSouth3AddonDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class LargeBannerSouth3AddonDeed : BaseAddonDeed
++{
++    [Constructible]
++    public LargeBannerSouth3AddonDeed()
++    {
++        LootType = LootType.Blessed;
++    }
++
++    public override BaseAddon Addon => new LargeBannerSouth3Addon();
++    public override string DefaultName => "A Large Silver Banner Deed Facing South";
++}
++
++[SerializationGenerator(0)]
++public partial class LargeBannerSouthAddon : BaseAddon
++{
++    [Constructible]
++    public LargeBannerSouthAddon()
++    {
++        AddComponent(new AddonComponent(0x158C), -1, 0, 0);
++        AddComponent(new AddonComponent(0x158D), 0, 0, 0);
++        AddComponent(new AddonComponent(0x158E), 1, 0, 0);
++    }
++
++    public override BaseAddonDeed Deed => new LargeBannerSouthAddonDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class LargeBannerSouthAddonDeed : BaseAddonDeed
++{
++    [Constructible]
++    public LargeBannerSouthAddonDeed()
++    {
++        LootType = LootType.Blessed;
++    }
++
++    public override BaseAddon Addon => new LargeBannerSouthAddon();
++    public override string DefaultName => "A Large Golden Banner Deed Facing South";
++}
+diff --git a/Projects/UOContent/Custom/DFI/HuntingBods/HuntingBods.cs b/Projects/UOContent/Custom/DFI/HuntingBods/HuntingBods.cs
+new file mode 100644
+index 000000000..cfddab79e
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/HuntingBods/HuntingBods.cs
+@@ -0,0 +1,775 @@
++// DFI Network's hunting bulk orders, ported from DFI RUNUO Scripts/Custom/Engines/HuntingBods and the hunting
++// branches DFI added to RunUO's bulk order deeds, gumps and books. A hunter hands out contracts to kill a number
++// of one creature (small) or of a set of them (large); a small contract fills by targeting the corpses, a large
++// one by combining finished small ones, as crafting deeds do. The creatures come from Data/Bulk Orders/Hunting.
++
++using System;
++using System.Collections.Generic;
++using ModernUO.Serialization;
++using Server.Custom.Dfi;
++using Server.Engines.BulkOrders;
++using Server.Gumps;
++using Server.Items;
++using Server.Mobiles;
++using Server.Targeting;
++
++namespace Server.Engines.BulkOrders
++{
++    public static class HuntBodUtility
++    {
++        public const int DeedHue = 0x1B0;
++        public const double SkillNeeded = 60.0;
++        public const double LargeSkillNeeded = 80.0;
++
++        private static readonly SkillName[] _fightingSkills =
++        [
++            SkillName.Archery, SkillName.Fencing, SkillName.Macing, SkillName.Magery, SkillName.Necromancy,
++            SkillName.AnimalTaming, SkillName.Swords, SkillName.Provocation
++        ];
++
++        private static readonly string[] _smallFiles = ["smalleasy", "smallmedium", "smallhard", "smallveryhard"];
++
++        // DFI's large sets in order of difficulty: the first 10 easy, then up to 19 medium, 22 hard, 23 very hard.
++        private static readonly string[] _largeFiles =
++        [
++            "largeorc", "largeratmen", "largesavage", "largeserpent", "largeskeleton", "largesnake", "largeundead",
++            "largespider", "largeplant", "largeharpy", "largedragon", "largeophidian", "largeelemental", "largejuka",
++            "largegargoyle", "largemeer", "largeogre", "largeredsolen", "largeblacksolen", "largewyrm",
++            "largegargoylehard", "largedoom", "largeveryhard"
++        ];
++
++        private static readonly int[] _largeLevelEnds = [10, 19, 22, 23];
++
++        public static SkillName GetBestFightingSkill(Mobile from)
++        {
++            var best = 0.0;
++            var skill = SkillName.Archery;
++
++            foreach (var name in _fightingSkills)
++            {
++                if (from.Skills[name].Base > best)
++                {
++                    best = from.Skills[name].Base;
++                    skill = name;
++                }
++            }
++
++            return skill;
++        }
++
++        public static double BestFightingSkill(Mobile from) => from.Skills[GetBestFightingSkill(from)].Base;
++
++        public static bool CanUseContract(Mobile from) => from is PlayerMobile && BestFightingSkill(from) >= SkillNeeded;
++
++        // The highest level a hunter of this skill is offered, and how many kills a contract asks.
++        public static void GetProps(double skill, out int levelMax, out int amountMax)
++        {
++            (levelMax, amountMax) = skill switch
++            {
++                >= 100 => (4, Utility.RandomList(10, 15, 20, 20)),
++                >= 90  => (3, Utility.RandomList(10, 15, 15, 20)),
++                >= 60  => (2, Utility.RandomList(10, 10, 15, 20)),
++                _      => (1, Utility.RandomList(10, 10, 15, 20))
++            };
++        }
++
++        public static SmallBulkEntry[] GetSmallEntries(out int level, int levelMax)
++        {
++            level = Utility.Random(levelMax);
++            return SmallBulkEntry.GetEntries("Hunting", _smallFiles[level]);
++        }
++
++        public static SmallBulkEntry[] GetLargeEntries(out int level, int levelMax)
++        {
++            var pick = Utility.Random(_largeLevelEnds[Math.Clamp(levelMax, 1, 4) - 1]);
++            level = 0;
++
++            while (level < 3 && pick >= _largeLevelEnds[level])
++            {
++                level++;
++            }
++
++            return SmallBulkEntry.GetEntries("Hunting", _largeFiles[pick]);
++        }
++
++        public static string DifficultyName(int level) =>
++            level switch
++            {
++                1 => "Medium",
++                2 => "Hard",
++                3 => "Very Hard",
++                _ => "Easy"
++            };
++
++        public static Item GetSmallRewardItem(int level)
++        {
++            Item Map() => new TreasureMap(level + Utility.RandomMinMax(1, 2), Server.Map.Felucca);
++
++            return level switch
++            {
++                0 => Utility.Random(100) < 5 ? new PowderOfTemperament() : Utility.Random(1, 3) switch
++                {
++                    1 => new VerySmallRedCarpetDeed(),
++                    2 => new VerySmallBlueCarpetDeed(),
++                    _ => Map()
++                },
++                1 => Utility.Random(100) < 8 ? new PowderOfTemperament() : Utility.Random(4) switch
++                {
++                    0 => new SmallBrownCarpetDeed(),
++                    1 => new VerySmallRedCarpetDeed(),
++                    2 => new VerySmallBlueCarpetDeed(),
++                    _ => Map()
++                },
++                2 => Utility.Random(3, 6) switch
++                {
++                    3 => Map(),
++                    4 => new PowderOfTemperament(),
++                    5 => new PetSkillBall(3),
++                    6 => new SmallRedCarpetDeed(),
++                    7 => Map(),
++                    _ => new RedCarpetDeed()
++                },
++                _ => Utility.RandomMinMax(4, 6) switch
++                {
++                    4 => new PowderOfTemperament(),
++                    5 => new PetSkillBall(3),
++                    _ => new SmallRedCarpetDeed()
++                }
++            };
++        }
++
++        public static Item GetLargeRewardItem(int level)
++        {
++            var petBall = (level + 1) * 5;
++
++            Item[] Pick(params Func<Item>[] items) => [items[Utility.Random(items.Length)]()];
++
++            return (level switch
++            {
++                0 => Pick(
++                    () => new FancyBlueCarpetDeed(), () => new FancyRedCarpetDeed(), () => new RoyalRedCarpetDeed(),
++                    () => new RoyalBlueCarpetDeed(), () => new LargeBannerSouth2AddonDeed(),
++                    () => new LargeBannerEast2AddonDeed(), () => new PetSkillBall(petBall)
++                ),
++                1 => Pick(
++                    () => new PetSkillBall(petBall), () => new LargeStretchedHideEastDeed(),
++                    () => new LargeStretchedHideSouthDeed(), () => new LargeBlueCarpetDeed(), () => new LargeRedCarpetDeed(),
++                    () => new LargeBannerSouth3AddonDeed(), () => new LargeBannerEast3AddonDeed()
++                ),
++                2 => Pick(
++                    () => new LargeGoldCarpetDeed(), () => new LargeBrownCarpetDeed(), () => new OrcishBannerEastDeed(),
++                    () => new OrcishBannerSouthDeed(), () => new NecklaceOfFortune(), () => new LargeBannerSouthAddonDeed(),
++                    () => new LargeBannerEastAddonDeed(), () => new PetSkillBall(petBall)
++                ),
++                _ => Utility.RandomDouble() < 0.10
++                    ? [new WarForkOfChaos()]
++                    : Pick(
++                        () => new LargeBannerSouthAddonDeed(), () => new LargeBannerEastAddonDeed(),
++                        () => new PetSkillBall(petBall), () => new BoneThroneDeed(), () => new BoneCouchDeed(),
++                        () => new BoneTableDeed()
++                    )
++            })[0];
++        }
++    }
++
++    // A small hunting contract: kill the creature AmountMax times and target each corpse with the deed.
++    [SerializationGenerator(0)]
++    public partial class SmallHuntBOD : SmallBOD
++    {
++        [SerializableField(0)]
++        [SerializedCommandProperty(AccessLevel.GameMaster)]
++        private int _level;
++
++        [Constructible]
++        public SmallHuntBOD() : this(Utility.RandomMinMax(80, 120))
++        {
++        }
++
++        public SmallHuntBOD(double skill)
++        {
++            HuntBodUtility.GetProps(skill, out var levelMax, out var amountMax);
++            var entries = HuntBodUtility.GetSmallEntries(out var level, levelMax);
++            Hue = HuntBodUtility.DeedHue;
++            AmountMax = amountMax;
++            _level = level;
++
++            if (entries.Length > 0)
++            {
++                var entry = entries.RandomElement();
++                Type = entry.Type;
++                Number = entry.Number;
++                Graphic = entry.Graphic;
++            }
++        }
++
++        public override RewardGroup GetRewardGroup() => null;
++
++        public override int ComputeFame() => 10 + Utility.Random((_level + 1) * 10);
++
++        public override int ComputeGold() => (_level + 1) * 300 + AmountMax * 10 + Utility.Random(300);
++
++        public override void GetRewards(out Item reward, out int gold, out int fame)
++        {
++            gold = ComputeGold();
++            fame = ComputeFame();
++
++            var bag = new Bag();
++            DfiLoot.AddRandomLoot(bag, (_level + 1) * 3, (int)(_level * 300 + AmountMax / 20.0 * 300), Math.Min(3, _level + 1), 5, 10, 100);
++            bag.DropItem(HuntBodUtility.GetSmallRewardItem(_level));
++            reward = bag;
++        }
++
++        public override void GetProperties(IPropertyList list)
++        {
++            base.GetProperties(list);
++            list.Add(1042971, $"Difficulty Level: {HuntBodUtility.DifficultyName(_level)}"); // ~1_NOTHING~
++        }
++
++        public override void OnDoubleClick(Mobile from)
++        {
++            if (IsChildOf(from.Backpack) && !HuntBodUtility.CanUseContract(from))
++            {
++                from.SendMessage($"You need to have atleast {HuntBodUtility.SkillNeeded} in a figthing skill to use this.");
++                return;
++            }
++
++            base.OnDoubleClick(from);
++        }
++
++        public override void BeginCombine(Mobile from)
++        {
++            if (Complete)
++            {
++                // The maximum amount of requested items have already been combined to this deed.
++                from.SendLocalizedMessage(1045166);
++                return;
++            }
++
++            from.SendMessage("Target the corpse to add.");
++            from.Target = new HuntTarget(this);
++        }
++
++        public override void EndCombine(Mobile from, Item item)
++        {
++            if (item is Corpse corpse)
++            {
++                AddCorpse(from, corpse);
++            }
++            else
++            {
++                from.SendLocalizedMessage(1042600); // That is not a corpse!
++            }
++        }
++
++        // A corpse counts once it is half a minute old, if the deed's holder had the right to loot it.
++        public void AddCorpse(Mobile from, Corpse corpse)
++        {
++            if (corpse.Deleted || !from.InRange(corpse.Location, 4))
++            {
++                from.SendLocalizedMessage(500446); // That is too far away.
++                return;
++            }
++
++            if (corpse.Owner?.GetType() != Type)
++            {
++                from.SendMessage("The creature is not in the request.");
++                return;
++            }
++
++            if (corpse.IsCriminalAction(from))
++            {
++                from.SendMessage("You did not earn the right to use this creature in the deed.");
++                return;
++            }
++
++            var ready = corpse.TimeOfDeath + TimeSpan.FromSeconds(30.0);
++
++            if (ready > Core.Now)
++            {
++                from.SendMessage($"This corpse cannot be added yet, try again in {Math.Max(0, (int)(ready - Core.Now).TotalSeconds)} seconds.");
++                return;
++            }
++
++            corpse.Delete();
++            AmountCur++;
++            from.SendMessage("The corpse has been combined with the deed.");
++            from.SendGump(new SmallBODGump(this));
++        }
++
++        // A bulk order book would rebuild this as a crafting deed when it hands it back.
++        public override bool OnDroppedOnto(Mobile from, Item target)
++        {
++            if (target is BulkOrderBook)
++            {
++                from.SendMessage("Hunting contracts cannot be kept in a bulk order book.");
++                return false;
++            }
++
++            return base.OnDroppedOnto(from, target);
++        }
++
++        private class HuntTarget : Target
++        {
++            private readonly SmallHuntBOD _deed;
++
++            public HuntTarget(SmallHuntBOD deed) : base(18, false, TargetFlags.None) => _deed = deed;
++
++            protected override void OnTarget(Mobile from, object targeted)
++            {
++                if (_deed.Deleted || !_deed.IsChildOf(from.Backpack) || targeted is not IEntity e || !from.CanSee(e))
++                {
++                    return;
++                }
++
++                if (targeted is Corpse corpse)
++                {
++                    _deed.AddCorpse(from, corpse);
++                }
++                else
++                {
++                    from.SendLocalizedMessage(1042600); // That is not a corpse!
++                }
++            }
++        }
++    }
++
++    // A large hunting contract: a set of creatures, filled by combining finished small contracts for each.
++    [SerializationGenerator(0)]
++    public partial class LargeHuntBOD : LargeBOD
++    {
++        [SerializableField(0)]
++        [SerializedCommandProperty(AccessLevel.GameMaster)]
++        private int _level;
++
++        [Constructible]
++        public LargeHuntBOD() : this(Utility.RandomMinMax(80, 120))
++        {
++        }
++
++        public LargeHuntBOD(double skill)
++        {
++            HuntBodUtility.GetProps(skill, out var levelMax, out var amountMax);
++            Hue = HuntBodUtility.DeedHue;
++            AmountMax = amountMax;
++            Entries = LargeBulkEntry.ConvertEntries(this, HuntBodUtility.GetLargeEntries(out var level, levelMax));
++            _level = level;
++        }
++
++        public override RewardGroup GetRewardGroup() => null;
++
++        public override int ComputeFame() => 100 + Utility.Random(20 * (_level + 1));
++
++        public override int ComputeGold() => 3000 + _level * 2000 + AmountMax * 40 + Entries.Length * 100 + Utility.Random(500);
++
++        // A bag of magic items, a decor reward, and now and then a power scroll; the chance grows with the
++        // level, the amount asked and the number of creatures.
++        public override void GetRewards(out Item reward, out int gold, out int fame)
++        {
++            gold = ComputeGold();
++            fame = ComputeFame();
++
++            var (psChance, psLevel) = _level switch
++            {
++                1 => (0.05, 5),
++                2 => (0.10, 5),
++                3 => (0.20, 10),
++                _ => (0.03, 5)
++            };
++
++            psChance += AmountMax / 200.0 + Entries.Length / 60.0;
++
++            var bag = new Bag();
++            DfiLoot.AddRandomLoot(
++                bag,
++                (_level + 1) * 3,
++                (int)(_level * 300 + AmountMax / 20.0 * 150 + Entries.Length / 6.0 * 150),
++                Math.Min(5, _level + 3),
++                5,
++                50,
++                100
++            );
++            bag.DropItem(HuntBodUtility.GetLargeRewardItem(_level));
++
++            if (psChance >= Utility.RandomDouble())
++            {
++                bag.DropItem(PowerScroll.CreateRandomNoCraft(psLevel, psLevel));
++            }
++
++            reward = bag;
++        }
++
++        public override void GetProperties(IPropertyList list)
++        {
++            base.GetProperties(list);
++            list.Add(1042971, $"Difficulty Level: {HuntBodUtility.DifficultyName(_level)}"); // ~1_NOTHING~
++        }
++
++        public override void OnDoubleClick(Mobile from)
++        {
++            if (IsChildOf(from.Backpack) && !HuntBodUtility.CanUseContract(from))
++            {
++                from.SendMessage($"You need to have atleast {HuntBodUtility.SkillNeeded} in a figthing skill to use this.");
++                return;
++            }
++
++            base.OnDoubleClick(from);
++        }
++
++        public override void EndCombine(Mobile from, Item item)
++        {
++            if (item is SmallBOD and not SmallHuntBOD)
++            {
++                from.SendLocalizedMessage(1045160); // That is not a bulk order for this large request.
++                return;
++            }
++
++            base.EndCombine(from, item);
++        }
++
++        public override bool OnDroppedOnto(Mobile from, Item target)
++        {
++            if (target is BulkOrderBook)
++            {
++                from.SendMessage("Hunting contracts cannot be kept in a bulk order book.");
++                return false;
++            }
++
++            return base.OnDroppedOnto(from, target);
++        }
++    }
++
++    // When each player may next be offered a hunting contract: an hour, two at 80 skill, six at 100.
++    public class HuntContracts : GenericPersistence
++    {
++        private static readonly Dictionary<Mobile, DateTime> _next = new();
++
++        public HuntContracts() : base("HuntContracts", 10)
++        {
++        }
++
++        public static void Configure()
++        {
++            _ = new HuntContracts();
++        }
++
++        public static TimeSpan Remaining(Mobile m) =>
++            _next.TryGetValue(m, out var next) && next > Core.Now ? next - Core.Now : TimeSpan.Zero;
++
++        public static void Set(Mobile m, TimeSpan delay) => _next[m] = Core.Now + delay;
++
++        public static void Clear(Mobile m) => _next.Remove(m);
++
++        public override void Serialize(IGenericWriter writer)
++        {
++            writer.WriteEncodedInt(0); // version
++
++            var live = new List<KeyValuePair<Mobile, DateTime>>();
++
++            foreach (var kv in _next)
++            {
++                if (!kv.Key.Deleted && kv.Value > Core.Now)
++                {
++                    live.Add(kv);
++                }
++            }
++
++            writer.WriteEncodedInt(live.Count);
++
++            foreach (var (m, next) in live)
++            {
++                writer.Write(m);
++                writer.Write(next);
++            }
++        }
++
++        public override void Deserialize(IGenericReader reader)
++        {
++            reader.ReadEncodedInt(); // version
++            var count = reader.ReadEncodedInt();
++
++            for (var i = 0; i < count; i++)
++            {
++                var m = reader.ReadEntity<Mobile>();
++                var next = reader.ReadDateTime();
++
++                if (m != null)
++                {
++                    _next[m] = next;
++                }
++            }
++        }
++    }
++}
++
++namespace Server.Mobiles
++{
++    // Sells hunters' and bone-workers' goods and hands out hunting contracts to fighters of 60 skill or more.
++    [SerializationGenerator(0)]
++    public partial class Hunter : BaseVendor
++    {
++        private readonly List<SBInfo> _sbInfos = [];
++
++        [Constructible]
++        public Hunter() : base("the hunter") => SetSkill(SkillName.Tailoring, 64.0, 100.0);
++
++        protected override List<SBInfo> SBInfos => _sbInfos;
++
++        public override void InitSBInfo()
++        {
++            _sbInfos.Add(new SBHunter());
++        }
++
++        public override void InitOutfit()
++        {
++            AddItem(new LeatherChest());
++            AddItem(new LeatherLegs());
++            AddItem(new LeatherArms());
++            AddItem(new Boots());
++            AddItem(new BearMask());
++            AddItem(new Bow());
++
++            var hairHue = Race.RandomHairHue();
++            HairItemID = 0x203B;
++            HairHue = hairHue;
++            FacialHairItemID = Utility.RandomList(0x203E, 0x204B, 0x204D, 0x2041, 0x2040);
++            FacialHairHue = hairHue;
++
++            PackGold(100, 200);
++        }
++
++        public override bool IsValidBulkOrder(Item item) => item is SmallHuntBOD or LargeHuntBOD;
++
++        public override bool SupportsBulkOrders(Mobile from) => from is PlayerMobile;
++
++        public override TimeSpan GetNextBulkOrder(Mobile from) => HuntContracts.Remaining(from);
++
++        public override Item CreateBulkOrder(Mobile from, bool fromContextMenu)
++        {
++            if (from is not PlayerMobile pm || HuntContracts.Remaining(pm) > TimeSpan.Zero ||
++                !fromContextMenu && Utility.RandomDouble() >= 0.2)
++            {
++                return null;
++            }
++
++            var skill = HuntBodUtility.BestFightingSkill(pm);
++
++            HuntContracts.Set(
++                pm,
++                skill switch
++                {
++                    >= 100 => TimeSpan.FromHours(6.0),
++                    >= 80  => TimeSpan.FromHours(2.0),
++                    _      => TimeSpan.FromHours(1.0)
++                }
++            );
++
++            if (skill >= HuntBodUtility.LargeSkillNeeded && (skill - 40.0) / 300.0 > Utility.RandomDouble())
++            {
++                return new LargeHuntBOD(skill);
++            }
++
++            return new SmallHuntBOD(skill);
++        }
++
++        public override void OnSuccessfulBulkOrderReceive(Mobile from)
++        {
++            HuntContracts.Clear(from);
++        }
++
++        public override bool OnDragDrop(Mobile from, Item dropped)
++        {
++            if (IsValidBulkOrder(dropped) && !HuntBodUtility.CanUseContract(from))
++            {
++                SayTo(from, "You have to low fighting skills to turn in this order.");
++                return false;
++            }
++
++            return base.OnDragDrop(from, dropped);
++        }
++    }
++
++    public class SBHunter : SBInfo
++    {
++        public override IShopSellInfo SellInfo { get; } = new InternalSellInfo();
++
++        public override List<GenericBuyInfo> BuyInfo { get; } =
++        [
++            new(typeof(DeerMask), 80, 10, 0x1547, 0),
++            new(typeof(BearMask), 80, 10, 0x1545, 0),
++            new(typeof(BoneArms), 80, 10, 0x144e, 0),
++            new(typeof(BoneChest), 104, 10, 0x144f, 0),
++            new(typeof(BoneGloves), 60, 10, 0x1450, 0),
++            new(typeof(BoneHelm), 20, 10, 0x1451, 0),
++            new(typeof(BoneLegs), 80, 10, 0x1452, 0),
++            new(typeof(Bag), 6, 20, 0xE76, 0),
++            new(typeof(Pouch), 6, 20, 0xE79, 0),
++            new(typeof(Leather), 6, 20, 0x1081, 0),
++            new("1041279", typeof(TaxidermyKit), 100000, 20, 0x1EBA, 0),
++            new(typeof(SkinningKnife), 26, 20, 0xEC4, 0),
++            new(typeof(LeatherLegs), 80, 20, 0x13CB, 0),
++            new(typeof(LeatherShorts), 86, 20, 0x1C00, 0),
++            new(typeof(LeatherSkirt), 87, 20, 0x1C08, 0),
++            new(typeof(LeatherCap), 10, 20, 0x1DB9, 0),
++            new(typeof(LeatherGloves), 60, 20, 0x13C6, 0),
++            new(typeof(LeatherGorget), 74, 20, 0x13C7, 0),
++            new(typeof(LeatherChest), 101, 20, 0x13CC, 0),
++            new(typeof(LeatherBustierArms), 97, 20, 0x1C0A, 0),
++            new(typeof(LeatherArms), 80, 20, 0x13CD, 0),
++            new(typeof(StuddedLegs), 103, 20, 0x13DA, 0),
++            new(typeof(StuddedGloves), 79, 20, 0x13D5, 0),
++            new(typeof(StuddedGorget), 73, 20, 0x13D6, 0),
++            new(typeof(StuddedChest), 128, 20, 0x13DB, 0),
++            new(typeof(StuddedBustierArms), 120, 20, 0x1C0C, 0),
++            new(typeof(StuddedArms), 87, 20, 0x13DC, 0),
++            new(typeof(FemaleStuddedChest), 142, 20, 0x1C02, 0),
++            new(typeof(FemalePlateChest), 245, 20, 0x1C04, 0),
++            new(typeof(FemaleLeatherChest), 116, 20, 0x1C06, 0),
++            new(typeof(Backpack), 15, 20, 0x9B2, 0),
++            new(typeof(Bone), 17, 20, 0xF7E, 0)
++        ];
++
++        public class InternalSellInfo : GenericSellInfo
++        {
++            public InternalSellInfo()
++            {
++                Add(typeof(DeerMask), 40);
++                Add(typeof(BearMask), 40);
++                Add(typeof(BoneArms), 35);
++                Add(typeof(BoneChest), 47);
++                Add(typeof(BoneGloves), 25);
++                Add(typeof(BoneHelm), 15);
++                Add(typeof(BoneLegs), 35);
++                Add(typeof(LeatherArms), 30);
++                Add(typeof(LeatherChest), 42);
++                Add(typeof(LeatherGloves), 20);
++                Add(typeof(LeatherGorget), 27);
++                Add(typeof(LeatherLegs), 30);
++                Add(typeof(LeatherCap), 5);
++                Add(typeof(StuddedArms), 43);
++                Add(typeof(StuddedChest), 64);
++                Add(typeof(StuddedGloves), 39);
++                Add(typeof(StuddedGorget), 36);
++                Add(typeof(StuddedLegs), 51);
++                Add(typeof(FemaleStuddedChest), 71);
++                Add(typeof(StuddedBustierArms), 60);
++                Add(typeof(FemaleLeatherChest), 58);
++                Add(typeof(LeatherBustierArms), 48);
++                Add(typeof(LeatherShorts), 43);
++                Add(typeof(LeatherSkirt), 43);
++            }
++        }
++    }
++}
++
++namespace Server.Items
++{
++    [SerializationGenerator(0)]
++    public partial class NecklaceOfFortune : GoldNecklace
++    {
++        [Constructible]
++        public NecklaceOfFortune()
++        {
++            Weight = 0.1;
++            Hue = 0x501;
++            Attributes.Luck = 200;
++            LootType = LootType.Blessed;
++        }
++
++        public override string DefaultName => "Necklace Of Fortune";
++    }
++
++    // Levels on the fey: pixies, ki-rin and unicorns.
++    [SerializationGenerator(0)]
++    public partial class WarForkOfChaos : WarFork, ILevelable
++    {
++        private static readonly Type[] _types = [typeof(Pixie), typeof(Kirin), typeof(Unicorn)];
++
++        [SerializableField(0, getter: "private", setter: "private")]
++        private int _exp;
++
++        [SerializableField(1, getter: "private", setter: "private")]
++        private int _lvl;
++
++        [Constructible]
++        public WarForkOfChaos()
++        {
++            Hue = 0x485;
++            WeaponAttributes.UseBestSkill = 1;
++            LevelItemManager.InvalidateLevel(this);
++        }
++
++        public override string DefaultName => "warfork of chaos";
++        public override int ArtifactRarity => 11;
++        public override int InitMinHits => 255;
++        public override int InitMaxHits => 255;
++
++        public Type[] Types => _types;
++
++        [CommandProperty(AccessLevel.GameMaster)]
++        public int Experience
++        {
++            get => _exp;
++            set
++            {
++                _exp = LevelableWeapon.ClampExperience(value);
++                LevelItemManager.InvalidateLevel(this);
++                this.MarkDirty();
++            }
++        }
++
++        [CommandProperty(AccessLevel.GameMaster)]
++        public int Level
++        {
++            get => _lvl;
++            set
++            {
++                value = LevelableWeapon.ClampLevel(value);
++
++                if (_lvl != value)
++                {
++                    var oldLevel = _lvl;
++                    _lvl = value;
++                    OnLevel(oldLevel, _lvl);
++                    this.MarkDirty();
++                }
++            }
++        }
++
++        public override void GetDamageTypes(
++            Mobile wielder, out int phys, out int fire, out int cold, out int pois, out int nrgy, out int chaos, out int direct
++        )
++        {
++            fire = cold = nrgy = chaos = direct = 0;
++            pois = 70;
++            phys = 30;
++        }
++
++        public override void GetProperties(IPropertyList list)
++        {
++            base.GetProperties(list);
++            LevelableWeapon.AddProperties(list, _lvl, _exp);
++        }
++
++        public override void GetContextMenuEntries(Mobile from, ref Server.Collections.PooledRefList<ContextMenus.ContextMenuEntry> list)
++        {
++            base.GetContextMenuEntries(from, ref list);
++
++            if (from.Alive && (from.Items.Contains(this) || IsChildOf(from.Backpack)))
++            {
++                list.Add(new LevelInfoEntry(this));
++            }
++        }
++
++        public void OnLevel(int oldLevel, int newLevel)
++        {
++            WeaponAttributes.HitLeechHits = LevelItemManager.CalculateProperty(50, _lvl);
++            Attributes.WeaponSpeed = LevelItemManager.CalculateProperty(15, _lvl);
++            Attributes.ReflectPhysical = LevelItemManager.CalculateProperty(15, _lvl);
++            Attributes.WeaponDamage = LevelItemManager.CalculateProperty(40, _lvl);
++        }
++
++        public string GetHtml() =>
++            "<div align=center><i>ENHANCEMENTS</i></div>HitLeechHits: 50%<br>WeaponSpeed: 15%<br>ReflectPhysical: 15%<br>" +
++            "WeaponDamage: 40%<br>" + LevelItemManager.LevelGainList();
++    }
++}

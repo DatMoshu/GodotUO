@@ -46,6 +46,7 @@ is retired (as `0004-multi-tile-enumerator` was).
 | 0012 | DFI Network's Cursed Cave: region, creatures, quest, artifacts, rares, Hephaestus' altar, `[CursedCave` | **ours**, shard content, depends on 0007, 0010 and 0011 | none |
 | 0013 | DFI Network's town invasions, started, stopped and changed with `[invasion` | **ours**, shard content, depends on 0008 and 0012 (presets name their creatures) | none |
 | 0014 | DFI Network's Plague, Midas and Elder Wizard quests and their artifacts, plagued and elder creatures, the Armor of the Sun and the evil orc helm, `[DfiQuests` | **ours**, shard content, depends on 0007 and 0012 | none |
+| 0015 | DFI Network's hunting bulk orders: the Hunter, small and large hunting contracts, their decor rewards and the Warfork of Chaos | **ours**, shard content, depends on 0009 (pet skill balls) and 0012 (levelling) | none |
 | issue | `MultiData.LoadUOP` and uncompressed entries | **upstream** (issue, no patch) | `upstream/issue-multidata-loaduop-uncompressed.md` |
 
 ### 0006: loopback ban exemption (NET-00c, MUO patch)
@@ -77,7 +78,7 @@ still requires the shard console's detection/filter messages.
 **Verdict: ours.** Local readiness checks and development clients share one
 address. Keep this narrow policy separate from public-shard ban policy.
 
-### 0007 to 0014: DFI Network shard content (MUO patch)
+### 0007 to 0015: DFI Network shard content (MUO patch)
 
 GUO patches: `patches/0007-dfi-loot.patch`, `patches/0008-dfi-monsters.patch`,
 `patches/0009-dfi-player-items.patch` (player items, deeds, balls, the shrink
@@ -92,7 +93,9 @@ edited) and `patches/0013-dfi-invasions.patch` (town invasions under
 `Custom/DFI/Invasion`; new files only) and `patches/0014-dfi-quests.patch`
 (quests under `Custom/DFI/Quests`; one branch in `BaseCreature.OnBeforeSpawn`
 rolls plagued creatures after paragons, one line in `TreasureMap`'s dig timer
-may add a Sun Guardian to a dug chest).
+may add a Sun Guardian to a dug chest) and `patches/0015-dfi-hunting-bods.patch`
+(hunting contracts under `Custom/DFI/HuntingBods` and `Data/Bulk Orders/Hunting`;
+new files only).
 Ports of an owner's former RunUO shards (DFI Network, DefianceUO-based, and
 kopia 2012) so the dev shard plays like them: DFI's SE loot packs, its paragon
 and champion death bonuses, and 25 custom monsters under `Custom/DFI/`. The
