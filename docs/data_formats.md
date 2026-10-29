@@ -4123,3 +4123,55 @@ The effective performance cohort requires boolean `atlas_page_1024` and
 comparison without replacing its baseline; intentionally varied flags require
 explicit experiment arms. Older incomplete receipts need a fresh baseline.
 This metadata change does not authorize benchmarking.
+
+
+## 49. Lighting speed surface buffer (ADR-0046, first head)
+
+L1 option `LightingSpeedMode` is off by default, exposed in Classic Options and
+UO+. Compatibility and explicit canvas world disable its control with a reason.
+This head adds the surface producer; the per-pixel light consumer, edge-aware
+soften and final composition are subsequent heads. Enabling this foundation
+alone does not replace Classic lighting.
+
+A successful Depth World frame may draw the same resident and ordered quad
+streams again into a world-target-sized RGBA16F attachment with its own D32
+attachment, LessEqual and depth writes. It preserves category/run order,
+nearest art alpha, hue-alpha cutouts and the circle of transparency. The colour
+pipelines, geometry/state strides and 64-byte push block remain unchanged.
+Off creates no surface texture, framebuffer, pipeline or GPU row buffer.
+Canvas recovery, disable and resize retire the surface resources.
+
+Surface pixels contain tile position X/Y, UO Z, and `class + 16 * flags`.
+Classes: 0 none, 1 floor, 2 south wall, 3 east wall, 4 upright card, 5 roof,
+6 water. Flags: 1 covered, 2 wet candidate, 4 window, 8 translucent. Resident
+`aux.w` transports a bit-preserved uint: low 12 bits class/flags, bits 12..19
+base Z plus 128, bits 20..27 height. Resident corners and upstream depth
+reconstruct tile identity. Dynamic occurrences use a separate eight-byte row:
+uint packed X/Y (unsigned 16 bits each), then the same uint surface metadata.
+These rows never enter the colour shader's records or storage descriptor set.
+CPU metadata follows the mesh's existing content lifetime; tiledata and the
+existing wall silhouette classifier supply classes, and higher roof/floor
+objects on the tile supply cover. No client artwork is serialized.
+
+`speedmode gbuf` toggles the diagnostic display while the option is enabled:
+floor red, south wall green, east wall blue, upright white, roof magenta,
+water cyan; covered pixels are hatched. Picking and UI remain on their
+existing paths. The surface texture wrapper is borrowed by the presenter;
+its RD image belongs to the depth device and must not be retained across
+resize, fallback or disposal.
+
+`--lighting-speed-probe --lighting-speed-out=ABSOLUTE_FOLDER --no-focus`
+checks default-off persistence and every signed-Z/class/flag transport value.
+On a rendered RD launch it also draws a synthetic six-class scene, saves
+`surface-classes.png`, raw `surface.rgba16f` and `surface-counts.json`, checks
+all classes occur, and verifies the colour target is byte-identical before
+and after the surface draw. Headless uses Godot's dummy renderer: the probe
+explicitly prints `GPU NOT RUN` after the CPU contract; this is never GPU
+acceptance. Rendered validation requires the project's Godot lease.
+
+Known first-head limits: absolute half-float tile coordinates lose sub-tile
+precision at bank coordinates (contract decision pending); roof neighbour
+slopes and ambiguous-wall neighbour resolution are not complete. The current
+corner-wall split is diagnostic groundwork, not accepted lighting geometry.
+Off-state live captures and draw counts, rendered fixtures and frame-time
+acceptance remain required before the light consumer is accepted.

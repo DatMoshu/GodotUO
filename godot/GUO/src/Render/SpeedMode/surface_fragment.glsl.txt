@@ -1,0 +1,48 @@
+// SPDX-License-Identifier: BSD-2-Clause
+#version 450
+// ADR-0046, Forward+/Mobile. Nearest art alpha; same cutouts and circle as colour.
+layout(set=1,binding=0) uniform sampler2D art_texture0;
+layout(set=1,binding=1) uniform sampler2D art_texture1;
+layout(set=1,binding=2) uniform sampler2D art_texture2;
+layout(set=1,binding=3) uniform sampler2D art_texture3;
+layout(push_constant,std430) uniform Frame { vec4 row0; vec4 row1; vec4 screen; uvec4 draw; } pc;
+layout(location=0) in vec2 uv;
+layout(location=1) in vec4 packed_hue;
+layout(location=2) in vec3 land_normal;
+layout(location=3) flat in uint art_slot;
+layout(location=4) in vec3 surface_point;
+layout(location=5) flat in uint surface_data;
+layout(location=6) flat in vec2 surface_tile;
+layout(location=0) out vec4 surface;
+void main() {
+    float alpha;
+    if (art_slot == 0u) alpha = textureLod(art_texture0,uv,0.0).a;
+    else if (art_slot == 1u) alpha = textureLod(art_texture1,uv,0.0).a;
+    else if (art_slot == 2u) alpha = textureLod(art_texture2,uv,0.0).a;
+    else alpha = textureLod(art_texture3,uv,0.0).a;
+    if (alpha == 0.0 || packed_hue.a == 0.0) discard;
+    int mode = int(floor(packed_hue.b * 255.0 + 0.5));
+    if ((mode & 128) != 0 && pc.row1.w > 0.0) {
+        vec2 screen_pixel_size = 1.0 / pc.screen.xy;
+        vec2 screen_uv = gl_FragCoord.xy * screen_pixel_size;
+        float ratio = length(screen_uv * (1.0 / screen_pixel_size) - pc.screen.zw) / pc.row1.w;
+        if (ratio < 0.85) discard;
+        if (ratio < 1.0) {
+            float t = (ratio - 0.85) / 0.15;
+            if (packed_hue.a * t * t * t < 0.02) discard;
+        }
+    }
+    uint kind = surface_data & 15u;
+    vec3 point = surface_point;
+    if (kind == 7u) {
+        // Corner wall: the right half shows the east face.
+        kind = point.x - point.y > surface_tile.x - surface_tile.y ? 3u : 2u;
+        if (kind == 3u) {
+            float u = point.x - point.y;
+            point.x = surface_tile.x + 1.0; point.y = point.x - u;
+        }
+    }
+    float top = float(int((surface_data >> 12u) & 255u) - 128) + float((surface_data >> 20u) & 255u);
+    if ((kind == 2u || kind == 3u) && point.z > top) { kind = 1u; point.z = top; }
+    surface = vec4(point, float(kind + (surface_data & 4080u)));
+}

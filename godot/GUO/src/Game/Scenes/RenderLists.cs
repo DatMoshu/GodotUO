@@ -1008,6 +1008,9 @@ namespace GUO.Game.Scenes
                 // post-processing id buffer (ADR-0023); land here covers, so it
                 // paints background. Read only while an id pass is on.
                 batcher.CurrentObjectId = next.Object is Land ? -1 : Renderer.PostFx.PostFxIds.Of(next.Object);
+                // PORT DEVIATION (GUO): ADR-0046, per-occurrence side channel.
+                if (Renderer.SpeedMode.SpeedModeDebug.Active)
+                    batcher.OrderedSurface = Renderer.SpeedMode.SurfaceRow.For(next.Object);
                 batcher.OrderedDepth = next.Pass == Mobile.DrawPass.Body ? next.Depth - 0.5f : next.Depth; // ADR-0044
 
                 if (next.Mesh != null)

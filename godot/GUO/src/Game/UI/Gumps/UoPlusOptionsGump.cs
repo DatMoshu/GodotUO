@@ -11,6 +11,7 @@ namespace GUO.Game.UI.Gumps;
 internal sealed class UoPlusOptionsGump : Gump
 {
     private readonly Profile _profile;
+    private Checkbox _speedMode; // PORT DEVIATION (GUO): ADR-0046
     private readonly Dictionary<UoPlusFeature, (Checkbox Toggle, HSliderBar Density)> _rows = new();
     private readonly HSliderBar _cap;
     private readonly Checkbox _overview;
@@ -52,6 +53,13 @@ internal sealed class UoPlusOptionsGump : Gump
             _profile.TouchUi.HasValue ? (_profile.TouchUi.Value ? 1 : 2) : 0);
         area.Add(_touchUi);
         int y = 50;
+        // PORT DEVIATION (GUO): ADR-0046; same profile field as Classic Options.
+        _speedMode = new Checkbox(0xD2, 0xD3, "Lighting speed mode (GPU per-pixel lights)", 1, 0xFFFF)
+            { X=4, Y=y, IsChecked=_profile.LightingSpeedMode, IsEnabled=Renderer.SpeedMode.SpeedModeDebug.Supported };
+        area.Add(_speedMode); y += 30;
+        if (!Renderer.SpeedMode.SpeedModeDebug.Supported) {
+            area.Add(new Label(Renderer.SpeedMode.SpeedModeDebug.UnavailableReason, true, 0x0386, Width-70, 1) { X=4, Y=y }); y += 40;
+        }
         _overview = new Checkbox(0xD2, 0xD3, "Experimental zoom + world map", 1, 0xFFFF)
             { X = 4, Y = y, IsChecked = _profile.ExperimentalWorldOverview };
         area.Add(_overview);
@@ -143,6 +151,7 @@ internal sealed class UoPlusOptionsGump : Gump
         _error.Text = "";
 #endif
         if (_defaultsStaged) UoPlusOptions.ResetDefaults(_profile);
+        _profile.LightingSpeedMode = _speedMode.IsChecked;
         _profile.ExperimentalWorldOverview = _overview.IsChecked;
         _profile.WorldOverviewStyle = System.Math.Clamp(_overviewStyle.SelectedIndex, 0, 3);
         _profile.TouchUi = _touchUi.SelectedIndex == 0 ? null : _touchUi.SelectedIndex == 1;
@@ -161,6 +170,7 @@ internal sealed class UoPlusOptionsGump : Gump
     internal void RestoreDefaults()
     {
         _defaultsStaged = true;
+        _speedMode.IsChecked = false;
         _touchUi.SelectedIndex = 0;
         _overview.IsChecked = false;
         _overviewStyle.SelectedIndex = 0;

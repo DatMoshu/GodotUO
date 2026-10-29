@@ -7,7 +7,7 @@ using RD = Godot.RenderingDevice;
 
 namespace GUO.Renderer.DepthWorld;
 
-internal sealed class OrderedWorldDevice
+internal sealed partial class OrderedWorldDevice
 {
     // Transport-only values live in the optimized GUO assembly. GodotSharp's
     // editor Debug value constructors need not run for every captured corner.
@@ -628,6 +628,7 @@ internal sealed class OrderedWorldDevice
     // Do not call DisposeRT twice while a frame callback still references this object.
     public void DisposeRT(bool detachPresenter = true)
     {
+        DisposeSurfaceRT();
         if (_rd == null) return;
         // Replacement must retain the RS wrapper RID already queued by this frame.
         if (detachPresenter) Presenter.TextureRdRid = default;

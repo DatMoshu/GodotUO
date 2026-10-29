@@ -8,6 +8,7 @@ namespace GUO.Renderer;
 public sealed partial class UltimaBatcher2D
 {
     private OrderedWorldCapture _orderedWorld;
+    internal SpeedMode.SurfaceRow OrderedSurface;
     private Rid _orderedCanvas, _orderedPresenter;
     private int _orderedStackDepth;
     private ShaderMaterial _orderedPresentMaterial;
@@ -141,8 +142,11 @@ public sealed partial class UltimaBatcher2D
         while (_clipStack.Count > _orderedStackDepth) _clipStack.RemoveAt(_clipStack.Count - 1);
         _orderedPresentMaterial ??= new ShaderMaterial
         {
-            Shader = new Shader { Code = "shader_type canvas_item; render_mode unshaded, blend_disabled; void fragment() { COLOR = texture(TEXTURE, UV); }" }
+            Shader = new Shader { Code = "shader_type canvas_item; render_mode unshaded, blend_disabled; uniform bool surface_debug = false; uniform sampler2D surface_buffer : filter_nearest; void fragment() {             COLOR = texture(TEXTURE, UV);             if (surface_debug) { int data = int(texture(surface_buffer, UV).w); int k = data & 15;                 vec3 c = k == 1 ? vec3(1,0,0) : k == 2 ? vec3(0,1,0) : k == 3 ? vec3(0,0,1) :                     k == 4 ? vec3(1) : k == 5 ? vec3(1,0,1) : k == 6 ? vec3(0,1,1) : vec3(0);                 if ((data & 16) != 0 && (int((FRAGCOORD.x + FRAGCOORD.y)/4.0) % 2) == 0) c = vec3(0.2);                 COLOR = vec4(c,1); } }" }
         };
+        _orderedPresentMaterial.SetShaderParameter("surface_debug", SpeedMode.SpeedModeDebug.Active && SpeedMode.SpeedModeDebug.GBuffer);
+        if (SpeedMode.SpeedModeDebug.Active && SpeedMode.SpeedModeDebug.GBuffer)
+            _orderedPresentMaterial.SetShaderParameter("surface_buffer", _orderedWorld.SurfaceTexture);
         _orderedPresenter = NewItem(CurrentParent, _viewTransform.AffineInverse());
         ItemSetMaterial(_orderedPresenter, _orderedPresentMaterial);
         RenderingServer.CanvasItemSetVisible(_orderedPresenter, false);
@@ -201,6 +205,7 @@ public sealed partial class UltimaBatcher2D
         if (!OrderedWorldRecording) return false;
         MeshQuad q = OrderedScratchQuad(hue);
         _orderedWorld.Depth = OrderedDepth;
+        _orderedWorld.Surface = OrderedSurface;
         return _orderedWorld.Quad(texture, q, _worldOffset, false, rectangle, destination: destination, source: source);
     }
 
@@ -243,6 +248,7 @@ public sealed partial class UltimaBatcher2D
             record = _orderedWorld.Records.Store(layer, index, true, q, offsetX, offsetY, width, height, destination, source);
         }
         _orderedWorld.Depth = OrderedDepth;
+        _orderedWorld.Surface = OrderedSurface;
         return _orderedWorld.Quad(texture, q, _worldOffset, false, true, destination: destination, source: source, record: record);
     }
 
@@ -259,6 +265,7 @@ public sealed partial class UltimaBatcher2D
             Normal0=new Vector3(0,0,1),Normal1=new Vector3(0,0,1),Normal2=new Vector3(0,0,1),Normal3=new Vector3(0,0,1)
         };
         _orderedWorld.Depth = OrderedDepth;
+        _orderedWorld.Surface = OrderedSurface;
         return _orderedWorld.Quad(texture,q,_worldOffset,false,true,local,rect,rect);
     }
 }

@@ -1,0 +1,84 @@
+// SPDX-License-Identifier: BSD-2-Clause
+#version 450
+// GUO L4 ordered world adapter. Three vec4s = 48-byte std430 CPU Vertex record.
+struct Vertex { vec4 position_uv; vec4 packed_hue; vec4 normal; };
+layout(set = 0, binding = 0, std430) readonly buffer Vertices { Vertex vertices[]; };
+layout(set = 0, binding = 1, std430) readonly buffer Order { uint ordered_slots[]; };
+// One exact CPU-composed matrix per occurrence. Duplicate geometry can have
+// different transforms. Forward+/Mobile RD, two vec4 reads per vertex, no samples.
+// std430 offsets 0/12/16, stride 32; the selector is uint, never a float payload.
+struct State { vec3 row0; uint art_slot; vec4 row1; };
+layout(set = 0, binding = 2, std430) readonly buffer States { State states[]; };
+layout(push_constant, std430) uniform Frame {
+    vec4 row0;
+    vec4 row1;
+    vec4 screen;
+    uvec4 draw;
+} pc;
+layout(location = 0) out vec2 uv;
+layout(location = 1) out vec4 packed_hue;
+layout(location = 2) out vec3 land_normal;
+layout(location = 3) flat out uint art_slot;
+
+
+layout(location = 4) out vec3 surface_point;
+layout(location = 5) flat out uint surface_data;
+layout(location = 6) flat out vec2 surface_tile;
+vec3 surface_position(vec2 pixel, vec2 tile, uint data) {
+    float base_z = float(int((data >> 12u) & 255u) - 128);
+    uint kind = data & 15u;
+    float u = pixel.x / 22.0;
+    float v = (pixel.y + 22.0 + 4.0 * base_z) / 22.0;
+    vec3 result = vec3((u + v) * 0.5, (v - u) * 0.5, base_z);
+    if (kind == 2u || kind == 7u) {
+        result.y = tile.y + 1.0; result.x = u + result.y;
+        result.z = ((result.x + result.y) * 22.0 - pixel.y - 22.0) / 4.0;
+    } else if (kind == 3u) {
+        result.x = tile.x + 1.0; result.y = result.x - u;
+        result.z = ((result.x + result.y) * 22.0 - pixel.y - 22.0) / 4.0;
+    } else if (kind == 4u) {
+        float t = (pixel.x - (tile.x - tile.y) * 22.0) / 44.0;
+        result.xy = tile + vec2(t, -t);
+        result.z = ((tile.x + tile.y) * 22.0 - pixel.y + 22.0) / 4.0;
+    }
+    return result;
+}
+
+layout(set = 0, binding = 3, std430) readonly buffer Surfaces { uvec2 surfaces[]; };
+void main() {
+    uint output_vertex = pc.draw.x + uint(gl_VertexIndex);
+    uint occurrence = output_vertex / 6u;
+    uint base = ordered_slots[occurrence] * 4u;
+    const uint mesh_order[6] = uint[](0u,1u,2u,1u,3u,2u);
+    const uint rect_order[6] = uint[](0u,2u,3u,0u,3u,1u);
+    uint corner = vertices[base].normal.w > 0.5
+        ? rect_order[output_vertex % 6u] : mesh_order[output_vertex % 6u];
+    Vertex v = vertices[base + corner];
+    vec3 p = vec3(v.position_uv.xy, 1.0);
+    vec2 pixel = vec2(dot(states[occurrence].row0, p), dot(states[occurrence].row1.xyz, p));
+    // Native RD clip convention. The shared world matrix already includes
+    // CUO's quarter-target-pixel raster offset; do not apply it a second time.
+    // ADR-0044 Depth World (pc.draw.y = 1): the state row's spare float is
+    // upstream's depth, mapped as its orthographic projection maps it.
+    float z = 0.0;
+    if (pc.draw.y == 1u) {
+        float zn = (32768.0 - states[occurrence].row1.w) / 65535.0;
+        z = floor(zn * 16777215.0 + 0.5) / 16777216.0;
+    }
+    gl_Position = vec4(pixel * (2.0 / pc.screen.xy) - 1.0, z, 1.0);
+    uv = v.position_uv.zw;
+    packed_hue = v.packed_hue;
+    land_normal = v.normal.xyz;
+    art_slot = states[occurrence].art_slot;
+    uvec2 row = surfaces[occurrence];
+    surface_tile = vec2(row.x & 65535u, row.x >> 16u);
+    surface_data = row.y;
+    mat2 view = mat2(pc.row0.x, pc.row1.x, pc.row0.y, pc.row1.y);
+    vec2 local_pixel = inverse(view) * (pixel - vec2(pc.row0.z, pc.row1.z));
+    vec2 world_pixel = local_pixel + vec2(float(int(pc.draw.z)), float(int(pc.draw.w)));
+    surface_point = surface_position(world_pixel, surface_tile, surface_data);
+    if (vertices[base].normal.w < 0.5 && ((surface_data & 15u) == 1u || (surface_data & 15u) == 6u)) {
+        surface_point.xy = surface_tile + vec2(corner == 1u || corner == 3u ? 1.0 : 0.0, corner >= 2u ? 1.0 : 0.0);
+        surface_point.z = ((surface_point.x + surface_point.y) * 22.0 - world_pixel.y - 22.0) / 4.0;
+    }
+}

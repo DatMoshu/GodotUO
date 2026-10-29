@@ -1,0 +1,87 @@
+// SPDX-License-Identifier: BSD-2-Clause
+#version 450
+// GUO L4 Depth World (ADR-0044): chunk land and statics drawn from resident
+// quads. One 208-byte record per quad: four 48-byte corners (the ordered
+// world's Vertex) and aux = (upstream depth, art slot, object Z, unused).
+// The visible list holds resident quad indices, rebuilt when visibility changes.
+struct Vertex { vec4 position_uv; vec4 packed_hue; vec4 normal; };
+struct Quad { Vertex corners[4]; vec4 aux; };
+layout(set = 0, binding = 0, std430) readonly buffer Quads { Quad quads[]; };
+layout(set = 0, binding = 1, std430) readonly buffer Visible { uint visible[]; };
+layout(push_constant, std430) uniform Frame {
+    vec4 row0;
+    vec4 row1;
+    vec4 screen;
+    uvec4 draw; // x visible base, y/z camera offset (int bits), w maxGroundZ (int bits)
+} pc;
+layout(location = 0) out vec2 uv;
+layout(location = 1) out vec4 packed_hue;
+layout(location = 2) out vec3 land_normal;
+layout(location = 3) flat out uint art_slot;
+
+
+layout(location = 4) out vec3 surface_point;
+layout(location = 5) flat out uint surface_data;
+layout(location = 6) flat out vec2 surface_tile;
+vec3 surface_position(vec2 pixel, vec2 tile, uint data) {
+    float base_z = float(int((data >> 12u) & 255u) - 128);
+    uint kind = data & 15u;
+    float u = pixel.x / 22.0;
+    float v = (pixel.y + 22.0 + 4.0 * base_z) / 22.0;
+    vec3 result = vec3((u + v) * 0.5, (v - u) * 0.5, base_z);
+    if (kind == 2u || kind == 7u) {
+        result.y = tile.y + 1.0; result.x = u + result.y;
+        result.z = ((result.x + result.y) * 22.0 - pixel.y - 22.0) / 4.0;
+    } else if (kind == 3u) {
+        result.x = tile.x + 1.0; result.y = result.x - u;
+        result.z = ((result.x + result.y) * 22.0 - pixel.y - 22.0) / 4.0;
+    } else if (kind == 4u) {
+        float t = (pixel.x - (tile.x - tile.y) * 22.0) / 44.0;
+        result.xy = tile + vec2(t, -t);
+        result.z = ((tile.x + tile.y) * 22.0 - pixel.y + 22.0) / 4.0;
+    }
+    return result;
+}
+
+void main() {
+    uint occurrence = uint(gl_VertexIndex) / 6u;
+    uint k = uint(gl_VertexIndex) % 6u;
+    uint q = visible[pc.draw.x + occurrence];
+    vec4 aux = quads[q].aux;
+    // The canvas draws a meshed static only at Z <= maxGroundZ; land passes 127.
+    if (int(aux.z) > int(pc.draw.w)) {
+        gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+        uv = vec2(0.0); packed_hue = vec4(0.0); land_normal = vec3(0.0, 0.0, 1.0); art_slot = 0u;
+        return;
+    }
+    const uint mesh_order[6] = uint[](0u,1u,2u,1u,3u,2u);
+    const uint rect_order[6] = uint[](0u,2u,3u,0u,3u,1u);
+    uint corner = quads[q].corners[0].normal.w > 0.5 ? rect_order[k] : mesh_order[k];
+    Vertex v = quads[q].corners[corner];
+    // Integer world-screen position minus the integer camera offset: exact,
+    // the same value the canvas path computes before its view transform.
+    vec2 local = v.position_uv.xy - vec2(float(int(pc.draw.y)), float(int(pc.draw.z)));
+    vec3 p = vec3(local, 1.0);
+    vec2 pixel = vec2(dot(pc.row0.xyz, p), dot(pc.row1.xyz, p));
+    float zn = (32768.0 - aux.x) / 65535.0;
+    float z = floor(zn * 16777215.0 + 0.5) / 16777216.0;
+    gl_Position = vec4(pixel * (2.0 / pc.screen.xy) - 1.0, z, 1.0);
+    uv = v.position_uv.zw;
+    packed_hue = v.packed_hue;
+    land_normal = v.normal.xyz;
+    art_slot = uint(aux.y);
+    surface_data = floatBitsToUint(aux.w);
+    float base_z = float(int((surface_data >> 12u) & 255u) - 128);
+    float sum = round(aux.x - 0.5 - (127.0 + base_z) * 0.01);
+    bool rectangle = quads[q].corners[0].normal.w > 0.5;
+    float diff = (rectangle ? (quads[q].corners[0].position_uv.x + quads[q].corners[3].position_uv.x) * 0.5
+        : quads[q].corners[0].position_uv.x) / 22.0;
+    surface_tile = round(vec2((sum + diff) * 0.5, (sum - diff) * 0.5));
+    surface_point = surface_position(v.position_uv.xy, surface_tile, surface_data);
+    // Stretched land: each vertex has its own Z on the tile's diamond.
+    if (!rectangle && ((surface_data & 15u) == 1u || (surface_data & 15u) == 6u)) {
+        surface_point.xy = surface_tile + vec2(corner == 1u || corner == 3u ? 1.0 : 0.0,
+            corner >= 2u ? 1.0 : 0.0);
+        surface_point.z = ((surface_point.x + surface_point.y) * 22.0 - v.position_uv.y - 22.0) / 4.0;
+    }
+}

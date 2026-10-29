@@ -167,6 +167,7 @@ internal sealed class DepthWorldResident
                 int slot = 0;
                 for (int a = 0; a < group.ArtCount; a++) if (group.Arts[a].ArtRs == rid) { slot = a; break; }
                 Quads[group.Base + q] = PackQuad(m, land, layer.Depths[index], slot, land ? (sbyte)-128 : layer.ObjectZ[index]);
+                Quads[group.Base + q].Aux.W = BitConverter.UInt32BitsToSingle(layer.SurfaceData[index]);
             }
             DirtyQuads.Add((group.Base, size));
             Packed += size;

@@ -196,6 +196,7 @@ namespace GUO.Game.UI.Gumps
         // video
         private Checkbox _use_old_status_gump, _statusGumpBarMutuallyExclusive, _windowBorderless, _enableDeathScreen, _enableBlackWhiteEffect, _altLights, _enableLight, _enableShadows, _enableShadowsStatics, _auraMouse, _runMouseInSeparateThread, _useColoredLights, _darkNights, _partyAura, _hideChatGradient, _animatedWaterEffect;
         private Checkbox _enhancedHD; // PORT DEVIATION (GUO): Enhanced HD repaint detail
+        private Checkbox _lightingSpeedMode; // PORT DEVIATION (GUO): ADR-0046
         private Checkbox _realtimeLights; // PORT DEVIATION (GUO): Realtime lights (ADR-0039)
         private Combobox _lightLevelType;
         private Combobox _hdFilter; // PORT DEVIATION (GUO): optional HD pack sampling.
@@ -2141,6 +2142,13 @@ namespace GUO.Game.UI.Gumps
                     startY
                 )
             );
+
+            // PORT DEVIATION (GUO): ADR-0046, capability reason remains visible.
+            section4.Add(_lightingSpeedMode = AddCheckBox(null,
+                "Lighting speed mode (GPU per-pixel lights)", _currentProfile.LightingSpeedMode, startX, startY));
+            _lightingSpeedMode.IsEnabled = Renderer.SpeedMode.SpeedModeDebug.Supported;
+            if (!Renderer.SpeedMode.SpeedModeDebug.Supported)
+                section4.Add(AddLabel(null, Renderer.SpeedMode.SpeedModeDebug.UnavailableReason, startX, startY));
 
             // PORT DEVIATION (GUO): shared UO+ settings (ADR-uoplus-settings).
             section4.Add(new NiceButton(startX, startY, 210, 28, ButtonAction.Activate, "UO+ effects...", font: 1)
@@ -4209,6 +4217,7 @@ namespace GUO.Game.UI.Gumps
                     _animatedWaterEffect.IsChecked = false;
                     _enhancedHD.IsChecked = videoDefaults.EnhancedHD; // PORT DEVIATION (GUO)
                     _hdFilter.SelectedIndex = (int)videoDefaults.HdFilter;
+                    _lightingSpeedMode.IsChecked = videoDefaults.LightingSpeedMode; // PORT DEVIATION (GUO)
                     _realtimeLights.IsChecked = videoDefaults.RealtimeLights; // PORT DEVIATION (GUO)
                     _waterStyle.SelectedIndex = 0; // PORT DEVIATION (GUO): Classic
                     _partyAuraColorPickerBox.Hue = 0x0044;
@@ -4793,6 +4802,7 @@ namespace GUO.Game.UI.Gumps
             }
 
             _currentProfile.HdFilter = (HdFilterMode)Math.Clamp(_hdFilter.SelectedIndex, 0, 3);
+            _currentProfile.LightingSpeedMode = _lightingSpeedMode.IsChecked; // PORT DEVIATION (GUO): ADR-0046
             _currentProfile.RealtimeLights = _realtimeLights.IsChecked; // PORT DEVIATION (GUO): ADR-0039
 
             // PORT DEVIATION (GUO): the renderer rebuilds the meshes when it sees the change.

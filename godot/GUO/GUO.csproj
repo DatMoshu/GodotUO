@@ -26,6 +26,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="src/Render/SpeedMode/*.glsl.txt" LogicalName="speedmode/%(Filename)%(Extension)" />
     <EmbeddedResource Include="src/Render/DepthWorld/*.glsl.txt" LogicalName="depthworld/%(Filename)%(Extension)" />
   </ItemGroup>
 

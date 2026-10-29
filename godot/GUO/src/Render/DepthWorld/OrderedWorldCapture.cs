@@ -58,6 +58,9 @@ internal sealed class OrderedWorldCapture : IDisposable
     // ADR-0044 Depth World: upstream's depth for the next captured quad, and
     // the chunk land/statics drawn from resident buffers this frame.
     internal float Depth;
+    internal SpeedMode.SurfaceRow Surface;
+    private bool _speedMode;
+    private readonly List<SpeedMode.SurfaceRow> _surfaceRows = new(8192);
     internal int Group;
     private int _landEnd = -1;
     internal void EndLand() => _landEnd = _occurrences.Count;
@@ -133,6 +136,7 @@ internal sealed class OrderedWorldCapture : IDisposable
     internal bool Recording { get; private set; }
     internal bool Deferring => Recording && _unsupported == null;
     internal Texture2Drd Texture => _device.Presenter;
+    internal Texture2Drd SurfaceTexture => _device.SurfaceTexture;
 
     // Embedded in GUO.dll: Release exports do not depend on Labs resource filters.
     internal static string ShaderSource(string name)
@@ -172,6 +176,8 @@ internal sealed class OrderedWorldCapture : IDisposable
         if (hue == null) { Fallback("missing hue table"); return false; }
         _occurrences.Clear(); _dynamic.Clear(); _states.Clear(); _segments.Clear(); _textures.Clear(); _commands.Clear();
         Records.Begin();
+        _speedMode = SpeedMode.SpeedModeDebug.Active;
+        _surfaceRows.Clear();
         _batchArtCount = _textureRuns = 0;
         _canvas = default;
         Depth = 0f; Group = 0; _landEnd = -1; RecoverCanvas = null;
@@ -207,6 +213,7 @@ internal sealed class OrderedWorldCapture : IDisposable
     {
         if (!Deferring) return false;
         if (DepthWorldProbe.Enabled) Depth = layer.Depths[index];
+        if (_speedMode) Surface = SpeedMode.SurfaceRow.FromMesh(layer, index);
         if (!OrderedWorldRecords.Enabled) return Quad(layer.Textures[index], layer.Vertices[index], offset, true);
         var record = Records.Find(layer, index, false)
             ?? Records.Store(layer, index, false, layer.Vertices[index]);
@@ -297,6 +304,7 @@ internal sealed class OrderedWorldCapture : IDisposable
             });
             DynamicCaptureBytes += 192;
         }
+        if (_speedMode) _surfaceRows.Add(Surface);
         _states.Add(new OrderedWorldDevice.State
         {
             Xx = transform.X.X, Yx = transform.Y.X, OriginX = transform.Origin.X,
@@ -464,6 +472,10 @@ internal sealed class OrderedWorldCapture : IDisposable
             _device.RenderRT(CollectionsMarshal.AsSpan(_occurrences), CollectionsMarshal.AsSpan(_dynamic),
                 CollectionsMarshal.AsSpan(_states), CollectionsMarshal.AsSpan(_segments), _textureRuns, _push, true,
                 RecoverCanvas != null ? Resident : null, _cameraX, _cameraY, _maxGroundZ, Math.Max(0, _landEnd));
+            if (_speedMode && RecoverCanvas != null)
+                _device.RenderSurfaceRT(CollectionsMarshal.AsSpan(_surfaceRows), CollectionsMarshal.AsSpan(_segments),
+                    _push, Resident, _cameraX, _cameraY, _maxGroundZ, Math.Max(0, _landEnd));
+            else _device.DisableSurfaceRT();
             if (InjectFailure == 2) throw new InvalidOperationException("injected after recording");
             FramesDrawn++;
             if (RecoverCanvas != null) ResidentFrames++;
@@ -471,6 +483,7 @@ internal sealed class OrderedWorldCapture : IDisposable
         }
         catch (Exception e)
         {
+            _device.DisableSurfaceRT();
             Fallback(e.Message);
             ReplayCanvas();
         }
