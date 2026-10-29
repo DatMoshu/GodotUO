@@ -389,6 +389,49 @@ line; the port lists the best first, one row each. `DfiInvasionTests.cs`
 covers the presets, town names, settings, buffs, the command and a full run
 to the boss.
 
+### `patches/0014-dfi-quests.patch`
+
+Three of DFI's quests with their artifacts, and the creatures and loot they
+lean on. `[DfiQuests` (Administrator) places the quest givers and the
+Plague's altar, replacing any placed before; `dfi-rare-plants.json` grows the
+Elder Wizard's roots.
+
+- **The Plague** (Zuleika): one in twenty new spawns in Felucca's dungeons
+  rises plagued (green, double hits, stronger), the roll sitting after
+  ModernUO's paragon roll in `BaseCreature.OnBeforeSpawn`. Plagued corpses
+  hold poison fungus (DFI made players carve it out) and now and then a
+  plague chest. Zuleika takes 200 fungus and sends the player, and any party
+  member who accepts, to the Alternate Dimension: the spiral halls on Trammel
+  at 6093,441. Its altar summons The Plague, who throws skulls that hatch
+  plagued slimes and beasts. His artifacts: the Book of Lost Knowledge, the
+  Gloves of the Lepracon, Grizzly's Courage and the Bow of Weakening, which
+  levels on one of six creature kinds.
+- **Slayer of evil!** (Nimre, Opticon's Midas quest): six rounds, one Doom
+  creature each, ending at the Dark Father. The reward bag holds a 5,000 gold
+  check and a treasure map, often the Midas Touch (a one-use +300 smithing
+  hammer), and one time in ten Yeti's Pads, the Necronomicon, Behemoth or
+  Dragon Clenching Claws.
+- **Elder Wizard** (Gabrielle): four of each of four rare roots, at Cove's
+  orc fort, the Fire Island temple, Yew's cemetery and the Compassion shrine,
+  as her plant book says. Picking one may disturb a nest of snakes, spiders
+  or serpents, a third of them plagued or elder (white, five times the
+  hits). The reward is a reagent bag that any vendor selling reagents refills
+  at their own prices when it is dropped on them.
+- **Armor of the Sun**: six pieces with three or four properties each; the
+  full set gives the legs 900 luck. A dug treasure chest may raise a Sun
+  Guardian carrying a piece (the one line in `TreasureMap`), and champions
+  slain in the Lost Lands carry one six times in ten.
+- **Evil orc helm**: from orc brutes and orcish lords; +10 strength and -10
+  to the wearer's higher of dexterity and intelligence.
+
+Placements are GUO's where DFI's saves had none: Nimre stands where DFI's
+last save had him, Gabrielle in Buccaneer's Den where DFI's hint gump put the
+Elder Wizard, Zuleika beside her, and the Alternate Dimension gets a passage
+back. DFI's elders never spawned on their own, and do not here. Gabrielle
+sells ModernUO's mage stock. `DfiQuestTests.cs` covers every type, the
+plague rules, Zuleika's count, all six Midas rounds, plant picking, the bag
+refill, the Sun Armor set bonus and the evil orc helm.
+
 ### Retired
 
 `0004-multi-tile-enumerator` fixed tile lookups that stopped at a multi with no
