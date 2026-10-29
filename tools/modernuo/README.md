@@ -584,6 +584,40 @@ one; an advert needs the vendor's owner (DFI had that check commented out).
 `DfiExchangeTests.cs` covers every commodity, bids, offers, matching both
 ways, cancelling, advert ranking, the per-account charge and the lapsing fee.
 
+### `patches/0020-dfi-lost-lands.patch`
+
+DFI's Lost Lands, from `Scripts/Custom/Items/Misc/LLTeleporter.cs`,
+`Custom/Engines/LostLandsVendor`, `Custom/Mobiles/Townfolks and Vendors/NPC/
+LLVarietyDealer`, `Custom/Mobiles/Monsters/LLDemonKnight.cs` and the Lost Lands
+branches DFI added to RunUO's `BaseCreature`, `BaseChampion`, `Banker`,
+`BaseVendor` and `PlayerMobile`. The Lost Lands are T2A Felucca and Khaldun.
+`[DfiLostLands` places a gate on Britain's main street to Papua, one back
+in Papua's bank, and Papun beside Papua's banker. The gates are red moongates.
+
+- **The gate** takes only armor, weapons, jewelry, hats, spellbooks, runebooks
+  and ethereals in (no clothing, no pets), and charges 1,000 gp from the bank
+  per item either way, after a warning gump. On the way in it ends the
+  insurance of everything carried and unblesses blessed hats.
+- **Inside**: items cannot be insured; bankers will not open the bank box
+  (balance, withdraw and deposit still work); shops charge ten times their
+  price; a creature's gold becomes verite gems (one per 50, up to ten) and up
+  to six magic items; champions leave a piece of the Armor of the Sun six
+  times in ten.
+- **Papun** sells verite gems for gold (200 gp each inside), buys them back
+  for 50, and through his gump sells reagents, potions, bandages, ammunition,
+  magic weapons and armor, pets, gold, a bulk order book, instruments and
+  dragon ships for gems: 47 wares at three gems per 50 gp of DFI's price.
+- **The Forgotten One** (`LLKnight`), a 25,000-hit dark knight staff spawn for
+  events, leaves an artifact from a list of 37 (Doom's, the rare ones, DFI's
+  quest artifacts) for certain in his first ten minutes, falling to 40% after
+  an hour, else copper bars. He is announced every few minutes; in Khaldun he
+  may vanish once the chance falls and nobody has hurt him.
+
+DFI's saves kept no gate, so the Britain–Papua pair is GUO's choice. The gate
+reads its direction from its target. `DfiLostLandsTests.cs` covers the zone,
+prices, insurance, the gate's costs, refusals and passage, gems for gold, the
+shop and the knight.
+
 ### Retired
 
 `0004-multi-tile-enumerator` fixed tile lookups that stopped at a multi with no

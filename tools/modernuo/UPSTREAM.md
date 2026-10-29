@@ -51,6 +51,7 @@ is retired (as `0004-multi-tile-enumerator` was).
 | 0017 | DFI Network's creatures: the Sphynx's paid fortunes, the Paladin, four faction creatures, two ethereals, the counselor's staff, the ancient message in a bottle | **ours**, shard content, depends on 0008 and 0016 | none |
 | 0018 | DFI Network's townsfolk (criminal banker, priest of Mondain, necromancer, priest of evil, Haven's crier, prisoners), service stones and the Riddler | **ours**, shard content, depends on 0009 and 0016 | none |
 | 0019 | DFI Network's West Britain Exchange (commodity bids and offers), vendor advertisements, `[DfiTown` | **ours**, shard content, depends on 0018 | none |
+| 0020 | DFI Network's Lost Lands: T2A Felucca and Khaldun without insurance or bank box, at ten times the shop prices, with verite gems for gold; the paid gate, Papun's gem shop, the Forgotten One, `[DfiLostLands` | **ours**, shard content, depends on 0007, 0014, 0016 and 0018 | none |
 | issue | `MultiData.LoadUOP` and uncompressed entries | **upstream** (issue, no patch) | `upstream/issue-multidata-loaduop-uncompressed.md` |
 
 ### 0006: loopback ban exemption (NET-00c, MUO patch)
@@ -82,7 +83,7 @@ still requires the shard console's detection/filter messages.
 **Verdict: ours.** Local readiness checks and development clients share one
 address. Keep this narrow policy separate from public-shard ban policy.
 
-### 0007 to 0019: DFI Network shard content (MUO patch)
+### 0007 to 0020: DFI Network shard content (MUO patch)
 
 GUO patches: `patches/0007-dfi-loot.patch`, `patches/0008-dfi-monsters.patch`,
 `patches/0009-dfi-player-items.patch` (player items, deeds, balls, the shrink
@@ -107,7 +108,11 @@ defend chance or mana regeneration) and `patches/0018-dfi-town.patch` (under
 `Custom/DFI/Town`; a `ServesCriminals` property on `Banker`, checked at its four
 criminal refusals and in `OpenBankEntry`, lets the criminal banker serve
 criminals) and `patches/0019-dfi-exchange.patch` (the exchange and adverts under
-`Custom/DFI/Town`; new files only).
+`Custom/DFI/Town`; new files only) and `patches/0020-dfi-lost-lands.patch` (under
+`Custom/DFI/LostLands`; three one-check hooks: `Insurance.ToggleItemInsurance`
+refuses inside the Lost Lands, `Banker` keeps the bank box shut there,
+`BaseVendor.GetPriceScalar` returns 1000 there; 0007's `DfiLoot` hands corpses to
+the Lost Lands loot).
 Ports of an owner's former RunUO shards (DFI Network, DefianceUO-based, and
 kopia 2012) so the dev shard plays like them: DFI's SE loot packs, its paragon
 and champion death bonuses, and 25 custom monsters under `Custom/DFI/`. The
