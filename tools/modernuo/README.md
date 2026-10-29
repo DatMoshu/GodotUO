@@ -677,6 +677,31 @@ out, as the event masters take players in. `DfiCrateRaceTests.cs` covers the
 track and its layout, rectangles, joining, undressing and redressing, crate
 storage, shields, finishing and placing.
 
+### `patches/0023-dfi-bomberman.patch`
+
+Bomberman, from the "Solaris BoardGames" scripts DFI ran
+(`Scripts/Custom/Opticon/BoardGames`). `[DfiBomberman` places a join stone at
+your feet; its board (21 by 21 by default) is built two tiles south-east of it.
+
+- The first player to use the stone picks the number of players (2 to 8) and,
+  once in, the board's style (default, rocky, woodland, warehouse, ruins,
+  graveyard, crystal) and size (11 to 65, odd), then says when to start.
+- Each player starts in a corner or edge with a bomb bag that plants a bomb at
+  their feet. Bombs go off after three seconds, or on a detonator, and their
+  blasts run along the rows, set off other bombs and break the destructible
+  walls. One wall in five leaves an upgrade that decays after twenty seconds:
+  more bombs, a longer blast, speed, a detonator, or blasts that tear through
+  walls.
+- A player caught in a blast is out; the last one standing wins. Scores (one
+  per kill, two per win, less for dying or blowing yourself up) are kept per
+  player, shown from the stone's context menu, and staff can reset them.
+
+GUO's choices: the board's pieces are rebuilt by the stone after a restart
+instead of being saved, and a game in progress at a restart ends. The
+scripts' generic board game base (only Bomberman used it) is folded into the
+Bomberman stone. `DfiBombermanTests.cs` covers the board, sizes, starting a
+game, planting, upgrades, putting players out, scores and ending.
+
 ### Retired
 
 `0004-multi-tile-enumerator` fixed tile lookups that stopped at a multi with no
