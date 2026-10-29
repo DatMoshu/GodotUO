@@ -1,4 +1,4 @@
-# ADR-0046: Lighting speed mode, a screen-space surface buffer with per-pixel lights on the Depth World
+# ADR-0048: Lighting speed mode, a screen-space surface buffer with per-pixel lights on the Depth World
 
 Status: Proposed, 2026-10-29 (owner request in task 959: realistic lighting, shadows, GI, water and weather that
 run "lean and fast"; the lighting sprint of 2026-10-29 reached 65 ms a frame at the zoomed-out view and is parked
@@ -34,8 +34,13 @@ draws Classic lighting.
 A second pass over the Depth World's own resident and dynamic quad buffers, with a surface pipeline, into a
 GUO-owned target the size of the world target:
 
-- Format `R16G16B16A16_SFLOAT`: `xy` = world tile position (continuous, tile units), `z` = world Z (UO units),
-  `w` = class and flags packed as `class + 16 x flags` (integers, exact in half float below 2048).
+- Format `R16G16B16A16_SFLOAT`: `xy` = tile position **relative to the surface origin** (continuous, tile units),
+  `z` = world Z (UO units), `w` = class and flags packed as `class + 16 x flags` (integers, exact in half float
+  below 2048). The surface origin is the camera's centre tile as integers, pushed with the frame and shared with
+  every consumer (light, shadow, window, weather passes) so each adds it back before any world lookup. Absolute
+  tile coordinates do not fit a half float: at tile 1434 the spacing is 1, which steps the light per tile. A view
+  spans about 90 tiles at camera Zoom 2, so the relative value stays below 64 and keeps 1/32 tile, under one
+  pixel at that zoom; the origin changes only when the camera tile changes and never within a frame.
 - Its own `D32_SFLOAT` depth, LessEqual, depth write on, the same depth value the colour pass uses, so the
   buffer has the colour picture's occlusion. Alpha-zero texels are discarded as in the colour pass.
 - Classes: `0` none, `1` floor, `2` wall face along X (shows its +Y face, "south"), `3` wall face along Y

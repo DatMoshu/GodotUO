@@ -9,6 +9,7 @@ public sealed partial class UltimaBatcher2D
 {
     private OrderedWorldCapture _orderedWorld;
     internal SpeedMode.SurfaceRow OrderedSurface;
+    internal Vector2I OrderedSurfaceOrigin;
     private Rid _orderedCanvas, _orderedPresenter;
     private int _orderedStackDepth;
     private ShaderMaterial _orderedPresentMaterial;
@@ -87,6 +88,7 @@ public sealed partial class UltimaBatcher2D
     internal void BeginOrderedWorld(bool supported, Vector2I probeSize = default)
     {
         OrderedWorldCapture.LastFrameOnPass = false;
+        _orderedWorld?.ClearSurfaceBinding();
         if (!OrderedWorldCapture.Enabled) return;
         if (_retainCanvasFrame)
         {
@@ -125,6 +127,7 @@ public sealed partial class UltimaBatcher2D
             _material.GetShaderParameter(ParamBrightlight).AsSingle(),
             _material.GetShaderParameter(ParamCircleOfTransparencyCenter).AsVector2(),
             _material.GetShaderParameter(ParamCircleOfTransparencyRadius).AsSingle())) return;
+        _orderedWorld.SurfaceOrigin=OrderedSurfaceOrigin;
         FlushRun();
         _orderedCanvas = NewItem(CurrentParent, Transform2D.Identity);
         _orderedWorld.SetCanvas(_orderedCanvas);

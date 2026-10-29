@@ -59,6 +59,8 @@ internal sealed class OrderedWorldCapture : IDisposable
     // the chunk land/statics drawn from resident buffers this frame.
     internal float Depth;
     internal SpeedMode.SurfaceRow Surface;
+    internal Vector2I SurfaceOrigin;
+    internal void ClearSurfaceBinding() => SpeedMode.SpeedModeBindings.Clear(_device);
     private bool _speedMode;
     private List<SpeedMode.SurfaceRow> _surfaceRows;
     internal int Group;
@@ -474,7 +476,7 @@ internal sealed class OrderedWorldCapture : IDisposable
                 RecoverCanvas != null ? Resident : null, _cameraX, _cameraY, _maxGroundZ, Math.Max(0, _landEnd));
             if (_speedMode && RecoverCanvas != null)
                 _device.RenderSurfaceRT(CollectionsMarshal.AsSpan(_surfaceRows), CollectionsMarshal.AsSpan(_segments),
-                    _push, Resident, _cameraX, _cameraY, _maxGroundZ, Math.Max(0, _landEnd));
+                    _push, Resident, _cameraX, _cameraY, _maxGroundZ, Math.Max(0, _landEnd), SurfaceOrigin);
             else _device.DisableSurfaceRT();
             if (InjectFailure == 2) throw new InvalidOperationException("injected after recording");
             FramesDrawn++;

@@ -1277,6 +1277,9 @@ namespace GUO.Game.Scenes
             DrawUnderlays(batcher);
 
             // PORT DEVIATION (GUO): ADR-0044 production depth backend; complete canvas replay.
+            // PORT DEVIATION (GUO): ADR-0048 origin belongs to the captured frame.
+            if (Renderer.SpeedMode.SpeedModeDebug.Active)
+                batcher.OrderedSurfaceOrigin=SpeedModeCameraOrigin();
             batcher.BeginOrderedWorld((!DepthWorldProbe.Enabled || DepthWorldProbe.FrameAdmitted)
                 && _splatObjects.Count == 0 && (_terrainLayers == null || _terrainLayers.Count == 0));
             _renderLists.FinishDepthWorldAdmission(batcher, _meshChunks, _maxGroundZ);

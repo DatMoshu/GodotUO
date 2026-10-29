@@ -4141,7 +4141,22 @@ pipelines, geometry/state strides and 64-byte push block remain unchanged.
 Off creates no surface texture, framebuffer, pipeline or GPU row buffer.
 Canvas recovery, disable and resize retire the surface resources.
 
-Surface pixels contain tile position X/Y, UO Z, and `class + 16 * flags`.
+Surface pixels contain tile position X/Y relative to an integer camera-centre
+origin, world UO Z, and `class + 16 * flags`. The surface-only descriptor set 2,
+binding 0 is a 16-byte `ivec4` storage buffer containing origin X/Y and two zeros.
+It is created only on mode activation and uploaded only when the origin changes.
+The colour pipeline's push layout remains 64 bytes. The origin is captured once
+with the world ticket, including existing walking and camera-peek offsets.
+`SpeedModeBindings.Current` is the shared surface/light hook: its value snapshot
+contains Surface, LightTarget, Origin, TargetPixelBounds, Ambient and Sequence.
+Consumers take one snapshot after production and add Origin to sampled XY before
+world lookups. PublishLight preserves that surface ticket's origin. Off/fallback,
+resize and disposal clear surface, light and origin together. It is borrowed on
+the admitted shared main/render thread; never retain it across frame boundaries.
+Weather keeps `WaterRender.BindLightTarget(batcher, Texture2D, Vector4, Vector3)`
+and reads the same snapshot origin; ClearLightTarget is required on off/fallback.
+The actual light producer remains a subsequent head; only its binding contract
+is present here.
 Classes: 0 none, 1 floor, 2 south wall, 3 east wall, 4 upright card, 5 roof,
 6 water. Flags: 1 covered, 2 wet candidate, 4 window, 8 translucent. Resident
 `aux.w` transports a bit-preserved uint: low 8 bits class/flags, bits 8..11 roof X gradient plus 8, bits 12..19
@@ -4167,15 +4182,17 @@ resize, fallback or disposal.
 checks default-off persistence and every signed-Z/class/flag transport value.
 On a rendered RD launch it also draws a synthetic six-class scene, saves
 `surface-classes.png`, raw `surface.rgba16f` and `surface-counts.json`, checks
-all classes occur, and verifies the colour target is byte-identical before
+all classes occur, validates bank-coordinate relative precision and origin-shift
+world-position invariance, confirms the light binding retains its origin and
+that off clears the complete binding, and verifies the colour target is byte-identical before
 and after the surface draw. The scenario takes `--var surface_out=<external-evidence-folder>`.
 Headless uses Godot's dummy renderer: the probe
 explicitly prints `GPU NOT RUN` after the CPU contract; this is never GPU
 acceptance. Rendered validation requires the project's Godot lease.
 
-Known first-head limits: absolute half-float tile coordinates lose sub-tile
-precision at bank coordinates (contract decision pending); roof neighbour
-slopes and ambiguous-wall neighbour resolution require rendered validation. The
+The camera-relative contract resolves absolute half-float precision loss at
+bank coordinates (ADR-0048 amendment from3ee47f10). Roof neighbour slopes and
+ambiguous-wall neighbour resolution still require rendered validation. The
 corner-wall split handles unresolved two-face corners and also needs visual proof.
 Off-state live captures and draw counts, rendered fixtures and frame-time
 acceptance remain required before the light consumer is accepted.

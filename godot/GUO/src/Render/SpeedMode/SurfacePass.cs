@@ -15,13 +15,17 @@ internal sealed partial class OrderedWorldDevice
     private Rid _surfaceShader, _surfaceResidentShader, _surfacePipeline, _surfaceResidentPipeline;
     private Rid _surfaceRows, _surfaceSet, _surfaceResidentSet;
     private uint _surfaceRowCapacity;
+    private Rid _surfaceOriginBuffer,_surfaceOriginSet,_surfaceResidentOriginSet;
+    private Vector2I _appliedSurfaceOrigin;
+    private bool _surfaceOriginValid;
+    internal Vector2I SurfaceOrigin { get; private set; }
     private Rid _surfaceGeometry, _surfaceOrder, _surfaceStates, _surfaceResidentGeometry, _surfaceResidentOrder;
     private readonly Dictionary<TextureSet, Rid> _surfaceTextures = new(), _surfaceResidentTextures = new();
     internal Texture2Drd SurfaceTexture { get; } = new();
     private Rid[] _surfaceDynamicSets = Array.Empty<Rid>(), _surfaceResidentSets = Array.Empty<Rid>();
     internal static long SurfaceDrawCalls;
     internal bool SurfaceReady { get; private set; }
-    internal bool HasSurfaceResources => _surfaceColor.IsValid || _surfaceShader.IsValid || _surfaceRows.IsValid;
+    internal bool HasSurfaceResources => _surfaceColor.IsValid || _surfaceShader.IsValid || _surfaceRows.IsValid || _surfaceOriginBuffer.IsValid;
 
     internal static string SpeedShader(string name)
     {
@@ -82,6 +86,15 @@ internal sealed partial class OrderedWorldDevice
         _surfaceResidentShader = SurfaceShaderRT("surface_resident.glsl.txt");
         _surfacePipeline = SurfacePipelineRT(_surfaceShader);
         _surfaceResidentPipeline = SurfacePipelineRT(_surfaceResidentShader);
+        _surfaceOriginBuffer=_rd.StorageBufferCreate(16,ReadOnlySpan<byte>.Empty,(RD.StorageBufferUsage)0,(RD.BufferCreationBits)0);
+        Require(_surfaceOriginBuffer,"surface origin buffer");
+        using var originUniform=new RDUniform { UniformType=RD.UniformType.StorageBuffer,Binding=0 };
+        originUniform.AddId(_surfaceOriginBuffer);
+        var originUniforms=new Godot.Collections.Array<RDUniform> { originUniform };
+        _surfaceOriginSet=_rd.UniformSetCreate(originUniforms,_surfaceShader,2);
+        _surfaceResidentOriginSet=_rd.UniformSetCreate(originUniforms,_surfaceResidentShader,2);
+        Require(_surfaceOriginSet,"dynamic surface origin set");
+        Require(_surfaceResidentOriginSet,"resident surface origin set");
         SurfaceTexture.TextureRdRid = _surfaceColor;
     }
 
@@ -118,12 +131,18 @@ internal sealed partial class OrderedWorldDevice
     }
 
     internal void RenderSurfaceRT(ReadOnlySpan<SurfaceRow> rows, ReadOnlySpan<Segment> segments, in Push frame,
-        DepthWorldResident resident, int cameraX, int cameraY, int maxGroundZ, int landEnd)
+        DepthWorldResident resident, int cameraX, int cameraY, int maxGroundZ, int landEnd, Vector2I origin)
     {
         SurfaceReady = false;
         try
         {
             EnsureSurfaceRT();
+            if (!_surfaceOriginValid || _appliedSurfaceOrigin!=origin) {
+                Span<int> originRow=stackalloc int[4] { origin.X,origin.Y,0,0 };
+                Upload(_surfaceOriginBuffer,MemoryMarshal.AsBytes(originRow),0);
+                _appliedSurfaceOrigin=origin; _surfaceOriginValid=true;
+            }
+            SurfaceOrigin=origin;
             if (!rows.IsEmpty)
             {
                 uint bytes = checked((uint)rows.Length * 8);
@@ -170,6 +189,7 @@ internal sealed partial class OrderedWorldDevice
                     {
                         _rd.DrawListBindRenderPipeline(list, _surfaceResidentPipeline);
                         _rd.DrawListBindUniformSet(list, _surfaceResidentSet, 0);
+                        _rd.DrawListBindUniformSet(list,_surfaceResidentOriginSet,2);
                         for (int i=0;i<resident.Draws.Count;i++)
                         {
                             var draw=resident.Draws[i];
@@ -186,6 +206,7 @@ internal sealed partial class OrderedWorldDevice
                     {
                         _rd.DrawListBindRenderPipeline(list, _surfacePipeline);
                         _rd.DrawListBindUniformSet(list, _surfaceSet, 0);
+                        _rd.DrawListBindUniformSet(list,_surfaceOriginSet,2);
                         for (int i=0;i<segments.Length;i++)
                         {
                             var segment=segments[i];
@@ -203,6 +224,7 @@ internal sealed partial class OrderedWorldDevice
             }
             finally { _rd.DrawListEnd(); }
             SurfaceReady = true;
+            SpeedModeBindings.PublishSurface(this,SurfaceTexture,origin,Size);
         }
         catch { DisposeSurfaceRT(); throw; }
     }
@@ -214,16 +236,19 @@ internal sealed partial class OrderedWorldDevice
         cache.Clear();
     }
 
-    internal void DisableSurfaceRT() { SurfaceReady = false; if (_surfaceColor.IsValid) DisposeSurfaceRT(); }
+    internal void DisableSurfaceRT() { SpeedModeBindings.Clear(this); SurfaceReady = false; if (_surfaceColor.IsValid) DisposeSurfaceRT(); }
     internal byte[] ReadColorRT() => _rd.TextureGetData(_color, 0);
     internal byte[] ReadSurfaceRT() => _rd.TextureGetData(_surfaceColor, 0);
     private void DisposeSurfaceRT()
     {
         SurfaceReady = false;
+        SpeedModeBindings.Clear(this);
+        SurfaceOrigin=default; _surfaceOriginValid=false;
         SurfaceTexture.TextureRdRid = default;
         if (_rd == null) return;
         foreach (var cache in new[] { _surfaceTextures, _surfaceResidentTextures })
         { foreach (var set in cache.Values) if (_rd.UniformSetIsValid(set)) _rd.FreeRid(set); cache.Clear(); }
+        Free(ref _surfaceOriginSet); Free(ref _surfaceResidentOriginSet); Free(ref _surfaceOriginBuffer);
         Free(ref _surfaceSet); Free(ref _surfaceResidentSet); Free(ref _surfaceRows); _surfaceRowCapacity = 0;
         Free(ref _surfacePipeline); Free(ref _surfaceResidentPipeline);
         Free(ref _surfaceShader); Free(ref _surfaceResidentShader);
