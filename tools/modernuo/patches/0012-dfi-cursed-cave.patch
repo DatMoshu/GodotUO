@@ -1,0 +1,5931 @@
+diff --git a/Distribution/Data/Spawns/dfi/dfi-cursed-cave.json b/Distribution/Data/Spawns/dfi/dfi-cursed-cave.json
+new file mode 100644
+index 000000000..1dbd010cc
+--- /dev/null
++++ b/Distribution/Data/Spawns/dfi/dfi-cursed-cave.json
+@@ -0,0 +1,1042 @@
++[
++  {
++    "$type": "Spawner",
++    "guid": "ca43fb0f-3f0e-5e8b-b412-fd3e1ee1960c",
++    "name": "dfi-cursed-cave level2 srcrsturdymortarpestle",
++    "location": [
++      6095,
++      272,
++      50
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "10:00:00",
++    "maxDelay": "20:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRCRSturdyMortarPestle",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "1e755f0a-5284-589e-8a09-1911c4479b33",
++    "name": "dfi-cursed-cave level2 thecursedblacksmith",
++    "location": [
++      6114,
++      273,
++      28
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "00:10:00",
++    "maxDelay": "00:15:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 4,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "TheCursedBlacksmith",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "f3d0daee-5f02-5809-9c01-4020c45b3032",
++    "name": "dfi-cursed-cave level1 giantblackwidow",
++    "location": [
++      6038,
++      278,
++      0
++    ],
++    "map": "Felucca",
++    "count": 6,
++    "minDelay": "00:00:30",
++    "maxDelay": "00:01:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 8,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "GiantBlackWidow",
++        "maxCount": 6,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "d7e7c939-b16c-595a-909b-6a6e2568e9a9",
++    "name": "dfi-cursed-cave level1 ccskeletalcorpse",
++    "location": [
++      6063,
++      279,
++      -22
++    ],
++    "map": "Felucca",
++    "count": 2,
++    "minDelay": "00:10:00",
++    "maxDelay": "00:20:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 5,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "CCSkeletalCorpse",
++        "maxCount": 2,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "0480b1d5-0b52-5362-9cc6-95b0e667ebc5",
++    "name": "dfi-cursed-cave level2 thecursed",
++    "location": [
++      6110,
++      337,
++      0
++    ],
++    "map": "Felucca",
++    "count": 3,
++    "minDelay": "00:00:30",
++    "maxDelay": "00:01:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 4,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "TheCursed",
++        "maxCount": 3,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "72765ec7-52e0-5044-91f7-7cf10931442c",
++    "name": "dfi-cursed-cave level2 thecursed",
++    "location": [
++      6118,
++      360,
++      -22
++    ],
++    "map": "Felucca",
++    "count": 2,
++    "minDelay": "00:00:30",
++    "maxDelay": "00:01:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 4,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "TheCursed",
++        "maxCount": 2,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "72e8552e-149e-546e-900a-40d8ffdf34f8",
++    "name": "dfi-cursed-cave level2 thecursedwarrior",
++    "location": [
++      6123,
++      275,
++      22
++    ],
++    "map": "Felucca",
++    "count": 2,
++    "minDelay": "00:01:00",
++    "maxDelay": "00:02:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 4,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "TheCursedWarrior",
++        "maxCount": 2,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "d0f6bc9a-3634-514b-a5ef-ab6f232b380c",
++    "name": "dfi-cursed-cave level2 thecursed",
++    "location": [
++      6095,
++      279,
++      44
++    ],
++    "map": "Felucca",
++    "count": 6,
++    "minDelay": "00:00:30",
++    "maxDelay": "00:01:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 8,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "TheCursed",
++        "maxCount": 6,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "9217e88e-999b-5e70-8f7c-5df03001a374",
++    "name": "dfi-cursed-cave level1 thecursed-hellhound",
++    "location": [
++      6038,
++      359,
++      44
++    ],
++    "map": "Felucca",
++    "count": 4,
++    "minDelay": "00:00:30",
++    "maxDelay": "00:01:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 8,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "TheCursed",
++        "maxCount": 1,
++        "probability": 100
++      },
++      {
++        "name": "HellHound",
++        "maxCount": 3,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "2c7b39ee-d67e-5fe2-9b75-e2f822b539a3",
++    "name": "dfi-cursed-cave level1 thecursed-hellhound",
++    "location": [
++      6044,
++      332,
++      22
++    ],
++    "map": "Felucca",
++    "count": 4,
++    "minDelay": "00:00:30",
++    "maxDelay": "00:01:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 4,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "TheCursed",
++        "maxCount": 1,
++        "probability": 100
++      },
++      {
++        "name": "HellHound",
++        "maxCount": 3,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "cec5ad78-2bcb-523f-91d5-b547482321b0",
++    "name": "dfi-cursed-cave level2 devathecursedone",
++    "location": [
++      6119,
++      360,
++      -22
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "00:05:00",
++    "maxDelay": "00:10:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 4,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "DevaTheCursedOne",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "8092fd27-0df0-5fe5-bc93-e73b2c2eeafd",
++    "name": "dfi-cursed-cave level1 hellcat",
++    "location": [
++      6062,
++      279,
++      -22
++    ],
++    "map": "Felucca",
++    "count": 4,
++    "minDelay": "00:00:30",
++    "maxDelay": "00:01:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 8,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "HellCat",
++        "maxCount": 4,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "5b6c186e-958a-5218-b981-a9872c677b61",
++    "name": "dfi-cursed-cave rare srcrsturdysaw",
++    "location": [
++      6048,
++      327,
++      28
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "10:00:00",
++    "maxDelay": "11:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRCRSturdySaw",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "d809827a-a890-5459-a39c-05ece2617270",
++    "name": "dfi-cursed-cave rare srcrsturdysmithhammer",
++    "location": [
++      6039,
++      352,
++      49
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "10:00:00",
++    "maxDelay": "11:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRCRSturdySmithHammer",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "7bcd029a-5464-546b-9d6a-214f92cd38a3",
++    "name": "dfi-cursed-cave rare srcrsturdyprospectorstool",
++    "location": [
++      6123,
++      272,
++      28
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "1.16:00:00",
++    "maxDelay": "2.02:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRCRSturdyProspectorsTool",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "7f58c961-3f97-500d-b71b-15acd838e28d",
++    "name": "dfi-cursed-cave rare srcrsmallweb",
++    "location": [
++      5240,
++      1495,
++      0
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "2.12:00:00",
++    "maxDelay": "2.13:40:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRCRSmallWeb",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "c0303a6b-5719-5dc4-b564-c41e5d8ffe6d",
++    "name": "dfi-cursed-cave rare srcremptytoolkit",
++    "location": [
++      5195,
++      1424,
++      8
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "2.22:00:00",
++    "maxDelay": "3.00:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRCREmptyToolKit",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "e5d223e2-8e24-5ba5-b28f-48a0aea4ceca",
++    "name": "dfi-cursed-cave rare srcrwalltorchsouth",
++    "location": [
++      5190,
++      1423,
++      11
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "2.22:00:00",
++    "maxDelay": "3.00:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRCRWallTorchSouth",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "e0326aec-3fad-5f43-b1e6-b0b8d4cb1eda",
++    "name": "dfi-cursed-cave rare srcrwalltorcheast",
++    "location": [
++      5152,
++      1480,
++      11
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "2.22:00:00",
++    "maxDelay": "3.00:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRCRWallTorchEast",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "78a42954-5089-533c-9aa6-06b119952d5b",
++    "name": "dfi-cursed-cave rare srcrbooks",
++    "location": [
++      5239,
++      1500,
++      6
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "3.08:00:00",
++    "maxDelay": "3.09:40:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRCRBooks",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "1b1fc911-a065-595e-9bef-f92957c76a22",
++    "name": "dfi-cursed-cave rare srcrpluckedchicken",
++    "location": [
++      5343,
++      1469,
++      0
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "4.00:00:00",
++    "maxDelay": "4.01:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRCRPluckedChicken",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "6a42a68e-9bb4-5adf-8780-aca55e83a27d",
++    "name": "dfi-cursed-cave rare srcrbrokenchestofdrawers",
++    "location": [
++      5218,
++      1448,
++      0
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "16.00:00:00",
++    "maxDelay": "16.16:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRCRBrokenChestOfDrawers",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "b8a75818-6ceb-5509-a4ee-44448bb930e4",
++    "name": "dfi-cursed-cave rare srcremptytub",
++    "location": [
++      5136,
++      1483,
++      6
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "16.00:00:00",
++    "maxDelay": "16.16:00:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRCREmptyTub",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "1a3f275d-f5f1-5308-8b1d-458d7c53057a",
++    "name": "dfi-cursed-cave rare srcrbucket",
++    "location": [
++      5128,
++      1490,
++      6
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "18.18:00:00",
++    "maxDelay": "19.10:40:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 0,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "SRCRBucket",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "af5fee12-77a6-5849-b0e7-da24d39ed43f",
++    "name": "dfi-cursed-cave level3 thecursedguardian",
++    "location": [
++      5206,
++      1443,
++      0
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "00:05:00",
++    "maxDelay": "00:10:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 4,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "TheCursedGuardian",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "731071b6-621a-5438-972a-0174f282bb37",
++    "name": "dfi-cursed-cave level3 thecursedguardian",
++    "location": [
++      5262,
++      1479,
++      0
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "00:05:00",
++    "maxDelay": "00:10:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 4,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "TheCursedGuardian",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "31174160-1b65-5c41-a855-04b9b2fc42cc",
++    "name": "dfi-cursed-cave level3 thecursedguardian",
++    "location": [
++      5326,
++      1430,
++      0
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "00:05:00",
++    "maxDelay": "00:10:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 4,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "TheCursedGuardian",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "5e86074b-2ef5-557a-9db6-3969c3bf14d2",
++    "name": "dfi-cursed-cave level3 thecursedwarrior",
++    "location": [
++      5175,
++      1433,
++      0
++    ],
++    "map": "Felucca",
++    "count": 2,
++    "minDelay": "00:01:00",
++    "maxDelay": "00:02:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 6,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "TheCursedWarrior",
++        "maxCount": 2,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "14391b29-7d43-5800-b67e-ee24b1f5644a",
++    "name": "dfi-cursed-cave level3 thecursedwarrior",
++    "location": [
++      5284,
++      1422,
++      0
++    ],
++    "map": "Felucca",
++    "count": 2,
++    "minDelay": "00:01:00",
++    "maxDelay": "00:02:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 6,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "TheCursedWarrior",
++        "maxCount": 2,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "415975a3-12fd-52db-8255-4af527578100",
++    "name": "dfi-cursed-cave level3 thecursedarcher-thecursedmage-thecursednecro",
++    "location": [
++      5138,
++      1432,
++      0
++    ],
++    "map": "Felucca",
++    "count": 3,
++    "minDelay": "00:01:00",
++    "maxDelay": "00:02:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 6,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "TheCursedArcher",
++        "maxCount": 1,
++        "probability": 100
++      },
++      {
++        "name": "TheCursedMage",
++        "maxCount": 1,
++        "probability": 100
++      },
++      {
++        "name": "TheCursedNecro",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "d8ad70b7-d3d3-5aad-9b2c-f8fa1885e224",
++    "name": "dfi-cursed-cave level3 thecursedarcher-thecursedmage-thecursednecro",
++    "location": [
++      5231,
++      1470,
++      0
++    ],
++    "map": "Felucca",
++    "count": 3,
++    "minDelay": "00:01:00",
++    "maxDelay": "00:02:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 6,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "TheCursedArcher",
++        "maxCount": 1,
++        "probability": 100
++      },
++      {
++        "name": "TheCursedMage",
++        "maxCount": 1,
++        "probability": 100
++      },
++      {
++        "name": "TheCursedNecro",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "98f6d220-d93f-5f86-891f-e7fb6e409199",
++    "name": "dfi-cursed-cave level3 thecursedarcher-thecursedmage-thecursednecro",
++    "location": [
++      5342,
++      1471,
++      0
++    ],
++    "map": "Felucca",
++    "count": 3,
++    "minDelay": "00:01:00",
++    "maxDelay": "00:02:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 6,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "TheCursedArcher",
++        "maxCount": 1,
++        "probability": 100
++      },
++      {
++        "name": "TheCursedMage",
++        "maxCount": 1,
++        "probability": 100
++      },
++      {
++        "name": "TheCursedNecro",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "e438f645-d426-574b-a8f5-cab003b843db",
++    "name": "dfi-cursed-cave level3 thecursedalchemist",
++    "location": [
++      5220,
++      1416,
++      0
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "00:10:00",
++    "maxDelay": "00:15:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 4,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "TheCursedAlchemist",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "9976c278-7a89-5e31-b526-87acf34ee80f",
++    "name": "dfi-cursed-cave level3 thecursedbutcher",
++    "location": [
++      5252,
++      1422,
++      0
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "00:10:00",
++    "maxDelay": "00:15:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 4,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "TheCursedButcher",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "edd070e9-691a-58a4-9280-b42beaee8782",
++    "name": "dfi-cursed-cave level3 thecursedcarpenter",
++    "location": [
++      5367,
++      1423,
++      0
++    ],
++    "map": "Felucca",
++    "count": 1,
++    "minDelay": "00:10:00",
++    "maxDelay": "00:15:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 4,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "TheCursedCarpenter",
++        "maxCount": 1,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "a535fab7-0e6d-5fcc-ae30-9592b9c696f5",
++    "name": "dfi-cursed-cave level3 giantblackwidow",
++    "location": [
++      5164,
++      1481,
++      0
++    ],
++    "map": "Felucca",
++    "count": 3,
++    "minDelay": "00:00:30",
++    "maxDelay": "00:01:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 6,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "GiantBlackWidow",
++        "maxCount": 3,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "1d52cc5d-465e-5b51-a2b6-b8f6d4f854de",
++    "name": "dfi-cursed-cave level3 thecursed",
++    "location": [
++      5135,
++      1462,
++      0
++    ],
++    "map": "Felucca",
++    "count": 4,
++    "minDelay": "00:00:30",
++    "maxDelay": "00:01:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 6,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "TheCursed",
++        "maxCount": 4,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "2a845856-643c-5724-92c6-0acca1b6228a",
++    "name": "dfi-cursed-cave level3 thecursed",
++    "location": [
++      5229,
++      1503,
++      0
++    ],
++    "map": "Felucca",
++    "count": 3,
++    "minDelay": "00:00:30",
++    "maxDelay": "00:01:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 6,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "TheCursed",
++        "maxCount": 3,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "9a1e6b75-ba5d-55bf-9418-c961d4c9c700",
++    "name": "dfi-cursed-cave level3 ccskeletalcorpse",
++    "location": [
++      5128,
++      1494,
++      0
++    ],
++    "map": "Felucca",
++    "count": 2,
++    "minDelay": "00:10:00",
++    "maxDelay": "00:20:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 5,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "CCSkeletalCorpse",
++        "maxCount": 2,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "8ea547a2-3692-517a-ba78-56fc83f4cc77",
++    "name": "dfi-cursed-cave level3 ccskeletalcorpse",
++    "location": [
++      5303,
++      1464,
++      0
++    ],
++    "map": "Felucca",
++    "count": 2,
++    "minDelay": "00:10:00",
++    "maxDelay": "00:20:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 5,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "CCSkeletalCorpse",
++        "maxCount": 2,
++        "probability": 100
++      }
++    ]
++  }
++]
+diff --git a/Distribution/Data/Spawns/dfi/felucca.json b/Distribution/Data/Spawns/dfi/felucca.json
+index 7dee3e75e..460ed0f18 100644
+--- a/Distribution/Data/Spawns/dfi/felucca.json
++++ b/Distribution/Data/Spawns/dfi/felucca.json
+@@ -7439,31 +7439,6 @@
+       }
+     ]
+   },
+-  {
+-    "$type": "Spawner",
+-    "guid": "61924375-50b6-59f0-a8d5-a3a6ec627a83",
+-    "name": "DFI Felucca (6038, 278)",
+-    "location": [
+-      6038,
+-      278,
+-      0
+-    ],
+-    "map": "Felucca",
+-    "count": 6,
+-    "minDelay": "00:00:30",
+-    "maxDelay": "00:01:00",
+-    "team": 0,
+-    "group": false,
+-    "homeRange": 8,
+-    "walkingRange": -1,
+-    "entries": [
+-      {
+-        "name": "GiantBlackWidow",
+-        "maxCount": 6,
+-        "probability": 100
+-      }
+-    ]
+-  },
+   {
+     "$type": "Spawner",
+     "guid": "0e068dc3-fbdc-59bc-a106-b95dc6dbf3e4",
+@@ -39799,56 +39774,6 @@
+       }
+     ]
+   },
+-  {
+-    "$type": "Spawner",
+-    "guid": "416f6446-9183-5125-ae68-4e96d4ead4b1",
+-    "name": "DFI Felucca (6038, 359)",
+-    "location": [
+-      6038,
+-      359,
+-      44
+-    ],
+-    "map": "Felucca",
+-    "count": 3,
+-    "minDelay": "00:00:30",
+-    "maxDelay": "00:01:00",
+-    "team": 0,
+-    "group": false,
+-    "homeRange": 8,
+-    "walkingRange": -1,
+-    "entries": [
+-      {
+-        "name": "HellHound",
+-        "maxCount": 3,
+-        "probability": 100
+-      }
+-    ]
+-  },
+-  {
+-    "$type": "Spawner",
+-    "guid": "43c486e0-3cc2-51ad-922a-40fcef5f3f1c",
+-    "name": "DFI Felucca (6044, 332)",
+-    "location": [
+-      6044,
+-      332,
+-      22
+-    ],
+-    "map": "Felucca",
+-    "count": 3,
+-    "minDelay": "00:00:30",
+-    "maxDelay": "00:01:00",
+-    "team": 0,
+-    "group": false,
+-    "homeRange": 4,
+-    "walkingRange": -1,
+-    "entries": [
+-      {
+-        "name": "HellHound",
+-        "maxCount": 3,
+-        "probability": 100
+-      }
+-    ]
+-  },
+   {
+     "$type": "Spawner",
+     "guid": "d6434d64-0d5d-5aa4-ae9a-221bdcd561d9",
+@@ -39904,31 +39829,6 @@
+       }
+     ]
+   },
+-  {
+-    "$type": "Spawner",
+-    "guid": "9792f671-06e1-5804-b5c4-87c959cfe80c",
+-    "name": "DFI Felucca (6062, 279)",
+-    "location": [
+-      6062,
+-      279,
+-      -22
+-    ],
+-    "map": "Felucca",
+-    "count": 4,
+-    "minDelay": "00:00:30",
+-    "maxDelay": "00:01:00",
+-    "team": 0,
+-    "group": false,
+-    "homeRange": 8,
+-    "walkingRange": -1,
+-    "entries": [
+-      {
+-        "name": "HellCat",
+-        "maxCount": 4,
+-        "probability": 100
+-      }
+-    ]
+-  },
+   {
+     "$type": "Spawner",
+     "guid": "983f5208-b4be-50a9-b387-7d3f55e9598f",
+diff --git a/Projects/UOContent.Tests/Tests/Custom/DfiCursedCaveTests.cs b/Projects/UOContent.Tests/Tests/Custom/DfiCursedCaveTests.cs
+new file mode 100644
+index 000000000..bcc11b143
+--- /dev/null
++++ b/Projects/UOContent.Tests/Tests/Custom/DfiCursedCaveTests.cs
+@@ -0,0 +1,323 @@
++using System;
++using System.Collections.Generic;
++using System.IO;
++using System.Text.Json;
++using Server;
++using Server.Custom.Dfi;
++using Server.Engines.Quests.CursedCave;
++using Server.Engines.Spawners;
++using Server.Items;
++using Server.Misc;
++using Server.Mobiles;
++using Server.Regions;
++using Xunit;
++
++namespace UOContent.Tests.Custom;
++
++[Collection("Sequential UOContent Tests")]
++public class DfiCursedCaveTests : IDisposable
++{
++    private readonly List<IEntity> _created = new();
++
++    public DfiCursedCaveTests()
++    {
++        if (NameList.GetNameList("male") == null)
++        {
++            NameList.Configure();
++        }
++    }
++
++    public static TheoryData<Type> Creatures =>
++    [
++        typeof(TheCursed), typeof(TheCursedArcher), typeof(TheCursedMage), typeof(TheCursedNecro),
++        typeof(CursedSkeleton), typeof(TheCursedWarrior), typeof(TheCursedGuardian), typeof(TheCursedAlchemist),
++        typeof(TheCursedBlacksmith), typeof(TheCursedButcher), typeof(TheCursedCarpenter), typeof(CursedSteed),
++        typeof(DevaTheCursedOne), typeof(Hephaestus)
++    ];
++
++    public static TheoryData<Type> Items =>
++    [
++        typeof(CCKey), typeof(CCMagicDoor), typeof(CCKeywordDoor), typeof(CCTrigger), typeof(CursedCaveTeleporter),
++        typeof(CursedCavePassage), typeof(CCSkeletalCorpse), typeof(CCSummoningAltar), typeof(LongswordOfJustice),
++        typeof(HarvesterOfTheGhost), typeof(BowOfHephaestus)
++    ];
++
++    public static TheoryData<Type> Rares =>
++    [
++        typeof(SRCRBrokenChestOfDrawers), typeof(SRCREmptyToolKit), typeof(SRCRBucket), typeof(SRCRSmallWeb),
++        typeof(SRCRPluckedChicken), typeof(SRCRBooks), typeof(SRCRSturdySmithHammer), typeof(SRCRSturdySaw),
++        typeof(SRCRSturdyProspectorsTool), typeof(SRCREmptyTub), typeof(SRCRSturdyMortarPestle),
++        typeof(SRCRWallTorchEast), typeof(SRCRWallTorchSouth)
++    ];
++
++    private static string SpawnFile => Path.Combine(Core.BaseDirectory, "Data", "Spawns", "dfi", "dfi-cursed-cave.json");
++
++    public void Dispose()
++    {
++        foreach (var e in _created)
++        {
++            e?.Delete();
++        }
++
++        _created.Clear();
++    }
++
++    private T Track<T>(T e) where T : IEntity
++    {
++        _created.Add(e);
++        return e;
++    }
++
++    private T Place<T>(T bc, Point3D at) where T : BaseCreature
++    {
++        bc.MoveToWorld(at, Map.Felucca);
++        bc.AIObject?.AITimer?.Stop();
++        return Track(bc);
++    }
++
++    private PlayerMobile Player(Point3D at)
++    {
++        var m = Track(new PlayerMobile(World.NewMobile));
++        m.DefaultMobileInit();
++        m.Player = true;
++        m.AddItem(new Backpack());
++        m.MoveToWorld(at, Map.Felucca);
++        return m;
++    }
++
++    [Theory]
++    [MemberData(nameof(Creatures))]
++    public void Creature_Spawns_WithNameAndHits(Type type)
++    {
++        var bc = Place(type.CreateInstance<BaseCreature>(), new Point3D(5200, 1470, 0));
++
++        Assert.False(string.IsNullOrEmpty(bc.Name));
++        Assert.True(bc.HitsMax > 0);
++    }
++
++    [Theory]
++    [MemberData(nameof(Items))]
++    public void Item_Constructs(Type type)
++    {
++        var item = Track(type.CreateInstance<Item>());
++
++        Assert.False(item.Deleted);
++    }
++
++    [Theory]
++    [MemberData(nameof(Rares))]
++    public void Rare_IsFixedAndStealableFrom100(Type type)
++    {
++        var item = Track(type.CreateInstance<Item>());
++
++        Assert.False(item.Movable);
++        var rare = Assert.IsAssignableFrom<IStealable>(item);
++        Assert.Equal(100.0, rare.GetMin());
++        Assert.True(rare.GetMax() >= 100.0);
++        Assert.NotNull(CursedCaveRares.NameOf(item));
++    }
++
++    [Fact]
++    public void Cursed_FameByLevel_StaysWithinItsLevel()
++    {
++        for (var i = 0; i < 50; i++)
++        {
++            var fame = CursedCave.FameByLevel(3);
++            var karma = CursedCave.FameByLevel(-3);
++
++            Assert.InRange(fame, 15000, 19999);
++            Assert.InRange(karma, -19999, -15000);
++        }
++    }
++
++    [Fact]
++    public void LevelableWeapon_GainsLevelsFromCaveKillsOnly()
++    {
++        var sword = Track(new LongswordOfJustice());
++        Assert.Equal(1, sword.Level);
++
++        LevelItemManager.CheckLevelable(sword, Track(new Mongbat()));
++        Assert.Equal(0, sword.Experience);
++
++        LevelItemManager.CheckLevelable(sword, Track(new TheCursed()));
++        Assert.True(sword.Experience > 0);
++
++        sword.Experience = 20000;
++
++        Assert.Equal(3, sword.Level);
++        Assert.Equal(LevelItemManager.CalculateProperty(50, 3), sword.Attributes.WeaponDamage);
++
++        sword.Experience = 1_000_000;
++
++        Assert.Equal(LevelItemManager.ExpTable[^1], sword.Experience);
++        Assert.Equal(LevelItemManager.Levels, sword.Level);
++    }
++
++    [Fact]
++    public void CursedWarrior_RisesAsACursedSkeleton()
++    {
++        var at = new Point3D(5210, 1470, 0);
++        var warrior = Place(new TheCursedWarrior(), at);
++
++        Assert.False(warrior.OnBeforeDeath());
++
++        Assert.True(warrior.Deleted);
++        var skeleton = Assert.Single(FindNear<CursedSkeleton>(at));
++        Track(skeleton);
++    }
++
++    private static List<T> FindNear<T>(Point3D at) where T : Mobile
++    {
++        var found = new List<T>();
++
++        foreach (var m in Map.Felucca.GetMobilesInRange(at, 0))
++        {
++            if (m is T t)
++            {
++                found.Add(t);
++            }
++        }
++
++        return found;
++    }
++
++    [Fact]
++    public void SummoningAltar_SummonsHephaestusForEachQueuedKey()
++    {
++        var altar = Track(new CCSummoningAltar());
++        altar.MoveToWorld(CursedCaveGen.ChamberAltar, Map.Felucca);
++        altar.IsActive = true;
++
++        altar.MainQueue = 2;
++
++        var first = Assert.IsType<Hephaestus>(altar.Champion);
++        Track(first);
++        Assert.Equal(1, altar.MainQueue);
++
++        first.Delete();
++        altar.CheckSpawn();
++
++        Track(Assert.IsType<Hephaestus>(altar.Champion));
++        Assert.NotSame(first, altar.Champion);
++        Assert.Equal(0, altar.MainQueue);
++    }
++
++    [Fact]
++    public void SummoningAltar_Inactive_KeepsTheQueue()
++    {
++        var altar = Track(new CCSummoningAltar());
++        altar.MoveToWorld(CursedCaveGen.ChamberAltar, Map.Felucca);
++
++        altar.MainQueue = 3;
++
++        Assert.Null(altar.Champion);
++        Assert.Equal(3, altar.MainQueue);
++    }
++
++    [Fact]
++    public void KeywordDoor_LeadsToTheOtherSide()
++    {
++        var door = Track(
++            new CCKeywordDoor
++            {
++                Range = 3,
++                OneSideArea = new Rectangle2D(6026, 266, 54, 108),
++                PointDest1 = CursedCaveGen.Level2DoorArrival,
++                PointDest2 = CursedCaveGen.Level1DoorArrival,
++                MapDest = Map.Felucca
++            }
++        );
++        door.MoveToWorld(CursedCaveGen.Level1Door, Map.Felucca);
++
++        var player = Player(new Point3D(6067, 361, 22));
++        door.StartTeleport(player);
++
++        Assert.Equal(CursedCaveGen.Level2DoorArrival, player.Location);
++    }
++
++    [Fact]
++    public void MagicDoor_TakesTheHolderIntoTheChamber()
++    {
++        var door = Track(new CCMagicDoor { PointDest = CursedCaveGen.ChamberArrival, OneSideArea = CursedCaveGen.Chamber });
++        door.MoveToWorld(CursedCaveGen.ChamberDoor, Map.Felucca);
++
++        var player = Player(new Point3D(5155, 1493, 0));
++
++        Assert.True(door.Teleport(player));
++        Assert.Equal(CursedCaveGen.ChamberArrival, player.Location);
++        Assert.True(CursedCaveGen.Chamber.Contains(player.Location));
++    }
++
++    [Fact]
++    public void Quest_RunsSixRoundsStartingWithHellCats()
++    {
++        var first = new CursedCaveBeginObjective(0);
++
++        Assert.Equal(6, CursedCaveBeginObjective.Rounds);
++        Assert.Equal(typeof(HellCat), first.Monster);
++        Assert.Equal(4, first.MaxProgress);
++        Assert.Equal(typeof(DevaTheCursedOne), new CursedCaveBeginObjective(5).Monster);
++    }
++
++    [Fact]
++    public void Warren_CountsTheCaveRaresInAPack()
++    {
++        var player = Player(new Point3D(2545, 288, 15));
++
++        for (var i = 0; i < 12; i++)
++        {
++            player.Backpack.DropItem(new SRCRSmallWeb { Movable = true });
++        }
++
++        player.Backpack.DropItem(new Gold(100));
++
++        Assert.Equal(WarrenTheGuard.ArtifactAmount, WarrenTheGuard.FindRares(player, WarrenTheGuard.ArtifactAmount).Count);
++    }
++
++    [Fact]
++    public void Warren_RareRewardBag_HoldsGoldBandagesAndAMap()
++    {
++        var bag = Track(WarrenTheGuard.CreateRareRewardBag());
++
++        Assert.NotNull(bag.FindItemByType<Gold>());
++        Assert.NotNull(bag.FindItemByType<Bandage>());
++        Assert.NotNull(bag.FindItemByType<TreasureMap>());
++    }
++
++    [Fact]
++    public void Fixtures_PlaceAndReplaceCleanly()
++    {
++        var placed = CursedCaveGen.Place();
++
++        try
++        {
++            Assert.True(placed > 10);
++            Assert.Single(FindNear<WarrenTheGuard>(CursedCaveGen.WarrenSpot));
++        }
++        finally
++        {
++            Assert.Equal(placed, CursedCaveGen.Remove());
++        }
++    }
++
++    [Fact]
++    public void SpawnFile_EveryEntryIsAType_AndEverySpawnerIsInTheCave()
++    {
++        var dtos = JsonSerializer.Deserialize<List<SpawnerDto>>(File.ReadAllText(SpawnFile), SpawnerJsonSerializer.Options);
++
++        Assert.Equal(40, dtos.Count);
++
++        foreach (var dto in dtos)
++        {
++            Assert.True(
++                CursedCaveRegion.LevelsArea.Contains(dto.Location) || CursedCaveRegion.Level3Area.Contains(dto.Location),
++                $"{dto.Name} at {dto.Location} is outside the cave"
++            );
++
++            foreach (var entry in dto.EntryView)
++            {
++                Assert.NotNull(AssemblyHandler.FindTypeByName(entry.SpawnedName));
++            }
++        }
++    }
++}
+diff --git a/Projects/UOContent.Tests/Tests/Custom/DfiSpawnTests.cs b/Projects/UOContent.Tests/Tests/Custom/DfiSpawnTests.cs
+index 74ff48cb1..5b7c9eab6 100644
+--- a/Projects/UOContent.Tests/Tests/Custom/DfiSpawnTests.cs
++++ b/Projects/UOContent.Tests/Tests/Custom/DfiSpawnTests.cs
+@@ -26,6 +26,7 @@ private static List<SpawnerDto> Load(string relative) =>
+     [InlineData("dfi/kopia-faction-extras.json", 13)]
+     [InlineData("dfi/dfi-custom-monsters.json", 12)]
+     [InlineData("dfi/dfi-town-rares.json", 4)]
++    [InlineData("dfi/dfi-cursed-cave.json", 40)]
+     public void DfiSpawnFile_LoadsAtLeastTheConvertedSpawners(string file, int minimum)
+     {
+         var dtos = Load(file);
+@@ -49,7 +50,7 @@ public void DfiCustomSpawners_ShareNoTileWithTheLayouts()
+             }
+         }
+ 
+-        foreach (var placed in new[] { "dfi-custom-monsters", "dfi-town-rares" })
++        foreach (var placed in new[] { "dfi-custom-monsters", "dfi-town-rares", "dfi-cursed-cave" })
+         {
+             Assert.All(
+                 Load($"dfi/{placed}.json"),
+diff --git a/Projects/UOContent/Custom/DFI/CursedCave/CursedCave.cs b/Projects/UOContent/Custom/DFI/CursedCave/CursedCave.cs
+new file mode 100644
+index 000000000..da6e13d4d
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/CursedCave/CursedCave.cs
+@@ -0,0 +1,208 @@
++// DFI Network's Cursed Cave, ported from DFI RUNUO Scripts/Custom/Engines/Quest System/CursedCave
++// (CursedCaveUtility.cs, CursedCaveSpeech.cs) and the helpers it borrowed from
++// DFI's core: Notoriety.GetNotorietyByLevel, Teleporter.Teleport, BoneRemains.PackSkullsAndSmallBones.
++
++using System;
++using Server.Items;
++using Server.Misc;
++using Server.Mobiles;
++using Server.Network;
++
++namespace Server.Custom.Dfi;
++
++public static class CursedCave
++{
++    // DFI's Notoriety.GetNotorietyByLevel: fame or karma for a level from -6 to 6, randomised within it.
++    public static int FameByLevel(int level)
++    {
++        level = Math.Clamp(level, -6, 6);
++        var random = Utility.Random(5000) * (level < 0 ? -1 : 1);
++        return 5000 * level + random;
++    }
++
++    // The cave's gear rolls 1 to 5 properties at 20-100% intensity, with the given luck in percent.
++    public static Item MutateItem(Item item, int percentValue) =>
++        DfiLoot.Mutate(item, Utility.RandomMinMax(1, 5), 20, 100, percentValue * 100);
++
++    public static void PackSkullsAndSmallBones(Container c, int amount)
++    {
++        if (c == null)
++        {
++            return;
++        }
++
++        for (var i = 0; i < amount; i++)
++        {
++            var bone = Utility.RandomBool()
++                ? new Item(Utility.Random(0x1AE0, 5)) { Name = "a skull" }
++                : new Item(Utility.Random(0x1B13, 10)) { Name = "bones" };
++
++            bone.Weight = 0.1;
++            c.DropItem(bone);
++        }
++    }
++
++    // DFI's Teleporter.Teleport: players only, pets follow when allowed, and the sound plays at both ends.
++    public static bool Teleport(
++        Mobile m, bool active, Point3D loc, Map destMap, bool allowPets, string teleName, int soundID = 0x228
++    )
++    {
++        if (!m.Player)
++        {
++            return false;
++        }
++
++        if (!active)
++        {
++            if (!string.IsNullOrEmpty(teleName))
++            {
++                m.SendLocalizedMessage(1042753, $"The {teleName}"); // ~1_SOMETHING~ has been temporarily disabled.
++            }
++
++            return false;
++        }
++
++        var map = destMap == null || destMap == Map.Internal ? m.Map : destMap;
++        var p = loc == Point3D.Zero ? m.Location : loc;
++        var sendEffect = !m.Hidden || m.AccessLevel == AccessLevel.Player;
++
++        if (sendEffect)
++        {
++            TeleEffect(m, soundID);
++        }
++
++        if (allowPets)
++        {
++            BaseCreature.TeleportPets(m, p, map);
++        }
++        else if (m.Followers > 0)
++        {
++            m.SendMessage("Your pets cannot follow you...");
++        }
++
++        m.MoveToWorld(p, map);
++
++        if (sendEffect)
++        {
++            TeleEffect(m, soundID);
++        }
++
++        return true;
++    }
++
++    private static void TeleEffect(Mobile m, int soundID)
++    {
++        Effects.SendLocationParticles(
++            EffectItem.Create(m.Location, m.Map, EffectItem.DefaultDuration),
++            0x3728,
++            10,
++            10,
++            2023
++        );
++        m.PlaySound(soundID);
++    }
++
++    public static void PrivateMessage(Mobile from, string message)
++    {
++        from.PrivateOverheadMessage(MessageType.Regular, 0x3B2, false, message, from.NetState);
++    }
++
++    public enum TriggerCheck
++    {
++        All,
++        None,
++        LongswordOfJustice,
++        HarvesterOfTheGhost,
++        BowOfHephaestus
++    }
++
++    public static bool HasTalkingWeapon(Mobile from, out string weaponName, TriggerCheck type)
++    {
++        weaponName = from.Weapon switch
++        {
++            HarvesterOfTheGhost when type is TriggerCheck.HarvesterOfTheGhost or TriggerCheck.All => "Harvester Of The Ghost",
++            LongswordOfJustice when type is TriggerCheck.LongswordOfJustice or TriggerCheck.All   => "Longsword Of Justice",
++            BowOfHephaestus when type is TriggerCheck.BowOfHephaestus or TriggerCheck.All         => "Bow Of Hephaestus",
++            _                                                                                    => null
++        };
++
++        return weaponName != null;
++    }
++
++    public static void WeaponSpeak(Mobile attacker, Mobile defender, string weaponName)
++    {
++        var line = defender switch
++        {
++            BaseCreature => Utility.Random(8) switch
++            {
++                0 => "I never liked these creatures!",
++                1 => "Slay all of them!",
++                2 => "Take that foul creature!",
++                3 => "I will slay you all!",
++                4 => "Die foul creature!",
++                5 => $"Lets kill them all master {attacker.Name}!",
++                6 => "Die die die!",
++                _ => $"Nice hit master {attacker.Name}!"
++            },
++            PlayerMobile => Utility.Random(4) switch
++            {
++                0 => $"My master {attacker.Name} will kill you foul human!",
++                1 => "Die human scum!",
++                2 => "Die die die!",
++                _ => $"Nice hit master {attacker.Name}!"
++            },
++            _ => "Take that!"
++        };
++
++        PrivateMessage(attacker, $"{weaponName}: {line}");
++    }
++
++    public static string WeaponChatter(Mobile from) =>
++        Utility.Random(6) switch
++        {
++            0 => $"I will serve thee well master {from.Name}.",
++            1 => $"Lets go kill something master {from.Name}!",
++            2 => $"Lets slay some cursed creatures master {from.Name}!",
++            3 => $"Nice day today master {from.Name}.",
++            4 => "Im bored.",
++            _ => "Lets go to the cursed cave."
++        };
++
++    private static InhumanSpeech _cursedSpeech;
++
++    public static InhumanSpeech Speech =>
++        _cursedSpeech ??= new InhumanSpeech
++        {
++            Hue = 472,
++            Sound = 432,
++            Flags = IHSFlags.All,
++            Keywords =
++            [
++                "meat", "gold", "kill", "killing", "slay", "sword", "axe", "spell", "magic", "spells", "swords",
++                "axes", "mace", "maces", "monster", "monsters", "food", "run", "escape", "away", "help", "dead",
++                "die", "dying", "lose", "losing", "life", "lives", "death", "ghost", "ghosts", "british",
++                "blackthorn", "guild", "guilds", "dragon", "dragons", "game", "games", "ultima", "silly", "stupid",
++                "dumb", "idiot", "idiots", "cheesy", "cheezy", "crazy", "dork", "jerk", "fool", "foolish", "ugly",
++                "insult", "scum"
++            ],
++            Responses =
++            [
++                "meat", "kill", "pound", "crush", "yum yum", "crunch", "destroy", "murder", "eat", "munch",
++                "massacre", "food", "monster", "evil", "run", "die", "lose", "dumb", "idiot", "fool", "crazy",
++                "dinner", "lunch", "breakfast", "fight", "battle", "doomed", "rip apart", "tear apart", "smash",
++                "edible?", "shred", "disembowel", "ugly", "smelly", "stupid", "hideous", "smell", "tasty", "invader",
++                "attack", "raid", "plunder", "pillage", "treasure", "loser", "lose", "scum"
++            ],
++            Syllables =
++            [
++                "skrit", "ch", "ch", "it", "ti", "it", "ti", "ak", "ek", "ik", "ok", "uk", "yk", "ka", "ke", "ki",
++                "ko", "ku", "ky", "at", "et", "it", "ot", "ut", "yt", "cha", "che", "chi", "cho", "chu", "chy",
++                "ach", "ech", "ich", "och", "uch", "ych", "att", "ett", "itt", "ott", "utt", "ytt", "tat", "tet",
++                "tit", "tot", "tut", "tyt", "tta", "tte", "tti", "tto", "ttu", "tty", "tak", "tek", "tik", "tok",
++                "tuk", "tyk", "ack", "eck", "ick", "ock", "uck", "yck", "cka", "cke", "cki", "cko", "cku", "cky",
++                "rak", "rek", "rik", "rok", "ruk", "ryk", "tcha", "tche", "tchi", "tcho", "tchu", "tchy", "rach",
++                "rech", "rich", "roch", "ruch", "rych", "rrap", "rrep", "rrip", "rrop", "rrup", "rryp", "ccka",
++                "ccke", "ccki", "ccko", "ccku", "ccky"
++            ]
++        };
++}
+diff --git a/Projects/UOContent/Custom/DFI/CursedCave/CursedCaveGen.cs b/Projects/UOContent/Custom/DFI/CursedCave/CursedCaveGen.cs
+new file mode 100644
+index 000000000..839ce8f89
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/CursedCave/CursedCaveGen.cs
+@@ -0,0 +1,172 @@
++// Places the Cursed Cave's fixtures. DFI's live placements did not survive in any of its saves, so this
++// layout is GUO's: the entrance and Warren's post north of Minoc Mines, where DFI's hint gump put the cave;
++// walk-on passages and keyword doors between the levels; and Hephaestus' chamber sealed in level 3's
++// south-west dead end. The cave's creatures and rares come from Data/Spawns/dfi/dfi-cursed-cave.json.
++
++using System.Collections.Generic;
++using Server.Commands;
++using Server.Engines.Quests.CursedCave;
++using Server.Items;
++using Server.Logging;
++
++namespace Server.Custom.Dfi;
++
++public static class CursedCaveGen
++{
++    private static readonly ILogger logger = LogFactory.GetLogger(typeof(CursedCaveGen));
++
++    public static readonly Point3D Entrance = new(2548, 288, 15);
++    public static readonly Point3D OutsideArrival = new(2546, 288, 15);
++    public static readonly Point3D WarrenSpot = new(2543, 286, 15);
++
++    public static readonly Point3D Level1Arrival = new(6038, 280, 0);
++    public static readonly Point3D Level1Exit = new(6036, 276, 0);
++
++    public static readonly Point3D Level1Door = new(6068, 362, 22);
++    public static readonly Point3D Level1DoorArrival = new(6064, 358, 22);
++    public static readonly Point3D Level2Door = new(6090, 362, 0);
++    public static readonly Point3D Level2DoorArrival = new(6092, 358, 0);
++
++    public static readonly Point3D Level2Down = new(6118, 284, 22);
++    public static readonly Point3D Level2UpArrival = new(6114, 286, 22);
++    public static readonly Point3D Level3Arrival = new(5140, 1436, 0);
++    public static readonly Point3D Level3Up = new(5135, 1440, 0);
++
++    public static readonly Point3D ChamberDoor = new(5155, 1495, 0);
++    public static readonly Point3D ChamberArrival = new(5155, 1499, 0);
++    public static readonly Point3D ChamberAltar = new(5155, 1506, 20);
++    public static readonly Point3D ChamberExit = new(5158, 1510, 0);
++    public static readonly Point3D ChamberExitArrival = new(5155, 1491, 0);
++    public static readonly Rectangle2D Chamber = new(5150, 1496, 12, 17);
++
++    private const string DoorKeyword = "hephaestus";
++    private const string DoorQuestion = "Speak the name of the god of fire, and the door shall open.";
++
++    public static void Configure()
++    {
++        CommandSystem.Register("CursedCave", AccessLevel.Administrator, OnCommand);
++    }
++
++    [Usage("CursedCave")]
++    [Description("Places the Cursed Cave's entrance, guard, passages, doors and Hephaestus' altar, replacing any placed before.")]
++    private static void OnCommand(CommandEventArgs e)
++    {
++        var removed = Remove();
++        var placed = Place();
++        e.Mobile.SendMessage($"CursedCave: removed {removed} fixtures, placed {placed}.");
++        logger.Information("{User} placed {Placed} Cursed Cave fixtures ({Removed} removed)", e.Mobile, placed, removed);
++    }
++
++    private static bool IsFixture(Item item) =>
++        item is CursedCavePassage or CCKeywordDoor or CCMagicDoor or CCTrigger or CCSummoningAltar or CursedCaveTeleporter ||
++        item is Blocker && item.Map == Map.Felucca && Chamber.Contains(new Point2D(item.X, item.Y + 1));
++
++    public static int Remove()
++    {
++        var doomed = new List<IEntity>();
++
++        foreach (var item in World.Items.Values)
++        {
++            if (IsFixture(item))
++            {
++                doomed.Add(item);
++            }
++        }
++
++        foreach (var m in World.Mobiles.Values)
++        {
++            if (m is WarrenTheGuard)
++            {
++                doomed.Add(m);
++            }
++        }
++
++        foreach (var entity in doomed)
++        {
++            entity.Delete();
++        }
++
++        return doomed.Count;
++    }
++
++    public static int Place()
++    {
++        var map = Map.Felucca;
++        var placed = 0;
++
++        void Put(Item item, Point3D at)
++        {
++            item.MoveToWorld(at, map);
++            placed++;
++
++            if (!map.CanFit(at.X, at.Y, at.Z, 16, true, false) && item is not (Blocker or CCMagicDoor or CCKeywordDoor or CCSummoningAltar))
++            {
++                logger.Warning("Cursed Cave fixture {Item} at {Location} does not fit there", item.GetType().Name, at);
++            }
++        }
++
++        var warren = new WarrenTheGuard();
++        warren.MoveToWorld(WarrenSpot, map);
++        warren.Home = WarrenSpot;
++        placed++;
++
++        Put(new CursedCavePassage(Level1Arrival) { Visible = true, ItemID = 0xDDA, Hue = 0x455, Name = "the Cursed Cave" }, Entrance);
++        Put(new CursedCavePassage(OutsideArrival), Level1Exit);
++
++        Put(Door(new Rectangle2D(6026, 266, 54, 108), Level2DoorArrival, Level1DoorArrival), Level1Door);
++        Put(Door(new Rectangle2D(6026, 266, 54, 108), Level2DoorArrival, Level1DoorArrival), Level2Door);
++
++        Put(new CursedCavePassage(Level3Arrival), Level2Down);
++        Put(new CursedCavePassage(Level2UpArrival), Level3Up);
++
++        var altar = new CCSummoningAltar();
++        Put(altar, ChamberAltar);
++        altar.IsActive = true;
++
++        Put(
++            new CCMagicDoor { PointDest = ChamberArrival, OneSideArea = Chamber, Altar = altar },
++            ChamberDoor
++        );
++
++        for (var x = Chamber.X + 1; x <= Chamber.X + 9; x++)
++        {
++            if (x != ChamberDoor.X)
++            {
++                Put(new Blocker(), new Point3D(x, ChamberDoor.Y, ChamberDoor.Z));
++            }
++        }
++
++        Put(new CursedCavePassage(ChamberExitArrival), ChamberExit);
++
++        Put(
++            new CCTrigger
++            {
++                Message = "You hear screams and strange noises from deep within the cave.",
++                TriggerCheck = CursedCave.TriggerCheck.None
++            },
++            Level1Arrival
++        );
++
++        Put(
++            new CCTrigger { Message = "The god of fire waits behind this door!", TriggerCheck = CursedCave.TriggerCheck.All },
++            new Point3D(ChamberDoor.X, ChamberDoor.Y - 3, ChamberDoor.Z)
++        );
++
++        return placed;
++    }
++
++    private static CCKeywordDoor Door(Rectangle2D level1, Point3D toLevel2, Point3D toLevel1) =>
++        new()
++        {
++            Substring = DoorKeyword,
++            Range = 3,
++            Question = DoorQuestion,
++            OneSideArea = level1,
++            PointDest1 = toLevel2,
++            PointDest2 = toLevel1,
++            MapDest = Map.Felucca,
++            SourceEffect = true,
++            DestEffect = true,
++            SoundID = 0x228
++        };
++}
+diff --git a/Projects/UOContent/Custom/DFI/CursedCave/CursedCaveItems.cs b/Projects/UOContent/Custom/DFI/CursedCave/CursedCaveItems.cs
+new file mode 100644
+index 000000000..2cebedf34
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/CursedCave/CursedCaveItems.cs
+@@ -0,0 +1,678 @@
++// The Cursed Cave's fixtures, ported from DFI RUNUO Scripts/Custom/Engines/Quest System/CursedCave
++// (CCKey.cs, CCMagicDoor.cs, CCKeywordDoor.cs, CCTrigger.cs, CursedCaveTeleporter.cs, ESpecialAbilities.cs,
++// Items/CCSkeletalCorpse.cs, Items/TentCamp*.cs) and DFI's Custom/Ants/BasePool.cs.
++
++using System;
++using System.Collections.Generic;
++using ModernUO.CodeGeneratedEvents;
++using ModernUO.Serialization;
++using Server.Collections;
++using Server.Custom.Dfi;
++using Server.Engines.PartySystem;
++using Server.Gumps;
++using Server.Mobiles;
++using Server.Multis;
++using Server.Network;
++using Server.Regions;
++using Server.Targeting;
++
++namespace Server.Items;
++
++// Opens Hephaestus' chamber: target the magic door from outside it and the key is spent, the holder is
++// taken in, and the party members on level 3 are asked to follow.
++[SerializationGenerator(0)]
++public partial class CCKey : Item
++{
++    [Constructible]
++    public CCKey() : base(0x1012)
++    {
++    }
++
++    public override string DefaultName => "a cursed cave key";
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        if (!IsChildOf(from.Backpack))
++        {
++            from.SendLocalizedMessage(1060640); // The item must be in your backpack to use it.
++            return;
++        }
++
++        from.SendLocalizedMessage(501680); // What do you want to unlock?
++        from.Target = new KeyTarget(this);
++    }
++
++    private class KeyTarget : Target
++    {
++        private readonly CCKey _key;
++
++        public KeyTarget(CCKey key) : base(3, false, TargetFlags.None) => _key = key;
++
++        protected override void OnTarget(Mobile from, object targeted)
++        {
++            if (_key.Deleted || !_key.IsChildOf(from.Backpack))
++            {
++                from.SendLocalizedMessage(1060640); // The item must be in your backpack to use it.
++                return;
++            }
++
++            if (targeted is not CCMagicDoor door)
++            {
++                from.SendLocalizedMessage(501666); // You can't unlock that!
++                return;
++            }
++
++            if (door.OneSideArea.Contains(from.Location))
++            {
++                from.LocalOverheadMessage(MessageType.Regular, 0x5A, true, "There does not seem to be a keyhole on this side");
++                return;
++            }
++
++            var party = Party.Get(from);
++
++            if (party != null)
++            {
++                foreach (var info in party.Members)
++                {
++                    var member = info.Mobile;
++
++                    if (member != from && member.Map == Map.Felucca && member.Region.IsPartOf(CursedCaveRegion.Level3Name))
++                    {
++                        member.SendGump(new MagicDoorPartyGump(door, from, member), true);
++                    }
++                }
++            }
++
++            if (door.Teleport(from))
++            {
++                from.LocalOverheadMessage(MessageType.Regular, 0x5A, true, "The key disappears and you are teleported to the room");
++                _key.Delete();
++
++                if (door.Altar != null)
++                {
++                    door.Altar.MainQueue++;
++                }
++            }
++        }
++    }
++}
++
++public class MagicDoorPartyGump : StaticGump<MagicDoorPartyGump>
++{
++    private readonly CCMagicDoor _door;
++    private readonly Mobile _leader;
++    private readonly Mobile _member;
++
++    public MagicDoorPartyGump(CCMagicDoor door, Mobile leader, Mobile member) : base(150, 50)
++    {
++        _door = door;
++        _leader = leader;
++        _member = member;
++    }
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref StaticGumpBuilder builder)
++    {
++        builder.SetNoClose();
++
++        builder.AddPage();
++
++        builder.AddImage(0, 0, 3600);
++        builder.AddImageTiled(0, 14, 15, 200, 3603);
++        builder.AddImageTiled(380, 14, 14, 200, 3605);
++        builder.AddImage(0, 201, 3606);
++        builder.AddImageTiled(15, 201, 370, 16, 3607);
++        builder.AddImageTiled(15, 0, 370, 16, 3601);
++        builder.AddImage(380, 0, 3602);
++        builder.AddImage(380, 201, 3608);
++        builder.AddImageTiled(15, 15, 365, 190, 2624);
++
++        builder.AddRadio(30, 140, 9727, 9730, true, 1);
++        builder.AddHtmlLocalized(65, 145, 300, 25, 1050050, 0x7FFF); // Yes, let's go!
++
++        builder.AddRadio(30, 175, 9727, 9730, false, 0);
++        builder.AddHtmlLocalized(65, 178, 300, 25, 1050049, 0x7FFF); // No thanks, I'd rather stay here.
++
++        builder.AddHtml(
++            30,
++            20,
++            360,
++            35,
++            "Another player has used a key to enter Hephaestus the god of fire's chamber:".Color(0xFFFFFF)
++        );
++
++        builder.AddHtmlLocalized(30, 105, 345, 40, 1050048, 0x5B2D); // Do you wish to accept their invitation at this time?
++
++        builder.AddImage(65, 72, 5605);
++        builder.AddImageTiled(80, 90, 200, 1, 9107);
++        builder.AddImageTiled(95, 92, 200, 1, 9157);
++        builder.AddLabelPlaceholder(90, 70, 1645, "leader");
++
++        builder.AddButton(290, 175, 247, 248, 2);
++
++        builder.AddImageTiled(15, 14, 365, 1, 9107);
++        builder.AddImageTiled(380, 14, 1, 190, 9105);
++        builder.AddImageTiled(15, 205, 365, 1, 9107);
++        builder.AddImageTiled(15, 14, 1, 190, 9105);
++        builder.AddImageTiled(0, 0, 395, 1, 9157);
++        builder.AddImageTiled(394, 0, 1, 217, 9155);
++        builder.AddImageTiled(0, 216, 395, 1, 9157);
++        builder.AddImageTiled(0, 0, 1, 217, 9155);
++    }
++
++    protected override void BuildStrings(ref GumpStringsBuilder builder)
++    {
++        builder.SetStringSlot("leader", _leader.Name);
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        if (info.ButtonID == 2 && info.IsSwitched(1))
++        {
++            if (_member.Region.IsPartOf(CursedCaveRegion.Level3Name))
++            {
++                _leader.SendMessage($"{_member.Name} has accepted your invitation.");
++                _door?.Teleport(_member);
++            }
++            else
++            {
++                _member.SendLocalizedMessage(1050051); // The invitation has been revoked.
++            }
++        }
++        else
++        {
++            _member.SendLocalizedMessage(1050052); // You have declined their invitation.
++            _leader.SendMessage($"{_member.Name} has declined your invitation.");
++        }
++    }
++}
++
++// The locked door of Hephaestus' chamber. Only a cave key opens it, and only from outside: OneSideArea is
++// the chamber.
++[SerializationGenerator(0)]
++public partial class CCMagicDoor : Item
++{
++    [SerializableField(0)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private Point3D _pointDest;
++
++    [SerializableField(1)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private string _teleName;
++
++    [SerializableField(2)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private bool _active;
++
++    [SerializableField(3)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private Rectangle2D _oneSideArea;
++
++    [SerializableField(4)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private CCSummoningAltar _altar;
++
++    [Constructible]
++    public CCMagicDoor() : base(0x677)
++    {
++        Movable = false;
++        _active = true;
++        _teleName = "Magic Door";
++    }
++
++    public bool Teleport(Mobile from)
++    {
++        if (from.Mounted)
++        {
++            from.Mount.Rider = null;
++        }
++
++        return CursedCave.Teleport(from, _active, _pointDest, Map, false, _teleName);
++    }
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        if (from.InRange(Location, 3))
++        {
++            from.LocalOverheadMessage(MessageType.Regular, 0x5A, true, "This door seems to be magically locked");
++        }
++    }
++}
++
++// A door that answers a spoken keyword: from inside OneSideArea it leads to PointDest1, from anywhere
++// else to PointDest2. Double-clicking it asks its question.
++[SerializationGenerator(0)]
++public partial class CCKeywordDoor : KeywordTeleporter
++{
++    [SerializableField(0)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private string _question;
++
++    [SerializableField(1)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private Point3D _pointDest1;
++
++    [SerializableField(2)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private Point3D _pointDest2;
++
++    [SerializableField(3)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private Rectangle2D _oneSideArea;
++
++    [SerializableField(4)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private TimeSpan _usageDelay;
++
++    private HashSet<Mobile> _users;
++    private bool _playedAnimation;
++
++    [Constructible]
++    public CCKeywordDoor()
++    {
++        ItemID = 0x677;
++        Visible = true;
++        _usageDelay = TimeSpan.FromSeconds(10.0);
++    }
++
++    public override int LabelNumber => 1020000 + (ItemID & 0x3FFF);
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        if (from.InRange(Location, Range) && _question != null)
++        {
++            from.LocalOverheadMessage(MessageType.Regular, 0x5A, true, _question);
++        }
++    }
++
++    public override void StartTeleport(Mobile m)
++    {
++        _users ??= [];
++
++        if (!_users.Add(m))
++        {
++            if (!_playedAnimation)
++            {
++                Effects.PlaySound(Location, Map, 0x348);
++                Effects.SendLocationParticles(
++                    EffectItem.Create(new Point3D(X, Y + 1, Z), Map, EffectItem.DefaultDuration),
++                    0x398C,
++                    8,
++                    72,
++                    5042
++                );
++                _playedAnimation = true;
++                Timer.StartTimer(TimeSpan.FromSeconds(3.5), () => _playedAnimation = false);
++            }
++
++            return;
++        }
++
++        Timer.StartTimer(_usageDelay, () => _users.Remove(m));
++
++        PointDest = _oneSideArea.Contains(m.Location) ? _pointDest1 : _pointDest2;
++        base.StartTeleport(m);
++    }
++}
++
++// Whispers its message to a player who comes within range, at most once every three hours each; with a
++// check other than None, only to one carrying that talking weapon, in the weapon's voice.
++[SerializationGenerator(0)]
++public partial class CCTrigger : Item
++{
++    private static readonly TimeSpan _repeatDelay = TimeSpan.FromHours(3.0);
++
++    [InvalidateProperties]
++    [SerializableField(0)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private CursedCave.TriggerCheck _triggerCheck;
++
++    [SerializableField(1)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private string _message;
++
++    [InvalidateProperties]
++    [SerializableField(2)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private int _range;
++
++    private Dictionary<Mobile, DateTime> _heard;
++
++    [Constructible]
++    public CCTrigger() : base(0x1F1C)
++    {
++        Visible = false;
++        Movable = false;
++        _range = 4;
++    }
++
++    public override string DefaultName => "CC Trigger";
++    public override bool HandlesOnMovement => true;
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++        list.Add(1060658, $"{"Range"}\t{_range}");
++        list.Add(1060659, $"{"Check Type"}\t{_triggerCheck}");
++    }
++
++    public override void OnMovement(Mobile m, Point3D oldLocation)
++    {
++        if (!m.Player || _message == null || Utility.InRange(oldLocation, Location, _range) ||
++            !Utility.InRange(m.Location, Location, _range))
++        {
++            return;
++        }
++
++        _heard ??= [];
++
++        if (_heard.TryGetValue(m, out var until) && Core.Now <= until)
++        {
++            return;
++        }
++
++        if (_triggerCheck == CursedCave.TriggerCheck.None)
++        {
++            _heard[m] = Core.Now + _repeatDelay;
++            CursedCave.PrivateMessage(m, _message);
++        }
++        else if (CursedCave.HasTalkingWeapon(m, out var weaponName, _triggerCheck))
++        {
++            _heard[m] = Core.Now + _repeatDelay;
++            CursedCave.PrivateMessage(m, $"{weaponName}: {_message}");
++        }
++    }
++}
++
++// Takes a player standing within three tiles who says its trigger word.
++[SerializationGenerator(0)]
++public partial class CursedCaveTeleporter : Item
++{
++    [SerializableField(0)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private string _teleName;
++
++    [SerializableField(1)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private bool _allowPets;
++
++    [SerializableField(2)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private int _range;
++
++    [SerializableField(3)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private bool _active;
++
++    [SerializableField(4)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private Point3D _pointDest;
++
++    [SerializableField(5)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private Map _mapDest;
++
++    [SerializableField(6)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private string _triggerWord;
++
++    [Constructible]
++    public CursedCaveTeleporter() : this(Point3D.Zero, null)
++    {
++    }
++
++    [Constructible]
++    public CursedCaveTeleporter(Point3D pointDest, Map mapDest) : base(0x1BC3)
++    {
++        Movable = false;
++        Visible = false;
++        _active = true;
++        _pointDest = pointDest;
++        _mapDest = mapDest;
++        _teleName = "teleporter";
++    }
++
++    public override string DefaultName => "Cursed Cave Teleporter";
++    public override bool HandlesOnSpeech => true;
++
++    public override void OnSingleClick(Mobile from)
++    {
++        LabelTo(from, 1026095); // teleporter
++
++        if (!_active)
++        {
++            LabelTo(from, "(inactive)");
++        }
++        else if (_mapDest != null && _pointDest != Point3D.Zero)
++        {
++            LabelTo(from, $"{_pointDest} [{_mapDest}]");
++        }
++        else if (_mapDest != null)
++        {
++            LabelTo(from, $"[{_mapDest}]");
++        }
++        else if (_pointDest != Point3D.Zero)
++        {
++            LabelTo(from, $"{_pointDest}");
++        }
++    }
++
++    public override void OnSpeech(SpeechEventArgs e)
++    {
++        var m = e.Mobile;
++
++        if (e.Handled || _triggerWord == null || !m.InRange(this, _range))
++        {
++            return;
++        }
++
++        foreach (var word in e.Speech.Split(' '))
++        {
++            if (word != _triggerWord)
++            {
++                continue;
++            }
++
++            if (!m.InRange(Location, 3))
++            {
++                m.SendLocalizedMessage(1019045); // I can't reach that.
++                return;
++            }
++
++            if (!_allowPets && m.Mounted)
++            {
++                m.Mount.Rider = null;
++            }
++
++            CursedCave.Teleport(m, _active, _pointDest, _mapDest, _allowPets, _teleName);
++            return;
++        }
++    }
++}
++
++// A walk-on link between the cave's levels, kept apart from ordinary teleporters so that
++// [CursedCave can find and replace the ones it placed.
++[SerializationGenerator(0)]
++public partial class CursedCavePassage : Teleporter
++{
++    [Constructible]
++    public CursedCavePassage() : this(Point3D.Zero)
++    {
++    }
++
++    [Constructible]
++    public CursedCavePassage(Point3D pointDest) : base(pointDest, Map.Felucca)
++    {
++        SourceEffect = true;
++        DestEffect = true;
++        SoundID = 0x228;
++    }
++}
++
++// Search the bones and they crumble; nearly half the time they leave gold and a magic item behind.
++[SerializationGenerator(0)]
++public partial class CCSkeletalCorpse : Item
++{
++    [Constructible]
++    public CCSkeletalCorpse() : base(0xECA + Utility.Random(9))
++    {
++        Movable = false;
++        Weight = 2.0;
++    }
++
++    public override string DefaultName => "an unknown paladin guard's skeleton";
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        if (!from.InRange(GetWorldLocation(), 2))
++        {
++            from.SendLocalizedMessage(500446); // That is too far away.
++            return;
++        }
++
++        Effects.SendLocationEffect(Location, Map, 0x3709, 13, 0x3B2);
++        Effects.PlaySound(Location, Map, 455);
++
++        if (Utility.RandomDouble() < 0.45)
++        {
++            new Gold(100, 300).MoveToWorld(Location, Map);
++            DfiLoot.Mutate(Loot.RandomArmorOrShieldOrWeaponOrJewelry(), Utility.RandomMinMax(1, 5), 20, 100, 480)
++                ?.MoveToWorld(Location, Map);
++        }
++
++        Delete();
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class TentCamp : BaseMulti
++{
++    [Constructible]
++    public TentCamp() : base(0x70)
++    {
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class TentCampGreen : BaseMulti
++{
++    [Constructible]
++    public TentCampGreen() : base(0x72)
++    {
++    }
++}
++
++// A burning puddle that hurts the players and pets standing in it, once a second for ten seconds.
++// Not saved: a pool that outlives a restart is deleted on load.
++[SerializationGenerator(0)]
++public partial class LavaPool : Item
++{
++    private static readonly TimeSpan _duration = TimeSpan.FromSeconds(10.0);
++
++    private readonly int _minDamage;
++    private readonly int _maxDamage;
++    private DateTime _created;
++    private TimerExecutionToken _timerToken;
++
++    public LavaPool(int minDamage, int maxDamage) : base(0x122A)
++    {
++        Movable = false;
++        Hue = 0x1B5;
++        _minDamage = minDamage;
++        _maxDamage = maxDamage;
++        _created = Core.Now;
++        Timer.StartTimer(TimeSpan.Zero, TimeSpan.FromSeconds(1), OnTick, out _timerToken);
++    }
++
++    public override string DefaultName => "lava";
++
++    [AfterDeserialization(false)]
++    private void AfterDeserialization() => Delete();
++
++    public override void OnAfterDelete()
++    {
++        _timerToken.Cancel();
++        base.OnAfterDelete();
++    }
++
++    private void OnTick()
++    {
++        if (Core.Now - _created > _duration)
++        {
++            Delete();
++            return;
++        }
++
++        using var queue = PooledRefQueue<Mobile>.Create();
++
++        foreach (var m in GetMobilesInRange(0))
++        {
++            if (m.Alive && (m is PlayerMobile || m is BaseCreature { IsDeadBondedPet: false } bc && (bc.Controlled || bc.Summoned)))
++            {
++                queue.Enqueue(m);
++            }
++        }
++
++        while (queue.Count > 0)
++        {
++            var m = queue.Dequeue();
++            AOS.Damage(m, Utility.RandomMinMax(_minDamage, _maxDamage), 0, 100, 0, 0, 0);
++            m.PlaySound(0x1DE);
++        }
++    }
++}
++
++// DFI's ESpecialAbilities life drain: 5 fire-free damage a second for five seconds, given to the drainer.
++public static class CursedCaveLifeDrain
++{
++    private static readonly Dictionary<Mobile, TimerExecutionToken> _table = new();
++
++    public static void Begin(Mobile defender, Mobile from)
++    {
++        if (_table.ContainsKey(defender))
++        {
++            return;
++        }
++
++        defender.SendLocalizedMessage(1070848); // You feel your life force being stolen away.
++        defender.FixedParticles(0x3779, 10, 15, 5009, EffectLayer.Waist);
++
++        var ticks = 0;
++        Timer.StartTimer(
++            TimeSpan.FromSeconds(1.0),
++            TimeSpan.FromSeconds(1.0),
++            5,
++            () =>
++            {
++                if (!defender.Alive || from.Deleted)
++                {
++                    End(defender);
++                    return;
++                }
++
++                from.Hits += AOS.Damage(defender, from, 5, 100, 0, 0, 0, 0);
++
++                if (++ticks == 5)
++                {
++                    End(defender);
++                }
++            },
++            out var token
++        );
++
++        _table[defender] = token;
++    }
++
++    private static void End(Mobile m)
++    {
++        if (_table.Remove(m, out var token))
++        {
++            token.Cancel();
++            m.SendLocalizedMessage(1070849); // The drain on your life force is gone.
++        }
++    }
++
++    [OnEvent(nameof(PlayerMobile.PlayerDeletedEvent))]
++    public static void OnPlayerDeleted(PlayerMobile m) => _table.Remove(m);
++}
+diff --git a/Projects/UOContent/Custom/DFI/CursedCave/CursedCaveMobiles.cs b/Projects/UOContent/Custom/DFI/CursedCave/CursedCaveMobiles.cs
+new file mode 100644
+index 000000000..6188686b7
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/CursedCave/CursedCaveMobiles.cs
+@@ -0,0 +1,1064 @@
++// The Cursed Cave's creatures, ported from DFI RUNUO Scripts/Custom/Engines/Quest System/CursedCave/Mobiles.
++
++using System;
++using ModernUO.Serialization;
++using Server.Custom.Dfi;
++using Server.Items;
++using Server.Misc;
++
++namespace Server.Mobiles;
++
++// The cursed bandage themselves, pick a weapon back up out of their pack when disarmed, and use
++// either of their weapon's special moves.
++[SerializationGenerator(0)]
++public abstract partial class BaseCursedCreature : BaseCreature
++{
++    private DateTime _nextBandageTime;
++    private DateTime _nextRearmTime;
++    private bool _tryToRearm;
++
++    public BaseCursedCreature(AIType ai, int rangeFight = 1) : base(ai, FightMode.Closest, 10, rangeFight) =>
++        SetSpeed(0.2, 0.4);
++
++    public virtual bool UseRearm => false;
++    public virtual int RearmMinDelay => 15;
++    public virtual int RearmMaxDelay => 20;
++    public virtual bool UseBandages => true;
++    public virtual int BandagesMinDelay => 15;
++    public virtual int BandagesMaxDelay => 20;
++    public override bool ShowFameTitle => false;
++    public override double WeaponAbilityChance => 0.3;
++
++    public override WeaponAbility GetWeaponAbility() =>
++        Weapon is BaseWeapon wep
++            ? Utility.RandomBool() ? wep.PrimaryAbility : wep.SecondaryAbility
++            : base.GetWeaponAbility();
++
++    public override void OnDamage(int amount, Mobile from, bool willKill)
++    {
++        base.OnDamage(amount, from, willKill);
++
++        if (willKill || from is not PlayerMobile || Utility.RandomDouble() >= 0.01)
++        {
++            return;
++        }
++
++        var line = from.Weapon switch
++        {
++            LongswordOfJustice  => "He has got the Sword Of Justice!",
++            HarvesterOfTheGhost => "He has got the Harvester Of The Ghost!",
++            BowOfHephaestus     => "He has got the Bow Of Hephaestus!",
++            _                   => null
++        };
++
++        if (line != null)
++        {
++            Say(line);
++            PlaySound(432);
++        }
++    }
++
++    public override void OnThink()
++    {
++        base.OnThink();
++
++        if (_tryToRearm && _nextRearmTime < Core.Now)
++        {
++            if (TryRearm())
++            {
++                _tryToRearm = false;
++            }
++            else
++            {
++                _nextRearmTime = Core.Now + TimeSpan.FromHours(1.0);
++            }
++        }
++        else if (UseRearm && !_tryToRearm && Weapon is null or Fists)
++        {
++            _tryToRearm = true;
++            _nextRearmTime = Core.Now + TimeSpan.FromSeconds(Utility.RandomMinMax(RearmMinDelay, RearmMaxDelay));
++        }
++
++        if (UseBandages && _nextBandageTime < Core.Now && Hits < HitsMax - 10)
++        {
++            var bandage = Backpack?.FindItemByType<Bandage>();
++
++            if (bandage != null)
++            {
++                if (BandageContext.BeginHeal(this, this) != null)
++                {
++                    bandage.Consume();
++                }
++
++                _nextBandageTime = Core.Now + TimeSpan.FromSeconds(Utility.RandomMinMax(BandagesMinDelay, BandagesMaxDelay));
++            }
++            else
++            {
++                _nextBandageTime = Core.Now + TimeSpan.FromHours(1.0);
++            }
++        }
++    }
++
++    private bool TryRearm()
++    {
++        if (Backpack == null)
++        {
++            return false;
++        }
++
++        var needArcherWeapon = AI == AIType.AI_Archer;
++
++        foreach (var item in Backpack.Items)
++        {
++            if (item is not BaseWeapon wep || needArcherWeapon && wep.Skill != SkillName.Archery)
++            {
++                continue;
++            }
++
++            if (Skills[wep.Skill].Base > 0 && EquipItem(wep))
++            {
++                return true;
++            }
++        }
++
++        return false;
++    }
++
++    public override void GenerateLoot()
++    {
++        PackItem(new Bandage(Utility.RandomMinMax(10, 30)));
++    }
++
++    protected void DressInBone(int hue = 0)
++    {
++        foreach (var piece in (Item[])[new BoneLegs(), new BoneArms(), new BoneGloves(), new BoneChest(), new BoneHelm()])
++        {
++            if (hue != 0)
++            {
++                piece.Hue = hue;
++            }
++
++            AddItem(CursedCave.MutateItem(piece, 10));
++        }
++    }
++
++    protected static CraftResource RandomScales() =>
++        Utility.Random(6) switch
++        {
++            1 => CraftResource.BlueScales,
++            2 => CraftResource.GreenScales,
++            3 => CraftResource.RedScales,
++            4 => CraftResource.WhiteScales,
++            5 => CraftResource.YellowScales,
++            _ => CraftResource.BlackScales
++        };
++
++    protected static CraftResource RandomMetal() =>
++        Utility.Random(4) switch
++        {
++            1 => CraftResource.DullCopper,
++            2 => CraftResource.ShadowIron,
++            3 => CraftResource.Copper,
++            _ => CraftResource.Iron
++        };
++
++    protected void EquipResource(BaseArmor armor, CraftResource resource)
++    {
++        armor.Resource = resource;
++        AddItem(CursedCave.MutateItem(armor, 10));
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class TheCursed : BaseCursedCreature
++{
++    [Constructible]
++    public TheCursed() : base(AIType.AI_Melee)
++    {
++        Body = 183;
++        Name = NameList.RandomName("male");
++        Title = "the cursed";
++        Hue = 2130;
++
++        SetStr(120, 140);
++        SetDex(86, 105);
++        SetInt(61, 70);
++
++        SetResistance(ResistanceType.Physical, 40, 60);
++        SetResistance(ResistanceType.Fire, 40, 50);
++        SetResistance(ResistanceType.Cold, 50, 60);
++        SetResistance(ResistanceType.Poison, 55, 65);
++        SetResistance(ResistanceType.Energy, 40, 50);
++
++        SetSkill(SkillName.Fencing, 90.0);
++        SetSkill(SkillName.Macing, 90.0);
++        SetSkill(SkillName.Swords, 90.0);
++        SetSkill(SkillName.Wrestling, 100.0);
++        SetSkill(SkillName.Poisoning, 60.0, 82.5);
++        SetSkill(SkillName.MagicResist, 57.5, 80.0);
++        SetSkill(SkillName.Tactics, 60.0, 82.5);
++        SetSkill(SkillName.Anatomy, 60.2, 100.0);
++        SetSkill(SkillName.Parry, 57.5, 80.0);
++        SetSkill(SkillName.Healing, 90.0);
++
++        Fame = CursedCave.FameByLevel(2);
++        Karma = CursedCave.FameByLevel(-2);
++
++        VirtualArmor = 70;
++
++        AddItem(CursedCave.MutateItem(Loot.RandomWeapon(), 10));
++        DressInBone();
++
++        if (Utility.RandomDouble() < 0.10)
++        {
++            AddItem(CursedCave.MutateItem(Loot.RandomJewelry(), 10));
++        }
++
++        if (Weapon is BaseWeapon { Layer: Layer.OneHanded })
++        {
++            if (Utility.RandomBool())
++            {
++                BaseEquipableLight light = Utility.Random(3) switch
++                {
++                    1 => new Lantern(),
++                    2 => new Candle(),
++                    _ => new Torch()
++                };
++
++                light.Ignite();
++                AddItem(light);
++            }
++            else
++            {
++                AddItem(CursedCave.MutateItem(Loot.RandomShield(), 10));
++            }
++        }
++    }
++
++    public override string CorpseName => "an inhuman corpse";
++    public override bool UseRearm => true;
++    public override InhumanSpeech SpeechType => CursedCave.Speech;
++    public override bool AlwaysMurderer => true;
++
++    public override void GenerateLoot()
++    {
++        base.GenerateLoot();
++        AddLoot(LootPack.AosRich);
++
++        if (!m_Spawning)
++        {
++            CursedCave.PackSkullsAndSmallBones(Backpack, Utility.Random(1, 2));
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class TheCursedArcher : BaseCursedCreature
++{
++    [Constructible]
++    public TheCursedArcher() : base(AIType.AI_Archer, 3)
++    {
++        Body = 183;
++        Name = NameList.RandomName("male");
++        Title = "the cursed archer";
++        Hue = 2130;
++
++        SetStr(120, 140);
++        SetDex(120, 140);
++        SetInt(61, 70);
++
++        SetResistance(ResistanceType.Physical, 40, 60);
++        SetResistance(ResistanceType.Fire, 50, 60);
++        SetResistance(ResistanceType.Cold, 50, 60);
++        SetResistance(ResistanceType.Poison, 55, 65);
++        SetResistance(ResistanceType.Energy, 40, 50);
++
++        SetSkill(SkillName.Archery, 120.0);
++        SetSkill(SkillName.Wrestling, 100.0);
++        SetSkill(SkillName.MagicResist, 57.5, 80.0);
++        SetSkill(SkillName.Tactics, 80.0, 100.0);
++        SetSkill(SkillName.Anatomy, 80.2, 100.0);
++        SetSkill(SkillName.Parry, 57.5, 80.0);
++        SetSkill(SkillName.Healing, 90.0);
++
++        Fame = CursedCave.FameByLevel(2);
++        Karma = CursedCave.FameByLevel(-2);
++
++        VirtualArmor = 70;
++
++        var wep = (BaseRanged)CursedCave.MutateItem(Loot.RandomRangedWeapon(), 10);
++        AddItem(wep);
++
++        var ammo = Loot.Construct(wep.AmmoType);
++
++        if (ammo != null)
++        {
++            ammo.Amount = Utility.RandomMinMax(50, 60);
++            PackItem(ammo);
++        }
++
++        DressInBone();
++
++        if (Utility.RandomDouble() < 0.10)
++        {
++            AddItem(CursedCave.MutateItem(Loot.RandomJewelry(), 10));
++        }
++    }
++
++    public override string CorpseName => "an inhuman corpse";
++    public override bool UseRearm => true;
++    public override InhumanSpeech SpeechType => CursedCave.Speech;
++    public override bool AlwaysMurderer => true;
++
++    public override void GenerateLoot()
++    {
++        base.GenerateLoot();
++        AddLoot(LootPack.AosRich);
++
++        if (!m_Spawning)
++        {
++            CursedCave.PackSkullsAndSmallBones(Backpack, Utility.Random(1, 2));
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public abstract partial class BaseCursedCaster : BaseCursedCreature
++{
++    public BaseCursedCaster(AIType ai, string title, int robeHue) : base(ai)
++    {
++        Body = 183;
++        Name = NameList.RandomName("male");
++        Title = title;
++        Hue = 2130;
++
++        SetStr(96, 125);
++        SetDex(86, 105);
++        SetInt(61, 70);
++
++        SetDamage(19, 31);
++
++        SetResistance(ResistanceType.Physical, 40, 60);
++        SetResistance(ResistanceType.Fire, 30, 40);
++        SetResistance(ResistanceType.Cold, 50, 60);
++        SetResistance(ResistanceType.Poison, 55, 65);
++        SetResistance(ResistanceType.Energy, 40, 50);
++
++        SetSkill(SkillName.Poisoning, 75.1, 100.0);
++        SetSkill(SkillName.Meditation, 75.1, 100.0);
++        SetSkill(SkillName.MagicResist, 75.0, 97.5);
++        SetSkill(SkillName.Tactics, 65.0, 87.5);
++        SetSkill(SkillName.Wrestling, 20.2, 60.0);
++
++        Fame = CursedCave.FameByLevel(2);
++        Karma = CursedCave.FameByLevel(-2);
++
++        VirtualArmor = 70;
++
++        AddItem(new WizardsHat(robeHue));
++        AddItem(new Robe(robeHue));
++        AddItem(new Sandals());
++    }
++
++    protected abstract bool Necro { get; }
++
++    public override string CorpseName => "a cursed corpse";
++    public override InhumanSpeech SpeechType => CursedCave.Speech;
++    public override bool AlwaysMurderer => true;
++
++    public override void GenerateLoot()
++    {
++        base.GenerateLoot();
++        AddLoot(LootPack.AosRich);
++
++        if (m_Spawning)
++        {
++            return;
++        }
++
++        var regs = Utility.RandomMinMax(10, 20);
++
++        for (var i = 0; i < regs; i++)
++        {
++            PackItem(Necro ? Loot.RandomNecromancyReagent() : Loot.RandomReagent());
++        }
++
++        var scrolls = Utility.RandomMinMax(2, 4);
++
++        for (var i = 0; i < scrolls; i++)
++        {
++            PackItem(
++                Necro
++                    ? Loot.RandomScroll(0, 15, SpellbookType.Necromancer)
++                    : Loot.RandomScroll(0, 62, SpellbookType.Regular)
++            );
++        }
++
++        var potions = Utility.RandomMinMax(1, 2);
++
++        for (var i = 0; i < potions; i++)
++        {
++            PackItem(Loot.RandomPotion());
++        }
++
++        CursedCave.PackSkullsAndSmallBones(Backpack, Utility.Random(1, 2));
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class TheCursedMage : BaseCursedCaster
++{
++    [Constructible]
++    public TheCursedMage() : base(AIType.AI_Mage, "the cursed mage", Utility.RandomRedHue())
++    {
++        SetSkill(SkillName.EvalInt, 75.1, 100.0);
++        SetSkill(SkillName.Magery, 75.1, 100.0);
++    }
++
++    protected override bool Necro => false;
++}
++
++[SerializationGenerator(0)]
++public partial class TheCursedNecro : BaseCursedCaster
++{
++    // ModernUO has no necromancer AI; its mage AI drives the casting.
++    [Constructible]
++    public TheCursedNecro() : base(AIType.AI_Mage, "the cursed necromancer", Utility.RandomBlueHue())
++    {
++        SetSkill(SkillName.SpiritSpeak, 75.1, 100.0);
++        SetSkill(SkillName.Necromancy, 75.1, 100.0);
++
++        AddItem(CursedCave.MutateItem(new BlackStaff(), 10));
++    }
++
++    protected override bool Necro => true;
++}
++
++[SerializationGenerator(0)]
++public partial class CursedSkeleton : BaseCreature
++{
++    [Constructible]
++    public CursedSkeleton() : base(AIType.AI_Melee)
++    {
++        SetSpeed(0.2, 0.4);
++        Body = 147;
++        BaseSoundID = 451;
++        Hue = 2130;
++
++        SetStr(196, 250);
++        SetDex(76, 95);
++        SetInt(36, 60);
++
++        SetHits(118, 150);
++
++        SetDamage(8, 18);
++
++        SetDamageType(ResistanceType.Physical, 40);
++        SetDamageType(ResistanceType.Cold, 60);
++
++        SetResistance(ResistanceType.Physical, 35, 45);
++        SetResistance(ResistanceType.Fire, 20, 30);
++        SetResistance(ResistanceType.Cold, 50, 60);
++        SetResistance(ResistanceType.Poison, 20, 30);
++        SetResistance(ResistanceType.Energy, 30, 40);
++
++        SetSkill(SkillName.MagicResist, 65.1, 80.0);
++        SetSkill(SkillName.Tactics, 85.1, 100.0);
++        SetSkill(SkillName.Wrestling, 85.1, 95.0);
++        SetSkill(SkillName.Anatomy, 85.0, 100.0);
++
++        Fame = CursedCave.FameByLevel(3);
++        Karma = CursedCave.FameByLevel(-3);
++
++        VirtualArmor = 40;
++    }
++
++    public override string CorpseName => "a cursed skeleton corpse";
++    public override string DefaultName => "a cursed skeleton";
++
++    public override void GenerateLoot()
++    {
++        AddLoot(LootPack.AosFilthyRich);
++
++        if (!m_Spawning)
++        {
++            CursedCave.PackSkullsAndSmallBones(Backpack, Utility.Random(1, 2));
++            AddItem(new Bandage(Utility.RandomMinMax(10, 20)));
++        }
++    }
++}
++
++// Rises again as a cursed skeleton when it falls.
++[SerializationGenerator(0)]
++public partial class TheCursedWarrior : BaseCursedCreature
++{
++    private const int ArmorHue = 1441;
++
++    [Constructible]
++    public TheCursedWarrior() : base(AIType.AI_Melee)
++    {
++        Body = 0x190;
++        Name = NameList.RandomName("male");
++        Title = "the cursed warrior";
++        Hue = 2130;
++
++        SetStr(350);
++        SetDex(150);
++        SetInt(100);
++
++        SetResistance(ResistanceType.Physical, 40, 60);
++        SetResistance(ResistanceType.Fire, 40, 50);
++        SetResistance(ResistanceType.Cold, 50, 60);
++        SetResistance(ResistanceType.Poison, 55, 65);
++        SetResistance(ResistanceType.Energy, 40, 50);
++
++        SetSkill(SkillName.Wrestling, 74.0, 80.0);
++        SetSkill(SkillName.Swords, 90.0, 95.0);
++        SetSkill(SkillName.Anatomy, 120.0, 125.0);
++        SetSkill(SkillName.MagicResist, 90.0, 94.0);
++        SetSkill(SkillName.Tactics, 90.0, 95.0);
++        SetSkill(SkillName.Healing, 90.0);
++
++        Fame = CursedCave.FameByLevel(2);
++        Karma = CursedCave.FameByLevel(-2);
++
++        VirtualArmor = 60;
++
++        DressInBone(ArmorHue);
++        AddItem(new Shoes());
++        AddItem(CursedCave.MutateItem(new HeaterShield(), 10));
++        AddItem(CursedCave.MutateItem(new VikingSword(), 10));
++    }
++
++    public override bool UseRearm => true;
++    public override InhumanSpeech SpeechType => CursedCave.Speech;
++    public override bool AlwaysMurderer => true;
++    public override bool Unprovokable => true;
++    public override Poison PoisonImmune => Poison.Deadly;
++
++    public override bool OnBeforeDeath()
++    {
++        var skeleton = new CursedSkeleton { Team = Team };
++
++        if (Combatant != null)
++        {
++            skeleton.Combatant = Combatant;
++        }
++
++        skeleton.MoveToWorld(Location, Map);
++        Effects.SendLocationEffect(Location, Map, 0x3709, 13, 0x3B2);
++        Delete();
++        return false;
++    }
++}
++
++// Drops the cave key that opens Hephaestus' chamber.
++[SerializationGenerator(0)]
++public partial class TheCursedGuardian : BaseCursedCreature
++{
++    [Constructible]
++    public TheCursedGuardian() : base(AIType.AI_Melee)
++    {
++        Body = 0x190;
++        Name = NameList.RandomName("male");
++        Title = "the cursed guardian";
++        Hue = 2130;
++
++        SetStr(350);
++        SetDex(150);
++        SetInt(100);
++
++        SetHits(500);
++
++        SetResistance(ResistanceType.Physical, 40, 60);
++        SetResistance(ResistanceType.Fire, 20, 30);
++        SetResistance(ResistanceType.Cold, 50, 60);
++        SetResistance(ResistanceType.Poison, 55, 65);
++        SetResistance(ResistanceType.Energy, 40, 50);
++
++        SetSkill(SkillName.Wrestling, 120.0, 125.0);
++        SetSkill(SkillName.Macing, 120.0, 125.0);
++        SetSkill(SkillName.Anatomy, 120.0, 125.0);
++        SetSkill(SkillName.MagicResist, 90.0, 94.0);
++        SetSkill(SkillName.Tactics, 120.0, 125.0);
++        SetSkill(SkillName.Healing, 90.0);
++        SetSkill(SkillName.Parry, 65.0, 80.0);
++
++        Fame = CursedCave.FameByLevel(3);
++        Karma = CursedCave.FameByLevel(-3);
++
++        VirtualArmor = 40;
++
++        var scales = RandomScales();
++        EquipResource(new DragonArms(), scales);
++        EquipResource(new DragonGloves(), scales);
++        EquipResource(new DragonChest(), scales);
++        EquipResource(new DragonLegs(), scales);
++        EquipResource(new DragonHelm(), scales);
++        AddItem(new Shoes());
++        AddItem(CursedCave.MutateItem(new ChaosShield(), 10));
++        AddItem(CursedCave.MutateItem(new Scepter(), 10));
++    }
++
++    public override bool UseRearm => true;
++    public override bool ClickTitle => false;
++    public override bool AlwaysMurderer => true;
++    public override bool Unprovokable => true;
++    public override Poison PoisonImmune => Poison.Lethal;
++    public override InhumanSpeech SpeechType => CursedCave.Speech;
++
++    public override void GenerateLoot()
++    {
++        base.GenerateLoot();
++        AddLoot(LootPack.FilthyRich, 2);
++
++        if (!m_Spawning)
++        {
++            CursedCave.PackSkullsAndSmallBones(Backpack, Utility.Random(1, 2));
++
++            if (Utility.RandomDouble() < 0.05)
++            {
++                AddItem(new CCKey());
++            }
++        }
++    }
++}
++
++// The four named townsfolk of the cave; each may carry its trade's sturdy tool, one of the cave's rares.
++[SerializationGenerator(0)]
++public abstract partial class BaseCursedTownsman : BaseCursedCreature
++{
++    public BaseCursedTownsman(string name, string title, SkillName weaponSkill) : base(AIType.AI_Melee)
++    {
++        Title = title;
++        Body = 0x190;
++        Name = name;
++        Hue = 2130;
++
++        InitStats(700, 151, 100);
++        SetHits(500);
++
++        SetResistance(ResistanceType.Physical, 40, 60);
++        SetResistance(ResistanceType.Fire, 20, 30);
++        SetResistance(ResistanceType.Cold, 50, 60);
++        SetResistance(ResistanceType.Poison, 55, 65);
++        SetResistance(ResistanceType.Energy, 40, 50);
++
++        SetSkill(SkillName.Wrestling, 120.0);
++        SetSkill(weaponSkill, 120.0);
++        SetSkill(SkillName.Anatomy, 120.0);
++        SetSkill(SkillName.MagicResist, 120.0);
++        SetSkill(SkillName.Tactics, 120.0);
++        SetSkill(SkillName.Healing, 90.0);
++
++        Fame = CursedCave.FameByLevel(3);
++        Karma = CursedCave.FameByLevel(-3);
++
++        VirtualArmor = 70;
++
++        HairItemID = 0x203B;
++        HairHue = 0x3C0;
++    }
++
++    public override bool UseRearm => true;
++    public override bool ClickTitle => false;
++    public override bool AlwaysMurderer => true;
++    public override bool Unprovokable => true;
++    public override Poison PoisonImmune => Poison.Lethal;
++
++    protected abstract Item CreateRareTool();
++    protected abstract Item CreatePlainTool();
++
++    public override int GetIdleSound() => 0x1CE;
++    public override int GetAngerSound() => 0x1AC;
++    public override int GetDeathSound() => 0x182;
++    public override int GetHurtSound() => 0x28D;
++
++    public override void GenerateLoot()
++    {
++        base.GenerateLoot();
++        AddLoot(LootPack.FilthyRich);
++
++        if (m_Spawning)
++        {
++            return;
++        }
++
++        var tool = Utility.RandomDouble() < 0.10 ? CreateRareTool() : CreatePlainTool();
++
++        if (tool != null)
++        {
++            tool.Movable = true;
++            AddItem(tool);
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class TheCursedAlchemist : BaseCursedTownsman
++{
++    [Constructible]
++    public TheCursedAlchemist() : base("Walter", "the Cursed Alchemist", SkillName.Fencing)
++    {
++        AddItem(CursedCave.MutateItem(new Dagger(), 10));
++        AddItem(new Shoes());
++        AddItem(new LongPants());
++        AddItem(new FancyShirt());
++        AddItem(new HalfApron());
++        AddItem(CursedCave.MutateItem(new BearMask(), 10));
++    }
++
++    protected override Item CreateRareTool() => new SRCRSturdyMortarPestle();
++    protected override Item CreatePlainTool() => null;
++}
++
++[SerializationGenerator(0)]
++public partial class TheCursedBlacksmith : BaseCursedTownsman
++{
++    [Constructible]
++    public TheCursedBlacksmith() : base("Jonah", "the Cursed Blacksmith", SkillName.Fencing)
++    {
++        AddItem(CursedCave.MutateItem(new Kryss(), 30));
++        AddItem(new Shoes());
++
++        var metal = RandomMetal();
++        EquipResource(new PlateArms(), metal);
++        EquipResource(new PlateChest(), metal);
++        EquipResource(new PlateLegs(), metal);
++    }
++
++    protected override Item CreateRareTool() => new SRCRSturdySmithHammer();
++    protected override Item CreatePlainTool() => new SmithHammer();
++}
++
++// DFI's butcher drops the carpenter's saw; kept as it was.
++[SerializationGenerator(0)]
++public partial class TheCursedButcher : BaseCursedTownsman
++{
++    [Constructible]
++    public TheCursedButcher() : base("Zack", "the Cursed Butcher", SkillName.Swords)
++    {
++        AddItem(CursedCave.MutateItem(new ButcherKnife(), 10));
++        AddItem(new Shoes());
++
++        var metal = RandomMetal();
++        EquipResource(new LeatherArms(), metal);
++        EquipResource(new LeatherChest(), metal);
++        EquipResource(new LeatherLegs(), metal);
++        AddItem(CursedCave.MutateItem(new DeerMask(), 10));
++    }
++
++    protected override Item CreateRareTool() => new SRCRSturdySaw();
++    protected override Item CreatePlainTool() => new Saw();
++}
++
++[SerializationGenerator(0)]
++public partial class TheCursedCarpenter : BaseCursedTownsman
++{
++    [Constructible]
++    public TheCursedCarpenter() : base("Khal", "the Cursed Carpenter", SkillName.Macing)
++    {
++        AddItem(CursedCave.MutateItem(new Club(), 10));
++        AddItem(new Shoes());
++        AddItem(new LongPants());
++        AddItem(new FancyShirt());
++        AddItem(new HalfApron());
++
++        HairItemID = 0x203D;
++    }
++
++    protected override Item CreateRareTool() => new SRCRSturdySaw();
++    protected override Item CreatePlainTool() => new Saw();
++}
++
++[SerializationGenerator(0)]
++public partial class CursedSteed : BaseMount
++{
++    private static readonly MonsterAbility[] _abilities = [MonsterAbilities.FireBreath];
++
++    [Constructible]
++    public CursedSteed() : base(0x74, 0x3EAF, AIType.AI_Mage)
++    {
++        SetSpeed(0.15, 0.4);
++        BaseSoundID = 0xA8;
++        Body = 0x78;
++
++        SetStr(396, 425);
++        SetDex(86, 105);
++        SetInt(86, 125);
++
++        SetHits(398, 415);
++
++        SetDamage(16, 22);
++
++        SetDamageType(ResistanceType.Physical, 40);
++        SetDamageType(ResistanceType.Fire, 80);
++        SetDamageType(ResistanceType.Energy, 20);
++
++        SetResistance(ResistanceType.Physical, 55, 65);
++        SetResistance(ResistanceType.Fire, 30, 40);
++        SetResistance(ResistanceType.Cold, 30, 40);
++        SetResistance(ResistanceType.Poison, 30, 40);
++        SetResistance(ResistanceType.Energy, 20, 30);
++
++        SetSkill(SkillName.EvalInt, 10.4, 50.0);
++        SetSkill(SkillName.Magery, 10.4, 50.0);
++        SetSkill(SkillName.MagicResist, 85.3, 100.0);
++        SetSkill(SkillName.Tactics, 97.6, 100.0);
++        SetSkill(SkillName.Wrestling, 80.5, 92.5);
++        SetSkill(SkillName.Anatomy, 80.0, 100.0);
++
++        Fame = CursedCave.FameByLevel(3);
++        Karma = CursedCave.FameByLevel(-3);
++
++        VirtualArmor = 60;
++        Tamable = false;
++    }
++
++    public override string CorpseName => "a cursed steeds corpse";
++    public override string DefaultName => "a cursed steed";
++    public override bool AlwaysMurderer => true;
++    public override int Meat => 5;
++    public override int Hides => 10;
++    public override HideType HideType => HideType.Barbed;
++    public override FoodType FavoriteFood => FoodType.Meat;
++
++    public override MonsterAbility[] GetMonsterAbilities() => _abilities;
++
++    public override int GetAngerSound() => 0x16A;
++
++    public override void GenerateLoot()
++    {
++        AddLoot(LootPack.Rich);
++        AddLoot(LootPack.LowScrolls);
++        AddLoot(LootPack.Potions);
++    }
++}
++
++// Rides a cursed steed; once she is below half health she screams for help, calling up to four of the
++// cave's creatures, at most every two minutes.
++[SerializationGenerator(0)]
++public partial class DevaTheCursedOne : BaseCursedCreature
++{
++    private DateTime _nextCallForHelp;
++
++    [Constructible]
++    public DevaTheCursedOne() : base(AIType.AI_Melee)
++    {
++        Name = "Deva";
++        Title = "The Cursed One";
++        Female = true;
++        Body = 0x191;
++
++        SetStr(200, 300);
++        SetDex(81, 95);
++        SetInt(61, 75);
++
++        SetHits(1000);
++
++        Fame = CursedCave.FameByLevel(4);
++        Karma = CursedCave.FameByLevel(-4);
++
++        SetSkill(SkillName.Swords, 120.0);
++        SetSkill(SkillName.Tactics, 120.0);
++        SetSkill(SkillName.Wrestling, 120.0);
++        SetSkill(SkillName.Anatomy, 120.0);
++        SetSkill(SkillName.Parry, 100.0);
++        SetSkill(SkillName.Healing, 90.0);
++
++        SetResistance(ResistanceType.Physical, 40);
++        SetResistance(ResistanceType.Cold, 40);
++        SetResistance(ResistanceType.Poison, 30);
++        SetResistance(ResistanceType.Energy, 40);
++        SetResistance(ResistanceType.Fire, 40);
++
++        AddItem(CursedCave.MutateItem(new BoneLegs(), 10));
++        AddItem(CursedCave.MutateItem(new BoneArms(), 10));
++        AddItem(CursedCave.MutateItem(new BoneGloves(), 10));
++        AddItem(CursedCave.MutateItem(new BoneChest(), 10));
++        AddItem(CursedCave.MutateItem(Loot.RandomJewelry(), 10));
++        AddItem(new Sandals());
++        AddItem(CursedCave.MutateItem(new DeerMask(), 10));
++
++        var scythe = CursedCave.MutateItem(new Scythe(), 10);
++        scythe.Movable = false;
++        AddItem(scythe);
++
++        new CursedSteed().Rider = this;
++        _nextCallForHelp = Core.Now;
++    }
++
++    public override bool UseRearm => true;
++    public override Poison PoisonImmune => Poison.Lethal;
++    public override int TreasureMapLevel => 5;
++    public override bool AlwaysMurderer => true;
++
++    public override void OnDamage(int amount, Mobile attacker, bool willKill)
++    {
++        base.OnDamage(amount, attacker, willKill);
++
++        if (willKill || Hits >= HitsMax / 2 || Utility.RandomDouble() >= 0.20 || Core.Now <= _nextCallForHelp)
++        {
++            return;
++        }
++
++        PublicOverheadMessage(MessageType.Spell, 0, true, "* Screams for help! *");
++        Timer.StartTimer(
++            TimeSpan.FromSeconds(1.5),
++            TimeSpan.FromSeconds(5.0),
++            Utility.RandomMinMax(1, 4),
++            SpawnHelper
++        );
++        _nextCallForHelp = Core.Now + TimeSpan.FromMinutes(2.0);
++    }
++
++    private void SpawnHelper()
++    {
++        if (Deleted || Map == null || Map == Map.Internal)
++        {
++            return;
++        }
++
++        BaseCreature creature = Utility.Random(5) switch
++        {
++            2 => new DreadSpider(),
++            3 => new HellHound(),
++            4 => new PredatorHellCat(),
++            _ => new TheCursed()
++        };
++
++        Effects.SendLocationParticles(EffectItem.Create(Location, Map, EffectItem.DefaultDuration), 0x3728, 10, 10, 5023);
++        Effects.PlaySound(Location, Map, 0x1FE);
++        creature.MoveToWorld(Location, Map);
++    }
++
++    public override void GenerateLoot()
++    {
++        base.GenerateLoot();
++        AddLoot(LootPack.AosSuperBoss);
++        AddLoot(LootPack.HighScrolls);
++        AddLoot(LootPack.Potions);
++    }
++}
++
++// The god of fire, summoned on the altar in his chamber by a cave key. His blows drain life from all
++// around the one he strikes.
++[SerializationGenerator(0)]
++public partial class Hephaestus : BaseCreature
++{
++    private static readonly MonsterAbility[] _abilities = [new HephaestusBreath()];
++
++    private static readonly Type[] _rewards =
++    [
++        typeof(HearthOfHomeFire), typeof(HolySword), typeof(LeggingsOfEmbers), typeof(RoseOfTrinsic),
++        typeof(SamuraiHelm), typeof(ShaminoCrossbow), typeof(TapestryOfSosaria)
++    ];
++
++    [Constructible]
++    public Hephaestus() : base(AIType.AI_Melee)
++    {
++        SetSpeed(0.2, 0.4);
++        Title = "the god of fire";
++        Body = 15;
++        BaseSoundID = 838;
++
++        SetStr(505, 1000);
++        SetDex(102, 300);
++        SetInt(402, 600);
++
++        SetHits(10000);
++        SetStam(500, 600);
++
++        SetDamage(25, 30);
++
++        SetDamageType(ResistanceType.Fire, 80);
++        SetDamageType(ResistanceType.Physical, 20);
++
++        SetResistance(ResistanceType.Physical, 75, 80);
++        SetResistance(ResistanceType.Fire, 100);
++        SetResistance(ResistanceType.Cold, 60, 70);
++        SetResistance(ResistanceType.Poison, 60, 70);
++        SetResistance(ResistanceType.Energy, 60, 70);
++
++        SetSkill(SkillName.MagicResist, 70.7, 140.0);
++        SetSkill(SkillName.Tactics, 97.6, 100.0);
++        SetSkill(SkillName.Wrestling, 97.6, 100.0);
++
++        Fame = 22500;
++        Karma = -22500;
++
++        VirtualArmor = 80;
++
++        AddItem(new LightSource());
++    }
++
++    public override string DefaultName => "Hephaestus";
++    public override bool AlwaysMurderer => true;
++    public override Poison PoisonImmune => Poison.Lethal;
++    public override int TreasureMapLevel => 5;
++
++    public override MonsterAbility[] GetMonsterAbilities() => _abilities;
++
++    public override int GetAngerSound() => 0x567;
++
++    public static Item CreateRandomArtifact() => Loot.Construct(_rewards.RandomElement());
++
++    public override void OnGaveMeleeAttack(Mobile defender, int damage)
++    {
++        base.OnGaveMeleeAttack(defender, damage);
++
++        if (Utility.RandomDouble() >= 0.1)
++        {
++            return;
++        }
++
++        foreach (var m in defender.GetMobilesInRange(8))
++        {
++            if (m == this || m.AccessLevel > AccessLevel.Player || !CanBeHarmful(m) || !InLOS(m))
++            {
++                continue;
++            }
++
++            if (m is BaseCreature bc && (bc.Controlled || bc.Summoned || bc.Team != Team) || m.Player && m.Alive)
++            {
++                CursedCaveLifeDrain.Begin(m, this);
++            }
++        }
++    }
++
++    public override void GenerateLoot()
++    {
++        AddLoot(LootPack.UltraRich, 4);
++
++        if (!m_Spawning)
++        {
++            for (var i = 0; i < 5; ++i)
++            {
++                AddItem(new SulfurousAsh(30));
++            }
++        }
++    }
++
++    public override void OnDeath(Container c)
++    {
++        base.OnDeath(c);
++
++        if (0.03 + LootPack.GetLuckChanceForKiller(this) / 180000.0 > Utility.RandomDouble())
++        {
++            DemonKnight.DistributeArtifact(this, CreateRandomArtifact());
++        }
++    }
++}
++
++// Hephaestus breathes for 60 to 80 and leaves a pool of lava under his target.
++public class HephaestusBreath : FireBreath
++{
++    public override int BreathComputeDamage(BaseCreature source) => Utility.RandomMinMax(60, 80);
++
++    public override void BreathDealDamage(BaseCreature source, Mobile target)
++    {
++        base.BreathDealDamage(source, target);
++        Effects.PlaySound(target.Location, target.Map, 0x1CA);
++        new LavaPool(30, 35).MoveToWorld(target.Location, target.Map);
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/CursedCave/CursedCaveQuest.cs b/Projects/UOContent/Custom/DFI/CursedCave/CursedCaveQuest.cs
+new file mode 100644
+index 000000000..0b1709296
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/CursedCave/CursedCaveQuest.cs
+@@ -0,0 +1,626 @@
++// The Cursed Cave quest and Warren the Guard, ported from DFI RUNUO Scripts/Custom/Engines/Quest System/
++// CursedCave/CursedCaveQuest and the rares reward in CursedCaveUtility.cs.
++
++using System;
++using System.Collections.Generic;
++using ModernUO.Serialization;
++using Server.Custom.Dfi;
++using Server.Gumps;
++using Server.Items;
++using Server.Mobiles;
++using Server.Network;
++using Server.Regions;
++using Server.Text;
++
++namespace Server.Engines.Quests.CursedCave;
++
++// DFI wrote its quest text in English rather than clilocs; these show it in the quest gumps.
++public abstract class DfiQuestConversation : QuestConversation
++{
++    public override int Message => 0;
++    public abstract string Text { get; }
++}
++
++public abstract class DfiQuestObjective : QuestObjective
++{
++    public override int Message => 0;
++    public abstract string Text { get; }
++
++    public override void RenderMessage(ref DynamicGumpBuilder builder)
++    {
++        BaseQuestGump.AddHtmlObject(ref builder, 70, 130, 300, 100, Text, BaseQuestGump.Blue, false, false);
++    }
++}
++
++public abstract class DfiQuestSystem : QuestSystem
++{
++    public DfiQuestSystem(PlayerMobile from) : base(from)
++    {
++    }
++
++    public DfiQuestSystem()
++    {
++    }
++
++    public override void AddConversation(QuestConversation conv)
++    {
++        conv.System = this;
++
++        if (conv.Logged)
++        {
++            Conversations.Add(conv);
++        }
++
++        var gumps = From.GetGumps();
++        gumps.Close<QuestItemInfoGump>();
++        gumps.Close<QuestObjectivesGump>();
++
++        DfiConversationGump.DisplayTo(From, conv.Logged ? Conversations : [conv]);
++    }
++
++    public override void ShowQuestConversation()
++    {
++        if (Conversations.Count > 0)
++        {
++            var gumps = From.GetGumps();
++            gumps.Close<QuestItemInfoGump>();
++            gumps.Close<QuestObjectivesGump>();
++
++            DfiConversationGump.DisplayTo(From, Conversations);
++        }
++    }
++}
++
++// QuestConversationsGump's layout, with the conversations' English text.
++public class DfiConversationGump : BaseQuestGump
++{
++    private readonly List<QuestConversation> _conversations;
++
++    private DfiConversationGump(List<QuestConversation> conversations) : base(30, 50) => _conversations = conversations;
++
++    public override bool Singleton => true;
++
++    public static void DisplayTo(Mobile from, List<QuestConversation> conversations)
++    {
++        if (from?.NetState != null && conversations?.Count > 0)
++        {
++            from.SendGump(new DfiConversationGump(conversations));
++        }
++    }
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        builder.SetNoClose();
++
++        builder.AddPage();
++
++        builder.AddImage(349, 10, 9392);
++        builder.AddImageTiled(349, 130, 100, 120, 9395);
++        builder.AddImageTiled(149, 10, 200, 140, 9391);
++        builder.AddImageTiled(149, 250, 200, 140, 9397);
++        builder.AddImage(349, 250, 9398);
++        builder.AddImage(35, 10, 9390);
++        builder.AddImageTiled(35, 150, 120, 100, 9393);
++        builder.AddImage(35, 250, 9396);
++
++        builder.AddHtmlLocalized(110, 60, 200, 20, 1049069, White); // <STRONG>Conversation Event</STRONG>
++
++        builder.AddImage(65, 14, 10102);
++        builder.AddImageTiled(81, 14, 349, 17, 10101);
++        builder.AddImage(426, 14, 10104);
++
++        builder.AddImageTiled(55, 40, 388, 323, 2624);
++        builder.AddAlphaRegion(55, 40, 388, 323);
++
++        builder.AddImageTiled(75, 90, 200, 1, 9101);
++        builder.AddImage(75, 58, 9781);
++        builder.AddImage(380, 45, 223);
++
++        builder.AddButton(220, 335, 2313, 2312, 1);
++        builder.AddImage(0, 0, 10440);
++
++        builder.AddPage(1);
++
++        for (var i = 0; i < _conversations.Count; ++i)
++        {
++            var conv = _conversations[_conversations.Count - 1 - i];
++
++            if (i > 0)
++            {
++                builder.AddButton(65, 366, 9909, 9911, 0, GumpButtonType.Page, 1 + i);
++                builder.AddHtmlLocalized(90, 367, 50, 20, 1043354, Black); // Previous
++
++                builder.AddPage(1 + i);
++            }
++
++            object message = conv is DfiQuestConversation dfi ? dfi.Text : conv.Message;
++            AddHtmlObject(ref builder, 70, 110, 365, 220, message, LightGreen, false, true);
++
++            if (i > 0)
++            {
++                builder.AddButton(420, 366, 9903, 9905, 0, GumpButtonType.Page, i);
++                builder.AddHtmlLocalized(370, 367, 50, 20, 1043353, Black); // Next
++            }
++        }
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        for (var i = _conversations.Count - 1; i >= 0; --i)
++        {
++            var qc = _conversations[i];
++
++            if (!qc.HasBeenRead)
++            {
++                qc.HasBeenRead = true;
++                qc.OnRead();
++            }
++        }
++    }
++}
++
++public class CursedCaveQuest : DfiQuestSystem
++{
++    private static readonly Type[] _typeReferenceTable =
++    [
++        typeof(AcceptConversation),
++        typeof(DuringKillTaskConversation),
++        typeof(DontOfferConversation),
++        typeof(EndConversation),
++        typeof(CursedCaveBeginObjective),
++        typeof(ReportBackObjective)
++    ];
++
++    public CursedCaveQuest(PlayerMobile from) : base(from)
++    {
++    }
++
++    public CursedCaveQuest()
++    {
++    }
++
++    public override Type[] TypeReferenceTable => _typeReferenceTable;
++
++    public override object Name => "Cursed Cave";
++
++    public override object OfferMessage =>
++        "<I>The guard speaks to you as you approach.. </I><BR><BR>Hail to thee adventurer!<BR>Would you like to help us " +
++        "killing a few monsters in the cursed cave? I will reward you if you complete your task... all I have to give " +
++        "as a reward are some magical items, gold and reagents.";
++
++    public override TimeSpan RestartDelay => TimeSpan.Zero;
++    public override bool IsTutorial => false;
++    public override int Picture => 0x15C9;
++
++    public override void Accept()
++    {
++        base.Accept();
++        AddConversation(new AcceptConversation());
++    }
++}
++
++// Six rounds, one creature kind each, killed inside the cave.
++public class CursedCaveBeginObjective : DfiQuestObjective
++{
++    private static readonly (Type Monster, string Name, int Amount)[] _rounds =
++    [
++        (typeof(HellCat), "Hell Cat", 4),
++        (typeof(HellHound), "Hell Hound", 4),
++        (typeof(GiantBlackWidow), "Giant Black Widow", 4),
++        (typeof(TheCursed), "A Cursed", 6),
++        (typeof(CursedSkeleton), "Cursed Warrior", 2),
++        (typeof(DevaTheCursedOne), "Deva The Cursed One", 1)
++    ];
++
++    private int _round;
++
++    public CursedCaveBeginObjective(int round) => _round = round;
++
++    public CursedCaveBeginObjective()
++    {
++    }
++
++    public static int Rounds => _rounds.Length;
++
++    public Type Monster => Current.Monster;
++
++    private (Type Monster, string Name, int Amount) Current => _rounds[Math.Min(_round, _rounds.Length - 1)];
++
++    public override string Text => "Help the guards by killing the following monster in the Cursed Cave.";
++
++    public override int MaxProgress => Current.Amount;
++
++    public override void OnComplete()
++    {
++        if (_round + 1 >= _rounds.Length)
++        {
++            System.AddObjective(new ReportBackObjective());
++        }
++        else
++        {
++            System.AddObjective(new CursedCaveBeginObjective(_round + 1));
++        }
++    }
++
++    public override void RenderProgress(ref DynamicGumpBuilder builder)
++    {
++        if (Completed)
++        {
++            base.RenderProgress(ref builder);
++            return;
++        }
++
++        builder.AddHtml(70, 260, 270, 100, Current.Name.Color(0x8CADFF));
++        builder.AddLabel(70, 280, 0x64, $"{CurProgress} / {Current.Amount}");
++    }
++
++    public override void OnKill(BaseCreature creature, Container corpse)
++    {
++        if (creature?.GetType() == Current.Monster && creature.Region is CursedCaveRegion)
++        {
++            CurProgress++;
++        }
++    }
++
++    public override void ChildDeserialize(IGenericReader reader)
++    {
++        reader.ReadEncodedInt(); // version
++        _round = reader.ReadEncodedInt();
++
++        if (CurProgress > MaxProgress)
++        {
++            CurProgress = MaxProgress - 1;
++        }
++    }
++
++    public override void ChildSerialize(IGenericWriter writer)
++    {
++        writer.WriteEncodedInt(0); // version
++        writer.WriteEncodedInt(_round);
++    }
++}
++
++public class ReportBackObjective : DfiQuestObjective
++{
++    public override string Text => "Return to Warren and tell him that you have completed the task.";
++
++    public override void OnComplete()
++    {
++        System.AddConversation(new EndConversation());
++    }
++}
++
++public class AcceptConversation : DfiQuestConversation
++{
++    public override string Text =>
++        "<I><U>About the cursed cave</U></I><BR><BR>People in the town say that they occasionally hear screams from " +
++        "the cave during the night... and strange noises... some people have even reported strange green creatures " +
++        "standing at the entrance of the cave.<BR><BR>Mages who have ventured to the cave report that their spells do " +
++        "not work within, bards say that their music has no effect upon any creature.<BR><BR><I><U>The Lost Rares</U>" +
++        "</I><BR><BR>Everybody in the nearby town have been talking about some kind of rares that are hidden in this " +
++        "cave, but the cursed creatures seem to guard them with their lifes. If you happen to find these rares and " +
++        "somehow manage to steal them bring them to Warren the Guard he will buy them, or you can just keep them for " +
++        "yourself.";
++
++    public override void OnRead()
++    {
++        System.AddObjective(new CursedCaveBeginObjective(0));
++    }
++}
++
++public class DuringKillTaskConversation : DfiQuestConversation
++{
++    public override string Text =>
++        "<I>The guard looks up to you and says...</I><BR><BR>Back so soon..? Have you killed the creatures I told you " +
++        "to? No? Well return here when you have and I will reward you.";
++
++    public override bool Logged => false;
++}
++
++public class DontOfferConversation : DfiQuestConversation
++{
++    public override string Text =>
++        "<I>The guard looks up to you and says...</I><BR><BR>Hail Stranger!<BR>I could use some help, but you seem " +
++        "too busy with another quest. Come and speak with me again when you have completed your present quest.";
++
++    public override bool Logged => false;
++}
++
++public class EndConversation : DfiQuestConversation
++{
++    public override string Text =>
++        "<I>The guard smiles as you tell him of your completed task.</I><BR><BR>Well done! I did not think you would " +
++        "return here alive! Here is thy reward just as I promised.<BR><BR><I>The guard gives you a bag.</I>";
++
++    public override void OnRead()
++    {
++        System.Complete();
++    }
++}
++
++// Gives the Cursed Cave quest, and buys back the cave's rares: walk up with ten of them in your pack and
++// he offers a reward bag, sometimes with the Harvester of the Ghost in it.
++[SerializationGenerator(0)]
++public partial class WarrenTheGuard : BaseQuester
++{
++    public const int ArtifactAmount = 10;
++
++    private static readonly SkillName[] _fightingSkills = [SkillName.Fencing, SkillName.Macing, SkillName.Swords, SkillName.Archery];
++
++    [Constructible]
++    public WarrenTheGuard() : base("the Paladin Guard")
++    {
++    }
++
++    public override string DefaultName => "Warren";
++
++    public override void InitBody()
++    {
++        InitStats(100, 100, 25);
++
++        Hue = 33770;
++        Female = false;
++        Body = 0x190;
++
++        HairItemID = 0x203B;
++        HairHue = 0x44E;
++    }
++
++    public override void InitOutfit()
++    {
++        AddItem(CreatePaladinArmor(new PlateChest(), "Platemail Tunic", 5));
++        AddItem(CreatePaladinArmor(new PlateArms(), "Platemail Arms", 5));
++        AddItem(CreatePaladinArmor(new PlateGloves(), "Platemail Gloves", 5));
++        AddItem(CreatePaladinArmor(new PlateLegs(), "Platemail Legs", 5));
++        AddItem(CreatePaladinArmor(new PlateGorget(), "Platemail Gorget", 5));
++        AddItem(new Cloak(1150));
++        AddItem(new LongswordOfJustice());
++        AddItem(new OrderShield());
++    }
++
++    private static BaseArmor CreatePaladinArmor(BaseArmor armor, string name, int props)
++    {
++        BaseRunicTool.ApplyAttributesTo(armor, props, 40, 80);
++        armor.Hue = 0x528;
++        armor.Name = $"{name} of the Paladin";
++        armor.SkillBonuses.SetValues(0, SkillName.Chivalry, 5.0);
++        return armor;
++    }
++
++    private static BaseArmor RandomPaladinPiece() =>
++        Utility.Random(5) switch
++        {
++            0 => CreatePaladinArmor(new PlateChest(), "Platemail Tunic", Utility.Random(5)),
++            1 => CreatePaladinArmor(new PlateArms(), "Platemail Arms", Utility.Random(5)),
++            2 => CreatePaladinArmor(new PlateGloves(), "Platemail Gloves", Utility.Random(5)),
++            3 => CreatePaladinArmor(new PlateLegs(), "Platemail Legs", Utility.Random(5)),
++            _ => CreatePaladinArmor(new PlateGorget(), "Platemail Gorget", Utility.Random(5))
++        };
++
++    public override void OnMovement(Mobile m, Point3D oldLocation)
++    {
++        base.OnMovement(m, oldLocation);
++
++        if (m.Alive && m is PlayerMobile pm && InRange(m, 4) && !InRange(oldLocation, 4))
++        {
++            OnRareTalk(pm);
++        }
++    }
++
++    public static List<Item> FindRares(Mobile player, int max)
++    {
++        var found = new List<Item>();
++
++        foreach (var item in player.Backpack?.Items ?? [])
++        {
++            if (CursedCaveRares.NameOf(item) != null)
++            {
++                found.Add(item);
++
++                if (found.Count >= max)
++                {
++                    break;
++                }
++            }
++        }
++
++        return found;
++    }
++
++    private void OnRareTalk(PlayerMobile player)
++    {
++        var found = FindRares(player, ArtifactAmount);
++
++        if (found.Count >= ArtifactAmount)
++        {
++            player.SendGump(new CursedCaveRaresGump(found, this), true);
++        }
++        else if (found.Count > 0)
++        {
++            Say(
++                $"I found {found.Count} of the lost treasures of the Cursed Cave in your backpack, bring me {ArtifactAmount} of them to get a reward."
++            );
++        }
++    }
++
++    public static Bag CreateRareRewardBag()
++    {
++        var bag = new Bag { Hue = Utility.RandomDyedHue() };
++        DfiLoot.AddRandomLoot(bag, 5, 600, 5, 5, 50, 100);
++        bag.DropItem(new Bandage(Utility.RandomMinMax(200, 300)));
++        bag.DropItem(new Gold(2000, 4000));
++        bag.DropItem(new TreasureMap(Utility.RandomMinMax(2, 6), Map.Felucca));
++
++        if (Utility.RandomDouble() < 0.40)
++        {
++            bag.DropItem(new HarvesterOfTheGhost());
++        }
++
++        return bag;
++    }
++
++    public static Bag CreateQuestRewardBag(Mobile player)
++    {
++        var bag = new Bag { Hue = Utility.RandomDyedHue() };
++        DfiLoot.AddRandomLoot(bag, 5, 600, 5, 5, 50, 100);
++        bag.DropItem(new Bandage(Utility.RandomMinMax(200, 300)));
++        bag.DropItem(new Gold(2000, 4000));
++        bag.DropItem(new TreasureMap(Utility.RandomDouble() < 0.08 ? 6 : Utility.RandomMinMax(3, 5), Map.Felucca));
++
++        if (Utility.RandomDouble() < 0.05)
++        {
++            bag.DropItem(GetBestFightingSkill(player) == SkillName.Archery ? new BowOfHephaestus() : new LongswordOfJustice());
++        }
++        else if (Utility.RandomDouble() < 0.2)
++        {
++            bag.DropItem(RandomPaladinPiece());
++        }
++
++        return bag;
++    }
++
++    public override void OnTalk(PlayerMobile player, bool contextMenu)
++    {
++        Direction = GetDirectionTo(player);
++
++        var qs = player.Quest;
++
++        if (qs is CursedCaveQuest)
++        {
++            if (qs.IsObjectiveInProgress(typeof(CursedCaveBeginObjective)))
++            {
++                qs.AddConversation(new DuringKillTaskConversation());
++                return;
++            }
++
++            var obj = qs.FindObjective(typeof(ReportBackObjective));
++
++            if (obj?.Completed != false)
++            {
++                return;
++            }
++
++            var bag = CreateQuestRewardBag(player);
++
++            if (player.PlaceInBackpack(bag))
++            {
++                obj.Complete();
++
++                if (!player.KarmaLocked)
++                {
++                    player.Karma = Math.Min(15000, player.Karma + 1500);
++                }
++            }
++            else
++            {
++                bag.Delete();
++                // You need to clear some space in your inventory to continue with the quest.  Come back here when you have more space in your inventory.
++                player.SendLocalizedMessage(1046260);
++            }
++        }
++        else if (qs != null)
++        {
++            qs.AddConversation(new DontOfferConversation());
++        }
++        else if (QuestSystem.CanOfferQuest(player, typeof(CursedCaveQuest)))
++        {
++            new CursedCaveQuest(player).SendOffer();
++        }
++    }
++
++    public static SkillName GetBestFightingSkill(Mobile from)
++    {
++        var best = -1.0;
++        var skill = SkillName.Fencing;
++
++        foreach (var name in _fightingSkills)
++        {
++            if (from.Skills[name].Base > best)
++            {
++                best = from.Skills[name].Base;
++                skill = name;
++            }
++        }
++
++        return skill;
++    }
++}
++
++public class CursedCaveRaresGump : DynamicGump
++{
++    private readonly List<Item> _found;
++    private readonly WarrenTheGuard _warren;
++
++    public CursedCaveRaresGump(List<Item> found, WarrenTheGuard warren) : base(50, 50)
++    {
++        _found = found;
++        _warren = warren;
++    }
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        builder.AddPage();
++        builder.AddBackground(0, 0, 467, 234, 9200);
++        builder.AddLabel(148, 6, 0, "Lost Treasures Of Cursed Cave");
++
++        using var html = ValueStringBuilder.Create();
++        html.Append(
++            $"I see that you have enough cursed cave rares in your backpack to earn a reward. Do you wish to turn in the following {WarrenTheGuard.ArtifactAmount} rares to recive a reward and maybe even a special artifact?<br><br>Rares Found<br>"
++        );
++
++        foreach (var item in _found)
++        {
++            html.Append($"{CursedCaveRares.NameOf(item)}<br>");
++        }
++
++        builder.AddHtml(15, 35, 434, 137, html.AsSpan(), background: true, scrollbar: true);
++        builder.AddButton(161, 190, 247, 248, 1);
++        builder.AddButton(239, 190, 242, 241, 0);
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        var from = sender.Mobile;
++
++        if (info.ButtonID != 1 || _warren.Deleted)
++        {
++            return;
++        }
++
++        var held = 0;
++
++        foreach (var item in _found)
++        {
++            if (!item.Deleted && item.IsChildOf(from.Backpack))
++            {
++                held++;
++            }
++        }
++
++        if (held < WarrenTheGuard.ArtifactAmount)
++        {
++            return;
++        }
++
++        var bag = WarrenTheGuard.CreateRareRewardBag();
++
++        if (from.PlaceInBackpack(bag))
++        {
++            foreach (var item in _found)
++            {
++                item.Delete();
++            }
++
++            // You have earned the gratitude of the Empire. I have placed the ~1_OBJTYPE~ in your backpack.
++            _warren.Say(1070984, "Reward Bag");
++        }
++        else
++        {
++            bag.Delete();
++            // You need to clear some space in your inventory to continue with the quest.  Come back here when you have more space in your inventory.
++            from.SendLocalizedMessage(1046260);
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/CursedCave/CursedCaveRares.cs b/Projects/UOContent/Custom/DFI/CursedCave/CursedCaveRares.cs
+new file mode 100644
+index 000000000..74371f7db
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/CursedCave/CursedCaveRares.cs
+@@ -0,0 +1,405 @@
++// The Cursed Cave's rares, ported from DFI RUNUO Scripts/Custom/Engines/Quest System/CursedCave/CursedCaveRares.cs.
++
++using System;
++using ModernUO.Serialization;
++
++namespace Server.Items;
++
++// DFI placed these through its stealable artifact spawner, whose thefts take 100 Stealing and a check
++// against the item's weight as RunUO's Stealing does (sure at ten times the weight plus 27.5). Here
++// each is fixed on the ground as a DFI rare and its spawner puts a new one back after DFI's delay.
++public static class CursedCaveRare
++{
++    public static double GetMin() => 100.0;
++
++    public static double GetMax(Item item) => Math.Max(100.0, Math.Ceiling(item.Weight) * 10 + 27.5);
++
++    public static void AddRarity(IPropertyList list, int rarity) => list.Add(1061078, rarity); // artifact rarity ~1_val~
++}
++
++[SerializationGenerator(0)]
++[Flippable(0x0C24, 0x0C25)]
++public partial class SRCRBrokenChestOfDrawers : Item, IStealable
++{
++    [Constructible]
++    public SRCRBrokenChestOfDrawers() : base(0x0C24)
++    {
++        Weight = 10.0;
++        Movable = false;
++    }
++
++    public override bool ForceShowProperties => true;
++
++    public double GetMin() => CursedCaveRare.GetMin();
++    public double GetMax() => CursedCaveRare.GetMax(this);
++
++    public void OnSteal()
++    {
++    }
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++        CursedCaveRare.AddRarity(list, 9);
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class SRCREmptyToolKit : Item, IStealable
++{
++    [Constructible]
++    public SRCREmptyToolKit() : base(0x1EB6)
++    {
++        Weight = 5.0;
++        Movable = false;
++    }
++
++    public override bool ForceShowProperties => true;
++
++    public double GetMin() => CursedCaveRare.GetMin();
++    public double GetMax() => CursedCaveRare.GetMax(this);
++
++    public void OnSteal()
++    {
++    }
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++        CursedCaveRare.AddRarity(list, 5);
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class SRCRBucket : BaseContainer, IStealable
++{
++    [Constructible]
++    public SRCRBucket() : base(0x14E0)
++    {
++        Weight = 5.0;
++        Movable = false;
++    }
++
++    public override bool ForceShowProperties => true;
++
++    public double GetMin() => CursedCaveRare.GetMin();
++    public double GetMax() => CursedCaveRare.GetMax(this);
++
++    public void OnSteal()
++    {
++    }
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++        CursedCaveRare.AddRarity(list, 11);
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class SRCRSmallWeb : Item, IStealable
++{
++    [Constructible]
++    public SRCRSmallWeb() : base(0x10D2)
++    {
++        Weight = 1.0;
++        Movable = false;
++    }
++
++    public override bool ForceShowProperties => true;
++
++    public double GetMin() => CursedCaveRare.GetMin();
++    public double GetMax() => CursedCaveRare.GetMax(this);
++
++    public void OnSteal()
++    {
++    }
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++        CursedCaveRare.AddRarity(list, 4);
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class SRCRPluckedChicken : Item, IStealable
++{
++    [Constructible]
++    public SRCRPluckedChicken() : base(0x1E8B)
++    {
++        Weight = 3.0;
++        Movable = false;
++    }
++
++    public override bool ForceShowProperties => true;
++
++    public double GetMin() => CursedCaveRare.GetMin();
++    public double GetMax() => CursedCaveRare.GetMax(this);
++
++    public void OnSteal()
++    {
++    }
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++        CursedCaveRare.AddRarity(list, 7);
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class SRCRBooks : Item, IStealable
++{
++    private static readonly int[] _hues = [36, 41, 46, 51, 141, 436, 441, 446, 451, 836, 841, 851, 946, 1072, 1111];
++
++    [Constructible]
++    public SRCRBooks() : base(0x1E21)
++    {
++        Weight = 3.0;
++        Hue = _hues.RandomElement();
++        Movable = false;
++    }
++
++    public override bool ForceShowProperties => true;
++
++    public double GetMin() => CursedCaveRare.GetMin();
++    public double GetMax() => CursedCaveRare.GetMax(this);
++
++    public void OnSteal()
++    {
++    }
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++        CursedCaveRare.AddRarity(list, 6);
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class SRCRSturdySmithHammer : SmithHammer, IStealable
++{
++    [Constructible]
++    public SRCRSturdySmithHammer() : base(Utility.RandomMinMax(10, 25) * 10)
++    {
++        Hue = 0x973;
++        Movable = false;
++    }
++
++    public override string DefaultName => "sturdy smith's hammer";
++    public override bool ForceShowProperties => true;
++
++    public double GetMin() => CursedCaveRare.GetMin();
++    public double GetMax() => CursedCaveRare.GetMax(this);
++
++    public void OnSteal()
++    {
++    }
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++        CursedCaveRare.AddRarity(list, 1);
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class SRCRSturdySaw : Saw, IStealable
++{
++    [Constructible]
++    public SRCRSturdySaw() : base(Utility.RandomMinMax(10, 25) * 10)
++    {
++        Hue = 0x973;
++        Movable = false;
++    }
++
++    public override string DefaultName => "sturdy saw";
++    public override bool ForceShowProperties => true;
++
++    public double GetMin() => CursedCaveRare.GetMin();
++    public double GetMax() => CursedCaveRare.GetMax(this);
++
++    public void OnSteal()
++    {
++    }
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++        CursedCaveRare.AddRarity(list, 1);
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class SRCRSturdyProspectorsTool : ProspectorsTool, IStealable
++{
++    [Constructible]
++    public SRCRSturdyProspectorsTool()
++    {
++        Hue = 0x973;
++        UsesRemaining = Utility.RandomMinMax(10, 20) * 10;
++        Movable = false;
++    }
++
++    public override string DefaultName => "sturdy prospector's tool";
++    public override bool ForceShowProperties => true;
++
++    public double GetMin() => CursedCaveRare.GetMin();
++    public double GetMax() => CursedCaveRare.GetMax(this);
++
++    public void OnSteal()
++    {
++    }
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++        CursedCaveRare.AddRarity(list, 3);
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class SRCREmptyTub : Barrel, IStealable
++{
++    [Constructible]
++    public SRCREmptyTub()
++    {
++        ItemID = 0xE83;
++        Weight = 10.0;
++        Movable = false;
++    }
++
++    public override bool ForceShowProperties => true;
++
++    public double GetMin() => CursedCaveRare.GetMin();
++    public double GetMax() => CursedCaveRare.GetMax(this);
++
++    public void OnSteal()
++    {
++    }
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++        CursedCaveRare.AddRarity(list, 9);
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class SRCRSturdyMortarPestle : MortarPestle, IStealable
++{
++    [Constructible]
++    public SRCRSturdyMortarPestle()
++    {
++        Hue = 0x973;
++        UsesRemaining = Utility.RandomMinMax(10, 20) * 10;
++        Movable = false;
++    }
++
++    public override string DefaultName => "sturdy mortar and pestle";
++    public override bool ForceShowProperties => true;
++
++    public double GetMin() => CursedCaveRare.GetMin();
++    public double GetMax() => CursedCaveRare.GetMax(this);
++
++    public void OnSteal()
++    {
++    }
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++        CursedCaveRare.AddRarity(list, 3);
++    }
++}
++
++// A wall torch that never burns out.
++[SerializationGenerator(0)]
++public abstract partial class SRCRWallTorch : BaseLight, IStealable
++{
++    public SRCRWallTorch(int unlitItemID) : base(unlitItemID)
++    {
++        Duration = TimeSpan.Zero;
++        Burning = false;
++        Light = LightType.Circle225;
++        Weight = 3.0;
++        Ignite();
++        Movable = false;
++    }
++
++    public override bool ForceShowProperties => true;
++
++    public double GetMin() => CursedCaveRare.GetMin();
++    public double GetMax() => CursedCaveRare.GetMax(this);
++
++    public void OnSteal()
++    {
++    }
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++        CursedCaveRare.AddRarity(list, 5);
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class SRCRWallTorchEast : SRCRWallTorch
++{
++    [Constructible]
++    public SRCRWallTorchEast() : base(0xA05)
++    {
++    }
++
++    public override int LitItemID => 0xA07;
++    public override int UnlitItemID => 0xA05;
++}
++
++[SerializationGenerator(0)]
++public partial class SRCRWallTorchSouth : SRCRWallTorch
++{
++    [Constructible]
++    public SRCRWallTorchSouth() : base(0xA0A)
++    {
++    }
++
++    public override int LitItemID => 0xA0C;
++    public override int UnlitItemID => 0xA0A;
++}
++
++// The cave's rares as Warren the Guard counts them for his reward.
++public static class CursedCaveRares
++{
++    public static readonly (Type Type, string Name)[] All =
++    [
++        (typeof(SRCRBrokenChestOfDrawers), "Broken Chest Of Drawers"),
++        (typeof(SRCREmptyToolKit), "Empty ToolKit"),
++        (typeof(SRCRBucket), "Bucket"),
++        (typeof(SRCRSmallWeb), "Small Web"),
++        (typeof(SRCRPluckedChicken), "Plucked Chicken"),
++        (typeof(SRCRBooks), "Books"),
++        (typeof(SRCRSturdySmithHammer), "Sturdy Smith Hammer"),
++        (typeof(SRCRSturdySaw), "Sturdy Saw"),
++        (typeof(SRCRSturdyProspectorsTool), "Sturdy Prospectors Tool"),
++        (typeof(SRCREmptyTub), "Empty Tub"),
++        (typeof(SRCRSturdyMortarPestle), "Sturdy Mortar Pestle"),
++        (typeof(SRCRWallTorchEast), "Wall Torch"),
++        (typeof(SRCRWallTorchSouth), "Wall Torch")
++    ];
++
++    public static string NameOf(Item item)
++    {
++        var type = item.GetType();
++
++        foreach (var (rareType, name) in All)
++        {
++            if (rareType == type)
++            {
++                return name;
++            }
++        }
++
++        return null;
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/CursedCave/CursedCaveRegion.cs b/Projects/UOContent/Custom/DFI/CursedCave/CursedCaveRegion.cs
+new file mode 100644
+index 000000000..b6224dff4
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/CursedCave/CursedCaveRegion.cs
+@@ -0,0 +1,73 @@
++// DFI Network's Cursed Cave region, ported from DFI RUNUO Scripts/Custom/Engines/Quest System/CursedCave/CursedCaveRegion.cs.
++
++using Server.Network;
++using Server.Spells;
++
++namespace Server.Regions;
++
++// Levels 1 and 2 are a pair of walled halls in Felucca's dungeon area; level 3 is a separate cave.
++// Spells and the bard skills fail inside, as on DFI.
++public class CursedCaveRegion : BaseRegion
++{
++    public const string LevelsName = "Cursed Cave";
++    public const string Level3Name = "Cursed Cave Level 3";
++
++    public static readonly Rectangle2D LevelsArea = new(6026, 266, 107, 108);
++    public static readonly Rectangle2D Level3Area = new(5124, 1412, 246, 101);
++
++    public CursedCaveRegion(string name, Rectangle2D area) : base(name, Map.Felucca, DefaultPriority + 1, area)
++    {
++    }
++
++    public static void Initialize()
++    {
++        new CursedCaveRegion(LevelsName, LevelsArea).Register();
++        new CursedCaveRegion(Level3Name, Level3Area).Register();
++    }
++
++    public override bool AllowHousing(Mobile from, Point3D p) => false;
++
++    public override void OnEnter(Mobile m)
++    {
++        if (m.Target != null)
++        {
++            Targeting.Target.Cancel(m);
++            FizzleStrangely(m);
++        }
++    }
++
++    public override bool OnSkillUse(Mobile m, int skill)
++    {
++        if (skill is (int)SkillName.Peacemaking or (int)SkillName.Provocation or (int)SkillName.Discordance)
++        {
++            m.PrivateOverheadMessage(MessageType.Regular, 0x3B2, false, "You can't seem to use that skill here.", m.NetState);
++            return false;
++        }
++
++        return true;
++    }
++
++    public override bool OnBeginSpellCast(Mobile m, ISpell s)
++    {
++        if (m.Player)
++        {
++            FizzleStrangely(m);
++            return false;
++        }
++
++        return base.OnBeginSpellCast(m, s);
++    }
++
++    public override void AlterLightLevel(Mobile m, ref int global, ref int personal)
++    {
++        global = LightCycle.DungeonLevel;
++    }
++
++    public static void FizzleStrangely(Mobile m)
++    {
++        m.PrivateOverheadMessage(MessageType.Regular, 0x3B2, false, "The spell fizzles strangely.", m.NetState);
++        m.FixedParticles(0x3779, 1, 46, 9502, 5, 3, EffectLayer.Waist);
++        m.FixedEffect(0x3735, 6, 30);
++        m.PlaySound(0x5C);
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/CursedCave/CursedCaveWeapons.cs b/Projects/UOContent/Custom/DFI/CursedCave/CursedCaveWeapons.cs
+new file mode 100644
+index 000000000..16b37027c
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/CursedCave/CursedCaveWeapons.cs
+@@ -0,0 +1,552 @@
++// The Cursed Cave's talking artifacts, ported from DFI RUNUO Scripts/Custom/Engines/Quest System/CursedCave
++// (Items/LongswordOfJustice.cs, HarvesterOfTheGhost.cs, BowOfHephaestus.cs, Items/Levelable Items).
++
++using System;
++using ModernUO.CodeGeneratedEvents;
++using ModernUO.Serialization;
++using Server.Collections;
++using Server.ContextMenus;
++using Server.Custom.Dfi;
++using Server.Gumps;
++using Server.Mobiles;
++using Server.Text;
++
++namespace Server.Items;
++
++public interface ILevelable
++{
++    int Experience { get; set; }
++    int Level { get; set; }
++    Type[] Types { get; }
++    void OnLevel(int oldLevel, int newLevel);
++    string GetHtml();
++}
++
++// Weapons that grow with the kills of the creatures they were made for: ten levels, the next one
++// 10,000 experience further on, each kill worth a tenth of the creature's stats and skills.
++public static class LevelItemManager
++{
++    public const int Levels = 10;
++
++    public static int[] ExpTable { get; } = [0, 10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000];
++
++    public static int CalcExp(Mobile targ)
++    {
++        double val = targ.Hits + targ.Stam + targ.Mana;
++
++        for (var i = 0; i < targ.Skills.Length; i++)
++        {
++            val += targ.Skills[i].Base;
++        }
++
++        if (val > 700)
++        {
++            val = 700 + (val - 700) / 3.66667;
++        }
++
++        if (targ is BaseCreature bc)
++        {
++            if (bc.AI == AIType.AI_Mage && bc.Skills.Magery.Base > 5.0)
++            {
++                val += 100;
++            }
++
++            if (bc.GetMonsterAbilities()?.Length > 0)
++            {
++                val += 100;
++            }
++
++            if (bc.PoisonImmune != null)
++            {
++                val += 100;
++            }
++
++            if (bc is VampireBat or VampireBatFamiliar)
++            {
++                val += 100;
++            }
++
++            var poison = bc.HitPoison;
++            val += (poison == null ? 0 : poison.Level + 1) * 20;
++        }
++
++        return (int)(val / 10);
++    }
++
++    public static int CalculateProperty(int max, int level) => (int)(max * ((double)level / Levels));
++
++    public static void InvalidateLevel(ILevelable item)
++    {
++        for (var i = 0; i < ExpTable.Length; ++i)
++        {
++            if (item.Experience < ExpTable[i])
++            {
++                return;
++            }
++
++            item.Level = i + 1;
++        }
++    }
++
++    // DFI checked the killer's equipment on the killing blow; the creature's last killer is the same mobile.
++    [OnEvent(nameof(CreatureEvents.CreatureDeathEvent))]
++    public static void OnCreatureDeath(BaseCreature killed)
++    {
++        var killer = killed.LastKiller;
++
++        if (killer == null || killed.IsDeadBondedPet)
++        {
++            return;
++        }
++
++        for (var i = 0; i < 25; ++i)
++        {
++            if (killer.FindItemOnLayer((Layer)i) is ILevelable item)
++            {
++                CheckLevelable(item, killed);
++            }
++        }
++    }
++
++    public static void CheckLevelable(ILevelable item, Mobile killed)
++    {
++        if (item.Types == null || item.Level >= Levels || Array.IndexOf(item.Types, killed.GetType()) < 0)
++        {
++            return;
++        }
++
++        var oldLevel = item.Level;
++        item.Experience += CalcExp(killed);
++        InvalidateLevel(item);
++
++        if (item.Level != oldLevel)
++        {
++            item.OnLevel(oldLevel, item.Level);
++        }
++
++        (item as Item)?.InvalidateProperties();
++    }
++
++    public static string LevelGainList()
++    {
++        using var builder = ValueStringBuilder.Create();
++        builder.Append("<div align=center><i>LEVEL GAIN LIST</i></div>");
++
++        for (var i = 1; i < ExpTable.Length; i++)
++        {
++            builder.Append($"Level {i + 1} at {ExpTable[i]} EXP<br>");
++        }
++
++        return builder.ToString();
++    }
++
++    public static readonly Type[] CursedCaveTypes =
++    [
++        typeof(TheCursed), typeof(TheCursedArcher), typeof(TheCursedMage), typeof(TheCursedNecro),
++        typeof(CursedSkeleton), typeof(TheCursedWarrior), typeof(TheCursedGuardian), typeof(TheCursedAlchemist),
++        typeof(TheCursedBlacksmith), typeof(TheCursedButcher), typeof(TheCursedCarpenter), typeof(DevaTheCursedOne),
++        typeof(CursedSteed), typeof(Hephaestus)
++    ];
++
++    public static void AddEntries(Mobile from, Item item, ref PooledRefList<ContextMenuEntry> list)
++    {
++        if (from.Alive && (from.Items.Contains(item) || item.IsChildOf(from.Backpack)))
++        {
++            list.Add(new WeaponTalkEntry(item));
++            list.Add(new LevelInfoEntry((ILevelable)item));
++        }
++    }
++}
++
++public class LevelInfoEntry : ContextMenuEntry
++{
++    private readonly ILevelable _item;
++
++    public LevelInfoEntry(ILevelable item) : base(98, 3) => _item = item;
++
++    public override void OnClick(Mobile from, IEntity target)
++    {
++        from.SendGump(new ItemInfoGump(_item), true);
++    }
++}
++
++public class WeaponTalkEntry : ContextMenuEntry
++{
++    private readonly Item _weapon;
++
++    public WeaponTalkEntry(Item weapon) : base(6146) => _weapon = weapon;
++
++    public override void OnClick(Mobile from, IEntity target)
++    {
++        _weapon.SendLocalizedMessageTo(from, 1070722, 0x3B2, CursedCave.WeaponChatter(from));
++    }
++}
++
++public class ItemInfoGump : DynamicGump
++{
++    private readonly ILevelable _item;
++
++    public ItemInfoGump(ILevelable item) : base(50, 50) => _item = item;
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        builder.AddPage();
++        builder.AddBackground(0, 0, 273, 388, 2620);
++        builder.AddAlphaRegion(5, 7, 262, 373);
++        builder.AddLabel(45, 15, 955, "Levelable Weapon Information");
++        builder.AddLabel(20, 50, 955, "This item's attributes are level based.");
++        builder.AddLabel(20, 68, 955, "You can gain levels by fighting the");
++        builder.AddLabel(20, 86, 955, "monsters in the following list.");
++        builder.AddButton(233, 354, 4017, 4018, 0);
++        builder.AddLabel(192, 354, 955, "Close");
++
++        using var html = ValueStringBuilder.Create();
++        html.Append("<div align=center><i>MONSTER LIST</i></div>");
++
++        if (_item.Types != null)
++        {
++            foreach (var type in _item.Types)
++            {
++                html.Append($"{type.Name}<br>");
++            }
++        }
++
++        html.Append(_item.GetHtml());
++        builder.AddHtml(13, 110, 247, 235, html.AsSpan(), background: true, scrollbar: true);
++    }
++}
++
++// The shared body of the three artifacts: level, experience and their properties.
++public static class LevelableWeapon
++{
++    public static int ClampExperience(int value) => Math.Min(value, LevelItemManager.ExpTable[^1]);
++
++    public static int ClampLevel(int value) => Math.Clamp(value, 1, LevelItemManager.Levels);
++
++    public static void AddProperties(IPropertyList list, int level, int experience)
++    {
++        list.Add(1060658, $"{"Level"}\t{level}");
++        list.Add(1060659, $"{"Experience"}\t{experience}");
++    }
++}
++
++[SerializationGenerator(0)]
++[Flippable(0xF61, 0xF60)]
++public partial class LongswordOfJustice : Longsword, ILevelable
++{
++    [SerializableField(0, getter: "private", setter: "private")]
++    private int _exp;
++
++    [SerializableField(1, getter: "private", setter: "private")]
++    private int _lvl;
++
++    [Constructible]
++    public LongswordOfJustice()
++    {
++        Hue = 0x84A;
++        WeaponAttributes.UseBestSkill = 1;
++        LevelItemManager.InvalidateLevel(this);
++    }
++
++    public override string DefaultName => "Longsword Of Justice";
++    public override int ArtifactRarity => 11;
++    public override int InitMinHits => 255;
++    public override int InitMaxHits => 255;
++
++    public Type[] Types => LevelItemManager.CursedCaveTypes;
++
++    [CommandProperty(AccessLevel.GameMaster)]
++    public int Experience
++    {
++        get => _exp;
++        set
++        {
++            _exp = LevelableWeapon.ClampExperience(value);
++            LevelItemManager.InvalidateLevel(this);
++            this.MarkDirty();
++        }
++    }
++
++    [CommandProperty(AccessLevel.GameMaster)]
++    public int Level
++    {
++        get => _lvl;
++        set
++        {
++            value = LevelableWeapon.ClampLevel(value);
++
++            if (_lvl != value)
++            {
++                var oldLevel = _lvl;
++                _lvl = value;
++                OnLevel(oldLevel, _lvl);
++                this.MarkDirty();
++            }
++        }
++    }
++
++    public override void GetDamageTypes(
++        Mobile wielder, out int phys, out int fire, out int cold, out int pois, out int nrgy, out int chaos, out int direct
++    )
++    {
++        fire = pois = nrgy = chaos = direct = 0;
++        cold = 70;
++        phys = 30;
++    }
++
++    public override void AddNameProperty(IPropertyList list)
++    {
++        base.AddNameProperty(list);
++        list.Add(1070722, "Trapped Soul");
++    }
++
++    public override void OnHit(Mobile attacker, Mobile defender, double damageBonus = 1.0)
++    {
++        base.OnHit(attacker, defender, damageBonus);
++
++        if (Utility.RandomDouble() < 0.05)
++        {
++            CursedCave.WeaponSpeak(attacker, defender, Name ?? DefaultName);
++        }
++    }
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++        LevelableWeapon.AddProperties(list, _lvl, _exp);
++    }
++
++    public override void GetContextMenuEntries(Mobile from, ref PooledRefList<ContextMenuEntry> list)
++    {
++        base.GetContextMenuEntries(from, ref list);
++        LevelItemManager.AddEntries(from, this, ref list);
++    }
++
++    public void OnLevel(int oldLevel, int newLevel)
++    {
++        WeaponAttributes.HitFireball = LevelItemManager.CalculateProperty(50, _lvl);
++        Attributes.BonusHits = LevelItemManager.CalculateProperty(5, _lvl);
++        Attributes.AttackChance = LevelItemManager.CalculateProperty(15, _lvl);
++        Attributes.WeaponDamage = LevelItemManager.CalculateProperty(50, _lvl);
++    }
++
++    public string GetHtml() =>
++        "<br><div align=center><i>ENHANCEMENTS</i></div>Bonus Hitpoints: 5<br>HitFireball: 50%<br>" +
++        "Attack Chance: 15<br>Increase Damage: 50%<br>" + LevelItemManager.LevelGainList();
++}
++
++[SerializationGenerator(0)]
++[Flippable(0x26BB, 0x26C5)]
++public partial class HarvesterOfTheGhost : BoneHarvester, ILevelable
++{
++    [SerializableField(0, getter: "private", setter: "private")]
++    private int _exp;
++
++    [SerializableField(1, getter: "private", setter: "private")]
++    private int _lvl;
++
++    [Constructible]
++    public HarvesterOfTheGhost()
++    {
++        Hue = 0x96;
++        Attributes.BonusStr = 5;
++        Attributes.WeaponDamage = 40;
++        Attributes.SpellChanneling = 1;
++        Attributes.Luck = 100;
++        Attributes.WeaponSpeed = 10;
++        Slayer = SlayerName.Silver;
++        WeaponAttributes.UseBestSkill = 1;
++        LevelItemManager.InvalidateLevel(this);
++    }
++
++    public override string DefaultName => "Harvester Of The Ghost";
++    public override int ArtifactRarity => 11;
++    public override int InitMinHits => 255;
++    public override int InitMaxHits => 255;
++
++    public Type[] Types => LevelItemManager.CursedCaveTypes;
++
++    [CommandProperty(AccessLevel.GameMaster)]
++    public int Experience
++    {
++        get => _exp;
++        set
++        {
++            _exp = LevelableWeapon.ClampExperience(value);
++            LevelItemManager.InvalidateLevel(this);
++            this.MarkDirty();
++        }
++    }
++
++    [CommandProperty(AccessLevel.GameMaster)]
++    public int Level
++    {
++        get => _lvl;
++        set
++        {
++            value = LevelableWeapon.ClampLevel(value);
++
++            if (_lvl != value)
++            {
++                var oldLevel = _lvl;
++                _lvl = value;
++                OnLevel(oldLevel, _lvl);
++                this.MarkDirty();
++            }
++        }
++    }
++
++    public override void GetDamageTypes(
++        Mobile wielder, out int phys, out int fire, out int cold, out int pois, out int nrgy, out int chaos, out int direct
++    )
++    {
++        phys = fire = pois = cold = chaos = direct = 0;
++        nrgy = 100;
++    }
++
++    public override void AddNameProperty(IPropertyList list)
++    {
++        base.AddNameProperty(list);
++        list.Add(1070722, "Trapped Soul");
++    }
++
++    public override void OnHit(Mobile attacker, Mobile defender, double damageBonus = 1.0)
++    {
++        base.OnHit(attacker, defender, damageBonus);
++
++        if (Utility.RandomDouble() < 0.05)
++        {
++            CursedCave.WeaponSpeak(attacker, defender, Name ?? DefaultName);
++        }
++    }
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++        LevelableWeapon.AddProperties(list, _lvl, _exp);
++    }
++
++    public override void GetContextMenuEntries(Mobile from, ref PooledRefList<ContextMenuEntry> list)
++    {
++        base.GetContextMenuEntries(from, ref list);
++        LevelItemManager.AddEntries(from, this, ref list);
++    }
++
++    public void OnLevel(int oldLevel, int newLevel)
++    {
++        Attributes.BonusStr = LevelItemManager.CalculateProperty(5, _lvl);
++        Attributes.WeaponDamage = LevelItemManager.CalculateProperty(40, _lvl);
++        Attributes.Luck = LevelItemManager.CalculateProperty(100, _lvl);
++        Attributes.WeaponSpeed = LevelItemManager.CalculateProperty(10, _lvl);
++    }
++
++    public string GetHtml() =>
++        "<br><div align=center><i>ENHANCEMENTS</i></div>Bonus Strenght: 5<br>WeaponDamage: 40%<br>" +
++        "Luck: 100<br>WeaponSpeed: 10%<br>" + LevelItemManager.LevelGainList();
++}
++
++[SerializationGenerator(0)]
++[Flippable(0x26C2, 0x26CC)]
++public partial class BowOfHephaestus : CompositeBow, ILevelable
++{
++    [SerializableField(0, getter: "private", setter: "private")]
++    private int _exp;
++
++    [SerializableField(1, getter: "private", setter: "private")]
++    private int _lvl;
++
++    [Constructible]
++    public BowOfHephaestus()
++    {
++        Hue = 0x489;
++        Slayer = SlayerName.Silver;
++        Slayer2 = SlayerName.DragonSlaying;
++        LevelItemManager.InvalidateLevel(this);
++    }
++
++    public override string DefaultName => "Bow Of Hephaestus";
++    public override int ArtifactRarity => 11;
++    public override int InitMinHits => 255;
++    public override int InitMaxHits => 255;
++
++    public Type[] Types => LevelItemManager.CursedCaveTypes;
++
++    [CommandProperty(AccessLevel.GameMaster)]
++    public int Experience
++    {
++        get => _exp;
++        set
++        {
++            _exp = LevelableWeapon.ClampExperience(value);
++            LevelItemManager.InvalidateLevel(this);
++            this.MarkDirty();
++        }
++    }
++
++    [CommandProperty(AccessLevel.GameMaster)]
++    public int Level
++    {
++        get => _lvl;
++        set
++        {
++            value = LevelableWeapon.ClampLevel(value);
++
++            if (_lvl != value)
++            {
++                var oldLevel = _lvl;
++                _lvl = value;
++                OnLevel(oldLevel, _lvl);
++                this.MarkDirty();
++            }
++        }
++    }
++
++    public override void GetDamageTypes(
++        Mobile wielder, out int phys, out int fire, out int cold, out int pois, out int nrgy, out int chaos, out int direct
++    )
++    {
++        phys = cold = pois = nrgy = chaos = direct = 0;
++        fire = 100;
++    }
++
++    public override void AddNameProperty(IPropertyList list)
++    {
++        base.AddNameProperty(list);
++        list.Add(1070722, "Trapped Soul");
++    }
++
++    public override void OnHit(Mobile attacker, Mobile defender, double damageBonus = 1.0)
++    {
++        base.OnHit(attacker, defender, damageBonus);
++
++        if (Utility.RandomDouble() < 0.05)
++        {
++            CursedCave.WeaponSpeak(attacker, defender, Name ?? DefaultName);
++        }
++    }
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++        LevelableWeapon.AddProperties(list, _lvl, _exp);
++    }
++
++    public override void GetContextMenuEntries(Mobile from, ref PooledRefList<ContextMenuEntry> list)
++    {
++        base.GetContextMenuEntries(from, ref list);
++        LevelItemManager.AddEntries(from, this, ref list);
++    }
++
++    public void OnLevel(int oldLevel, int newLevel)
++    {
++        Attributes.WeaponDamage = LevelItemManager.CalculateProperty(50, _lvl);
++        Attributes.Luck = LevelItemManager.CalculateProperty(140, _lvl);
++        Attributes.WeaponSpeed = LevelItemManager.CalculateProperty(15, _lvl);
++    }
++
++    public string GetHtml() =>
++        "<br><div align=center><i>ENHANCEMENTS</i></div>Increase Damage: 50%<br>Luck: 140<br>" +
++        "Swing Speed Increase: 15%<br>" + LevelItemManager.LevelGainList();
++}
+diff --git a/Projects/UOContent/Custom/DFI/CursedCave/SummoningAltar.cs b/Projects/UOContent/Custom/DFI/CursedCave/SummoningAltar.cs
+new file mode 100644
+index 000000000..74c4e4277
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/CursedCave/SummoningAltar.cs
+@@ -0,0 +1,374 @@
++// DFI's summoning altar, ported from DFI RUNUO Scripts/Custom/Engines/BaseSummoningAltar
++// (BaseSummoningAltar.cs, BaseAltar.cs, BasePlatform.cs) and CursedCave/Altar/CCSummoningAltar.cs.
++
++using System;
++using System.Collections.Generic;
++using ModernUO.CodeGeneratedEvents;
++using ModernUO.Serialization;
++using Server.Mobiles;
++
++namespace Server.Items;
++
++// An invisible marker 20 above a hued platform and pentagram. Every use of the chamber's key queues a
++// champion; queued champions show as red skulls round the pentagram, every 17 of them as a white skull,
++// and while the altar is active and no champion lives, the next one rises on the pentagram.
++[SerializationGenerator(0)]
++public abstract partial class BaseSummoningAltar : Item
++{
++    private static readonly HashSet<BaseSummoningAltar> _altars = [];
++
++    [SerializableField(0)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private BaseCreature _champion;
++
++    [SerializableField(1)]
++    private SummoningPentagram _pentagram;
++
++    [SerializableField(2)]
++    private SummoningPlatform _platform;
++
++    [SerializableField(3, setter: "private")]
++    private bool _active;
++
++    [SerializableField(4, getter: "private", setter: "private")]
++    private int _queued;
++
++    [SerializableField(5)]
++    private List<Item> _redSkulls;
++
++    [SerializableField(6)]
++    private List<Item> _whiteSkulls;
++
++    public BaseSummoningAltar() : base(0xBD2)
++    {
++        Movable = false;
++        Visible = false;
++
++        _pentagram = new SummoningPentagram(this) { Hue = HueInactive };
++        _platform = new SummoningPlatform(this);
++        _redSkulls = [];
++        _whiteSkulls = [];
++        _altars.Add(this);
++    }
++
++    public override string DefaultName => "summoning altar";
++
++    public abstract Type ChampionType { get; }
++    public virtual int HueActive => 0;
++    public virtual int HueInactive => 0;
++    public virtual int MaxInQueue => 84;
++
++    [CommandProperty(AccessLevel.GameMaster)]
++    public bool IsActive
++    {
++        get => _active;
++        set
++        {
++            Active = value;
++            InvalidateProperties();
++
++            if (value)
++            {
++                CheckSpawn();
++            }
++        }
++    }
++
++    [CommandProperty(AccessLevel.GameMaster)]
++    public int MainQueue
++    {
++        get => _queued;
++        set
++        {
++            _queued = Math.Clamp(value, 0, MaxInQueue);
++            this.MarkDirty();
++            UpdateSkulls();
++            CheckSpawn();
++        }
++    }
++
++    [CommandProperty(AccessLevel.GameMaster)]
++    public int Level => _whiteSkulls.Count;
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++        list.Add(_active ? 1060742 : 1060743); // active / inactive
++    }
++
++    private bool ChampionAlive => _champion?.Deleted == false && _champion.Alive;
++
++    public void CheckAltarHue()
++    {
++        if (!ChampionAlive)
++        {
++            Champion = null;
++        }
++
++        if (_pentagram != null)
++        {
++            _pentagram.Hue = ChampionAlive ? HueActive : HueInactive;
++        }
++    }
++
++    private void UpdateSkulls()
++    {
++        var white = _queued / 17;
++        SetSkullCount(_redSkulls, _queued - white * 17, 0x26, GetRedSkullLocation);
++        SetSkullCount(_whiteSkulls, white, 0, GetWhiteSkullLocation);
++        this.MarkDirty();
++    }
++
++    private void SetSkullCount(List<Item> skulls, int count, int hue, Func<int, Point3D> location)
++    {
++        for (var i = skulls.Count - 1; i >= count; --i)
++        {
++            skulls[i].Delete();
++            skulls.RemoveAt(i);
++        }
++
++        for (var i = skulls.Count; i < count; ++i)
++        {
++            var skull = new Static(0x1854) { Hue = hue, Light = LightType.Circle150 };
++            skull.MoveToWorld(location(i), Map);
++            skulls.Add(skull);
++
++            Effects.PlaySound(skull.Location, skull.Map, 0x29);
++            Effects.SendLocationEffect(new Point3D(skull.X + 1, skull.Y + 1, skull.Z), skull.Map, 0x3728, 10);
++        }
++    }
++
++    private Point3D GetRedSkullLocation(int index)
++    {
++        var (x, y) = index switch
++        {
++            < 5  => (index - 2, -2),
++            < 9  => (2, index - 6),
++            < 13 => (10 - index, 2),
++            _    => (-2, 14 - index)
++        };
++
++        return new Point3D(X + x, Y + y, Z - 15);
++    }
++
++    private Point3D GetWhiteSkullLocation(int index)
++    {
++        var (x, y) = index switch
++        {
++            1 => (1, -1),
++            2 => (1, 1),
++            3 => (-1, 1),
++            _ => (-1, -1)
++        };
++
++        return new Point3D(X + x, Y + y, Z - 15);
++    }
++
++    public void CheckSpawn()
++    {
++        if (!_active || Deleted || ChampionAlive || _queued <= 0 || ChampionType == null)
++        {
++            return;
++        }
++
++        _queued--;
++        UpdateSkulls();
++
++        var champion = ChampionType.CreateInstance<BaseCreature>();
++        champion.Home = Location;
++        champion.RangeHome = 10;
++        champion.MoveToWorld(new Point3D(X, Y, Z - 15), Map);
++        Champion = champion;
++
++        CheckAltarHue();
++    }
++
++    [OnEvent(nameof(CreatureEvents.CreatureDeathEvent))]
++    public static void OnCreatureDeath(BaseCreature bc)
++    {
++        foreach (var altar in _altars)
++        {
++            if (altar._champion == bc)
++            {
++                altar.Champion = null;
++                altar.CheckAltarHue();
++                Timer.StartTimer(altar.CheckSpawn);
++                return;
++            }
++        }
++    }
++
++    public override void OnLocationChange(Point3D oldLoc)
++    {
++        if (Deleted)
++        {
++            return;
++        }
++
++        _platform?.MoveToWorld(new Point3D(X, Y, Z - 20), Map);
++        _pentagram?.MoveToWorld(new Point3D(X, Y, Z - 15), Map);
++
++        for (var i = 0; i < _redSkulls.Count; ++i)
++        {
++            _redSkulls[i].Location = GetRedSkullLocation(i);
++        }
++
++        for (var i = 0; i < _whiteSkulls.Count; ++i)
++        {
++            _whiteSkulls[i].Location = GetWhiteSkullLocation(i);
++        }
++    }
++
++    public override void OnMapChange()
++    {
++        if (Deleted)
++        {
++            return;
++        }
++
++        OnLocationChange(Location);
++
++        foreach (var skull in _redSkulls)
++        {
++            skull.Map = Map;
++        }
++
++        foreach (var skull in _whiteSkulls)
++        {
++            skull.Map = Map;
++        }
++    }
++
++    public override void OnAfterDelete()
++    {
++        base.OnAfterDelete();
++        _altars.Remove(this);
++
++        _platform?.Delete();
++        _pentagram?.Delete();
++
++        foreach (var skull in _redSkulls)
++        {
++            skull.Delete();
++        }
++
++        foreach (var skull in _whiteSkulls)
++        {
++            skull.Delete();
++        }
++
++        _redSkulls.Clear();
++        _whiteSkulls.Clear();
++    }
++
++    [AfterDeserialization]
++    private void AfterDeserialization()
++    {
++        if (_platform == null || _pentagram == null)
++        {
++            Delete();
++            return;
++        }
++
++        _altars.Add(this);
++        CheckAltarHue();
++        CheckSpawn();
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class SummoningPentagram : PentagramAddon
++{
++    [SerializableField(0)]
++    private BaseSummoningAltar _owner;
++
++    public SummoningPentagram(BaseSummoningAltar owner) => _owner = owner;
++
++    public override BaseAddonDeed Deed => null;
++
++    public override void OnAfterDelete()
++    {
++        base.OnAfterDelete();
++        _owner?.Delete();
++    }
++
++    [AfterDeserialization]
++    private void AfterDeserialization()
++    {
++        if (_owner == null)
++        {
++            Delete();
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class SummoningPlatform : BaseAddon
++{
++    [SerializableField(0)]
++    private BaseSummoningAltar _owner;
++
++    public SummoningPlatform(BaseSummoningAltar owner)
++    {
++        _owner = owner;
++
++        for (var x = -2; x <= 2; ++x)
++        {
++            for (var y = -2; y <= 2; ++y)
++            {
++                AddPiece(0x750, x, y, -5);
++            }
++        }
++
++        for (var x = -1; x <= 1; ++x)
++        {
++            for (var y = -1; y <= 1; ++y)
++            {
++                AddPiece(0x750, x, y, 0);
++            }
++        }
++
++        for (var i = -1; i <= 1; ++i)
++        {
++            AddPiece(0x751, i, 2, 0);
++            AddPiece(0x752, 2, i, 0);
++            AddPiece(0x753, i, -2, 0);
++            AddPiece(0x754, -2, i, 0);
++        }
++
++        AddPiece(0x759, -2, -2, 0);
++        AddPiece(0x75A, 2, 2, 0);
++        AddPiece(0x75B, -2, 2, 0);
++        AddPiece(0x75C, 2, -2, 0);
++    }
++
++    private void AddPiece(int itemID, int x, int y, int z) => AddComponent(new AddonComponent(itemID) { Hue = 0x497 }, x, y, z);
++
++    public override void OnAfterDelete()
++    {
++        base.OnAfterDelete();
++        _owner?.Delete();
++    }
++
++    [AfterDeserialization]
++    private void AfterDeserialization()
++    {
++        if (_owner == null)
++        {
++            Delete();
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class CCSummoningAltar : BaseSummoningAltar
++{
++    [Constructible]
++    public CCSummoningAltar()
++    {
++    }
++
++    public override Type ChampionType => typeof(Hephaestus);
++    public override int HueActive => 0x21;
++    public override int HueInactive => 0x472;
++}
+diff --git a/Projects/UOContent/Custom/DFI/CursedCave/TheCursedCorpse.cs b/Projects/UOContent/Custom/DFI/CursedCave/TheCursedCorpse.cs
+new file mode 100644
+index 000000000..00d97525e
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/CursedCave/TheCursedCorpse.cs
+@@ -0,0 +1,196 @@
++// Ported from DFI RUNUO Scripts/Custom/Engines/Quest System/CursedCave/Mobiles/TheCursedCorpse.cs.
++
++using System;
++using System.Collections.Generic;
++using ModernUO.CodeGeneratedEvents;
++using ModernUO.Serialization;
++using Server.Custom.Dfi;
++using Server.Items;
++using Server.Misc;
++using Server.Regions;
++
++namespace Server.Mobiles;
++
++// A player who dies in the cave rises fourteen seconds later as a cursed copy of themself: half their
++// hits, 80% of their skills, and everything that was on their corpse. At most five walk at once per player.
++[SerializationGenerator(0)]
++public partial class TheCursedCorpse : BaseCursedCreature
++{
++    public const int MaxCorpsesPerPlayer = 5;
++    private const double ScaleHits = 0.5;
++    private const double ScaleSkills = 0.8;
++
++    private static readonly Dictionary<PlayerMobile, int> _registry = new();
++
++    [SerializableField(0)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private PlayerMobile _owner;
++
++    public TheCursedCorpse(PlayerMobile owner, Corpse corpse) : base(AIType.AI_Melee)
++    {
++        _owner = owner;
++
++        Body = owner.Female ? 0x191 : 0x190;
++        Name = owner.Name;
++        Title = owner.Title;
++        Hue = owner.Hue;
++        HairItemID = owner.HairItemID;
++        HairHue = owner.HairHue;
++
++        SetStr(owner.RawStr);
++        SetDex(owner.RawDex);
++        SetInt(owner.RawInt);
++
++        for (var i = 0; i < owner.Skills.Length && i < Skills.Length; ++i)
++        {
++            Skills[i].Base = Scale(owner.Skills[i].Base, ScaleSkills);
++        }
++
++        SetHits(Scale(owner.HitsMax, ScaleHits));
++        SetStam(owner.StamMax);
++
++        corpse.TurnToBones();
++        TakeItems(corpse);
++
++        Timer.StartTimer(CheckAI);
++    }
++
++    public override bool UseRearm => true;
++    public override InhumanSpeech SpeechType => CursedCave.Speech;
++    public override bool AlwaysAttackable => true;
++    public override bool AlwaysMurderer => true;
++
++    private static int Scale(double value, double scale) => value <= 0 ? 0 : (int)(value * scale);
++
++    private void CheckAI()
++    {
++        if (Weapon is BaseWeapon { Skill: SkillName.Archery })
++        {
++            AI = AIType.AI_Archer;
++        }
++    }
++
++    private void TakeItems(Corpse corpse)
++    {
++        var items = new List<Item>(corpse.Items);
++
++        foreach (var item in items)
++        {
++            var loc = item.Location;
++
++            if (item.Layer is Layer.Hair or Layer.FacialHair || !item.Movable || !corpse.GetRestoreInfo(item, ref loc))
++            {
++                continue;
++            }
++
++            if (corpse.RestoreEquip?.Contains(item) == true && EquipItem(item))
++            {
++                continue;
++            }
++
++            item.Location = loc;
++            Backpack?.AddItem(item);
++        }
++    }
++
++    public override void AddNameProperties(IPropertyList list)
++    {
++        base.AddNameProperties(list);
++        list.Add(1070722, "(Cursed Corpse)");
++    }
++
++    public override void OnDelete()
++    {
++        if (_owner?.Deleted == false)
++        {
++            Unregister(_owner);
++        }
++
++        base.OnDelete();
++    }
++
++    [AfterDeserialization]
++    private void AfterDeserialization()
++    {
++        if (_owner?.Deleted == false)
++        {
++            Register(_owner);
++        }
++    }
++
++    public static int CountFor(PlayerMobile player) => _registry.GetValueOrDefault(player);
++
++    private static void Register(PlayerMobile player) => _registry[player] = CountFor(player) + 1;
++
++    private static void Unregister(PlayerMobile player)
++    {
++        if (_registry.TryGetValue(player, out var count))
++        {
++            if (count > 1)
++            {
++                _registry[player] = count - 1;
++            }
++            else
++            {
++                _registry.Remove(player);
++            }
++        }
++    }
++
++    [OnEvent(nameof(PlayerMobile.PlayerDeathEvent))]
++    public static void OnPlayerDeath(PlayerMobile player)
++    {
++        if (player.Region is not CursedCaveRegion || CountFor(player) >= MaxCorpsesPerPlayer ||
++            player.Corpse is not Corpse corpse)
++        {
++            return;
++        }
++
++        Register(player);
++
++        Timer.StartTimer(
++            TimeSpan.FromSeconds(10.0),
++            () =>
++            {
++                if (!IsValid(player, corpse))
++                {
++                    Unregister(player);
++                    return;
++                }
++
++                Effects.PlaySound(corpse.Location, corpse.Map, 0x1FB);
++                Effects.SendLocationParticles(
++                    EffectItem.Create(corpse.Location, corpse.Map, EffectItem.DefaultDuration),
++                    0x3789,
++                    1,
++                    40,
++                    0x3F,
++                    3,
++                    9907,
++                    0
++                );
++
++                Timer.StartTimer(TimeSpan.FromSeconds(4.0), () => Rise(player, corpse));
++            }
++        );
++    }
++
++    private static void Rise(PlayerMobile player, Corpse corpse)
++    {
++        if (!IsValid(player, corpse))
++        {
++            Unregister(player);
++            return;
++        }
++
++        var risen = new TheCursedCorpse(player, corpse)
++        {
++            Home = corpse.Location,
++            RangeHome = 10
++        };
++
++        risen.MoveToWorld(corpse.Location, corpse.Map);
++    }
++
++    private static bool IsValid(PlayerMobile player, Corpse corpse) => !player.Deleted && !corpse.Deleted;
++}
