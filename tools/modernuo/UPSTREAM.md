@@ -53,6 +53,7 @@ is retired (as `0004-multi-tile-enumerator` was).
 | 0019 | DFI Network's West Britain Exchange (commodity bids and offers), vendor advertisements, `[DfiTown` | **ours**, shard content, depends on 0018 | none |
 | 0020 | DFI Network's Lost Lands: T2A Felucca and Khaldun without insurance or bank box, at ten times the shop prices, with verite gems for gold; the paid gate, Papun's gem shop, the Forgotten One, `[DfiLostLands` | **ours**, shard content, depends on 0007, 0014, 0016 and 0018 | none |
 | 0021 | DFI Network's lottery (daily drawing, jackpot) and video poker machines, `[DfiGames` | **ours**, shard content | none |
+| 0022 | DFI Network's event signup (event masters, undress and redress) and the crate race with DFI's track, `[DfiCrateRace` | **ours**, shard content, depends on 0016 | none |
 | issue | `MultiData.LoadUOP` and uncompressed entries | **upstream** (issue, no patch) | `upstream/issue-multidata-loaduop-uncompressed.md` |
 
 ### 0006: loopback ban exemption (NET-00c, MUO patch)
@@ -84,7 +85,7 @@ still requires the shard console's detection/filter messages.
 **Verdict: ours.** Local readiness checks and development clients share one
 address. Keep this narrow policy separate from public-shard ban policy.
 
-### 0007 to 0021: DFI Network shard content (MUO patch)
+### 0007 to 0022: DFI Network shard content (MUO patch)
 
 GUO patches: `patches/0007-dfi-loot.patch`, `patches/0008-dfi-monsters.patch`,
 `patches/0009-dfi-player-items.patch` (player items, deeds, balls, the shrink
@@ -114,7 +115,8 @@ criminals) and `patches/0019-dfi-exchange.patch` (the exchange and adverts under
 refuses inside the Lost Lands, `Banker` keeps the bank box shut there,
 `BaseVendor.GetPriceScalar` returns 1000 there; 0007's `DfiLoot` hands corpses to
 the Lost Lands loot) and `patches/0021-dfi-lottery-poker.patch` (under
-`Custom/DFI/Games`; new files only).
+`Custom/DFI/Games`; new files only) and `patches/0022-dfi-crate-race.patch` (the
+event signup and the crate race under `Custom/DFI/Games`; new files only).
 Ports of an owner's former RunUO shards (DFI Network, DefianceUO-based, and
 kopia 2012) so the dev shard plays like them: DFI's SE loot packs, its paragon
 and champion death bonuses, and 25 custom monsters under `Custom/DFI/`. The

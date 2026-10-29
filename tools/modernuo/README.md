@@ -642,6 +642,41 @@ UTC (DFI used the server's local time). `DfiGamesTests.cs` covers every
 poker hand, dealing and holding, payouts, bets, buying, refunds and drawing
 lottery tickets, and the jackpot split.
 
+### `patches/0022-dfi-crate-race.patch`
+
+DFI's event signup and crate race, from `Scripts/Custom/Sunny/EventSystem`, the
+undress code in `Custom/Sunny/SunnySystem.cs` and `Custom/Engines/Crate Race`.
+`[DfiCrateRace` places event masters by the banks of Britain and Buccaneer's
+Den; `[DfiCrateRace here` also sets a crate stone at your feet with DFI's track
+built round it, ready to race (it needs a flat, empty 45 by 65 tiles).
+
+- **Event signup**: one staff event at a time. Once started it is announced
+  every minute for its join time while event masters take players in.
+  Players are undressed into a bag in their bank, their pets stabled, and
+  given everything back afterwards; then they are set down at one of
+  Britain's edges, blessed for twenty seconds.
+- **The crate race**: racers pay to join (5,000 gp by default) and run laps
+  (three by default) of a walled track. Crates drop on the track. Running
+  into one heals, shields or hurts, or stores it to use later: say "use
+  first/second/third crate" or click it on the race gump. Stored crates are a
+  drop bomb, a slick patch, a freeze, an earthquake, an energy bolt on the
+  leader, chain lightning or a flying bomb. Apples restore stamina or health.
+  A racer who would die is healed and set twenty tiles back along the track.
+  The first three share the entry money (a third, a sixth, a ninth) and
+  copper bars when rewards are on.
+- **The track** is DFI's own, decoded from `Data/Custom Building/Output/
+  RaceTrack.bin` (368 tiles: walls and a stand). Its default layout is four
+  lane rectangles raced clockwise from the top straight, with a finish line
+  across it. Staff can redraw the rectangles, with the direction a racer
+  leaves each by, at the stone.
+
+GUO's choices: DFI's own track layout data was lost, so the default lanes
+follow the track's walls; the racer's gump stays at DFI's default spot (DFI
+let racers place it); the separate join moongate and teleporter addon are left
+out, as the event masters take players in. `DfiCrateRaceTests.cs` covers the
+track and its layout, rectangles, joining, undressing and redressing, crate
+storage, shields, finishing and placing.
+
 ### Retired
 
 `0004-multi-tile-enumerator` fixed tile lookups that stopped at a multi with no
