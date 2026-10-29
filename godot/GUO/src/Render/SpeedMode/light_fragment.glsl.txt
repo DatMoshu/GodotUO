@@ -1,0 +1,73 @@
+// SPDX-License-Identifier: BSD-2-Clause
+#version 450
+// One nearest surface fetch and one linearly sampled reach fetch per light.
+layout(set=0,binding=0) uniform sampler2D surface_buffer;
+layout(set=0,binding=1,std430) readonly buffer Curves { float curves[]; };
+layout(set=1,binding=0) uniform sampler2D reach_map;
+layout(set=2,binding=0) uniform sampler2D polar_map;
+layout(set=2,binding=1) uniform sampler2D sun_mask;
+layout(push_constant,std430) uniform Light {
+    vec4 rect; vec4 world_radius; vec4 colour_energy; vec4 reach_bounds;
+    vec4 screen_mode; vec4 origin_curve; vec4 ambient_roof; vec4 unused;
+} pc;
+layout(location=0) out vec4 light;
+// Matches the shadow slice's ShadowSampling contract: nearest row, angular
+// interpolation only; atlas RG = horizontal distance / wall-top UO Z.
+float lamp_shadow(vec3 relative_position,vec2 normal_xy) {
+    int row=int(pc.unused.x);
+    if(pc.unused.z<0.5 || row<0 || row>=64) return 1.0;
+    vec3 p=relative_position+vec3(normal_xy*0.05,0);
+    float d=length(p.xy);
+    if(d<0.001) return 1.0;
+    float angle=(atan(p.y,p.x)/6.28318530718+0.5)*256.0-0.5;
+    int lo=int(floor(angle)); float weight=fract(angle),result=0.0;
+    for(int i=0;i<2;i++) {
+        vec2 blocker=texelFetch(polar_map,ivec2((lo+256+i)%256,row),0).rg;
+        float ray_z=pc.world_radius.z+p.z*blocker.x/d;
+        float blocked=smoothstep(blocker.x+0.2,blocker.x+0.2+max(0.001,pc.unused.y*0.1),d);
+        blocked*=1.0-smoothstep(blocker.y,blocker.y+0.5,ray_z);
+        result+=(1.0-0.85*blocked)*(i==0 ? 1.0-weight : weight);
+    }
+    return result;
+}
+void main() {
+    vec4 surface=texelFetch(surface_buffer,ivec2(gl_FragCoord.xy),0);
+    int packed=int(surface.w+0.5), kind=packed&15;
+    if(pc.screen_mode.z<0.0) {
+        float roof=(packed&16)!=0 ? pc.ambient_roof.w : 1.0;
+        float sun=pc.unused.w>0.5 && kind==1 ? 1.0-clamp(texelFetch(sun_mask,ivec2(gl_FragCoord.xy),0).r,0.0,1.0) : 1.0;
+        light=vec4(pc.ambient_roof.rgb*(roof*sun),1); return;
+    }
+    if(kind==0) discard;
+    vec3 delta=pc.world_radius.xyz-surface.xyz;
+    // Eleven UO Z units occupy one tile's vertical screen extent.
+    vec3 physical=vec3(delta.xy,delta.z/11.0);
+    float t=length(physical)/pc.world_radius.w;
+    if(t>=1.0) discard;
+    vec2 world=surface.xy+pc.origin_curve.xy;
+    vec2 sample_uv=(world-pc.reach_bounds.xy)/pc.reach_bounds.zw;
+    if(any(lessThan(sample_uv,vec2(0))) || any(greaterThanEqual(sample_uv,vec2(1)))) discard;
+    vec2 reach=textureLod(reach_map,sample_uv,0.0).rg;
+    // Four reach samples per tile: a half-texel ramp is exactly 1/8 tile.
+    float visibility=smoothstep(0.25,0.75,reach.r)*step(0.001,reach.g);
+    int curve=int(pc.origin_curve.z+0.5);
+    float falloff;
+    if(curve==0) falloff=1.0-t;
+    else if(curve==1) { float k=1.0-t*t; falloff=k*k; }
+    else if(curve==2) { float k=1.0-t*t; falloff=k*k/(1.0+8.0*t*t); }
+    else if(curve==3) falloff=1.0-t*t;
+    else if(curve==4) { float k=clamp((1.0-t)/0.4,0.0,1.0); falloff=k*k*(3.0-2.0*k); }
+    else {
+        float f=t*32.0; int index=int(f);
+        int first=int(pc.screen_mode.z)*36;
+        falloff=mix(curves[first+index],curves[first+index+1],fract(f));
+    }
+    float facing=1.0;
+    vec3 direction=normalize(physical+vec3(0,0,0.00001));
+    if(kind==2) facing=max(0.2,direction.y);
+    else if(kind==3) facing=max(0.2,direction.x);
+    else if(kind==4) facing=max(0.2,dot(direction,normalize(vec3(1,1,0))));
+    vec2 normal_xy=kind==2 ? vec2(0,1) : kind==3 ? vec2(1,0) : vec2(0);
+    float shadow=lamp_shadow(surface.xyz-pc.world_radius.xyz,normal_xy);
+    light=vec4(pc.colour_energy.rgb*(pc.colour_energy.w*falloff*facing*visibility*shadow),0);
+}

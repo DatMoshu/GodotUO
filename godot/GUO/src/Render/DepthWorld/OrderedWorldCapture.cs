@@ -27,6 +27,7 @@ internal sealed class OrderedWorldCapture : IDisposable
     internal static bool InjectStateIndexFault; // Probe-only oracle negative control; no runtime option.
     internal static bool InjectTextureSlotFault; // Probe-only wrong-slot oracle.
     internal static bool InjectAbortFailure; // Probe only: AbortFrame's canvas cleanup throws once.
+    internal static bool InjectSpeedLightFailure; // Probe only: classic light branch must survive.
     internal static bool InjectInvalidTextureSlot; // Probe-only fail-closed range control.
     private readonly OrderedWorldDevice _device = new();
     private readonly OrderedWorldCanvas _fallback;
@@ -60,7 +61,20 @@ internal sealed class OrderedWorldCapture : IDisposable
     internal float Depth;
     internal SpeedMode.SurfaceRow Surface;
     internal Vector2I SurfaceOrigin;
-    internal void ClearSurfaceBinding() => SpeedMode.SpeedModeBindings.Clear(_device);
+    internal void ClearSurfaceBinding(bool clearConsumer=false)
+    {
+        SpeedMode.SpeedModeBindings.Clear(_device);
+        if(clearConsumer) ClearSpeedLightConsumer();
+    }
+    private void ClearSpeedLightConsumer()
+    {
+        try { SpeedLights?.ClearLightTarget?.Invoke(SpeedLights.Batcher); }
+        catch(Exception error) { GD.PrintErr("[lighting-speed] light consumer clear failed: "+error.Message); }
+    }
+    internal SpeedMode.SpeedLightFrame SpeedLights;
+    internal Rid SpeedClassicCompose,SpeedCompose;
+    internal Texture2D SpeedLightTexture=>_device.SpeedLightTexture;
+    internal bool CanAttachSpeedLight=>_queued && _speedMode && _unsupported==null && RecoverCanvas!=null;
     private bool _speedMode;
     private List<SpeedMode.SurfaceRow> _surfaceRows;
     internal int Group;
@@ -179,6 +193,7 @@ internal sealed class OrderedWorldCapture : IDisposable
         _occurrences.Clear(); _dynamic.Clear(); _states.Clear(); _segments.Clear(); _textures.Clear(); _commands.Clear();
         Records.Begin();
         _speedMode = SpeedMode.SpeedModeDebug.Active;
+        SpeedLights=null; SpeedClassicCompose=SpeedCompose=default;
         if (_speedMode) { _surfaceRows ??= new(8192); _surfaceRows.Clear(); }
         _batchArtCount = _textureRuns = 0;
         _canvas = default;
@@ -478,6 +493,21 @@ internal sealed class OrderedWorldCapture : IDisposable
                 _device.RenderSurfaceRT(CollectionsMarshal.AsSpan(_surfaceRows), CollectionsMarshal.AsSpan(_segments),
                     _push, Resident, _cameraX, _cameraY, _maxGroundZ, Math.Max(0, _landEnd), SurfaceOrigin);
             else _device.DisableSurfaceRT();
+            if(SpeedLights!=null && _device.SurfaceReady)
+            {
+                try {
+                    if(InjectSpeedLightFailure) throw new InvalidOperationException("injected speed light failure");
+                    _device.RenderLightsRT(SpeedLights); _device.RenderSoftenRT(SpeedLights);
+                    SpeedLights.BindLightTarget?.Invoke(SpeedLights.Batcher,_device.SpeedLightTexture,
+                        new Vector4(0,0,_device.Size.X,_device.Size.Y),SpeedLights.Ambient);
+                }
+                catch(Exception error) {
+                    if(error is NotSupportedException) SpeedMode.SpeedModeDebug.RuntimeUnavailableReason=error.Message;
+                    _device.DisableLightRT();
+                    ClearSpeedLightConsumer();
+                    GD.PrintErr("[lighting-speed] classic lighting this frame: "+error.Message);
+                }
+            }
             if (InjectFailure == 2) throw new InvalidOperationException("injected after recording");
             FramesDrawn++;
             if (RecoverCanvas != null) ResidentFrames++;
@@ -486,6 +516,7 @@ internal sealed class OrderedWorldCapture : IDisposable
         catch (Exception e)
         {
             _device.DisableSurfaceRT();
+            ClearSpeedLightConsumer();
             Fallback(e.Message);
             ReplayCanvas();
         }
@@ -494,6 +525,9 @@ internal sealed class OrderedWorldCapture : IDisposable
             // These branches contain this frame only. GameObject.Draw is never replayed.
             RenderingServer.CanvasItemSetVisible(_canvas, !success);
             RenderingServer.CanvasItemSetVisible(_presenter, success);
+            bool lit=success && SpeedLights!=null && _device.SpeedLightReady;
+            if(SpeedClassicCompose.IsValid) RenderingServer.CanvasItemSetVisible(SpeedClassicCompose,!lit);
+            if(SpeedCompose.IsValid) RenderingServer.CanvasItemSetVisible(SpeedCompose,lit);
             LastFrameOnPass = success;
             RecordTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started;
             Volatile.Write(ref _pending, 0);
@@ -519,6 +553,7 @@ internal sealed class OrderedWorldCapture : IDisposable
             _device.DisposeRT();
             _device.Presenter.Dispose();
             _device.SurfaceTexture.Dispose();
+            _device.SpeedLightTexture.Dispose();
             _fallback.Dispose();
             Records.Clear();
         }));

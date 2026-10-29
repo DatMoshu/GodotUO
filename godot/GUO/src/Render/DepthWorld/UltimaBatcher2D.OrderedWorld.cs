@@ -182,6 +182,8 @@ public sealed partial class UltimaBatcher2D
 
     private void ResetOrderedWorldItems()
     {
+        ResetSpeedComposeItems();
+        _orderedWorld?.ClearSurfaceBinding(true);
         _orderedWorld?.CancelUnsubmittedFrame();
         _orderedWorld?.ClearCanvas();
         // Pool roles can change next frame: undo the previous late visibility election.

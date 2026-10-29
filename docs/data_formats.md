@@ -4125,13 +4125,15 @@ explicit experiment arms. Older incomplete receipts need a fresh baseline.
 This metadata change does not authorize benchmarking.
 
 
-## 49. Lighting speed surface buffer (ADR-0048, first head)
+## 49. Lighting speed surface buffer and GPU lights (ADR-0048)
 
 L1 option `LightingSpeedMode` is off by default, exposed in Classic Options and
 UO+. Compatibility and explicit canvas world disable its control with a reason.
-This head adds the surface producer; the per-pixel light consumer, edge-aware
-soften and final composition are subsequent heads. Enabling this foundation
-alone does not replace Classic lighting.
+On an admitted frame the surface producer feeds bounded additive HDR lights,
+an approximate edge-aware soften, and the existing darkness blend through
+`RenderTargets.LightOverride`. A failed light transaction elects the same
+frame's classic target; a failed world transaction retains canvas recovery.
+The classic/off path creates no speed GPU resources or extra compose branch.
 
 A successful Depth World frame may draw the same resident and ordered quad
 streams again into a world-target-sized RGBA16F attachment with its own D32
@@ -4155,8 +4157,7 @@ resize and disposal clear surface, light and origin together. It is borrowed on
 the admitted shared main/render thread; never retain it across frame boundaries.
 Weather keeps `WaterRender.BindLightTarget(batcher, Texture2D, Vector4, Vector3)`
 and reads the same snapshot origin; ClearLightTarget is required on off/fallback.
-The actual light producer remains a subsequent head; only its binding contract
-is present here.
+The light producer publishes after rendering and soften, before compose.
 Classes: 0 none, 1 floor, 2 south wall, 3 east wall, 4 upright card, 5 roof,
 6 water. Flags: 1 covered, 2 wet candidate, 4 window, 8 translucent. Resident
 `aux.w` transports a bit-preserved uint: low 8 bits class/flags, bits 8..11 roof X gradient plus 8, bits 12..19
@@ -4190,9 +4191,45 @@ Headless uses Godot's dummy renderer: the probe
 explicitly prints `GPU NOT RUN` after the CPU contract; this is never GPU
 acceptance. Rendered validation requires the project's Godot lease.
 
-The camera-relative contract resolves absolute half-float precision loss at
-bank coordinates (ADR-0048 amendment from3ee47f10). Roof neighbour slopes and
-ambiguous-wall neighbour resolution still require rendered validation. The
-corner-wall split handles unresolved two-face corners and also needs visual proof.
-Off-state live captures and draw counts, rendered fixtures and frame-time
-acceptance remain required before the light consumer is accepted.
+Lights reuse the accepted classic AddLight offers, including walking offsets,
+wall-lamp standoff and projectile positions, plus enabled spell bursts within
+the existing cap. The lamp is ten UO Z units above its offer; distance uses
+eleven UO Z units per tile. A..E/custom curves, source colour/energy and a small
+deterministic temporal flicker feed the fragment. B uses `(1-d*d/r/r)^2`.
+Facing dims back-facing walls/cards with a 0.2 floor. Ambient uses AmbientFor,
+the profile's Night floor (%), and the existing RoofDaylight ramp under cover.
+
+The loaded blocker grid retains the original fill rules. A speed-only cache
+depends on grid bounds, facet, loaded chunk identity, ObjectsVersion and both
+mesh content stamps. A change rebuilds it and hashes blockers; stable frames
+perform dependency checks only. Per-light reach reuses ComputeReach's exact
+rays at four samples per tile, at lamp height. R8G8 stores exact visibility and
+one-tile dilation (summed-area-table construction). A linear reach sampler
+feathers the exact edge by 1/8 tile; native art and surface lookups stay nearest.
+Maps upload only on revision changes. No full-grid light field is computed.
+
+The two-pass soften uses a triangular kernel of 0..10 steps (default3), stopping
+at the first class/cover boundary in each direction. Zero keeps the original
+HDR target byte-for-byte. Both Options surfaces label it Soften (approximate).
+
+Consumer adapters implement GameScene partials PrepareSpeedLightInputs,
+BindSpeedLightTarget(batcher, Texture2D, Vector4, Vector3) and ClearSpeedLightTarget.
+SpeedLightFrame.RenderInputs runs on RD before the light draw; it supplies a
+borrowed RG16F polar atlas, per-offer ShadowRow (negative means unselected),
+softness in tenths of a tile, and a screen-space sun mask. Polar rows follow
+the shadow slice's 256-angle/64-row distance/top-Z contract, retaining15% in
+shadow. Sun masks affect floor ambient only. RenderPatches receives the RD,
+HDR framebuffer, raw surface RID, origin and size after lamp draws and before
+soften, matching WindowLightPassRd.Draw. The actual partner adapters are not
+included in this core head; their standalone passes must be merged and bound.
+
+The rendered probe also checks shadow multiplier inputs, ambient/cover,
+additive bounds, cached uploads, soften0/1/3/10, actual batcher composition,
+injected-light-failure fallback and exact synthetic off image/count parity.
+`--perf-profile lighting-speed` is plain plus this option at defaults; plain
+and lean explicitly disable it. The bank cohort performs an untimed native-art
+off/on/off proof and saves images/JSON, native class debug and a client-only
+night override, restoring the light settings afterwards. The Zoom2 Debug table
+must retain host other-process CPU; above10% is shared, not quiet acceptance.
+Native-art neighbour slopes, ambiguous wall planes, and combined shadow/window/
+weather/water passes remain independent visual/integration review items.

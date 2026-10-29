@@ -47,6 +47,7 @@ namespace GUO.Game.Scenes
         public bool UseRealtimeLights =>
             ProfileManager.CurrentProfile != null
             && ProfileManager.CurrentProfile.RealtimeLights
+            && !Renderer.SpeedMode.SpeedModeDebug.Active // PORT DEVIATION (GUO): ADR-0048 replaces the CPU field.
             && _world.InGame
             && !(_world.Player.IsDead && ProfileManager.CurrentProfile.EnableBlackWhiteEffect);
 
@@ -60,7 +61,7 @@ namespace GUO.Game.Scenes
         /// </summary>
         private void RecordRealtimeLight(GameObject obj, ushort graphic, ref LightData light)
         {
-            if (!UseRealtimeLights || obj == null) return;
+            if ((!UseRealtimeLights && !UseSpeedLights) || obj == null) return; // PORT DEVIATION (GUO): ADR-0048 same offers.
             _rtSources ??= new RealtimeLightField.Source[RtSourceCapacity];
             if (_rtSourceCount >= LightsLoader.MAX_LIGHTS_DATA_INDEX_COUNT) return;
 

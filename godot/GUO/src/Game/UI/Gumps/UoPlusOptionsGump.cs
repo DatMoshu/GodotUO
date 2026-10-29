@@ -12,6 +12,7 @@ internal sealed class UoPlusOptionsGump : Gump
 {
     private readonly Profile _profile;
     private Checkbox _speedMode; // PORT DEVIATION (GUO): ADR-0048
+    private HSliderBar _speedNightFloor,_speedSoften;
     private readonly Dictionary<UoPlusFeature, (Checkbox Toggle, HSliderBar Density)> _rows = new();
     private readonly HSliderBar _cap;
     private readonly Checkbox _overview;
@@ -60,6 +61,16 @@ internal sealed class UoPlusOptionsGump : Gump
         if (!Renderer.SpeedMode.SpeedModeDebug.Supported) {
             area.Add(new Label(Renderer.SpeedMode.SpeedModeDebug.UnavailableReason, true, 0x0386, Width-70, 1) { X=4, Y=y }); y += 40;
         }
+        area.Add(new Label("Night floor (%)",true,0xFFFF,font:1) { X=4,Y=y });
+        _speedNightFloor=new HSliderBar(4,y+22,Width-110,0,100,System.Math.Clamp(_profile.SpeedModeNightFloor,0,100),
+            HSliderBarStyle.MetalWidgetRecessedBar,true,1,0xFFFF);
+        area.Add(_speedNightFloor); y+=54;
+        area.Add(new Label("Soften (approximate), steps",true,0xFFFF,font:1) { X=4,Y=y });
+        _speedSoften=new HSliderBar(4,y+22,Width-110,0,10,System.Math.Clamp(_profile.SpeedModeSoften,0,10),
+            HSliderBarStyle.MetalWidgetRecessedBar,true,1,0xFFFF);
+        area.Add(_speedSoften); y+=54;
+        void SpeedControls() { _speedNightFloor.IsEnabled=_speedSoften.IsEnabled=_speedMode.IsEnabled && _speedMode.IsChecked; }
+        _speedMode.ValueChanged+=(_,_)=>SpeedControls(); SpeedControls();
         _overview = new Checkbox(0xD2, 0xD3, "Experimental zoom + world map", 1, 0xFFFF)
             { X = 4, Y = y, IsChecked = _profile.ExperimentalWorldOverview };
         area.Add(_overview);
@@ -152,6 +163,8 @@ internal sealed class UoPlusOptionsGump : Gump
 #endif
         if (_defaultsStaged) UoPlusOptions.ResetDefaults(_profile);
         _profile.LightingSpeedMode = _speedMode.IsChecked;
+        _profile.SpeedModeNightFloor=_speedNightFloor.Value;
+        _profile.SpeedModeSoften=_speedSoften.Value;
         _profile.ExperimentalWorldOverview = _overview.IsChecked;
         _profile.WorldOverviewStyle = System.Math.Clamp(_overviewStyle.SelectedIndex, 0, 3);
         _profile.TouchUi = _touchUi.SelectedIndex == 0 ? null : _touchUi.SelectedIndex == 1;
@@ -171,6 +184,8 @@ internal sealed class UoPlusOptionsGump : Gump
     {
         _defaultsStaged = true;
         _speedMode.IsChecked = false;
+        _speedNightFloor.Value=_speedSoften.Value=3;
+        _speedNightFloor.IsEnabled=_speedSoften.IsEnabled=false;
         _touchUi.SelectedIndex = 0;
         _overview.IsChecked = false;
         _overviewStyle.SelectedIndex = 0;

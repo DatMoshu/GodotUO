@@ -39,6 +39,9 @@ namespace GUO.Renderer
         // PORT DEVIATION (GUO): Realtime lights (ADR-0039) draw their own
         // light texture; set, it is blended in place of the classic target.
         public Texture2D LightOverride { get; set; }
+        // PORT DEVIATION (GUO): ADR-0048 defers the light branch election until
+        // this frame's surface/light transaction succeeds; fallback stays classic.
+        internal Func<BlendState> SpeedLightBlend;
 
         /// <summary>The world target's size in its own pixels; see GameScene.DrawWorld.</summary>
         public Rectangle GameWorldSceneAfterDPI => _gameWorldSceneAfterDPI;
@@ -188,12 +191,10 @@ namespace GUO.Renderer
             // draw lights
             batcher.SetBlendState(_lightsBlendState?.Invoke());
 
-            batcher.Draw(
-                LightOverride ?? (Texture2D)LightRenderTarget, // PORT DEVIATION (GUO): ADR-0039
-                _gameWorldSceneOnScreen,
-                _lightsHue?.Invoke() ?? Vector3.Up,
-                0f
-            );
+            var lightHue=_lightsHue?.Invoke() ?? Vector3.Up;
+            if(SpeedLightBlend==null || !batcher.TryDrawSpeedLight(LightRenderTarget,LightOverride,
+                _gameWorldSceneOnScreen,lightHue,SpeedLightBlend()))
+                batcher.Draw(LightOverride ?? (Texture2D)LightRenderTarget,_gameWorldSceneOnScreen,lightHue,0f);
 
             batcher.SetBlendState(null);
 

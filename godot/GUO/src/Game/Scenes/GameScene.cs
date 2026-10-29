@@ -455,7 +455,7 @@ namespace GUO.Game.Scenes
         {
             if (
                 _lightCount >= LightsLoader.MAX_LIGHTS_DATA_INDEX_COUNT
-                || !UseLights && !UseAltLights && !UseRealtimeLights // PORT DEVIATION (GUO): ADR-0039 lights by day too
+                || !UseLights && !UseAltLights && !UseRealtimeLights && !UseSpeedLights // PORT DEVIATION (GUO): ADR-0039/0048 lights by day too
                 || obj == null
             )
             {
@@ -1137,6 +1137,8 @@ namespace GUO.Game.Scenes
             // PORT DEVIATION (GUO): Realtime lights (ADR-0039) consume this
             // frame's offers after the world draw; nothing when the option is off.
             DrawRealtimeLights(renderTargets, ref matrix);
+            // PORT DEVIATION (GUO): ADR-0048 queues this frame's bounded GPU lights.
+            DrawSpeedLights(batcher,renderTargets,ref matrix);
 
             return base.Draw(batcher, renderTargets);
         }

@@ -58,9 +58,10 @@ public partial class LightingSpeedProbe : Node
             if (SpeedModeBindings.Current.Surface!=null || SpeedModeBindings.Current.LightTarget!=null
                 || SpeedModeBindings.Current.Origin!=default || device.HasSurfaceResources)
                 throw new InvalidOperationException("Off did not clear the binding without GPU allocation.");
+            CheckReachCache();
             if (DisplayServer.GetName() == "headless")
             {
-                GD.Print("[lighting-speed-probe] CONTRACT PASS defaults=off stride=8 camera-origin=pass binding-lifetime=pass; GPU NOT RUN (headless dummy renderer)");
+                GD.Print("[lighting-speed-probe] CONTRACT PASS defaults=off stride=8 camera-origin=pass binding-lifetime=pass reach-cache=pass; GPU NOT RUN (headless dummy renderer)");
                 exit=0; return;
             }
             using var image = Image.CreateEmpty(2, 2, false, Image.Format.Rgba8); image.Fill(Colors.White); image.SetPixel(0,0,Colors.Transparent);
@@ -158,6 +159,7 @@ public partial class LightingSpeedProbe : Node
                     File.WriteAllText(Path.Combine(output,"surface-frame.json"),System.Text.Json.JsonSerializer.Serialize(new {
                         origin=new[] { origin.X,origin.Y },size=new[] {960,240},format="RGBA16F",
                         position="camera-relative XY, world Z",light_hook="synthetic binding only; no light pass" }));
+                    CheckGpuLight(device,origin,data,output);
                     // A new origin is a new surface ticket, even when geometry is reused.
                     var nextOrigin=origin+new Vector2I(1,-1);
                     device.RenderSurfaceRT(rows,segments,push,resident,cameraX,cameraY,127,0,nextOrigin);
@@ -183,10 +185,103 @@ public partial class LightingSpeedProbe : Node
             }));
             await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
             if(failure!=null) throw failure;
+            await CheckCompose(output);
             exit=0;
         }
         catch(Exception e) { GD.PrintErr("[lighting-speed-probe] FAIL "+e); }
-        finally { SpeedModeBindings.Clear(device); art?.Dispose(); device.Presenter.Dispose(); device.SurfaceTexture.Dispose(); GetTree().Quit(exit); }
+        finally { SpeedModeBindings.Clear(device); art?.Dispose(); device.Presenter.Dispose(); device.SurfaceTexture.Dispose(); device.SpeedLightTexture.Dispose(); GetTree().Quit(exit); }
+    }
+
+    private static void CheckReachCache()
+    {
+        var field=new GUO.Renderer.Lights.RealtimeLightField();
+        field.Begin(0,0,16,16);
+        var source=new GUO.Renderer.Lights.RealtimeLightField.Source(2,8,10,6,Colors.White);
+        field.BeginSpeedReach();
+        var reach=field.GetSpeedReach(in source);
+        static int At(GUO.Renderer.Lights.RealtimeLightField.SpeedReach r,float x,float y)
+            => ((int)((y-r.Y)*r.Scale)*r.Side+(int)((x-r.X)*r.Scale))*2;
+        int far=At(reach,6.5f,8.5f);
+        if(reach.Pixels[far]!=255 || field.LastComputed!=1)
+            throw new InvalidOperationException("Open reach map failed.");
+        int revision=reach.Revision;
+        field.BeginSpeedReach();
+        if(!ReferenceEquals(reach,field.GetSpeedReach(in source)) || reach.Revision!=revision || field.LastComputed!=0)
+            throw new InvalidOperationException("Unchanged blocker grid recomputed its reach map.");
+        for(int y=0;y<16;y++) field.AddEdge(5,y,false,0,32);
+        field.BeginSpeedReach();
+        reach=field.GetSpeedReach(in source);
+        int edge=At(reach,5.125f,8.5f);
+        if(reach.Revision==revision || field.LastComputed!=1 || reach.Pixels[far]!=0
+            || reach.Pixels[far+1]!=0 || reach.Pixels[edge]!=0 || reach.Pixels[edge+1]!=255)
+            throw new InvalidOperationException("Reach invalidation, wall blocking or one-tile dilation failed.");
+    }
+
+    private static void CheckGpuLight(OrderedWorldDevice device,Vector2I origin,byte[] surface,string output)
+    {
+        static float Component(byte[] bytes,int pixel,int channel)
+            => (float)BitConverter.UInt16BitsToHalf(BitConverter.ToUInt16(bytes,pixel*8+channel*2));
+        var frame=new SpeedLightFrame { Origin=origin,Ambient=new Vector3(0.1f,0.2f,0.3f),RoofShare=0.55f };
+        device.RenderLightsRT(frame);
+        byte[] ambient=device.ReadSpeedLightRT();
+        int floor=40*960+100,covered=-1;
+        for(int i=0;i<960*240;i++)
+            if(((int)Component(surface,i,3)&16)!=0) { covered=i; break; }
+        if(covered<0 || Math.Abs(Component(ambient,floor,0)-0.1f)>0.001f
+            || Math.Abs(Component(ambient,covered,0)-0.055f)>0.001f)
+            throw new InvalidOperationException($"GPU ambient/cover dim failed: covered={covered} floor={Component(ambient,floor,0)} cover={(covered>=0 ? Component(ambient,covered,0) : -1)}.");
+        int x=(int)MathF.Floor(Component(surface,floor,0)+origin.X);
+        int y=(int)MathF.Floor(Component(surface,floor,1)+origin.Y);
+        var field=new GUO.Renderer.Lights.RealtimeLightField();
+        field.Begin(x-10,y-10,21,21); field.BeginSpeedReach();
+        var source=new GUO.Renderer.Lights.RealtimeLightField.Source(x,y,-10,8,new Color(1,0.5f,0.2f));
+        frame.Count=1;
+        frame.Lights[0]=new SpeedLightFrame.Entry { Source=source,Reach=field.GetSpeedReach(in source),
+            PixelCentre=new Vector2(100,40),PixelRadius=400,Flicker=1 };
+        device.RenderLightsRT(frame);
+        long uploads=OrderedWorldDevice.SpeedReachUploads;
+        byte[] lit=device.ReadSpeedLightRT();
+        if(Component(lit,floor,0)<1f || Component(lit,floor,0)<=Component(lit,floor,1)
+            || Math.Abs(Component(lit,40*960+900,0)-0.1f)>0.001f)
+            throw new InvalidOperationException("GPU bounded additive light failed.");
+        device.RenderLightsRT(frame);
+        if(OrderedWorldDevice.SpeedReachUploads!=uploads || !device.SpeedLightReady
+            || SpeedModeBindings.Current.LightTarget!=device.SpeedLightTexture || SpeedModeBindings.Current.Origin!=origin)
+            throw new InvalidOperationException("GPU reach upload cache or light binding failed.");
+        var rgba=new byte[960*240*4];
+        for(int i=0;i<960*240;i++) { for(int c=0;c<3;c++) rgba[i*4+c]=(byte)(Math.Clamp(Component(lit,i,c),0,1)*255); rgba[i*4+3]=255; }
+        using var image=Image.CreateFromData(960,240,false,Image.Format.Rgba8,rgba);
+        if(image.SavePng(Path.Combine(output,"light-target.png"))!=Error.Ok) throw new IOException("Cannot save light target.");
+        File.WriteAllBytes(Path.Combine(output,"light-target.rgba16f"),lit);
+        CheckShadowInputs(device,frame,surface,lit,floor,covered);
+        frame.Soften=0; device.RenderSoftenRT(frame);
+        if(!lit.AsSpan().SequenceEqual(device.ReadSpeedLightRT()))
+            throw new InvalidOperationException("Zero soften changed the light attachment.");
+        foreach(int steps in new[] {1,3,10})
+        {
+            frame.Soften=steps; device.RenderSoftenRT(frame);
+            byte[] softened=device.ReadSpeedLightRT();
+            bool changed=false;
+            for(int i=0;i<960*240;i++)
+            {
+                float value=Component(softened,i,0);
+                if(!float.IsFinite(value)||value<0) throw new InvalidOperationException("Soften produced invalid HDR.");
+                int kind=(int)Component(surface,i,3)&15;
+                if(kind==0 && Math.Abs(value-Component(lit,i,0))>0.001f)
+                    throw new InvalidOperationException("Soften crossed a class boundary into empty space.");
+                if(kind==1 && Math.Abs(value-Component(lit,i,0))>0.001f) changed=true;
+            }
+            if(!changed) throw new InvalidOperationException("Nonzero soften did no work.");
+            if(steps==3)
+            {
+                for(int i=0;i<960*240;i++) for(int c=0;c<3;c++)
+                    rgba[i*4+c]=(byte)(Math.Clamp(Component(softened,i,c),0,1)*255);
+                using var softImage=Image.CreateFromData(960,240,false,Image.Format.Rgba8,rgba);
+                if(softImage.SavePng(Path.Combine(output,"light-soften-3.png"))!=Error.Ok) throw new IOException("Cannot save softened light.");
+            }
+        }
+        GD.Print("[lighting-speed-probe] SOFTEN PASS steps=0,1,3,10 zero-diff=0 class-boundary=pass finite-hdr=pass");
+        GD.Print("[lighting-speed-probe] LIGHT PASS ambient-cover=pass bounded-additive=pass reach-upload-cache=pass same-origin=pass");
     }
 }
 

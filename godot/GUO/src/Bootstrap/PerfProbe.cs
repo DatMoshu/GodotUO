@@ -436,7 +436,11 @@ internal static partial class PerfProbe
             }
 
             if (scene.Walks && _walkRoute != null) await PrepareReplayOrigin(host, _walkRoute);
-            results.Add(await Measure(host, viewport, scene.Name, scene.What, scene.Walks));
+            var sceneResult=await Measure(host, viewport, scene.Name, scene.What, scene.Walks);
+            // PORT DEVIATION (GUO): ADR-0048; untimed live off/on/off lifetime proof.
+            if(_profilePreset=="lighting-speed" && scene.Name=="britain-bank")
+                sceneResult["speed_off_proof"]=await LightingSpeedProbe.CheckLiveOff(host,outDir,label);
+            results.Add(sceneResult);
 
             // With --perf-parity, the same spot again with the path under test
             // off: the frame-time comparison from one run (one export on a device).
@@ -608,6 +612,8 @@ internal static partial class PerfProbe
         long rdBytesBefore = GUO.Renderer.DepthWorld.OrderedWorldCapture.UploadedBytes;
         long rdCallsBefore = GUO.Renderer.DepthWorld.OrderedWorldCapture.DrawCalls;
         long rdTicksBefore = GUO.Renderer.DepthWorld.OrderedWorldCapture.RecordTicks;
+        long speedGridBefore=GUO.Renderer.SpeedMode.SpeedLightFrame.GridTicks;
+        long speedReachBefore=GUO.Renderer.SpeedMode.SpeedLightFrame.ReachTicks;
         long rdSuppressedBefore = GUO.Renderer.DepthWorld.OrderedWorldCapture.SuppressedCommands;
         long rdReplayBefore = GUO.Renderer.DepthWorld.OrderedWorldCanvas.CommandsDrawn;
         long rdCanvasClearsBefore = UltimaBatcher2D.OrderedCanvasItemsCleared;
@@ -826,6 +832,8 @@ internal static partial class PerfProbe
             ["rd_upload_bytes_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldCapture.UploadedBytes - rdBytesBefore) / n, 1),
             ["rd_draw_calls_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldCapture.DrawCalls - rdCallsBefore) / n, 1),
             ["rd_record_cpu_ms"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldCapture.RecordTicks - rdTicksBefore) * 1000 / System.Diagnostics.Stopwatch.Frequency / n, 3),
+            ["speed_grid_cpu_ms"] = System.Math.Round((double)(GUO.Renderer.SpeedMode.SpeedLightFrame.GridTicks-speedGridBefore)*1000/System.Diagnostics.Stopwatch.Frequency/n,3),
+            ["speed_reach_cpu_ms"] = System.Math.Round((double)(GUO.Renderer.SpeedMode.SpeedLightFrame.ReachTicks-speedReachBefore)*1000/System.Diagnostics.Stopwatch.Frequency/n,3),
             ["rd_last_fallback"] = GUO.Renderer.DepthWorld.OrderedWorldCapture.LastFallback ?? "",
             ["rd_deferred_quads_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldCapture.SuppressedCommands - rdSuppressedBefore) / n, 1),
             ["rd_canvas_replay_quads_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldCanvas.CommandsDrawn - rdReplayBefore) / n, 1),

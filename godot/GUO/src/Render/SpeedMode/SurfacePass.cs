@@ -25,7 +25,7 @@ internal sealed partial class OrderedWorldDevice
     private Rid[] _surfaceDynamicSets = Array.Empty<Rid>(), _surfaceResidentSets = Array.Empty<Rid>();
     internal static long SurfaceDrawCalls;
     internal bool SurfaceReady { get; private set; }
-    internal bool HasSurfaceResources => _surfaceColor.IsValid || _surfaceShader.IsValid || _surfaceRows.IsValid || _surfaceOriginBuffer.IsValid;
+    internal bool HasSurfaceResources => _surfaceColor.IsValid || _surfaceShader.IsValid || _surfaceRows.IsValid || _surfaceOriginBuffer.IsValid || _speedLight.IsValid;
 
     internal static string SpeedShader(string name)
     {
@@ -114,6 +114,13 @@ internal sealed partial class OrderedWorldDevice
         finally { foreach (var u in uniforms) u.Dispose(); }
     }
 
+    private void FreeSpeedSet(ref Rid set)
+    {
+        // RD invalidates borrowed descriptor sets when a colour buffer grows.
+        if(set.IsValid && _rd.UniformSetIsValid(set)) _rd.FreeRid(set);
+        set=default;
+    }
+
     private Rid SurfaceTexturesRT(TextureSet textures, bool resident)
     {
         var cache = resident ? _surfaceResidentTextures : _surfaceTextures;
@@ -147,10 +154,10 @@ internal sealed partial class OrderedWorldDevice
             {
                 uint bytes = checked((uint)rows.Length * 8);
                 if (bytes > _surfaceRowCapacity)
-                { Free(ref _surfaceSet); GrowBuffer(ref _surfaceRows, ref _surfaceRowCapacity, bytes); }
+                { FreeSpeedSet(ref _surfaceSet); GrowBuffer(ref _surfaceRows, ref _surfaceRowCapacity, bytes); }
                 Upload(_surfaceRows, MemoryMarshal.AsBytes(rows), 0);
                 if (_surfaceGeometry != _storage || _surfaceOrder != _orderStorage || _surfaceStates != _stateStorage)
-                    Free(ref _surfaceSet);
+                    FreeSpeedSet(ref _surfaceSet);
                 if (!_surfaceSet.IsValid)
                 {
                     _surfaceSet = SurfaceStorageSetRT(_surfaceShader, _storage, _orderStorage, _stateStorage, _surfaceRows);
@@ -160,7 +167,7 @@ internal sealed partial class OrderedWorldDevice
             if (resident != null && resident.Draws.Count > 0)
             {
                 if (_surfaceResidentGeometry != _residentQuads || _surfaceResidentOrder != _residentVisible)
-                    Free(ref _surfaceResidentSet);
+                    FreeSpeedSet(ref _surfaceResidentSet);
                 if (!_surfaceResidentSet.IsValid)
                 {
                     _surfaceResidentSet = SurfaceStorageSetRT(_surfaceResidentShader, _residentQuads, _residentVisible);
@@ -226,6 +233,7 @@ internal sealed partial class OrderedWorldDevice
             SurfaceReady = true;
             SpeedModeBindings.PublishSurface(this,SurfaceTexture,origin,Size);
         }
+        catch(NotSupportedException error) { SpeedModeDebug.RuntimeUnavailableReason=error.Message; DisposeSurfaceRT(); throw; }
         catch { DisposeSurfaceRT(); throw; }
     }
 
@@ -241,6 +249,7 @@ internal sealed partial class OrderedWorldDevice
     internal byte[] ReadSurfaceRT() => _rd.TextureGetData(_surfaceColor, 0);
     private void DisposeSurfaceRT()
     {
+        DisposeLightRT();
         SurfaceReady = false;
         SpeedModeBindings.Clear(this);
         SurfaceOrigin=default; _surfaceOriginValid=false;
@@ -248,8 +257,8 @@ internal sealed partial class OrderedWorldDevice
         if (_rd == null) return;
         foreach (var cache in new[] { _surfaceTextures, _surfaceResidentTextures })
         { foreach (var set in cache.Values) if (_rd.UniformSetIsValid(set)) _rd.FreeRid(set); cache.Clear(); }
-        Free(ref _surfaceOriginSet); Free(ref _surfaceResidentOriginSet); Free(ref _surfaceOriginBuffer);
-        Free(ref _surfaceSet); Free(ref _surfaceResidentSet); Free(ref _surfaceRows); _surfaceRowCapacity = 0;
+        FreeSpeedSet(ref _surfaceOriginSet); FreeSpeedSet(ref _surfaceResidentOriginSet); Free(ref _surfaceOriginBuffer);
+        FreeSpeedSet(ref _surfaceSet); FreeSpeedSet(ref _surfaceResidentSet); Free(ref _surfaceRows); _surfaceRowCapacity = 0;
         Free(ref _surfacePipeline); Free(ref _surfaceResidentPipeline);
         Free(ref _surfaceShader); Free(ref _surfaceResidentShader);
         Free(ref _surfaceFramebuffer); Free(ref _surfaceDepth); Free(ref _surfaceColor);

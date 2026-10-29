@@ -15,7 +15,8 @@ internal static class SpeedModeDebug
     internal static bool GBuffer;
     internal static bool Probe;
     internal static bool Requested => Probe || ProfileManager.CurrentProfile?.LightingSpeedMode == true;
-    internal static bool Supported => DepthWorldProbe.Enabled;
+    internal static string RuntimeUnavailableReason;
+    internal static bool Supported => DepthWorldProbe.Enabled && RuntimeUnavailableReason==null;
     internal static bool Active => Requested && Supported;
-    internal static string UnavailableReason => Supported ? null : "Requires the Depth World; unavailable on Compatibility or canvas world.";
+    internal static string UnavailableReason => !DepthWorldProbe.Enabled ? "Requires the Depth World; unavailable on Compatibility or canvas world." : RuntimeUnavailableReason;
 }
