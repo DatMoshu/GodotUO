@@ -528,6 +528,62 @@ From `Scripts/Custom/Mobiles/Monsters/SphynxFortuneGump.cs` and DFI's
 fortune's resistance, its expiry, a reading, the Paladin's AI, the staff and
 the ancient bottle.
 
+### `patches/0018-dfi-town.patch`
+
+DFI's townsfolk, stones and Riddler, from `Scripts/Custom/Mobiles/Townfolks and
+Vendors/NPC`, `Custom/Items/Stones` and `Custom/Mobiles/Riddle Man`. Staff place
+them; `[DfiTown` (0019) places the criminal banker in Buccaneer's Den.
+
+- **Townsfolk**: the criminal banker, which does business with criminals (one
+  `ServesCriminals` property on ModernUO's `Banker`); the priest of Mondain,
+  who resurrects murderers and teaches the dark priest's skills; the
+  necromancer and DFI's necromancer shop; the priest of evil, whose 1,000 gp
+  resurrection (from the bank) also restores hits and mana; Haven's town
+  crier, who walks young players through DFI's Haven; and the escortable
+  prisoner noble and seeker.
+- **Stones**: a gold withdrawal stone, a limited item stone (reagent bags or
+  bandages), a limited reagent stone, mage and necro reagent withdraw stones
+  (reagents from the bank, back as a bag), the pet bonding stone, a web stone
+  and the weapon stone (five weapons, shields or bundles of ammunition per
+  account when limited). Limits count per account until a restart, as DFI's
+  did.
+- **The Riddler** asks the first of up to ten riddles administrators set (talk
+  to him as an administrator to edit them). The first correct answer wins the
+  riddle's copper bars and a broadcast. He then vanishes for 20 to 30 hours
+  and returns while riddles remain.
+
+`DfiTownTests.cs` covers every type, the criminal banker, the necromancer's
+shop, the full resurrection, each stone and the Riddler.
+
+### `patches/0019-dfi-exchange.patch`
+
+DFI's West Britain Exchange and vendor advertisements, from
+`Scripts/Custom/Mobiles/Townfolks and Vendors/Vendor System` and `VendorAd`.
+`[DfiTown` places the five exchange traders and an advertiser by Britain's
+west bank.
+
+- **The exchange** trades 42 commodities in five categories (blacksmith,
+  magic, tailor, other crafts, archery), one trader each. A bid of at least
+  25 units is paid from the bank up front, plus a 150 gp fee. An offer is a
+  filled commodity deed of at least 25. Orders that meet trade at the bid's
+  price, and unfilled orders lapse after five days. A cancelled or lapsed bid
+  returns its money but not the fee; an offer returns its goods less 2.5%.
+  Each trader shows the order book, the last trade and twenty days of
+  figures, and a player's trades are shown at login.
+- **Adverts**: a player vendor's owner pays 50 gp every 12 hours plus a
+  price per use of their choosing (10 gp or more, half while online). Each
+  account travels once per 12 hours on one payment, and higher prices rank
+  higher. Advertisers announce a random advert every three minutes; near
+  one, say "go", "show adds", "I wish to place a new advertisement" or "I
+  wish to review my advertisements".
+
+GUO's choices: what a trade buys, and the gold for what it sells, goes to the
+bank (DFI put bought goods in the backpack, even an offline player's); DFI's
+bar charts are figures; an order is edited by cancelling it and placing a new
+one; an advert needs the vendor's owner (DFI had that check commented out).
+`DfiExchangeTests.cs` covers every commodity, bids, offers, matching both
+ways, cancelling, advert ranking, the per-account charge and the lapsing fee.
+
 ### Retired
 
 `0004-multi-tile-enumerator` fixed tile lookups that stopped at a multi with no

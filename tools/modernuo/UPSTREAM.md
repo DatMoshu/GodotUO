@@ -49,6 +49,8 @@ is retired (as `0004-multi-tile-enumerator` was).
 | 0015 | DFI Network's hunting bulk orders: the Hunter, small and large hunting contracts, their decor rewards and the Warfork of Chaos | **ours**, shard content, depends on 0009 (pet skill balls) and 0012 (levelling) | none |
 | 0016 | DFI Network's events: dungeon treasure chests (`[SpawnEIC`), copper bars and the Event Reward Vendor (`[CreateCopperBars`), the daily Last Man Pentagram, `[DfiEvents` | **ours**, shard content, depends on 0007, 0009, 0011 and 0012 | none |
 | 0017 | DFI Network's creatures: the Sphynx's paid fortunes, the Paladin, four faction creatures, two ethereals, the counselor's staff, the ancient message in a bottle | **ours**, shard content, depends on 0008 and 0016 | none |
+| 0018 | DFI Network's townsfolk (criminal banker, priest of Mondain, necromancer, priest of evil, Haven's crier, prisoners), service stones and the Riddler | **ours**, shard content, depends on 0009 and 0016 | none |
+| 0019 | DFI Network's West Britain Exchange (commodity bids and offers), vendor advertisements, `[DfiTown` | **ours**, shard content, depends on 0018 | none |
 | issue | `MultiData.LoadUOP` and uncompressed entries | **upstream** (issue, no patch) | `upstream/issue-multidata-loaduop-uncompressed.md` |
 
 ### 0006: loopback ban exemption (NET-00c, MUO patch)
@@ -80,7 +82,7 @@ still requires the shard console's detection/filter messages.
 **Verdict: ours.** Local readiness checks and development clients share one
 address. Keep this narrow policy separate from public-shard ban policy.
 
-### 0007 to 0017: DFI Network shard content (MUO patch)
+### 0007 to 0019: DFI Network shard content (MUO patch)
 
 GUO patches: `patches/0007-dfi-loot.patch`, `patches/0008-dfi-monsters.patch`,
 `patches/0009-dfi-player-items.patch` (player items, deeds, balls, the shrink
@@ -101,7 +103,11 @@ new files only) and `patches/0016-dfi-events.patch` (treasure chests, event
 rewards and the pentagram under `Custom/DFI/Events`; new files only) and
 `patches/0017-dfi-creatures.patch` (under `Custom/DFI/Mobiles`; one call at the
 end of `AosAttributes.GetValue` adds a sphynx fortune's luck, enhance potions,
-defend chance or mana regeneration).
+defend chance or mana regeneration) and `patches/0018-dfi-town.patch` (under
+`Custom/DFI/Town`; a `ServesCriminals` property on `Banker`, checked at its four
+criminal refusals and in `OpenBankEntry`, lets the criminal banker serve
+criminals) and `patches/0019-dfi-exchange.patch` (the exchange and adverts under
+`Custom/DFI/Town`; new files only).
 Ports of an owner's former RunUO shards (DFI Network, DefianceUO-based, and
 kopia 2012) so the dev shard plays like them: DFI's SE loot packs, its paragon
 and champion death bonuses, and 25 custom monsters under `Custom/DFI/`. The
