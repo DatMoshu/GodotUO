@@ -702,6 +702,23 @@ scripts' generic board game base (only Bomberman used it) is folded into the
 Bomberman stone. `DfiBombermanTests.cs` covers the board, sizes, starting a
 game, planting, upgrades, putting players out, scores and ending.
 
+### `patches/0024-dfi-conpvp-arena.patch`
+
+DFI's own duel system (`Scripts/Custom/Engines/Duel`) and capture the flag
+(`Custom/Engines/CTF`) are not ported: ModernUO ships ConPVP, which covers both
+(1v1 and team duels with rulesets, a ladder, tournaments, and CTF as a
+tournament event), and DFI's arena layouts were not in its saves. Instead
+`[DfiArenas` sets ConPVP up in Luna's Grand Arena on Malas, where DFI's duel
+stones also led: an arena controller with the walled pitch as the fighting
+area, the whole arena as a safe zone for onlookers, start points, the
+dividing wall, and a ladder controller for rankings.
+
+Players say "I wish to duel" anywhere to open ConPVP's duel setup; ConPVP
+brings the duellists to the arena. Capture the flag runs through ConPVP's
+tournament controller with a CTF controller, which staff set up when they
+hold one. `DfiArenasTests.cs` checks the arena is active, on Malas, with its
+ladder, points and zones in place.
+
 ### Retired
 
 `0004-multi-tile-enumerator` fixed tile lookups that stopped at a multi with no

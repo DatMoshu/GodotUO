@@ -55,6 +55,7 @@ is retired (as `0004-multi-tile-enumerator` was).
 | 0021 | DFI Network's lottery (daily drawing, jackpot) and video poker machines, `[DfiGames` | **ours**, shard content | none |
 | 0022 | DFI Network's event signup (event masters, undress and redress) and the crate race with DFI's track, `[DfiCrateRace` | **ours**, shard content, depends on 0016 | none |
 | 0023 | Bomberman, from the Solaris BoardGames scripts DFI ran, `[DfiBomberman` | **ours**, shard content | none |
+| 0024 | ModernUO's ConPVP duels set up in Luna's Grand Arena in place of DFI's duel and CTF systems, `[DfiArenas` | **ours**, shard content | none |
 | issue | `MultiData.LoadUOP` and uncompressed entries | **upstream** (issue, no patch) | `upstream/issue-multidata-loaduop-uncompressed.md` |
 
 ### 0006: loopback ban exemption (NET-00c, MUO patch)
@@ -86,7 +87,7 @@ still requires the shard console's detection/filter messages.
 **Verdict: ours.** Local readiness checks and development clients share one
 address. Keep this narrow policy separate from public-shard ban policy.
 
-### 0007 to 0023: DFI Network shard content (MUO patch)
+### 0007 to 0024: DFI Network shard content (MUO patch)
 
 GUO patches: `patches/0007-dfi-loot.patch`, `patches/0008-dfi-monsters.patch`,
 `patches/0009-dfi-player-items.patch` (player items, deeds, balls, the shrink
@@ -119,7 +120,8 @@ the Lost Lands loot) and `patches/0021-dfi-lottery-poker.patch` (under
 `Custom/DFI/Games`; new files only) and `patches/0022-dfi-crate-race.patch` (the
 event signup and the crate race under `Custom/DFI/Games`; new files only) and
 `patches/0023-dfi-bomberman.patch` (Bomberman under `Custom/DFI/Games`; new files
-only).
+only) and `patches/0024-dfi-conpvp-arena.patch` (one command that sets up ConPVP's
+arena and ladder; new files only).
 Ports of an owner's former RunUO shards (DFI Network, DefianceUO-based, and
 kopia 2012) so the dev shard plays like them: DFI's SE loot packs, its paragon
 and champion death bonuses, and 25 custom monsters under `Custom/DFI/`. The

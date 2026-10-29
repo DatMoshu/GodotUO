@@ -1,0 +1,141 @@
+diff --git a/Projects/UOContent.Tests/Tests/Custom/DfiArenasTests.cs b/Projects/UOContent.Tests/Tests/Custom/DfiArenasTests.cs
+new file mode 100644
+index 000000000..c86c6865d
+--- /dev/null
++++ b/Projects/UOContent.Tests/Tests/Custom/DfiArenasTests.cs
+@@ -0,0 +1,36 @@
++using Server;
++using Server.Custom.Dfi;
++using Server.Engines.ConPVP;
++using Xunit;
++
++namespace UOContent.Tests.Custom;
++
++[Collection("Sequential UOContent Tests")]
++public class DfiArenasTests
++{
++    [Fact]
++    public void LunaGrandArena_IsAnActiveConPvpArenaWithALadder()
++    {
++        var controller = DfiArenasGen.Place();
++
++        try
++        {
++            var arena = controller.Arena;
++
++            Assert.True(arena.Active);
++            Assert.Contains(arena, Arena.Arenas);
++            Assert.Equal(Map.Malas, arena.Facet);
++            Assert.NotNull(arena.Ladder);
++            Assert.Same(arena.Ladder.Ladder, arena.AcquireLadder());
++            Assert.True(DfiArenasGen.Pit.Contains(arena.Points.EdgeWest));
++            Assert.True(DfiArenasGen.Pit.Contains(arena.Points.EdgeEast));
++            Assert.True(DfiArenasGen.Pit.Contains(arena.Wall));
++            Assert.True(DfiArenasGen.Grounds.Contains(arena.Points.CornerNW));
++            Assert.False(DfiArenasGen.Grounds.Contains(arena.Outside));
++        }
++        finally
++        {
++            DfiArenasGen.Remove();
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Games/DfiArenasGen.cs b/Projects/UOContent/Custom/DFI/Games/DfiArenasGen.cs
+new file mode 100644
+index 000000000..a1c77a225
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Games/DfiArenasGen.cs
+@@ -0,0 +1,93 @@
++// Sets up ModernUO's ConPVP duels in Luna's Grand Arena on Malas, in place of DFI Network's own duel arena (DFI's
++// duel stones also led to Malas). Players say "I wish to duel" anywhere to challenge others; ConPVP brings them
++// to a free arena, where the fight is in the walled pit and the rest of the arena is a safe zone for onlookers.
++// A ladder controller keeps the duel rankings.
++
++using System.Collections.Generic;
++using Server.Commands;
++using Server.Engines.ConPVP;
++using Server.Logging;
++
++namespace Server.Custom.Dfi;
++
++public static class DfiArenasGen
++{
++    private static readonly ILogger logger = LogFactory.GetLogger(typeof(DfiArenasGen));
++
++    private const int Z = -90;
++
++    public static readonly Point3D ControllerSpot = new(915, 637, Z);
++    public static readonly Point3D LadderSpot = new(915, 638, Z);
++
++    // The pit's floor, the arena's whole grounds, and where evicted onlookers are put.
++    public static readonly Rectangle2D Pit = new(929, 633, 23, 9);
++    public static readonly Rectangle2D Grounds = new(919, 622, 44, 31);
++    public static readonly Point3D Outside = new(915, 637, Z);
++
++    public static void Configure()
++    {
++        CommandSystem.Register("DfiArenas", AccessLevel.Administrator, OnCommand);
++    }
++
++    [Usage("DfiArenas")]
++    [Description("Sets up ConPVP duels in Luna's Grand Arena with a ladder, replacing any set up before.")]
++    private static void OnCommand(CommandEventArgs e)
++    {
++        var removed = Remove();
++        Place();
++        e.Mobile.SendMessage($"DfiArenas: removed {removed}, set up the Luna Grand Arena.");
++        logger.Information("{User} set up the Luna Grand Arena for ConPVP ({Removed} removed)", e.Mobile, removed);
++    }
++
++    public static int Remove()
++    {
++        var doomed = new List<Item>();
++
++        foreach (var item in World.Items.Values)
++        {
++            if (item.Map == Map.Malas && (item is ArenaController && item.Location == ControllerSpot ||
++                                          item is LadderController && item.Location == LadderSpot))
++            {
++                doomed.Add(item);
++            }
++        }
++
++        foreach (var item in doomed)
++        {
++            item.Delete();
++        }
++
++        return doomed.Count;
++    }
++
++    public static ArenaController Place()
++    {
++        var ladder = new LadderController { Visible = false, Movable = false };
++        ladder.MoveToWorld(LadderSpot, Map.Malas);
++
++        var controller = new ArenaController();
++        controller.MoveToWorld(ControllerSpot, Map.Malas);
++
++        var arena = controller.Arena;
++        arena.Name = "Luna Grand Arena";
++        arena.Facet = Map.Malas;
++        arena.Bounds = Pit;
++        arena.Outside = Outside;
++        arena.Zone = Grounds;
++        arena.Wall = new Point3D(940, 637, Z);
++        arena.Ladder = ladder;
++
++        var points = arena.Points;
++        points.EdgeWest = new Point3D(930, 637, Z);
++        points.EdgeEast = new Point3D(950, 637, Z);
++        points.EdgeNorth = new Point3D(940, 634, Z);
++        points.EdgeSouth = new Point3D(940, 640, Z);
++        points.CornerNW = new Point3D(930, 634, Z);
++        points.CornerSE = new Point3D(950, 640, Z);
++        points.CornerSW = new Point3D(930, 640, Z);
++        points.CornerNE = new Point3D(950, 634, Z);
++
++        arena.Active = true;
++        return controller;
++    }
++}
