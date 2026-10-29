@@ -348,6 +348,47 @@ multis are ported but not placed. `DfiCursedCaveTests.cs` covers the
 creatures, items, rares, levelling, altar, doors, quest rounds, Warren's
 rewards, the fixtures and the spawn file.
 
+### `patches/0013-dfi-invasions.patch`
+
+DFI's town invasions, from `Scripts/Custom/Engines/InvasionSystem`. DFI ran
+one through an altar and spawners that staff placed by hand. Here
+`[invasion` (GameMaster) runs them in the 14 main Felucca towns: Britain,
+Minoc, Trinsic, Vesper, Yew, Moonglow, Skara Brae, Jhelom, Magincia, Cove,
+Ocllo, Nujel'm, Serpent's Hold and Buccaneer's Den.
+
+- **`[invasion`:** opens the control gump. It shows the default settings
+  (change them and press Apply) and every town, with its invasion's level
+  and kills and a Start or Stop button.
+- **Typed forms:** `[invasion start <town> [preset]`, `[invasion stop <town|all>`,
+  `[invasion status`, `[invasion presets` and `[invasion towns`. A town may be
+  shortened ("serp", "skara").
+- **`[invasion set <setting> <value>`:** changes the defaults and every
+  running invasion. The settings are `preset`, `bosskills` (DFI's 840),
+  `maxalive` (40), `radius` (25), `buffs` (on/off), `guards` (on/off) and
+  `boss` (a creature type, or `default`). A running invasion keeps the
+  preset it started with.
+
+The flow is DFI's:
+
+- Invaders get DFI's buffs: double hits, +5 damage, and more strength,
+  dexterity, intelligence, skills, speed, fame and karma.
+- The town is kept topped up to the alive limit every five seconds.
+- Each fifth of the kill target raises the level and sends stronger
+  creatures.
+- At the target the boss rises at the town's centre. When it dies the town
+  is saved, and the ten best killers see the top list two minutes later.
+- Guards are off in an invaded town until it ends, unless `guards` is on.
+
+There are seven presets: orcs (OgreLord), undead (Neira), daemons (Semidar),
+reptiles (Rikktor), vermin (Barracoon), arachnids (Mephitis) and cursed
+(Hephaestus, the Cursed Cave's creatures). Running invasions and the defaults
+are saved with the world.
+
+DFI sorted its top list from the fewest kills up and drew every row on one
+line; the port lists the best first, one row each. `DfiInvasionTests.cs`
+covers the presets, town names, settings, buffs, the command and a full run
+to the boss.
+
 ### Retired
 
 `0004-multi-tile-enumerator` fixed tile lookups that stopped at a multi with no

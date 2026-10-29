@@ -44,6 +44,7 @@ is retired (as `0004-multi-tile-enumerator` was).
 | 0010 | DFI Network spawn layouts and staff-placed setups, `[DfiSpawns` | **ours**, shard content, depends on 0009 (its rare spawns name 0011's types) | none |
 | 0011 | DFI Network stealable rares, and the Stealing hook that lets thieves take them | **ours**, shard content | none |
 | 0012 | DFI Network's Cursed Cave: region, creatures, quest, artifacts, rares, Hephaestus' altar, `[CursedCave` | **ours**, shard content, depends on 0007, 0010 and 0011 | none |
+| 0013 | DFI Network's town invasions, started, stopped and changed with `[invasion` | **ours**, shard content, depends on 0008 and 0012 (presets name their creatures) | none |
 | issue | `MultiData.LoadUOP` and uncompressed entries | **upstream** (issue, no patch) | `upstream/issue-multidata-loaduop-uncompressed.md` |
 
 ### 0006: loopback ban exemption (NET-00c, MUO patch)
@@ -75,7 +76,7 @@ still requires the shard console's detection/filter messages.
 **Verdict: ours.** Local readiness checks and development clients share one
 address. Keep this narrow policy separate from public-shard ban policy.
 
-### 0007 to 0012: DFI Network shard content (MUO patch)
+### 0007 to 0013: DFI Network shard content (MUO patch)
 
 GUO patches: `patches/0007-dfi-loot.patch`, `patches/0008-dfi-monsters.patch`,
 `patches/0009-dfi-player-items.patch` (player items, deeds, balls, the shrink
@@ -86,7 +87,8 @@ system and runic tools; new files only) and `patches/0010-dfi-spawns.patch`
 items on the ground to `DfiRares.Steal`) and `patches/0012-dfi-cursed-cave.patch`
 (the Cursed Cave under `Custom/DFI/CursedCave`, its spawn file, and the four
 level-1 spawners it takes over from 0010's `felucca.json`; no ModernUO file
-edited).
+edited) and `patches/0013-dfi-invasions.patch` (town invasions under
+`Custom/DFI/Invasion`; new files only).
 Ports of an owner's former RunUO shards (DFI Network, DefianceUO-based, and
 kopia 2012) so the dev shard plays like them: DFI's SE loot packs, its paragon
 and champion death bonuses, and 25 custom monsters under `Custom/DFI/`. The
