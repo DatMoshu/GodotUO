@@ -51,7 +51,8 @@ internal partial class GameScene
             int map=_world.Map.Index;
             var transform=WorldOverview.MapTransform(Camera,_offset,player.Z,
                 maps.MapBlocksSize[map,0]*8,maps.MapBlocksSize[map,1]*8);
-            _speedCloudPass.ProtectPin(transform*new Vector2(player.X+.5f,player.Y+.5f),true);
+            // The overview pin head is 32 pixels above its map ground anchor.
+            _speedCloudPass.ProtectPin(transform*new Vector2(player.X+.5f,player.Y+.5f)+new Vector2(0,-32),true);
         } else _speedCloudPass.ProtectPin(new Vector2(-1000,-1000),false);
         // WorldOverview.Draw ends an identity-view batch; no Begin/End here
         // changes its labels, picking or the lead's active native batch.
