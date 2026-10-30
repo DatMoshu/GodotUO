@@ -1,7 +1,7 @@
 # Lighting speed shadows (ADR-0048 amendment)
 
 `GameScene.SpeedModeShadows` snapshots loaded wall sources, sun casters,
-per-lamp mobile body silhouettes and covered/open window boundaries after
+per-lamp native mobile silhouettes and covered/open window boundaries after
 the core reach walk. `SpeedShadowInputs` produces real GPU inputs through
 `SpeedLightFrame.RenderInputs`, then adds windows through `RenderPatches`.
 The core calls `ReleaseInputs` on off, failure, resize and shutdown.
@@ -11,9 +11,12 @@ Classic/off does not construct the adapter. Headless fixtures do not prove
 visual parity; the rendered `ShadowHookProbe` checks the real callback,
 alpha, selected-lamp term, disabled restoration and resource release.
 
-The current scene adapter samples native mobile body frames only; equipment,
-mount and sitting silhouette parity require capture from the existing native
-draw, rather than reimplementing its animation selection. The adapter reads
+The scene adapter copies the current completed ordered body-pass quads: body,
+equipment, mounts and deformed sitting sections, including native affine flips
+and integer offsets. It never redraws a mobile or changes native list membership.
+The snapshot ignores non-finite/zero-area native equipment slices, which render
+no pixels. A single native contact origin and silhouette height are shared by
+all of each mobile's sections. The adapter reads
 the validated world shard stamp; when absent the source is explicitly
 `shard-brightness-approximation`. Window emission is conservative:
 both a classified wall face and a covered-inside/open-outside pair are required.
@@ -78,3 +81,13 @@ Godot slot, run windowed at 1280x720 with `-- --gpu` for GPU fixtures; set
 span/distance/height, translated coordinates, two-lamp selection, full-view
 sun stamping and MAX overlap. Bank/shop captures and off parity remain live
 integration acceptance checks.
+
+
+`NativeMobileShadowProbe.tscn` boots a disconnected client with a separate profile
+and supplied native art. It exercises body, equipment, mount, sitting sections,
+affine mirroring, fractional offsets, hidden/dead exclusion and frozen off-return
+pixels. It is isolated fixture evidence, not a strict live-account bank/shop test.
+Set `GUO_SHADOW_PROBE_OUT` to an external evidence folder and `--cache-dir` to an
+external fixture home. A one-word `partial` declaration on OrderedWorldCapture
+admits the read-only companion; its private streams never escape their owning
+thread/ticket. Render callbacks consume copied stamp values only.

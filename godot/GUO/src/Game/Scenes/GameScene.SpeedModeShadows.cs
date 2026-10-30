@@ -74,34 +74,13 @@ internal partial class GameScene
         Transform2D view=matrix;
         Span<int> selected=stackalloc int[10];
         int selectedCount=PolarShadowGeometry.Select(inputs.Lamps.AsSpan(0,frame.Count),inputs.Viewer,inputs.Requested,selected);
-        Span<MobileLampShadow> affecting=stackalloc MobileLampShadow[2];
         foreach(var chunk in _visibleChunks) {
             if(chunk==null || chunk.IsDestroyed) continue;
             for(int y=0;y<8;y++) for(int x=0;x<8;x++) for(var obj=chunk.Tiles[x,y];obj!=null;obj=obj.TNext) {
                 if(!obj.AllowedToDraw || obj.Z>=_maxZ) continue;
                 Vector2 screen=new((obj.X-obj.Y)*22-_offset.X,(obj.X+obj.Y)*22-obj.Z*4-_offset.Y);
-                if(obj is Mobile mobile) {
-                    if(mobile.IsDead || mobile.IsHidden) continue;
-                    ushort graphic=mobile.GetGraphicForAnimation();
-                    byte dir=(byte)((byte)mobile.GetDirectionForAnimation()&7); bool flip=false;
-                    var animations=Client.Game.UO.Animations;
-                    animations.GetAnimDirection(ref dir,ref flip);
-                    var frames=animations.GetAnimationFrames(graphic,Mobile.GetGroupForAnimation(mobile,graphic,true),dir,out _,out _);
-                    if(frames.Length==0) continue;
-                    ref var art=ref frames[Math.Min(mobile.AnimIndex,frames.Length-1)];
-                    if(art.Texture==null) continue;
-                    Vector2 anchor=screen+new Vector2(22+mobile.Offset.X,19+mobile.Offset.Y-mobile.Offset.Z);
-                    Vector2 pos=anchor-new Vector2(flip ? art.UV.Width-art.Center.X : art.Center.X,art.UV.Height+art.Center.Y);
-                    if(sun) inputs.Sun.Add(SpeedShadowInputs.Project(art.Texture,art.UV,pos,anchor,direction*(art.UV.Height*sky.Length),sky.Strength,flip,view));
-                    var foot=new N3(mobile.X+(mobile.Offset.X+mobile.Offset.Y)/44f,mobile.Y+(mobile.Offset.Y-mobile.Offset.X)/44f,mobile.Z);
-                    int count=MobileLampProjection.Select(inputs.Lamps.AsSpan(0,frame.Count),foot,affecting);
-                    for(int j=0;j<count;j++) for(int row=0;row<selectedCount;row++) if(selected[row]==affecting[j].Offer) {
-                        var cast=affecting[j]; inputs.Mobile[row]??=new List<SpeedShadowInputs.Stamp>(32);
-                        inputs.Mobile[row].Add(SpeedShadowInputs.Project(art.Texture,art.UV,pos,anchor,
-                            new Vector2(cast.Direction.X,cast.Direction.Y)*(art.UV.Height*cast.Length),cast.Strength,flip,view));
-                    }
-                    continue;
-                }
+                // Mobile silhouettes come from the completed native draw below.
+                if(obj is Mobile) continue;
                 if(obj is not (Static or Multi or Item) || obj.Graphic>=tiles.Length) continue;
                 ref var td=ref tiles[obj.Graphic];
                 if(windows && WindowLightTable.BuiltIn.TryGetValue(obj.Graphic,out var opening))
@@ -128,6 +107,7 @@ internal partial class GameScene
                     direction*(sprite.UV.Height*sky.Length),sky.Strength,false,view));
             }
         }
+        CollectSpeedMobileShadows(inputs,batcher,view,direction,sky.Length,sky.Strength,selected[..selectedCount]);
         frame.RenderInputs=inputs.RenderCallback; frame.RenderPatches=inputs.PatchCallback; frame.ReleaseInputs=inputs.ReleaseCallback;
     }
 
