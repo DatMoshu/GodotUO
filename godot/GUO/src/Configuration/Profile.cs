@@ -418,6 +418,12 @@ namespace GUO.Configuration
         public bool LightingSpeedMode { get; set; } = false;
         public int SpeedModeNightFloor { get; set; } = 3;
         public int SpeedModeSoften { get; set; } = 3;
+#if GUO_LABS
+        // PORT DEVIATION (GUO): ADR-local-lighting-clock, local test only.
+        public bool LocalLightingTestTime { get; set; } = false;
+        private int _localLightingTestHour = 12;
+        public int LocalLightingTestHour { get => _localLightingTestHour; set => _localLightingTestHour = Math.Clamp(value, 0, 23); }
+#endif
         // PORT DEVIATION (GUO): ADR-0048 shadow/window sub-options apply only
         // inside LightingSpeedMode; the parent remains off on old profiles.
         private int _speedModeLampShadows = 6;

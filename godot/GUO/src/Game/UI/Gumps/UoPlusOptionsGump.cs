@@ -13,6 +13,10 @@ internal sealed class UoPlusOptionsGump : Gump
     private readonly Profile _profile;
     private Checkbox _speedMode; // PORT DEVIATION (GUO): ADR-0048
     private HSliderBar _speedNightFloor,_speedSoften;
+#if GUO_LABS
+    private readonly Checkbox _localClock;
+    private readonly HSliderBar _localClockHour;
+#endif
     // PORT DEVIATION (GUO): ADR-0048; staged shadow/window children.
     private readonly Combobox _speedLampShadows;
     private readonly Checkbox _speedSunShadows,_speedWindowLight;
@@ -64,6 +68,17 @@ internal sealed class UoPlusOptionsGump : Gump
         _speedMode = new Checkbox(0xD2, 0xD3, "Lighting speed mode (GPU per-pixel lights)", 1, 0xFFFF)
             { X=4, Y=y, IsChecked=_profile.LightingSpeedMode, IsEnabled=Renderer.SpeedMode.SpeedModeDebug.Supported };
         area.Add(_speedMode); y += 30;
+#if GUO_LABS
+        _localClock=new Checkbox(0xD2,0xD3,"Local test time (ignore shard clock)",1,0xFFFF)
+            { X=4,Y=y,IsChecked=_profile.LocalLightingTestTime };
+        area.Add(_localClock); y+=30;
+        var clockLabel=new Label($"Local lighting time: {_profile.LocalLightingTestHour:00}:00",true,0xFFFF,font:1) { X=4,Y=y };
+        area.Add(clockLabel);
+        _localClockHour=new HSliderBar(4,y+22,Width-110,0,23,_profile.LocalLightingTestHour,HSliderBarStyle.MetalWidgetRecessedBar,true,1,0xFFFF);
+        _localClockHour.ValueChanged+=(_,_)=>clockLabel.Text=$"Local lighting time: {_localClockHour.Value:00}:00";
+        area.Add(_localClockHour);y+=54;
+        area.Add(new Label("Lighting only; Apply to freeze this hour locally.",true,0x0386,Width-70,1) { X=4,Y=y });y+=32;
+#endif
         if (!Renderer.SpeedMode.SpeedModeDebug.Supported) {
             area.Add(new Label(Renderer.SpeedMode.SpeedModeDebug.UnavailableReason, true, 0x0386, Width-70, 1) { X=4, Y=y }); y += 40;
         }
@@ -106,11 +121,18 @@ internal sealed class UoPlusOptionsGump : Gump
         void SpeedControls() {
             bool enabled=_speedMode.IsEnabled && _speedMode.IsChecked;
             _speedNightFloor.IsEnabled=_speedSoften.IsEnabled=enabled;
+#if GUO_LABS
+            _localClock.IsEnabled=enabled;
+            _localClockHour.IsEnabled=enabled&&_localClock.IsChecked;
+#endif
             _speedLampShadows.IsEnabled=_speedSunShadows.IsEnabled=_speedWindowLight.IsEnabled=enabled;
             _speedWeather.IsEnabled=_speedReflections.IsEnabled=_speedFog.IsEnabled=enabled;
             _speedWind.IsEnabled=enabled;
             _speedHaze.IsEnabled=enabled && _speedFog.IsChecked;
         }
+#if GUO_LABS
+        _localClock.ValueChanged+=(_,_)=>SpeedControls();
+#endif
         _speedFog.ValueChanged+=(_,_)=>SpeedControls();
         _speedMode.ValueChanged+=(_,_)=>SpeedControls(); SpeedControls();
         _overview = new Checkbox(0xD2, 0xD3, "Experimental zoom + world map", 1, 0xFFFF)
@@ -205,6 +227,10 @@ internal sealed class UoPlusOptionsGump : Gump
 #endif
         if (_defaultsStaged) UoPlusOptions.ResetDefaults(_profile);
         _profile.LightingSpeedMode = _speedMode.IsChecked;
+#if GUO_LABS
+        _profile.LocalLightingTestTime=_localClock.IsChecked;
+        _profile.LocalLightingTestHour=_localClockHour.Value;
+#endif
         _profile.SpeedModeNightFloor=_speedNightFloor.Value;
         _profile.SpeedModeSoften=_speedSoften.Value;
         // PORT DEVIATION (GUO): ADR-0048; parent off leaves these inert.
@@ -235,6 +261,10 @@ internal sealed class UoPlusOptionsGump : Gump
     {
         _defaultsStaged = true;
         _speedMode.IsChecked = false;
+#if GUO_LABS
+        _localClock.IsChecked=false;_localClockHour.Value=12;
+        _localClock.IsEnabled=_localClockHour.IsEnabled=false;
+#endif
         _speedNightFloor.Value=_speedSoften.Value=3;
         _speedWeather.IsChecked=_speedReflections.IsChecked=_speedFog.IsChecked=true;
         _speedWeather.IsEnabled=_speedReflections.IsEnabled=_speedFog.IsEnabled=false;

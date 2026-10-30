@@ -256,6 +256,10 @@ namespace GUO.Game.Scenes
         private float RealtimeAmbientLevel()
         {
             var profile = ProfileManager.CurrentProfile;
+#if GUO_LABS
+            // PORT DEVIATION (GUO): local lighting test clock never edits shard state.
+            if (GUO.Labs.LightingClock.LightingTestClock.TryBrightness(profile, out float localBrightness)) return localBrightness;
+#endif
             int overall = _world.Light.Overall;
             int personal = _world.Light.Personal;
             if (profile != null && profile.UseCustomLightLevel)

@@ -66,7 +66,11 @@ internal partial class GameScene
         }
         // Validated packet0x5B wins; otherwise use the named brightness
         // approximation. Never derive server time from the PC clock.
+#if GUO_LABS
+        var sky=GUO.Labs.LightingClock.LightingTestClock.Resolve(profile,_world.ShardClock,RealtimeAmbientLevel(),Time.Ticks);
+#else
         var sky=SunShadowProjection.Resolve(_world.ShardClock,RealtimeAmbientLevel(),Time.Ticks);
+#endif
         SpeedSunSource=sky.Source;
         N2 ray=sky.Direction;
         Vector2 direction=new(ray.X-ray.Y,ray.X+ray.Y);

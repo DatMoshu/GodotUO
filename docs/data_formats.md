@@ -1,4 +1,4 @@
-# Data formats — the contract between tools and runtime
+# Data formats â€” the contract between tools and runtime
 
 This document sits between the Python tooling under `tools/` and the C#
 runtime under `godot/GUO/`. Both sides must agree on it. **Extend this
@@ -19,8 +19,8 @@ copied into this repository, and none is ever committed. The path comes from
 `UO_CLIENT_DATA`; it is never hardcoded.
 
 **2. Derived data is disposable.**
-Anything the port computes from client data — decoded sprites, atlases, hue
-LUTs — lives under `UO_CACHE_DIR`, outside the repo (extracted art sets, §36,
+Anything the port computes from client data â€” decoded sprites, atlases, hue
+LUTs â€” lives under `UO_CACHE_DIR`, outside the repo (extracted art sets, Â§36,
 under their own `UO_ART_EXTRACT_DIR`). Deleting that directory
 must always be safe; the runtime rebuilds it on demand.
 
@@ -35,24 +35,24 @@ same two files when a tool runs outside a launcher.
 
 ## 2. Configuration keys
 
-Every key resolves as: **environment variable → `config.local.bat` →
-`config.bat` → central shared config (`UO_COMMON_CONFIG`, optional)**.
+Every key resolves as: **environment variable â†’ `config.local.bat` â†’
+`config.bat` â†’ central shared config (`UO_COMMON_CONFIG`, optional)**.
 
 | Key | Meaning |
 |---|---|
 | `UO_CLIENT_DATA` | Folder holding the `.mul` / `.uop` / `.idx` files |
 | `UO_CLIENT_VERSION` | Client version the data corresponds to (e.g. `7.0.107.76`) |
 | `UO_CACHE_DIR` | Disposable decode cache |
-| `UO_ART_EXTRACT_DIR` | The extracted art set (§36, ADR-0034): atlas pages and indexes of the install's art. Default `art_extract` under `UO_WORKSPACE_DIR`; gitignored, never committed or bundled |
+| `UO_ART_EXTRACT_DIR` | The extracted art set (Â§36, ADR-0034): atlas pages and indexes of the install's art. Default `art_extract` under `UO_WORKSPACE_DIR`; gitignored, never committed or bundled |
 | `UO_ART_SET` | `1` reads art from the extracted set when its fingerprint matches the install; default `0`. The `--art-set` / `--no-art-set` client arguments override it for one run |
 | `UO_ART_SET_CACHE_MB` | Decoded set pages kept in memory, in MB; default 256, minimum 16 (AX2) |
-| `UO_ART_SHARD` | The shard id whose encrypted art container to read (§36, AX6); the `--art-shard ID` client argument overrides it. Empty means the plain set |
+| `UO_ART_SHARD` | The shard id whose encrypted art container to read (Â§36, AX6); the `--art-shard ID` client argument overrides it. Empty means the plain set |
 | `UO_ART_KEY_DIR` | The folder holding the profile's shard keys, `<shard id>.key`; default `art_keys` under `UO_WORKSPACE_DIR`. Never in the repository |
-| `UO_WORLD_PROJECT` | The editor's world project folder (§9); default `build\world\default` |
-| `UO_MAPGEN_DATA` | The map generator's per-user data folder (§26): mined stamps, coast atlas, tree statics, validator reports; default `%LOCALAPPDATA%\GUO\mapgen` |
-| `UO_EDITOR_LIVE_HOST` / `UO_EDITOR_LIVE_PORT` | The editor bridge the UO Shard dock connects to (§10); default `127.0.0.1:2595`, the private instance |
+| `UO_WORLD_PROJECT` | The editor's world project folder (Â§9); default `build\world\default` |
+| `UO_MAPGEN_DATA` | The map generator's per-user data folder (Â§26): mined stamps, coast atlas, tree statics, validator reports; default `%LOCALAPPDATA%\GUO\mapgen` |
+| `UO_EDITOR_LIVE_HOST` / `UO_EDITOR_LIVE_PORT` | The editor bridge the UO Shard dock connects to (Â§10); default `127.0.0.1:2595`, the private instance |
 | `UO_EDITOR_NAME` | The name this editor shows other editors on the bridge |
-| `UO_BRIDGE_ADMIN_TOKEN` | The bridge's admin token (§10, ADR-0035): 32 letters and digits, generated into the workspace's `shard\secrets.bat` with the shard passwords; never printed or logged |
+| `UO_BRIDGE_ADMIN_TOKEN` | The bridge's admin token (Â§10, ADR-0035): 32 letters and digits, generated into the workspace's `shard\secrets.bat` with the shard passwords; never printed or logged |
 | `UO_SHARD_HOST` / `UO_SHARD_PORT` | Shard to connect to |
 | `GODOT_VERSION` / `GODOT_FLAVOR` | Pinned engine build |
 | `UO_LOG_LEVEL` | `DEBUG` \| `INFO` \| `WARN` \| `ERROR` |
@@ -113,7 +113,7 @@ identically.
 
 ### Facet coverage
 
-Facets 0–5 are Felucca, Trammel, Ilshenar, Malas, Tokuno and TerMur. Only
+Facets 0â€“5 are Felucca, Trammel, Ilshenar, Malas, Tokuno and TerMur. Only
 facet 0 is required to boot. Each facet contributes up to five entries:
 terrain (`mapN`), statics (`staticsN`), their two patch layers (`mapdifN`,
 `stadifN`) and facet metadata (`facetNN`).
@@ -169,7 +169,7 @@ Schema id: **`guo/client_manifest@1`**
 - **`format` decides which reader to use** for that entry. Do not re-probe
   the filesystem and risk disagreeing with the manifest.
 - **`stray_files` is a to-do list, not an error.** A non-empty list means the
-  install contains data the port currently ignores — usually a newer client
+  install contains data the port currently ignores â€” usually a newer client
   or custom shard content. Investigate before supporting a new client
   version.
 - **Treat the manifest as a cache, not a source of truth about content.** It
@@ -207,7 +207,7 @@ the ClassicUO commit whose changes have been reviewed for porting. It is
 committed, so the whole team shares one answer to "reviewed up to where?".
 
 `launchers\dev\sync_upstream.bat` reports commits after the pin, and flags
-those touching already-ported files — the ones that rot silently. Re-pin with
+those touching already-ported files â€” the ones that rot silently. Re-pin with
 `--pin` only after actually assessing them.
 
 ---
@@ -215,7 +215,7 @@ those touching already-ported files — the ones that rot silently. Re-pin with
 ## 7. Adding support for a new data file
 
 1. Add a `DataFile` entry to `tools/guo/formats.py`.
-2. Document it here — what it is, which subsystem consumes it, and any
+2. Document it here â€” what it is, which subsystem consumes it, and any
    resolution quirk.
 3. Re-run `launchers\pipeline\01_verify_client_data.bat` and confirm it drops
    out of `stray_files`.
@@ -335,7 +335,7 @@ line, UTF-8, `\n`-terminated. ADR-0012 has the reasoning.
 
 | `op` | Fields |
 |---|---|
-| `hello` | `shard` (the UltimaLive shard name), `maps` (facets offered to UltimaLive clients), `seasons` (facet → ModernUO season number, which the editor adopts), `admin` (the access level the token granted, or null), `admin_ops` (when granted: the admin ops this connection may run), `admin_error` (when a token was refused: `admin token refused` or `this server has no admin token`) |
+| `hello` | `shard` (the UltimaLive shard name), `maps` (facets offered to UltimaLive clients), `seasons` (facet â†’ ModernUO season number, which the editor adopts), `admin` (the access level the token granted, or null), `admin_ops` (when granted: the admin ops this connection may run), `admin_error` (when a token was refused: `admin token refused` or `this server has no admin token`) |
 | `ack` | `facet`, `bx`, `by`, `clients` (UltimaLive clients pushed to), `editors` (other editors relayed to), `ms` (time on the game thread) |
 | `block` | as sent, plus `from` (the sending editor's name): another editor's block. Last write per block wins |
 | `command` | as `admin_command` below, `as` always the named character (before AD3: `ok`, `as`, `text`, or `error`) |
@@ -429,7 +429,7 @@ The client keeps UltimaLive copies of the listed maps in
 
 ## 11. World project assets (the editor's art, gump and hue edits)
 
-Replaced art, gumps and hues live beside a world project's blocks (§9), under
+Replaced art, gumps and hues live beside a world project's blocks (Â§9), under
 `assets/`. ADR-0020 has the reasoning. As with blocks, the install is never
 written.
 
@@ -526,7 +526,7 @@ None of these files are committed: they derive from the install.
 `<world-project>/metadata/items/0xNNNN.json` is editor-only inert JSON, schema 1:
 `kind: guo/item-metadata`, `layout: modern-41`, item `id`, base64 `original`
 (exactly 41 source bytes), original-record `source_sha256`, UTF-8 `name`,
-hexadecimal-string `flags` (unsigned 64-bit) and integer `height` (0–255).
+hexadecimal-string `flags` (unsigned 64-bit) and integer `height` (0â€“255).
 Only name, flags and height are editable. The source record and all other fields
 are retained; an unchanged name retains its raw bytes. A changed name is at most
 20 UTF-8 bytes, without NUL, and zero-padded in the in-memory preview.
@@ -674,7 +674,7 @@ executables. `art-override` is reserved and rejected.
 - Paths use `/`, are relative, have no empty, `.` or `..` components,
   backslashes, colons, control characters, Windows reserved device names,
   trailing dots/spaces or Windows special characters. Windows device
-  names include the superscript forms (`COM¹`). A component must have a
+  names include the superscript forms (`COMÂ¹`). A component must have a
   stem: `.png` alone is refused. Each component is at most 100 and each
   path at most 240 **UTF-16 code units** (what the file system counts; an
   emoji is two). Duplicate paths, symlinks, encrypted entries, directory
@@ -682,7 +682,7 @@ executables. `art-override` is reserved and rejected.
 - Case aliases: two names are one name when they share a folding key.
   Turkish dotted and dotless i count as i. Then each character folds by its
   simple one-to-one lower and upper mapping, as NTFS and .NET do: `K` (Kelvin
-  sign) and `k` alias, `ß` and `ss` do not.
+  sign) and `k` alias, `ÃŸ` and `ss` do not.
 - A non-ASCII ZIP entry name must carry the ZIP's UTF-8 flag (bit 11).
   Without it the name is ambiguous (CP437 by the spec, UTF-8 to many tools).
 - `tools/asset_store/corpus/cases.json` holds a case for each of these
@@ -902,8 +902,8 @@ downloads; trust in the publisher comes from the configured store URL
 
 ## 13. World objects (the editor's spawners and decoration)
 
-Spawners and placed items live in the world project beside its blocks (§9)
-and assets (§11), in one server-neutral file. ADR-0014 has the reasoning.
+Spawners and placed items live in the world project beside its blocks (Â§9)
+and assets (Â§11), in one server-neutral file. ADR-0014 has the reasoning.
 
 ```
 <UO_WORLD_PROJECT>/shard/objects.json
@@ -963,7 +963,7 @@ proprietary files):
 |---|---|
 | `<install file>` | A copy of each file written to, made on first write. Only these. |
 | `stage.json` | `format`, `install` (path read from), `files {lowercase name: {sha1, size}}` of each original at copy time |
-| `guo_data.json` | The custom-data manifest (§15): `mode` layered, `files` the staged copies, `contains_ea_data` true (local only). Set `UO_CUSTOM_DATA` to the stage to play with it |
+| `guo_data.json` | The custom-data manifest (Â§15): `mode` layered, `files` the staged copies, `contains_ea_data` true (local only). Set `UO_CUSTOM_DATA` to the stage to play with it |
 | `files_override.txt` | `name=<absolute staged path>` per staged file, for the client's `settings.json` `files_override` |
 | `slots.json` | `format`, `packs {pack: {ranges {ns: [[first, last]...]}, used {ns: {what: id}}}}`; `ns` is `static`, `anim`, `gump` or `multi` |
 | `multis.json` | (written by `tools/multi write`) `{name: {id, doors, size, storeys}}` per authored multi, what `prove` places |
@@ -1006,19 +1006,19 @@ absent. Existing file provenance remains unchanged. Edited BWT sources emit plai
 UTF-8 while identity exports retain their compressed bytes.
 
 - **LegacyMUL UOP.** The data is appended, then one new block
-  (`int32 count, int64 next = 0`, then `count` × 34-byte entries:
+  (`int32 count, int64 next = 0`, then `count` Ã— 34-byte entries:
   `int64 offset, int32 header_len 0, int32 size, int32 decompressed size,
   uint64 hash, uint32 adler 0, int16 flag 0`). The previous last block's
   `next` field (at +4) is set to it, and the header's file count at offset 24
   is increased. Names: art `build/artlegacymul/{id:08d}.tga` (a static's index
   is 0x4000 + id), gumps `build/gumpartlegacymul/{id:08d}.tga`.
 - **MUL + IDX.** The data is appended to the `.mul`; the 12-byte `.idx` entry
-  `int32 offset, int32 length, int32 extra` is written at `index × 12`.
-- **anim.idx index.** For a body below 200: `body × 110`. Below 400:
-  `22000 + (body − 200) × 65`. Otherwise `35000 + (body − 400) × 175`. Add
-  `action × 5 + direction`.
-- **tiledata.mul (new format).** 512 land groups of `4 + 32 × 30` bytes, then
-  static groups of `4 + 32 × 41`. An item's 41 bytes are
+  `int32 offset, int32 length, int32 extra` is written at `index Ã— 12`.
+- **anim.idx index.** For a body below 200: `body Ã— 110`. Below 400:
+  `22000 + (body âˆ’ 200) Ã— 65`. Otherwise `35000 + (body âˆ’ 400) Ã— 175`. Add
+  `action Ã— 5 + direction`.
+- **tiledata.mul (new format).** 512 land groups of `4 + 32 Ã— 30` bytes, then
+  static groups of `4 + 32 Ã— 41`. An item's 41 bytes are
   `uint64 flags, u8 weight, u8 layer, int32 count, u16 anim, u16 hue,
   u16 light, u8 height, char[20] name`, written in place.
 - **Paperdoll gumps** of a wearable with animation body `b`: male
@@ -1059,7 +1059,7 @@ Which data a run reads is resolved in this order:
 
 `tools/guo/datasources.py` is the tools' half and the runtime must match
 it. A folder is **valid** when every required `FILE_REGISTRY` entry is
-satisfied under the rules of §3.
+satisfied under the rules of Â§3.
 
 **Settings**
 
@@ -1088,7 +1088,7 @@ It is not a failure.
 A layered folder reaches the client as upstream's `files_override` file:
 one `name=absolute path` line per file, lowercase names. Launchers write it
 to `build/datasources/files_override.txt`, so a pack itself never carries an
-absolute path. A staged set (§14) writes its own manifest with `mode:
+absolute path. A staged set (Â§14) writes its own manifest with `mode:
 layered` and `contains_ea_data: true`.
 
 ---
@@ -1108,10 +1108,10 @@ client data, so never committed), written by `run.py mine`:
 | File | Contents |
 |---|---|
 | `multis.json` | Per client multi: `id`, `kind` (`one-storey`, `two-storey`, `large-house`, `castle-or-keep`, `boat`, `open`, `marker`), `bounds`, `size`, `components`, `roles` (count per role), `storeys` (floor z levels), `storey_steps`, `wall_height`, `wall_materials`, `floor_materials`, `roof` (`z_from`, `z_to`, `step`, `above_top_storey`), `stairs` (runs, as in `stairs.json`), `doors` `[x, y, z, item, shown]`, `markers` (hidden components) |
-| `families.json` | What generators pick from, most used first: `material → wall/window/post → height → signature → [ids]`, `material → roof → side → [ids]`, `material → stair → "ascent/signature" → [ids]`, `material → floor → signature → [ids]`, `material → door → any → [ids]` |
+| `families.json` | What generators pick from, most used first: `material â†’ wall/window/post â†’ height â†’ signature â†’ [ids]`, `material â†’ roof â†’ side â†’ [ids]`, `material â†’ stair â†’ "ascent/signature" â†’ [ids]`, `material â†’ floor â†’ signature â†’ [ids]`, `material â†’ door â†’ any â†’ [ids]` |
 | `pieces.json` | Per item id: `name`, `flags`, `height`, `role`, `material`, `signature`, `roof_side`, `step`, `uses_multi`, `uses_statics`, `multis`, `in` (multi ids that use it), `z_above_floor` |
 | `stairs.json` | Every stair run: `items`, `tiles`, `z_from`, `z_to`, `rise` (z per step), `direction`, `from_storey`, `to_storey`, `cells`, `source` |
-| `buildings.json` | Clusters of wall statics on a facet (west of the dungeons), each analysed like a multi, plus `furnishing` (item → count) |
+| `buildings.json` | Clusters of wall statics on a facet (west of the dungeons), each analysed like a multi, plus `furnishing` (item â†’ count) |
 | `furnishing.json` | Per furnishing item: `placed`, `against_wall` and `on_surface` (fractions), `with` (the items most often in the same building) |
 | `summary.json` | Counts: multis by kind, statics and buildings scanned, `storey_steps`, `stair_rise`, `ground_floor_z` |
 
@@ -1122,8 +1122,8 @@ Terms:
 - A **material** is the tile name without its role word. Walls, windows,
   posts and doors take the wall material of the level they stand in, because
   some tile names are unreliable.
-- A **signature** is which of `N` (y − 1), `E` (x + 1), `S` (y + 1) and
-  `W` (x − 1) hold the same kind of piece at the same z (`-` for none).
+- A **signature** is which of `N` (y âˆ’ 1), `E` (x + 1), `S` (y + 1) and
+  `W` (x âˆ’ 1) hold the same kind of piece at the same z (`-` for none).
 - A roof **side** is the side a slope faces (`N`, `E`, `S`, `W`, or a corner
   such as `NW`), or `ridge_x`/`ridge_y` along the top, or `cap`.
 - A step's **ascent** is the side the next higher surface is on.
@@ -1134,7 +1134,7 @@ Terms:
 |---|---|
 | `name` | The multi's name in the stage |
 | `size` `[W, H]` | Outer walls on the lines x = 0, x = W, y = 0 and y = H. The floor fills x 1..W, y 1..H, as the client's houses do |
-| `materials` | Required: `wall`, `floor`. Optional: `foundation` (a 5-high ring at `floor_z − 7`), `steps` (outside each ground-floor door), `roof`, `door` (`wood` or `metal`) |
+| `materials` | Required: `wall`, `floor`. Optional: `foundation` (a 5-high ring at `floor_z âˆ’ 7`), `steps` (outside each ground-floor door), `roof`, `door` (`wood` or `metal`) |
 | `floor_z` | The ground floor's z (default 7, the originals' usual value) |
 | `storey_height` | z between storeys (default 20); `wall_height` defaults to one less |
 | `storeys[]` | Per storey, bottom up: `openings[]` (`kind` `door` or `window`, placed by `side` `N`/`E`/`S`/`W` with an `offset` along it, or by `at` `[x, y]`), `partitions[]` (inner walls: `{"x": k, "from", "to"}` or `{"y": k, ...}`), `floor_holes[]` (`[x, y]` left open, for stairwells) |
@@ -1179,7 +1179,7 @@ Terms:
 **The validator** refuses:
 
 - an item missing from tiledata, or one with no art;
-- a z outside −128..127;
+- a z outside âˆ’128..127;
 - more than 4,676 components (the shard reads an entry into 64 KB);
 - a ground floor the outside reaches with the doors shut (a gap in a wall);
 - a floor cell not reachable through a door (ground floor) or from a stair
@@ -1450,7 +1450,7 @@ with a vision model is the user's own tool and key.
 | `facet` | Map index |
 | `camera.centre` | `[x, y, z]` of the cell the view is centred on |
 | `camera.zoom`, `camera.viewport` | Zoom, and `[width, height]` in pixels |
-| `camera.sextant` | The centre as ModernUO's Sextant item reads it, e.g. `0°21'S 12°9'E` |
+| `camera.sextant` | The centre as ModernUO's Sextant item reads it, e.g. `0Â°21'S 12Â°9'E` |
 | `shot` | `"shot.png"` or `null` |
 | `pixel_to_cell.origin` | Pixel of the centre cell's top corner (the point `(cx, cy, cz)`) |
 | `pixel_to_cell.x_step`, `y_step`, `z_step` | Pixel offset per +1 in x, y and z: `pixel(x,y,z) = origin + (x-cx)*x_step + (y-cy)*y_step + (z-cz)*z_step` |
@@ -1518,9 +1518,9 @@ the `default` voice. The `-voice` gump targets, tests, assigns and designs;
 `-audiozones` (`-musiczone` still works, `-sfxzone` starts on SFX) places
 rects with generated track playlists the scene cycles, and shows the zone
 outline in the world on demand.
-Each entry's `scale` is screen px per model unit (footprint tiles × 11;
+Each entry's `scale` is screen px per model unit (footprint tiles Ã— 11;
 reference default 22 covers one 44px tile for a 2-unit model), `yaw`
-defaults to 180°; the batcher projects with the reference oblique map
+defaults to 180Â°; the batcher projects with the reference oblique map
 (`SplatBatcher`, numeric parity vs `JarJar.Render` checked per gaussian).
 In game, `-splat` opens the placer gump: pick a staged model, target a
 tile, tune scale/yaw live, Place it, Save writes the manifest back. The
@@ -1568,24 +1568,24 @@ Environment: `UO_CLIENT_DATA` (radar colours; `--client-data` overrides) and `MA
 per-user data folder (`UO_MAPGEN_DATA`; the editor passes it on). Data paths inside presets that name
 mined data (`mined/...`, `Data/map-mining/...`, `client/ClassicUO/Data/...`) resolve into that folder.
 
-### `schema [--preset P]` → one object, `"schema": "guo.mapgen.schema/1"`
+### `schema [--preset P]` â†’ one object, `"schema": "guo.mapgen.schema/1"`
 
 | Field | Meaning |
 |---|---|
 | `preset` | `{id, name, description, seed}` of the preset the values come from (default `felucca-stage18`) |
 | `presets`, `default_preset` | Preset ids in `tools/mapgen/MapGen/presets` (file name without `.preset.json`) |
-| `sizes` | `[width, height]` pairs to offer: 256–2048 squares and the client's facet sizes |
+| `sizes` | `[width, height]` pairs to offer: 256â€“2048 squares and the client's facet sizes |
 | `passes[]` | In pipeline order: `index`, `name` (also the preset key), `category`, `enabled` (with the preset applied), `default_enabled`, `heavy` (switched off by `--fast`), `file_side_effects` (always off from GUO), `tunables[]` |
 | `tunables[]` | `key` (the parameter name), `label`, `tooltip`, `type` (`int`, `double`, `bool`, `string`, `enum`, `other`), `editable` (false for `other` and read-only), `value` (with the preset), `default` (the pass's own), `min`/`max` when the pass declares a range, `options` for an enum, `tile_set` (`land`/`static`) for tile-id lists |
 | `tables[]` | The transition tables `run --brushes` can name: `id` (`guo`, `guo-core`, `dragon`), `label`, `description`, `available` (false for `dragon` until `prepare --dragon` has run). `guo` is the default and uses the user's measured weights when `prepare --measure` wrote them; `guo-core` is the committed table alone. The editor's MapGen tab offers these plus a table file of the user's own |
 | `warnings` | Preset problems (unknown pass or key) |
 
-### `run --out DIR [options]` → JSON lines, then the folder
+### `run --out DIR [options]` â†’ JSON lines, then the folder
 
 Options:
 - `--preset P` (id or path);
 - `--seed N` (default: the preset's seed, else 1234567);
-- `--size N` or `--width W --height H` (multiples of 8, 64..7168 × 64..4096; default 1024);
+- `--size N` or `--width W --height H` (multiples of 8, 64..7168 Ã— 64..4096; default 1024);
 - `--set "Pass Name.Key=value"` (repeatable; int/double/bool/string/enum, invariant culture);
 - `--disable "Pass Name"` and `--enable "Pass Name"` (repeatable);
 - `--fast` (heavy passes off);
@@ -1614,7 +1614,7 @@ Folder:
 | `map.bin` | Analyzer dump: int32 width, int32 height; per cell, row-major, uint16 land id, int8 z, uint8 biome; int32 count; per static uint16 x, uint16 y, int8 z, uint16 id |
 | `pois.json` | `"schema": "guo.mapgen.pois/1"`, `width`, `height`, `pois[]`: `id`, `kind` (`ControlPoint`, `DungeonEntrance`, `Ruin`, `Town`, `Camp`, `Shrine`), `x`, `y`, `z`, `tag` (`fixed-site` for a Town Sites `Sites` entry), `footprint` (`[x1, y1, x2, y2]`, inclusive map cells; towns only, else null), `gates` (`[[x, y], ...]` N, S, W, E edge midpoints where roads end; towns only). What a tool placing content on the map reads (`tools/mapgen_districts`) |
 
-The Map Validator's `BiomeProfile` sets which land-biome mix the `BiomeDistribution` check expects: `felucca` (the default: grass 5–85%, forest ≤ 70%, desert ≤ 60%, mountain ≤ 40%, no biome over 92%), `desert` (desert ≥ 50%, grass ≤ 10%, forest ≤ 5%, mountain ≤ 40%), `ice` (snow ≥ 30%, grass and forest ≤ 10%, mountain ≤ 40%) or `none` (histogram only). Out-of-band shares are warnings; one biome over the cap is an error; an unknown name is an error. The other checks do not depend on the profile.
+The Map Validator's `BiomeProfile` sets which land-biome mix the `BiomeDistribution` check expects: `felucca` (the default: grass 5â€“85%, forest â‰¤ 70%, desert â‰¤ 60%, mountain â‰¤ 40%, no biome over 92%), `desert` (desert â‰¥ 50%, grass â‰¤ 10%, forest â‰¤ 5%, mountain â‰¤ 40%), `ice` (snow â‰¥ 30%, grass and forest â‰¤ 10%, mountain â‰¤ 40%) or `none` (histogram only). Out-of-band shares are warnings; one biome over the cap is an error; an unknown name is an error. The other checks do not depend on the profile.
 
 Town sites and district pads: **Town Sites** `Sites` places fixed footprints `x,y,w,h[,z];...` first (z omitted = the footprint's median ground Z; entries off the scope or touching water are skipped with a warning), and `BuildableBiomesCsv` replaces the random finder's biome set (empty = Grassland, Forest, DenseForest, Savanna, Beach). **Town Roads** `FlattenTarget` (`centre`, the default, or `poi` = the site's Z), `FlattenSkirt` (blend tiles, default 3) and `PaintStreets` (off = a bare flattened pad). Both passes are opt-in; their defaults generate what they did before.
 
@@ -1655,14 +1655,14 @@ transition table give the same hash; a user's resolved table (`prepare --measure
 - `available` and `land_share`;
 - `measured` and `felucca`: shares of land at z 0, forest, grass, sand, rock, jungle, and sand along
   coasts (`shore_sand`), plus statics per 100 land tiles (measured only). The seabed (land tiles
-  0x4C–0x64 dug under the water, as Felucca's shallows are) counts as water, so the coast is the dry
+  0x4Câ€“0x64 dug under the water, as Felucca's shallows are) counts as water, so the coast is the dry
   shore. The coast is the sea's: river cells are water but do not make a coast, since Felucca draws
-  almost no rivers in land tiles and its shore share is a sea-coast share. Shore sand is the beach pool or a sand edge tile (0x1A–0x4B). The Felucca values are its whole
+  almost no rivers in land tiles and its shore share is a sea-coast share. Shore sand is the beach pool or a sand edge tile (0x1Aâ€“0x4B). The Felucca values are its whole
   surface (map 0, 5120x4096), measured 2026-10-03 by the same rules;
 - `classes` (land shares by tile-table class; `edge` means transition tiles);
-- `score` (0–100). It is a guide, not the judge.
+- `score` (0â€“100). It is a guide, not the judge.
 
-### `export --run DIR [--facet N] [--world-project DIR --origin-x X --origin-y Y]` → JSON lines, then `DIR/export/`
+### `export --run DIR [--facet N] [--world-project DIR --origin-x X --origin-y Y]` â†’ JSON lines, then `DIR/export/`
 
 `export` regenerates the run from `preset.json`, `seed`, `width` and `height`. It refuses when the hash
 differs from `run.json`'s. It then writes `export/map/map{N}.mul`, `staidx{N}.mul` and `statics{N}.mul`
@@ -1672,7 +1672,7 @@ differs from `run.json`'s. It then writes `export/map/map{N}.mul`, `staidx{N}.mu
 `statics_written` and `files`. The final line is
 `{"event":"done", ok, hash, export, verify, world_project, world}`. Exit 1 when `ok` is false.
 
-With `--world-project DIR`, a verified export is also written as a world project (§9) in `DIR`, which
+With `--world-project DIR`, a verified export is also written as a world project (Â§9) in `DIR`, which
 must be new or empty. The map lands on facet `N` with its top-left cell at (`--origin-x`, `--origin-y`),
 default (0, 0); both must be multiples of 8. Every block is a full `blocks/<facet>/<bx>_<by>.json`
 (64 land cells plus its statics), written exactly as the World tab writes one. Beside them,
@@ -1690,7 +1690,7 @@ default (0, 0); both must be multiples of 8. Every block is a full `blocks/<face
 `done.world` carries the same object. Opening the project in the World tab is a separate step, and so
 is deploying it to a shard.
 
-### `prepare [--measure [--client-data DIR]] [--dragon DIR [--out FILE]] [--landscaper DIR]` → one JSON line
+### `prepare [--measure [--client-data DIR]] [--dragon DIR [--out FILE]] [--landscaper DIR]` â†’ one JSON line
 
 `prepare` builds the generator's per-user data in `UO_MAPGEN_DATA`, from the user's own client and
 copies. GUO ships none of it (`docs/upstream/mapgen.md`). At least one option is required.
@@ -1719,7 +1719,7 @@ The line is `{"event":"done", ok, measure?, resolved?, dragon?, landscaper?}`:
 
 Exit 1 when a requested part produced nothing.
 
-### `coverage` → one JSON line
+### `coverage` â†’ one JSON line
 
 What each transition table present can draw, in counts only: the committed table (`guo-core`), the
 user's resolved table (`guo-resolved`) and Dragon import (`dragon`). The line is
@@ -1740,7 +1740,7 @@ map's `source`; `added_variants`).
 |---|---|
 | `format` | `guo.mapgen.transitions/1` |
 | `resolve` | How measured variants join: `min_pair_samples`, `min_shape_samples`, `min_share` (of the shape's samples), `max_variants` per shape, `scale` (the weight of the most used variant) |
-| `materials` | Name → `{biomes[], notes}`: the materials pairs may name, and the biomes that map to each |
+| `materials` | Name â†’ `{biomes[], notes}`: the materials pairs may name, and the biomes that map to each |
 | `pairs[]` | One per owner/other pair, below |
 
 A pair:
@@ -1748,14 +1748,14 @@ A pair:
 | Field | Meaning |
 |---|---|
 | `owner`, `other` | Materials. Owner cells next to other cells are repainted; the other side keeps its tile |
-| `edges` | Shape → list of land ids, each `"0xHHHH"` (weight 1) or `["0xHHHH", weight]`. A pair with edges lists all 12 shapes |
-| `z` | Shape (or `"*"`) → the most an edge cell moves toward the other side's mean height, used when Land Transitions' *Edge z offsets* is on. Positive lifts (a rock lip), negative drops (a bank) |
+| `edges` | Shape â†’ list of land ids, each `"0xHHHH"` (weight 1) or `["0xHHHH", weight]`. A pair with edges lists all 12 shapes |
+| `z` | Shape (or `"*"`) â†’ the most an edge cell moves toward the other side's mean height, used when Land Transitions' *Edge z offsets* is on. Positive lifts (a rock lip), negative drops (a bank) |
 | `via` | The material an owner cell facing the other becomes when the pair has no tile for it (*Bridge passes*) |
 | `plain` | `true`: the pair needs no edge tile (sand against water); not reported as a hard edge |
 | `measure` | `false`: `prepare --measure` adds nothing to this pair (default `true`) |
 | `notes` | Why the pair is drawn as it is |
 
-Edge shapes are named by where the other material lies, in tile directions (N is y−1, E is x+1):
+Edge shapes are named by where the other material lies, in tile directions (N is yâˆ’1, E is x+1):
 `N`, `E`, `S`, `W` are straight edges (the other side covers that side and its two corners);
 `NE`, `SE`, `SW`, `NW` are outer corners (two sides and the corner between); `in_NE`, `in_SE`, `in_SW`,
 `in_NW` are inner corners (only that diagonal neighbour is other). A cell's neighbour mask resolves to
@@ -1779,20 +1779,20 @@ it also takes a file in this format or a folder of UO Landscaper statics XML (a 
 | Field | Meaning |
 |---|---|
 | `format` | `guo.mapgen.scatter/1` |
-| `aliases` | Biome → biome whose groups and chance it borrows (`Savanna` → `Grassland`) |
+| `aliases` | Biome â†’ biome whose groups and chance it borrows (`Savanna` â†’ `Grassland`) |
 | `trees[]` | `{trunk, leaves, name}`: a trunk static and the canopy drawn on the same tile |
-| `biomes` | Biome name (as in `BiomeId`) → `{chance, notes, groups[]}` |
+| `biomes` | Biome name (as in `BiomeId`) â†’ `{chance, notes, groups[]}` |
 
 `chance` is the percentage of cells (dense biomes) or Poisson samples (the rest) that get a group. A
 group is `{name, freq, any[] or sets[]}`:
 - `freq` is the group's weight within the biome, however many variants it has;
 - `any` lists single statics, `"0xHHHH"`, one picked per placement;
 - `sets` lists assemblies placed whole, each a list of `[id, x, y, z]` or `[id, x, y, z, hue]` (x, y
-  in −8..8, z in −64..64, relative to the origin cell).
+  in âˆ’8..8, z in âˆ’64..64, relative to the origin cell).
 
 Ground-cover groups name no tree and hold no trunk or canopy: trees are Forest Scatter's.
 
-### `presets` → `{"schema": "guo.mapgen.presets/1", "presets": [...]}`
+### `presets` â†’ `{"schema": "guo.mapgen.presets/1", "presets": [...]}`
 
 ## 27. Multi styles, generator operations and the legacy formats (`tools/multi`)
 
@@ -1849,10 +1849,10 @@ Same parameters and seed, same bytes.
   `centred` (CentrED# `id,x,y,z,hue,flags`) and `uox3`. Import detects legacy formats from the name/head and recentres.
   `txt-fiddler` and `uoa-fiddler` must be selected explicitly and preserve coordinates by default (`recentre: true` opts in).
   Their `text_flags` result/parameter parallels `components`; TXT export writes canonical `0xID X Y Z Flags` CRLF lines.
-  Each accepts 1–65,535 entries and at most 4 MiB. Editor text review covers hue loss and stale source/document/output.
+  Each accepts 1â€“65,535 entries and at most 4 MiB. Editor text review covers hue loss and stale source/document/output.
   Rotate/mirror `preserve_entries: true` refuses splitting, recombination or order changes so opaque per-entry
   metadata cannot be assigned to a different part merely because aggregate counts match.
-  UOA's first three header values are ignored as in Fiddler; output normalizes them to version 6/template 1/item −1,
+  UOA's first three header values are ignored as in Fiddler; output normalizes them to version 6/template 1/item âˆ’1,
   with the current count in the fourth line. Both profiles retain signed raw `text_flags` and review hue loss.
   `wsc-fiddler` is separately explicit: complete decimal ID/X/Y/Z sections, pinned Fiddler world-coordinate
   normalization and optional `dynamic_ids` uint16 list (listed IDs import hidden). It ignores Color and exports
@@ -1879,7 +1879,7 @@ gap between its storeys.
 ## 28. Multi components description (`*.multi.json`, ADR-0031)
 
 The Multi Editor's own file, in `build/multi/edit/` (gitignored: it holds client-derived layouts).
-Unlike a §16 description, which a generator expands, this one lists the components themselves. It is
+Unlike a Â§16 description, which a generator expands, this one lists the components themselves. It is
 diffable (one component per line) and keeps the hue, which a multi record cannot.
 
 | Field | Meaning |
@@ -1891,7 +1891,7 @@ diffable (one component per line) and keeps the hue, which a multi record cannot
 | `floor_z`, `storey_height` | `7` and `20`, the client's story heights |
 | `components` | `[item, x, y, z, shown, hue, text_flags?, text_extra?]` per component, in list order (the order breaks ties in painting): `item` and `hue` numbers, `shown` `1` or `0`, x/y from the centre. Optional seventh column retains original signed int32 Fiddler text flags; omitted for existing six-column documents. Optional eighth column retains CSV's signed int32 `Unk1`; a null seventh placeholder is allowed when only the eighth is present. CSV export retains both fields; TXT/UOA retain flags while visibility matches, otherwise emit edited visibility as 0/1. Exporters that cannot retain nonzero `text_extra` refuse it. Native flag/extra translation is separate and refuses opaque effective flags or nonzero extra values. |
 
-Writing it to a stage goes through the built form of §16 (`components.json`: `[item, x, y, z]` with a
+Writing it to a stage goes through the built form of Â§16 (`components.json`: `[item, x, y, z]` with a
 fifth element `0` when hidden, plus a `multi.json` with `valid`, `problems`, `doors`, `size`,
 `storeys`) and `tools/multi write`. The hue is not written.
 
@@ -2028,7 +2028,7 @@ SQLite `user_version=3`, generated in a caller-selected private output (normally
 `build/layout_import/catalogue.sqlite`, gitignored). Separate from the UO-derived
 decor database, so a normal decor re-mine cannot erase imported records.
 Source/dependency tables retain the census; semantic/native records are described
-below and in §32. Database records and source IDs are not native UO art.
+below and in Â§32. Database records and source IDs are not native UO art.
 
 | Table | Contract |
 |---|---|
@@ -2064,7 +2064,7 @@ Schema 2 adds `layout_template`, `layout_instance`, `room_template`, `opening`,
 `artifact` records. Instance identities include semantic room and cell content,
 so a changed resolver cannot alias an older immutable instance.
 Keep source attribution/license with derived content and imported layouts out of public
-source files. Native output uses §16 and its canonical staging/proof
+source files. Native output uses Â§16 and its canonical staging/proof
 commands; a successful source census is not native validation.
 
 ## 32. Semantic layouts and native layout builds (`tools/layout_import`)
@@ -2079,7 +2079,7 @@ OMT/cell/level or source definition/pointer). Roles include floor, exterior,
 wall, window, door, stair-up, stair-down, roof, void, water and obstacle.
 Door structural reachability and its source access state are distinct.
 
-Rooms reuse the decor segmenter's geometry (§17) with explicit door boundaries
+Rooms reuse the decor segmenter's geometry (Â§17) with explicit door boundaries
 and exterior classification. They retain cell masks, bounds, area, inferred
 semantic use, evidence, confidence and labelled open-plan zones. Openings retain
 adjacent room IDs and exterior access. CDDA labels are inferred; Zomboid retains
@@ -2094,8 +2094,8 @@ The bake manifest and shards are hashed, and source snapshot/seed/mod inputs
 are retained. Source-definition matches are candidates only: this exporter does
 not report a selected mapgen trace. No sampled bake proves exhaustive coverage.
 
-Native adapters produce the existing §16 component/sidecar format and world
-project §9; native encoding, ID reservation and readback remain the canonical
+Native adapters produce the existing Â§16 component/sidecar format and world
+project Â§9; native encoding, ID reservation and readback remain the canonical
 multi and world writers' job. Profiles declare wall-cell to UO directional-wall
 conversion, scale, floor/storey heights, material families, roofs, furnishings,
 exterior land IDs, and intentional adaptations. Stair flights must reserve
@@ -2105,7 +2105,7 @@ source-to-target lineage and distinguish geometry checks, offline movement,
 native readback, editor composites and logged-in proof.
 
 Zomboid B42 headers/packs use supported `LOTH`/`LOTP` versions 0/1 with little
-endian integers, line strings, 8×8 chunks, 32×32 chunk cells, authored room
+endian integers, line strings, 8Ã—8 chunks, 32Ã—32 chunk cells, authored room
 rectangles and building room references. Tile-definition files use `tdef` version
 1. Edge properties become a recorded 2:1 cell-grid adaptation; source art is
 never decoded or copied. Unsupported older chunk sizes, cross-cell buildings,
@@ -2116,7 +2116,7 @@ detail tiles remain explicitly counted. A flat UO roof derived from the authored
 footprint is an adaptation, not a source roof replica.
 
 District outputs contain `district.json`, canonical `scene.json` and `parts/`,
-plus a §9 `world/` project. Origins align to world blocks. `hybrid-selection.json`
+plus a Â§9 `world/` project. Origins align to world blocks. `hybrid-selection.json`
 records deterministic seed, accepted header/building/parcel/build identities and
 rejected attempts. `max_storeys` records the seeded house-pool limit: one by
 default, or two with contiguous authored floors when explicitly selected.
@@ -3053,8 +3053,8 @@ Realtime lights path reads it; the classic light path never does.
   the offer's value.
 - `curve`: the falloff over `t = distance / radius`, each 1 at the source and
   0 at the radius: **A** linear `1 - t`; **B** smoothstep (the default above);
-  **C** windowed inverse square `(1 - t²)² / (1 + 8t²)`, a hot core;
-  **D** quadratic `1 - t²`, broad; **E** a plateau to `t = 0.6`, then a
+  **C** windowed inverse square `(1 - tÂ²)Â² / (1 + 8tÂ²)`, a hot core;
+  **D** quadratic `1 - tÂ²`, broad; **E** a plateau to `t = 0.6`, then a
   smoothstep edge. Or the name of a `curves` entry: 2 or more samples
   (0..4), evenly spaced over `t`, resampled to 33 and forced to 0 at the radius.
 - Curves and energy shape each frame's falloff only; the cached visibility
@@ -3469,7 +3469,7 @@ dimensions to vary; each arm records its name and expected effective flags.
 Undeclared flags, scene state and diagnostics still bind. See the perf probe README.
 
 **Sustained GUO PerfDump**, `guo-samples.jsonl`: opt-in through
-`tools/perf_dump --only guo --sample-seconds N` (0 disables; 1–300 seconds),
+`tools/perf_dump --only guo --sample-seconds N` (0 disables; 1â€“300 seconds),
 which sets the client diagnostic `GUO_PERF_SAMPLE_SECONDS`. After settling,
 the client writes roughly one-second observations with `sample_index`,
 `sample_elapsed_seconds`, `sample_interval_seconds`, `sample_draw_frames`,
@@ -3630,9 +3630,9 @@ assembly without publishing its filesystem path, and `engine_debug_build`
 records the native engine build. An optimized project run through the editor
 executable can still load Debug GodotSharp; distinguish it from an export.
 The optional environment diagnostics `GUO_PERF_WARMUP_SECONDS` and
-`GUO_PERF_MEASURE_SECONDS` accept 0–300 seconds (default 0: existing warm-up
+`GUO_PERF_MEASURE_SECONDS` accept 0â€“300 seconds (default 0: existing warm-up
 and 360-frame sample). Login keeps its 360-frame sample and no added discard.
-`GUO_PERF_WALK_SECONDS` accepts 1–300 (default 12), and
+`GUO_PERF_WALK_SECONDS` accepts 1â€“300 (default 12), and
 `GUO_PERF_WALK_ORIGIN` is `field` (default), `bank`, or `docks`. A world
 warm-up follows any parity captures. Reports record these four settings.
 Each scene adds `warmup_seconds`, `elapsed_seconds`, `drawn_frames`,
@@ -3889,8 +3889,8 @@ L1 non-parity atmosphere; all types default off. Profile JSON persists:
 | `AmbientFog` | bool | false | Swamp fog banks |
 | `AmbientLeaves` | bool | false | Forest/jungle or foliage leaves |
 | `AmbientDust` | bool | false | Soft-sand dust |
-| `AmbientParticleDensity` | int | 50 | 0–100 percent; zero disables |
-| `AmbientParticleCap` | int | 128 | 0–512 particles/frame; zero disables |
+| `AmbientParticleDensity` | int | 50 | 0â€“100 percent; zero disables |
+| `AmbientParticleCap` | int | 128 | 0â€“512 particles/frame; zero disables |
 
 Both Video Options interfaces open the shared UO+ panel described below;
 Cancel leaves fields alone and Defaults stages the values above. Invalid persisted integers are clamped at
@@ -3898,8 +3898,8 @@ consumption; negative density/cap disables. Missing fields preserve defaults.
 No shard packet, client data mutation, server consent or external process.
 
 The renderer reads only visible loaded chunks. Native land IDs follow MapGen's
-`tile-tables.default.json`: swamp 0x3DEB–0x3DEF, forest 0xC4–0xC7, jungle
-0xAC–0xAF, sand 0x16–0x19. Foliage permits leaves on other dry ground. Wet,
+`tile-tables.default.json`: swamp 0x3DEBâ€“0x3DEF, forest 0xC4â€“0xC7, jungle
+0xACâ€“0xAF, sand 0x16â€“0x19. Foliage permits leaves on other dry ground. Wet,
 covered and unknown tiles emit nothing. Classification uses original land art,
 so seasonal/theme substitutions do not change the inferred biome. The hard
 4096-tile, 64-objects/tile/scan and 512-particle bounds apply independently of
@@ -3915,7 +3915,7 @@ zero disabled RGB differences. Synthetic ground uses no proprietary art.
 
 ### Shared UO+ flags and per-feature densities (ADR-uoplus-settings)
 
-**Video → UO+ effects...** is the common classic/Modern Options surface.
+**Video â†’ UO+ effects...** is the common classic/Modern Options surface.
 All new flags are off by default. Apply persists the staged values; Okay
 applies and closes; Cancel discards edits; Defaults stages all flags off,
 densities 50% and ambient cap 128. Density 0 suppresses an effect while keeping
@@ -3924,7 +3924,7 @@ its checkbox selected. Parent Options Apply does not overwrite panel edits.
 | Profile field | Type | Default | Meaning |
 |---|---|---|---|
 | `UoPlusFlags` (`uo_plus_flags`) | integer bit mask | 0 | 8 rain rings, 16 puddles, 32 wet player, 64 reserved sway, 256 water ripples |
-| `UoPlusDensities` (`uo_plus_densities`) | object of feature-name → integer | `{}` | Independent 0–100 values, clamped at use; names `Fog`, `Leaves`, `Dust`, `RainRings`, `Puddles`, `WetPlayer`, `Sway`, `SpellLights`, `WaterRipples` |
+| `UoPlusDensities` (`uo_plus_densities`) | object of feature-name â†’ integer | `{}` | Independent 0â€“100 values, clamped at use; names `Fog`, `Leaves`, `Dust`, `RainRings`, `Puddles`, `WetPlayer`, `Sway`, `SpellLights`, `WaterRipples` |
 
 Fog/leaves/dust flags remain authoritative in `AmbientFog`, `AmbientLeaves`
 and `AmbientDust`; spell lights remain in `SpellLighting` (`spell_lighting`).
@@ -3934,7 +3934,7 @@ densities use 50. Missing or null objects are safe; unknown flag bits are ignore
 Unavailable rows cannot activate even through manually edited flags.
 
 Particle density thins stable emitters. Spell-light density sets the spell-only
-live-burst budget to `ceil(16 × density / 100)`, trimming older spell bursts when
+live-burst budget to `ceil(16 Ã— density / 100)`, trimming older spell bursts when
 lowered. Generic hooks and the total 100-source cap are preserved; Realtime
 lights remains a prerequisite. Water ripple density scales disturbance strength and
 requires a non-Classic water style. Off skips ripple simulation and object scans,
@@ -4389,3 +4389,8 @@ Headless state tests do not establish rendered behavior. Rendered runtime,
 reflection and cloud fixtures exercise current callbacks, geometry and exact
 fallback. Live native/overview camera and bank on/off acceptance remain separate
 integration checks; no timing or whole-client parity follows from fixtures.
+
+
+### Local lighting testing clock (L4)
+
+Debug `GuoLabs=true` only: profile `local_lighting_test_time` (default false) and `local_lighting_test_hour` (default 12, clamped to 0–23). UO+ stages edits until Apply; Defaults stages off/12; Cancel discards edits. Lighting speed mode must be enabled. The fixed local hour controls ambient brightness, window eligibility and sun/moon direction without changing the received shard clock. Off restores the original resolver. Standard and export builds exclude the feature. See [ADR](architecture/ADR-local-lighting-clock.md) and [scenario](../tools/scenarios/client/local_lighting_clock.md).
