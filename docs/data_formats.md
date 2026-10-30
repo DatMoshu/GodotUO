@@ -4359,6 +4359,12 @@ one native pixel. Puddles require wetCandidate flag2 and exposed floor class1;
 `SpeedModePuddleSurfaces` holds a curated paving/cobblestone metadata allowlist.
 The core must apply that predicate when producing flags. Reflections are a
 screen-space approximation with visible tap bands, not complete silhouettes.
+Native wet-paving output has a rendered witness. Controlled native classic-water
+reflection qualification remains open: the bounded existing-water/donor fixture
+produced no eligible published donor geometry or controlled positive pixels.
+Standalone shader fixtures establish only their geometric sampling cases; missing
+native witnesses do not establish a shader defect. Styled-water fallback remains
+unchanged.
 The separate Lighting water style remains subject to the ordered backend's
 existing styled-water canvas fallback. No compatibility with simultaneous
 speed-mode lighting is claimed for that style.

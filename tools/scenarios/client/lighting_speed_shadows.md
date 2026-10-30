@@ -36,8 +36,30 @@ Integrated acceptance, after the shared scene call is applied: at1280x720,
 capture night bank lamp shadows and day shop window panes. Include sun/native
 mobile body contacts, at most two affecting lamps per mobile, missing-clock
 brightness approximation, and valid server-clock direction. Current collection
-uses native body frames; equipment/mount/sitting silhouettes remain a named gap.
+uses copied completed native body-pass quads, including equipment, mounts,
+sitting deformation and flip/offset geometry. Isolated native fixtures cover
+the exercised human/robe/sword/horse/chair combination, not every art or race.
 Compare Classic off-before/off-after images and draw counts; inject light and
 world failure and check recovery. Repeat off/on/off, resize and logout to check
 resource lifetimes. No headless result substitutes for those captures or quiet
 performance acceptance. Preserve nearest sampling throughout.
+
+Native callback/output qualification (Debug builds, disconnected scratch world):
+- Run `res://src/Render/SpeedMode/Shadows/NativeLampSceneProbe.tscn` with an admitted
+  Godot slot, actual engine resolution1280x720, external `GUO_LAMP_SCENE_OUT` and
+  user argument `--cache-dir` pointing to its `data/fixture/cache`. Do not pass
+  `--window-size`, account or login arguments. Require one ordinary native lamp
+  offer, selected polar/mobile masks, stable budget0 control and positive native
+  mask-overlap darkening for body/dress/mount/sitting/flip/resize. Hidden/dead
+  exclusion, exact parent-off and active-resource unload must pass. Budget0vs6
+  changes polar and mobile shadow work together; it does not isolate mobile-only
+  attenuation. Native art/screenshots stay private.
+- The corresponding WindowLight `NativeWindowSceneProbe.tscn` uses external
+  `GUO_WINDOW_SCENE_OUT` and the same isolated cache convention. It compares
+  native window receiver output to a Debug-only omit-draw control, retaining
+  direct window light. Require actual window/ray/current-mask witnesses and
+  positive HDR output; conservative zero output is an unqualified result.
+
+Neither native fixture establishes live-shard gameplay, cinematic appearance,
+production frame time or globally leak-free shutdown. Keep exit warnings with
+its targeted resource assertions.

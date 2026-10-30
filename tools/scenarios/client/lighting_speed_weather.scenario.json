@@ -71,6 +71,13 @@
       }
     },
     {
+      "id": "native-water-qualification-limit",
+      "do": {
+        "kind": "note",
+        "text": "Native rain/fog/wet paving and corrected unload have actual scene witnesses. Controlled classic-water reflection pixels remain unqualified after bounded existing-water/donor attempts. Retain failed packets and missing geometry witnesses; do not promote incidental dry-pair water differences, synthetic buffers or drawable entity state into a native controlled pass. No shader defect or broader search follows from that result."
+      }
+    },
+    {
       "id": "limits",
       "do": {
         "kind": "note",
