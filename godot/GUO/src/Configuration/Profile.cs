@@ -421,6 +421,10 @@ namespace GUO.Configuration
 #if GUO_LABS
         // PORT DEVIATION (GUO): ADR-local-lighting-clock, local test only.
         public bool LocalLightingTestTime { get; set; } = false;
+        private int _localLightingTestMinute,_localLightingTestSpeed=60;
+        public int LocalLightingTestMinute { get => _localLightingTestMinute; set => _localLightingTestMinute = Math.Clamp(value,0,59); }
+        public bool LocalLightingTestAuto { get; set; } = false;
+        public int LocalLightingTestSpeed { get => _localLightingTestSpeed; set => _localLightingTestSpeed = Math.Clamp(value,1,1440); }
         private int _localLightingTestHour = 12;
         public int LocalLightingTestHour { get => _localLightingTestHour; set => _localLightingTestHour = Math.Clamp(value, 0, 23); }
 #endif

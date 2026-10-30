@@ -77,7 +77,9 @@ internal sealed class UoPlusOptionsGump : Gump
         _localClockHour=new HSliderBar(4,y+22,Width-110,0,23,_profile.LocalLightingTestHour,HSliderBarStyle.MetalWidgetRecessedBar,true,1,0xFFFF);
         _localClockHour.ValueChanged+=(_,_)=>clockLabel.Text=$"Local lighting time: {_localClockHour.Value:00}:00";
         area.Add(_localClockHour);y+=54;
-        area.Add(new Label("Lighting only; Apply to freeze this hour locally.",true,0x0386,Width-70,1) { X=4,Y=y });y+=32;
+        area.Add(new Label("Apply freezes this hour; Live clock adds scrubbing and cycling.",true,0x0386,Width-70,1) { X=4,Y=y });y+=40;
+        area.Add(new NiceButton(4,y,Width-100,32,ButtonAction.Activate,"Open live clock (applies settings)",font:1)
+            { ButtonParameter=5,IsSelectable=false });y+=42;
 #endif
         if (!Renderer.SpeedMode.SpeedModeDebug.Supported) {
             area.Add(new Label(Renderer.SpeedMode.SpeedModeDebug.UnavailableReason, true, 0x0386, Width-70, 1) { X=4, Y=y }); y += 40;
@@ -228,8 +230,13 @@ internal sealed class UoPlusOptionsGump : Gump
         if (_defaultsStaged) UoPlusOptions.ResetDefaults(_profile);
         _profile.LightingSpeedMode = _speedMode.IsChecked;
 #if GUO_LABS
+        if(_defaultsStaged) {
+            _profile.LocalLightingTestAuto=false;_profile.LocalLightingTestSpeed=60;
+            Labs.LightingClock.LightingTestClock.Seek(_profile,_localClockHour.Value*60);
+        }
         _profile.LocalLightingTestTime=_localClock.IsChecked;
-        _profile.LocalLightingTestHour=_localClockHour.Value;
+        if(_profile.LocalLightingTestHour!=_localClockHour.Value)
+            Labs.LightingClock.LightingTestClock.Seek(_profile,_localClockHour.Value*60);
 #endif
         _profile.SpeedModeNightFloor=_speedNightFloor.Value;
         _profile.SpeedModeSoften=_speedSoften.Value;
@@ -291,6 +298,15 @@ internal sealed class UoPlusOptionsGump : Gump
     {
         switch (buttonID)
         {
+#if GUO_LABS
+            case 5:
+                if(ApplyChanges()) {
+                    Dispose();
+                    UIManager.GetGump<Labs.LightingClock.LiveLightingClockGump>()?.Dispose();
+                    UIManager.Add(new Labs.LightingClock.LiveLightingClockGump(World,_profile));
+                }
+                break;
+#endif
             case 1: Dispose(); break;
             case 2: ApplyChanges(); break;
             case 3: RestoreDefaults(); break;

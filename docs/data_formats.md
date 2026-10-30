@@ -4392,4 +4392,7 @@ integration checks; no timing or whole-client parity follows from fixtures.
 
 ### Local lighting testing clock (L4)
 
+Live extension: local_lighting_test_minute (0..59, default0), local_lighting_test_auto (defaultfalse), local_lighting_test_speed (1..1440 simulated seconds per real second, default60). The separate **Open live clock** panel updates local lighting immediately, displays HH:MM:SS, supports minute scrubbing, pause/run and speed changes without phase jumps. It uses monotonic elapsed time and wraps midnight. Closing keeps the cycle/settings and saves locally in-game; no server clock or packets change. Existing main UO+ staged Apply/Cancel remains.
+
+
 Debug `GuoLabs=true` only: profile `local_lighting_test_time` (default false) and `local_lighting_test_hour` (default 12, clamped to 0–23). UO+ stages edits until Apply; Defaults stages off/12; Cancel discards edits. Lighting speed mode must be enabled. The fixed local hour controls ambient brightness, window eligibility and sun/moon direction without changing the received shard clock. Off restores the original resolver. Standard and export builds exclude the feature. See [ADR](architecture/ADR-local-lighting-clock.md) and [scenario](../tools/scenarios/client/local_lighting_clock.md).

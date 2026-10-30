@@ -9,3 +9,7 @@ The selected hour drives speed-mode ambient brightness, sun/moon projection and 
 Brightness uses `0.1 + 0.9 * max(0, sin((minute - 360) * pi / 720))`, where minute is the selected hour times 60. Thus midnight is 0.1 and noon is 1. Sun direction and length use the existing projection. This is a lighting preview approximation, with fixed 06:00 dawn and 18:00 dusk, rather than simulation time control.
 
 Validation covers all 24 hours, off/parent parity, immutable server stamps, clamping and persistence, real staged UO+ Apply/Defaults/Cancel and standard-build exclusion. The headless probe uses an unsaved profile and stays disconnected. Full smoke remains required. Visual review belongs to owner playtesting; the running owner game is left alone during implementation.
+
+## Owner-approved live preview extension, 2026-10-30
+
+Moshu directly requested a real-time updater and an automatic day/night mode at selectable speed, then reopen for playtesting. A separate live UO+ subpanel makes this distinction explicit: minute scrubber, visible HH:MM:SS, automatic-cycle toggle,1..1440x speed. Existing main UO+ controls retain staging/Cancel behavior. The new panel applies locally immediately and retains/saves on close. A per-profile weak-key monotonic timeline preserves phase across speed/pause changes, wraps24hours, seeks explicitly, pauses when override/parent disabled, never changes received shard clock. Off/export/standard exclusion remains unchanged. No external dependencies or server time manipulation.
