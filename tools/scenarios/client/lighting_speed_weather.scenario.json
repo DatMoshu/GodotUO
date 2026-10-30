@@ -64,6 +64,13 @@
       }
     },
     {
+      "id": "native-scene-retirement",
+      "do": {
+        "kind": "note",
+        "text": "With an admitted Godot slot and external GUO_CLOUD_SCENE_OUT, run the actual NativeCloudSceneProbe.tscn. Require native4/4.5/5/overview6 and producer-unload/queued-unload PASS: completed scene clears Current surface/light and optional targets; re-entered scene can produce again; unloading immediately after DrawFrame before FramePreDraw cannot republish. No accounts or shard connections; preserve known shutdown warnings separately."
+      }
+    },
+    {
       "id": "limits",
       "do": {
         "kind": "note",

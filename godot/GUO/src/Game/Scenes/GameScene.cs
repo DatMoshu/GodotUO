@@ -302,6 +302,7 @@ namespace GUO.Game.Scenes
 
         public override void Unload()
         {
+            Client.Game.RetireSpeedScene(); // PORT DEVIATION (GUO): cancel departed frame publication first.
             ReleaseSpeedWeather(); // PORT DEVIATION (GUO): ADR-0048 lifetime.
             _overview?.Dispose(); _overview = null; _wasOverview = false; // PORT DEVIATION (GUO): ADR-0045
             ResetAmbientParticles(); // PORT DEVIATION (GUO): ADR-0042 resource lifetime

@@ -4343,7 +4343,11 @@ only with matching surface identity, client tick, sequence, dimensions and
 full-target bounds. Surface-only publication leaves classic lines visible.
 Wet/rain/fog native canvas commands sit on the world target before UI.
 Classic rain lines are grouped behind a generation ticket and hidden only
-after valid overlay binding; simulation always executes. Clear/off/failure
+after valid overlay binding; simulation always executes.
+Scene unload cancels its unsubmitted ordered ticket and immediately clears the
+published binding. New captures wait while render-thread retirement follows any
+submitted callback, releases optional surface/light targets and clears retained
+scene consumers. A departed queued frame cannot publish into the next scene. Clear/off/failure
 retires overlays, borrowed water targets and classic-line visibility. The lead
 wires scene draw/reset/unload and batcher pool retirement; those integration
 hooks are not implied by the consumer's presence.

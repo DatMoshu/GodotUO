@@ -180,6 +180,9 @@ public sealed partial class UltimaBatcher2D
 
     internal OrderedWorldCapture OrderedWorldProbe => _orderedWorld; // Probe only.
 
+    // PORT DEVIATION (GUO): retire the departed scene before its next frame callback.
+    internal void RetireSpeedScene() => _orderedWorld?.RetireScene();
+
     private void ResetOrderedWorldItems()
     {
         RetireSpeedWeatherLines(); // PORT DEVIATION (GUO): retire before pooled item reuse.

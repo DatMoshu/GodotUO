@@ -54,7 +54,7 @@ internal sealed partial class OrderedWorldCapture : IDisposable
     private Rid _canvas, _presenter;
     private string _unsupported;
     private bool _queued, _disposed;
-    private int _pending;
+    private int _pending, _sceneRetiring;
     private readonly string _vertexSource, _fragmentSource, _residentVertexSource;
     // ADR-0044 Depth World: upstream's depth for the next captured quad, and
     // the chunk land/statics drawn from resident buffers this frame.
@@ -66,6 +66,28 @@ internal sealed partial class OrderedWorldCapture : IDisposable
         SpeedMode.SpeedModeBindings.Clear(_device);
         if(clearConsumer) ClearSpeedLightConsumer();
     }
+    // PORT DEVIATION (GUO): ADR-0048, a departed scene cannot publish a later ticket.
+    internal void RetireScene()
+    {
+        if (_disposed || Interlocked.CompareExchange(ref _sceneRetiring, 1, 0) != 0) return;
+        CancelUnsubmittedFrame();
+        Recording = false;
+        ClearSurfaceBinding(true);
+        // Submitted callbacks retain their immutable inputs until this serialized
+        // retirement runs. New captures are refused until retirement completes.
+        RenderingServer.CallOnRenderThread(Callable.From(() =>
+        {
+            try
+            {
+                _device.DisableSurfaceRT(); // Also releases light inputs and optional GPU targets.
+                ClearSpeedLightConsumer();
+                SpeedLights = null;
+                SpeedClassicCompose = SpeedCompose = default;
+            }
+            finally { Volatile.Write(ref _sceneRetiring, 0); }
+        }));
+    }
+
     private void ClearSpeedLightConsumer()
     {
         try { SpeedLights?.ClearLightTarget?.Invoke(SpeedLights.Batcher); }
@@ -148,7 +170,8 @@ internal sealed partial class OrderedWorldCapture : IDisposable
     }
     internal readonly DepthWorldResident Resident = DepthWorldProbe.Enabled ? new DepthWorldResident() : null;
     private int _cameraX, _cameraY, _maxGroundZ = 127;
-    internal bool CanBegin => !_disposed && Volatile.Read(ref _pending) == 0 && !_queued && !Recording;
+    internal bool CanBegin => !_disposed && Volatile.Read(ref _sceneRetiring) == 0
+        && Volatile.Read(ref _pending) == 0 && !_queued && !Recording;
     internal bool Recording { get; private set; }
     internal bool Deferring => Recording && _unsupported == null;
     internal Texture2Drd Texture => _device.Presenter;
@@ -179,7 +202,7 @@ internal sealed partial class OrderedWorldCapture : IDisposable
     {
         LastFrameOnPass = false;
         if (InjectFailure == 7) { Fallback("injected early admission"); return false; }
-        if (_disposed || Volatile.Read(ref _pending) != 0 || _queued || Recording)
+        if (_disposed || Volatile.Read(ref _sceneRetiring) != 0 || Volatile.Read(ref _pending) != 0 || _queued || Recording)
         {
             Fallback("previous frame ticket still pending or capture disposed");
             return false;
@@ -466,7 +489,7 @@ internal sealed partial class OrderedWorldCapture : IDisposable
 
     private void BeforeDraw()
     {
-        if (!_queued || _disposed) return;
+        if (!_queued || _disposed || Volatile.Read(ref _sceneRetiring) != 0) return;
         _queued = false;
         Volatile.Write(ref _pending, 1);
         RenderingServer.CallOnRenderThread(_render);
@@ -478,6 +501,7 @@ internal sealed partial class OrderedWorldCapture : IDisposable
         bool success = false;
         try
         {
+            if (Volatile.Read(ref _sceneRetiring) != 0) return;
             if (_unsupported != null) throw new NotSupportedException(_unsupported);
             var size = new Vector2I((int)_push.Screen.X, (int)_push.Screen.Y);
             if (_device.Size != size)
@@ -522,6 +546,7 @@ internal sealed partial class OrderedWorldCapture : IDisposable
         }
         finally
         {
+            if (Volatile.Read(ref _sceneRetiring) != 0) ClearSurfaceBinding(true);
             // These branches contain this frame only. GameObject.Draw is never replayed.
             RenderingServer.CanvasItemSetVisible(_canvas, !success);
             RenderingServer.CanvasItemSetVisible(_presenter, success);

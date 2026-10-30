@@ -220,6 +220,38 @@ public partial class NativeCloudSceneProbe : Node
             _game.SetScene(new LoginScene(world));
             Record(_scene.IsDestroyed&&Read<SpeedModeCloudPass>(_scene,"_speedCloudPass")==null
                 &&!Read<Rid>(_scene,"_speedCloudItem").IsValid&&!GodotObject.IsInstanceValid(lastPass),"actual scene unload clears cloud node/material/RID");
+            // Task1042: a normal rendered unload must retire the producer too.
+            await ToSignal(RenderingServer.Singleton,RenderingServer.SignalName.FramePostDraw);
+            Record(SpeedModeBindings.Current.Surface==null&&SpeedModeBindings.Current.LightTarget==null,
+                "rendered unload clears core surface/light publication");
+            var capture=Read<GUO.Renderer.UltimaBatcher2D>(_game,"_uoSpriteBatch").OrderedWorldProbe;
+            var device=Read<GUO.Renderer.DepthWorld.OrderedWorldDevice>(capture,"_device");
+            Record(!device.SurfaceReady&&!device.SpeedLightReady,"rendered unload releases optional producer targets");
+            _rows.Add(new{test="producer-unload",surfaceRemaining=SpeedModeBindings.Current.Surface!=null,
+                lightRemaining=SpeedModeBindings.Current.LightTarget!=null,surfaceReady=device.SurfaceReady,lightReady=device.SpeedLightReady});
+
+            // Reuse the same batcher, then unload BEFORE its next FramePreDraw.
+            // This is the stale-publication race a clear-only hook would miss.
+            ProfileManager.Load("Offline","cloud-fixture","cloud-fixture");_profile=ProfileManager.CurrentProfile;
+            _profile.LightingSpeedMode=true;_profile.ExperimentalWorldOverview=true;
+            world.CreatePlayer(1);world.MapIndex=0;world.Player.Graphic=0x190;
+            world.Player.Name="Disconnected retirement fixture";world.Player.SetInWorldTile(1431,1691,20);
+            _scene=new GameScene(world);_game.SetScene(_scene);_game.SetProcess(false);Zoom(4);
+            await Warm(8);
+            Record(SpeedModeBindings.Current.Surface!=null&&SpeedModeBindings.Current.LightTarget!=null,
+                "new scene reuses producer after retirement");
+            _draw.Invoke(_game,null); // capture queued, not yet submitted to FramePreDraw
+            Record(!capture.CanBegin,"queued fixture ticket exists before unload");
+            _game.SetScene(new LoginScene(world));
+            Record(SpeedModeBindings.Current.Surface==null&&SpeedModeBindings.Current.LightTarget==null,
+                "queued unload clears publication immediately");
+            await ToSignal(RenderingServer.Singleton,RenderingServer.SignalName.FramePostDraw);
+            Record(SpeedModeBindings.Current.Surface==null&&SpeedModeBindings.Current.LightTarget==null,
+                "queued old frame cannot republish after unload");
+            Record(capture.CanBegin&&!device.SurfaceReady&&!device.SpeedLightReady,
+                "queued retirement completes and next scene may begin");
+            _rows.Add(new{test="queued-unload",canBegin=capture.CanBegin,
+                surfaceRemaining=SpeedModeBindings.Current.Surface!=null,lightRemaining=SpeedModeBindings.Current.LightTarget!=null});
             Require(!NetClient.Socket.IsConnected,"fixture stayed disconnected throughout");
             _rows.Add(new{test="unload",destroyed=_scene.IsDestroyed,disconnected=!NetClient.Socket.IsConnected});
             SaveResults();Require(_failures.Count==0,string.Join("; ",_failures));
