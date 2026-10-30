@@ -1,0 +1,6 @@
+{
+  "schema":"guo/cloud@1", "name":"Thin haze", "zoom_start":4.1, "zoom_end":5.4,
+  "layers":[
+    {"algorithm":"procedural","mask":"haze","sprite":"","density":0.7,"coverage":0.8,"scale":0.018,"wind_degrees":75,"wind_speed":0.035,"opacity":0.24,"day_color":[0.76,0.83,0.9],"night_color":[0.12,0.19,0.29],"daynight_response":0.85,"height":230,"parallax":0.008}
+  ]
+}

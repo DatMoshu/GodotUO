@@ -12,6 +12,7 @@ internal partial class GameScene
     private SpeedModeCloudPass _speedCloudPass;
     private RenderTarget2D _speedCloudTarget;
     private Rid _speedCloudItem;
+    internal string SpeedCloudLightingSource { get; private set; }
 
     // The lead calls native while a world batch is active, overview after its
     // batch ends. Native target transform is cancelled; overview uses identity.
@@ -31,6 +32,8 @@ internal partial class GameScene
         {
             _speedCloudTarget=target;
             _speedCloudPass=new SpeedModeCloudPass();
+            if (!string.IsNullOrEmpty(ProfileManager.ProfilePath))
+                _speedCloudPass.Configure(System.IO.Path.Combine(ProfileManager.ProfilePath,"clouds.json"));
             target.ViewportNode.AddChild(_speedCloudPass);
             _speedCloudItem=RenderingServer.CanvasItemCreate();
             RenderingServer.CanvasItemSetParent(_speedCloudItem,target.CanvasItem);
@@ -42,9 +45,15 @@ internal partial class GameScene
         var player=_world.Player;
         var origin=SpeedModeCameraOrigin();
         var size=new Vector2I(target.Width,target.Height);
+        // Same authoritative shard-clock/brightness resolver as the sun at
+        // this source base. Local-test-clock integration hook is in the packet.
+        float ambient=RealtimeAmbientLevel();
+        var sky=GUO.Renderer.SpeedMode.Shadows.SunShadowProjection.Resolve(_world.ShardClock,ambient,Time.Ticks);
+        SpeedCloudLightingSource=sky.Source;
         _speedCloudPass.Bind(size,new Vector3(origin.X,origin.Y,player.Z),
             new SpeedModeCloudView(true,Camera.Zoom,altitude),
-            GUO.Renderer.Water.WaterRender.Wind(_world,profile),Time.Ticks/1000.0);
+            GUO.Renderer.Water.WaterRender.Wind(_world,profile),Time.Ticks/1000.0,
+            CloudLighting.Daylight(sky.Strength,sky.Length,sky.Source,ambient));
         if (!_speedCloudPass.Visible || _speedCloudPass.Material==null) { ResetSpeedClouds(); return; }
         if (overview && _world.Map!=null) {
             var maps=Client.Game.UO.FileManager.Maps;
@@ -85,5 +94,6 @@ internal partial class GameScene
             _speedCloudPass.Free();
         }
         _speedCloudPass=null; _speedCloudTarget=null;
+        SpeedCloudLightingSource=null;
     }
 }

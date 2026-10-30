@@ -1,0 +1,7 @@
+{
+  "schema":"guo/cloud@1", "name":"Broken storm cover", "zoom_start":4, "zoom_end":5,
+  "layers":[
+    {"algorithm":"procedural","mask":"broken","sprite":"","density":1.8,"coverage":0.53,"scale":0.055,"wind_degrees":220,"wind_speed":0.28,"opacity":0.88,"day_color":[0.32,0.38,0.46],"night_color":[0.045,0.065,0.11],"daynight_response":1,"height":280,"parallax":0.02},
+    {"algorithm":"hybrid","mask":"broken","sprite":"builtin:billow","density":1.4,"coverage":0.48,"scale":0.09,"wind_degrees":235,"wind_speed":0.4,"opacity":0.6,"day_color":[0.51,0.56,0.62],"night_color":[0.085,0.11,0.17],"daynight_response":1,"height":400,"parallax":0.025}
+  ]
+}
