@@ -149,7 +149,13 @@ internal partial class GameScene
                     lo=lo.Min(pixel); hi=hi.Max(pixel);
                 }
                 if(WindowLightPatch.TryCreate(opening,origin,z,tangent,inward,ray,covered,open,RealtimeAmbientLevel(),
-                    new N4(lo.X-1,lo.Y-1,hi.X+1,hi.Y+1),new N4(1,.88f,.65f,1),out var patch)) inputs.Windows.Add(patch);
+                    new N4(lo.X-1,lo.Y-1,hi.X+1,hi.Y+1),new N4(1,.88f,.65f,1),out var patch)) {
+                    inputs.Windows.Add(patch);
+                    N2 paneCentre=origin+width*.5f;
+                    Vector2 source=view*new Vector2((paneCentre.X-paneCentre.Y)*22-_offset.X,(paneCentre.X+paneCentre.Y)*22-z*4-_offset.Y);
+                    if(inputs.Rays.Count<WindowRayPatch.Limit && WindowRayPatch.TryCreate(patch,source,inputs.SunEnabled,covered,open,out var shaft))
+                        inputs.Rays.Add(shaft);
+                }
             }
         }
     }

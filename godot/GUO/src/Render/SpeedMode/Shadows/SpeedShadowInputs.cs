@@ -22,6 +22,11 @@ internal sealed class SpeedShadowInputs
     internal readonly List<Stamp> Sun = new(1024);
     internal readonly List<Stamp>[] Mobile = new List<Stamp>[10];
     internal readonly List<WindowLightPatch> Windows = new(64);
+    internal readonly List<WindowRayPatch> Rays=new(WindowRayPatch.Limit);
+    private WindowRayPassRd _rays;
+    private WindowRayGate _rayGate;
+    private Rid _rayMask;
+    private int _generation;
     internal int LampCount, Requested;
     internal N3 Viewer;
     internal bool SunEnabled;
@@ -35,13 +40,15 @@ internal sealed class SpeedShadowInputs
 
     internal void Begin()
     {
-        Sun.Clear(); Windows.Clear();
+        Sun.Clear(); Windows.Clear(); Rays.Clear();
+        _generation++; _rayGate.Clear(); _rayMask=default;
         foreach(var list in Mobile) list?.Clear();
     }
 
     // Called only inside the core's admitted RD transaction. No scene access.
     internal void Render(RenderingDevice rd,SpeedLightFrame frame)
     {
+        _rayGate.Clear(); _rayMask=default;
         frame.LampShadowAtlas=frame.SunMask=default;
         for(int i=0;i<frame.Count;i++) { frame.Lights[i].ShadowRow=-1; frame.Lights[i].MobileShadow=default; }
         if(Requested>0 && LampCount>0)
@@ -62,6 +69,10 @@ internal sealed class SpeedShadowInputs
             _sun??=new ProjectedShadowMaskRd(rd,publish:false);
             frame.SunMask=Draw(_sun,Sun,frame.TargetSize);
         }
+        _rayMask=frame.SunMask;
+        bool rayReady=SunEnabled && Rays.Count>0 && _rayMask.IsValid;
+        _rayGate.Prepare(_generation,rayReady,frame.Origin,frame.TargetSize);
+        if(!rayReady) { _rays?.Dispose(); _rays=null; }
     }
 
     private static Rid Draw(ProjectedShadowMaskRd mask,List<Stamp> stamps,Vector2I size)
@@ -73,6 +84,14 @@ internal sealed class SpeedShadowInputs
 
     internal void RenderWindows(RenderingDevice rd,Rid framebuffer,Rid surface,Vector2I origin,Vector2I size)
     {
+        if(_rayGate.Consume(_generation,origin,size)) {
+            _rays??=new WindowRayPassRd();
+            if(!_rays.Draw(rd,framebuffer,surface,_rayMask,new N2(origin.X,origin.Y),size.X,size.Y,CollectionsMarshal.AsSpan(Rays)))
+                // Core discards the entire light transaction and restores classic
+                // lighting; a partial optional draw must never be published.
+                throw new InvalidOperationException("Window receiver shafts failed: "+_rays.Failure);
+        }
+        _rayMask=default;
         if(Windows.Count==0) return;
         _windows??=new WindowLightPassRd();
         _windows.Draw(rd,framebuffer,surface,new N2(origin.X,origin.Y),size.X,size.Y,CollectionsMarshal.AsSpan(Windows));
@@ -86,6 +105,7 @@ internal sealed class SpeedShadowInputs
         _sun?.DisposeAll(); _sun=null;
         for(int i=0;i<_mobile.Length;i++) { _mobile[i]?.DisposeAll(); _mobile[i]=null; }
         _windows?.Dispose(); _windows=null;
+        _rays?.Dispose(); _rays=null; _rayGate.Clear(); _rayMask=default;
     }
 
     internal static Stamp Project(Texture2D texture,GUO.Compat.Rectangle uv,Vector2 position,
