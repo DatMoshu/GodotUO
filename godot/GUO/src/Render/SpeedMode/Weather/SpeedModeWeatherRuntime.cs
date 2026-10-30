@@ -51,6 +51,8 @@ public partial class SpeedModeWeatherRuntime : Node
 
     internal void ResetFrame()
     {
+        // A scene-retirement callback may outlive this child native owner.
+        if (_released) return;
         ClearOutputs();
         _armed = false;
         _world = null; _profile = null; _state = null;
@@ -128,7 +130,12 @@ public partial class SpeedModeWeatherRuntime : Node
         SpeedModeBindings.LightReady -= OnLightReady;
         SpeedModeBindings.Invalidated -= OnInvalidated;
         ClearOutputs();
-        foreach (var item in _items) if (item.IsValid) RenderingServer.FreeRid(item);
+        for (int i = 0; i < _items.Length; i++)
+        {
+            if (_items[i].IsValid) RenderingServer.FreeRid(_items[i]);
+            _items[i] = default;
+        }
+        _armed = false; _classic = default; _batcher = null;
         _world = null; _profile = null; _state = null; _expectedSurface = _color = null;
     }
 
