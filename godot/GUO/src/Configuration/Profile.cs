@@ -418,6 +418,16 @@ namespace GUO.Configuration
         public bool LightingSpeedMode { get; set; } = false;
         public int SpeedModeNightFloor { get; set; } = 3;
         public int SpeedModeSoften { get; set; } = 3;
+        // PORT DEVIATION (GUO): ADR-0048 weather; require the default-off parent.
+        public bool SpeedModeWeather { get; set; } = true;
+        public bool SpeedModeReflections { get; set; } = true;
+        public bool SpeedModeFog { get; set; } = true;
+        private int _speedModeMorningHaze;
+        public int SpeedModeMorningHaze
+        {
+            get => _speedModeMorningHaze;
+            set => _speedModeMorningHaze = Math.Clamp(value, 0, 100);
+        }
         // PORT DEVIATION (GUO): UO+ spell cast/impact bursts (ADR-0039).
         // Requires RealtimeLights; existing profiles stay off.
         public bool SpellLighting { get; set; } = false;
@@ -468,6 +478,13 @@ namespace GUO.Configuration
         // draws the tiles as upstream does; any other value names a water
         // style (Renderer.Water.WaterRender). Default classic.
         public string WaterStyle { get; set; } = "classic";
+        // PORT DEVIATION (GUO): opt-in lighting water wind, ADR-0037/0048.
+        private float _windStrength;
+        public float WindStrength
+        {
+            get => _windStrength;
+            set => _windStrength = float.IsFinite(value) ? Math.Clamp(value, 0f, 1f) : 0f;
+        }
         // PORT DEVIATION (GUO): explicit, revocable consent to one shard water
         // policy (ADR-0037 decision 8). Personal WaterStyle is never overwritten.
         public string ShardWaterConsent { get; set; } = "";

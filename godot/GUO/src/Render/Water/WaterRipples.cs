@@ -62,9 +62,10 @@ internal sealed class WaterRipples
     private readonly List<uint> _drop = new List<uint>();
     private int _lastPlayerX = int.MinValue, _lastPlayerY;
     private bool _jumped;
+    // Shared bounded input; only lighting water or an enabled Lab consumes it.
+    private readonly RainRippleEmitter _rain = new();
 #if GUO_LABS
-    // PORT DEVIATION (GUO): owner-requested default-off UO+ rain experiment.
-    private readonly GUO.Labs.WaterRain.RainRippleEmitter _rain = new();
+    private readonly GUO.Labs.WaterRain.RainRippleEmitter _labRain = new();
 #endif
 
     /// <summary>The first cell of the window; the shader's ripple_origin.</summary>
@@ -82,13 +83,15 @@ internal sealed class WaterRipples
     /// <summary>For the probe and the perf table: steps run and stamps made so far.</summary>
     public int Steps { get; private set; }
     public int Stamps { get; private set; }
+    internal int RainStamps { get; private set; }
     public double LastUpdateMs { get; private set; }
 
     /// <summary>Forget everything: a new map, a style switched off and on.</summary>
     public void Reset()
     {
-#if GUO_LABS
         _rain.Reset();
+#if GUO_LABS
+        _labRain.Reset();
 #endif
         Array.Clear(_now);
         Array.Clear(_before);
@@ -117,9 +120,13 @@ internal sealed class WaterRipples
         _lastPlayerX = world.Player.X;
         _lastPlayerY = world.Player.Y;
 
+        if (WaterRender.EnvironmentEnabled(GUO.Configuration.ProfileManager.CurrentProfile))
+            RainSurfaceQuery.UpdateLighting(world, mask, this, _rain, deltaSeconds, _jumped);
 #if GUO_LABS
-        GUO.Labs.WaterRain.WaterRainLab.Update(world, mask, this, _rain, deltaSeconds, _jumped);
+        else GUO.Labs.WaterRain.WaterRainLab.Update(world, mask, this, _labRain, deltaSeconds, _jumped);
 #endif
+        if (!WaterRender.EnvironmentEnabled(GUO.Configuration.ProfileManager.CurrentProfile)) _rain.Reset();
+        RainStamps += _rain.LastStamps;
         Disturb(world, mask, Math.Max(deltaSeconds, 1f / 240f));
 
         bool stepped = false;

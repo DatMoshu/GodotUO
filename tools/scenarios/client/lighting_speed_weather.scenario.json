@@ -1,0 +1,74 @@
+{
+  "id": "client.lighting.speed.weather",
+  "title": "Same-frame optional weather, water reflections and experimental cloud fixtures",
+  "surface": "client",
+  "requires": {
+    "build": "debug"
+  },
+  "timeouts": {
+    "step_s": 60,
+    "run_s": 180
+  },
+  "steps": [
+    {
+      "id": "state",
+      "do": {
+        "kind": "note",
+        "text": "Run godot-console --headless --path godot/GUO res://src/Render/SpeedMode/Weather/SpeedModeWeatherProbe.tscn. Require exit 0 and [speed-weather] PASS. Integration adds this as its smoke line."
+      },
+      "say": "Check rain intensity, wetness timing, wind and covered-water impact rejection without a shard."
+    },
+    {
+      "id": "rendered-water",
+      "do": {
+        "kind": "note",
+        "text": "With a Godot slot, run godot-console --path godot/GUO res://src/Render/Water/WaterLightingProbe.tscn. Set GUO_WATER_PROBE_OUT to the evidence stills directory. Require exit 0 and [water-lighting] PASS. Set GUO_WATER_BASELINE_INCLUDE to the pre-change water include for six old-model byte comparisons."
+      },
+      "say": "Compile and render lighting water against a half-float linear light target at 1280x720; inspect day, night, lamp, wind and rain stills."
+    },
+    {
+      "id": "rain-fixture",
+      "do": {
+        "kind": "note",
+        "text": "With a Godot slot, run godot-console --path godot/GUO res://src/Render/SpeedMode/Weather/SpeedModeRainProbe.tscn. GUO_WEATHER_PROBE_OUT names the evidence stills directory. Require exit 0 and [speed-rain] PASS: covered pixels zero, splashes only floors, drips only exposed roof edge, same-time determinism, surface-origin rebase invariance and fallback."
+      },
+      "say": "Verify the procedural rain pass against the synthetic surface buffer before core integration."
+    },
+    {
+      "id": "fog-fixture",
+      "do": {
+        "kind": "note",
+        "text": "With a Godot slot, run godot-console --path godot/GUO res://src/Render/SpeedMode/Weather/SpeedModeFogProbe.tscn. GUO_WEATHER_PROBE_OUT names the evidence stills directory. Require exit 0 and [speed-fog] PASS: distance/height attenuation, covered/missing parity, quarter density, wind/time, origin invariance and exact toggle/fallback restoration."
+      },
+      "say": "Verify synthetic world-space mist. Storm-brewing3 uses count/70, rain0 uses one quarter; snow2 and storm-approach1 contribute zero. Morning haze (%) adds a constant and defaults to zero; Fog applies only to Lighting speed mode."
+    },
+    {
+      "id": "wet-reflection-fixtures",
+      "do": {
+        "kind": "note",
+        "text": "With a Godot slot, run SpeedModeWetProbe.tscn and SpeedModeReflectionProbe.tscn under res://src/Render/SpeedMode/Weather/. Require wet PASS and reflection PASS. Test floor darkening, allowlisted rings/light response, four nearest reflection taps in wet/water, upright/wall classes, d/8 height and XY column consistency, wrong height/class rejection, 1x/2x art grids, cover/off, origin and storey-offset parity. No object base-Z input is needed."
+      }
+    },
+    {
+      "id": "runtime-callbacks",
+      "do": {
+        "kind": "note",
+        "text": "With an admitted Godot slot, run res://src/Render/SpeedMode/Weather/SpeedModeWeatherRuntimeProbe.tscn. Require [speed-weather-runtime] PASS and exit0: current publication, surface-only fallback, covered-pixel parity, invalidation, stale tick/group safety and exact main-off restoration."
+      }
+    },
+    {
+      "id": "cloud-fixture",
+      "do": {
+        "kind": "note",
+        "text": "With an admitted Godot slot, run res://src/Render/SpeedMode/Weather/SpeedModeCloudProbe.tscn. Require [speed-cloud] PASS and exit0. Check disabled/4x exact original pixels, visible5x below/above plane, wind motion, clouds beyond5x without surface/light, pin clearance and exact fallback. Live camera uses existing ExperimentalWorldOverview, continuous4..5 entry, overview beyond5; lead owns that integration."
+      }
+    },
+    {
+      "id": "limits",
+      "do": {
+        "kind": "note",
+        "text": "Synthetic evidence establishes only the tested fixtures. Scene lifecycle/pool reset hooks and both native/overview camera calls are lead-owned. Styled water retains canvas fallback; classic-water class6 reflections use the speed overlay. Live bank and camera on/off captures remain integrated acceptance. No frame-time claim."
+      }
+    }
+  ]
+}

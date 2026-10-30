@@ -4233,3 +4233,60 @@ night override, restoring the light settings afterwards. The Zoom2 Debug table
 must retain host other-process CPU; above10% is shared, not quiet acceptance.
 Native-art neighbour slopes, ambiguous wall planes, and combined shadow/window/
 weather/water passes remain independent visual/integration review items.
+
+
+## 51. Lighting speed weather and cloud consumer (ADR-0048)
+
+This optional consumer requires `LightingSpeedMode` (default false) and the
+Depth World. Saved sub-options `SpeedModeWeather`, `SpeedModeReflections` and
+`SpeedModeFog` default true; `SpeedModeMorningHaze` clamps to 0..100, default0.
+`WindStrength` clamps finite values to0..1, default0. UO+ stages these controls
+until Apply; Defaults restores the parent off. Existing weather packets and
+classic simulation are unchanged.
+
+`SpeedModeWeather` observes weather count/70 and integrates wetness once per
+client tick, rising over60 seconds and draining over180 seconds. Rain0 gives
+quarter-strength fog; storm-brewing3 gives full count-derived fog. Snow2,
+storm-approach1 and absent/invalid weather add no fog. Morning haze adds a
+constant preference. Wind follows the existing weather direction.
+
+The runtime arms a world snapshot and consumes `SpeedModeBindings.LightReady`
+only with matching surface identity, client tick, sequence, dimensions and
+full-target bounds. Surface-only publication leaves classic lines visible.
+Wet/rain/fog native canvas commands sit on the world target before UI.
+Classic rain lines are grouped behind a generation ticket and hidden only
+after valid overlay binding; simulation always executes. Clear/off/failure
+retires overlays, borrowed water targets and classic-line visibility. The lead
+wires scene draw/reset/unload and batcher pool retirement; those integration
+hooks are not implied by the consumer's presence.
+
+Water class6 can receive sparse reflections using four nearest-art-pixel taps
+16/32/48/64 above it. Candidates are upright/wall classes2/3/4 with positive
+height matching separation/8 within1/8 UO Z, and screen-column agreement within
+one native pixel. Puddles require wetCandidate flag2 and exposed floor class1;
+`SpeedModePuddleSurfaces` holds a curated paving/cobblestone metadata allowlist.
+The core must apply that predicate when producing flags. Reflections are a
+screen-space approximation with visible tap bands, not complete silhouettes.
+The separate Lighting water style remains subject to the ordered backend's
+existing styled-water canvas fallback. No compatibility with simultaneous
+speed-mode lighting is claimed for that style.
+
+`SpeedModeCloudView(Enabled, Zoom, Height)` supplies an explicit cloud view.
+Default disables all cloud work. `GameScene.SpeedModeClouds` implements lead
+hooks `DrawSpeedClouds(batcher, overview)` and `ResetSpeedClouds()`, requiring
+existing ExperimentalWorldOverview plus LightingSpeedMode, Zoom>4 and a positive
+height. Height is smoothstep4..5 times300 UO units above the player. Native and
+overview clouds work independently of weather surface/light publication, so
+the cloud plane remains visible beyond5. The lead owns both draw call sites
+and unload cleanup. Entry fades continuously4..5. Overview opacity is capped
+at32% to preserve labels; a20-pixel clear area protects the mapped player pin.
+The cloud pass is procedural colour on an approximate plane, not volumetric GI.
+The standalone `SpeedModeCloudPass.Bind(size,camera,view,wind,seconds)` and
+`HideForFallback()` support lead-owned overview placement without native surface
+sampling. Native artwork keeps nearest sampling.
+
+Scenario: `tools/scenarios/client/lighting_speed_weather.scenario.json`.
+Headless state tests do not establish rendered behavior. Rendered runtime,
+reflection and cloud fixtures exercise current callbacks, geometry and exact
+fallback. Live native/overview camera and bank on/off acceptance remain separate
+integration checks; no timing or whole-client parity follows from fixtures.

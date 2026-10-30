@@ -64,12 +64,51 @@ uniform vec4 water_params2 = vec4(0.35, 0.22, 6.0, 0.0);
 // x: grain, the world pixels one water pixel covers (1 = the art's own grid).
 uniform vec4 water_params3 = vec4(1.0, 0.0, 0.0, 0.0);
 
+// ADR-0048: linear HDR speed-mode target, indexed in world-target pixels.
+// This sampler contains light only; native artwork retains nearest sampling.
+uniform bool water_environment = false;
+uniform float water_daylight = 1.0;
+uniform float water_wind = 0.0;
+uniform bool water_has_light_target = false;
+uniform sampler2D water_light_target : filter_linear, repeat_disable;
+uniform vec4 water_light_bounds = vec4(0.0, 0.0, 1.0, 1.0);
+uniform vec3 water_light_ambient = vec3(1.0);
+
+// ADR-0048: geometric plane-consistency reflections, bound only for a valid frame.
+#include "res://src/Render/SpeedMode/Weather/speed_reflection.gdshaderinc"
+uniform bool water_has_reflections = false;
+uniform sampler2D water_surface_buffer : filter_nearest, repeat_disable;
+uniform sampler2D water_scene_color : filter_nearest, repeat_disable;
+uniform vec2 water_reflection_target_size = vec2(1.0);
+uniform vec2 water_reflection_origin = vec2(0.0);
+uniform float water_reflection_art_scale = 1.0;
+
+vec3 water_local_light(vec2 target_px) {
+	if (!water_has_light_target) { return vec3(0.0); }
+	vec2 uv = (target_px - water_light_bounds.xy) / max(water_light_bounds.zw, vec2(1.0));
+	if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) {
+		return vec3(0.0);
+	}
+	return max(texture(water_light_target, uv).rgb - water_light_ambient, vec3(0.0));
+}
+
 vec4 water_mask_at(vec2 cell) {
 	vec2 rel = cell - water_mask_origin;
 	if (rel.x < 0.0 || rel.y < 0.0 || rel.x >= 128.0 || rel.y >= 128.0) {
 		return vec4(1.0, 123.0 / 255.0, 0.0, 1.0);
 	}
 	return texelFetch(water_mask, ivec2(mod(cell, 128.0)), 0);
+}
+
+// A continuous wet-cell field for Lighting's shallow/deep colour. Sampling
+// four discrete distant neighbours made the shelf jump at tile boundaries,
+// most visibly around individual dock pilings. Only mask data is blended.
+float water_wet_linear(vec2 xy) {
+	vec2 lo = floor(xy);
+	vec2 blend = fract(xy);
+	return mix(mix(water_mask_at(lo).r, water_mask_at(lo + vec2(1.0, 0.0)).r, blend.x),
+			mix(water_mask_at(lo + vec2(0.0, 1.0)).r,
+			water_mask_at(lo + vec2(1.0, 1.0)).r, blend.x), blend.y);
 }
 
 // The world cell under a world pixel, and where in that cell's diamond it
@@ -111,6 +150,30 @@ float water_height(vec2 p, float t) {
 	h += 0.7 * sin(p.y * 2.3 - t * 1.1 + sin(p.x * 1.1 - t * 0.5) * 1.2);
 	h += 0.6 * (water_noise(p * 2.0 + vec2(t * 0.4, -t * 0.3)) - 0.5);
 	return h;
+}
+
+// Lighting waves use continuous world-space directional derivatives. Value
+// noise's square interpolation lattice became visible in specular normals,
+// even though its coordinates were already world anchored. No tile UV or
+// cell index participates in these slopes; older styles keep their field.
+vec2 water_lighting_slope(vec2 p, float t) {
+	// A slow continuous warp prevents stationary rows of interference nodes.
+	vec2 wa = vec2(0.31, -0.17);
+	vec2 wb = vec2(-0.23, 0.29);
+	float ax = dot(p, wa) + t * 0.11;
+	float ay = dot(p, wb) - t * 0.09;
+	vec2 q = p + 0.25 * vec2(sin(ax), sin(ay));
+	vec2 a = vec2(1.7, 0.65);
+	vec2 b = vec2(-0.6, 2.3);
+	vec2 c = vec2(4.1, 1.3);
+	vec2 d = vec2(-2.7, 5.3);
+	vec2 slope = cos(dot(q, a) + t * 1.3) * a
+			+ 0.7 * cos(dot(q, b) - t * 1.1) * b
+			+ 0.22 * cos(dot(q, c) + t * 2.1) * c
+			+ 0.13 * cos(dot(q, d) - t * 1.7) * d;
+	// Chain rule keeps these the analytic slopes of the warped waves.
+	return vec2(dot(slope, vec2(1.0, 0.0) + 0.25 * vec2(cos(ax) * wa.x, cos(ay) * wb.x)),
+			dot(slope, vec2(0.0, 1.0) + 0.25 * vec2(cos(ax) * wa.y, cos(ay) * wb.y)));
 }
 
 // The ripple height at a point in cells, -1 .. 1, and its slope.
@@ -265,6 +328,60 @@ vec3 water_realistic(vec3 base, vec2 cell, vec2 f, vec2 world, float t, float li
 	return clamp(c, 0.0, 1.0);
 }
 
+// Lighting is a separate branch so old model arithmetic remains unchanged.
+vec3 water_realistic_lighting(vec3 base, vec2 cell, vec2 f, vec2 world, float t, float light, float ripple, float rs, vec2 target_px) {
+	float edge = water_shore(cell, f);
+	float open_w = water_wet_linear(cell + f);
+	float luma = dot(base, vec3(0.299, 0.587, 0.114));
+	vec3 deep = water_tint.rgb * (0.5 + 1.2 * luma);
+	// Shore distance is an approximation from the existing wet-cell mask,
+	// not terrain bathymetry. Keep a lighter shelf near land and deepen the
+	// open-water colour without another pass or more texture fetches.
+	vec3 shallow = mix(base, vec3(0.10, 0.30, 0.32) * (0.5 + 1.2 * luma), 0.5);
+	float depth = clamp(open_w - edge * 0.65, 0.0, 1.0);
+	vec3 c = mix(base, mix(shallow, deep, depth * 0.72), 0.25);
+	// Keep native daytime blue and brightness. Depth may gently darken it;
+	// night brightness still comes from the ordinary world light target.
+	float native_luma = luma * (1.0 - depth * 0.05);
+	c *= native_luma / max(dot(c, vec3(0.299, 0.587, 0.114)), 0.001);
+	// Broad swell normals should not paint dark bands over native water.
+	// Keep their modulation subtle; crests, ripples and local glints remain.
+	c *= clamp(1.0 + (light - 0.75) * water_params.z * 0.6, 0.94, 1.035);
+	c += ripple * rs * vec3(0.50, 0.58, 0.64);
+	// Calm water has sparse, soft crests; stronger shared wind admits more.
+	float crest = pow(clamp(light, 0.0, 1.0), 96.0);
+	float spec = crest * water_params2.x * 0.7
+			* (0.45 + 0.55 * min(abs(water_wind), 1.0));
+	if (water_environment) {
+		// Sky colour follows shard daylight, not wall-clock time. Final world
+		// lighting supplies brightness, so only a restrained colour shift here.
+		vec3 sky = mix(vec3(0.48, 0.61, 0.92), vec3(0.84, 0.94, 1.0), water_daylight);
+		c *= mix(vec3(1.0), sky, 0.3);
+		spec *= 0.12 + 0.88 * water_daylight;
+		// Approximate broken reflections of local lights. The occluded field
+		// supplies colour/reach; moving wavelets break it into surface streaks.
+		// This is neither a mirrored scene reflection nor ray tracing.
+		// Two irregular, stretched fields vary length and spacing without a
+		// periodic row phase. The slow field also varies the glint threshold.
+		float scatter = water_noise(world * 0.019 + vec2(t * 0.07, -t * 0.04));
+		vec2 drift = vec2(scatter * 1.8 - t * 0.2, t * 0.6);
+		float short_glints = smoothstep(0.61 + scatter * 0.12, 0.84,
+				water_noise(world * vec2(0.11, 0.39) + drift));
+		float long_glints = smoothstep(0.72, 0.92,
+				water_noise(world * vec2(0.047, 0.23) - drift * 0.7));
+		float flecks = smoothstep(0.82, 0.96, water_noise(world * 0.43 + vec2(t * 0.3)));
+		c += water_local_light(target_px) * (0.06 + short_glints * 0.70
+				+ long_glints * 0.35 + flecks * 0.10) * water_params2.x;
+	}
+	c += vec3(spec) * (0.4 + 1.6 * luma);
+	float lace = water_noise(world * 0.12 + vec2(t * 0.5, t * 0.3));
+	float foam = water_surf(cell, f, t) * smoothstep(0.3, 0.7, lace + edge * 0.4) * water_params.w;
+	vec3 foam_color = vec3(0.88, 0.93, 0.96);
+	if (water_environment) { foam_color *= mix(vec3(0.45, 0.57, 0.8), vec3(1.0), water_daylight); }
+	c = mix(c, foam_color, foam);
+	return clamp(c, 0.0, 1.0);
+}
+
 uniform int water_debug = 0;
 
 vec3 water_shade(vec3 base, vec2 target_px) {
@@ -296,11 +413,22 @@ vec3 water_shade(vec3 base, vec2 target_px) {
 	}
 
 	vec2 p = world * water_params.y;
+	if (water_environment) {
+		p += vec2(water_wind * t * 0.22, -abs(water_wind) * t * 0.08);
+	}
 	float e = 0.35;
-	float h = water_height(p, t);
-	float hx = water_height(p + vec2(e, 0.0), t) - h;
-	float hy = water_height(p + vec2(0.0, e), t) - h;
-	if (water_model == WATER_REALISTIC) {
+	float hx;
+	float hy;
+	if (water_environment) {
+		vec2 slope = water_lighting_slope(p, t) * e;
+		float wind_strength = 0.65 + abs(water_wind) * 0.7;
+		hx = slope.x * wind_strength;
+		hy = slope.y * wind_strength;
+	} else {
+		float h = water_height(p, t);
+		hx = water_height(p + vec2(e, 0.0), t) - h;
+		hy = water_height(p + vec2(0.0, e), t) - h;
+		if (water_model == WATER_REALISTIC) {
 		// Finer chop on the swell. Compatibility (the web build) skips it:
 		// three more noise lookups a fragment are too dear there.
 #if CURRENT_RENDERER != RENDERER_COMPATIBILITY
@@ -309,6 +437,7 @@ vec3 water_shade(vec3 base, vec2 target_px) {
 		hx += (water_noise(q + vec2(e * 3.1, 0.0)) - 0.5 - chop) * 0.5;
 		hy += (water_noise(q + vec2(0.0, e * 3.1)) - 0.5 - chop) * 0.5;
 #endif
+		}
 	}
 	// Ripples tilt the surface along their slope, in cell space turned to
 	// the screen's (a cell step along X is (+22, +22) px, along Y (-22, +22)).
@@ -335,6 +464,19 @@ vec3 water_shade(vec3 base, vec2 target_px) {
 		return water_cel(base, cell, f, t, light, ripple, rs);
 	}
 	if (water_model == WATER_REALISTIC) {
+		if (water_environment) {
+			vec3 c = water_realistic_lighting(base, cell, f, world, t, light, ripple, rs, target_px);
+			if (water_has_reflections) {
+				vec2 uv = target_px / water_reflection_target_size;
+				vec4 receiver = texture(water_surface_buffer, uv);
+				if ((int(round(receiver.a)) & 15) == 6 && (int(round(receiver.a)) & 16) == 0) {
+					vec4 reflection = speed_reflection(water_surface_buffer, water_scene_color,
+						uv, water_reflection_target_size, receiver.xyz, water_reflection_origin, water_reflection_art_scale, water_time);
+					c = mix(c, reflection.rgb, reflection.a * 0.35);
+				}
+			}
+			return c;
+		}
 		return water_realistic(base, cell, f, world, t, light, ripple, rs);
 	}
 
