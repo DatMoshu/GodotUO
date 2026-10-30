@@ -27,6 +27,13 @@ internal sealed partial class OrderedWorldCapture
         if(!_shadowTextureOwners.TryGetValue(command.Texture,out var texture)) return false;
         int occurrence=command.FirstCorner/4;
         ref readonly var q=ref _occurrences[occurrence].Get(CollectionsMarshal.AsSpan(_dynamic));
+        // Classic shadow pixels are a separate representation, never casters.
+        static bool Shadow(in OrderedWorldDevice.Vertex vertex) {
+            int mode=((int)System.MathF.Round(vertex.PackedHue.Z*255))&0x3f;
+            if(mode>=20) mode-=20;
+            return mode==8;
+        }
+        if(Shadow(q.A) || Shadow(q.B) || Shadow(q.C) || Shadow(q.D)) return false;
         var state=_states[occurrence];
         var transform=inverseView*new Transform2D(new Vector2(state.Xx,state.Xy),
             new Vector2(state.Yx,state.Yy),new Vector2(state.OriginX,state.OriginY));

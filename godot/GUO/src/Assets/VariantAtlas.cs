@@ -90,9 +90,12 @@ namespace GUO.Assets
             }
 
             int w = image.GetWidth(), h = image.GetHeight();
+            var texture = Godot.ImageTexture.CreateFromImage(image);
+            // PORT DEVIATION (GUO): preserve contact before releasing CPU theme pixels.
+            GUO.Renderer.SpeedMode.Shadows.NativeStaticShadow.RegisterTheme(texture, image);
             _preview[(kind, id)] = new VariantImage
             {
-                Texture = Godot.ImageTexture.CreateFromImage(image),
+                Texture = texture,
                 Width = w,
                 Height = h,
             };
@@ -199,9 +202,12 @@ namespace GUO.Assets
                 }
 
                 int w = image.GetWidth(), h = image.GetHeight();
+                var texture = Godot.ImageTexture.CreateFromImage(image);
+                // PORT DEVIATION (GUO): preserve contact before releasing CPU theme pixels.
+                GUO.Renderer.SpeedMode.Shadows.NativeStaticShadow.RegisterTheme(texture, image);
                 return new VariantImage
                 {
-                    Texture = Godot.ImageTexture.CreateFromImage(image),
+                    Texture = texture,
                     Width = w,
                     Height = h,
                 };

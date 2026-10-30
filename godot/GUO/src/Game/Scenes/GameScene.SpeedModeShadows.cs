@@ -21,7 +21,6 @@ internal partial class GameScene
 {
     private SpeedShadowInputs _speedShadows;
     private ulong _shadowGridHash;
-    private readonly Dictionary<ushort,int> _shadowBottomGap=new();
     internal int SpeedWindowCount=>_speedShadows?.Windows.Count??0;
     internal int SpeedSunStampCount=>_speedShadows?.Sun.Count??0;
     internal string SpeedSunSource { get; private set; }
@@ -82,35 +81,16 @@ internal partial class GameScene
             if(chunk==null || chunk.IsDestroyed) continue;
             for(int y=0;y<8;y++) for(int x=0;x<8;x++) for(var obj=chunk.Tiles[x,y];obj!=null;obj=obj.TNext) {
                 if(!obj.AllowedToDraw || obj.Z>=_maxZ) continue;
-                Vector2 screen=new((obj.X-obj.Y)*22-_offset.X,(obj.X+obj.Y)*22-obj.Z*4-_offset.Y);
                 // Mobile silhouettes come from the completed native draw below.
                 if(obj is Mobile) continue;
                 if(obj is not (Static or Multi or Item) || obj.Graphic>=tiles.Length) continue;
                 ref var td=ref tiles[obj.Graphic];
                 if(windows && WindowLightTable.BuiltIn.TryGetValue(obj.Graphic,out var opening))
                     CollectSpeedWindow(inputs,opening,obj,ray,view);
-                if(!sun || !SunShadowProjection.Eligible(td.Flags,td.Height)) continue;
-                // Covered props cannot cast through a visible roof/floor.
-                short cover=_rtField.CoverZ(obj.X,obj.Y);
-                if(cover!=RealtimeLightField.NoBlock && cover<_maxZ && obj.Z<cover && !(_noDrawRoofs && _rtField.CoverIsRoofFlag(obj.X,obj.Y))) continue;
-                ref readonly var sprite=ref Client.Game.UO.Arts.GetArt(obj.Graphic);
-                if(sprite.Texture==null) continue;
-                if(!_shadowBottomGap.TryGetValue(obj.Graphic,out int gap)) {
-                    var raw=Client.Game.UO.FileManager.Arts.GetArt((uint)(obj.Graphic+ArtLoader.MAX_LAND_DATA_INDEX_COUNT));
-                    gap=0;
-                    for(int r=raw.Height-1;r>=0;r--) {
-                        bool opaque=false;
-                        for(int c=0;c<raw.Width;c++) if(raw.Pixels[r*raw.Width+c]!=0) { opaque=true; break; }
-                        if(opaque) break; gap++;
-                    }
-                    _shadowBottomGap[obj.Graphic]=gap;
-                }
-                Vector2 contact=screen+new Vector2(22,44-gap);
-                Vector2 position=screen+new Vector2(22-sprite.UV.Width/2,44-sprite.UV.Height);
-                inputs.Sun.Add(SpeedShadowInputs.Project(sprite.Texture,sprite.UV,position,contact,
-                    direction*(sprite.UV.Height*sky.Length),sky.Strength,false,view));
+
             }
         }
+        CollectSpeedStaticShadows(inputs,batcher,view,direction,sky.Length,sky.Strength);
         CollectSpeedMobileShadows(inputs,batcher,view,direction,sky.Length,sky.Strength,selected[..selectedCount]);
         frame.RenderInputs=inputs.RenderCallback; frame.RenderPatches=inputs.PatchCallback; frame.ReleaseInputs=inputs.ReleaseCallback;
     }
@@ -120,7 +100,6 @@ internal partial class GameScene
         var inputs=_speedShadows;
         _speedShadows=null;
         _shadowGridHash=0;
-        _shadowBottomGap.Clear();
         // Same queue discipline as OrderedWorldCapture.Dispose: outstanding
         // render callbacks retain the captured inputs until they have retired.
         // Release is idempotent with the core light target's ReleaseInputs.
