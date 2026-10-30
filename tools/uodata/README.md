@@ -16,4 +16,6 @@ launchers\pipeline\01_verify_client_data.bat
 
 ## Tests
 
-No unit tests (it needs a real install). The file registry it checks against is covered by `python tools/guo/test_config.py`. Exit 0 every required file present, 1 one missing or unreadable, 2 no data folder.
+Windows launcher regression: `python -m pytest tools/guo/test_verifier_launcher.py`. It runs real `cmd.exe` with synthetic filenames (no game assets), covering spaces, trailing separators, local config, missing folders and explicit overrides. Configuration tests: `python tools/guo/test_config.py`. Exit 0 means every required file is present, 1 means a required file is missing or unreadable, and 3 requests the first-run wizard when no data folder exists.
+
+`UO_CLIENT_DATA` may end with a backslash or forward slash. The Windows verifier reads it directly from the configured environment rather than quoting it into Python arguments, so a final backslash cannot swallow the following options. Explicit `--data-dir` remains available; when typing a quoted Windows path at the command line, omit its final backslash or use forward slashes.
