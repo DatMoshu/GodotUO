@@ -508,6 +508,7 @@ namespace GUO
         {
             GetViewport().SizeChanged -= OnViewportSizeChanged;
 
+            _renderTargets.ClearCloudFrame(); // PORT DEVIATION (GUO): revoke before scene/controller disposal.
             UnloadContent();
 
             Scene?.Dispose();
@@ -1128,6 +1129,7 @@ namespace GUO
         /// </remarks>
         private void DrawFrame()
         {
+            _renderTargets.ClearCloudFrame(); // PORT DEVIATION (GUO): EVERY frame, including early return.
             // PORT DEVIATION (GUO): upstream reads Window.ClientBounds; only its
             // size is used, and the position is a costly OS query every frame.
             Vector2I windowSize = DisplayServer.WindowGetSize();
@@ -1152,6 +1154,7 @@ namespace GUO
                 DpiScale
             );
 
+            _renderTargets.BeginCloudFrame(Scene, _uoSpriteBatch); // PORT DEVIATION (GUO): current scene/world identity.
             Profiler.EndFrame();
             Profiler.BeginFrame();
 
@@ -1252,6 +1255,7 @@ namespace GUO
             finally
             {
                 // Abort cleanup never replaces the original draw exception.
+                if (!canvasFrameCompleted) _renderTargets.ClearCloudFrame(); // PORT DEVIATION (GUO): abort publication.
                 _uoSpriteBatch.EndFrame(canvasFrameCompleted);
             }
 

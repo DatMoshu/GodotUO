@@ -10,7 +10,7 @@ using GUO.Compat;
 
 namespace GUO.Renderer
 {
-    public class RenderTargets
+    public partial class RenderTargets
     {
         private RenderTarget2D _uiRenderTarget;
         private RenderTarget2D _lightRenderTarget;
@@ -61,6 +61,7 @@ namespace GUO.Renderer
         /// </remarks>
         public void EnsureSizes(Node host, Rectangle gameWindowOnScreen, Rectangle gameWorldSceneAfterDPI, float dpiScale)
         {
+            ClearCloudFrame(); // PORT DEVIATION (GUO): revoke before target resize.
             _gameWindowOnScreen = gameWindowOnScreen;
             _gameWindowAfterDPI = ScaleRectangle(gameWindowOnScreen, dpiScale);
             _gameWorldSceneOnScreen = ScaleRectangle(gameWorldSceneAfterDPI, 1/dpiScale);
@@ -119,6 +120,7 @@ namespace GUO.Renderer
         /// </remarks>
         public void Dispose()
         {
+            ClearCloudFrame(); // PORT DEVIATION (GUO): retire borrowed target references first.
             _uiRenderTarget?.Dispose();
             _uiRenderTarget = null;
             _lightRenderTarget?.Dispose();
@@ -197,6 +199,8 @@ namespace GUO.Renderer
                 batcher.Draw(LightOverride ?? (Texture2D)LightRenderTarget,_gameWorldSceneOnScreen,lightHue,0f);
 
             batcher.SetBlendState(null);
+
+            DrawCloud(batcher); // PORT DEVIATION (GUO): lit weather world -> foreground -> UI.
 
             // Draw UI at original window size (render target is DPI-scaled but destination is not)
             batcher.Draw(

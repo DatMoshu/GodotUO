@@ -1123,6 +1123,8 @@ namespace GUO.Game.Scenes
         {
             ResetSpeedWeatherFrame(); // PORT DEVIATION (GUO): retire before early return.
             ResetSpeedClouds(); // PORT DEVIATION (GUO): no stale clouds on early return.
+            _speedCloudPublication = renderTargets;
+            _speedCloudFrame = renderTargets.CloudFrame;
             if (!_world.InGame)
             {
                 return false;
