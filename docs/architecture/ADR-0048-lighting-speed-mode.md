@@ -149,6 +149,15 @@ The mode never changes picking, movement, packets or the UI.
   `lighting_speed_weather`) and a data_formats section (49 surface buffer and light pass, 50 window light
   table, 51 weather state).
 
+The local task1021 continuation adds bounded window receiver streaks behind the
+existing lighting/window/sun controls. They require a valid current sun mask and
+use at most16 records with8 visible-path samples on covered floor and low4Z
+upright surfaces. Generation/origin/size checks reject stale inputs. No extra
+texture, history, setting or default is added. This is a conservative screen-space
+approximation with first-row pane spacing, not volumetric scattering or GI;
+hidden geometry and curved apertures remain unsupported. Section50 documents
+resource bounds and the existing transaction fallback on callback failure.
+
 ## Validation
 
 Filled in by the slices' heads: probe logs, the off-state capture diff, the Zoom 2 frame-time table, and stills

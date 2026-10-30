@@ -9,7 +9,7 @@ using GUO.Renderer;
 namespace GUO.Renderer.DepthWorld;
 
 /// <summary>Capture once; construct canvas commands only when the GPU transaction cannot be used.</summary>
-internal sealed class OrderedWorldCapture : IDisposable
+internal sealed partial class OrderedWorldCapture : IDisposable
 {
     internal static bool Enabled = DepthWorldProbe.Enabled
 #if GUO_LABS

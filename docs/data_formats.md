@@ -4264,10 +4264,15 @@ shadowed lamp. This is a nearest-wall approximation, not multilayer occlusion.
 
 The scene adapter snapshots native alpha for sun silhouettes and at most two
 affecting lamps per mobile. Per-lamp masks attenuate only their corresponding
-lamp terms; the MAX-combined sun mask affects floor ambient only. Native body
-frames are collected currently; equipment/mount/sitting silhouette parity
-remains pending capture from the existing native draw. Props use their lowest
-opaque row and excluded flat/bridge/roof/wall pieces never cast floor slabs.
+lamp terms; the MAX-combined sun mask affects floor ambient only. Mobile masks
+copy the completed native body-pass quads, including equipment, mount frames,
+mirroring, integer offsets and sitting deformation, before the capture is reused.
+Render callbacks retain immutable stamps and borrowed textures, not mobile or
+mutable command-list references. Empty/non-finite native slices are ignored only
+by the optional snapshot. The disconnected native-art fixture covers a human
+body, robe/sword, horse and chair; other races/equipment/animations and live
+bank/shop acceptance remain separate checks. Props use their lowest opaque row
+and excluded flat/bridge/roof/wall pieces never cast floor slabs.
 
 Window metadata is `src/Render/SpeedMode/WindowLight/window_light.json`, with
 logical resource name `lighting/window_light.json` supplied by lead-owned
@@ -4297,6 +4302,17 @@ shapes, not alpha masks decoded from window art. Runtime emission additionally
 requires ambient above0.5, covered inside and open outside, and a classified
 wall face. The additive pass accepts at most4096 patches and lights only covered
 floor at base Z or covered upright surfaces within4 UO Z units above it.
+
+Window receiver shafts use the same lighting/window/sun gates and require a valid
+current sun mask. This screen-space approximation adds at most16 records with8
+visible-path samples to covered floors and the lowest4 UO Z units of upright
+cards. Wall, cover, height and sun-mask rejection are conservative; hidden
+geometry and curved apertures are not reconstructed. Pane spacing uses the first
+metadata row. Each record adds at most0.04 per RGB channel. The pass owns at most6
+GPU resources and a4KiB buffer, adds no texture or history, and samples nearest.
+Generation, camera origin and target size must match once; off, stale or missing
+inputs contribute nothing. Callback failure selects the existing whole-frame
+classic fallback. These are receiver streaks, not volumetric scattering or GI.
 
 `SpeedShadowInputs` snapshots game-thread data for the core's retired-ticket
 boundary. Its RD callback publishes actual masks; window patches add after
@@ -4351,7 +4367,8 @@ height. Height is smoothstep4..5 times300 UO units above the player. Native and
 overview clouds work independently of weather surface/light publication, so
 the cloud plane remains visible beyond5. The lead owns both draw call sites
 and unload cleanup. Entry fades continuously4..5. Overview opacity is capped
-at32% to preserve labels; a20-pixel clear area protects the mapped player pin.
+at32% to preserve labels; a20-pixel clear area protects the visible player pin
+head, centered32pixels above its mapped ground anchor.
 The cloud pass is procedural colour on an approximate plane, not volumetric GI.
 The standalone `SpeedModeCloudPass.Bind(size,camera,view,wind,seconds)` and
 `HideForFallback()` support lead-owned overview placement without native surface

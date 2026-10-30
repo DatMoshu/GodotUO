@@ -51,6 +51,8 @@ echo "[smoke] shared UO+ flags, densities and Touch UI persistence (synthetic; A
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Configuration/UoPlusProbe.tscn || FAIL=1
 echo "[smoke] Lighting speed weather state and callback contract (headless; ADR-0048)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/SpeedMode/Weather/SpeedModeWeatherProbe.tscn || FAIL=1
+echo "[smoke] Window receiver shaft gates and failure contract (headless; ADR-0048)"
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/SpeedMode/WindowLight/WindowRayProbe.tscn || FAIL=1
 echo "[smoke] Lighting shard clock framing and logout contract (offline; ADR-0048)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/SpeedMode/Shadows/ShardClockProbe.tscn || FAIL=1
 
