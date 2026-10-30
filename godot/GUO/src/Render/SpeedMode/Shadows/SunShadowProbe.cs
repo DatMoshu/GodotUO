@@ -27,6 +27,16 @@ public partial class SunShadowProbe : Node
 
     internal static void Run(bool gpu = false)
     {
+        var profile = System.Text.Json.JsonSerializer.Deserialize("{}",GUO.Configuration.ProfileJsonContext.DefaultToUse.Profile);
+        Check(!profile.LightingSpeedMode && profile.SpeedModeLampShadows == 6 && profile.SpeedModeSunShadows && profile.SpeedModeWindowLight,
+            "Classic/off parent and shadow/window defaults");
+        profile.SpeedModeLampShadows = 99; profile.SpeedModeSunShadows = false; profile.SpeedModeWindowLight = false;
+        profile = System.Text.Json.JsonSerializer.Deserialize(
+            System.Text.Json.JsonSerializer.Serialize(profile,GUO.Configuration.ProfileJsonContext.DefaultToUse.Profile),
+            GUO.Configuration.ProfileJsonContext.DefaultToUse.Profile);
+        Check(profile.SpeedModeLampShadows == 10 && !profile.SpeedModeSunShadows && !profile.SpeedModeWindowLight,"clamped persistence");
+        profile.SpeedModeLampShadows = -1;
+        Check(profile.SpeedModeLampShadows == 0,"negative lamp count clamps to off");
         N2 screen = new(100,200);
         Check(SunShadowProjection.ContactAnchor(screen,10,false,N2.Zero,0) == new N2(122,234), "contact-row anchor");
         Check(SunShadowProjection.ContactAnchor(screen,0,true,new N2(3.5f,1.25f),2.5f) == new N2(125.5f,217.75f), "interpolated mobile anchor");

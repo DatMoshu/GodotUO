@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using Godot;
 using GUO.Assets;
+using GUO.Configuration;
 using GUO.Game.GameObjects;
 using GUO.Renderer;
 using GUO.Renderer.Lights;
@@ -26,10 +27,12 @@ internal partial class GameScene
     internal string SpeedSunSource { get; private set; }
 
     // Called after the core has retired its previous ticket and built reaches.
-    // Shared GameScene.SpeedMode.cs supplies the profile controls at this seam.
-    private void PrepareSpeedShadowInputs(SpeedLightFrame frame,UltimaBatcher2D batcher,Transform2D matrix,
-        int lamps=6,bool sun=true,bool windows=true,ShardClockState clock=default)
+    // The existing profile and validated world clock are read at this seam.
+    partial void PrepareSpeedShadowInputs(SpeedLightFrame frame,UltimaBatcher2D batcher,Transform2D matrix)
     {
+        var profile=ProfileManager.CurrentProfile;
+        int lamps=profile.SpeedModeLampShadows;
+        bool sun=profile.SpeedModeSunShadows,windows=profile.SpeedModeWindowLight;
         _speedShadows??=new SpeedShadowInputs();
         var inputs=_speedShadows; inputs.Begin();
         inputs.LampCount=frame.Count; inputs.Requested=Math.Clamp(lamps,0,10); inputs.SunEnabled=sun;
@@ -61,9 +64,9 @@ internal partial class GameScene
             }
             _shadowGridHash=_speedGridHash;
         }
-        // Until the lead binds validated packet0x5B, use the named brightness
+        // Validated packet0x5B wins; otherwise use the named brightness
         // approximation. Never derive server time from the PC clock.
-        var sky=SunShadowProjection.Resolve(clock,RealtimeAmbientLevel(),Time.Ticks);
+        var sky=SunShadowProjection.Resolve(_world.ShardClock,RealtimeAmbientLevel(),Time.Ticks);
         SpeedSunSource=sky.Source;
         N2 ray=sky.Direction;
         Vector2 direction=new(ray.X-ray.Y,ray.X+ray.Y);
@@ -126,6 +129,18 @@ internal partial class GameScene
             }
         }
         frame.RenderInputs=inputs.RenderCallback; frame.RenderPatches=inputs.PatchCallback; frame.ReleaseInputs=inputs.ReleaseCallback;
+    }
+
+    partial void DisposeSpeedShadows()
+    {
+        var inputs=_speedShadows;
+        _speedShadows=null;
+        _shadowGridHash=0;
+        _shadowBottomGap.Clear();
+        // Same queue discipline as OrderedWorldCapture.Dispose: outstanding
+        // render callbacks retain the captured inputs until they have retired.
+        // Release is idempotent with the core light target's ReleaseInputs.
+        if(inputs!=null) RenderingServer.CallOnRenderThread(Callable.From(inputs.Release));
     }
 
     private void CollectSpeedWindow(SpeedShadowInputs inputs,WindowOpening opening,GameObject obj,N2 ray,Transform2D view)

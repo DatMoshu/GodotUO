@@ -90,3 +90,24 @@ Acceptance includes profile defaults, native 5x versus overview above 5x,
 toggle-off while at full-facet zoom, cache/read limits, map invalidation,
 RD and Compatibility transitions, all style screenshots, pin and label
 visibility, plus a clean full smoke with the fixture removed. No FPS claim.
+
+
+## 2026-10-30 owner-requested experimental cloud crossing
+
+Moshu directly requested cloud VFX and a view above clouds when scrolling past
+4x in the experimental feature (chief handoff, task 1021). Keep the existing
+`experimental_world_overview` opt-in and its native-through-5x / overview-above-5x
+boundary. A visual altitude parameter transitions smoothly from 0 at 4x to 1
+at 5x and remains 1 in overview. This parameter changes cloud presentation,
+not the world projection, player Z, native art sampling or mouse picking.
+The VFX adapter also checks its existing enhancement gate; overview alone
+must remain usable without lighting or clouds. Default/off draws allocate
+and submit no cloud resources. Reset the adapter on scene unload and option-off.
+
+Both native and overview paths expose one cloud adapter call on the world target,
+before final UI composition. The adapter owns its canvas transform and must
+restore batch state, keep UI outside the cloud layer, and preserve the player's
+overview pin/labels legibility. Shader/GPU failure restores the original world
+and weather. Existing `wide_zoom_overview.cs.fixture` checks transition boundaries
+and monotonicity; rendered native 4x/4.5x/5x and overview 6x plus off-return evidence
+are required before calling the cloud view complete.

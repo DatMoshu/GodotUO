@@ -63,7 +63,7 @@ internal readonly struct SurfaceRow
         if (obj is Land land)
         {
             kind = land.TileData.IsWet ? 6 : 1;
-            flags |= 2;
+            if (Weather.SpeedModePuddleSurfaces.IsCandidate(true,obj.Graphic,land.TileData.Name)) flags |= 2;
         }
         else if (obj is Static or Multi or Item)
         {
@@ -84,7 +84,7 @@ internal readonly struct SurfaceRow
                         kind=alongX>alongY ? 2 : alongY>alongX ? 3 : 7;
                     }
                 }
-                if (kind == 1 || kind == 6) flags |= 2;
+                if (kind == 1 && Weather.SpeedModePuddleSurfaces.IsCandidate(false,obj.Graphic,tile.Name)) flags |= 2;
                 if (tile.IsWindow) flags |= 4;
                 if (tile.IsTranslucent || tile.IsTransparent) flags |= 8;
             }

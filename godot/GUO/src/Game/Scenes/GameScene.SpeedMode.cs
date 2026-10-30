@@ -17,6 +17,8 @@ internal partial class GameScene
         && !(_world.Player.IsDead && ProfileManager.CurrentProfile.EnableBlackWhiteEffect);
     // Other slice adapters implement these in their own GameScene partial.
     partial void PrepareSpeedLightInputs(SpeedLightFrame frame);
+    partial void PrepareSpeedShadowInputs(SpeedLightFrame frame,UltimaBatcher2D batcher,Transform2D matrix);
+    partial void DisposeSpeedShadows();
     partial void BindSpeedLightTarget(UltimaBatcher2D batcher,Texture2D lightTarget,Vector4 targetPixelBounds,Vector3 ambient);
     partial void ClearSpeedLightTarget(UltimaBatcher2D batcher);
     private void OnSpeedLightTarget(UltimaBatcher2D batcher,Texture2D lightTarget,Vector4 bounds,Vector3 ambient)
@@ -80,6 +82,7 @@ internal partial class GameScene
                     PixelRadius=1.6f*source.Radius*22*matrix.X.Length(),Flicker=flicker,ShadowRow=-1 };
             }
             PrepareSpeedLightInputs(frame);
+            PrepareSpeedShadowInputs(frame,batcher,matrix);
             SpeedLightFrame.ReachTicks+=System.Diagnostics.Stopwatch.GetTimestamp()-reachStart;
             _speedLightOverride=batcher.QueueSpeedLight(frame);
             if(_speedLightOverride!=null) { targets.LightOverride=_speedLightOverride; targets.SpeedLightBlend=_darknessBlend; }

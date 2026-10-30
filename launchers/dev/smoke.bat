@@ -66,6 +66,11 @@ echo [smoke] shared UO+ flags, densities and Touch UI persistence (synthetic; AD
 echo [smoke] Lighting speed surface transport and default-off persistence (headless contract; ADR-0048)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" -- --lighting-speed-probe "--lighting-speed-out=%UO_BUILD_DIR%\lighting-speed-probe" --no-focus || set "FAIL=1"
 
+echo [smoke] Lighting speed weather state and callback contract (headless; ADR-0048)
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/SpeedMode/Weather/SpeedModeWeatherProbe.tscn || set "FAIL=1"
+echo [smoke] Lighting shard clock framing and logout contract (offline; ADR-0048)
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/SpeedMode/Shadows/ShardClockProbe.tscn || set "FAIL=1"
+
 echo [smoke] Realtime lights contract (synthetic; ADR-0039)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/Lights/RealtimeLightsProbe.tscn || set "FAIL=1"
 echo [smoke] UO+ spell lighting contract (synthetic; no shard or install)

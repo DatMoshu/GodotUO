@@ -5,16 +5,17 @@ per-lamp mobile body silhouettes and covered/open window boundaries after
 the core reach walk. `SpeedShadowInputs` produces real GPU inputs through
 `SpeedLightFrame.RenderInputs`, then adds windows through `RenderPatches`.
 The core calls `ReleaseInputs` on off, failure, resize and shutdown.
-The lead owns the shared scene call, metadata resource and option wiring.
+The lead owns the shared scene call and metadata resource. Profile controls
+and validated shard-clock retention are present in this worker branch.
 Classic/off does not construct the adapter. Headless fixtures do not prove
 visual parity; the rendered `ShadowHookProbe` checks the real callback,
 alpha, selected-lamp term, disabled restoration and resource release.
 
 The current scene adapter samples native mobile body frames only; equipment,
 mount and sitting silhouette parity require capture from the existing native
-draw, rather than reimplementing its animation selection. The optional clock
-argument takes the validated shard stamp. Until it is supplied the source is
-explicitly `shard-brightness-approximation`. Window emission is conservative:
+draw, rather than reimplementing its animation selection. The adapter reads
+the validated world shard stamp; when absent the source is explicitly
+`shard-brightness-approximation`. Window emission is conservative:
 both a classified wall face and a covered-inside/open-outside pair are required.
 
 `WallShadowGrid` freezes the existing blocker walk's eligible solids and the

@@ -4233,3 +4233,132 @@ night override, restoring the light settings afterwards. The Zoom2 Debug table
 must retain host other-process CPU; above10% is shared, not quiet acceptance.
 Native-art neighbour slopes, ambiguous wall planes, and combined shadow/window/
 weather/water passes remain independent visual/integration review items.
+
+## 50. Lighting speed shadows, shard clock and window openings (ADR-0048)
+
+`SpeedModeLampShadows` clamps to0..10 (default6); `SpeedModeSunShadows` and
+`SpeedModeWindowLight` default true. They apply only within the existing
+off-by-default `LightingSpeedMode`. UO+ Options stages these values with Apply,
+Cancel and Defaults; all children disable with the parent off or unavailable.
+The existing Night floor and Soften controls are preserved. No protocol,
+movement, picking or native texture filtering changes follow from these options.
+
+The existing four-byte packet0x5B carries hour, minute and second. The visual-only
+`World.ShardClock` retains validated hour0..23, minute/second0..59, monotonic
+`ReceivedTicks` and `Valid`. Invalid/truncated handler input clears the stamp;
+the normal packet framer waits for all four bytes before dispatch. `World.Clear`
+invalidates it on logout. `MinuteAt(now)` advances by unsigned elapsed ticks and
+wraps at midnight. It never reads the PC wall clock. Without a valid stamp the
+sun model is explicitly labelled `shard-brightness-approximation`; its simple
+day/moon arc is a lighting approximation, not astronomical simulation.
+
+`WallShadowGrid` freezes source-filtered solids and exact `WallFaces` edges.
+Roof/surface/bridge/door/window/light-source/background/translucent pieces are
+excluded. Foliage flags, tree/trunk names and foliage sharing the source tile
+exclude trees before aggregation. Wall edges retain their fractional offsets;
+they do not become solid tiles. The compute pass selects the nearest requested
+lamp offers, with256 angular samples and64 atlas rows. RG16F stores horizontal
+distance in tiles and wall-top Z in UO units. Unselected or failed rows remain
+disabled. Sampling interpolates angular visibility only and retains15% of a
+shadowed lamp. This is a nearest-wall approximation, not multilayer occlusion.
+
+The scene adapter snapshots native alpha for sun silhouettes and at most two
+affecting lamps per mobile. Per-lamp masks attenuate only their corresponding
+lamp terms; the MAX-combined sun mask affects floor ambient only. Native body
+frames are collected currently; equipment/mount/sitting silhouette parity
+remains pending capture from the existing native draw. Props use their lowest
+opaque row and excluded flat/bridge/roof/wall pieces never cast floor slabs.
+
+Window metadata is `src/Render/SpeedMode/WindowLight/window_light.json`, with
+logical resource name `lighting/window_light.json` supplied by lead-owned
+project wiring. Loading is lazy and Classic/off never reads it. The60 built-in
+entries describe the owner's reference graphics; no client art pixels are
+included. The root has exactly `schema: "guo/window-light@1"` and `windows`, an
+array of1..65536 records. Each record has exactly these fields:
+
+| Field | Contract |
+|---|---|
+| `graphic` | Unique integer UO graphic ID0..65535. |
+| `shape` | `rect`, `round_arch`, `pointed_arch`, `oval`, or `none`. |
+| `rows` | Top-to-bottom pane counts:1..16 rows,1..16 panes each. |
+| `aspect` | Finite opening width/height0.01..8. |
+| `patchTiles` | Floor width/depth, each finite0.01..16 tiles. |
+
+`none` requires `[1]` panes, zero aspect and `[0,0]` patch size, and emits no
+light. Unknown graphics emit nothing. Unknown fields, duplicate graphics,
+invalid dimensions or malformed records reject the entire component. Metadata
+parsing does not install or activate a Store pack; no code executes on install.
+
+For tangent `T`, inward normal `N` and incoming horizontal ray `D`, an inward
+ray (`dot(D,N)>0`) projects width `T*width` and depth
+`(N+T*dot(D,T)/dot(D,N))*depth`. Outward/grazing rays emit nothing. Analytic
+pane bars and arch/oval boundaries remove light; these are approximate opening
+shapes, not alpha masks decoded from window art. Runtime emission additionally
+requires ambient above0.5, covered inside and open outside, and a classified
+wall face. The additive pass accepts at most4096 patches and lights only covered
+floor at base Z or covered upright surfaces within4 UO Z units above it.
+
+`SpeedShadowInputs` snapshots game-thread data for the core's retired-ticket
+boundary. Its RD callback publishes actual masks; window patches add after
+lamps and before soften. `SpeedLightFrame.ReleaseInputs` releases optional GPU
+resources on off, failure, resize and shutdown. Surface/alpha lookups remain
+nearest. Shared scene invocation and resource wiring are lead-owned; native
+bank/shop captures and off/failure parity remain integration acceptance.
+Standalone contracts and the live checklist are in
+`tools/scenarios/client/lighting_speed_shadows.md`.
+
+## 51. Lighting speed weather and cloud consumer (ADR-0048)
+
+This optional consumer requires `LightingSpeedMode` (default false) and the
+Depth World. Saved sub-options `SpeedModeWeather`, `SpeedModeReflections` and
+`SpeedModeFog` default true; `SpeedModeMorningHaze` clamps to 0..100, default0.
+`WindStrength` clamps finite values to0..1, default0. UO+ stages these controls
+until Apply; Defaults restores the parent off. Existing weather packets and
+classic simulation are unchanged.
+
+`SpeedModeWeather` observes weather count/70 and integrates wetness once per
+client tick, rising over60 seconds and draining over180 seconds. Rain0 gives
+quarter-strength fog; storm-brewing3 gives full count-derived fog. Snow2,
+storm-approach1 and absent/invalid weather add no fog. Morning haze adds a
+constant preference. Wind follows the existing weather direction.
+
+The runtime arms a world snapshot and consumes `SpeedModeBindings.LightReady`
+only with matching surface identity, client tick, sequence, dimensions and
+full-target bounds. Surface-only publication leaves classic lines visible.
+Wet/rain/fog native canvas commands sit on the world target before UI.
+Classic rain lines are grouped behind a generation ticket and hidden only
+after valid overlay binding; simulation always executes. Clear/off/failure
+retires overlays, borrowed water targets and classic-line visibility. The lead
+wires scene draw/reset/unload and batcher pool retirement; those integration
+hooks are not implied by the consumer's presence.
+
+Water class6 can receive sparse reflections using four nearest-art-pixel taps
+16/32/48/64 above it. Candidates are upright/wall classes2/3/4 with positive
+height matching separation/8 within1/8 UO Z, and screen-column agreement within
+one native pixel. Puddles require wetCandidate flag2 and exposed floor class1;
+`SpeedModePuddleSurfaces` holds a curated paving/cobblestone metadata allowlist.
+The core must apply that predicate when producing flags. Reflections are a
+screen-space approximation with visible tap bands, not complete silhouettes.
+The separate Lighting water style remains subject to the ordered backend's
+existing styled-water canvas fallback. No compatibility with simultaneous
+speed-mode lighting is claimed for that style.
+
+`SpeedModeCloudView(Enabled, Zoom, Height)` supplies an explicit cloud view.
+Default disables all cloud work. `GameScene.SpeedModeClouds` implements lead
+hooks `DrawSpeedClouds(batcher, overview)` and `ResetSpeedClouds()`, requiring
+existing ExperimentalWorldOverview plus LightingSpeedMode, Zoom>4 and a positive
+height. Height is smoothstep4..5 times300 UO units above the player. Native and
+overview clouds work independently of weather surface/light publication, so
+the cloud plane remains visible beyond5. The lead owns both draw call sites
+and unload cleanup. Entry fades continuously4..5. Overview opacity is capped
+at32% to preserve labels; a20-pixel clear area protects the mapped player pin.
+The cloud pass is procedural colour on an approximate plane, not volumetric GI.
+The standalone `SpeedModeCloudPass.Bind(size,camera,view,wind,seconds)` and
+`HideForFallback()` support lead-owned overview placement without native surface
+sampling. Native artwork keeps nearest sampling.
+
+Scenario: `tools/scenarios/client/lighting_speed_weather.scenario.json`.
+Headless state tests do not establish rendered behavior. Rendered runtime,
+reflection and cloud fixtures exercise current callbacks, geometry and exact
+fallback. Live native/overview camera and bank on/off acceptance remain separate
+integration checks; no timing or whole-client parity follows from fixtures.

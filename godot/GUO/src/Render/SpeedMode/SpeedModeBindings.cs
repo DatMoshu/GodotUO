@@ -14,6 +14,8 @@ internal static class SpeedModeBindings
     internal readonly record struct Frame(Texture2D Surface, Texture2D LightTarget,
         Vector2I Origin, Vector4 TargetPixelBounds, Vector3 Ambient, long Sequence);
     internal static Frame Current { get; private set; }
+    internal static event System.Action<Frame> LightReady;
+    internal static event System.Action<Frame> Invalidated;
 
     internal static Vector2I CameraOrigin(int tileX,int tileY,float walkX,float walkY,float peekX,float peekY,float zoom)
         => new((int)System.MathF.Floor(tileX+(walkX+walkY+zoom*(peekX+peekY))/44f),
@@ -36,11 +38,14 @@ internal static class SpeedModeBindings
         if (!ReferenceEquals(owner,_owner) || Current.Surface==null)
             throw new System.InvalidOperationException("Light target has no matching surface frame.");
         Current=Current with { LightTarget=texture,TargetPixelBounds=bounds,Ambient=ambient };
+        LightReady?.Invoke(Current);
     }
 
     internal static void Clear(object owner)
     {
         if (!ReferenceEquals(owner,_owner)) return;
+        var previous=Current;
         Current=default; _owner=null;
+        Invalidated?.Invoke(previous);
     }
 }

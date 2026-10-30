@@ -182,6 +182,7 @@ public sealed partial class UltimaBatcher2D
 
     private void ResetOrderedWorldItems()
     {
+        RetireSpeedWeatherLines(); // PORT DEVIATION (GUO): retire before pooled item reuse.
         ResetSpeedComposeItems();
         _orderedWorld?.ClearSurfaceBinding(true);
         _orderedWorld?.CancelUnsubmittedFrame();

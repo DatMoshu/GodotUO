@@ -2363,7 +2363,13 @@ namespace GUO.Network
             }
         }
 
-        private static void SetTime(World world, ref StackDataReader p) { }
+        private static void SetTime(World world, ref StackDataReader p)
+        {
+            // PORT DEVIATION (GUO): ADR-0048 lighting-only clock retention;
+            // upstream ignores this existing four-byte 0x5B packet.
+            if (p.Remaining < 3) { world.ShardClock = default; return; }
+            world.ShardClock.Set(p.ReadUInt8(), p.ReadUInt8(), p.ReadUInt8(), Time.Ticks);
+        }
 
         private static void SetWeather(World world, ref StackDataReader p)
         {

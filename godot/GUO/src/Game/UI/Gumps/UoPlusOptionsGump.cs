@@ -13,6 +13,12 @@ internal sealed class UoPlusOptionsGump : Gump
     private readonly Profile _profile;
     private Checkbox _speedMode; // PORT DEVIATION (GUO): ADR-0048
     private HSliderBar _speedNightFloor,_speedSoften;
+    // PORT DEVIATION (GUO): ADR-0048; staged shadow/window children.
+    private readonly Combobox _speedLampShadows;
+    private readonly Checkbox _speedSunShadows,_speedWindowLight;
+    // PORT DEVIATION (GUO): ADR-0048 weather sub-options.
+    private Checkbox _speedWeather,_speedReflections,_speedFog;
+    private HSliderBar _speedHaze,_speedWind;
     private readonly Dictionary<UoPlusFeature, (Checkbox Toggle, HSliderBar Density)> _rows = new();
     private readonly HSliderBar _cap;
     private readonly Checkbox _overview;
@@ -69,7 +75,43 @@ internal sealed class UoPlusOptionsGump : Gump
         _speedSoften=new HSliderBar(4,y+22,Width-110,0,10,System.Math.Clamp(_profile.SpeedModeSoften,0,10),
             HSliderBarStyle.MetalWidgetRecessedBar,true,1,0xFFFF);
         area.Add(_speedSoften); y+=54;
-        void SpeedControls() { _speedNightFloor.IsEnabled=_speedSoften.IsEnabled=_speedMode.IsEnabled && _speedMode.IsChecked; }
+        // PORT DEVIATION (GUO): ADR-0048; preserve existing night/soften controls.
+        area.Add(new Label("Lamp shadows (lights)",true,0xFFFF,font:1) { X=4,Y=y }); y+=24;
+        _speedLampShadows=new Combobox(4,y,Width-100,
+            new[] { "0","1","2","3","4","5","6","7","8","9","10" },_profile.SpeedModeLampShadows,font:1);
+        area.Add(_speedLampShadows); y+=42;
+        _speedSunShadows=new Checkbox(0xD2,0xD3,"Sun and moon shadows",1,0xFFFF)
+            { X=4,Y=y,IsChecked=_profile.SpeedModeSunShadows };
+        area.Add(_speedSunShadows); y+=30;
+        _speedWindowLight=new Checkbox(0xD2,0xD3,"Window light by day",1,0xFFFF)
+            { X=4,Y=y,IsChecked=_profile.SpeedModeWindowLight };
+        area.Add(_speedWindowLight); y+=30;
+        _speedWeather = new Checkbox(0xD2,0xD3,"Rain, puddles and wet ground",1,0xFFFF)
+            { X=4,Y=y,IsChecked=_profile.SpeedModeWeather };
+        area.Add(_speedWeather); y+=30;
+        _speedReflections = new Checkbox(0xD2,0xD3,"Reflections (approximate)",1,0xFFFF)
+            { X=4,Y=y,IsChecked=_profile.SpeedModeReflections };
+        area.Add(_speedReflections); y+=30;
+        _speedFog = new Checkbox(0xD2,0xD3,"Weather fog",1,0xFFFF)
+            { X=4,Y=y,IsChecked=_profile.SpeedModeFog };
+        area.Add(_speedFog); y+=30;
+        area.Add(new Label("Morning haze (%)",true,0xFFFF,font:1) { X=4,Y=y });
+        _speedHaze = new HSliderBar(4,y+22,Width-110,0,100,_profile.SpeedModeMorningHaze,
+            HSliderBarStyle.MetalWidgetRecessedBar,true,1,0xFFFF);
+        area.Add(_speedHaze); y+=54;
+        area.Add(new Label("Lighting water wind (%)",true,0xFFFF,font:1) { X=4,Y=y });
+        _speedWind = new HSliderBar(4,y+22,Width-110,0,100,(int)System.MathF.Round(_profile.WindStrength*100),
+            HSliderBarStyle.MetalWidgetRecessedBar,true,1,0xFFFF);
+        area.Add(_speedWind); y+=54;
+        void SpeedControls() {
+            bool enabled=_speedMode.IsEnabled && _speedMode.IsChecked;
+            _speedNightFloor.IsEnabled=_speedSoften.IsEnabled=enabled;
+            _speedLampShadows.IsEnabled=_speedSunShadows.IsEnabled=_speedWindowLight.IsEnabled=enabled;
+            _speedWeather.IsEnabled=_speedReflections.IsEnabled=_speedFog.IsEnabled=enabled;
+            _speedWind.IsEnabled=enabled;
+            _speedHaze.IsEnabled=enabled && _speedFog.IsChecked;
+        }
+        _speedFog.ValueChanged+=(_,_)=>SpeedControls();
         _speedMode.ValueChanged+=(_,_)=>SpeedControls(); SpeedControls();
         _overview = new Checkbox(0xD2, 0xD3, "Experimental zoom + world map", 1, 0xFFFF)
             { X = 4, Y = y, IsChecked = _profile.ExperimentalWorldOverview };
@@ -165,6 +207,15 @@ internal sealed class UoPlusOptionsGump : Gump
         _profile.LightingSpeedMode = _speedMode.IsChecked;
         _profile.SpeedModeNightFloor=_speedNightFloor.Value;
         _profile.SpeedModeSoften=_speedSoften.Value;
+        // PORT DEVIATION (GUO): ADR-0048; parent off leaves these inert.
+        _profile.SpeedModeLampShadows=_speedLampShadows.SelectedIndex;
+        _profile.SpeedModeSunShadows=_speedSunShadows.IsChecked;
+        _profile.SpeedModeWindowLight=_speedWindowLight.IsChecked;
+        _profile.SpeedModeWeather=_speedWeather.IsChecked;
+        _profile.SpeedModeReflections=_speedReflections.IsChecked;
+        _profile.SpeedModeFog=_speedFog.IsChecked;
+        _profile.SpeedModeMorningHaze=_speedHaze.Value;
+        _profile.WindStrength=_speedWind.Value/100f;
         _profile.ExperimentalWorldOverview = _overview.IsChecked;
         _profile.WorldOverviewStyle = System.Math.Clamp(_overviewStyle.SelectedIndex, 0, 3);
         _profile.TouchUi = _touchUi.SelectedIndex == 0 ? null : _touchUi.SelectedIndex == 1;
@@ -185,7 +236,14 @@ internal sealed class UoPlusOptionsGump : Gump
         _defaultsStaged = true;
         _speedMode.IsChecked = false;
         _speedNightFloor.Value=_speedSoften.Value=3;
+        _speedWeather.IsChecked=_speedReflections.IsChecked=_speedFog.IsChecked=true;
+        _speedWeather.IsEnabled=_speedReflections.IsEnabled=_speedFog.IsEnabled=false;
+        _speedHaze.Value=_speedWind.Value=0;
+        _speedHaze.IsEnabled=false;
         _speedNightFloor.IsEnabled=_speedSoften.IsEnabled=false;
+        _speedLampShadows.SelectedIndex=6;
+        _speedSunShadows.IsChecked=_speedWindowLight.IsChecked=true;
+        _speedLampShadows.IsEnabled=_speedSunShadows.IsEnabled=_speedWindowLight.IsEnabled=false;
         _touchUi.SelectedIndex = 0;
         _overview.IsChecked = false;
         _overviewStyle.SelectedIndex = 0;

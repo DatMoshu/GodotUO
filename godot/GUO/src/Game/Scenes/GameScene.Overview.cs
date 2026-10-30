@@ -8,6 +8,10 @@ using GUO.Renderer;
 namespace GUO.Game.Scenes;
 internal partial class GameScene
 {
+    // PORT DEVIATION (GUO): optional cloud adapter spans native and overview views.
+    // An absent adapter compiles away; it cannot change the classic/off draw list.
+    partial void DrawSpeedClouds(UltimaBatcher2D batcher, bool overview);
+    partial void ResetSpeedClouds();
     private WorldOverview _overview;
     private bool _wasOverview;
     internal bool OverviewEnabled => ProfileManager.CurrentProfile?.ExperimentalWorldOverview == true;
@@ -51,6 +55,7 @@ internal partial class GameScene
         batcher.Clear(new Godot.Color(.025f, .03f, .035f, 1));
         (_overview ??= new WorldOverview()).Draw(_world, Camera, _offset, batcher);
         RenderedObjectsCount = _overview.Cache.Visible.Count;
+        DrawSpeedClouds(batcher, true);
         batcher.SetRenderTarget(null);
     }
 

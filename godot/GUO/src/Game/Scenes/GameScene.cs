@@ -302,8 +302,11 @@ namespace GUO.Game.Scenes
 
         public override void Unload()
         {
+            ReleaseSpeedWeather(); // PORT DEVIATION (GUO): ADR-0048 lifetime.
             _overview?.Dispose(); _overview = null; _wasOverview = false; // PORT DEVIATION (GUO): ADR-0045
             ResetAmbientParticles(); // PORT DEVIATION (GUO): ADR-0042 resource lifetime
+            ReleaseSpeedClouds(); // PORT DEVIATION (GUO): free above-cloud material and canvas item
+            DisposeSpeedShadows(); // PORT DEVIATION (GUO): adapter queues idempotent render-thread release
             GpuWorld.Destroy(); // PORT DEVIATION (GUO): --gpu-world's pass goes with the scene (ADR-0007)
             IO.Audio.ZoneAudio.Music.Reset();
             IO.Audio.ZoneAudio.Sfx.Reset();
@@ -1093,6 +1096,8 @@ namespace GUO.Game.Scenes
 
         public override bool Draw(UltimaBatcher2D batcher, RenderTargets renderTargets)
         {
+            ResetSpeedWeatherFrame(); // PORT DEVIATION (GUO): retire before early return.
+            ResetSpeedClouds(); // PORT DEVIATION (GUO): no stale clouds on early return.
             if (!_world.InGame)
             {
                 return false;
@@ -1312,7 +1317,8 @@ namespace GUO.Game.Scenes
 
             // draw weather
             DrawAmbientParticles(batcher); // PORT DEVIATION (GUO): UO+ opt-in, ADR-0042
-            _world.Weather.Draw(batcher, 0, 0, MAX_LAYER_DEPTH - 1);
+            DrawSpeedClouds(batcher, false); // PORT DEVIATION (GUO): experimental above-cloud view
+            DrawSpeedWeather(batcher, renderTargets, matrix, MAX_LAYER_DEPTH - 1); // PORT DEVIATION (GUO): ADR-0048
 
             DrawSelection(batcher, MAX_LAYER_DEPTH);
 

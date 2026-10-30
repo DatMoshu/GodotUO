@@ -29,6 +29,17 @@ internal sealed partial class WorldOverview : IDisposable, IOverviewBlocks
     internal OverviewMapCache Cache => _cache;
     internal const float Threshold = 5f;
     internal static bool Enabled(float zoom) => zoom > Threshold;
+
+    // PORT DEVIATION (GUO): Moshu's 2026-10-30 experimental above-cloud view.
+    // Visual altitude only: native camera projection and picking do not change.
+    // Consumers must also gate on ExperimentalWorldOverview and their VFX toggle.
+    internal static float CloudAltitudeBlend(float zoom)
+    {
+        if (!float.IsFinite(zoom)) return 0;
+        float height = Math.Clamp(zoom - 4f, 0f, 1f);
+        return height * height * (3f - 2f * height);
+    }
+
     internal int Level { get; private set; }
     internal int RequestedTiles => _keys.Count;
     private readonly uint[] _sampleBlock = new uint[64];

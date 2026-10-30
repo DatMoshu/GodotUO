@@ -31,6 +31,18 @@ public partial class OverviewFixture : Node
 
     private void GeometryCases()
     {
+        Check(WorldOverview.CloudAltitudeBlend(4f) == 0, "cloud crossing starts strictly beyond 4x");
+        Check(WorldOverview.CloudAltitudeBlend(4.5f) == .5f, "cloud crossing midpoint");
+        Check(WorldOverview.CloudAltitudeBlend(5f) == 1 && WorldOverview.CloudAltitudeBlend(20f) == 1,
+            "above-cloud view persists into overview");
+        Check(WorldOverview.CloudAltitudeBlend(float.NaN) == 0, "invalid zoom cannot poison cloud uniforms");
+        float previousAltitude = 0;
+        for (int step = 0; step <= 100; step++) {
+            float altitude = WorldOverview.CloudAltitudeBlend(4f + step / 100f);
+            Check(altitude >= previousAltitude && altitude <= 1, "cloud crossing stays continuous and monotonic");
+            previousAltitude = altitude;
+        }
+
         foreach(var map in new[]{new Vector2I(7168,4096),new Vector2I(6144,4096),new Vector2I(2304,1600),new Vector2I(128,128)})
         foreach(var view in new[]{new Vector2I(1280,720),new Vector2I(3840,2054),new Vector2I(720,1280)})
         foreach(var player in new[]{Vector2I.Zero,map/2,map-new Vector2I(1,1)})
