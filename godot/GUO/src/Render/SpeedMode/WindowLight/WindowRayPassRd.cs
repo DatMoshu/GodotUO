@@ -10,6 +10,10 @@ namespace GUO.Renderer.SpeedMode.WindowLight;
 
 internal sealed class WindowRayPassRd : IDisposable
 {
+#if DEBUG
+    // Diagnostic-only native fixture control; never admits receivers or alters source gates.
+    internal static bool ProbeSkip;
+#endif
     private RD _rd;
     private Rid _shader, _pipeline, _buffer, _set, _surfaceSet, _sampler, _surface, _sun;
     private long _format = -1;
@@ -26,6 +30,9 @@ internal sealed class WindowRayPassRd : IDisposable
         ReadOnlySpan<WindowRayPatch> patches)
     {
         if (patches.IsEmpty) return true;
+#if DEBUG
+        if (ProbeSkip) return true;
+#endif
         if (Failure != null) return false;
         try
         {
