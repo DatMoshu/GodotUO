@@ -26,6 +26,8 @@ internal sealed partial class OrderedWorldDevice
     private Rid _speedLight,_speedLightFramebuffer,_speedLightShader,_speedLightPipeline;
     private Rid _speedLightSet,_speedCurvesBuffer,_speedReachSampler,_speedAmbientSet;
     private Rid _speedShadowSet,_speedBoundPolar,_speedBoundSun;
+    private readonly Dictionary<Rid,Rid> _speedMobileSets=new();
+    private Action _speedReleaseInputs;
     private readonly float[] _speedCurves=new float[RealtimeLightEffects.FrameLightCap*36];
     internal Texture2Drd SpeedLightTexture { get; }=new();
     internal bool SpeedLightReady { get; private set; }
@@ -112,17 +114,23 @@ internal sealed partial class OrderedWorldDevice
         return gpu.Set;
     }
 
-    private void BindShadowInputsRT(SpeedLightFrame frame)
+    private Rid BindShadowInputsRT(SpeedLightFrame frame,Rid mobile=default)
     {
         Rid polar=frame.LampShadowAtlas.IsValid ? frame.LampShadowAtlas : _surfaceColor;
         Rid sun=frame.SunMask.IsValid ? frame.SunMask : _surfaceColor;
-        if(_speedShadowSet.IsValid && _speedBoundPolar==polar && _speedBoundSun==sun) return;
-        FreeSpeedSet(ref _speedShadowSet);
+        if(_speedBoundPolar!=polar || _speedBoundSun!=sun) {
+            foreach(var set in _speedMobileSets.Values) if(_rd.UniformSetIsValid(set)) _rd.FreeRid(set);
+            _speedMobileSets.Clear();
+        }
+        _speedBoundPolar=polar; _speedBoundSun=sun;
+        if(_speedMobileSets.TryGetValue(mobile,out var cached) && _rd.UniformSetIsValid(cached)) return cached;
         using var a=SamplerUniform(new RDUniform { UniformType=RD.UniformType.SamplerWithTexture,Binding=0 },polar);
         using var b=SamplerUniform(new RDUniform { UniformType=RD.UniformType.SamplerWithTexture,Binding=1 },sun);
-        _speedShadowSet=_rd.UniformSetCreate(new Godot.Collections.Array<RDUniform> { a,b },_speedLightShader,2);
+        using var c=SamplerUniform(new RDUniform { UniformType=RD.UniformType.SamplerWithTexture,Binding=2 },mobile.IsValid ? mobile : _surfaceColor);
+        _speedShadowSet=_rd.UniformSetCreate(new Godot.Collections.Array<RDUniform> { a,b,c },_speedLightShader,2);
         Require(_speedShadowSet,"speed shadow inputs");
-        _speedBoundPolar=polar; _speedBoundSun=sun;
+        _speedMobileSets[mobile]=_speedShadowSet;
+        return _speedShadowSet;
     }
 
     internal void RenderLightsRT(SpeedLightFrame frame)
@@ -132,16 +140,20 @@ internal sealed partial class OrderedWorldDevice
         try
         {
             EnsureLightRT();
+            if(_speedReleaseInputs!=frame.ReleaseInputs) { _speedReleaseInputs?.Invoke(); _speedReleaseInputs=frame.ReleaseInputs; }
+            frame.TargetSize=Size;
             frame.RenderInputs?.Invoke(_rd,frame);
-            BindShadowInputsRT(frame);
+            Rid ambientShadows=BindShadowInputsRT(frame);
             if(_speedReachGpu.Count>512) ClearReachGpuRT();
             // Resolve/update all resources before opening the draw list.
             Span<Rid> sets=stackalloc Rid[frame.Count];
+            Span<Rid> shadows=stackalloc Rid[frame.Count];
             bool customCurves=false;
             for(int i=0;i<frame.Count;i++)
             {
                 ref var light=ref frame.Lights[i];
                 sets[i]=ReachSetRT(light.Reach);
+                shadows[i]=BindShadowInputsRT(frame,light.MobileShadow);
                 if(light.Source.CustomCurve is { Length:>1 } custom) {
                     customCurves=true;
                     for(int j=0;j<33;j++) _speedCurves[i*36+j]=RealtimeLightProfiles.Evaluate(LightCurve.Custom,j/32f,custom);
@@ -160,7 +172,7 @@ internal sealed partial class OrderedWorldDevice
                 {
                     _rd.DrawListBindRenderPipeline(list,_speedLightPipeline);
                     _rd.DrawListBindUniformSet(list,_speedLightSet,0);
-                    _rd.DrawListBindUniformSet(list,_speedShadowSet,2);
+                    _rd.DrawListBindUniformSet(list,ambientShadows,2);
                     _rd.DrawListBindUniformSet(list,frame.Count>0 ? sets[0] : _speedAmbientSet,1);
                     Span<LightPush> push=stackalloc LightPush[1];
                     push[0]=new LightPush { Rect=new Vector4(0,0,Size.X,Size.Y),
@@ -179,10 +191,11 @@ internal sealed partial class OrderedWorldDevice
                                 source.Y+source.OffsetY+0.5f-frame.Origin.Y,source.Z+10,source.Radius),
                             ColourEnergy=new Vector4(source.Color.R,source.Color.G,source.Color.B,source.Energy*light.Flicker),
                             ReachBounds=new Vector4(reach.X,reach.Y,reach.Side/(float)reach.Scale,reach.Side/(float)reach.Scale),
-                            ScreenMode=new Vector4(Size.X,Size.Y,i,0),
+                            ScreenMode=new Vector4(Size.X,Size.Y,i,light.MobileShadow.IsValid ? 1 : 0),
                             OriginCurve=new Vector4(frame.Origin.X,frame.Origin.Y,(int)source.Curve,0),
                             Unused=new Vector4(light.ShadowRow,frame.ShadowSoftnessTenths,frame.LampShadowAtlas.IsValid ? 1 : 0,0) };
                         _rd.DrawListBindUniformSet(list,sets[i],1);
+                        _rd.DrawListBindUniformSet(list,shadows[i],2);
                         _rd.DrawListSetPushConstant(list,MemoryMarshal.AsBytes(push),128);
                         _rd.DrawListDraw(list,false,1,6); SpeedLightDrawCalls++;
                     }
@@ -216,7 +229,9 @@ internal sealed partial class OrderedWorldDevice
         SpeedLightReady=false; SpeedLightTexture.TextureRdRid=default;
         if(_rd==null) return;
         ClearReachGpuRT();
-        FreeSpeedSet(ref _speedShadowSet); _speedBoundPolar=_speedBoundSun=default;
+        foreach(var set in _speedMobileSets.Values) if(_rd.UniformSetIsValid(set)) _rd.FreeRid(set);
+        _speedMobileSets.Clear(); _speedShadowSet=_speedBoundPolar=_speedBoundSun=default;
+        _speedReleaseInputs?.Invoke(); _speedReleaseInputs=null;
         FreeSpeedSet(ref _speedLightSet); FreeSpeedSet(ref _speedAmbientSet); Free(ref _speedCurvesBuffer); Free(ref _speedReachSampler);
         Free(ref _speedLightPipeline); Free(ref _speedLightShader);
         Free(ref _speedLightFramebuffer); Free(ref _speedLight);

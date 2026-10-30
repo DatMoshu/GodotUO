@@ -14,16 +14,18 @@ internal sealed class SpeedLightFrame
         internal Vector2 PixelCentre;
         internal float PixelRadius, Flicker;
         internal int ShadowRow;
+        internal Rid MobileShadow;
     }
     internal readonly Entry[] Lights=new Entry[RealtimeLightEffects.FrameLightCap];
     internal int Count, Soften;
     internal Vector3 Ambient;
     internal float RoofShare;
-    internal Vector2I Origin;
+    internal Vector2I Origin,TargetSize;
     // Borrowed RD views; default means no contribution from that optional pass.
     internal Rid LampShadowAtlas,SunMask;
     internal float ShadowSoftnessTenths=3;
     internal System.Action<RenderingDevice,SpeedLightFrame> RenderInputs;
+    internal System.Action ReleaseInputs;
     // Additive window patches run after the lamp list and before soften.
     internal System.Action<RenderingDevice,Rid,Rid,Vector2I,Vector2I> RenderPatches;
     internal UltimaBatcher2D Batcher;

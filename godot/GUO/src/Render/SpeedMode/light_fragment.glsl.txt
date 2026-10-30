@@ -6,6 +6,7 @@ layout(set=0,binding=1,std430) readonly buffer Curves { float curves[]; };
 layout(set=1,binding=0) uniform sampler2D reach_map;
 layout(set=2,binding=0) uniform sampler2D polar_map;
 layout(set=2,binding=1) uniform sampler2D sun_mask;
+layout(set=2,binding=2) uniform sampler2D mobile_mask;
 layout(push_constant,std430) uniform Light {
     vec4 rect; vec4 world_radius; vec4 colour_energy; vec4 reach_bounds;
     vec4 screen_mode; vec4 origin_curve; vec4 ambient_roof; vec4 unused;
@@ -69,5 +70,6 @@ void main() {
     else if(kind==4) facing=max(0.2,dot(direction,normalize(vec3(1,1,0))));
     vec2 normal_xy=kind==2 ? vec2(0,1) : kind==3 ? vec2(1,0) : vec2(0);
     float shadow=lamp_shadow(surface.xyz-pc.world_radius.xyz,normal_xy);
+    if(pc.screen_mode.w>0.5 && kind==1) shadow*=1.0-clamp(texelFetch(mobile_mask,ivec2(gl_FragCoord.xy),0).r,0.0,1.0);
     light=vec4(pc.colour_energy.rgb*(pc.colour_energy.w*falloff*facing*visibility*shadow),0);
 }
