@@ -646,6 +646,9 @@ namespace GUO.Game.Scenes
 
                 if (itemData.IsLight)
                 {
+#if DEBUG
+                    ObserveAttributionLight(obj,"full-gather-offer");
+#endif
                     AddLight(obj, obj, obj.RealScreenPosition.X + 22, obj.RealScreenPosition.Y + 22);
                 }
 
@@ -674,6 +677,9 @@ namespace GUO.Game.Scenes
 
                 if (!fadingOut && !(cot && _cotGradientMode))
                 {
+#if DEBUG
+                    ObserveAttributionLight(obj,"full-gather-offer");
+#endif
                     AddLight(obj, obj, obj.RealScreenPosition.X + 22, obj.RealScreenPosition.Y + 22);
                 }
             }
@@ -1087,6 +1093,9 @@ namespace GUO.Game.Scenes
 
                         if (meshItemData.IsLight)
                         {
+#if DEBUG
+                            ObserveAttributionLight(obj,"full-gather-offer");
+#endif
                             AddLight(obj, obj, obj.RealScreenPosition.X + 22, obj.RealScreenPosition.Y + 22);
                         }
 
@@ -1101,6 +1110,9 @@ namespace GUO.Game.Scenes
 
                     if (meshItemData.IsLight)
                     {
+#if DEBUG
+                        ObserveAttributionLight(obj,"full-gather-offer");
+#endif
                         AddLight(obj, obj, obj.RealScreenPosition.X + 22, obj.RealScreenPosition.Y + 22);
                         _walkLights?.Add((_walkTile, obj)); // PORT DEVIATION (GUO): ChunkReuse
                     }

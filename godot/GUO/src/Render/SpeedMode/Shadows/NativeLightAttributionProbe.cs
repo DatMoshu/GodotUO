@@ -28,6 +28,19 @@ public partial class NativeLightAttributionProbe : Node
     private static void Check(bool value,string message) { if(!value) throw new InvalidOperationException(message); }
     private async Task Frame()=>await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
     private async Task Painted()=>await ToSignal(RenderingServer.Singleton,RenderingServer.SignalName.FramePostDraw);
+    // Proposed fixture acceptance only: persist receipt first, stop on unknown.
+    private static void RequireAdmissionReceipt(string json,bool requireHooks)
+    {
+        using var document=JsonDocument.Parse(json);var root=document.RootElement;
+        Check(root.GetProperty("provenanceValid").GetBoolean(),"admission invalid managed-thread provenance");
+        Check(root.GetProperty("eventsComplete").GetBoolean(),"admission event census incomplete");
+        foreach(var phase in new[]{"before","after"}) {
+            var state=root.GetProperty(phase);
+            Check(state.GetProperty("provenanceValid").GetBoolean(),"admission "+phase+" invalid provenance");
+            Check(state.GetProperty("censusComplete").GetBoolean(),"admission "+phase+" census incomplete/unknown");
+        }
+        if(requireHooks)Check(root.GetProperty("actualBoundaryHooksObserved").GetBoolean(),"admission actual boundary unknown");
+    }
     public override async void _Ready()
     {
 #if !DEBUG
@@ -49,6 +62,8 @@ public partial class NativeLightAttributionProbe : Node
             File.WriteAllText(Settings.CustomSettingsFilepath,"{}");
             GUO.Workspace.Workspace.RootOverride=Path.Combine(_home,"workspace");
             // Boot only after validating the isolated home; no packed child may boot first.
+            File.WriteAllText(Path.Combine(_out,"data","admission-source-regression.json"),
+                JsonSerializer.Serialize(GameScene.LightAdmissionSourceRegression()));
             AddChild(new GUO.Host.Main());
             for(int i=0;Client.Game?.Scene is not LoginScene;i++) { if(i>1200)throw new Exception("login timeout");await Frame(); }
             var game=Client.Game;var world=game.UO.World;
@@ -94,35 +109,54 @@ public partial class NativeLightAttributionProbe : Node
             world.Map.GetMapZ(px,py,out sbyte ground,out _);int z=ground+1;
             mobile.SetInWorldTile((ushort)px,(ushort)py,(sbyte)z);
             int index=1000000;
-            void Place(ushort graphic,int x,int y,int height) {
-                var item=Static.Create(world,graphic,0,index++);item.SetInWorldTile((ushort)x,(ushort)y,(sbyte)height);
+            Static Place(ushort graphic,int x,int y,int height) {
+                var item=Static.Create(world,graphic,0,index++);item.SetInWorldTile((ushort)x,(ushort)y,(sbyte)height);return item;
             }
             for(int y=-4;y<=4;y++)for(int x=-4;x<=4;x++)Place(floor,px+x,py+y,z);
-            int lx=px-2,ly=py;Place(lamp,lx,ly,z);
+            int lx=px-2,ly=py;var fixtureLamp=Place(lamp,lx,ly,z);
             world.ShardClock.Set(12,0,0,Time.Ticks);
             File.WriteAllText(Path.Combine(_out,"data","fixture.json"),JsonSerializer.Serialize(new{lamp,floor,px,py,z,lx,ly,staticCount=index-1000000,profilePath=ProfileManager.ProfilePath},new JsonSerializerOptions{WriteIndented=true}));
             scene.UpdateDrawPosition=true;
+            game.SetProcess(false);
+            try {
+                scene.BeginLightAdmissionProbe(fixtureLamp,"post-insertion-before-settle");
+                string admission=scene.FinishLightAdmissionProbe();
+                File.WriteAllText(Path.Combine(_out,"data","post-insertion-before-settle-admission.json"),admission);
+                RequireAdmissionReceipt(admission,false);
+            }
+            finally { scene.CancelLightAdmissionProbe(); }
+            game.SetProcess(true);
             for(int i=0;i<12;i++)await Frame();game.SetProcess(false);
             var draw=game.GetType().GetMethod("DrawFrame",Private);
             var batcher=Field<UltimaBatcher2D>(game,"_uoSpriteBatch");
             OrderedWorldDevice Device()=>Field<OrderedWorldDevice>(batcher.OrderedWorldProbe,"_device");
             async Task<byte[]> Draw(string name) {
-                draw.Invoke(game,null);await Painted();
-                Check(OrderedWorldCapture.LastFrameOnPass,"native RD frame completed");
-                using var image=GetViewport().GetTexture().GetImage();image.SavePng(Path.Combine(_stills,name+".png"));return image.GetData();
+                try {
+                    scene.BeginLightAdmissionProbe(fixtureLamp,name);
+                    draw.Invoke(game,null);await Painted();
+                    string admission=scene.FinishLightAdmissionProbe();
+                    File.WriteAllText(Path.Combine(_out,"data",name+"-admission.json"),admission);
+                    RequireAdmissionReceipt(admission,true);
+                    Check(OrderedWorldCapture.LastFrameOnPass,"native RD frame completed");
+                    using var image=GetViewport().GetTexture().GetImage();image.SavePng(Path.Combine(_stills,name+".png"));return image.GetData();
+                }
+                finally { scene.CancelLightAdmissionProbe(); }
             }
             async Task<(byte[] Light,string Trace,byte[] Surface)> Sample(string name) {
-                string trace=scene.CaptureSpeedLightDiagnostics(batcher);
-                var device=Device();bool lightReady=device.SpeedLightReady;
-                byte[] pixels=null,surface=null;Exception failure=null;
-                RenderingServer.CallOnRenderThread(Callable.From(()=>{try {
-                    if(lightReady) pixels=device.ReadSpeedLightRT();
-                    if(device.SurfaceReady)surface=device.ReadSurfaceRT();
-                }catch(Exception error){failure=error;}}));
-                await Painted();if(failure!=null)throw failure;
-                Check(trace!=null,"completed attribution callback");
-                File.WriteAllText(Path.Combine(_out,"data",name+".json"),trace);
-                return(pixels,trace,surface);
+                try {
+                    string trace=scene.CaptureSpeedLightDiagnostics(batcher);
+                    var device=Device();bool lightReady=device.SpeedLightReady;
+                    byte[] pixels=null,surface=null;Exception failure=null;
+                    RenderingServer.CallOnRenderThread(Callable.From(()=>{try {
+                        if(lightReady) pixels=device.ReadSpeedLightRT();
+                        if(device.SurfaceReady)surface=device.ReadSurfaceRT();
+                    }catch(Exception error){failure=error;}}));
+                    await Painted();if(failure!=null)throw failure;
+                    Check(trace!=null,"completed attribution callback");
+                    File.WriteAllText(Path.Combine(_out,"data",name+".json"),trace);
+                    return(pixels,trace,surface);
+                }
+                finally { scene.CancelLightAdmissionProbe(); }
             }
             string Sources(string trace) {
                 using var json=JsonDocument.Parse(trace);
