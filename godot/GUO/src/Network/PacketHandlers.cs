@@ -124,8 +124,17 @@ namespace GUO.Network
                     // TODO: the pluging function should allow Span<byte> or unsafe type only.
                     // The current one is a bad style decision.
                     // It will be fixed once the new plugin system is done.
-                    if (!allowPlugins || Plugin.ProcessRecvPacket(packetBuffer, ref packetlength))
+                    // PORT DEVIATION (GUO): separate plugin and dispatch costs without
+                    // changing callback order, packet mutation, or the allowPlugins bypass.
+                    bool accepted = true;
+                    if (allowPlugins)
                     {
+                        using var timing = new PerfStages.Scope(PerfStages.Stage.PluginReceive);
+                        accepted = Plugin.ProcessRecvPacket(packetBuffer, ref packetlength);
+                    }
+                    if (accepted)
+                    {
+                        using var timing = new PerfStages.Scope(PerfStages.Stage.NetworkDispatch);
                         AnalyzePacket(world, packetBuffer.AsSpan(0, packetlength), offset);
 
                         ++packetsCount;

@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: BSD-2-Clause
+// SPDX-License-Identifier: BSD-2-Clause
 
 using GUO.Configuration;
 using GUO.Game.Data;
@@ -872,6 +872,8 @@ namespace GUO.Game.Scenes
 
                 Cities[i] = cityInfo;
             }
+            // PORT DEVIATION (GUO): ADR-0045, authoritative optional map labels.
+            GUO.Renderer.WorldOverview.Cities = Cities;
         }
 
         private string[] ReadCityTextFile(int count)

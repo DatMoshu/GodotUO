@@ -1,4 +1,6 @@
-﻿// SPDX-License-Identifier: BSD-2-Clause
+// SPDX-License-Identifier: BSD-2-Clause
+// PORT DEVIATION (GUO): the debug overlay also reports Godot rendering and
+// Depth World counters, including ordered-canvas fallback, in production builds.
 
 using GUO.Configuration;
 using GUO.Game.GameObjects;
@@ -55,6 +57,35 @@ namespace GUO.Game.UI.Gumps
         }
 
         public bool IsMinimized { get; set; }
+
+        private long _statsAt, _rdDrawn, _rdFallback, _rdCalls, _rdQuads, _residentDraws;
+        private ulong _godotFrames;
+        private string _rdLine = "";
+
+        /// <summary>Labs: the renderer's own counters, averaged over the last second.</summary>
+        private void AppendLabsRenderStats(ref ValueStringBuilder sb)
+        {
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            ulong frames = Godot.Engine.GetProcessFrames();
+            if (now - _statsAt >= System.Diagnostics.Stopwatch.Frequency)
+            {
+                double seconds = (now - _statsAt) / (double)System.Diagnostics.Stopwatch.Frequency;
+                double n = Math.Max(1, frames - _godotFrames);
+                var capture = typeof(GUO.Renderer.DepthWorld.OrderedWorldCapture);
+                long drawn = GUO.Renderer.DepthWorld.OrderedWorldCapture.FramesDrawn, fallback = GUO.Renderer.DepthWorld.OrderedWorldCapture.FramesFallback;
+                long calls = GUO.Renderer.DepthWorld.OrderedWorldCapture.DrawCalls, quads = GUO.Renderer.DepthWorld.OrderedWorldCapture.ReferencedQuads;
+                long resident = GUO.Renderer.DepthWorld.DepthWorldResident.ResidentDraws;
+                _rdLine =
+                    $"- Render ({(DepthWorldProbe.Enabled ? "Depth World" : GUO.Renderer.DepthWorld.OrderedWorldCapture.Enabled ? "RD ordered" : "canvas")})\n" +
+                    $"    - Frame:{1000d * seconds / n:0.00}ms ({n / seconds:0} FPS) cap:{(Godot.Engine.MaxFps == 0 ? "none" : Godot.Engine.MaxFps.ToString())} vsync:{Godot.DisplayServer.WindowGetVsyncMode()}\n" +
+                    $"    - RD frames:{(drawn - _rdDrawn) / n * 100:0}% fallback:{fallback - _rdFallback} last:{GUO.Renderer.DepthWorld.OrderedWorldCapture.LastFallback ?? "-"}\n" +
+                    $"    - RD draws/frame:{(calls - _rdCalls) / n:0} resident:{(resident - _residentDraws) / n:0} ordered quads:{(quads - _rdQuads) / n:0}\n" +
+                    $"    - Godot draws:{Godot.RenderingServer.GetRenderingInfo(Godot.RenderingServer.RenderingInfo.TotalDrawCallsInFrame)} prims:{Godot.RenderingServer.GetRenderingInfo(Godot.RenderingServer.RenderingInfo.TotalPrimitivesInFrame)} vram:{Godot.RenderingServer.GetRenderingInfo(Godot.RenderingServer.RenderingInfo.VideoMemUsed) >> 20}MB\n";
+                _statsAt = now; _godotFrames = frames;
+                _rdDrawn = drawn; _rdFallback = fallback; _rdCalls = calls; _rdQuads = quads; _residentDraws = resident;
+            }
+            sb.Append(_rdLine);
+        }
 
         public override GumpType GumpType => GumpType.Debug;
 
@@ -132,6 +163,7 @@ namespace GUO.Game.UI.Gumps
                             $"    - AvgDraw:{avgDrawMs:0.0}ms {CUOEnviroment.CurrentRefreshRate} FPS\n"
                         );
                     }
+                    AppendLabsRenderStats(ref sb);
                 }
                 else
                 {

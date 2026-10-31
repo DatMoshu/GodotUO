@@ -8,6 +8,7 @@ using GUO.Game.GameObjects;
 using GUO.Game.Managers;
 using GUO.Game.UI.Gumps;
 using GUO.Input;
+using GUO.Renderer;
 using GUO.Assets;
 using GUO.Network;
 using GUO.Resources;
@@ -277,6 +278,7 @@ namespace GUO.Game.Scenes
 
         internal override bool OnMouseDown(MouseButtonType button)
         {
+            if (OverviewActive) return true; // PORT DEVIATION (GUO): overview is view-only, ADR-0045
             switch (button)
             {
                 case MouseButtonType.Left:
@@ -294,6 +296,8 @@ namespace GUO.Game.Scenes
 
         internal override bool OnMouseUp(MouseButtonType button)
         {
+            // PORT DEVIATION (GUO): still deliver right-button release to stop prior movement.
+            if (OverviewActive && button != MouseButtonType.Right) return true;
             switch (button)
             {
                 case MouseButtonType.Left:
@@ -311,6 +315,7 @@ namespace GUO.Game.Scenes
 
         internal override bool OnMouseDoubleClick(MouseButtonType button)
         {
+            if (OverviewActive) return true; // PORT DEVIATION (GUO): overview is view-only, ADR-0045
             switch (button)
             {
                 case MouseButtonType.Left:
@@ -1010,6 +1015,13 @@ namespace GUO.Game.Scenes
 
             if (Keyboard.Ctrl && ProfileManager.CurrentProfile.EnableMousewheelScaleZoom)
             {
+                // PORT DEVIATION (GUO): ADR-0045, accelerate only the explicit overview range.
+                if (OverviewEnabled)
+                {
+                    EnsureOverviewZoomRange();
+                    Camera.Zoom = WorldOverview.WheelZoom(Camera.Zoom, up, Camera.ZoomStep);
+                    return true;
+                }
                 if (up)
                 {
                     Camera.ZoomIn();
@@ -1027,6 +1039,7 @@ namespace GUO.Game.Scenes
 
         internal override bool OnMouseDragging()
         {
+            if (OverviewActive) return true; // PORT DEVIATION (GUO): overview is view-only, ADR-0045
             if (!UIManager.IsMouseOverWorld)
             {
                 return false;

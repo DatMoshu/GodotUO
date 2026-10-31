@@ -1,0 +1,111 @@
+// External diagnostic driver: actual UO fonts and batcher, never a shipping type.
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Text.Json;
+using System.Threading.Tasks;
+using Godot;
+using GUO.Game;
+using GUO.Game.Scenes;
+using GUO.Renderer;
+
+namespace GUO.Host;
+public partial class GlyphFailureFixture : Node
+{
+    public override async void _Ready()
+    {
+        string dir = System.Environment.GetEnvironmentVariable("GUO_ZOOM_FIXTURE_DIR");
+        if (string.IsNullOrEmpty(dir)) return;
+        Directory.CreateDirectory(dir);
+        var rows = new List<object>();
+        UltimaBatcher2D batcher = null;
+        SubViewport viewport = null;
+        FontGlyphAtlas replacement = null, original = null;
+        RenderedText text = null;
+        try
+        {
+            while (Client.Game?.Scene is not LoginScene) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            Client.Game.SetProcess(false);
+            var palette = (Texture2D)typeof(GameController).GetField("_hueTexture", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(Client.Game);
+            viewport = new SubViewport { Size = new Vector2I(512, 160), TransparentBg = false, RenderTargetUpdateMode = SubViewport.UpdateMode.Always };
+            var host = new Node2D { TextureFilter = CanvasItem.TextureFilterEnum.Nearest };
+            viewport.AddChild(host); AddChild(viewport);
+            batcher = new UltimaBatcher2D(host.GetCanvasItem()) { HueTexture = palette };
+            text = RenderedText.Create("Visible glyphs and underline", font: 1, style: FontStyle.Underline);
+            var glyphs = typeof(RenderedText).GetMethod("DrawGlyphs", BindingFlags.Instance | BindingFlags.NonPublic);
+            var meshField = typeof(RenderedText).GetField("_textMesh", BindingFlags.Instance | BindingFlags.NonPublic);
+            int clipX = 65536, clipY = 65536, clipW = 400, clipH = 120;
+            float alpha = 1, scale = 1;
+            ushort hue = 0;
+            void Draw()
+            {
+                batcher.BeginFrame(); batcher.SetSampler(SamplerState.PointClamp); batcher.Begin();
+                glyphs.Invoke(text, new object[] { batcher, 12, 16, 0f, alpha, hue, scale, clipX, clipY, clipW, clipH });
+                batcher.End();
+            }
+            async Task<byte[]> Capture(string name, bool meshes, int draws)
+            {
+                UltimaBatcher2D.TextMeshes = meshes;
+                for (int i = 0; i < draws; i++) Draw();
+                await ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
+                using var im = viewport.GetTexture().GetImage(); im.SavePng(Path.Combine(dir, name + ".png"));
+                return im.GetData();
+            }
+            async Task Check(string name, Action change, bool expectInvalid, int expectedRecords = 1)
+            {
+                change();
+                // Match frame counts: atlas pages flush at the next BeginFrame.
+                // First-use upload timing is a separate existing atlas policy.
+                byte[] expected = await Capture(name + "-direct", false, 8);
+                long records = UltimaBatcher2D.TextMeshRecords;
+                byte[] actual = await Capture(name + "-cached", true, 8);
+                records = UltimaBatcher2D.TextMeshRecords - records;
+                bool valid = ((GlyphMesh)meshField.GetValue(text)).Valid;
+                int differences = expected.Zip(actual, (a,b) => a == b ? 0 : 1).Sum();
+                rows.Add(new { name, records, expectedRecords, valid, expectInvalid, differences });
+                File.WriteAllText(Path.Combine(dir, "glyph-results.json"), JsonSerializer.Serialize(rows));
+                if (records != expectedRecords || differences != 0 || valid == expectInvalid)
+                    throw new Exception($"{name}: records={records}, differences={differences}, valid={valid}");
+            }
+            await Check("empty-clip", () => {}, true);
+            await Check("same-failure", () => {}, true, 0);
+            await Check("full-clip-integer", () => clipX += 65536, true);
+            await Check("text", () => text.Text += "!", true);
+            await Check("font", () => text.Font = 2, true);
+            await Check("style", () => text.FontStyle ^= FontStyle.Italic, true);
+            await Check("alpha", () => alpha = .6f, true);
+            await Check("scale", () => scale = 1.5f, true);
+            await Check("hue", () => hue = 38, true);
+            original = Client.Game.UO.FontGlyphAtlas;
+            replacement = new FontGlyphAtlas(Client.Game.UO.FileManager.Fonts);
+            var atlasProperty = Client.Game.UO.GetType().GetProperty("FontGlyphAtlas");
+            await Check("atlas-lifetime", () => atlasProperty.SetValue(Client.Game.UO, replacement), true);
+            await Check("visible-after-failure", () => { clipX = clipY = 0; text.Font = 1; alpha = scale = 1; hue = 0; }, false);
+            await Check("visible-stable", () => {}, false, 0);
+            // Real HTML/underline remains exactly the direct glyph picture.
+            await Check("html-underline", () => { text.IsHTML = true; text.HasBackgroundColor = true; text.Text = "<body bgcolor=\"#ffffff\">HTML <b>text</b></body>"; }, false);
+            await Check("mixed-white-runs", () => { text.Text = "<body bgcolor=\"#ffffff\">   </body>"; hue = 38; }, true);
+            await Check("mixed-white-stable", () => {}, true, 0);
+            await Check("mixed-white-alpha", () => alpha = .5f, true);
+            GD.Print($"[glyph-failure] PASS ({rows.Count} exact-pixel/work-count cases)");
+        }
+        catch (Exception e) { File.WriteAllText(Path.Combine(dir, "failure.txt"), e.ToString()); GD.PrintErr(e); GetTree().Quit(1); return; }
+        finally
+        {
+            UltimaBatcher2D.TextMeshes = true;
+            if (original != null) Client.Game.UO.GetType().GetProperty("FontGlyphAtlas").SetValue(Client.Game.UO, original);
+            text?.Destroy(); batcher?.Dispose();
+            if (text != null && typeof(RenderedText).GetField("_textMesh", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(text) is GlyphMesh mesh)
+            {
+                foreach (var run in mesh.Runs) run.Mesh.Dispose();
+                mesh.Runs.Clear(); mesh.Valid = false; mesh.Info = mesh.Atlas = null;
+            }
+            viewport?.QueueFree(); replacement?.Dispose();
+        }
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        await ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
+        GetTree().Quit();
+    }
+}

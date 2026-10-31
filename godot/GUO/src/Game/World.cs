@@ -115,7 +115,29 @@ namespace GUO.Game
 
         public Map.Map Map { get; private set; }
 
-        public byte ClientViewRange { get; set; } = Constants.MAX_VIEW_RANGE;
+        // PORT DEVIATION (GUO): a login population can arrive before the 0xC8
+        // range reply. Deleting it with the provisional default loses entities
+        // permanently: later movement packets cannot recreate missing mobiles.
+        private byte _clientViewRange = Constants.MAX_VIEW_RANGE;
+        private bool _clientViewRangeKnown;
+
+        public byte ClientViewRange
+        {
+            get => _clientViewRange;
+            set
+            {
+                _clientViewRange = value;
+                _clientViewRangeKnown = true;
+            }
+        }
+
+        internal bool CanCullByViewRange(Utility.ClientVersion version)
+            => _clientViewRangeKnown || version < Utility.ClientVersion.CV_305D;
+        // No timeout guesses a server range. A modern server that never replies
+        // retains ownership of removals through its delete-object packets.
+        // Explicit range macros use the setter above and restore local pruning.
+        // END PORT DEVIATION (GUO)
+
 
         public bool SkillsRequested { get; set; }
 
@@ -312,7 +334,10 @@ namespace GUO.Game
                     }
                 }
 
-                bool do_delete = _timeToDelete < Time.Ticks;
+                // PORT DEVIATION (GUO): wait for a known range before local
+                // distance pruning; animation and server removals still run.
+                bool do_delete = _timeToDelete < Time.Ticks
+                    && CanCullByViewRange(Client.Game.UO.Version);
 
                 if (do_delete)
                 {
@@ -819,6 +844,9 @@ namespace GUO.Game
             Mobiles.Clear();
             Player?.Destroy();
             Player = null;
+            // PORT DEVIATION (GUO): a new connection must negotiate its own range.
+            _clientViewRange = Constants.MAX_VIEW_RANGE;
+            _clientViewRangeKnown = false;
             Map?.Destroy();
             Map = null;
             Light.Overall = Light.RealOverall = 0;

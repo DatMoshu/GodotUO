@@ -1,265 +1,76 @@
 # GodotUO
 
 <p align="center">
-  <img src="docs/images/guo-emblem.png" alt="GodotUO — engraved silver and gold emblem with Gems of Immortality eyes" width="320" />
+  <img src="docs/images/guo-emblem.png" alt="GodotUO emblem" width="240" />
 </p>
 
-**GodotUO** (GUO in the code) ports **Classic Ultima Online** to **Godot 4
-.NET** — getting the client off FNA while keeping the game behaviour intact.
+**Classic Ultima Online on Godot .NET.** GodotUO (GUO) carries over
+ClassicUO's C# game logic, networking and data readers, with Godot hosting
+rendering, input, audio and world/asset authoring tools.
 
-![The gardens of Castle British in GodotUO, on a local ModernUO shard](docs/images/castle-british.png)
+![Castle British gardens in GUO on a local ModernUO shard; historical repository illustration](docs/images/castle-british.png)
 
-The strategy is a transplant rather than a rewrite: [ClassicUO](https://github.com/ClassicUO/ClassicUO)'s
-C# network stack, file readers and game logic are carried across; only the
-parts that genuinely bind to FNA are reimplemented on Godot.
+**Pre-release.** Playable local-shard workflows have historical validation;
+complete gameplay, pixel parity and support for every shard/device are not
+claimed. You supply your own legally obtained UO installation. No game data
+is included or redistributed.
 
-> **You supply your own Ultima Online installation.** No game data is
-> distributed with this project. The client reads your install in place and
-> never writes to it.
+## Start here
 
----
-
-## Status
-
-**Pre-release. Playable on a local shard; not yet at parity.**
-
-- Every upstream file is ported, by the audit's count (`docs/port_status.md`).
-  "Ported" means present and compiling, not proven working.
-- Against a ModernUO dev shard it logs in, walks the world and opens gumps,
-  and it hosts assistant plugins through upstream's plugin interface.
-- Side by side with ClassicUO: the daytime sweep (`docs/parity_2026-09-23.md`)
-  matched in five of eight places, and the night sweep of 2026-09-26
-  (`docs/parity_2026-09-26_night.md`) matched across towns, dungeons and
-  every facet once its four fixes went in. Frame rate zoomed far out is
-  still well behind ClassicUO.
-- Builds for Windows, Android (ARM64, tested on an AYN Thor dual-screen
-  handheld and a single-screen Odin 2 Mini) and the Steam Deck, all from one
-  repository; every push to main produces downloadable builds.
-- Touch play on phones and handhelds: a touch bar, a combat macro row, pinch
-  and flick to size or move windows between screens, and an OLED screen saver.
-- A gamepad works on every platform, the Windows desktop included, and GUO
-  follows whichever of pad, mouse or touch you used last.
-- The GodotUO Asset Store installs hash-checked content packs: backgrounds,
-  screen effects, and the packs behind three options that are off by
-  default: Enhanced HD art, regional audio and recorded NPC voices.
-- The GodotUO editor (world, art and live world objects) has an **Admin**
-  tab for your own server: health, accounts, settings, backups, the server's
-  commands, a god view of a facet, and an audit log of every change.
-- Every feature sits in a layer, from the faithful port (L0) through player
-  options, content packs and editor packages to Labs (L4), the experiments
-  that never ship in an export. AGENTS.md has the table and its rules.
-- Scripted runs replay the same scenario on the client or the editor
-  (`tools/scenario_run`), and a hosted shard's install and deploy scripts
-  can be dry-run in a throwaway Docker container before they touch a Linux
-  host (`tools/muo_shard`).
-- A web client: it plays on a local shard in Chrome. Godot 4.7 cannot export
-  C# to the web, so it is exported with a community build of the engine
-  (`docs/wiki/Web-Client.md`).
-
-Bug reports that compare GUO against ClassicUO in the same place are the most
-useful thing you can send. See `CONTRIBUTING.md`.
-
----
-
-## Requirements
-
-| | |
+| Goal | Guide |
 |---|---|
-| **Windows** | 10 or 11, x64 |
-| **Godot** | 4.7.2 stable, **mono/.NET** build — fetched by the bootstrap step |
-| **.NET SDK** | 10.0 to build: the C# uses C# 14 (`LangVersion` is `latest`), which an 8.0 or 9.0 SDK cannot compile. The desktop client still targets `net8.0`, so the 8.0 runtime is needed to run it; 9.0 for the Android export, where `GUO.csproj` switches to `net9.0`. 10.0 also builds the dev shard and the parity tools. |
-| **Python** | 3.12+ (tooling) |
-| **A UO client install** | Any modern Classic client; developed against 7.0.107 |
+| Build, install or update | [Getting started](docs/wiki/Getting-Started.md) · [Install and update](docs/wiki/Install-and-Update.md) |
+| Play and configure | [Gameplay and settings](docs/wiki/Gameplay-and-Settings.md) · [Renderer and recovery](docs/wiki/Renderer-and-Performance.md) |
+| Author worlds and assets | [Editor](docs/wiki/Editor.md) · [Assets and Fiddler](docs/wiki/Assets-and-Fiddler.md) · [World editing](docs/wiki/World-Editing.md) |
+| Use AI or automation | [AI and MCP](docs/wiki/AI-and-MCP.md) · [Scripted runs](docs/wiki/Scripted-Runs-and-Probes.md) |
+| Check scope and proof | [Feature coverage](docs/wiki/Feature-Coverage.md) · [Visual guide](docs/wiki/Visual-Guide.md) · [Known issues](docs/wiki/Known-Issues.md) |
 
----
+The [GitHub Wiki](https://github.com/DatMoshu/GodotUO/wiki) is published from
+the reviewed [documentation source](docs/wiki/Home.md).
 
-## Getting started
+## Build on Windows
+
+Requirements: Godot **4.7.2 .NET** (bootstrap fetches the pin), **.NET SDK 10**
+with desktop .NET 8 runtime, **Python 3.12+**, Git and your own Classic UO data.
+See the target guide for Android/web .NET 9 and platform-specific dependencies.
 
 ```bat
-REM 1. Fetch the pinned engine and the upstream reference
 launchers\pipeline\00_bootstrap.bat
-
-REM 2. Point the project at your UO install (this file is yours; it is gitignored)
 copy launchers\_shared\config.local.bat.example launchers\_shared\config.local.bat
 notepad launchers\_shared\config.local.bat
-
-REM 3. Confirm everything resolves
+REM Set UO_CLIENT_DATA, an external UO_BUILD_DIR, and your shard host/port.
+launchers\pipeline\01_verify_client_data.bat
+dotnet build godot\GUO\GUO.csproj
 launchers\dev\smoke.bat
-
-REM 4. Run it
 launchers\game\play.bat
 ```
 
-It connects to `127.0.0.1:2593` by default. To run a local
-[ModernUO](https://github.com/modernuo/ModernUO) shard to play against, see
-`tools/modernuo/README.md`; to play elsewhere, set `UO_SHARD_HOST` and
-`UO_SHARD_PORT` in your `config.local.bat`.
+The default server address is loopback port 2593; run a
+[local ModernUO shard](docs/wiki/Dev-Shard.md) or configure your own server.
+Machine settings stay in gitignored local configuration. Generated output,
+caches and profiles belong outside the checkout.
 
-Generated output (screenshots, smoke runs, exports) goes to `build\` in the
-checkout unless you set `UO_BUILD_DIR` in `config.local.bat` to a folder
-outside it; `launchers/_shared/config.local.bat.example` shows how to give
-each checkout its own.
+## Platforms and feature boundaries
 
-Optionally add the engine folder to `PATH` so `godot` resolves everywhere:
+[Windows](docs/wiki/Windows-Build.md) · [Linux](docs/wiki/Linux.md) ·
+[Android ARM64](docs/wiki/Android-Build.md) · [Steam Deck](docs/wiki/Steam-Deck.md) ·
+[Web community-engine target](docs/wiki/Web-Client.md)
 
-```
-<your clone>\tools\godot
-```
+Evidence and limitations differ by target; an export path is not certification
+of every device. Controller, touch and dual-screen guides are in the wiki.
+The desktop renderer selects production Depth World where supported and keeps
+a canvas recovery path. HD art, audio packs and other presentation enhancements
+have their own opt-ins. Editor packages are excluded from exported clients;
+Labs requires an opted-in Debug build and never ships in an export.
 
-Use `godot` for the interactive editor and **`godot-console` for scripts and
-CI** — the console build blocks and writes to stdout.
+## Contribute
 
-### Every platform, one repository
+Read [CONTRIBUTING](CONTRIBUTING.md), [AGENTS](AGENTS.md) and the
+[architecture guide](docs/wiki/Architecture.md). Compare GUO with ClassicUO at
+the same location, camera and settings when reporting rendering issues.
+Include the build/commit and reproducible steps; remove private account,
+chat, token and machine details from logs and screenshots.
 
-| Platform | Start here | Where it stands |
-|---|---|---|
-| **Windows** | `launchers\game\play.bat`, or a build from the `release` workflow's artifacts | Plays on a local shard |
-| **Linux** (desktop) | `launchers/pipeline/00_bootstrap.sh`, then `launchers/game/play.sh` — [docs/wiki/Linux.md](docs/wiki/Linux.md) | Smoke passes; plays on a local shard |
-| **Android** (ARM64) | `launchers\android\doctor.bat`, then `launchers\android\smoke.bat` — [docs/wiki/Android-Build.md](docs/wiki/Android-Build.md) | Debug build; runs on one device, including its second screen |
-| **Steam Deck** (SteamOS) | `launchers\steamdeck\doctor.bat`, then `launchers\steamdeck\smoke.bat` — [docs/steamdeck.md](docs/steamdeck.md) | Exports, installs over ssh and reaches the login screen (ADR-0018) |
-| **Godot editor** | `launchers\editor\open_project.bat` — [docs/wiki/Editor.md](docs/wiki/Editor.md) | Browse the UO data, edit the world, export it to a shard |
-| **Web** (Chrome, Firefox) | `launchers\web\doctor.bat`, then `launchers\web\smoke.bat` — [Web Client](docs/wiki/Web-Client.md) | Plays on a local shard in Chrome, and reaches the login screen in Firefox, on a community engine build ([ADR-0008](docs/architecture/ADR-0008-web-target.md)) |
-
-Each platform reads the same `config.local.bat` settings, and every device
-brings its own copy of your UO install; nothing in this repository or in a
-build contains game data.
-
----
-
-## Mobile UI and device testing
-
-GUO adapts its world and companion windows to phones, tablets and foldables.
-Tabletop places the world above the hinge and the companion between touch
-controls below; book posture puts the panes on opposite sides of the hinge.
-Android handhelds can use the existing physical-controller path.
-
-<table>
-  <tr>
-    <td><img src="design/device-layouts/photos/pixel9.jpg" alt="Real photograph of a Pixel 9" width="240" /></td>
-    <td><img src="design/device-layouts/photos/fold7.jpg" alt="Real photograph of a Galaxy Z Fold7 in a shop" width="240" /></td>
-  </tr>
-  <tr><td>Phone: Pixel 9</td><td>Foldable: Galaxy Z Fold7</td></tr>
-</table>
-
-Real hardware reference photographs with their original screen contents; these
-are **not photos of GUO running on the pictured devices**. Photo credits:
-Miyako Fujimiya (CC0) and Ivebeenhacked (CC BY-SA 4.0).
-[Sources and reuse licenses](design/device-layouts/photos/CREDITS.md).
-
-Use **GUO Device Test Manager** for Android UI development:
-
-```bat
-launchers\android\device_manager.bat
-```
-
-Select a profile, **Launch / apply profile**, then **Install + run GUO**.
-Choose an APK and your UO data folder in the manager. It provides native SDK
-Pixel phone/foldable/tablet profiles, Galaxy and OnePlus display presets, and
-additional Android handheld screen shapes. Equivalent 1080p handheld layouts
-share one profile. Screenshots, recordings and diagnostics include metadata for
-reproducing the test.
-
-[Manager setup and coverage](docs/ui/device_test_manager.md) ·
-[Real-photo gallery and wireframes](design/device-layouts/index.html) ·
-[Fold and rotation behavior](docs/ui/adaptive_devices.md)
-
-Emulator coverage validates UI geometry and events. Vendor firmware, performance,
-physical controller mappings and the Thor's two displays require device testing.
-
-## Documentation
-
-The wiki lives in the repository, under [`docs/wiki/`](docs/wiki/Home.md), so
-it is versioned and reviewed with the code: getting started, every
-configuration key, the launchers and tools, the Windows and Android builds,
-the dev shard, the editor, the scripted runs and probes, parity and drift,
-the ADR index and a FAQ. The `wiki` workflow publishes it to the
-GitHub Wiki with `tools/wiki_publish` on every push to main that changes it. The plan (`docs/port_plan.md`), the data contract
-(`docs/data_formats.md`) and the ADRs (`docs/architecture/`) remain the
-sources it is written from.
-
----
-
-## Layout
-
-```
-launchers/        .bat/.sh pairs grouped by job — start here
-  _shared/        config.local.bat (yours) + config.bat (defaults) + common.bat
-  game/play.bat   THE launcher
-  editor/         open the Godot project or the upstream reference
-  pipeline/       numbered data steps, run in order
-  shard/          the local ModernUO dev shard: fetch, build, run
-  dev/            build, smoke, screenshot, parity, upstream sync
-  windows/ android/ steamdeck/ web/   export and test for each platform
-  store/          the local Asset Store catalogue
-  world/          world authoring tools
-godot/GUO/        the Godot project (C#)
-  src/Compat/     XNA compatibility shim
-  src/Labs/       opt-in experiments, Debug builds only
-  addons/guo_editor/  the GodotUO editor
-sources/ClassicUO/  upstream reference — read only, not committed
-tools/            one folder per job, plus the pinned engine
-  scenarios/      the scripted scenarios every feature is proved with
-design/           the brand sigil and the source of the Store's packs
-docs/             the plan, the data contract, generated status, ADRs, the wiki
-build/            generated output, gitignored (or wherever UO_BUILD_DIR points)
-```
-
----
-
-## How the port is tracked
-
-Every upstream file is classified by how tightly it binds to FNA, and the
-audit re-measures it from source on demand:
-
-```bat
-launchers\pipeline\03_port_audit.bat     REM writes docs/port_status.md
-```
-
-| Tier | Files | Lines | Treatment |
-|---|---:|---:|---|
-| `verbatim` | 247 | 74,760 | Renamespace and compile |
-| `shim` | 116 | 56,510 | Swap `using` to `GUO.Compat` |
-| `rewrite` | 37 | 21,959 | Reimplement on Godot |
-
-About **80% of the port is mechanical** — most of ClassicUO's FNA usage turns
-out to be maths and colour structs, not rendering. `GUO.Compat` supplies
-API-compatible versions of those, so a third of the codebase needs one line
-changed per file.
-
-`docs/port_plan.md` explains the reasoning and the phase order.
-
----
-
-## Keeping up with upstream
-
-ClassicUO is actively developed. This reports commits since the last reviewed
-pin, and flags any touching files already ported:
-
-```bat
-launchers\dev\sync_upstream.bat
-```
-
----
-
-## Licensing
-
-GUO is licensed under the **BSD 2-Clause** licence (`LICENSE`), the same as
-ClassicUO, from which most of its code is ported.
-
-| Component | Licence |
-|---|---|
-| This repository | BSD 2-Clause |
-| [ClassicUO](https://github.com/ClassicUO/ClassicUO) | BSD 2-Clause — ported files keep their upstream headers; licence text in `docs/upstream/` |
-| `tools/modernuo/patches/` | GPL-3.0 — they modify [ModernUO](https://github.com/modernuo/ModernUO), which is not redistributed |
-| `.claude/` agents and skills | MIT — adapted from [Claude Code Game Studios](https://github.com/Donchitos/Claude-Code-Game-Studios) |
-| [Godot](https://godotengine.org) | MIT — fetched, not redistributed |
-| **UO client data** | Proprietary. Never redistributed; supply your own. |
-
----
-
-## Disclaimer
-
-Ultima Online is a registered trademark of Electronic Arts Inc. GUO is an
-unofficial, fan-made project. It is not affiliated with, endorsed by, or
-associated with Electronic Arts or Broadsword Online Games, and it contains
-none of their game data.
+GUO is BSD 2-Clause; see [LICENSE](LICENSE) and [upstream notices](docs/upstream/).
+Ultima Online is a trademark of Electronic Arts. This unofficial fan project
+is unaffiliated with Electronic Arts or Broadsword Online Games.

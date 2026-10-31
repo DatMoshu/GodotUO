@@ -148,7 +148,7 @@ public partial class MultiEditView
             return;
         }
 
-        var made = ghost.Select(p => _doc.Make(p.Id, p.X + dx, p.Y + dy, p.Z + dz, p.Shown, p.Hue)).ToList();
+        var made = ghost.Select(p => _doc.Make(p.Id, p.X + dx, p.Y + dy, p.Z + dz, p.Shown, p.Hue, p.TextFlags, p.TextExtra)).ToList();
         _doc.Do($"{_ghostWhat} {made.Count}", list => list.AddRange(made));
         _doc.Selection.Clear();
         foreach (MultiPart p in made)

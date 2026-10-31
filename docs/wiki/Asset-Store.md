@@ -1,5 +1,10 @@
 # Asset Store
 
+![Content Store surface in GUO](../images/guides/content-store.png)
+
+Empty catalogue browsing surface. This tour did not fetch a catalogue, install a pack or accept a signing key. [Capture conditions and limits](Visual-Guide.md#content-store).
+
+
 The GodotUO Asset Store installs **content packs** into the client: login and
 game backgrounds, screen-saver loops, themes, sounds and profile presets.
 Options > **Store** shows a catalogue where you can search, filter by kind,

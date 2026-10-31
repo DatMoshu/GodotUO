@@ -2,7 +2,7 @@
 #if GUO_LABS
 using System;
 using Godot;
-using GUO.Labs.GpuRenderer;
+using GUO.Renderer.DepthWorld;
 
 namespace GUO.Host;
 

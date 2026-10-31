@@ -138,10 +138,13 @@ public partial class EditorSmoke
             string[] missing = want.Where(w => !titles.Contains(w)).ToArray();
             foreach ((string format, _, string label) in MultiEditView.LegacyFormats)
             {
-                missing = missing.Concat(new[] { $"Multi Editor: import {label}", $"Multi Editor: export {label}" }.Where(w => !titles.Contains(w))).ToArray();
+                string[] expected = MultiEditView.IsExportOnly(format) ? new[] { $"Multi Editor: export {label}" } : new[] { $"Multi Editor: import {label}", $"Multi Editor: export {label}" };
+                missing = missing.Concat(expected.Where(w => !titles.Contains(w))).ToArray();
             }
 
             MeCheck("f3_has_every_new_action", missing.Length == 0, string.Join(", ", missing));
+            MeCheck("f3_export_only_has_no_import", MultiEditView.LegacyFormats.Where(f => MultiEditView.IsExportOnly(f.Format))
+                .All(f => !titles.Contains($"Multi Editor: import {f.Label}")));
             _meReport["f3_multi_entries"] = guo.Entries.Count(e => e.Kind == "Multi");
         }
     }
@@ -220,7 +223,7 @@ public partial class EditorSmoke
         _meReport["format_components"] = count;
         _meReport["format_hidden"] = hiddenCount;
         var kept = new List<string>();
-        foreach ((string format, string ext, _) in MultiEditView.LegacyFormats)
+        foreach ((string format, string ext, _) in MultiEditView.LegacyFormats.Where(f => !MultiEditView.IsReviewedText(f.Format)))
         {
             string file = Path.Combine(dir, $"smoke_{format}.{ext}");
             string err = await view.ExportFileAsync(file, format);
@@ -256,6 +259,7 @@ public partial class EditorSmoke
         MeCheck("import_detects_format", File.Exists(detect) && await view.ImportFileAsync(detect) == null && doc.Parts.Count == count);
         MeCheck("import_missing_file_reports", await view.ImportFileAsync(Path.Combine(dir, "nope.txt")) != null);
         MeCheck("formats_outside_install", Path.GetFullPath(dir).StartsWith(Path.GetFullPath(_out), StringComparison.OrdinalIgnoreCase));
+        await MeFiddlerTextAsync(view, dir);
         _ = hidden;
         _ = hued;
     }

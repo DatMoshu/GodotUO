@@ -406,6 +406,7 @@ def td_path(data: Path) -> Path:
 
 
 def export_texmaps(data: Path, texmaps: list, out: Path, override_lines: list[str], files: dict) -> int:
+    from uodata_write.uodata import check_texmaps, write_texmaps
     idx_src, mul_src = data / "texidx.mul", data / "texmaps.mul"
     count = idx_src.stat().st_size // uoart.TEXIDX_RECORD
     redirected = texterr_redirected(data)
@@ -418,18 +419,11 @@ def export_texmaps(data: Path, texmaps: list, out: Path, override_lines: list[st
         if id_ in redirected:
             print(f"[world] WARNING: TexTerr.def points texmap {id_} at another entry; the client will not show 0x{id_:04X}.png")
         encoded.append((id_, uoart.encode_texmap(px)))
+    check_texmaps(mul_src, idx_src, encoded, occupied=False)
     idx, mul = out / "texidx.mul", out / "texmaps.mul"
     shutil.copyfile(idx_src, idx)
     shutil.copyfile(mul_src, mul)
-    with idx.open("r+b") as xf, mul.open("r+b") as mf:
-        mf.seek(0, 2)
-        for id_, raw in encoded:
-            at = mf.tell()
-            mf.write(raw)
-            xf.seek(id_ * uoart.TEXIDX_RECORD)
-            _, _, extra = struct.unpack("<iii", xf.read(uoart.TEXIDX_RECORD))
-            xf.seek(id_ * uoart.TEXIDX_RECORD)
-            xf.write(struct.pack("<iii", at, len(raw), extra))
+    write_texmaps(mul, idx, encoded, occupied=False, skip_identical=False)
     for f in (mul, idx):
         override_lines.append(f"{f.name}={f}")
         files[f.name] = {"sha1": sha1(f), "bytes": f.stat().st_size}

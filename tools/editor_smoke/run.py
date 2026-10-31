@@ -230,10 +230,13 @@ def main() -> int:
     ap.add_argument("--require-native", action="store_true",
                     help="fail when a check that needs a real external program was skipped")
     ap.add_argument("--header-only", action="store_true", help="check the toolbar at three window widths without running unrelated editor checks")
+    ap.add_argument("--assets-workbench", action="store_true", help="capture the Assets workbench at three widths and its export review (requires --windowed)")
     ap.add_argument("--world-project", type=Path,
                     help="open this world project (UO_WORLD_PROJECT) in the World tab and check it there; needs --look")
     ap.add_argument("--look", help="FACET,X,Y: the cell the World tab shows for --world-project; its block must be one the project edits")
     args = ap.parse_args()
+    if args.assets_workbench and (not args.windowed or args.reload or args.world_project or args.header_only):
+        ap.error("--assets-workbench requires --windowed and cannot combine with reload, world-project or header-only")
     look = None
     if args.world_project or args.look:
         if not (args.world_project and args.look):
@@ -278,6 +281,8 @@ def main() -> int:
     cmd += ["--", "--guo-editor-smoke", str(out), "--guo-editor-smoke-art", args.art]
     if args.header_only:
         cmd.append("--guo-editor-header-only")
+    if args.assets_workbench:
+        cmd.append("--guo-assets-workbench")
     if args.multi_dump:
         cmd += ["--guo-editor-multi-dump", args.multi_dump]
     if args.reload:

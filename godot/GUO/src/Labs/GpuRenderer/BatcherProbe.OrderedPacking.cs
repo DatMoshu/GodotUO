@@ -3,7 +3,7 @@
 using System;
 using System.Runtime.InteropServices;
 using Godot;
-using GUO.Labs.GpuRenderer;
+using GUO.Renderer.DepthWorld;
 using GUO.Renderer;
 
 namespace GUO.Host;

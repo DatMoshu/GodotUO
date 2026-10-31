@@ -214,6 +214,7 @@ namespace GUO.Game
                     if (block >= 0 && block < Client.Game.UO.FileManager.Maps.MapBlocksSize[mapId, 0] * Client.Game.UO.FileManager.Maps.MapBlocksSize[mapId, 1])
                     {
                         int index = block * 12;
+                        Client.Game.UO.FileManager.Maps.NotifyDataChanged(); // PORT DEVIATION (GUO): ADR-0045, including empty blocks
 
                         if (totalLength <= 0)
                         {
@@ -468,6 +469,7 @@ namespace GUO.Game
             if (block >= 0 && block < mapWidthInBlocks * mapHeightInBlocks)
             {
                 _UL._filesMap[mapId].WriteArray(block * 196 + 4, landData);
+                Client.Game.UO.FileManager.Maps.NotifyDataChanged(); // PORT DEVIATION (GUO): ADR-0045
 
                 //instead of recalculating the CRC block 2 times, in case of terrain + statics update, we only set the actual block to ushort maxvalue, so it will be recalculated on next hash query
                 _UL.MapCRCs[mapId][block] = ushort.MaxValue;

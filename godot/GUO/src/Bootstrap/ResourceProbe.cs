@@ -32,6 +32,16 @@ public static class ResourceProbe
         ok &= CheckImage("cuologo.png", Loader.GetCuoLogo().Length);
         ok &= CheckImage("game-background.png", Loader.GetBackgroundImage().Length);
 
+        foreach (string shader in new[] { "resident_world_vertex.glsl.txt", "depth_world_resident_vertex.glsl.txt",
+            "ordered_world_vertex.glsl.txt", "ordered_world_fragment.glsl.txt" })
+        {
+            try {
+                string source = GUO.Renderer.DepthWorld.OrderedWorldCapture.ShaderSource(shader);
+                ok &= CheckString("depthworld/" + shader, source.Contains("void main") ? source : null);
+            }
+            catch (Exception error) { GD.PrintErr("[GUO] Depth World resource: " + error.Message); ok = false; }
+        }
+
         GD.Print(ok
             ? "[GUO] embedded resources OK."
             : "[GUO] embedded resources FAILED.");

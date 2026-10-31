@@ -19,14 +19,19 @@ public partial class MultiEditView
     /// <summary>The formats tools/multi reads and writes, with a file extension and a label for each.</summary>
     public static readonly (string Format, string Ext, string Label)[] LegacyFormats =
     {
-        ("txt", "txt", "Text (UOFiddler, Ultima SDK)"),
-        ("uoa", "uoa", "UO Architect text"),
+        ("txt-fiddler", "txt", "Fiddler TXT (hexadecimal IDs)"),
+        ("txt", "txt", "GUO legacy TXT (decimal IDs unless 0x-prefixed)"),
+        ("uoa-fiddler", "uoa", "UO Architect text (Fiddler, decimal IDs)"),
+        ("uoa", "uoa", "GUO legacy UOA text"),
         ("uoab", "uoab", "UO Architect binary"),
-        ("wsc", "wsc", "WSC world items"),
+        ("wsc-fiddler", "wsc", "Fiddler WSC (reviewed world items)"),
+        ("wsc", "wsc", "GUO legacy WSC (keeps Color)"),
+        ("csv-fiddler", "csv", "Fiddler CSV (hex IDs/flags, retains Unk1)"),
         ("csv-punt", "csv", "CSV (PUNT)"),
         ("csv-swerv", "csv", "CSV (SWERV)"),
         ("centred", "csv", "CentrED# blueprint"),
         ("uox3", "dfn", "UOX3 house items"),
+        ("uox3-fiddler", "dfn", "Fiddler UOX3 (reviewed export only)"),
     };
 
     private void BuildFormatMenus(Control bar)
@@ -37,6 +42,7 @@ public partial class MultiEditView
             PopupMenu pop = menu.GetPopup();
             for (int i = 0; i < LegacyFormats.Length; i++)
             {
+                if (!export && IsExportOnly(LegacyFormats[i].Format)) continue;
                 pop.AddItem(LegacyFormats[i].Label, i);
             }
 
@@ -47,7 +53,13 @@ public partial class MultiEditView
     }
 
     /// <summary>Opens the import dialog for one format (F3).</summary>
-    public void ImportDialog(string format) => OpenFormatDialog(LegacyFormats.First(f => f.Format == format), false);
+    public void ImportDialog(string format)
+    {
+        if (IsExportOnly(format)) { _status.Text="Fiddler UOX3 is export-only. Choose UOX3 house items to import."; return; }
+        OpenFormatDialog(LegacyFormats.First(f => f.Format == format), false);
+    }
+
+    internal static bool IsExportOnly(string format) => format == "uox3-fiddler";
 
     /// <summary>Opens the export dialog for one format (F3).</summary>
     public void ExportDialog(string format) => OpenFormatDialog(LegacyFormats.First(f => f.Format == format), true);
@@ -69,7 +81,12 @@ public partial class MultiEditView
 
         dialog.FileSelected += p =>
         {
-            if (export)
+            if (IsReviewedText(f.Format))
+            {
+                if (export) _ = ReviewFiddlerTextAsync(p, true, f.Format);
+                else GuardUnsaved(() => _ = ReviewFiddlerTextAsync(p, false, f.Format));
+            }
+            else if (export)
             {
                 _ = ExportFileAsync(p, f.Format);
             }
@@ -88,6 +105,35 @@ public partial class MultiEditView
     /// <summary>Writes the whole multi to a file in <paramref name="format"/>. Returns an error text, or null.</summary>
     public async Task<string> ExportFileAsync(string path, string format)
     {
+        try { AssetActions.EnsureExportDestination(path); }
+        catch (Exception e) { _status.Text = e.Message; return e.Message; }
+        if (format!="csv-fiddler" && _doc.Parts.Any(p=>p.TextExtra.GetValueOrDefault()!=0))
+        {
+            const string message="This format cannot preserve nonzero CSV Unk1. Choose Fiddler CSV to keep it.";
+            _status.Text=message; return message;
+        }
+        if (!IsReviewedText(format) && _doc.Parts.Any(p => p.ExportTextFlags is not (0 or 1)))
+        {
+            const string message = "This format cannot preserve opaque Fiddler text flags. Choose reviewed Fiddler TXT or UOA to keep them.";
+            _status.Text = message; return message;
+        }
+        if (IsReviewedText(format))
+        {
+            try
+            {
+                if (_doc.Parts.Any(p => p.Hue != 0) || (format is "wsc-fiddler" or "uox3-fiddler" && _doc.Parts.Any(p => p.ExportTextFlags != 1)))
+                    throw new IOException("This format would lose hue or visibility/flags. Use the reviewed export menu to confirm the loss, or choose a preserving format.");
+                MultiTextSnapshot snapshot = new(_doc);
+                var lifetime = _writeLifetime.Token;
+                byte[] bytes = await FiddlerTextBytesAsync(snapshot.Parts, format);
+                lifetime.ThrowIfCancellationRequested();
+                snapshot.Check(_doc);
+                MultiTextDestination destination = new(path);
+                destination.Write(bytes);
+                return null;
+            }
+            catch (Exception e) { _status.Text = e.Message; return e.Message; }
+        }
         var comps = new JsonArray();
         var hues = new JsonArray();
         foreach (MultiPart p in _doc.Parts)
@@ -112,6 +158,22 @@ public partial class MultiEditView
     /// <summary>Opens a file of another tool's format (detected from its name and head when <paramref name="format"/> is null).</summary>
     public async Task<string> ImportFileAsync(string path, string format = null)
     {
+        if (IsExportOnly(format)) return "Fiddler UOX3 is export-only. Choose legacy UOX3 to read house-item blocks.";
+        if (IsReviewedText(format))
+        {
+            try
+            {
+                MultiTextSnapshot snapshot = new(_doc);
+                var lifetime = _writeLifetime.Token;
+                MultiTextInput input = new(path);
+                MultiPart[] importedParts = await ReadFiddlerTextAsync(input.Bytes, format);
+                lifetime.ThrowIfCancellationRequested();
+                input.Check(); snapshot.Check(_doc);
+                OpenParts(MultiStore.SafeName(Path.GetFileNameWithoutExtension(path)), importedParts);
+                return null;
+            }
+            catch (Exception e) { _status.Text = e.Message; return e.Message; }
+        }
         var args = new JsonObject { ["path"] = path, ["recentre"] = true };
         if (format != null)
         {

@@ -394,6 +394,73 @@ public sealed class EditorData : IDisposable
         }
     }
 
+    /// <summary>Main-thread comparison read. Restore the overlay entry even when decoding fails.</summary>
+    public Image SourceArtImage(uint index)
+    {
+        if (_assetsApplied == null || !_assetsApplied.Art.TryGetValue((int)index, out UOFileIndex source)) return ArtImage(index);
+        UOFileIndex replacement = _files.Arts.File.Entries[index];
+        try
+        {
+            _files.Arts.File.Entries[index] = source;
+            ArtInfo art = _files.Arts.GetArt(index);
+            return FromPixels(art.Pixels, art.Width, art.Height);
+        }
+        finally { _files.Arts.File.Entries[index] = replacement; }
+    }
+
+    /// <summary>Loaded base palette, before the project overlay; main thread only.</summary>
+    internal byte[] SourceHueRecord(int hue)
+    {
+        int h = hue - 1;
+        if (!IsLoaded || h < 0 || h >= _files.Hues.HuesCount || (h >> 3) >= _files.Hues.HuesRange.Length)
+            throw new ArgumentException("Hue is outside the loaded library.");
+        HuesBlock block = _files.Hues.HuesRange[h >> 3].Entries[h & 7];
+        if (_assetsApplied != null && _assetsApplied.Hues.TryGetValue(hue, out HuesBlock original)) block = original;
+        return System.Runtime.InteropServices.MemoryMarshal.AsBytes(System.Runtime.InteropServices.MemoryMarshal.CreateReadOnlySpan(ref block, 1)).ToArray();
+    }
+
+    /// <summary>Validate the effective (including TexTerr.def) entry before the native decoder reads it.</summary>
+    internal int TextureSize(int id)
+    {
+        UOFile file = Files?.Texmaps.File;
+        if (file == null || id < 0 || id >= Math.Min(file.Entries.Length, TexmapsLoader.MAX_LAND_TEXTURES_DATA_INDEX_COUNT)) return 0;
+        return TextureEntrySize(file.Entries[id], file.Length);
+    }
+    internal static int TextureEntrySize(UOFileIndex entry, long fileLength) =>
+        entry.Offset >= 0 && entry.Offset != uint.MaxValue && entry.Offset <= fileLength - entry.Length
+        ? entry.Length switch { 0x2000 => 64, 0x8000 => 128, _ => 0 } : 0;
+
+    public Image TextureImage(int id)
+    {
+        if (TextureSize(id) == 0) return null;
+        try
+        {
+            TexmapInfo texture = _files.Texmaps.GetTexmap((uint)id);
+            return texture.Width is 64 or 128 && texture.Height == texture.Width
+                ? FromPixels(texture.Pixels, texture.Width, texture.Height) : null;
+        }
+        catch (Exception ex)
+        {
+            GD.PrintErr($"[GUO editor] texture 0x{id:X4} failed to decode: {ex.Message}");
+            return null;
+        }
+    }
+
+    internal TextureSource SourceTexture(int id)
+    {
+        if (TextureSize(id) == 0) throw new IOException("The selected texture has no complete native source record.");
+        UOFile file = _files.Texmaps.File; UOFileIndex entry = file.Entries[id];
+        byte[] bytes = new byte[entry.Length];
+        using var stream = new FileStream(file.FilePath, FileMode.Open, System.IO.FileAccess.Read, FileShare.ReadWrite);
+        stream.Position = entry.Offset; stream.ReadExactly(bytes);
+        using var index = File.OpenRead(((UOFileMul)file).IdxFile.FilePath);
+        if (index.Length > 0x4000 * 12) throw new IOException("Texture index exceeds the supported 0x4000 slots.");
+        string indexHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(index));
+        string def = _files.GetUOFilePath("TexTerr.def");
+        string remapHash = File.Exists(def) ? Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(TextureDocument.Read(def, 2 * 1024 * 1024))) : "missing";
+        return new(bytes, $"{EditorPaths.Real(file.FilePath)}|{entry.Offset}|{entry.Length}|{indexHash}|{remapHash}");
+    }
+
     /// <summary>Decodes a gump through <see cref="GumpsLoader.GetGump"/>. Null when empty.</summary>
     public Image GumpImage(int index)
     {

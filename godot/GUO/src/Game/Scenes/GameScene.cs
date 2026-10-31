@@ -99,6 +99,12 @@ namespace GUO.Game.Scenes
 
             Client.Game.Window.AllowUserResizing = true;
 
+            // PORT DEVIATION (GUO): --zoom-max=N lets the camera zoom out past
+            // upstream's 2.5 (DepthWorldProbe.ZoomMax); off unless given.
+            // The player option is the sole runtime gate; legacy launch flags
+            // must not silently enable an experimental player feature.
+            Camera.SetZoomRange(Camera.ZoomMin, 2.5f, Camera.ZoomStep);
+
             Camera.Zoom = ProfileManager.CurrentProfile.DefaultScale;
             Camera.Bounds.X = Math.Max(0, ProfileManager.CurrentProfile.GameWindowPosition.X);
             Camera.Bounds.Y = Math.Max(0, ProfileManager.CurrentProfile.GameWindowPosition.Y);
@@ -296,6 +302,7 @@ namespace GUO.Game.Scenes
 
         public override void Unload()
         {
+            _overview?.Dispose(); _overview = null; _wasOverview = false; // PORT DEVIATION (GUO): ADR-0045
             ResetAmbientParticles(); // PORT DEVIATION (GUO): ADR-0042 resource lifetime
             GpuWorld.Destroy(); // PORT DEVIATION (GUO): --gpu-world's pass goes with the scene (ADR-0007)
             IO.Audio.ZoneAudio.Music.Reset();
@@ -595,6 +602,7 @@ namespace GUO.Game.Scenes
         {
             _renderLists.Clear();
             _visibleChunks.Clear();
+            _meshChunks.Clear(); // PORT DEVIATION (GUO): ADR-0044
             RenderLists.ChunksSkipped = 0; // PORT DEVIATION (GUO): perf probe count
 
             _foliageCount = 0;
@@ -705,8 +713,10 @@ namespace GUO.Game.Scenes
                     }
 
                     // Build chunk mesh if dirty
+                    bool built = false; // PORT DEVIATION (GUO): ChunkReuse
                     if (chunk.Mesh.IsDirty)
                     {
+                        built = true;
                         stageAt = PerfStages.Add(PerfStages.Stage.Gather, stageAt);
                         chunk.Mesh.Build(chunk, _world);
                         stageAt = PerfStages.Add(PerfStages.Stage.MeshBuild, stageAt);
@@ -718,13 +728,42 @@ namespace GUO.Game.Scenes
                         GpuWorld.InstancesShown++;
                     }
 
-                    // Reset visibility and alpha for this frame
-                    chunk.Mesh.Land.ResetVisibility();
-                    chunk.Mesh.Land.ResetAlpha();
-                    chunk.Mesh.Statics.ResetVisibility();
-                    chunk.Mesh.Statics.ResetAlpha();
+                    // PORT DEVIATION (GUO): ADR-0044, an unchanged chunk keeps its last walk.
+                    // PORT DEVIATION (GUO): ADR-0044. An off-screen chunk's walk
+                    // is skipped below after a reset; one already reset and
+                    // unchanged has nothing to clear, so it skips that too.
+                    if (SkipClearedOffScreen(chunk, built))
+                    {
+                        _visibleChunks.Add(chunk);
+                        continue;
+                    }
+
+                    // Only the tiles in walkMask are walked; null walks the chunk whole.
+                    ulong? walkMask = ReusableTiles(chunk, gatherInputs, built);
+                    if (walkMask == 0 && !VerifyChunkReuse)
+                    {
+                        _visibleChunks.Add(chunk);
+                        _meshChunks.Add(chunk);
+                        continue;
+                    }
+                    bool verifyReuse = walkMask != null && VerifyChunkReuse;
+                    int landStamp = chunk.Mesh.Land.ContentStamp, staticStamp = chunk.Mesh.Statics.ContentStamp;
+
+                    if (walkMask is ulong partial)
+                    {
+                        ClearTileVisibility(chunk, partial);
+                    }
+                    else
+                    {
+                        // Reset visibility and alpha for this frame
+                        chunk.Mesh.Land.ResetVisibility();
+                        chunk.Mesh.Land.ResetAlpha();
+                        chunk.Mesh.Statics.ResetVisibility();
+                        chunk.Mesh.Statics.ResetAlpha();
+                    }
 
                     _visibleChunks.Add(chunk);
+                    _meshChunks.Add(chunk);
 
                     // PORT DEVIATION (GUO): perf, review item B (2026-10-24).
                     // Upstream walks every object of every chunk in the tile
@@ -746,29 +785,30 @@ namespace GUO.Game.Scenes
                             chunk.ScreenPositionsStale = true;
                         }
 
+                        MarkOffScreenCleared(chunk, walkMask == null); // PORT DEVIATION (GUO): ADR-0044
+
                         RenderLists.ChunksSkipped++;
                         continue;
                     }
 
                     _forcePositions = chunk.ScreenPositionsStale;
+                    bool chunkForce = _forcePositions; // PORT DEVIATION (GUO): ChunkReuse verify
                     chunk.ScreenPositionsStale = false;
-
-                    for (var x = 0; x < 8; x++)
+                    // PORT DEVIATION (GUO): ChunkReuse; WalkChunkTiles is upstream's tile loop.
+                    BeginChunkWalk(chunk, walkMask);
+                    WalkChunkTiles(chunk, use_handles, gatherInputs, walkMask);
+                    EndChunkWalk(chunk, gatherInputs, landStamp, staticStamp, built, walkMask);
+                    if (verifyReuse)
                     {
-                        for (var y = 0; y < 8; y++)
-                        {
-                            var firstObj = chunk.GetHeadObject(x, y);
-                            if (firstObj == null || firstObj.IsDestroyed)
-                                continue;
-
-                            AddTileToRenderList(
-                                firstObj,
-                                use_handles,
-                                150,
-                                chunk,
-                                gatherInputs
-                            );
-                        }
+                        // The reused result against a whole walk (lights and queues doubled; verify only).
+                        KeepVisibility(chunk);
+                        chunk.Mesh.Land.ResetVisibility();
+                        chunk.Mesh.Statics.ResetVisibility();
+                        BeginChunkWalk(chunk, null);
+                        _forcePositions = chunkForce;
+                        WalkChunkTiles(chunk, use_handles, gatherInputs, null);
+                        EndChunkWalk(chunk, gatherInputs, landStamp, staticStamp, built, null);
+                        CompareVisibility(chunk);
                     }
                 }
             }
@@ -1063,6 +1103,16 @@ namespace GUO.Game.Scenes
                 return true;
             }
 
+            // PORT DEVIATION (GUO): explicit extended zoom reaches the full current facet.
+            EnsureOverviewZoomRange();
+            // PORT DEVIATION (GUO): explicit extended zoom uses bounded overview tiles.
+            if (OverviewActive)
+            {
+                DrawOverview(batcher, renderTargets);
+                return base.Draw(batcher, renderTargets);
+            }
+            LeaveOverview();
+
             // PORT DEVIATION (GUO): upstream saves the device viewport, sets
             // it to the camera's rectangle around the world draw, and restores
             // it. There is nothing to set: the world is drawn into a render
@@ -1097,6 +1147,11 @@ namespace GUO.Game.Scenes
             SelectedObject.Object = null;
             Profiler.EnterContext(Profiler.ProfilerContext.RENDER_FRAME_WORLD_PREPARE);
             PrepareGpuWorld(batcher, matrix, renderTargets); // PORT DEVIATION (GUO): --gpu-world (ADR-0007)
+            // PORT DEVIATION (GUO): admit before static gather suppression.
+            DepthWorldProbe.FrameAdmitted = batcher.CanAdmitDepthWorld(
+                _splatObjects.Count == 0 && (_terrainLayers == null || _terrainLayers.Count == 0)
+                && !ProfileManager.CurrentProfile.EnhancedHD
+                && !GUO.Renderer.Water.WaterRender.IsStyled(ProfileManager.CurrentProfile));
             FillGameObjectList();
 
             // PORT DEVIATION (GUO): while the pad's interact radar is up, the
@@ -1221,21 +1276,19 @@ namespace GUO.Game.Scenes
 #endif
             DrawUnderlays(batcher);
 
-#if GUO_LABS
-            // PORT DEVIATION (GUO): ADR-0043, complete-world experimental backend.
-            batcher.BeginOrderedWorld(_splatObjects.Count == 0 && (_terrainLayers == null || _terrainLayers.Count == 0));
-#endif
+            // PORT DEVIATION (GUO): ADR-0044 production depth backend; complete canvas replay.
+            batcher.BeginOrderedWorld((!DepthWorldProbe.Enabled || DepthWorldProbe.FrameAdmitted)
+                && _splatObjects.Count == 0 && (_terrainLayers == null || _terrainLayers.Count == 0));
+            _renderLists.FinishDepthWorldAdmission(batcher, _meshChunks, _maxGroundZ);
             RenderedObjectsCount = _renderLists.DrawRenderLists(
                 batcher,
                 _maxGroundZ,
-                _visibleChunks,
+                _meshChunks, // PORT DEVIATION (GUO): ADR-0044, _visibleChunks less the cleared off-screen ones
                 _offset.X,
                 _offset.Y
             );
 
-#if GUO_LABS
             batcher.EndOrderedWorld();
-#endif
             RedrawWorldOnCanvas(batcher); // PORT DEVIATION (GUO): --gpu-world (GPU-03)
 
             if (
@@ -1378,6 +1431,8 @@ namespace GUO.Game.Scenes
 
         public override void DrawUI(UltimaBatcher2D batcher)
         {
+            // PORT DEVIATION (GUO): no hidden world labels/health targets in overview.
+            if (OverviewActive) { SelectedObject.Object = null; return; }
             _healthLinesManager.Draw(batcher, 0f);
 
             if (!UIManager.IsMouseOverWorld)

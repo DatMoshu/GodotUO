@@ -1,0 +1,44 @@
+// Actual-engine regression fixture. Copy into an isolated diagnostic stage only.
+// Never included by the shipping GUO.csproj. Requires the loaded Magincia fixture.
+using System;
+using System.IO;
+using System.Collections.Generic;
+using System.Reflection;
+using System.Text.Json;
+using GUO.Game.GameObjects;
+namespace GUO.Host;
+internal static class RoofVisibilityCases
+{
+    internal static void CheckRoofCases(string dir)
+    {
+        var world=Client.Game.UO.World;
+        var scene=Client.Game.Scene;
+        var method=scene.GetType().GetMethod("HasSurfaceOverhead",BindingFlags.NonPublic|BindingFlags.Instance);
+        var results=new List<object>();
+        Mobile mob=new Mobile(world, 0x00fffffe);
+        void Check(string name,int x,int y,int z,int dx,int dy,int dz,float ox,bool expect)
+        {
+            mob.X=(ushort)x;mob.Y=(ushort)y;mob.Z=(sbyte)z;
+            mob.Offset=new Godot.Vector3(ox,0,0);
+            mob.Steps.Clear();
+            if(dx>=0)mob.Steps.AddToBack(new Mobile.Step {X=dx,Y=dy,Z=(sbyte)dz});
+            bool actual=(bool)method.Invoke(scene,new object[]{mob});
+            results.Add(new{name,expect,actual,pass=actual==expect});
+        }
+        Check("edge idle remains visible",3481,2532,38,-1,0,0,0,false);
+        Check("queued step does not hide",3481,2532,38,3480,2533,38,0,false);
+        Check("observed moving roof pop is hidden",3481,2532,38,3480,2533,38,-21,true);
+        Check("cancel restores edge visibility",3481,2532,38,-1,0,0,0,false);
+        Check("restart same step invalidates cache",3481,2532,38,3480,2533,38,-1,true);
+        Check("arrived interior stays hidden",3480,2533,38,-1,0,0,0,true);
+        Check("leaving interior stays hidden until edge",3480,2533,38,3481,2532,38,21,true);
+        Check("edge arrival becomes visible",3481,2532,38,-1,0,0,0,false);
+        Check("vertical step preserves upstream rule",3481,2532,38,3480,2533,39,-21,false);
+        Check("nonadjacent step preserves upstream rule",3481,2532,38,3479,2533,38,-21,false);
+        Check("open courtyard moving remains visible",3470,2539,36,3471,2539,36,12,false);
+        bool player=(bool)method.Invoke(scene,new object[]{world.Player});
+        results.Add(new{name="player exemption",expect=false,actual=player,pass=!player});
+        File.WriteAllText(Path.Combine(dir,"roof-cases.json"),JsonSerializer.Serialize(results,new JsonSerializerOptions{WriteIndented=true}));
+    }
+
+}

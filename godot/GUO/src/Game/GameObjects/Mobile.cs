@@ -103,6 +103,9 @@ namespace GUO.Game.GameObjects
         internal ushort _surfaceOverheadCacheX = ushort.MaxValue;
         internal ushort _surfaceOverheadCacheY = ushort.MaxValue;
         internal int _surfaceOverheadCacheMaxZ = int.MinValue;
+        // PORT DEVIATION (GUO): invalidate roof visibility when a step starts or stops.
+        internal int _surfaceOverheadStepCacheX = -1;
+        internal int _surfaceOverheadStepCacheY = -1;
 
         private long _lastAnimationIdleDelay;
         private bool _isAnimationForwardDirection;

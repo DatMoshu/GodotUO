@@ -33,3 +33,36 @@ all constant-byte skip combinations and warmed allocation behavior.
 advisory and need no client data, shard or Godot. What the proof cannot
 reach is the engine side: that `Map` hands the cursor the loaded chunk and
 that the client draws the same pixels; those are the live gate's.
+
+## Pixel-picker differential fixture
+
+The normal proof also runs `PixelPickerTests`. Pass `--pixel-picker` to run
+only this engine-free fixture (no Godot, client data, shard or timings):
+
+```
+dotnet run --project tools/render_sort_tests -- --pixel-picker
+```
+
+Route build/intermediate output outside the checkout using the checkout's
+normal output configuration or MSBuild `BaseIntermediateOutputPath`,
+`MSBuildProjectExtensionsPath` and `OutputPath` properties.
+
+`FrozenPixelPicker.cs` preserves the implementation at
+`3560bf1f9917409a2cee448172a3f8c2a895576f`, changing only its namespace (plus
+the provenance header). Original source SHA256:
+`b15e84445999cf44e6021671dd4bcfc7127cf48a9e2f6e38f7e2632a20dc4145`.
+Compare production against this frozen behavior, not an idealized mask oracle:
+zero-coordinate, run-boundary and extraRange quirks deliberately remain.
+
+The matrix covers missing/known IDs, negative/extreme coordinates, dimension
+encodings across 127/128 and 16383/16384, transparent/opaque/alternating/long-run
+and deterministic random masks, repeated Set and multiple IDs. A test-only
+dictionary comparer witnesses avoided negative-coordinate lookups and unchanged
+nonnegative lookup behavior. It is not a runtime counter or timing measurement.
+
+Scope is valid masks produced by Set. Corrupt internal mask buffers may throw
+while decoding dimensions before the old negative-coordinate rejection; the
+new early return can change that exception order. Corrupt-buffer equivalence
+and decoder repair are not claimed. No state caching, caller selection or
+traversal change is involved. Live selection and performance acceptance are
+separate from this fixture.

@@ -3,10 +3,12 @@
 How fast GUO runs on your machine, measured the same way on every machine,
 and how to share the numbers so they can be compared with ours.
 
-GUO is slower than ClassicUO today, most of all zoomed out over a busy town:
-the frame is spent on the CPU, preparing and submitting the world, not on the
-graphics card. Fixing that is current work. Your numbers help us see how it
-behaves on hardware we do not have.
+This page describes the existing measurement tooling. Historical results
+apply only to their recorded builds and conditions; they do not establish the
+current build's speed relative to ClassicUO. Start with
+[Renderer and Performance](Renderer-and-Performance.md) for current selection,
+canvas recovery and interpretation limits. Read the
+[performance gate](../perf/performance_gate.md) before comparing results.
 
 ## Run the perf lab
 

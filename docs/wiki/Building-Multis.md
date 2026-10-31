@@ -1,5 +1,10 @@
 # Building Multis
 
+![Multi component browser in GUO](../images/guides/multi-browser.png)
+
+House multi 0x0064 with its component list. The preview is clipped at this layout; this is not a complete multi render or native staging proof. [Capture conditions and limits](Visual-Guide.md#multi-browser).
+
+
 A **multi** is a list of components (item, x, y, z, visible) that the client
 and the shard place as one object: houses, keeps, boats, castles. GUO's tools
 learn how the client's own buildings are put together, generate new ones,

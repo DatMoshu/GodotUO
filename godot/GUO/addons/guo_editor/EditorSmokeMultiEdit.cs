@@ -53,6 +53,7 @@ public partial class EditorSmoke
 
         if (_meTask.IsCompleted)
         {
+            if (_meTask.IsCanceled) MeCheck("completed_without_cancellation", false, "the multi editor task was canceled before finishing");
             if (_meTask.IsFaulted)
             {
                 MeCheck("threw", false, $"{_meTask.Exception?.GetBaseException().GetType().Name}: {_meTask.Exception?.GetBaseException().Message}");
@@ -377,6 +378,7 @@ public partial class EditorSmoke
         var installAfter = File.Exists(installUop) ? new FileInfo(installUop) : null;
         MeCheck("install_untouched", installAfter?.Length == sizeBefore && installAfter?.LastWriteTimeUtc == timeBefore);
         _meReport["history_cap"] = MultiDocument.HistoryCap;
+        MeCheck("completed_all_multi_checks", true);
     }
 
     /// <summary>

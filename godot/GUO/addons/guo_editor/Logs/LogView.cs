@@ -3,18 +3,13 @@ namespace GUO.Editor;
 
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using Godot;
 
 /// <summary>One line as the view holds it: already redacted, with its level.</summary>
-public sealed class LogLine
-{
-    public string Text;
-    public LogLevel Level;
-    public bool Notice;
-    public bool Shown;
-}
+public readonly record struct LogLine(string Text, LogLevel Level, bool Notice, bool Shown);
 
 /// <summary>
 /// One log, on screen: a toolbar (follow, pause, filter, level, find, clear view, copy, open folder)
@@ -29,6 +24,7 @@ public partial class LogView : VBoxContainer
 
     private LogTailer _tailer;
     private readonly List<LogLine> _lines = new();
+    private readonly ReadOnlyCollection<LogLine> _readOnlyLines;
     private RichTextLabel _text;
     private CheckBox _follow;
     private Button _pause, _clear, _copy, _folder, _remove, _prev, _next;
@@ -41,6 +37,11 @@ public partial class LogView : VBoxContainer
     private string _findText = "";
     private int _findCursor = -1;
     private int _dropped;
+    private int _shownCount;
+    private StatusSnapshot? _lastStatus;
+
+    private readonly record struct StatusSnapshot(string Path, string State, int Shown, int Total,
+        bool Paused, int Waiting, bool Utc, string Note);
 
     /// <summary>A stable id the panel finds this view by.</summary>
     public string Key { get; set; } = "";
@@ -74,9 +75,10 @@ public partial class LogView : VBoxContainer
     /// <summary>How many lines the cap has pushed out of the view so far.</summary>
     public int DroppedLines => _dropped;
 
-    public int ShownCount => _lines.Count(l => l.Shown);
+    public int ShownCount => _shownCount;
 
-    public IEnumerable<LogLine> Lines => _lines;
+    /// <summary>Read-only live view; line values are immutable snapshots owned by this view.</summary>
+    public IEnumerable<LogLine> Lines => _readOnlyLines;
 
     /// <summary>What the body shows, as plain text.</summary>
     public string BodyText => _text?.GetParsedText() ?? "";
@@ -101,6 +103,7 @@ public partial class LogView : VBoxContainer
 
     public LogView()
     {
+        _readOnlyLines = _lines.AsReadOnly();
         // Pixel art is never filtered; the log has none, but nothing here may inherit smoothing.
         TextureFilter = TextureFilterEnum.Nearest;
         SizeFlagsVertical = SizeFlags.ExpandFill;
@@ -254,10 +257,11 @@ public partial class LogView : VBoxContainer
         }
 
         var line = new LogLine { Text = shown, Notice = item.Notice, Level = item.Notice ? LogLevel.Info : LogText.Classify(item.Text) };
-        line.Shown = Passes(line);
+        line = line with { Shown = Passes(line) };
         _lines.Add(line);
         if (line.Shown)
         {
+            _shownCount++;
             Append(line);
         }
     }
@@ -296,9 +300,13 @@ public partial class LogView : VBoxContainer
         // Take them off the front of the body one paragraph at a time, so a busy log is not redrawn whole.
         for (int i = 0; i < over; i++)
         {
-            if (_lines[i].Shown && _text.GetParagraphCount() > 0)
+            if (_lines[i].Shown)
             {
-                _text.RemoveParagraph(0, true);
+                _shownCount--;
+                if (_text.GetParagraphCount() > 0)
+                {
+                    _text.RemoveParagraph(0, true);
+                }
             }
         }
 
@@ -315,11 +323,14 @@ public partial class LogView : VBoxContainer
         }
 
         _text.Clear();
-        foreach (LogLine l in _lines)
+        _shownCount = 0;
+        for (int i = 0; i < _lines.Count; i++)
         {
-            l.Shown = Passes(l);
+            LogLine l = _lines[i] with { Shown = Passes(_lines[i]) };
+            _lines[i] = l;
             if (l.Shown)
             {
+                _shownCount++;
                 Append(l);
             }
         }
@@ -404,6 +415,7 @@ public partial class LogView : VBoxContainer
     public void ClearView()
     {
         _lines.Clear();
+        _shownCount = 0;
         _findCursor = -1;
         _text?.Clear();
     }
@@ -436,12 +448,22 @@ public partial class LogView : VBoxContainer
             return;
         }
 
-        string path = _tailer?.CurrentPath ?? "(no file yet)";
-        string clock = Utc ? "  |  times in this log are UTC; local time is added in front" : "";
-        string held = Paused ? $"  |  paused, {_tailer?.Queue.Count ?? 0} waiting" : "";
-        string note = Note.Length > 0 ? $"  |  {Note}" : "";
-        _status.Text = $"{path}  |  {_tailer?.State ?? "idle"}  |  {ShownCount}/{_lines.Count} lines{held}{clock}{note}";
+        // Poll the tailer's changing state even while paused/hidden, but only format
+        // and publish when something displayed has changed. Counts track mutations.
+        var status = new StatusSnapshot(_tailer?.CurrentPath ?? "(no file yet)",
+            _tailer?.State ?? "idle", ShownCount, _lines.Count, Paused,
+            Paused ? _tailer?.Queue.Count ?? 0 : 0, Utc, Note);
+        if (_lastStatus == status)
+        {
+            return;
+        }
+
+        string clock = status.Utc ? "  |  times in this log are UTC; local time is added in front" : "";
+        string held = status.Paused ? $"  |  paused, {status.Waiting} waiting" : "";
+        string note = status.Note.Length > 0 ? $"  |  {status.Note}" : "";
+        _status.Text = $"{status.Path}  |  {status.State}  |  {status.Shown}/{status.Total} lines{held}{clock}{note}";
         _status.TooltipText = _status.Text;
+        _lastStatus = status;
     }
 
     public override void _ExitTree()

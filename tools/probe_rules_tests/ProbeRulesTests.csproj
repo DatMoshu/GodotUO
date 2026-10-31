@@ -6,5 +6,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../godot/GUO/src/Bootstrap/LoginPreflight.cs" Link="LoginPreflight.cs" />
+    <Compile Include="../../godot/GUO/src/Bootstrap/PerfRawFrames.cs" Link="PerfRawFrames.cs" />
   </ItemGroup>
 </Project>

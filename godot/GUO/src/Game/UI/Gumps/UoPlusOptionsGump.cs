@@ -13,6 +13,8 @@ internal sealed class UoPlusOptionsGump : Gump
     private readonly Profile _profile;
     private readonly Dictionary<UoPlusFeature, (Checkbox Toggle, HSliderBar Density)> _rows = new();
     private readonly HSliderBar _cap;
+    private readonly Checkbox _overview;
+    private readonly Combobox _overviewStyle;
     private readonly Combobox _touchUi;
     private bool _defaultsStaged;
     private readonly Combobox _water;
@@ -50,6 +52,19 @@ internal sealed class UoPlusOptionsGump : Gump
             _profile.TouchUi.HasValue ? (_profile.TouchUi.Value ? 1 : 2) : 0);
         area.Add(_touchUi);
         int y = 50;
+        _overview = new Checkbox(0xD2, 0xD3, "Experimental zoom + world map", 1, 0xFFFF)
+            { X = 4, Y = y, IsChecked = _profile.ExperimentalWorldOverview };
+        area.Add(_overview);
+        y += 30;
+        area.Add(new Label("Ctrl + wheel: native to 5x, then cached map.", true, 0x0386, Width - 70, 1) { X = 4, Y = y });
+        y += 30;
+        _overviewStyle = new Combobox(4, y, Width - 100,
+            new[] { "Natural map", "Parchment", "Relief edges", "Moonlight" },
+            System.Math.Clamp(_profile.WorldOverviewStyle, 0, 3), font: 1)
+            { IsEnabled = _overview.IsChecked };
+        _overview.ValueChanged += (_, _) => _overviewStyle.IsEnabled = _overview.IsChecked;
+        area.Add(_overviewStyle);
+        y += 42;
         area.Add(new Label("Water style", true, 0xFFFF, font: 1) { X = 4, Y = y });
         var waterChoices = WaterRender.PlayerChoiceLists(_profile);
         _waterIds = waterChoices.Ids;
@@ -128,6 +143,8 @@ internal sealed class UoPlusOptionsGump : Gump
         _error.Text = "";
 #endif
         if (_defaultsStaged) UoPlusOptions.ResetDefaults(_profile);
+        _profile.ExperimentalWorldOverview = _overview.IsChecked;
+        _profile.WorldOverviewStyle = System.Math.Clamp(_overviewStyle.SelectedIndex, 0, 3);
         _profile.TouchUi = _touchUi.SelectedIndex == 0 ? null : _touchUi.SelectedIndex == 1;
         bool acceptShard = _shardWater?.IsChecked == true && !_defaultsStaged;
         WaterRender.AcceptShard(_profile, acceptShard);
@@ -145,6 +162,9 @@ internal sealed class UoPlusOptionsGump : Gump
     {
         _defaultsStaged = true;
         _touchUi.SelectedIndex = 0;
+        _overview.IsChecked = false;
+        _overviewStyle.SelectedIndex = 0;
+        _overviewStyle.IsEnabled = false;
         foreach (var row in _rows.Values) { row.Toggle.IsChecked = false; row.Density.Value = 50; }
         _cap.Value = 128;
         if (_shardWater != null) _shardWater.IsChecked = false;

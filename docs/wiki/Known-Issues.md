@@ -1,9 +1,20 @@
 # Known issues
 
-GodotUO is pre-release. These are the problems we know about in the current
-build, written for players. Each one has been seen on a real device or in a
-scripted run; nothing here is a guess. If you hit something that is not on
-this list, please report it (see [Contributing](Contributing.md)).
+This is a retained historical issue list. The documentation audit at `fc9e3588`
+(2026-10-28) did not rerun every device or confirm that each old issue still
+reproduces. Use [Feature Coverage](Feature-Coverage.md) and a current reproducible
+report before treating an item as a confirmed regression on your build.
+
+GodotUO is pre-release. These reports were observed in earlier device or scripted
+runs and are retained for troubleshooting. If an item still reproduces, include
+your current build and steps (see [Contributing](Contributing.md)).
+
+## Current source limitation: cache warming
+
+At audit baseline `fc9e3588`, the `WarmCache` branch in
+[Main.cs](../../godot/GUO/src/Bootstrap/Main.cs) reports its warm pass as
+unimplemented and exits. The launcher exists; eager prewarming is not verified
+or implemented by that branch. Do not interpret its zero exit as a warmed cache.
 
 ## On phones and handhelds (Android)
 

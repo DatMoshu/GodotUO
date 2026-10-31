@@ -1,5 +1,10 @@
 # Getting Started
 
+![Classic login in GUO](../images/guides/login.png)
+
+Empty account fields in the classic pregame path. Actual captured viewport is 640 × 480; no shard login was attempted. [Capture conditions and limits](Visual-Guide.md#login).
+
+
 From a fresh clone to a running client, on Windows. Every step is a launcher
 under `launchers\`; each one calls `launchers\_shared\common.bat` first, which
 resolves the [Configuration](Configuration.md) and locates the engine.
@@ -25,7 +30,7 @@ building anything, see [Download a build](#download-a-build).
 ## 1. Clone and bootstrap
 
 ```bat
-git clone <repository url> GUO
+git clone https://github.com/DatMoshu/GodotUO.git GUO
 cd GUO
 launchers\pipeline\00_bootstrap.bat
 ```
@@ -46,6 +51,7 @@ copy launchers\_shared\config.local.bat.example launchers\_shared\config.local.b
 notepad launchers\_shared\config.local.bat
 ```
 
+Set `UO_BUILD_DIR` to a folder outside the checkout for generated output.
 Set `UO_CLIENT_DATA` to the folder holding your `.uop` / `.mul` files. Keep
 the `if not defined` guard on every line you add so an environment variable
 still wins. Anything in `config.bat` can be overridden here; the resolution
@@ -159,8 +165,11 @@ and prints nothing.
 launchers\pipeline\02_warm_cache.bat
 ```
 
-The client builds its runtime decode cache (`UO_CACHE_DIR`) lazily. Warming
-it removes the first-visit hitch. The cache can be deleted at any time.
+The runtime uses `UO_CACHE_DIR`, but at audit baseline `fc9e3588` the
+`WarmCache` branch in [Main.cs](../../godot/GUO/src/Bootstrap/Main.cs) prints
+“cache warm pass not implemented yet” and exits. Do not rely on this launcher
+to prewarm data or remove first-visit hitches. Cache regeneration is distinct
+from a working eager-warm command.
 
 ## Where things land
 
@@ -169,3 +178,7 @@ it removes the first-visit hitch. The cache can be deleted at any time.
 | `build\` | Every generated artifact: screenshots, exports, probe output. Gitignored. Set `UO_BUILD_DIR` to put it outside the checkout ([Configuration](Configuration.md#generated-output)). |
 | `%LOCALAPPDATA%\GUO\cache` | The decode cache (`UO_CACHE_DIR`). |
 | `godot\GUO\` | The Godot project. Settings, profiles and logs are written under the client's working directory, as in ClassicUO. |
+
+## Updating an existing installation
+
+[Install and Update](Install-and-Update.md) covers complete exported builds, profile backups, data/version checks and recovery.

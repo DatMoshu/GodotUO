@@ -1,0 +1,57 @@
+// Diagnostic-only fixture; compile in an external source stage.
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Text.Json;
+using Godot;
+using GUO.Configuration;
+using GUO.Renderer;
+
+public partial class ProfileZoomFixture : Node
+{
+    public override void _Ready()
+    {
+        int checks = 0;
+        void Check(bool ok, string reason) { checks++; if (!ok) throw new Exception(reason); }
+        string dir = OS.GetEnvironment("GUO_ZOOM_RESET_DIR");
+        try
+        {
+            if (string.IsNullOrWhiteSpace(dir)) throw new Exception("GUO_ZOOM_RESET_DIR required");
+            Directory.CreateDirectory(dir);
+            var rows = new List<object>();
+            foreach (float input in new[] { 0.5f, 0.7f, 1.25f, 2.5f, 2.6f, 5f, 20f })
+            {
+                float expected = Math.Min(input, 2.5f);
+                string name = input.ToString(CultureInfo.InvariantCulture);
+                string path = Path.Combine(dir, "legacy-" + name + ".json");
+                File.WriteAllText(path, "{\"default_scale\":" + name + ",\"save_scale_after_close\":true}");
+                var loaded = ConfigurationResolver.Load(path, ProfileJsonContext.DefaultToUse.Profile);
+                Check(loaded.DefaultScale == expected, "legacy/killed-process profile load " + name);
+                var camera = new Camera(0.5f, 20f, 0.1f) { Zoom = loaded.DefaultScale };
+                Check(camera.Zoom == expected, "first login camera " + name);
+                camera.Zoom = input;
+                Check(camera.Zoom == input, "in-session wide zoom remains available " + name);
+                loaded.DefaultScale = camera.Zoom; // value supplied by normal unload/pause paths
+                ProfileManager.Save(loaded, dir, "saved-" + name + ".json");
+                Check(loaded.DefaultScale == expected, "saved profile is bounded " + name);
+                using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(dir, "saved-" + name + ".json")));
+                Check(saved.RootElement.GetProperty("default_scale").GetSingle() == expected, "actual saved bytes " + name);
+                Check(camera.Zoom == input, "saving does not alter live camera " + name);
+                var next = ConfigurationResolver.Load(Path.Combine(dir, "saved-" + name + ".json"), ProfileJsonContext.DefaultToUse.Profile);
+                Check(next.DefaultScale == expected && next.SaveScaleAfterClose, "next login and unrelated preference " + name);
+                rows.Add(new { input, expected, loaded = next.DefaultScale, liveCamera = camera.Zoom });
+            }
+            var fresh = JsonSerializer.Deserialize("{}", ProfileJsonContext.DefaultToUse.Profile);
+            Check(fresh.DefaultScale == 0.7f, "missing zoom retains platform-neutral default");
+            var defaults = new Profile { DefaultScale = 20f, SaveScaleAfterClose = false };
+            string json = JsonSerializer.Serialize(defaults, ProfileJsonContext.DefaultToUse.Profile);
+            var inherited = JsonSerializer.Deserialize(json, ProfileJsonContext.DefaultToUse.Profile);
+            Check(inherited.DefaultScale == 2.5f && !inherited.SaveScaleAfterClose, "default-profile serialization also bounded");
+            File.WriteAllText(Path.Combine(dir, "result.json"), JsonSerializer.Serialize(new { pass = true, checks, rows }, new JsonSerializerOptions { WriteIndented = true }));
+            GD.Print($"[profile zoom] PASS {checks} checks: legacy load, saved bytes, next login, live zoom unchanged");
+            GetTree().Quit(0);
+        }
+        catch (Exception e) { GD.PrintErr("[profile zoom] FAIL: " + e); GetTree().Quit(1); }
+    }
+}

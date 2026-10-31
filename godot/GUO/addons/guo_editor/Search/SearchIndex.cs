@@ -59,7 +59,7 @@ public sealed class SearchIndex
         var sw = Stopwatch.StartNew();
         foreach (SearchProvider p in _providers)
         {
-            while (!p.Done && sw.Elapsed.TotalMilliseconds < ms)
+            while (!p.Done && p.CanStep && sw.Elapsed.TotalMilliseconds < ms)
             {
                 p.Step(Math.Max(0.5, ms - sw.Elapsed.TotalMilliseconds));
             }
@@ -79,13 +79,14 @@ public sealed class SearchIndex
         }
     }
 
-    /// <summary>Builds everything now. For the smoke check, never from the editor's frame loop.</summary>
+    /// <summary>Builds available catalogs now; unavailable prerequisites remain pending.
+    /// For the smoke check, never from the editor's frame loop.</summary>
     public void FinishNow()
     {
         var sw = Stopwatch.StartNew();
         foreach (SearchProvider p in _providers)
         {
-            while (!p.Done && sw.Elapsed.TotalSeconds < 120)
+            while (!p.Done && p.CanStep && sw.Elapsed.TotalSeconds < 120)
             {
                 p.Step(50);
             }

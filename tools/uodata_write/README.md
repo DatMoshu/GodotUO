@@ -8,6 +8,14 @@ policy comes from `ranges.json`, with a shard maintainer's `--ranges FILE` (or
 `UO_DATA_RANGES`) merged over it. `uodata.py` holds the readers and writers;
 `play.py` and `outfit_video.py` show staged content in the client.
 
+The typed `texmap` record replaces one occupied **physical** `texidx.mul` row
+with 8,192 or 32,768 native bytes, with explicit `replace=True`. Callers must
+resolve/review `TexTerr.def` aliases first. The writer validates the entire
+batch before copying, preserves all 16 color bits and opaque index extra words,
+and keeps identical records byte-identical without appending. Existing world
+PNG exports share the append/repoint helper while retaining their empty-row
+and append behavior. Texture records do not allocate or delete slots.
+
 ## Run
 
 ```

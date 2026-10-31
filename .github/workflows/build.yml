@@ -22,7 +22,7 @@ name: build
 
 on:
   push:
-    branches: [main, "work/**"]
+    branches: [main, integration, "work/**"]
     paths:
       - "godot/GUO/**"
       - "tools/plugin_host/**"

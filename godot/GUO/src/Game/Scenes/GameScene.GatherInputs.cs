@@ -8,7 +8,7 @@ internal partial class GameScene
 {
     // PORT DEVIATION (GUO): frame-invariant inputs for the synchronous gather.
     // Never retained on objects or shared with Draw/highlight restoration.
-    private readonly struct GatherInputs
+    internal readonly struct GatherInputs
     {
         internal readonly int ViewRange, TransparencyZ;
         internal readonly bool NoRangeColor, DeadTint, UseCot, MouseInsideCot;
@@ -24,6 +24,13 @@ internal partial class GameScene
         internal bool Same(in GatherInputs other) => ViewRange == other.ViewRange
             && TransparencyZ == other.TransparencyZ && NoRangeColor == other.NoRangeColor
             && DeadTint == other.DeadTint && UseCot == other.UseCot && MouseInsideCot == other.MouseInsideCot;
+
+        // ChunkReuse: the walk reads TransparencyZ and MouseInsideCot only
+        // under a circle of transparency, so without one a step up or down
+        // (TransparencyZ is the player's Z + 5) does not change its outcome.
+        internal bool SameForReuse(in GatherInputs other) => UseCot || other.UseCot
+            ? Same(other)
+            : ViewRange == other.ViewRange && NoRangeColor == other.NoRangeColor && DeadTint == other.DeadTint;
     }
 
     private GatherInputs CaptureGatherInputs()

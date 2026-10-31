@@ -204,7 +204,7 @@ public sealed class GuoProvider : SearchProvider
             foreach ((string format, _, string label) in MultiEditView.LegacyFormats)
             {
                 string f = format;
-                Add("Multi", $"Multi Editor: import {label}", "another tool's multi file", $"multi editor import open {f} {label}", () => { Show(); me.ImportDialog(f); });
+                if (!MultiEditView.IsExportOnly(f)) Add("Multi", $"Multi Editor: import {label}", "another tool's multi file", $"multi editor import open {f} {label}", () => { Show(); me.ImportDialog(f); });
                 Add("Multi", $"Multi Editor: export {label}", "write the multi in another tool's format", $"multi editor export save {f} {label}", () => { Show(); me.ExportDialog(f); });
             }
 

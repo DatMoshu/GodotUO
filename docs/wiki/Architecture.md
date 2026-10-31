@@ -51,6 +51,29 @@ and a Validation section naming the probe or launcher that re-measures it.
 When a page here says something works, that section is where the claim
 comes from.
 
+## Current architecture map
+
+The default world route described in early ADRs changed by the audit baseline
+`fc9e3588`. [Renderer and Performance](Renderer-and-Performance.md) documents
+the current Depth World selection and complete canvas fallback. The older ADR
+table below is historical context; use the [full ADR index](../architecture/README.md)
+for later decisions.
+
+```mermaid
+flowchart LR
+  A[Read-only UO data] --> B[IO / asset loaders]
+  C[Shard packets] --> D[Shared game state]
+  B --> D
+  D --> E[Godot host and presenter]
+  E --> F[Depth World or ordered canvas]
+  E --> G[Classic / native UI]
+  D --> H[TOOLS editor packages]
+```
+
+![GUO keeps data readers and game state shared while Godot hosts rendering, UI and editor packages](../images/guides/architecture.png)
+
+[SVG fallback](../images/guides/architecture.svg)
+
 ## The runtime, top to bottom
 
 ```

@@ -1,0 +1,271 @@
+// Diagnostic fixture only: copy into an external source stage, never the product assembly.
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Text.Json;
+using Godot;
+using GUO.Configuration;
+using GUO.Game.GameObjects;
+using GUO.Game.Map;
+using GUO.Game.Scenes;
+using GUO.Renderer;
+using Point = GUO.Compat.Point;
+
+namespace GUO.Host
+{
+    public partial class ZoomReuseFixture : Node
+    {
+        public override async void _Ready()
+        {
+            string dir = System.Environment.GetEnvironmentVariable("GUO_ZOOM_FIXTURE_DIR");
+            if (string.IsNullOrEmpty(dir)) return;
+            try
+            {
+                while (Client.Game?.Scene is not LoginScene)
+                    await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                // Local map fixture: no login, account, shard mutation or network input.
+                var world = Client.Game.UO.World;
+                // Normal login creates a socket wrapper. Supply an unconnected
+                // wrapper so ordinary scene teardown is valid without logging in.
+                var setup = typeof(GUO.Network.NetClient).GetMethod("SetupSocket", BindingFlags.Instance | BindingFlags.NonPublic);
+                setup.Invoke(GUO.Network.NetClient.Socket, new[] { Enum.Parse(setup.GetParameters()[0].ParameterType, "TcpSocket") });
+                ProfileManager.Load("Offline", "zoom-fixture", "zoom-fixture");
+                var profile = ProfileManager.CurrentProfile;
+                profile.GameWindowFullSize = true;
+                profile.UseCircleOfTransparency = false;
+                profile.NoColorObjectsOutOfRange = false;
+                profile.EnableMousewheelScaleZoom = true;
+                profile.TopbarGumpIsDisabled = true;
+                world.CreatePlayer(1);
+                world.MapIndex = 0;
+                world.Player.Graphic = 0x190;
+                world.Player.Name = "Offline zoom fixture";
+                world.Player.SetInWorldTile(1431, 1691, 0);
+                var scene = new GameScene(world);
+                Client.Game.SetScene(scene);
+                DepthWorldProbe.FrameAdmitted = true; // direct visibility-mask oracle
+                var cases = new GameScene(world).ZoomMaskCases();
+                File.WriteAllText(Path.Combine(dir, "mask-cases.json"), JsonSerializer.Serialize(cases));
+                await ToSignal(GetTree().CreateTimer(1), SceneTreeTimer.SignalName.Timeout);
+                File.WriteAllText(Path.Combine(dir, "wheel-cases.json"), JsonSerializer.Serialize(scene.ZoomWheelCases()));
+                var rows = new List<object>();
+                foreach (float zoom in new[] { 1f, 1.1f, 1.2f, 1.1f, .5f, 2.5f, 5f, 2.5f, 1f })
+                {
+                    scene.Camera.Zoom = zoom;
+                    scene.Camera.Update(true, 0, Point.Zero);
+                    rows.Add(scene.ZoomCompareFullWalk(zoom));
+                    await ToSignal(GetTree().CreateTimer(.3), SceneTreeTimer.SignalName.Timeout);
+                    await ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
+                    if (zoom == .5f || zoom == 5f || zoom == 1.2f)
+                        GetViewport().GetTexture().GetImage().SavePng(Path.Combine(dir, $"zoom-{zoom:F1}.png"));
+                }
+                // Changing the draw offset and window together covers walking while zooming.
+                world.Player.SetInWorldTile(1432, 1692, 0);
+                scene.Camera.Zoom = 1.3f;
+                scene.Camera.Update(true, 0, Point.Zero);
+                rows.Add(scene.ZoomCompareFullWalk(1.3f));
+                File.WriteAllText(Path.Combine(dir, "world-cases.json"), JsonSerializer.Serialize(rows));
+                File.WriteAllText(Path.Combine(dir, "renderer.json"), JsonSerializer.Serialize(new {
+                    enabled = DepthWorldProbe.Enabled,
+                    drawn = GUO.Renderer.DepthWorld.OrderedWorldCapture.FramesDrawn,
+                    fallback = GUO.Renderer.DepthWorld.OrderedWorldCapture.FramesFallback,
+                    width = scene.Camera.Bounds.Width, height = scene.Camera.Bounds.Height }));
+                File.WriteAllText(Path.Combine(dir, "complete"), "Offline correctness fixture; no timing measurements.");
+                GD.Print("[zoom-fixture] PASS");
+                GetTree().Quit();
+            }
+            catch (Exception e)
+            {
+                File.WriteAllText(Path.Combine(dir, "failure.txt"), e.ToString());
+                GD.PrintErr(e);
+                GetTree().Quit(1);
+            }
+        }
+    }
+}
+
+namespace GUO.Game.Scenes
+{
+    internal partial class GameScene
+    {
+        internal object ZoomWheelCases()
+        {
+            var mouse = GUO.Input.Mouse.Position;
+            GUO.Input.Mouse.Position = new Point(Camera.Bounds.Width / 2, Camera.Bounds.Height / 2);
+            Client.Game.UO.GameCursor.AllowDrawSDLCursor = true;
+            var over = typeof(GUO.Game.Managers.UIManager).GetProperty("MouseOverControl");
+            var oldOver = over.GetValue(null);
+            over.SetValue(null, null);
+            var ctrl = typeof(GUO.Input.Keyboard).GetProperty("Ctrl");
+            var oldCtrl = ctrl.GetValue(null);
+            ctrl.SetValue(null, true);
+            try
+            {
+                Camera.Zoom = 1;
+                if (!OnMouseWheel(false) || Math.Abs(Camera.Zoom - 1.1f) > .00001f)
+                    throw new Exception("Ctrl+wheel down did not zoom out");
+                if (!OnMouseWheel(true) || Math.Abs(Camera.Zoom - 1f) > .00001f)
+                    throw new Exception("Ctrl+wheel up did not zoom in");
+                Camera.Zoom = Camera.ZoomMin;
+                OnMouseWheel(true);
+                if (Camera.Zoom != Camera.ZoomMin) throw new Exception("minimum clamp");
+                Camera.Zoom = Camera.ZoomMax;
+                OnMouseWheel(false);
+                if (Camera.Zoom != Camera.ZoomMax) throw new Exception("maximum clamp");
+                ctrl.SetValue(null, false);
+                float before = Camera.Zoom;
+                OnMouseWheel(true);
+                if (Camera.Zoom != before) throw new Exception("wheel without Ctrl changed zoom");
+                Camera.Zoom = 1;
+                return new { pass = true, cases = 5, min = Camera.ZoomMin, max = Camera.ZoomMax };
+            }
+            finally
+            {
+                ctrl.SetValue(null, oldCtrl); over.SetValue(null, oldOver);
+                GUO.Input.Mouse.Position = mouse;
+            }
+        }
+
+        internal object ZoomMaskCases()
+        {
+            var random = new Random(754);
+            var inputs = new GatherInputs(18, 5, false, false, false, false);
+            var anchor = new Mobile(_world, 0xfffffe);
+            var mouse = SelectedObject.TranslatedMousePositionByViewport;
+            SelectedObject.TranslatedMousePositionByViewport = new Point(-1000000, -1000000);
+            int partial = 0, whole = 0, zero = 0, cases = 0, rejectedWrongWindow = 0;
+            var chunk = new Chunk(_world) { X = 100, Y = 100 };
+            void Seed(Point offset, Vector2 min, Vector2 max, int zMin, int zMax)
+            {
+                _offset = offset; _minPixel = min; _maxPixel = max;
+                BeginChunkWalk(chunk, null);
+                EndChunkWalk(chunk, inputs, chunk.Mesh.Land.ContentStamp, chunk.Mesh.Statics.ContentStamp, false, null);
+                chunk.Walk.ZMin = zMin; chunk.Walk.ZMax = zMax;
+                chunk.Walk.FullyInside = ChunkFullyInside(chunk.X, chunk.Y, zMin, zMax);
+            }
+            // Independent oracle: use the actual object's projection and enumerate
+            // every legal Z, then apply the gather's scalar anchor comparisons.
+            ulong Outside(Point offset, Vector2 min, Vector2 max, int zMin, int zMax)
+            {
+                ulong mask = 0;
+                for (int x = 0; x < 8; x++)
+                    for (int y = 0; y < 8; y++)
+                        for (int z = zMin; z <= zMax; z++)
+                        {
+                            anchor.X = (ushort)(chunk.X * 8 + x);
+                            anchor.Y = (ushort)(chunk.Y * 8 + y);
+                            anchor.Z = (sbyte)z;
+                            anchor.UpdateRealScreenPosition(offset.X, offset.Y);
+                            var p = anchor.RealScreenPosition;
+                            if (p.X < min.X || p.X > max.X || p.Y < min.Y || p.Y > max.Y)
+                                mask |= 1UL << ((x << 3) | y);
+                        }
+                return mask;
+            }
+            void Check(bool value, string name)
+            {
+                if (!value) throw new Exception("zoom mask: " + name);
+                cases++;
+            }
+            for (int i = 0; i < 200; i++)
+            {
+                int zMin = random.Next(-128, 40), zMax = random.Next(40, 128);
+                var oldOffset = new Point(-22, 35178);
+                var oldMin = new Vector2(random.Next(-800, 80), random.Next(-800, 80));
+                var oldMax = new Vector2(random.Next(100, 900), random.Next(100, 900));
+                Seed(oldOffset, oldMin, oldMax, zMin, zMax);
+                _offset = new Point(oldOffset.X + random.Next(-50, 51), oldOffset.Y + random.Next(-50, 51));
+                _minPixel = new Vector2(random.Next(-800, 80), random.Next(-800, 80));
+                _maxPixel = new Vector2(random.Next(100, 900), random.Next(100, 900));
+                chunk.Walk.DynamicMask = 1UL << random.Next(64);
+                chunk.DirtyTiles = 1UL << random.Next(64);
+                ulong expected = Outside(oldOffset, oldMin, oldMax, zMin, zMax)
+                    | Outside(_offset, _minPixel, _maxPixel, zMin, zMax)
+                    | chunk.Walk.DynamicMask | chunk.DirtyTiles;
+                ulong wrong = TilesNotInside(chunk.X, chunk.Y, oldOffset, _minPixel, _maxPixel, zMin, zMax)
+                    | TilesNotInside(chunk.X, chunk.Y, _offset, _minPixel, _maxPixel, zMin, zMax)
+                    | chunk.Walk.DynamicMask | chunk.DirtyTiles;
+                if (wrong != expected) rejectedWrongWindow++;
+                ulong? actual = ReusableTiles(chunk, inputs, false);
+                Check((actual ?? ulong.MaxValue) == expected, "old/new coverage " + i);
+                if (actual == null) whole++; else partial++;
+            }
+            // Successive zero walks bypass EndChunkWalk: both bounds and offset
+            // must advance or the next edge transition has an obsolete baseline.
+            Seed(new Point(-22, 35178), new Vector2(-500, -500), new Vector2(500, 500), 0, 0);
+            for (int i = 0; i < 4; i++)
+            {
+                _offset.X += 1; _minPixel.X -= 1; _maxPixel.Y += 1;
+                Check(ReusableTiles(chunk, inputs, false) == 0, "interior survives zoom/move");
+                Check(chunk.Walk.MinPixel == _minPixel && chunk.Walk.MaxPixel == _maxPixel
+                    && chunk.Walk.Offset == _offset && chunk.Walk.FullyInside, "zero-walk view advances");
+                Check(chunk.Walk.StaleTiles == ulong.MaxValue, "skipped moved positions become stale");
+                zero++;
+            }
+            var previousOffset = chunk.Walk.Offset;
+            var previousMin = chunk.Walk.MinPixel; var previousMax = chunk.Walk.MaxPixel;
+            _maxPixel.X = 0;
+            ulong edgeExpected = Outside(previousOffset, previousMin, previousMax, 0, 0)
+                | Outside(_offset, _minPixel, _maxPixel, 0, 0);
+            Check(ReusableTiles(chunk, inputs, false) == edgeExpected, "edge after zero-walk sequence");
+            Seed(new Point(-22, 35178), new Vector2(-500, -500), new Vector2(500, 500), 0, 0);
+            Check(ReusableTiles(chunk, inputs, true) == null, "rebuilt mesh rejects reuse");
+            chunk.ScreenPositionsStale = true;
+            Check(ReusableTiles(chunk, inputs, false) == null, "stale chunk rejects reuse");
+            chunk.ScreenPositionsStale = false;
+            _maxZ++;
+            Check(ReusableTiles(chunk, inputs, false) == null, "roof limit rejects reuse");
+            _maxZ--;
+            chunk.Mesh.Land.ContentStamp++;
+            Check(ReusableTiles(chunk, inputs, false) == null, "content change rejects reuse");
+            chunk.Mesh.Land.ContentStamp--;
+            SelectedObject.TranslatedMousePositionByViewport = new Point(0, 0);
+            Check(ReusableTiles(chunk, inputs, false) == null, "picking retains full walk");
+            SelectedObject.TranslatedMousePositionByViewport = new Point(-1000000, -1000000);
+            var cot = new GatherInputs(18, 5, false, false, true, false);
+            chunk.Walk.Key = CurrentReuseKey(cot);
+            _minPixel.X--;
+            Check(ReusableTiles(chunk, cot, false) == null, "CoT retains zoom fallback");
+            Check(rejectedWrongWindow > 0, "oracle rejects current-window-only negative control");
+            SelectedObject.TranslatedMousePositionByViewport = mouse;
+            return new { cases, partial, whole, zero, rejectedWrongWindow, pass = true };
+        }
+
+        internal object ZoomCompareFullWalk(float zoom)
+        {
+            // Two gathers in one frame: no world update, clock advance, camera
+            // change or packet between them. This checks the real zero-mask path
+            // as well as partial walks, unlike the optional in-loop verifier.
+            long timer = _alphaTimer;
+            _alphaTimer = long.MaxValue; // no second fade step in the oracle
+            try
+            {
+                SelectedObject.Object = null;
+                _lightCount = 0;
+                long reused = ChunksReused, reusedTiles = TilesReused;
+                FillGameObjectList();
+                reused = ChunksReused - reused; reusedTiles = TilesReused - reusedTiles;
+                var meshes = _meshChunks.SelectMany(c => new[] { c.Mesh.Land, c.Mesh.Statics })
+                    .Select(m => (m, visible: m.Visible.Take(m.Count).ToArray(), vertices: m.Vertices.Take(m.Count).ToArray())).ToArray();
+                var lights = _lights.Take(_lightCount).OrderBy(l => l.DrawX).ThenBy(l => l.DrawY).ThenBy(l => l.ID).ToArray();
+                var selected = SelectedObject.Object;
+                foreach (var chunk in _world.Map.GetUsedChunks())
+                    if (chunk.Walk != null) chunk.Walk.Reusable = false;
+                SelectedObject.Object = null;
+                _lightCount = 0;
+                FillGameObjectList();
+                int differences = meshes.Sum(s => s.visible.Where((v, i) => v != s.m.Visible[i]).Count());
+                int vertexDifferences = meshes.Sum(s => s.vertices.Where((v, i) => s.visible[i] && !v.Equals(s.m.Vertices[i])).Count());
+                var fullLights = _lights.Take(_lightCount).OrderBy(l => l.DrawX).ThenBy(l => l.DrawY).ThenBy(l => l.ID).ToArray();
+                bool lightEqual = lights.SequenceEqual(fullLights);
+                bool selectionEqual = ReferenceEquals(selected, SelectedObject.Object);
+                if (differences != 0 || vertexDifferences != 0 || !lightEqual || !selectionEqual)
+                    throw new Exception($"zoom {zoom}: visibility={differences}, vertices={vertexDifferences}, lights={lightEqual}, selection={selectionEqual}");
+                return new { zoom, chunks = _meshChunks.Count, reused, reusedTiles, differences, vertexDifferences, lightEqual, selectionEqual };
+            }
+            finally { _alphaTimer = timer; }
+        }
+    }
+}

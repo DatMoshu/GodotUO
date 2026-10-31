@@ -4,6 +4,19 @@
 
 Proposed
 
+### Narrow owner addendum, 2026-10-20
+
+Moshu approved occupied **static-art** replacement in staged copies in the
+guo-worker-fiddler-parity terminal, after independent verification, with explicit
+preview/confirmation and prior-stage recovery. This accepts that narrow
+extension; the remaining proposed policy is not blanket-approved by it.
+`tools/fiddler_parity/replacement.py` implements a candidate/verify/promote flow
+over the shared writer. MUL/IDX appends the new payload and repoints one index;
+uncompressed art UOP appends the payload and updates its existing entry, without
+adding a duplicate hash. Other entries retain their payloads. Compressed art,
+nonzero UOP entry headers, deletion and other-domain replacement remain outside
+this addendum. See `tools/fiddler_parity/README.md` for evidence and limitations.
+
 ## Date
 
 2026-09-27

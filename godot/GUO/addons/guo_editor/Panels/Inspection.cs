@@ -28,7 +28,21 @@ public sealed class Inspection
     public double Fps = 10;
 
     /// <summary>Buttons under the preview: label and what it does.</summary>
-    public List<(string Label, Action Run)> Actions = new();
+    public List<InspectionAction> Actions = new();
+
+    public string Title;
+    public string Origin;
+    public readonly List<(string Name, string Value)> Fields = new();
+    public EditorData MetadataData;
+    public ClilocDocument Strings;
+    public int StringId;
+    public Action StringsChanged;
+    public SoundDocument Sound;
+    public Action SoundChanged;
+    public HueDocument Hue;
+    public Action HueChanged;
+    public TextureDocument Texture;
+    public Action TextureChanged;
 
     /// <summary>The overlay asset this shows, when it is one the art pipeline can edit (ADR-0029); else null.</summary>
     public AssetKind? ArtKind;
@@ -46,5 +60,23 @@ public sealed class Inspection
             Frames = image != null ? new[] { image } : Array.Empty<Image>(),
             Text = text,
         };
+}
+
+/// <summary>Stable commands; presentation never guesses an icon from translated text.</summary>
+public sealed class InspectionAction
+{
+    public string Id { get; }
+    public string Label { get; }
+    public string Icon { get; }
+    public Action Run { get; }
+    public bool Primary { get; }
+    public List<InspectionAction> Children { get; } = new();
+
+    public InspectionAction(string id, string label, string icon, Action run, bool primary = true)
+    { Id = id; Label = label; Icon = icon; Run = run; Primary = primary; }
+
+    // Existing panel commands remain available in the labeled More menu.
+    public static implicit operator InspectionAction((string Label, Action Run) legacy) =>
+        new("", legacy.Label, "Tools", legacy.Run, false);
 }
 #endif

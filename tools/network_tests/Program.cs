@@ -140,3 +140,4 @@ Console.WriteLine($"PASS: {guardChecks} packet length guard checks (short, malfo
 
 int modChecks = ModTests.Run();
 Console.WriteLine($"PASS: {modChecks} packet mod checks (registry, mod.json, the sample mod, both seams).");
+Console.WriteLine($"PASS: {PerfStagesTests.Run()} opt-in timing scope checks.");

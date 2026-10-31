@@ -17,7 +17,7 @@ namespace GUO.Renderer
     /// Every layer is <see cref="TextureAtlas.MaxPageSize"/> square: a smaller
     /// page is copied into the corner and its UVs scaled by
     /// <see cref="ScaleOf"/>, which therefore never changes once a mesh is
-    /// built. A layer is re-copied when its atlas page was uploaded again
+    /// built. A layer is re-copied when its atlas page's content changed
     /// (<see cref="TextureAtlas.TryGetPage"/>'s version). Sampled nearest
     /// (project rule 7) by the land-array shader.
     /// </remarks>
@@ -53,8 +53,8 @@ namespace GUO.Renderer
 
         /// <summary>
         /// Of <see cref="Uploads"/>: copies of every layer because a page was
-        /// added (Rebuilds), and copies of one layer because its page was
-        /// uploaded again (Bumps) -- something new was packed onto it.
+        /// added (Rebuilds), and copies of one layer because its page's
+        /// content changed (Bumps) -- something new was packed onto it.
         /// </summary>
         public static int Rebuilds, Bumps;
 

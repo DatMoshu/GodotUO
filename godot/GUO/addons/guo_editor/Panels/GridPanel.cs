@@ -93,6 +93,11 @@ public abstract partial class GridPanel : AssetPanel
     protected virtual bool Matches(int id, string query) =>
         Tooltip(id).Contains(query, StringComparison.OrdinalIgnoreCase);
 
+    protected virtual bool Include(int id) => true;
+    protected virtual void SortResults(List<int> results) { }
+    internal int[] ResultAssetIds() => _results.ToArray();
+    internal int[] SelectedAssetIds() => _list?.GetSelectedItems().Select(i => (int)(long)_list.GetItemMetadata(i)).ToArray() ?? Array.Empty<int>();
+
     protected abstract Inspection Describe(int id);
 
     /// <summary>Extra controls before the search box (a kind switch, a language).</summary>
@@ -163,6 +168,7 @@ public abstract partial class GridPanel : AssetPanel
         _list.ItemActivated += item => Activated?.Invoke((int)(long)_list.GetItemMetadata((int)item));
         _list.SetDragForwarding(Callable.From<Vector2, Variant>(DragData), default, default);
         AddChild(_list);
+        _list.Resized += KeepSelectionVisible;
         _context = new PopupMenu();
         _context.IdPressed += id =>
         {
@@ -211,8 +217,15 @@ public abstract partial class GridPanel : AssetPanel
         if (ids.Length == 1)
         {
             Inspection inspection = Describe(ids[0]);
-            foreach (var action in inspection.Actions) AddContext(action.Label, action.Run);
+            foreach (var action in inspection.Actions)
+            {
+                if (action.Children.Count > 0)
+                    foreach (var child in action.Children) AddContext(child.Label, child.Run);
+                else AddContext(action.Label, action.Run);
+            }
         }
+        else if (this is SoundPanel sounds && sounds.CanExportEffects)
+            AddContext("Export selected sound WAVs…", () => sounds.OpenExportDialog(ids, true));
         else if (this is ArtPanel || this is GumpPanel)
         {
             // Batch export uses one destination; editing/replacement remains explicit per asset.
@@ -278,7 +291,9 @@ public abstract partial class GridPanel : AssetPanel
     }
 
     /// <summary>Runs the search box again, as if Enter were pressed.</summary>
-    protected int? Refresh()
+    protected int? Refresh() => Refresh(showResults: true);
+
+    private int? Refresh(bool showResults)
     {
         _results.Clear();
         if (Data == null || !Data.IsLoaded)
@@ -289,33 +304,39 @@ public abstract partial class GridPanel : AssetPanel
         string q = SearchBox.Text.Trim();
         if (TryParseId(q, out int id))
         {
-            _results.AddRange(Ids());
+            _results.AddRange(Ids().Where(Include));
             int at = _results.BinarySearch(id);
-            ShowPage(at >= 0 ? at / PageSize : Math.Max(0, ~at) / PageSize);
+            SortResults(_results);
+            if (at >= 0) at = _results.IndexOf(id);
+            if (showResults) ShowPage(at >= 0 ? at / PageSize : Math.Max(0, ~at) / PageSize);
             if (at >= 0)
             {
-                _list.Select(at % PageSize);
-                _list.EnsureCurrentIsVisible();
+                if (showResults)
+                {
+                    _list.Select(at % PageSize);
+                    _list.EnsureCurrentIsVisible();
+                }
                 Pick(id);
                 return id;
             }
 
-            _status.Text = $"0x{id:X4} ({id}) does not exist";
+            if (showResults) _status.Text = $"0x{id:X4} ({id}) does not exist";
             return null;
         }
 
         foreach (int i in Ids())
         {
-            if (q.Length == 0 || Matches(i, q))
+            if (Include(i) && (q.Length == 0 || Matches(i, q)))
             {
                 _results.Add(i);
             }
         }
 
-        ShowPage(0);
+        SortResults(_results);
+        if (showResults) ShowPage(0);
         if (q.Length > 0 && _results.Count > 0)
         {
-            _list.Select(0);
+            if (showResults) _list.Select(0);
             Pick(_results[0]);
             return _results[0];
         }
@@ -344,11 +365,19 @@ public abstract partial class GridPanel : AssetPanel
             int item = _list.AddItem(Caption(id), icon);
             _list.SetItemMetadata(item, (long)id);
             _list.SetItemTooltip(item, Tooltip(id));
+            if (Selected == id) _list.Select(item);
         }
 
         _prev.Disabled = _page == 0;
         _next.Disabled = _page >= pages - 1;
         _status.Text = $"{_results.Count} found, page {_page + 1}/{pages}";
+        KeepSelectionVisible();
+    }
+
+    private void KeepSelectionVisible()
+    {
+        if (_list?.GetSelectedItems().Length > 0)
+            _list.CallDeferred(ItemList.MethodName.EnsureCurrentIsVisible);
     }
 
     private void Pick(int id)
@@ -366,7 +395,7 @@ public abstract partial class GridPanel : AssetPanel
     /// After the asset overlay changed (an import or a revert): rebuild the
     /// id list, redraw the page on show and inspect the selection again.
     /// </summary>
-    public void OnAssetsChanged()
+    public virtual void OnAssetsChanged()
     {
         if (Data == null || !Data.IsLoaded || _list == null)
         {
@@ -376,9 +405,13 @@ public abstract partial class GridPanel : AssetPanel
         ForgetIds();
         int page = _page;
         int? selected = Selected;
-        Refresh();
-        ShowPage(page);
+        // Preserve search/inspection notifications, but do not build a transient
+        // search page that is immediately replaced by the saved page below.
+        Refresh(showResults: false);
+        // The workbench highlights the selected item while building the page.
+        // Restore the saved selection before that rebuild, after search callbacks.
         Selected = selected;
+        ShowPage(page);
         Reinspect();
     }
 

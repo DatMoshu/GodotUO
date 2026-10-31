@@ -39,6 +39,13 @@ namespace GUO.Game
 
         private readonly World _world;
 
+        // PORT DEVIATION (GUO): reuse bounded scratch buffers for a synchronous
+        // step calculation. Reentrant calls use their own original-style lists.
+        private readonly List<PathObject> _currentPathObjects = new List<PathObject>();
+        private readonly List<PathObject> _targetPathObjects = new List<PathObject>();
+        private bool _pathListsInUse;
+        private const int MAX_RETAINED_PATH_OBJECTS = 256;
+
         public Pathfinder(World world)
         {
             _world = world;
@@ -302,7 +309,8 @@ namespace GUO.Game
             int newY,
             int currentZ,
             int newDirection,
-            int stepState
+            int stepState,
+            List<PathObject> list
         )
         {
             minZ = -128;
@@ -311,7 +319,6 @@ namespace GUO.Game
             int direction = newDirection ^ 4;
             newX += _offsetX[direction];
             newY += _offsetY[direction];
-            List<PathObject> list = new List<PathObject>();
 
             if (!CreateItemList(list, newX, newY, stepState) || list.Count == 0)
             {
@@ -369,6 +376,30 @@ namespace GUO.Game
 
         public bool CalculateNewZ(int x, int y, ref sbyte z, int direction)
         {
+            bool borrowed = !_pathListsInUse;
+            List<PathObject> current = borrowed ? _currentPathObjects : new List<PathObject>();
+            List<PathObject> target = borrowed ? _targetPathObjects : new List<PathObject>();
+            if (borrowed) _pathListsInUse = true;
+            try
+            {
+                return CalculateNewZCore(x, y, ref z, direction, current, target);
+            }
+            finally
+            {
+                current.Clear();
+                target.Clear();
+                if (borrowed)
+                {
+                    if (current.Capacity > MAX_RETAINED_PATH_OBJECTS) current.Capacity = 0;
+                    if (target.Capacity > MAX_RETAINED_PATH_OBJECTS) target.Capacity = 0;
+                    _pathListsInUse = false;
+                }
+            }
+        }
+
+        private bool CalculateNewZCore(int x, int y, ref sbyte z, int direction,
+            List<PathObject> current, List<PathObject> list)
+        {
             int stepState = (int) PATH_STEP_STATE.PSS_NORMAL;
 
             if (_world.Player.IsDead || _world.Player.Graphic == 0x03DB)
@@ -403,10 +434,10 @@ namespace GUO.Game
                 y,
                 z,
                 direction,
-                stepState
+                stepState,
+                current
             );
 
-            List<PathObject> list = new List<PathObject>();
 
             if (_world.CustomHouseManager != null)
             {

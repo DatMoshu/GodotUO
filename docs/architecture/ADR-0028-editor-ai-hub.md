@@ -102,6 +102,10 @@ Added in the follow-up (the same AI stage, 69 checks in all):
   `.credentials.json`, `config.toml` and `.env` holding a marker string). The scanner's open log shows no
   credential file opened, the marker is not on screen, a first user line beyond the 32 KB cap is not read,
   "Open transcript" hands the right file to the viewer hook, "Send to queue" posts to the session's name.
+  Discovery captures the AI gate lifetime and cancels at traversal/read boundaries when disabled or
+  its tab retires. Fake-home checks cover cancellation between files, pre-cancelled discovery, tree
+  exit, and both success and failure after teardown. Cancellation is cooperative; an in-progress
+  synchronous filesystem operation cannot be interrupted. Both UI continuations reject retired work.
 - Services tab: add, test, remove against stubs for OpenAI-compatible, ComfyUI (`/system_stats`), Ollama
   (`/api/tags`) and Retro Diffusion (`/v1/inferences/credits`, key as `X-RD-Token`); keys are not in the files as text;
   a dead server fails its test. Test never generates anything.

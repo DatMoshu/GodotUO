@@ -66,6 +66,10 @@ public abstract class SearchProvider
     /// <summary>False while <see cref="Step"/> still has work.</summary>
     public virtual bool Done => true;
 
+    /// <summary>Whether indexing prerequisites are available now. False leaves the catalog pending;
+    /// the scheduler checks again next tick. For example, a data provider waits for its loaders.</summary>
+    public virtual bool CanStep => true;
+
     /// <summary>0..1, for the readout.</summary>
     public virtual double Progress => 1;
 

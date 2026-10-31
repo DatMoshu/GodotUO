@@ -131,3 +131,7 @@ and `gumps.xml` under its working directory, which the host sets before the
 client namespace is touched (ADR-0006). Scripted runs that need a clean home
 pass `--cache-dir` and get their own copy; the real settings are never edited
 by a probe.
+
+## Complete source references
+
+[Launcher defaults](Configuration-Reference.md) · [Profile initializers and platform caveats](Profile-Reference.md) · [Gameplay and Settings](Gameplay-and-Settings.md).

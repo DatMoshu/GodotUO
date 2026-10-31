@@ -5,6 +5,9 @@
 using System.Diagnostics;
 using GUO.Game.Scenes;
 
+PixelPickerTests.Run();
+if (args.Contains("--pixel-picker")) return 0;
+
 bool bench = args.Contains("--bench");
 int checks = 0;
 void Check(bool condition, string message) { checks++; if (!condition) throw new Exception("FAIL: " + message); }

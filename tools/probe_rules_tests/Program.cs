@@ -93,4 +93,31 @@ void Require(bool ok, string what)
     Require(!LoginPreflight.Decide(null, "owneracct", false, Env, out _, out _), "no allocation, no connect");
 }
 
+// Raw sample serialization must preserve temporal order and reject invalid intervals
+// before touching the output stream. No engine or measured wall time involved.
+{
+    double[] samples = { 9.5, 1.25, 50.0 };
+    using var output = new MemoryStream();
+    PerfRawFrames.Write(output, samples, 3, 8, false, true);
+    using var doc = System.Text.Json.JsonDocument.Parse(output.ToArray());
+    Require(doc.RootElement.GetProperty("frame_ms").EnumerateArray().Select(x => x.GetDouble()).SequenceEqual(samples), "raw frames retain chronological order");
+    Require(doc.RootElement.GetProperty("frames").GetInt32() == 3 && doc.RootElement.GetProperty("dropped").GetInt32() == 0, "raw count and drop identity");
+    void Refused(double[] values, int count, int capacity, bool grew, bool closed)
+    {
+        using var rejected = new MemoryStream();
+        bool failed = false;
+        try { PerfRawFrames.Write(rejected, values, count, capacity, grew, closed); }
+        catch (InvalidOperationException) { failed = true; }
+        Require(failed && rejected.Length == 0, "invalid interval refused before serialization");
+    }
+    Refused(samples, 3, 8, false, false);
+    Refused(samples, 4, 8, false, true);
+    Refused(samples, 2, 8, false, true);
+    Refused(samples, 3, 2, false, true);
+    Refused(samples, 3, 8, true, true);
+    Refused(Array.Empty<double>(), 0, 8, false, true);
+    Refused(new[] { double.NaN }, 1, 8, false, true);
+    Refused(new[] { double.PositiveInfinity }, 1, 8, false, true);
+    Refused(new[] { 0.0 }, 1, 8, false, true);
+}
 Console.WriteLine($"PASS probe rules: {checks} checks; CPU only, no login");

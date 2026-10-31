@@ -255,8 +255,13 @@ namespace GUO.Assets
             _filesStatics.CopyTo(_currentStaticsFiles, 0);
         }
 
+        // PORT DEVIATION (GUO): invalidates compact overview tiles after map changes.
+        public long DataRevision { get; private set; }
+        internal void NotifyDataChanged() => DataRevision++;
+
         public unsafe void LoadMap(int i, bool useXFiles = false)
         {
+            NotifyDataChanged(); // PORT DEVIATION (GUO): ADR-0045
             if (i < 0 || i + 1 > MAPS_COUNT || _currentMapFiles[i] == null)
             {
                 i = 0;
@@ -389,6 +394,7 @@ namespace GUO.Assets
 
         public void PatchMapBlock(UOFile file, ulong block, ulong address)
         {
+            NotifyDataChanged(); // PORT DEVIATION (GUO): ADR-0045
             int w = MapBlocksSize[0, 0];
             int h = MapBlocksSize[0, 1];
 
@@ -406,6 +412,7 @@ namespace GUO.Assets
 
         public unsafe void PatchStaticBlock(UOFile file, ulong block, ulong address, uint count)
         {
+            NotifyDataChanged(); // PORT DEVIATION (GUO): ADR-0045
             int w = MapBlocksSize[0, 0];
             int h = MapBlocksSize[0, 1];
 
@@ -431,6 +438,7 @@ namespace GUO.Assets
 
         public unsafe bool ApplyPatches(ref StackDataReader reader)
         {
+            NotifyDataChanged(); // PORT DEVIATION (GUO): ADR-0045
             ResetPatchesInBlockTable();
 
             PatchesCount = (int) reader.ReadUInt32BE();

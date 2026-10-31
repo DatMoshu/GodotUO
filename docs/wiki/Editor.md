@@ -1,5 +1,10 @@
 # Editor
 
+![Gump Studio in GUO](../images/guides/gump-studio.png)
+
+1600 × 1000 authoring surface with an imported classic status layout and element properties. Fixture values are synthetic. [Capture conditions and limits](Visual-Guide.md#gump-studio).
+
+
 A Godot editor add-on for looking at, editing and shipping UO world data,
 built on the ported client rather than beside it. Sources of truth:
 `docs\editor_plan.md`, ADR-0010, ADR-0011, ADR-0012, ADR-0015, and the
@@ -168,3 +173,7 @@ For a task-by-task walk-through (setup, world view, export, live tier) see
 [Manage Your Shard From the Editor](Manage-Your-Shard-From-The-Editor.md).
 For the Admin tab see [Admin Tab](Admin-Tab.md). The Store tab installs
 packs: see [Content Packs](Content-Packs.md).
+
+## Detailed asset and automation workflows
+
+[Assets and Fiddler](Assets-and-Fiddler.md) covers working documents, reviewed native staging and format-specific proof. [AI and MCP](AI-and-MCP.md) distinguishes client, editor and reference-renderer automation. [Visual Guide](Visual-Guide.md) records capture provenance and gaps.

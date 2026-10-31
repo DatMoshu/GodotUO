@@ -3,6 +3,7 @@ namespace GUO.Editor;
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Godot;
 
@@ -24,6 +25,8 @@ public partial class AiSessionsTab : VBoxContainer
     private Button _open, _send;
     private bool _built, _loaded;
     private Task _refreshTask;
+    private CancellationTokenSource _refreshCancellation;
+    private bool _retired;
     private readonly List<SessionInfo> _sessions = new();
 
     public AiSessionsTab() : this(null, null)
@@ -146,6 +149,7 @@ public partial class AiSessionsTab : VBoxContainer
     /// <summary>Reads the folders on a worker thread and redraws the list.</summary>
     public Task RefreshAsync()
     {
+        if (_retired || !AiFeatures.Enabled) return Task.CompletedTask;
         // Showing the tab and an explicit Refresh can arrive together. Share the
         // scan so a later completion cannot clear a selection made in between.
         if (_refreshTask != null && !_refreshTask.IsCompleted)
@@ -158,6 +162,9 @@ public partial class AiSessionsTab : VBoxContainer
 
     private async Task RefreshCoreAsync()
     {
+        using var lifetime = AiFeatures.Link(CancellationToken.None);
+        _refreshCancellation = lifetime;
+        CancellationToken ct = lifetime.Token;
         _loaded = true;
         string home = string.IsNullOrWhiteSpace(Home) ? null : Home;
         Action<string> opened = Opened;
@@ -165,15 +172,24 @@ public partial class AiSessionsTab : VBoxContainer
         List<SessionInfo> found;
         try
         {
-            found = await Task.Run(() => new SessionScanner(home, null, opened).Scan());
+            found = await Task.Run(() => new SessionScanner(home, null, opened).Scan(ct), ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            _loaded = false;
+            return;
         }
         catch (Exception ex)
         {
-            SetStatus($"could not read the session folders: {ex.Message}", true);
+            if (CanPublish(ct)) SetStatus($"could not read the session folders: {ex.Message}", true);
             return;
         }
+        finally
+        {
+            _refreshCancellation = null;
+        }
 
-        if (!AiFeatures.Enabled || !IsInstanceValid(this) || IsQueuedForDeletion()) return;
+        if (!CanPublish(ct)) return;
         _sessions.Clear();
         _sessions.AddRange(found);
         _list.Clear();
@@ -187,6 +203,18 @@ public partial class AiSessionsTab : VBoxContainer
         _send.Disabled = true;
         SetStatus($"{found.Count} session(s)");
     }
+
+    private bool CanPublish(CancellationToken ct) => !ct.IsCancellationRequested && !_retired
+        && AiFeatures.Enabled && IsInstanceValid(this) && !IsQueuedForDeletion() && IsInsideTree();
+
+    /// <summary>Retires discovery before the dock is freed or its assembly is reloaded.</summary>
+    public void Shutdown()
+    {
+        _retired = true;
+        _refreshCancellation?.Cancel();
+    }
+
+    public override void _ExitTree() => _refreshCancellation?.Cancel();
 
     /// <summary>Opens the selected transcript (or project folder) in the operating system's viewer.</summary>
     public bool OpenSelected()

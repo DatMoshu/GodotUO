@@ -7,8 +7,8 @@ internal static partial class LabsRegistration
     {
         void Toggle()
         {
-            GpuRenderer.OrderedWorldCapture.Enabled = !GpuRenderer.OrderedWorldCapture.Enabled;
-            Godot.GD.Print("[rd-world] " + (GpuRenderer.OrderedWorldCapture.Enabled ? "enabled (canvas rollback retained)" : "disabled"));
+            GUO.Renderer.DepthWorld.OrderedWorldCapture.Enabled = !GUO.Renderer.DepthWorld.OrderedWorldCapture.Enabled;
+            Godot.GD.Print("[rd-world] " + (GUO.Renderer.DepthWorld.OrderedWorldCapture.Enabled ? "enabled (canvas rollback retained)" : "disabled"));
         }
         context.Command("rdworld", _ => Toggle());
         context.Option("Ordered GPU world prototype", Toggle);

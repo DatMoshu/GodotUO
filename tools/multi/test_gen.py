@@ -197,14 +197,20 @@ def run(check) -> None:
     # --- formats
     tiles =[formats.Tile(0x203, -3, -3, 7, True, 0x44), formats.Tile(0x6A5, 0, 3, 7, False, 0), formats.Tile(0x1, 5, -2, -1, True, 0)]
     for fmt in formats.FORMATS:
+        if fmt=='uox3-fiddler': continue  # export-only, covered by test_fiddler_uox3
         data = formats.write(fmt, tiles)
         back = formats.read(fmt, data)
         hue_ok = fmt in ("wsc", "centred", "uoab")
-        same = [(t.item, t.x, t.y, t.z, t.visible if fmt not in ("wsc", "uox3", "uoab") else True, t.hue if hue_ok else 0) for t in tiles]
+        same = [(t.item, t.x, t.y, t.z, t.visible if fmt not in ("wsc", "wsc-fiddler", "uox3", "uoab") else True, t.hue if hue_ok else 0) for t in tiles]
         got = [(t.item, t.x, t.y, t.z, t.visible, t.hue) for t in back]
         check(got == same, f"format {fmt}: round-trips" + (" (hue kept)" if hue_ok else ""))
-        check(formats.detect("x" + {"txt": ".txt", "uoa": ".uoa", "wsc": ".wsc", "uox3": ".dfn"}.get(fmt, ".bin"), data[:512]) in
-              (fmt, "txt") or fmt in ("csv-punt", "csv-swerv", "centred", "uoab"), f"format {fmt}: detected")
+        detected = formats.detect("x" + {"txt": ".txt", "uoa": ".uoa", "wsc": ".wsc", "uox3": ".dfn"}.get(fmt, ".bin"), data[:512])
+        if fmt in ("txt-fiddler", "uoa-fiddler", "wsc-fiddler", "csv-fiddler"):
+            # These profiles require explicit selection; detection retains the legacy dialect.
+            check(detected == {"txt-fiddler": "txt", "uoa-fiddler": "uoa", "wsc-fiddler":"wsc", "csv-fiddler":"csv-punt"}[fmt],
+                  f"format {fmt}: detection retains the legacy profile")
+        else:
+            check(detected in (fmt, "txt") or fmt in ("csv-punt", "csv-swerv", "centred", "uoab"), f"format {fmt}: detected")
     two_designs = formats.write_uoab([formats.Design("a", "b", "c", tiles), formats.Design("d", "e", "f", tiles[:1])])
     ds = formats.read_uoab(two_designs)
     check(len(ds) == 2 and ds[0].name == "a" and ds[1].category == "e", "uoab version 2 holds several designs")

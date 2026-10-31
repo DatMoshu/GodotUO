@@ -6,6 +6,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../godot/GUO/src/Render/PerfStages.cs" Link="PerfStages.cs" />
     <Compile Include="../../godot/GUO/src/Network/CircularBuffer.cs" Link="CircularBuffer.cs" />
     <Compile Include="../../godot/GUO/src/Network/PacketLengthGuard.cs" Link="PacketLengthGuard.cs" />
     <Compile Include="../../godot/GUO/src/Network/Mods/PacketMods.cs" Link="PacketMods.cs" />

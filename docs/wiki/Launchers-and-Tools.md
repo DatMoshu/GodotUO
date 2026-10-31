@@ -158,3 +158,7 @@ prints every launcher pair with its one-line description, including
 | `godot` | (README) | The pinned engine, gitignored. |
 
 Every `run.py` answers `--help` with the same text as its README's header.
+
+## Complete entry-point inventory
+
+The [Launcher Reference](Launcher-Reference.md) lists every audited Windows launcher and shell twin. The [Tool Reference](Tool-Reference.md) links every top-level tool README. Existence is source evidence, not a new execution claim.

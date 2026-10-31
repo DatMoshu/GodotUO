@@ -3,7 +3,7 @@
 using System;
 using System.Threading.Tasks;
 using Godot;
-using GUO.Labs.GpuRenderer;
+using GUO.Renderer.DepthWorld;
 using GUO.Renderer;
 using Rectangle = GUO.Compat.Rectangle;
 
@@ -15,6 +15,7 @@ public partial class BatcherProbe
     {
         VerifyOrderedPacking();
         VerifyOrderedResidency();
+        VerifyDepthWorldResidentOrder();
         bool old = OrderedWorldCapture.Enabled;
         using var background = BuildSolid(new byte[] { 3, 80, 137 });
         using var black = BuildSolid(new byte[] { 0, 0, 0 });

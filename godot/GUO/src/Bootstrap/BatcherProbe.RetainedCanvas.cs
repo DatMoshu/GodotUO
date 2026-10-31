@@ -30,6 +30,7 @@ public partial class BatcherProbe
     {
         VerifyRetainedStreams();
         bool previous = UltimaBatcher2D.RetainCanvas;
+        bool oldReclaim = UltimaBatcher2D.ReclaimEmptyRetainedCanvas;
         bool oldBatched = UltimaBatcher2D.BatchedWorld;
         using var image = Image.CreateEmpty(2, 2, false, Image.Format.Rgba8);
         using var texture = ImageTexture.CreateFromImage(image);
@@ -38,9 +39,10 @@ public partial class BatcherProbe
         {
             // Repeat changes on the SAME batcher and SAME texture RID. This
             // exercises pool reuse, shorter streams, empty frames and mode changes.
-            foreach (bool retained in new[] { false, true, false, true })
+            foreach (var (retained, reclaim) in new[] { (false, false), (true, false), (true, true), (false, true), (true, false) })
             {
                 UltimaBatcher2D.RetainCanvas = retained;
+                UltimaBatcher2D.ReclaimEmptyRetainedCanvas = reclaim;
                 for (int step = 0; step < 12; step++)
                 {
                     image.Fill(step < 5 ? Colors.Red : Colors.Green);
@@ -85,7 +87,7 @@ public partial class BatcherProbe
                     using Image pixels = viewport.GetTexture().GetImage();
                     byte[] actual = pixels.GetData();
                     if (frames.Count < 12) frames.Add(actual);
-                    else CheckThat($"retained canvas mode {retained} transition {step}",
+                    else CheckThat($"retained canvas mode {retained} reclaim {reclaim} transition {step}",
                         frames[step].AsSpan().SequenceEqual(actual), "exact pixels, including empty/shorter pools and texture updates");
                 }
             }
@@ -94,6 +96,7 @@ public partial class BatcherProbe
         finally
         {
             UltimaBatcher2D.RetainCanvas = previous;
+            UltimaBatcher2D.ReclaimEmptyRetainedCanvas = oldReclaim;
             UltimaBatcher2D.BatchedWorld = oldBatched;
             batcher.BeginFrame();
         }
@@ -166,6 +169,7 @@ public partial class BatcherProbe
     private void VerifyRetainedStreams()
     {
         VerifyRetainedRecovery();
+        VerifyRetainedReclamation();
         var sink = new CanvasOracle();
         var budget = new RetainedCanvasCommands.Budget();
         var cache = new RetainedCanvasCommands(budget, sink, default);

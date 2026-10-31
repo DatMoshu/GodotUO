@@ -37,7 +37,7 @@ whether it ships in the game you download. The owner approved the layers on
   into a Debug build made with `-p:GuoLabs=true`. Release and export builds
   leave them out even when the flag is set. Each Lab needs a README, a
   doctor launcher that says what to install, a scenario and a smoke line.
-  The registry is empty today: no Lab ships yet.
+  The source now includes Weather, WaterRain and GPU renderer Labs. Their presence is not a release guarantee; they remain excluded from exported clients. See the [Labs source](../../godot/GUO/src/Labs/).
 
 ## Rules every change follows
 

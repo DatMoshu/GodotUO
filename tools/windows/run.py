@@ -296,7 +296,9 @@ def ensure_solution(p: Paths) -> None:
         sys.exit("[windows] could not produce GUO.sln")
 
 
-def export(p: Paths, exe: Path, release: bool = False) -> int:
+def export(p: Paths, exe: Path, release: bool = False, manifest: bool = False) -> int:
+    if manifest and not release:
+        raise ValueError("--manifest requires --release")
     console = p.godot_console()
     if not console.exists():
         sys.exit(f"[windows] Godot console not found at {console}; run doctor")
@@ -307,9 +309,14 @@ def export(p: Paths, exe: Path, release: bool = False) -> int:
     render_preset(p, exe)
 
     log = exe.parent / "export.log"
+    command = [str(console), "--headless", "--path", str(p.project),
+               "--export-release" if release else "--export-debug", PRESET_NAME, str(exe)]
+    if manifest:
+        from guo.perf_manifest import build_inputs, record_build
+        before = build_inputs(p.project.parents[1], console)
     with open(log, "w", encoding="utf-8") as f:
         result = run(
-            [console, "--headless", "--path", p.project, "--export-release" if release else "--export-debug", PRESET_NAME, exe],
+            command,
             stdout=f, stderr=subprocess.STDOUT, text=True,
         )
     text = log.read_text(encoding="utf-8", errors="replace")
@@ -320,6 +327,8 @@ def export(p: Paths, exe: Path, release: bool = False) -> int:
         say(f"export FAILED (exit {result.returncode}); full log: {log}")
         return 1
     say(f"exported {exe} ({exe.stat().st_size // 1024} KB); log: {log}")
+    if manifest:
+        record_build(exe, before, build_inputs(p.project.parents[1], console), command)
     return check_icon(p, exe)
 
 
@@ -336,6 +345,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("preset", help="render export_presets.cfg from the template")
     ex = sub.add_parser("export", help="export the Windows build, headless, then check its icon")
     ex.add_argument("--out", default=None, help="executable path (default build\\windows\\GUO.exe)")
+    ex.add_argument("--manifest", action="store_true", help="bind a clean Release export to source and dependency hashes")
     ex.add_argument("--release", action="store_true",
                     help="export with the Release template: what players run, and the only build the perf gate times")
     ic = sub.add_parser("icon", help="extract the exported executable's icon and say whose it is")
@@ -350,7 +360,7 @@ def main(argv: list[str] | None = None) -> int:
         render_preset(p, p.exe)
         return 0
     if args.command == "export":
-        return export(p, Path(args.out) if args.out else p.exe, args.release)
+        return export(p, Path(args.out) if args.out else p.exe, args.release, args.manifest)
     if args.command == "icon":
         return check_icon(p, Path(args.exe) if args.exe else None)
     return 2

@@ -1,5 +1,10 @@
 # Servers and Accounts
 
+![Editor run bar in GUO](../images/guides/editor-runbar.png)
+
+The existing tour highlights run controls. Its green status indicator is tour state; no live-server readiness is inferred. [Capture conditions and limits](Visual-Guide.md#editor-runbar).
+
+
 Before you log in, GUO's pre-game screen has a **Servers** tab. It replaces
 ClassicUO's single address field and single remembered account with a server
 list and saved accounts for each server.

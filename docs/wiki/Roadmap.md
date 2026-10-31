@@ -1,59 +1,47 @@
-# Roadmap
+# Roadmap and evidence gaps
 
-Where GUO is heading. This is a direction, not a schedule: items move as they
-are measured and proven. Decisions that bind are in the ADRs
-(`docs/architecture/`); open work is in GitHub Issues.
+This page is direction, not a schedule or permission to change defaults.
+The audit baseline is `main` `fc9e3588` (2026-10-28). Binding technical decisions
+live in [architecture records](../architecture/README.md); current work and
+release status live in [GitHub Issues](https://github.com/DatMoshu/GodotUO/issues)
+and the repository's actual release/workflow pages.
 
-## Now: getting ready for a first public preview (v0.1.0)
+## Present source capabilities
 
-- Downloads for Windows, Steam Deck and Android from one release workflow.
-  Every change to main is built; the first release has not been cut yet,
-  and cutting it is the owner's call.
-- The [Known Issues](Known-Issues.md) list kept honest.
-- The wiki, the project site, and a welcome in Discussions.
+[Feature Coverage](Feature-Coverage.md) maps implemented surfaces and their
+proof limits. Production Depth World with canvas recovery, editor asset/world
+authoring, typed packs, opt-in presentation and scripting, and separate
+client/editor MCP paths now have source documentation. Their existence must
+not be read as complete parity, full server support or every-device validation.
 
-## Next
+## Acceptance work still matters
 
-**Performance, the one parity gap.** Frame times on every platform are measured
-with one probe, scene by scene. Draw-call cuts land only at exact parity, and
-ADR-0007 (the sorted world in batched meshes) was measured, recommends
-rejection, and waits for the owner's decision. A fair
-ClassicUO-vs-GUO table, with the same view on the same machine, is published
-before any comparison is claimed.
+- Reproducible gameplay/rendering parity at matched location, camera and settings.
+  Screenshots alone cannot establish smooth remote animation or network acceptance.
+- Wider [server case coverage](Server-Compatibility.md), preserving failed and
+  not-run cells rather than claiming all emulators work.
+- Platform/device checks for touch, controllers, multiple displays, rotation,
+  exports and browser limitations; see [Platform Support](Platform-Support.md).
+- Matched Release performance evidence under the [performance gate](../perf/performance_gate.md).
+  Old timing reports do not establish the current build's speed.
+- Current screenshots of settings, format-specific export dialogs and server
+  operations; the [Visual Guide](Visual-Guide.md) records what is pictured.
 
-**Mobile.**
-- The command bar redesign: one bar with rows that slide in.
-- Touch-sized Modern versions of the gumps that are hard to use on a phone
-  (ADR-0024).
-- Controller polish on handhelds.
+## Incomplete or scoped features
 
-**Web.**
-- Choosing your UO folder in the browser.
-- A smaller download and a faster start.
-- A hosted test client, once the engine side allows it (ADR-0008).
+Full Razor CE compatibility remains a goal; [embedded scripting](../embedded-scripting.md)
+implements a bounded subset. Runtime journal translation is an optional local
+pilot, not reviewed multilingual shard content. [Localization](../localization.md)
+keeps future language-pack work separate.
 
-**Editor and Store.**
-- Shard content negotiation: a connecting client learns which packs the server
-  requires; protocol and user consent remain future work.
-- Theme, sound, preset and screen effect packs applied, not just installed.
-  HD art, regional audio and recorded voices already are, behind options
-  that are off by default ([Content Packs](Content-Packs.md)).
-- The Admin tab for a server you run is in ([Admin Tab](Admin-Tab.md)).
-- Labs: experimental client features in an opt-in Debug build, never in a
-  download ([Feature Layers](Feature-Layers.md)). None ships yet.
-- A hosted Store catalogue on GitHub Pages.
-- The RunUO shard backend for the editor.
+Shard-required pack negotiation and consent remain roadmap work; do not infer
+automatic downloading/activation from the Store or content deployment tools.
+Current mod ABI capabilities are narrower than arbitrary gump/world editing;
+[Modding](Modding.md) documents those boundaries. Labs remains excluded from
+exports and needs separate acceptance before any promotion.
 
-## Later
+## Help with a concrete gap
 
-- New content, authored the safe way: multis, interiors and art in a staged
-  data set, never the install ([Building Multis](Building-Multis.md),
-  [Author UO Data](Author-UO-Data.md)).
-- Steam Deck Game Mode and more handhelds.
-- Upstream ClassicUO changes merged as they land
-  ([Parity and Drift](Parity-and-Drift.md)).
-
-## How to help
-
-Pick an issue labelled `good first issue` or `help wanted`, or bring an idea
-to the Ideas category in Discussions. See [Contributing](Contributing.md).
+Use [Contributing](Contributing.md) and the feature's source/proof link. Include
+the exact build, environment, action and result. A narrow repeatable case is
+more useful than an unsupported blanket compatibility or FPS claim.
