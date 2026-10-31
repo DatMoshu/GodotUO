@@ -11,7 +11,7 @@ public partial class SpeedModeFogPass : ColorRect
 
     internal void Bind(Texture2D surface, Vector2I size, Vector2I surfaceOrigin,
         Vector3 cameraWorld, float weatherDensity, int morningHaze, float wind,
-        double seconds, bool enabled)
+        double seconds, bool enabled, float daylight = 1f)
     {
         float density = CombinedDensity(weatherDensity, morningHaze);
         if (!enabled || surface == null || size.X <= 0 || size.Y <= 0 || density <= 0
@@ -39,6 +39,7 @@ public partial class SpeedModeFogPass : ColorRect
         _fogMaterial.SetShaderParameter("fog_density", density);
         _fogMaterial.SetShaderParameter("wind", float.IsFinite(wind) ? Math.Clamp(wind, -2, 2) : 0);
         _fogMaterial.SetShaderParameter("seconds", double.IsFinite(seconds) ? (float)(seconds % 3600) : 0);
+        _fogMaterial.SetShaderParameter("daylight", float.IsFinite(daylight) ? Math.Clamp(daylight, 0, 1) : 1);
         Visible = true;
     }
 

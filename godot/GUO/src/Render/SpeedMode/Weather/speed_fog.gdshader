@@ -8,6 +8,7 @@ uniform vec3 camera_world;
 uniform float fog_density = 0.0;
 uniform float wind = 0.0;
 uniform float seconds = 0.0;
+uniform float daylight = 1.0;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
 float noise(vec2 p) {
@@ -29,5 +30,7 @@ void fragment() {
     // At full density, ten tiles gives at most 30% opacity; keep native art readable.
     float alpha = min(0.45, 1.0 - exp(-distance_tiles * 0.035 * fog_density * height_falloff * variation));
     if (kind == 0 || (data & 16) != 0) alpha = 0.0;
-    COLOR = vec4(0.58, 0.63, 0.68, alpha);
+    vec3 day = vec3(0.58, 0.63, 0.68);
+    vec3 night = vec3(0.07, 0.08, 0.12);
+    COLOR = vec4(mix(night, day, clamp(daylight, 0.0, 1.0)), alpha);
 }

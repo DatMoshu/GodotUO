@@ -46,9 +46,10 @@ internal partial class GameScene
             var player = _world.Player;
             var origin = SpeedModeCameraOrigin();
             var size = new Vector2I(worldTarget.Width, worldTarget.Height);
+            var sky = CloudLighting.Resolve(_world, profile, RealtimeAmbientLevel());
             _speedCloudPass.Bind(size, new Vector3(origin.X, origin.Y, player.Z),
                 new SpeedModeCloudView(true, Camera.Zoom, altitude),
-                GUO.Renderer.Water.WaterRender.Wind(_world, profile), Time.Ticks / 1000.0);
+                GUO.Renderer.Water.WaterRender.Wind(_world, profile), Time.Ticks / 1000.0, sky.Daylight);
             if (!_speedCloudPass.Visible || _speedCloudPass.Material is not ShaderMaterial material || material.Shader == null)
             {
                 ResetSpeedClouds(); return;

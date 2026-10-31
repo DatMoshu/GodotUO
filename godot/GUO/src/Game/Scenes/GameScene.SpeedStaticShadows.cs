@@ -35,17 +35,21 @@ internal partial class GameScene
         bool Eligible(GameObject obj) {
             if(obj is not (Static or Multi or Item) || obj.IsDestroyed || !obj.AllowedToDraw || obj.Z>=_maxZ || obj.Graphic>=tiles.Length) return false;
             ref var data=ref Client.Game.UO.FileManager.TileData.StaticData[obj.Graphic];
-            if(!SunShadowProjection.Eligible(data.Flags,data.Height)) return false;
-            // Preserve existing policy here; the receiver/height lane owns its repair.
-            short cover=_rtField.CoverZ(obj.X,obj.Y);
-            return cover==RealtimeLightField.NoBlock || cover>=_maxZ || obj.Z>=cover
-                || (_noDrawRoofs && _rtField.CoverIsRoofFlag(obj.X,obj.Y));
+            return SunShadowProjection.Eligible(data.Flags,data.Height);
         }
         void Add(GameObject owner,NativeShadowQuad quad,bool resident) {
             if(!_speedStaticContact.TryContact(quad,out var contact)) return;
-            float top=Math.Min(Math.Min(quad.A.Y,quad.B.Y),Math.Min(quad.C.Y,(quad.B+quad.C-quad.A).Y));
+            var used=quad;
+            // Physical cover, not the roof-draw toggle. A cover at or above the
+            // camera's max Z is the existing visibility slice and is left whole.
+            short cover=_rtField.CoverZ(owner.X,owner.Y);
+            if(cover!=RealtimeLightField.NoBlock && cover<_maxZ && owner.Z<cover) {
+                float yCut=contact.Y-(cover-owner.Z)*4f;
+                if(!quad.TryKeepAbove(yCut,out used)) return;
+            }
+            float top=Math.Min(Math.Min(used.A.Y,used.B.Y),Math.Min(used.C.Y,(used.B+used.C-used.A).Y));
             float height=Math.Max(1,contact.Y-top);
-            inputs.Sun.Add(quad.Project(contact,direction*length,height,strength,view));
+            inputs.Sun.Add(used.Project(contact,direction*length,height,strength,view));
             SpeedStaticQuadCount++;
             SpeedStaticShadowObserver?.Invoke(owner,quad,contact,resident);
         }

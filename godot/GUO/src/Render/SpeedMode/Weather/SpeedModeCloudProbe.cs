@@ -36,6 +36,12 @@ public partial class SpeedModeCloudProbe : Node
             for(int y=0;y<720;y++) for(int x=0;x<1280;x++)
                 if(original.GetPixel(x,y)!=above.GetPixel(x,y)) changed++;
             Require(changed>100000,"Clouds must visibly cover part of the world");
+            clouds.Bind(viewport.Size,camera,new SpeedModeCloudView(true,5,300),1,0,0.1f);
+            await Draw(); using var night=viewport.GetTexture().GetImage();
+            int darker=0;
+            for(int y=0;y<720;y++) for(int x=0;x<1280;x++)
+                if(night.GetPixel(x,y).R+0.02f<above.GetPixel(x,y).R) darker++;
+            Require(darker>1000,"Night daylight must darken the cloud plane");
             clouds.Bind(viewport.Size,camera,new SpeedModeCloudView(true,5,300),1,10);
             await Draw(); using var moved=viewport.GetTexture().GetImage();
             Require(!Same(above,moved),"Wind/time advects clouds");

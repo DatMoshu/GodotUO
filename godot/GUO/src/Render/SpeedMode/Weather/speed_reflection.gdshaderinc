@@ -16,9 +16,10 @@ vec4 speed_reflection(sampler2D surfaces, sampler2D colors, vec2 uv,
         if (height <= 0.0) continue;
         // Surface XY uses the same origin at both pixels; it cancels here.
         vec2 delta = (source.xy - receiver.xy) * 22.0;
-        // A reflected source is d/8 UO height units above the receiving plane.
-        // Tolerance 1/8 Z is one native art pixel of the eight-pixel separation.
-        if (abs(height - distance_art / 8.0) > 0.125) continue;
+        // Upright and wall samples store Z at 4 native pixels per UO unit, the
+        // same scale as the surface pass. A tap d art-pixels up matches height
+        // d/4. Tolerance 1/8 Z is half of one native art pixel at that scale.
+        if (abs(height - distance_art / 4.0) > 0.125) continue;
         if (abs(delta.x - delta.y - wave) > 1.0) continue;
         vec3 tint = texture(colors, source_uv).rgb * vec3(0.42, 0.49, 0.55);
         return vec4(tint, 1.0 - distance_art / 80.0);

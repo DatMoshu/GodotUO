@@ -158,6 +158,15 @@ approximation with first-row pane spacing, not volumetric scattering or GI;
 hidden geometry and curved apertures remain unsupported. Section50 documents
 resource bounds and the existing transaction fallback on callback failure.
 
+The 2026-10-31 continuation keeps the same opt-in switches. Water reflection
+taps compare height at 4 native pixels per UO Z, which is the scale the surface
+buffer already publishes for uprights and walls. Sun stamps of an upright static
+under an active cover keep only the silhouette above that cover. Clouds and fog
+take the shard minute's 06:00/18:00 daylight curve when a clock is valid. The
+receiver helpers are compiled and probed; the inverse per-pixel mask and a sun
+corridor that reaches the structural sky bound are not wired. Off remains the
+classic frame.
+
 ## Validation
 
 Filled in by the slices' heads: probe logs, the off-state capture diff, the Zoom 2 frame-time table, and stills

@@ -9,6 +9,7 @@ uniform float wind = 0.0;
 uniform float seconds = 0.0;
 uniform vec2 pin_pixel = vec2(-1000.0);
 uniform float opacity_cap = 0.82;
+uniform float daylight = 1.0;
 // Integer lattice hash avoids float sin precision seams at distant map tiles.
 float cloud_hash(vec2 p) {
     uvec2 q = uvec2(ivec2(p));
@@ -32,7 +33,10 @@ void fragment() {
     float density = smoothstep(0.42,0.72,shape);
     float entry = smoothstep(4.0,5.0,camera_zoom);
     float above = smoothstep(80.0,240.0,camera_height);
-    vec3 below_color = vec3(0.64,0.69,0.74);
-    vec3 above_color = mix(vec3(0.72,0.78,0.84),vec3(0.94,0.96,0.98),shape);
+    // daylight 1 keeps the previous day colours. Night uses the same 0.1 floor
+    // as the lighting clock, so the plane does not go black.
+    float sun = clamp(daylight, 0.0, 1.0);
+    vec3 below_color = mix(vec3(0.08,0.09,0.12), vec3(0.64,0.69,0.74), sun);
+    vec3 above_color = mix(vec3(0.10,0.11,0.16), mix(vec3(0.72,0.78,0.84),vec3(0.94,0.96,0.98),shape), sun);
     COLOR = vec4(mix(below_color,above_color,above),density*entry*opacity_cap*smoothstep(20.0,44.0,length(SCREEN_UV*target_size-pin_pixel)));
 }

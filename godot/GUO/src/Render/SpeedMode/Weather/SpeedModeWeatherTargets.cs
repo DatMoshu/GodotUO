@@ -17,7 +17,7 @@ internal static class SpeedModeWeatherTargets
         Texture2D expectedSurface, long expectedSequence, uint frameTick,
         Texture2D sceneColor, Vector2I size, Vector3 cameraWorld, float artScale,
         double seconds, SpeedModeRainPass rain, SpeedModeWetPass wet, SpeedModeFogPass fog,
-        UltimaBatcher2D batcher = null)
+        UltimaBatcher2D batcher = null, float daylight = 1f)
     {
         var frame = SpeedModeBindings.Current;
         if (world == null || state == null || profile?.LightingSpeedMode != true
@@ -38,7 +38,7 @@ internal static class SpeedModeWeatherTargets
             profile.SpeedModeWeather ? state.Wetness : 0,
             profile.SpeedModeWeather ? state.RainIntensity : 0, seconds, artScale, profile.SpeedModeReflections);
         fog.Bind(frame.Surface, size, frame.Origin, cameraWorld, state.FogDensity,
-            profile.SpeedModeMorningHaze, state.Wind, seconds, profile.SpeedModeFog);
+            profile.SpeedModeMorningHaze, state.Wind, seconds, profile.SpeedModeFog, daylight);
         if (batcher != null)
         {
             Water.WaterRender.BindLightTarget(batcher, frame.LightTarget, frame.TargetPixelBounds, frame.Ambient);

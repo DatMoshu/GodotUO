@@ -64,8 +64,8 @@ internal sealed class NativeWaterWitness : IDisposable
                 var source=surface.GetPixel(sx,sy);int kind=(int)MathF.Round(source.A)&15;
                 if(kind!=2&&kind!=3&&kind!=4) continue;
                 float dz=source.B-receiver.B;
-                // Diagnostic follows the existing shader thresholds exactly.
-                if(dz<=0||MathF.Abs(dz-k*2)>.125f) continue;
+                // Diagnostic follows the shader: 4 native pixels per UO Z.
+                if(dz<=0||MathF.Abs(dz-k*4f)>.125f) continue;
                 if(MathF.Abs((source.R-receiver.R-source.G+receiver.G)*22-wave)>1) continue;
                 eligible++;
                 float wx=source.R+origin.X,wy=source.G+origin.Y;

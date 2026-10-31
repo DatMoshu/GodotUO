@@ -4365,17 +4365,18 @@ hooks are not implied by the consumer's presence.
 
 Water class6 can receive sparse reflections using four nearest-art-pixel taps
 16/32/48/64 above it. Candidates are upright/wall classes2/3/4 with positive
-height matching separation/8 within1/8 UO Z, and screen-column agreement within
-one native pixel. Puddles require wetCandidate flag2 and exposed floor class1;
+height matching separation/4 within1/8 UO Z, and screen-column agreement within
+one native pixel. Separation/4 is the surface buffer's 4 native pixels per UO Z.
+The earlier separation/8 gate could not admit a vertical donor, so the bounded
+native water witness recorded no eligible controlled pixels. Puddles require wetCandidate flag2 and exposed floor class1;
 `SpeedModePuddleSurfaces` holds a curated paving/cobblestone metadata allowlist.
 The core must apply that predicate when producing flags. Reflections are a
 screen-space approximation with visible tap bands, not complete silhouettes.
-Native wet-paving output has a rendered witness. Controlled native classic-water
-reflection qualification remains open: the bounded existing-water/donor fixture
-produced no eligible published donor geometry or controlled positive pixels.
-Standalone shader fixtures establish only their geometric sampling cases; missing
-native witnesses do not establish a shader defect. Styled-water fallback remains
-unchanged.
+Native wet-paving output has a rendered witness. The classic-water donor
+fixture now uses the same separation/4 gate as the shader and the published
+surface. A passing native witness still needs a Windows run with client art;
+this checkout did not execute that scene. Standalone shader fixtures establish
+their geometric sampling cases. Styled-water fallback remains unchanged.
 The separate Lighting water style remains subject to the ordered backend's
 existing styled-water canvas fallback. No compatibility with simultaneous
 speed-mode lighting is claimed for that style.
@@ -4391,6 +4392,12 @@ and unload cleanup. Entry fades continuously4..5. Overview opacity is capped
 at32% to preserve labels; a20-pixel clear area protects the visible player pin
 head, centered32pixels above its mapped ground anchor.
 The cloud pass is procedural colour on an approximate plane, not volumetric GI.
+Its colour and the fog tint follow `CloudLighting`: a valid shard minute uses
+0.1+0.9*max(0,sin((minute-360)*pi/720)), matching 06:00 dawn and 18:00 dusk.
+A missing clock uses the named ambient-brightness approximation for clouds and
+leaves fog at the previous day colour unless the scene passes a resolved value.
+Daylight 1 reproduces the previous day colours. Neither path runs unless
+lighting speed mode is on.
 The standalone `SpeedModeCloudPass.Bind(size,camera,view,wind,seconds)` and
 `HideForFallback()` support lead-owned overview placement without native surface
 sampling. Native artwork keeps nearest sampling.

@@ -14,4 +14,24 @@ internal readonly record struct NativeShadowQuad(Texture2D Texture,Vector2 A,Vec
         return new(Texture,Point(A),Point(B),Point(C),U,V,W,opacity,
             (anchor.Y-A.Y)/height,(anchor.Y-C.Y)/height);
     }
+
+    // Screen Y grows downward. Keep the part of an upright card at or above
+    // yCut (the cover plane). A fully sheltered or non-upright partial span
+    // returns false so the indoor pixels are not stamped.
+    internal bool TryKeepAbove(float yCut,out NativeShadowQuad clipped)
+    {
+        clipped=this;
+        Vector2 d=B+C-A;
+        float top=Mathf.Min(Mathf.Min(A.Y,B.Y),Mathf.Min(C.Y,d.Y));
+        float bottom=Mathf.Max(Mathf.Max(A.Y,B.Y),Mathf.Max(C.Y,d.Y));
+        if(!float.IsFinite(yCut)||!float.IsFinite(top)||!float.IsFinite(bottom)) return false;
+        if(yCut>=bottom-0.5f) return true;
+        if(yCut<=top+0.5f) return false;
+        bool upright=Mathf.Abs(A.Y-B.Y)<0.01f && Mathf.Abs(A.X-C.X)<0.01f && C.Y>A.Y+0.5f;
+        if(!upright) return false;
+        float t=(yCut-A.Y)/(C.Y-A.Y);
+        if(t<=0f||t>=1f) return false;
+        clipped=this with { C=A+(C-A)*t, W=U+(W-U)*t };
+        return float.IsFinite(clipped.C.X)&&float.IsFinite(clipped.C.Y);
+    }
 }
