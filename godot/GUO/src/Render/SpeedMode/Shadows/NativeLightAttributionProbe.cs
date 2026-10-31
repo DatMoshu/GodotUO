@@ -41,6 +41,39 @@ public partial class NativeLightAttributionProbe : Node
         }
         if(requireHooks)Check(root.GetProperty("actualBoundaryHooksObserved").GetBoolean(),"admission actual boundary unknown");
     }
+    // Fixture setup only: metadata "floor" also admits triangular border pieces.
+    // Borrow the existing CPU atlas page; never dispose/retain it or read the GPU.
+    private static bool FullFloorDiamond(Image page,GUO.Compat.Rectangle uv)
+    {
+        if(page==null||uv.Width!=44||uv.Height!=44||uv.X<0||uv.Y<0
+            ||uv.Right>page.GetWidth()||uv.Bottom>page.GetHeight())return false;
+        for(int y=0;y<44;y++)for(int x=0;x<44;x++) {
+            int start=y<22?21-y:y-22;
+            int width=y<22?2*(y+1):2*(44-y);
+            bool expected=x>=start&&x<start+width;
+            if((page.GetPixel(uv.X+x,uv.Y+y).A>0)!=expected)return false;
+        }
+        return true;
+    }
+    private static void FloorMaskRegression()
+    {
+        using var page=Image.CreateEmpty(46,46,false,Image.Format.Rgba8);
+        var uv=new GUO.Compat.Rectangle(1,1,44,44);
+        Check(!FullFloorDiamond(page,uv),"empty floor rejected");
+        for(int y=0;y<44;y++)for(int x=0;x<44;x++) {
+            int start=y<22?21-y:y-22;
+            int width=y<22?2*(y+1):2*(44-y);
+            if(x>=start&&x<start+width)page.SetPixel(x+1,y+1,Colors.White);
+        }
+        Check(FullFloorDiamond(page,uv),"complete offset diamond accepted");
+        page.SetPixel(22,1,Colors.Transparent);
+        Check(!FullFloorDiamond(page,uv),"single missing receiver pixel rejected");
+        page.SetPixel(22,1,Colors.White);page.SetPixel(1,1,Colors.White);
+        Check(!FullFloorDiamond(page,uv),"outside diamond pixel rejected");
+        Check(!FullFloorDiamond(null,uv),"unknown atlas rejected");
+        Check(!FullFloorDiamond(page,new GUO.Compat.Rectangle(1,1,44,24)),"triangular dimensions rejected");
+        GD.Print("[native-light-attribution-scene] floor mask regression PASS 6");
+    }
     public override async void _Ready()
     {
 #if !DEBUG
@@ -49,6 +82,7 @@ public partial class NativeLightAttributionProbe : Node
         return;
 #else
         try {
+            FloorMaskRegression();
             _out=System.Environment.GetEnvironmentVariable("GUO_LIGHT_ATTRIBUTION_OUT");
             Check(!string.IsNullOrWhiteSpace(_out)&&Path.IsPathRooted(_out),"Use an external evidence folder.");
             _out=Path.GetFullPath(_out);_home=Path.Combine(_out,"data","fixture");_stills=Path.Combine(_out,"stills");
@@ -100,7 +134,14 @@ public partial class NativeLightAttributionProbe : Node
             ushort lamp=0x0B1D;
             if(!game.UO.FileManager.TileData.StaticData[lamp].IsLight)
                 lamp=Native(id=>game.UO.FileManager.TileData.StaticData[id].IsLight);
-            ushort floor=Native(id=>{var td=game.UO.FileManager.TileData.StaticData[id];return td.IsSurface&&!td.IsRoof&&!td.IsBridge&&td.Height<4&&td.Name?.Contains("floor",StringComparison.OrdinalIgnoreCase)==true;});
+            ushort floor=Native(id=>{
+                var td=game.UO.FileManager.TileData.StaticData[id];
+                if(!td.IsSurface||td.IsRoof||td.IsBridge||td.Height>=4
+                    ||td.Name?.Contains("floor",StringComparison.OrdinalIgnoreCase)!=true)return false;
+                ref readonly var art=ref game.UO.Arts.GetArt(id);
+                return art.Texture!=null&&TextureAtlas.TryGetPage(art.Texture,out var page,out _)
+                    &&FullFloorDiamond(page,art.UV);
+            });
             int px=1417,py=1734;
             mobile.SetInWorldTile((ushort)px,(ushort)py,20);
             var scene=new GameScene(world);game.SetScene(scene);game.SetWindowSize(1280,720);
