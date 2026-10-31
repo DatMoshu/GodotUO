@@ -29,6 +29,13 @@ public partial class SpeedModeRainPass : ColorRect
     internal void Bind(Texture2D surface, Vector2I size, float rainIntensity, float wind, double seconds,
         World world = null, Vector2I? surfaceOrigin = null, Texture2D shelter = null)
     {
+        // An empty procedural pass does not own native precipitation. In
+        // particular, approaching-storm lines still come from Classic weather.
+        if (!float.IsFinite(rainIntensity) || rainIntensity <= 0)
+        {
+            HideForFallback();
+            return;
+        }
         if (surface == null || (world != null && !surfaceOrigin.HasValue) || size.X <= 0 || size.Y <= 0
             || surface.GetWidth() != size.X || surface.GetHeight() != size.Y)
         {

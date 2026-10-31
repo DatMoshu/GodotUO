@@ -109,6 +109,28 @@ public partial class SpeedModeWeatherRuntimeProbe : Node
             await PostDraw();
             using var disabled = target.Texture.GetImage();
             Require(Same(reused, disabled), "Main off restores the complete classic frame exactly");
+            // Classic still emits lines for an approaching storm. Its zero
+            // procedural intensity must not elect an invisible replacement.
+            profile.LightingSpeedMode = true;
+            state = new SpeedModeWeather();
+            state.Advance(WeatherType.WT_STORM_APPROACH, 70, 0, 0, 0);
+            Require(state.RainIntensity == 0 && state.Wetness == 0, "Approaching storm has no procedural rain or wetness");
+            runtime.ResetFrame();
+            var approaching = DrawClassic(Colors.White);
+            await PostDraw();
+            using var approachingClassic = target.Texture.GetImage();
+            Arm(approaching); Surface(); Light();
+            Require(runtime.Bound, "Approaching storm still accepts the current lighting ticket");
+            await PostDraw();
+            using var approachingEnhanced = target.Texture.GetImage();
+            Require(Same(approachingClassic, approachingEnhanced),
+                "Zero-emission approaching storm preserves native precipitation exactly");
+            state.Advance(WeatherType.WT_RAIN, 70, 0, 0, 0);
+            Light();
+            await PostDraw();
+            using var rainingAgain = target.Texture.GetImage();
+            Require(rainingAgain.GetPixel(15, 15).R < 0.9f,
+                "Transition from approaching storm to emitted rain takes ownership again");
             string output = System.Environment.GetEnvironmentVariable("GUO_WEATHER_PROBE_OUT");
             if (!string.IsNullOrEmpty(output))
             {
@@ -116,7 +138,7 @@ public partial class SpeedModeWeatherRuntimeProbe : Node
                 before.SavePng(Path.Combine(output, "guo_speed-weather_runtime_before_20261029.png"));
                 after.SavePng(Path.Combine(output, "guo_speed-weather_runtime_after_20261029.png"));
             }
-            GD.Print($"[speed-weather-runtime] PASS: {changed} changed pixels; publish/invalidate, native canvas before UI, camera transform, covered parity, classic-line election, stale tick, pooled-ticket isolation and exact main-off restoration");
+            GD.Print($"[speed-weather-runtime] PASS: {changed} changed pixels; publish/invalidate, native canvas before UI, camera transform, covered parity, classic-line election, stale tick, pooled-ticket isolation, exact main-off restoration and zero-emission storm preservation");
             GetTree().Quit();
         }
         catch (Exception error)
