@@ -36,6 +36,7 @@ internal sealed class LoginStage : Stage
     public static bool ProbeOnPassword => PregameScreen.Instance?.Stage is LoginStage s && s.D.Focus.Current == s._passwordField;
     public static Control ProbeAccountField => (PregameScreen.Instance?.Stage as LoginStage)?._accountField?.Control;
     public static Control ProbePasswordField => (PregameScreen.Instance?.Stage as LoginStage)?._passwordField?.Control;
+    public static Control ProbeLoginButton => (PregameScreen.Instance?.Stage as LoginStage)?._arrow?.Control;
     public static bool ProbeOnLogin => PregameScreen.Instance?.Stage is LoginStage s && s.D.Focus.Current == s._arrow;
 
     public override IEnumerable<IOverlayFocusable> OverlayItems => _items;

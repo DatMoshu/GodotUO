@@ -22,6 +22,8 @@ internal sealed class ServerStage : Stage
 
     public override IEnumerable<IOverlayFocusable> OverlayItems => _items;
 
+    public static Control ProbeFirstServer => PregameScreen.Instance?.Stage is ServerStage s && s._servers?.Length > 0 && s._items.Count > 0 ? s._items[0].Control : null;
+
     public static bool ProbeServerFocused => PregameScreen.Instance?.Stage is ServerStage s && (s.D.Focus.Current as UiFocus)?.Tag is string t && t.StartsWith("server:");
 
     public override void Enter()
