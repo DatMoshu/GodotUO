@@ -28,6 +28,7 @@ public partial class SplashProof : Node
     private static readonly double[] Times =
     {
         0.0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.05, 1.2, 1.35, 1.5, 1.7, 1.85, 2.0, 2.15, 2.3, 2.5,
+        3.0, 5.15, 5.5, 5.8, 6.2,
     };
 
     private string _out = "user://splash_proof";
