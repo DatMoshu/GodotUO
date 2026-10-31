@@ -1,0 +1,3409 @@
+diff --git a/Projects/UOContent.Tests/Tests/Custom/DfiItemTests.cs b/Projects/UOContent.Tests/Tests/Custom/DfiItemTests.cs
+new file mode 100644
+index 000000000..244e11193
+--- /dev/null
++++ b/Projects/UOContent.Tests/Tests/Custom/DfiItemTests.cs
+@@ -0,0 +1,203 @@
++using System;
++using System.Collections.Generic;
++using Server;
++using Server.Items;
++using Server.Mobiles;
++using UOContent.Tests.Mobiles.AI;
++using Xunit;
++
++namespace UOContent.Tests.Custom;
++
++[Collection("Sequential UOContent Tests")]
++public class DfiItemTests : IDisposable
++{
++    private readonly List<IEntity> _created = new();
++
++    public static TheoryData<Type> Items =>
++    [
++        typeof(HoodedRobe), typeof(DonationShroud), typeof(EquipBag), typeof(PvPBag), typeof(Emblem),
++        typeof(ItemBlessDeed), typeof(SashLayerDeed), typeof(SpellChannelingDeed), typeof(SelfRepairDeed),
++        typeof(TitleChangeDeed), typeof(PetResurrectionDeed), typeof(PetBondingDeed), typeof(WarHorseBondingDeed),
++        typeof(SexChangeDeed), typeof(BeardRestylingDeed), typeof(ItemIDDeed), typeof(SpellbookDeed),
++        typeof(FullMagerySpellbook), typeof(FullNecroSpellbook), typeof(FullChivalrySpellbook),
++        typeof(FullBushidoSpellbook), typeof(FullNinjitsuSpellbook), typeof(FullSpellweavingSpellbook),
++        typeof(ArtifactDeed), typeof(ChampionArtifactDeed), typeof(MinorArtieDeed), typeof(SkillBall),
++        typeof(DonationSkillBall), typeof(PetSkillBall), typeof(TemplateSkillBall), typeof(StatBall),
++        typeof(ShrinkPotion), typeof(EverlastingShrinkPotion), typeof(Shrinkbag), typeof(ShrinkStone),
++        typeof(HitchingPost), typeof(HitchingPostEastAddon), typeof(HitchingPostEastDeed),
++        typeof(HitchingPostSouthAddon), typeof(HitchingPostSouthDeed), typeof(AgapiteFletcherTools),
++        typeof(BronzeFletcherTools), typeof(CopperFletcherTools), typeof(DullCopperFletcherTools),
++        typeof(GoldFletcherTools), typeof(ShadowIronFletcherTools), typeof(ValoriteFletcherTools),
++        typeof(VeriteFletcherTools), typeof(AgapiteHammer), typeof(BronzeHammer), typeof(CopperHammer),
++        typeof(DullCopperHammer), typeof(GoldHammer), typeof(ShadowIronHammer), typeof(ValoriteHammer),
++        typeof(VeriteHammer), typeof(AgapiteSaw), typeof(BronzeSaw), typeof(CopperSaw), typeof(DullCopperSaw),
++        typeof(GoldSaw), typeof(ShadowIronSaw), typeof(ValoriteSaw), typeof(VeriteSaw), typeof(BarbedSewingKit),
++        typeof(HornedSewingKit), typeof(SpinedSewingKit), typeof(AgapiteTinkerTools), typeof(BronzeTinkerTools),
++        typeof(CopperTinkerTools), typeof(DullCopperTinkerTools), typeof(GoldTinkerTools),
++        typeof(ShadowIronTinkerTools), typeof(ValoriteTinkerTools), typeof(VeriteTinkerTools), typeof(BagOfHammers),
++        typeof(BagOfSaws), typeof(BagOfTinkerTools), typeof(BagOfFletcherTools), typeof(BagOfSewingKits),
++        typeof(BagOfRunicTools), typeof(BagOfCraft), typeof(RunicStone), typeof(CraftingStone)
++    ];
++
++    public void Dispose()
++    {
++        foreach (var e in _created)
++        {
++            e?.Delete();
++        }
++
++        _created.Clear();
++    }
++
++    private T Track<T>(T entity) where T : IEntity
++    {
++        _created.Add(entity);
++        return entity;
++    }
++
++    private PlayerMobile NewPlayer()
++    {
++        var m = Track(new PlayerMobile(World.NewMobile));
++        m.DefaultMobileInit();
++        m.MoveToWorld(new Point3D(1500, 1600, 0), Map.Felucca);
++        m.AddItem(new Backpack());
++        return m;
++    }
++
++    [Theory]
++    [MemberData(nameof(Items))]
++    public void Item_Constructs_WithANameOrLabel(Type type)
++    {
++        // ModernUO's activator fills optional parameters, as [add does; Activator.CreateInstance does not.
++        var item = Track(type.CreateInstance<Item>());
++
++        Assert.False(item.Deleted);
++        Assert.True(item.ItemID > 0);
++        Assert.True(!string.IsNullOrEmpty(item.Name) || item.LabelNumber > 0);
++    }
++
++    [Fact]
++    public void EquipBag_HoldsTenJewelsWithFiveProperties()
++    {
++        var bag = Track(new EquipBag());
++
++        Assert.Equal(10, bag.Items.Count);
++        Assert.All(bag.Items, i => Assert.IsAssignableFrom<BaseJewel>(i));
++    }
++
++    [Fact]
++    public void PvPBag_HoldsSixteenStacksOfSixtyThousand()
++    {
++        var bag = Track(new PvPBag());
++
++        Assert.Equal(16, bag.Items.Count);
++        Assert.All(bag.Items, i => Assert.Equal(60000, i.Amount));
++        Assert.Equal(LootType.Blessed, bag.LootType);
++    }
++
++    [Fact]
++    public void SexChangeDeed_TogglesSexAndRemovesBeard()
++    {
++        var m = NewPlayer();
++        m.Body = 400;
++        m.Female = false;
++        m.FacialHairItemID = 0x203F;
++        var deed = Track(new SexChangeDeed());
++        m.AddToBackpack(deed);
++
++        deed.Apply(m);
++
++        Assert.True(m.Female);
++        Assert.Equal(401, m.Body.BodyID);
++        Assert.Equal(0, m.FacialHairItemID);
++        Assert.True(deed.Deleted);
++    }
++
++    [Fact]
++    public void TemplateSkillBall_SetsSevenSkillsToHundredAndWipesTheRest()
++    {
++        var m = NewPlayer();
++        m.Skills.Cooking.Base = 50;
++        var ball = Track(new TemplateSkillBall());
++        m.AddToBackpack(ball);
++
++        ball.Apply(m, [0, 1, 2, 3, 4, 5, 6]); // Tactics, Anatomy, Swords, Fencing, Archery, Macing, Parry
++
++        Assert.Equal(100, m.Skills.Tactics.Base);
++        Assert.Equal(100, m.Skills.Parry.Base);
++        Assert.Equal(0, m.Skills.Cooking.Base);
++        Assert.Equal(700, m.Skills.Total / 10);
++        Assert.True(ball.Deleted);
++    }
++
++    [Fact]
++    public void StatBall_AcceptsOnlyTotalsEqualToTheStatCap()
++    {
++        var m = NewPlayer();
++        var ball = Track(new StatBall());
++        m.AddToBackpack(ball);
++        var cap = m.StatCap;
++
++        Assert.False(ball.TryApply(m, 5, cap / 2, cap - 5 - cap / 2));
++        Assert.False(ball.Deleted);
++
++        var str = 100;
++        var dex = (cap - str) / 2;
++        Assert.True(ball.TryApply(m, str, dex, cap - str - dex));
++        Assert.Equal(str, m.RawStr);
++        Assert.True(ball.Deleted);
++    }
++
++    [Fact]
++    public void SkillBall_RaisesTheSkillByItsBonus()
++    {
++        var m = NewPlayer();
++        m.Skills.Magery.Base = 50;
++        var ball = Track(new SkillBall(25));
++
++        ball.IncreaseSkill(m, m, m.Skills.Magery);
++
++        Assert.Equal(75, m.Skills.Magery.Base);
++        Assert.Equal(0, ball.SkillBonus);
++    }
++
++    [Fact]
++    public void Shrink_StoresAControlledPetAndUnshrinkBringsItBack()
++    {
++        var (master, pet) = PetTestSetup.SpawnControlledPet(new Point3D(1500, 1600, 0), new Point3D(1501, 1600, 0));
++        Track(master);
++        Track(pet);
++        master.AddItem(new Backpack());
++
++        Assert.True(ShrinkFunctions.Shrink(master, pet));
++
++        var statuette = master.Backpack.FindItemByType<ShrinkItem>();
++        Assert.NotNull(statuette);
++        Assert.Equal(Map.Internal, pet.Map);
++
++        statuette.OnDoubleClick(master);
++
++        Assert.True(statuette.Deleted);
++        Assert.Equal(Map.Felucca, pet.Map);
++        Assert.Same(master, pet.ControlMaster);
++        Assert.False(pet.IsStabled);
++    }
++
++    [Fact]
++    public void Emblem_DeathReturnsTheFiveKills()
++    {
++        var m = NewPlayer();
++        m.Kills = 2;
++        var emblem = Track(new Emblem());
++
++        Assert.True(emblem.OnEquip(m));
++        Assert.Equal(7, m.Kills);
++        Assert.False(emblem.Movable);
++
++        emblem.OnParentDeath(m);
++
++        Assert.Equal(2, m.Kills);
++        Assert.True(emblem.Movable);
++        Assert.Equal(-1, m.SolidHueOverride);
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Items/Balls.cs b/Projects/UOContent/Custom/DFI/Items/Balls.cs
+new file mode 100644
+index 000000000..7d7937383
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Items/Balls.cs
+@@ -0,0 +1,762 @@
++// Skill and stat balls. SkillBall, DonationSkillBall and PetSkillBall are DFI RunUO's
++// (Scripts/Custom/Items/SkillBalls); TemplateSkillBall is kopia 2012's SkillBall and StatBall its StatBall
++// (Scripts/Custom/Pozostale), renamed where the two shards clashed.
++
++using System;
++using System.Collections.Generic;
++using ModernUO.Serialization;
++using Server.Gumps;
++using Server.Mobiles;
++using Server.Network;
++using Server.Targeting;
++
++namespace Server.Items;
++
++// A GM-configured "+N to one skill" ball: Limited restricts it to combat and utility skills, MinCap is
++// the highest a chosen skill may start at, MaxCap the highest it may end at, and it can expire or be
++// bound to a player or an account. Over the skill cap it lowers skills set to go down.
++[SerializationGenerator(0)]
++public partial class SkillBall : Item
++{
++    private static readonly SkillName[] _limitedSkills =
++    [
++        SkillName.Anatomy, SkillName.AnimalLore, SkillName.ItemID, SkillName.ArmsLore, SkillName.Parry,
++        SkillName.Begging, SkillName.Peacemaking, SkillName.Camping, SkillName.DetectHidden, SkillName.Discordance,
++        SkillName.EvalInt, SkillName.Healing, SkillName.Forensics, SkillName.Herding, SkillName.Hiding,
++        SkillName.Magery, SkillName.MagicResist, SkillName.Tactics, SkillName.Snooping, SkillName.Musicianship,
++        SkillName.Archery, SkillName.SpiritSpeak, SkillName.Stealing, SkillName.TasteID, SkillName.Tracking,
++        SkillName.Veterinary, SkillName.Swords, SkillName.Macing, SkillName.Fencing, SkillName.Wrestling,
++        SkillName.Meditation, SkillName.Stealth, SkillName.RemoveTrap, SkillName.Necromancy, SkillName.Focus,
++        SkillName.Chivalry
++    ];
++
++    private static readonly SkillName[] _allSkills =
++    [
++        SkillName.Alchemy, SkillName.Anatomy, SkillName.AnimalLore, SkillName.ItemID, SkillName.ArmsLore,
++        SkillName.Parry, SkillName.Begging, SkillName.Blacksmith, SkillName.Fletching, SkillName.Peacemaking,
++        SkillName.Camping, SkillName.Carpentry, SkillName.Cartography, SkillName.Cooking, SkillName.DetectHidden,
++        SkillName.Discordance, SkillName.EvalInt, SkillName.Healing, SkillName.Fishing, SkillName.Forensics,
++        SkillName.Herding, SkillName.Hiding, SkillName.Provocation, SkillName.Inscribe, SkillName.Lockpicking,
++        SkillName.Magery, SkillName.MagicResist, SkillName.Tactics, SkillName.Snooping, SkillName.Musicianship,
++        SkillName.Poisoning, SkillName.Archery, SkillName.SpiritSpeak, SkillName.Stealing, SkillName.Tailoring,
++        SkillName.AnimalTaming, SkillName.TasteID, SkillName.Tinkering, SkillName.Tracking, SkillName.Veterinary,
++        SkillName.Swords, SkillName.Macing, SkillName.Fencing, SkillName.Wrestling, SkillName.Lumberjacking,
++        SkillName.Mining, SkillName.Meditation, SkillName.Stealth, SkillName.RemoveTrap, SkillName.Necromancy,
++        SkillName.Focus, SkillName.Chivalry
++    ];
++
++    [SerializableField(0)]
++    [InvalidateProperties]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private int _skillBonus;
++
++    [SerializableField(1)]
++    [InvalidateProperties]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private bool _limited;
++
++    [SerializableField(2)]
++    [InvalidateProperties]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private int _minCap;
++
++    [SerializableField(3)]
++    [InvalidateProperties]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private int _maxCap;
++
++    [SerializableField(4)]
++    [InvalidateProperties]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private bool _expires;
++
++    [SerializableField(5)]
++    [InvalidateProperties]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private DateTime _expireDate;
++
++    [SerializableField(6)]
++    [InvalidateProperties]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private Mobile _ownerPlayer;
++
++    [SerializableField(7)]
++    [InvalidateProperties]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private string _ownerAccount;
++
++    [Constructible]
++    public SkillBall(int bonus = 25, int maxcap = 100, bool limited = true, int days = 0, int mincap = 120) : base(7885)
++    {
++        _skillBonus = bonus;
++        _maxCap = maxcap;
++        _limited = limited;
++        _minCap = mincap;
++
++        if (days > 0)
++        {
++            _expireDate = Core.Now.AddDays(days);
++            _expires = true;
++        }
++
++        Hue = BallHue;
++    }
++
++    public override string DefaultName => "skill ball";
++    public override bool DisplayLootType => false;
++    public virtual int BallHue => 3;
++    public virtual bool Rechargable => false;
++
++    public bool IsExpired => _expires && Core.Now >= _expireDate;
++
++    public virtual SkillName[] GetAllowedSkills(Mobile target) => _limited ? _limitedSkills : _allSkills;
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++
++        if (_skillBonus > 0)
++        {
++            list.Add(1060658, $"{"bonus"}\t{_skillBonus} {(_limited ? "[Limited]" : "")}");
++        }
++        else
++        {
++            list.Add(1060658, $"{"bonus"}\t{"uncharged"}");
++        }
++
++        if (_minCap != 120)
++        {
++            list.Add(1060659, $"{"max skill"}\t{_minCap}");
++        }
++
++        if (_maxCap != 100)
++        {
++            list.Add(1060660, $"{"max bonus"}\t{_maxCap}");
++        }
++
++        if (_expires)
++        {
++            if (Core.Now < _expireDate)
++            {
++                list.Add(1074884, $"{(_expireDate - Core.Now).Days} days");
++            }
++            else if (_skillBonus > 0)
++            {
++                list.Add(1074884, $"{"none"}");
++            }
++        }
++
++        if (_ownerPlayer != null)
++        {
++            list.Add(1041522, $"\t{"player bound"}\t\t");
++        }
++        else if (!string.IsNullOrEmpty(_ownerAccount))
++        {
++            list.Add(1041522, $"\t{"account bound"}\t\t");
++        }
++    }
++
++    // True when someone other than the bound owner tries to use it.
++    public bool IsNotOwner(Mobile from) =>
++        _ownerPlayer != null && from != _ownerPlayer ||
++        !string.IsNullOrEmpty(_ownerAccount) && from.Account?.Username != _ownerAccount;
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        if (_skillBonus <= 0 || IsExpired)
++        {
++            if (from.AccessLevel >= AccessLevel.GameMaster)
++            {
++                from.SendGump(new PropertiesGump(from, this));
++            }
++
++            SendLocalizedMessageTo(from, 1042544); // This item is out of charges.
++        }
++        else if (!IsChildOf(from.Backpack))
++        {
++            from.SendLocalizedMessage(1042001); // That must be in your pack for you to use it.
++        }
++        else if (IsNotOwner(from))
++        {
++            from.SendMessage("Only the owner can use this skill ball.");
++        }
++        else if (from.HasGump<SkillBallGump>())
++        {
++            from.SendMessage("You are already using a skill ball.");
++        }
++        else
++        {
++            Use(from);
++        }
++    }
++
++    protected virtual void Use(Mobile from) => from.SendGump(new SkillBallGump(this, from));
++
++    public List<Skill> GetDecreasableSkills(Mobile from, int count, int cap, out int decreaseAmount)
++    {
++        var skills = from.Skills;
++        var decreased = new List<Skill>();
++        decreaseAmount = 0;
++
++        if (count + _skillBonus * 10 > cap)
++        {
++            for (var i = 0; i < skills.Length; i++)
++            {
++                var amount = skills[i].BaseFixedPoint;
++
++                if (skills[i].Lock == SkillLock.Down && amount > 0)
++                {
++                    decreased.Add(skills[i]);
++                    decreaseAmount += amount;
++                }
++            }
++        }
++
++        return decreased;
++    }
++
++    public void DecreaseSkills(List<Skill> decreased, int count, int cap)
++    {
++        var bonus = _skillBonus * 10;
++        var freePool = cap - count;
++
++        if (freePool >= bonus)
++        {
++            return;
++        }
++
++        bonus -= freePool;
++
++        foreach (var s in decreased)
++        {
++            if (s.BaseFixedPoint >= bonus)
++            {
++                s.BaseFixedPoint -= bonus;
++                return;
++            }
++
++            bonus -= s.BaseFixedPoint;
++            s.BaseFixedPoint = 0;
++        }
++    }
++
++    public virtual void IncreaseSkill(Mobile from, Mobile target, Skill skill)
++    {
++        skill.BaseFixedPoint += _skillBonus * 10;
++        SendConfirmMessage(from, target, skill);
++        SkillBonus = 0;
++    }
++
++    public virtual void SendConfirmMessage(Mobile from, Mobile target, Skill skill) =>
++        from.SendMessage($"{skill.Name} skill has been raised by {_skillBonus}");
++
++    // DFI purged expired balls at the next world save; this removes them as they load.
++    [AfterDeserialization]
++    private void AfterDeserialization()
++    {
++        if (IsExpired)
++        {
++            Timer.DelayCall(Delete);
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class DonationSkillBall : SkillBall
++{
++    private static readonly SkillName[] _limitedSkills =
++    [
++        SkillName.Anatomy, SkillName.AnimalLore, SkillName.ItemID, SkillName.ArmsLore, SkillName.Parry,
++        SkillName.Begging, SkillName.Peacemaking, SkillName.Camping, SkillName.Cartography, SkillName.DetectHidden,
++        SkillName.Discordance, SkillName.EvalInt, SkillName.Healing, SkillName.Fishing, SkillName.Forensics,
++        SkillName.Herding, SkillName.Hiding, SkillName.Provocation, SkillName.Inscribe, SkillName.Lockpicking,
++        SkillName.Magery, SkillName.MagicResist, SkillName.Tactics, SkillName.Snooping, SkillName.Musicianship,
++        SkillName.Poisoning, SkillName.Archery, SkillName.SpiritSpeak, SkillName.Stealing, SkillName.AnimalTaming,
++        SkillName.TasteID, SkillName.Tracking, SkillName.Veterinary, SkillName.Swords, SkillName.Macing,
++        SkillName.Fencing, SkillName.Wrestling, SkillName.Lumberjacking, SkillName.Mining, SkillName.Meditation,
++        SkillName.Stealth, SkillName.RemoveTrap, SkillName.Necromancy, SkillName.Focus, SkillName.Chivalry
++    ];
++
++    [Constructible]
++    public DonationSkillBall(int bonus = 25, int maxcap = 100, bool limited = true, int days = 0, int mincap = 120)
++        : base(bonus, maxcap, limited, days, mincap)
++    {
++    }
++
++    public override string DefaultName => "donation skill ball";
++    public override int BallHue => 33;
++
++    public override SkillName[] GetAllowedSkills(Mobile target) => Limited ? _limitedSkills : base.GetAllowedSkills(target);
++
++    public override void IncreaseSkill(Mobile from, Mobile target, Skill skill)
++    {
++        base.IncreaseSkill(from, target, skill);
++
++        if (target is PlayerMobile pm)
++        {
++            pm.Young = false;
++        }
++    }
++}
++
++// Raises a skill of the user's own pet, from a list that depends on whether it poisons or casts.
++[SerializationGenerator(0)]
++public partial class PetSkillBall : SkillBall
++{
++    private static readonly SkillName[] _meleeSkills =
++    [
++        SkillName.Anatomy, SkillName.MagicResist, SkillName.Tactics, SkillName.Wrestling, SkillName.Meditation
++    ];
++
++    private static readonly SkillName[] _mageSkills =
++    [
++        SkillName.Anatomy, SkillName.EvalInt, SkillName.Magery, SkillName.MagicResist, SkillName.Tactics,
++        SkillName.Wrestling, SkillName.Meditation
++    ];
++
++    private static readonly SkillName[] _poisonSkills =
++    [
++        SkillName.Anatomy, SkillName.MagicResist, SkillName.Tactics, SkillName.Wrestling, SkillName.Meditation,
++        SkillName.Poisoning
++    ];
++
++    [Constructible]
++    public PetSkillBall(int bonus = 25, int maxcap = 100, bool limited = true, int days = 0, int mincap = 120)
++        : base(bonus, maxcap, limited, days, mincap)
++    {
++    }
++
++    public override string DefaultName => "pet skill ball";
++    public override int BallHue => 1428;
++
++    public override SkillName[] GetAllowedSkills(Mobile target)
++    {
++        if (target.Skills.Poisoning.Base > 0)
++        {
++            return _poisonSkills;
++        }
++
++        return target.Skills.Magery.Base > 0 ? _mageSkills : _meleeSkills;
++    }
++
++    protected override void Use(Mobile from)
++    {
++        from.SendMessage("Target your pet to use the skill ball.");
++        from.Target = new PetSkillBallTarget(this);
++    }
++
++    public override void SendConfirmMessage(Mobile from, Mobile target, Skill skill) =>
++        from.SendMessage($"Your pet, {target.Name}'s skill in {skill.Name} has been raised by {SkillBonus}");
++
++    private class PetSkillBallTarget : Target
++    {
++        private readonly PetSkillBall _ball;
++
++        public PetSkillBallTarget(PetSkillBall ball) : base(12, false, TargetFlags.None) => _ball = ball;
++
++        protected override void OnTarget(Mobile from, object targeted)
++        {
++            if (targeted is not BaseCreature { Controlled: true } creature || creature.ControlMaster != from)
++            {
++                from.SendMessage("You cannot use this skill ball on that.");
++            }
++            else if (from.HasGump<SkillBallGump>())
++            {
++                from.SendMessage("You are already using a skill ball.");
++            }
++            else if (_ball.IsExpired)
++            {
++                _ball.SendLocalizedMessageTo(from, 1042544); // This item is out of charges.
++            }
++            else if (_ball.IsNotOwner(from))
++            {
++                from.SendMessage("Only the owner can use this skill ball.");
++            }
++            else
++            {
++                from.SendGump(new SkillBallGump(_ball, creature));
++            }
++        }
++    }
++}
++
++public class SkillBallGump : DynamicGump
++{
++    private const int FieldsPerPage = 14;
++
++    private readonly SkillBall _ball;
++    private readonly Mobile _target;
++
++    public SkillBallGump(SkillBall ball, Mobile target) : base(20, 30)
++    {
++        _ball = ball;
++        _target = target;
++    }
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        builder.AddPage();
++        builder.AddBackground(0, 0, 260, 351, 5054);
++        builder.AddImageTiled(10, 10, 240, 23, 0x52);
++        builder.AddImageTiled(11, 11, 238, 21, 0xBBC);
++        builder.AddLabel(45, 11, 0, "Select a skill to raise");
++
++        builder.AddPage(1);
++
++        var page = 1;
++        var index = 0;
++        var allowed = _ball.GetAllowedSkills(_target);
++
++        for (var i = 0; i < allowed.Length; ++i)
++        {
++            if (index >= FieldsPerPage)
++            {
++                builder.AddButton(231, 13, 0x15E1, 0x15E5, 0, GumpButtonType.Page, page + 1);
++                ++page;
++                index = 0;
++                builder.AddPage(page);
++                builder.AddButton(213, 13, 0x15E3, 0x15E7, 0, GumpButtonType.Page, page - 1);
++            }
++
++            var skill = _target.Skills[allowed[i]];
++
++            if (!CanRaise(skill, allowed[i]))
++            {
++                continue;
++            }
++
++            var y = 32 + index * 22;
++            builder.AddImageTiled(10, y, 240, 23, 0x52);
++            builder.AddImageTiled(11, y + 1, 238, 21, 0xBBC);
++            builder.AddLabelCropped(13, y + 1, 150, 21, 0, skill.Name);
++            builder.AddImageTiled(180, y + 2, 50, 19, 0x52);
++            builder.AddImageTiled(181, y + 3, 48, 17, 0xBBC);
++            builder.AddLabelCropped(182, y + 3, 234, 21, 0, $"{skill.Base:F1}");
++            builder.AddButton(231, y + 3, 0x15E1, 0x15E5, i + 1);
++            ++index;
++        }
++    }
++
++    private bool CanRaise(Skill skill, SkillName name)
++    {
++        var raised = skill.BaseFixedPoint + _ball.SkillBonus * 10;
++
++        return skill.BaseFixedPoint <= _ball.MinCap * 10 && raised <= _ball.MaxCap * 10 &&
++               raised <= skill.CapFixedPoint && skill.Lock == SkillLock.Up &&
++               (name != SkillName.Stealth || _target.Skills.Hiding.BaseFixedPoint >= 800);
++    }
++
++    public override void OnResponse(NetState state, in RelayInfo info)
++    {
++        var from = state.Mobile;
++
++        if (from == null || _ball.Deleted || info.ButtonID <= 0)
++        {
++            return;
++        }
++
++        var allowed = _ball.GetAllowedSkills(_target);
++
++        if (_ball.IsExpired)
++        {
++            _ball.SendLocalizedMessageTo(from, 1042544); // This item is out of charges.
++            return;
++        }
++
++        if (!_ball.IsChildOf(from.Backpack))
++        {
++            from.SendLocalizedMessage(1042001); // That must be in your pack for you to use it.
++            return;
++        }
++
++        if (_ball.IsNotOwner(from))
++        {
++            from.SendMessage("Only the owner can use this skill ball.");
++            return;
++        }
++
++        if (info.ButtonID > allowed.Length)
++        {
++            return;
++        }
++
++        var name = allowed[info.ButtonID - 1];
++        var skill = _target.Skills[name];
++        var raised = skill.BaseFixedPoint + _ball.SkillBonus * 10;
++
++        if (name == SkillName.Stealth && _target.Skills.Hiding.BaseFixedPoint < 800)
++        {
++            from.SendMessage("You cannot train stealth until you have at least 80% hiding skill.");
++        }
++        else if (skill.BaseFixedPoint > _ball.MinCap * 10)
++        {
++            from.SendMessage($"You may only choose skills which are below {_ball.MinCap}.");
++        }
++        else if (raised > _ball.MaxCap * 10)
++        {
++            from.SendMessage($"You may only choose skills which raise your skill to a maximum of {_ball.MaxCap}.");
++        }
++        else if (raised > skill.CapFixedPoint)
++        {
++            from.SendMessage($"You may only choose skills which raise your skill to a maximum of {skill.Cap}.");
++        }
++        else if (skill.Lock != SkillLock.Up)
++        {
++            from.SendMessage("You must set the skill to be increased in order to raise it further.");
++        }
++        else
++        {
++            var count = _target.SkillsTotal;
++            var cap = _target.SkillsCap;
++
++            // DFI counts the target's total but lowers the user's own skills; for a pet ball that means
++            // the owner's. Kept as it was.
++            var decreased = _ball.GetDecreasableSkills(from, count, cap, out var decreaseAmount);
++
++            if (cap - count + decreaseAmount >= _ball.SkillBonus * 10)
++            {
++                _ball.DecreaseSkills(decreased, count, cap);
++                _ball.IncreaseSkill(from, _target, skill);
++
++                if (!_ball.Rechargable)
++                {
++                    _ball.Delete();
++                }
++            }
++            else
++            {
++                from.SendMessage("You have exceeded the skill cap and do not have enough skill set to be decreased.");
++            }
++        }
++    }
++}
++
++// kopia 2012's skill ball: pick seven skills; every skill is wiped and the seven are set to 100.
++[SerializationGenerator(0)]
++public partial class TemplateSkillBall : Item
++{
++    private const int Picks = 7;
++
++    // As on kopia, the "Tracking" box sets Peacemaking.
++    private static readonly (string Label, SkillName Skill)[] _choices =
++    [
++        ("Tactics", SkillName.Tactics), ("Anatomy", SkillName.Anatomy), ("Swordsmanship", SkillName.Swords),
++        ("Fencing", SkillName.Fencing), ("Archery", SkillName.Archery), ("Macefighting", SkillName.Macing),
++        ("Parry", SkillName.Parry), ("Arms Lore", SkillName.ArmsLore), ("Wrestling", SkillName.Wrestling),
++        ("Blacksmithing", SkillName.Blacksmith), ("Carpentry", SkillName.Carpentry), ("Tinkering", SkillName.Tinkering),
++        ("Tailoring", SkillName.Tailoring), ("Fishing", SkillName.Fishing), ("Cooking", SkillName.Cooking),
++        ("Fletching", SkillName.Fletching), ("Mining", SkillName.Mining), ("Lumberjacking", SkillName.Lumberjacking),
++        ("Alchemy", SkillName.Alchemy), ("Inscription", SkillName.Inscribe), ("Magery", SkillName.Magery),
++        ("Spirit Speak", SkillName.SpiritSpeak), ("Evaluating Intelligence", SkillName.EvalInt),
++        ("Meditation", SkillName.Meditation), ("Hiding", SkillName.Hiding), ("Stealth", SkillName.Stealth),
++        ("Snooping", SkillName.Snooping), ("Stealing", SkillName.Stealing), ("Lockpicking", SkillName.Lockpicking),
++        ("Detecting Hidden", SkillName.DetectHidden), ("Remove Trap", SkillName.RemoveTrap),
++        ("Tracking", SkillName.Peacemaking), ("Poisoning", SkillName.Poisoning), ("Animal Taming", SkillName.AnimalTaming),
++        ("Animal Lore", SkillName.AnimalLore), ("Camping", SkillName.Camping), ("Musicianship", SkillName.Musicianship),
++        ("Provocation", SkillName.Provocation), ("Peacemaking", SkillName.Peacemaking),
++        ("Item Identification", SkillName.ItemID), ("Taste Identification", SkillName.TasteID),
++        ("Foresic Evaluation", SkillName.Forensics), ("Begging", SkillName.Begging), ("Healing", SkillName.Healing),
++        ("Herding", SkillName.Herding), ("Resisting Spells", SkillName.MagicResist), ("Veterinary", SkillName.Veterinary),
++        ("Cartography", SkillName.Cartography)
++    ];
++
++    [Constructible]
++    public TemplateSkillBall() : base(0xE73)
++    {
++        Weight = 1.0;
++        Hue = 1161;
++        Movable = false;
++    }
++
++    public override string DefaultName => "skill ball";
++
++    public override void OnDoubleClick(Mobile m)
++    {
++        if (!IsChildOf(m.Backpack))
++        {
++            m.SendMessage(" You need to have the skill ball in your backpack.");
++            return;
++        }
++
++        m.SendMessage("Please choose  your 7 skills to set to 7x GM.");
++        m.CloseGump<SkillPickGump>();
++        m.SendGump(new SkillPickGump(this));
++    }
++
++    public void Apply(Mobile m, ReadOnlySpan<int> switches)
++    {
++        var skills = m.Skills;
++
++        for (var i = 0; i < skills.Length; ++i)
++        {
++            skills[i].Base = 0;
++        }
++
++        foreach (var s in switches)
++        {
++            if (s >= 0 && s < _choices.Length)
++            {
++                skills[_choices[s].Skill].Base = 100;
++            }
++        }
++
++        Delete();
++    }
++
++    private class SkillPickGump : DynamicGump
++    {
++        private readonly TemplateSkillBall _ball;
++
++        public SkillPickGump(TemplateSkillBall ball) : base(0, 0) => _ball = ball;
++
++        protected override void BuildLayout(ref DynamicGumpBuilder builder)
++        {
++            builder.AddPage();
++            builder.AddBackground(30, 25, 600, 480, 9200);
++            builder.AddLabel(67, 41, 1153, "Please select your 7 skills");
++
++            for (var i = 0; i < _choices.Length; i++)
++            {
++                var x = 55 + 185 * (i / 16);
++                var y = 65 + 25 * (i % 16);
++
++                builder.AddCheckbox(x, y, 210, 211, false, i);
++                builder.AddLabel(x + 25, y, 0, _choices[i].Label);
++            }
++
++            builder.AddButton(530, 470, 247, 248, 1);
++        }
++
++        public override void OnResponse(NetState state, in RelayInfo info)
++        {
++            var m = state.Mobile;
++
++            if (info.ButtonID != 1 || _ball.Deleted)
++            {
++                return;
++            }
++
++            if (info.Switches.Length < Picks)
++            {
++                m.SendGump(new SkillPickGump(_ball));
++                m.SendMessage(0, $"You must pick {Picks - info.Switches.Length} more skills.");
++            }
++            else if (info.Switches.Length > Picks)
++            {
++                m.SendGump(new SkillPickGump(_ball));
++                m.SendMessage(0, $"Please get rid of {info.Switches.Length - Picks} skills, you have exceeded the 7 skills that are allowed.");
++            }
++            else
++            {
++                _ball.Apply(m, info.Switches);
++            }
++        }
++    }
++}
++
++// Sets strength, dexterity and intelligence, each 10-100, to totals equal to the stat cap.
++[SerializationGenerator(0)]
++public partial class StatBall : Item
++{
++    [Constructible]
++    public StatBall() : base(0xE73)
++    {
++        Movable = false;
++        Weight = 1.0;
++        Hue = 1153;
++        LootType = LootType.Blessed;
++    }
++
++    public override string DefaultName => "Stat ball";
++    public override bool DisplayLootType => false;
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        if (!IsChildOf(from.Backpack))
++        {
++            from.SendLocalizedMessage(1042001); // That must be in your pack for you to use it.
++            return;
++        }
++
++        if (from is PlayerMobile)
++        {
++            from.SendGump(new StatBallGump(this, from.StatCap));
++        }
++    }
++
++    public bool TryApply(Mobile from, int str, int dex, int intel)
++    {
++        if (str + dex + intel != from.StatCap || str is < 10 or > 100 || dex is < 10 or > 100 || intel is < 10 or > 100)
++        {
++            from.SendMessage("Your choice totals are invalid.  Please try again!");
++            return false;
++        }
++
++        from.RawStr = str;
++        from.RawDex = dex;
++        from.RawInt = intel;
++        Delete();
++        return true;
++    }
++
++    private class StatBallGump : DynamicGump
++    {
++        private readonly StatBall _ball;
++        private readonly int _statCap;
++
++        public StatBallGump(StatBall ball, int statCap) : base(50, 50)
++        {
++            _ball = ball;
++            _statCap = statCap;
++        }
++
++        protected override void BuildLayout(ref DynamicGumpBuilder builder)
++        {
++            builder.SetNoResize();
++            builder.AddPage();
++            builder.AddBackground(60, 50, 430, 210, 9200);
++            builder.AddLabel(200, 67, 1160, "Stat Ball Selection");
++            builder.AddLabel(114, 96, 1160, "Choose your Strength, Dexterity, and Intelligence");
++            builder.AddLabel(84, 156, 1152, "STR");
++            builder.AddLabel(228, 156, 1152, "DEX");
++            builder.AddLabel(368, 156, 1152, "INT");
++            builder.AddTextEntry(134, 156, 50, 20, 1359, 0, "50");
++            builder.AddTextEntry(278, 156, 50, 20, 1359, 1, "50");
++            builder.AddTextEntry(411, 156, 50, 20, 1359, 2, "50");
++            builder.AddButton(405, 221, 238, 240, 4);
++            builder.AddLabel(114, 200, 1152, "* Stat totals should equal ");
++            builder.AddLabel(282, 200, 1152, $"{_statCap}");
++            builder.AddLabel(313, 200, 1152, "*");
++        }
++
++        public override void OnResponse(NetState sender, in RelayInfo info)
++        {
++            var from = sender.Mobile;
++
++            if (_ball.Deleted || info.ButtonID != 4)
++            {
++                return;
++            }
++
++            if (!int.TryParse(info.GetTextEntry(0), out var str))
++            {
++                from.SendMessage("Bad strength entry. A number was expected.");
++            }
++
++            if (!int.TryParse(info.GetTextEntry(1), out var dex))
++            {
++                from.SendMessage("Bad dexterity entry. A number was expected.");
++            }
++
++            if (!int.TryParse(info.GetTextEntry(2), out var intel))
++            {
++                from.SendMessage("Bad intelligence entry. A number was expected.");
++            }
++
++            if (str > 0 && dex > 0 && intel > 0)
++            {
++                _ball.TryApply(from, str, dex, intel);
++            }
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Items/Deeds.cs b/Projects/UOContent/Custom/DFI/Items/Deeds.cs
+new file mode 100644
+index 000000000..e66a7e2ad
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Items/Deeds.cs
+@@ -0,0 +1,1031 @@
++// Player deeds from the kopia 2012 RunUO shard (Scripts/Custom/Pozostale) and DFI RunUO
++// (Scripts/Custom/Items/Deeds). Where both shards had a deed, it follows DFI's rules with kopia's look.
++
++using System;
++using ModernUO.Serialization;
++using Server.Factions;
++using Server.Gumps;
++using Server.Misc;
++using Server.Mobiles;
++using Server.Network;
++using Server.Prompts;
++using Server.Targeting;
++
++namespace Server.Items;
++
++// The shared shape of these deeds: blessed, in the pack to use, then a target or a gump.
++[SerializationGenerator(0)]
++public abstract partial class DfiDeed : Item
++{
++    public DfiDeed(int hue) : base(0x14F0)
++    {
++        Weight = 1.0;
++        Hue = hue;
++        LootType = LootType.Blessed;
++    }
++
++    public override bool DisplayLootType => false;
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        if (!IsChildOf(from.Backpack))
++        {
++            from.SendLocalizedMessage(1042001); // That must be in your pack for you to use it.
++            return;
++        }
++
++        Use(from);
++    }
++
++    protected abstract void Use(Mobile from);
++
++    protected sealed class DeedTarget : Target
++    {
++        private readonly DfiDeed _deed;
++        private readonly Action<Mobile, object> _onTarget;
++
++        public DeedTarget(DfiDeed deed, int range, Action<Mobile, object> onTarget) : base(range, false, TargetFlags.None)
++        {
++            _deed = deed;
++            _onTarget = onTarget;
++        }
++
++        protected override void OnTarget(Mobile from, object targeted)
++        {
++            if (!_deed.Deleted && _deed.IsChildOf(from.Backpack))
++            {
++                _onTarget(from, targeted);
++            }
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class ItemBlessDeed : DfiDeed
++{
++    [Constructible]
++    public ItemBlessDeed() : base(0)
++    {
++    }
++
++    public override string DefaultName => "a item bless deed";
++
++    protected override void Use(Mobile from)
++    {
++        from.SendLocalizedMessage(1005018); // What would you like to bless? (Clothes Only)
++        from.Target = new DeedTarget(this, 1, OnTarget);
++    }
++
++    private void OnTarget(Mobile from, object targeted)
++    {
++        if (targeted is not Item item)
++        {
++            from.SendLocalizedMessage(500509); // You cannot bless that object
++        }
++        else if (item.LootType == LootType.Blessed || item.BlessedFor == from || ServerFeatureFlags.InsuranceEnabled && item.Insured)
++        {
++            from.SendLocalizedMessage(1045113); // That item is already blessed
++        }
++        else if (item.LootType != LootType.Regular)
++        {
++            from.SendLocalizedMessage(1045114); // You can not bless that item
++        }
++        else
++        {
++            item.LootType = LootType.Blessed;
++            from.SendLocalizedMessage(1010026); // You bless the item....
++            Delete();
++        }
++    }
++}
++
++// Moves a body sash to the earrings layer so it can be worn over a cloak or robe.
++[SerializationGenerator(0)]
++public partial class SashLayerDeed : DfiDeed
++{
++    [Constructible]
++    public SashLayerDeed() : base(1266)
++    {
++    }
++
++    public override string DefaultName => "a sash layering deed";
++
++    protected override void Use(Mobile from)
++    {
++        from.SendMessage("What sash would you like to layer?");
++        from.Target = new DeedTarget(this, 1, OnTarget);
++    }
++
++    private void OnTarget(Mobile from, object targeted)
++    {
++        if (targeted is not BodySash sash)
++        {
++            from.SendMessage("You cannot layer that object");
++        }
++        else if (sash.Layer == Layer.Earrings)
++        {
++            from.SendMessage("That Body Sash is already Layered");
++        }
++        else if (sash.RootParent != from)
++        {
++            from.SendMessage("Make sure the item is in your backpack");
++        }
++        else
++        {
++            sash.Layer = Layer.Earrings;
++            sash.Name = sash.Name != null ? $"{sash.Name} [Layered]" : "a body sash [Layered]";
++            from.SendMessage("You layer the sash!");
++            Delete();
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class SpellChannelingDeed : DfiDeed
++{
++    [Constructible]
++    public SpellChannelingDeed() : base(1175)
++    {
++    }
++
++    public override string DefaultName => "a Spell Channeling deed";
++
++    protected override void Use(Mobile from)
++    {
++        from.SendMessage("What item would you like to add spell channeling to?");
++        from.Target = new DeedTarget(this, 1, OnTarget);
++    }
++
++    private void OnTarget(Mobile from, object targeted)
++    {
++        var (attributes, kind) = targeted switch
++        {
++            BaseWeapon w => (w.Attributes, "weapon"),
++            BaseShield s => (s.Attributes, "shield"),
++            _            => (null, null)
++        };
++
++        if (attributes == null)
++        {
++            from.SendMessage("You cannot put spell channeling on that");
++        }
++        else if (attributes.SpellChanneling == 1)
++        {
++            from.SendMessage("That already has spell channeling!");
++        }
++        else if (((Item)targeted).RootParent != from)
++        {
++            from.SendMessage("You cannot put spell channeling on that!");
++        }
++        else
++        {
++            attributes.SpellChanneling = 1;
++            from.SendMessage($"You magically add spell channeling to your {kind}....");
++            Delete();
++        }
++    }
++}
++
++// Despite its name kopia's deed adds 5 self repair to armor and hats and 1 to weapons; capped at 10.
++[SerializationGenerator(0)]
++public partial class SelfRepairDeed : DfiDeed
++{
++    [Constructible]
++    public SelfRepairDeed() : base(1289)
++    {
++    }
++
++    public override string DefaultName => "Self Repair +1 Deed";
++
++    protected override void Use(Mobile from)
++    {
++        from.SendMessage("What item would you like to increase the self repair on?");
++        from.Target = new DeedTarget(this, 5, OnTarget);
++    }
++
++    private void OnTarget(Mobile from, object targeted)
++    {
++        int current;
++        int step;
++        Action<int> set;
++
++        switch (targeted)
++        {
++            case BaseArmor a:
++                {
++                    current = a.ArmorAttributes.SelfRepair;
++                    step = 5;
++                    set = v => a.ArmorAttributes.SelfRepair = v;
++                    break;
++                }
++            case BaseWeapon w:
++                {
++                    current = w.WeaponAttributes.SelfRepair;
++                    step = 1;
++                    set = v => w.WeaponAttributes.SelfRepair = v;
++                    break;
++                }
++            case BaseHat h:
++                {
++                    current = h.ClothingAttributes.SelfRepair;
++                    step = 5;
++                    set = v => h.ClothingAttributes.SelfRepair = v;
++                    break;
++                }
++            default:
++                {
++                    from.SendMessage("You cannot put self repair on that!");
++                    return;
++                }
++        }
++
++        if (current >= 10)
++        {
++            from.SendMessage("That item has reached the maximum self repair!");
++        }
++        else if (((Item)targeted).RootParent != from)
++        {
++            from.SendMessage("You cannot add self repair to that item there!");
++        }
++        else
++        {
++            var value = Math.Min(current + step, 10);
++            set(value);
++            from.SendMessage(
++                value >= 10
++                    ? "You increase the self repair on the item... it has now reached it's max."
++                    : "You increase the self repair on the item..."
++            );
++            Delete();
++        }
++    }
++}
++
++// As on kopia, the deed is spent when the prompt opens, whatever is typed.
++[SerializationGenerator(0)]
++public partial class TitleChangeDeed : DfiDeed
++{
++    [Constructible]
++    public TitleChangeDeed() : base(0) => LootType = LootType.Regular;
++
++    public override string DefaultName => "Title change deed";
++
++    protected override void Use(Mobile from)
++    {
++        from.SendMessage("Enter your desired Title.");
++        from.Prompt = new RetitlePrompt();
++        Delete();
++    }
++
++    private class RetitlePrompt : Prompt
++    {
++        public override void OnResponse(Mobile from, string text)
++        {
++            text = text.Trim();
++
++            if (!NameVerification.Validate(text, 2, 16, true, true, true, 1, NameVerification.SpaceDashPeriodQuote))
++            {
++                return;
++            }
++
++            from.Title = text;
++            from.SendMessage($"Your Title be hence forth know as {text}");
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class PetResurrectionDeed : DfiDeed
++{
++    [Constructible]
++    public PetResurrectionDeed() : base(2216) => Weight = 0;
++
++    public override string DefaultName => "a pet Resurrection deed";
++
++    protected override void Use(Mobile from)
++    {
++        from.SendMessage("Choose the pet you wish to bring back to life.");
++        from.Target = new DeedTarget(this, 1, OnTarget);
++    }
++
++    private void OnTarget(Mobile from, object targeted)
++    {
++        if (targeted is not BaseCreature pet)
++        {
++            from.SendMessage("That is not a valid traget.");
++        }
++        else if (!pet.IsDeadPet)
++        {
++            from.SendMessage("That pet is already living!");
++        }
++        else if (pet.ControlMaster != from)
++        {
++            from.SendMessage("That is not your pet!");
++        }
++        else if (pet.Map?.CanFit(pet.Location, 16, false, false) != true)
++        {
++            from.SendLocalizedMessage(501042); // Target can not be resurrected at that location.
++        }
++        else if (from.InRange(pet, 3))
++        {
++            from.SendLocalizedMessage(503255); // You are able to resurrect the creature.
++            pet.PlaySound(0x214);
++            pet.FixedEffect(0x376A, 10, 16);
++            pet.ResurrectPet();
++            Delete();
++        }
++    }
++}
++
++// DFI's checks (owner, bondable, enough taming) on kopia's blessed, hued deed.
++[SerializationGenerator(0)]
++public partial class PetBondingDeed : DfiDeed
++{
++    [Constructible]
++    public PetBondingDeed() : base(572)
++    {
++    }
++
++    public override string DefaultName => "a pet bonding deed";
++
++    protected override void Use(Mobile from)
++    {
++        from.SendMessage("Target a tamed creature that you want bonded.");
++        from.Target = new DeedTarget(this, -1, OnTarget);
++    }
++
++    private void OnTarget(Mobile from, object targeted)
++    {
++        if (targeted is not BaseCreature creature)
++        {
++            from.SendMessage("You cannot bond that!");
++        }
++        else if (creature.ControlMaster != from || !creature.Controlled || !creature.IsBondable)
++        {
++            from.SendMessage("You cannot bond that creature!");
++        }
++        else if (creature.IsBonded)
++        {
++            from.SendMessage("Creature is already bonded!");
++        }
++        else if (creature.MinTameSkill > 29.1 && from.Skills.AnimalTaming.Value < creature.MinTameSkill)
++        {
++            from.SendLocalizedMessage(1075268); // Your pet cannot form a bond with you until your animal taming ability has risen.
++        }
++        else
++        {
++            creature.IsBonded = true;
++            creature.BondingBegin = DateTime.MinValue;
++            from.SendLocalizedMessage(1049666); // Your pet has bonded with you!
++            Delete();
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class WarHorseBondingDeed : DfiDeed
++{
++    [Constructible]
++    public WarHorseBondingDeed() : base(0) => LootType = LootType.Regular;
++
++    public override string DefaultName => "a faction warhorse bonding deed";
++
++    protected override void Use(Mobile from)
++    {
++        from.SendMessage("Target a faction warhorse that you want bonded.");
++        from.Target = new DeedTarget(this, -1, OnTarget);
++    }
++
++    private void OnTarget(Mobile from, object targeted)
++    {
++        if (targeted is not FactionWarHorse horse)
++        {
++            from.SendMessage("You cannot bond that!");
++        }
++        else if (horse.ControlMaster != from || !horse.Controlled)
++        {
++            from.SendMessage("You cannot bond that creature!");
++        }
++        else if (horse.IsBonded)
++        {
++            from.SendMessage("That creature is already bonded!");
++        }
++        else
++        {
++            horse.IsBonded = true;
++            horse.BondingBegin = DateTime.MinValue;
++            from.SendLocalizedMessage(1049666); // Your pet has bonded with you!
++            Delete();
++        }
++    }
++}
++
++// DFI's confirm-and-toggle on kopia's blessed deed.
++[SerializationGenerator(0)]
++public partial class SexChangeDeed : DfiDeed
++{
++    [Constructible]
++    public SexChangeDeed() : base(0)
++    {
++    }
++
++    public override string DefaultName => "a sex change deed";
++
++    protected override void Use(Mobile from) => SexChangeConfirmGump.DisplayTo(from, this);
++
++    public void Apply(Mobile from)
++    {
++        from.SendMessage("You feel your body proportions change.");
++        from.Body = from.Body.BodyID == 400 ? 401 : 400;
++        from.Female = !from.Female;
++
++        if (from.Female && from.FacialHairItemID > 0)
++        {
++            from.SendMessage("You feel a sharp pain as your beard is torn off by invisible forces.");
++            from.FacialHairItemID = 0;
++        }
++
++        Delete();
++    }
++
++    private class SexChangeConfirmGump : DynamicGump
++    {
++        private readonly SexChangeDeed _deed;
++
++        private SexChangeConfirmGump(SexChangeDeed deed) : base(200, 200) => _deed = deed;
++
++        public override bool Singleton => true;
++
++        public static void DisplayTo(Mobile from, SexChangeDeed deed)
++        {
++            if (from?.NetState != null)
++            {
++                from.SendGump(new SexChangeConfirmGump(deed));
++            }
++        }
++
++        protected override void BuildLayout(ref DynamicGumpBuilder builder)
++        {
++            builder.SetNoResize();
++            builder.AddPage();
++            builder.AddBackground(0, 0, 300, 110, 9200);
++            builder.AddLabel(28, 15, 255, "Changing sex involves intense magic.");
++            builder.AddLabel(28, 31, 255, "Your facial hair, if any, will dissapear.");
++            builder.AddLabel(28, 47, 255, "Are you sure you want to proceed?");
++            builder.AddButton(28, 70, 4005, 4007, 1);
++            builder.AddLabel(80, 70, 255, "Yes");
++            builder.AddButton(130, 70, 4005, 4007, 0);
++            builder.AddLabel(182, 70, 255, "No");
++        }
++
++        public override void OnResponse(NetState state, in RelayInfo info)
++        {
++            var from = state.Mobile;
++
++            if (info.ButtonID != 1 || _deed.Deleted || from?.Backpack == null)
++            {
++                return;
++            }
++
++            if (!_deed.IsChildOf(from.Backpack))
++            {
++                from.SendLocalizedMessage(1042001); // That must be in your pack for you to use it.
++                return;
++            }
++
++            _deed.Apply(from);
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class BeardRestylingDeed : DfiDeed
++{
++    private static readonly (int Cliloc, int ItemID, int Image)[] _beards =
++    [
++        (1011060, 0x203F, 0xC672), // Short Beard
++        (1011061, 0x203E, 0xC671), // Long Beard
++        (1011062, 0x2041, 0xC673), // Mustache
++        (1015323, 0x2040, 0xC670), // Goatee
++        (1011401, 0x204D, 0xC674), // Vandyke
++        (1015321, 0x204B, 0xC676), // Short Beard w/Mustache
++        (1015322, 0x204C, 0xC675), // Long Beard w/ Mustache
++        (1075521, 0, 0)            // Clean Shaven
++    ];
++
++    [Constructible]
++    public BeardRestylingDeed() : base(0)
++    {
++    }
++
++    public override string DefaultName => "a couple for a free beard restyling";
++    public override bool DisplayLootType => true;
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        if (from.Race == Race.Elf)
++        {
++            from.SendMessage("This isn't implemented for elves yet.  Sorry!");
++            return;
++        }
++
++        if (from.Female)
++        {
++            from.SendMessage("Only males can use this!");
++            return;
++        }
++
++        base.OnDoubleClick(from);
++    }
++
++    protected override void Use(Mobile from) => from.SendGump(new BeardGump(this));
++
++    private class BeardGump : DynamicGump
++    {
++        private readonly BeardRestylingDeed _deed;
++
++        public BeardGump(BeardRestylingDeed deed) : base(50, 50) => _deed = deed;
++
++        public override bool Singleton => true;
++
++        protected override void BuildLayout(ref DynamicGumpBuilder builder)
++        {
++            builder.AddBackground(100, 10, 400, 385, 0xA28);
++            builder.AddHtml(100, 25, 400, 35, "<CENTER>BEARD SELECTION MENU</CENTER>");
++            builder.AddButton(175, 340, 0xFA5, 0xFA7, 0);
++            builder.AddHtmlLocalized(210, 342, 90, 35, 3000091); // Cancel
++
++            for (var i = 0; i < _beards.Length; i++)
++            {
++                var col = i / 4;
++                var row = i % 4;
++                var x = col == 0 ? 0 : 205;
++                var y = 55 * row;
++
++                builder.AddBackground(220 + x, 60 + y, 50, 50, 0xA3C);
++                builder.AddHtmlLocalized(150 + x, 75 + y, 80, 35, _beards[i].Cliloc);
++
++                if (_beards[i].Image != 0)
++                {
++                    builder.AddImage(153 + x, 20 + y, _beards[i].Image);
++                }
++
++                builder.AddButton(118 + x, 73 + y, 0xFA5, 0xFA7, i + 1);
++            }
++        }
++
++        public override void OnResponse(NetState state, in RelayInfo info)
++        {
++            var from = state.Mobile;
++
++            if (_deed.Deleted || info.ButtonID < 1 || info.ButtonID > _beards.Length || !_deed.IsChildOf(from.Backpack))
++            {
++                return;
++            }
++
++            (from as PlayerMobile)?.SetHairMods(-1, -1); // clear any hair mods (disguise kit, incognito)
++            from.FacialHairItemID = _beards[info.ButtonID - 1].ItemID;
++            _deed.Delete();
++        }
++    }
++}
++
++// Picks one of 35 appearances and applies it to a piece of armor, clothing or jewelry the user carries.
++[SerializationGenerator(0)]
++public partial class ItemIDDeed : DfiDeed
++{
++    private static readonly (string Label, int ItemID)[] _looks =
++    [
++        ("Kasa", 10136), ("Floppy Hat", 5907), ("Jester Hat", 5916), ("Bandana", 5440), ("Tribal Mask", 5449),
++        ("Deer Mask", 5447), ("Mexico Hat", 5910), ("Straw Hat", 5911), ("Bonnet", 5913), ("Feathered Hat", 5914),
++        ("Tricorne Hat", 5915), ("Bone Helm", 5201), ("Sandals", 5901), ("Boots", 5899), ("Waraji Tabi", 10134),
++        ("Jin-Baori", 10145), ("Half Apron", 5435), ("Body Sash", 5441), ("Skirt", 5398), ("Doublet", 8059),
++        ("Shirt", 5399), ("Female Skirt", 7176), ("Female Armor", 7174), ("Necklace", 4232), ("Earrings", 4231),
++        ("Rings", 4234), ("Bracelet", 4230), ("Spellbook", 3834), ("Bone Hands", 5200), ("Bone Arms", 5198),
++        ("Bone Legs", 5202), ("Bone Chest", 5199), ("Lantern", 2594), ("Candle", 2575), ("Torch", 2578)
++    ];
++
++    [Constructible]
++    public ItemIDDeed() : base(1161)
++    {
++    }
++
++    public override string DefaultName => "Item ID Deed";
++
++    protected override void Use(Mobile from)
++    {
++        from.CloseGump<ItemIDDeedGump>();
++        from.SendGump(new ItemIDDeedGump(this));
++    }
++
++    private void OnTarget(Mobile from, object targeted, int itemID)
++    {
++        if (targeted is not (BaseJewel or BaseArmor or BaseClothing or BaseShield))
++        {
++            from.SendMessage(38, "You can change only armors, jewellerys and clothings Item ID !");
++        }
++        else if (((Item)targeted).RootParent != from)
++        {
++            from.SendMessage(38, "It should be in your backpack");
++        }
++        else
++        {
++            ((Item)targeted).ItemID = itemID;
++            from.SendMessage("You have changed the item id");
++            Delete();
++        }
++    }
++
++    private class ItemIDDeedGump : DynamicGump
++    {
++        private const int FirstSwitch = 50;
++        private readonly ItemIDDeed _deed;
++
++        public ItemIDDeedGump(ItemIDDeed deed) : base(0, 0) => _deed = deed;
++
++        protected override void BuildLayout(ref DynamicGumpBuilder builder)
++        {
++            builder.SetNoResize();
++            builder.AddPage();
++            builder.AddBackground(212, 21, 436, 576, 9270);
++            builder.AddImageTiled(216, 25, 428, 568, 9354);
++
++            for (var i = 0; i < _looks.Length; i++)
++            {
++                var x = i < 18 ? 232 : 454;
++                var y = 66 + 27 * (i < 18 ? i : i - 18);
++
++                builder.AddCheckbox(x, y, 10810, 10830, false, FirstSwitch + i);
++                builder.AddLabel(x + 36, y + 4, 27, _looks[i].Label);
++            }
++
++            builder.AddButton(271, 539, 10800, 10820, 1);
++            builder.AddLabel(304, 516, 1160, "START");
++        }
++
++        public override void OnResponse(NetState state, in RelayInfo info)
++        {
++            var from = state.Mobile;
++
++            if (info.ButtonID != 1 || _deed.Deleted)
++            {
++                return;
++            }
++
++            if (info.Switches.Length != 1)
++            {
++                from.SendMessage(38, "You cant do this");
++                return;
++            }
++
++            var index = info.Switches[0] - FirstSwitch;
++
++            if (index < 0 || index >= _looks.Length)
++            {
++                return;
++            }
++
++            var itemID = _looks[index].ItemID;
++            var deed = _deed;
++            from.Target = new DeedTarget(deed, -1, (m, t) => deed.OnTarget(m, t, itemID));
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class SpellbookDeed : DfiDeed
++{
++    private static readonly (string Label, int ButtonArt, Func<Item> Create)[] _books =
++    [
++        ("Spellbook", 2234, () => new FullMagerySpellbook()),
++        ("Necromancy", 11011, () => new FullNecroSpellbook()),
++        ("Chivalry", 11012, () => new FullChivalrySpellbook()),
++        ("Bushido", 11017, () => new FullBushidoSpellbook()),
++        ("Ninjitsu", 11016, () => new FullNinjitsuSpellbook()),
++        ("Spellweaving", 11053, () => new FullSpellweavingSpellbook())
++    ];
++
++    [Constructible]
++    public SpellbookDeed() : base(0x3E4) => LootType = LootType.Regular;
++
++    public override string DefaultName => "Spellbook Deed";
++
++    protected override void Use(Mobile from) => from.SendGump(new SpellbookGump(this));
++
++    private class SpellbookGump : DynamicGump
++    {
++        private readonly SpellbookDeed _deed;
++
++        public SpellbookGump(SpellbookDeed deed) : base(20, 20) => _deed = deed;
++
++        public override bool Singleton => true;
++
++        protected override void BuildLayout(ref DynamicGumpBuilder builder)
++        {
++            builder.SetNoDispose();
++            builder.SetNoResize();
++            builder.AddPage();
++            builder.AddBackground(34, 17, 350, 368, 9200);
++            builder.AddLabel(128, 38, 0, "Choose your Spellbook");
++
++            for (var i = 0; i < _books.Length; i++)
++            {
++                var x = i % 2 == 0 ? 117 : 250;
++                var y = 77 + 84 * (i / 2);
++
++                builder.AddButton(x, y, _books[i].ButtonArt, 248, i + 1);
++                builder.AddLabel(x - 5, y + 55, 0, _books[i].Label);
++            }
++
++            builder.AddButton(298, 347, 241, 248, 0); // Close
++        }
++
++        public override void OnResponse(NetState state, in RelayInfo info)
++        {
++            var from = state.Mobile;
++
++            if (info.ButtonID < 1 || info.ButtonID > _books.Length || _deed.Deleted || !_deed.IsChildOf(from.Backpack))
++            {
++                return;
++            }
++
++            from.AddToBackpack(_books[info.ButtonID - 1].Create());
++            _deed.Delete();
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class FullMagerySpellbook : Spellbook
++{
++    [Constructible]
++    public FullMagerySpellbook() : base(ulong.MaxValue)
++    {
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class FullNecroSpellbook : NecromancerSpellbook
++{
++    [Constructible]
++    public FullNecroSpellbook() : base(Core.SE ? 0x1FFFFUL : 0xFFFFUL)
++    {
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class FullChivalrySpellbook : BookOfChivalry
++{
++    [Constructible]
++    public FullChivalrySpellbook() : base(0x3FF)
++    {
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class FullBushidoSpellbook : BookOfBushido
++{
++    [Constructible]
++    public FullBushidoSpellbook() : base(0x3F)
++    {
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class FullNinjitsuSpellbook : BookOfNinjitsu
++{
++    [Constructible]
++    public FullNinjitsuSpellbook() : base(0xFF)
++    {
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class FullSpellweavingSpellbook : SpellweavingBook
++{
++    [Constructible]
++    public FullSpellweavingSpellbook() : base(0xFFFF)
++    {
++    }
++}
++
++// Artifact, champion artifact and minor artifact deeds: the user picks one item from a category list
++// and receives it blessed. The lists and labels are kopia 2012's, its mismatched labels included.
++[SerializationGenerator(0)]
++public abstract partial class ArtifactChoiceDeed : DfiDeed
++{
++    public ArtifactChoiceDeed(int hue) : base(hue)
++    {
++    }
++
++    protected abstract string Title { get; }
++    protected abstract (string Category, (string Label, Type Type)[] Items)[] Choices { get; }
++
++    protected override void Use(Mobile from)
++    {
++        from.CloseGump<ArtifactChoiceGump>();
++        from.SendGump(new ArtifactChoiceGump(this));
++    }
++
++    private void Give(Mobile from, Type type)
++    {
++        if (type.CreateInstance<Item>() is not { } item)
++        {
++            return;
++        }
++
++        item.LootType = LootType.Blessed;
++        from.AddToBackpack(item);
++        Delete();
++    }
++
++    private class ArtifactChoiceGump : DynamicGump
++    {
++        private readonly ArtifactChoiceDeed _deed;
++
++        public ArtifactChoiceGump(ArtifactChoiceDeed deed) : base(0, 0) => _deed = deed;
++
++        protected override void BuildLayout(ref DynamicGumpBuilder builder)
++        {
++            var choices = _deed.Choices;
++
++            builder.AddPage();
++            builder.AddBackground(0, 0, 300, 400, 9200);
++            builder.AddLabel(40, 12, 0, _deed.Title);
++
++            for (var c = 0; c < choices.Length; c++)
++            {
++                builder.AddButton(12, 40 + 20 * c, 4005, 4007, 0, GumpButtonType.Page, c + 1);
++                builder.AddLabel(52, 40 + 20 * c, 0, choices[c].Category);
++            }
++
++            builder.AddButton(12, 340, 4017, 4019, 0);
++            builder.AddLabel(52, 340, 0, "Close");
++
++            var button = 1;
++
++            for (var c = 0; c < choices.Length; c++)
++            {
++                builder.AddPage(c + 1);
++                builder.AddBackground(0, 0, 300, 400, 9200);
++                builder.AddLabel(40, 12, 0, choices[c].Category);
++
++                var items = choices[c].Items;
++
++                for (var i = 0; i < items.Length; i++)
++                {
++                    builder.AddButton(12, 40 + 20 * i, 4005, 4007, button++);
++                    builder.AddLabel(52, 40 + 20 * i, 0, items[i].Label);
++                }
++
++                builder.AddButton(12, 360, 4014, 4016, 0, GumpButtonType.Page, 0);
++                builder.AddLabel(52, 360, 0, "Back");
++            }
++        }
++
++        public override void OnResponse(NetState state, in RelayInfo info)
++        {
++            var from = state.Mobile;
++
++            if (info.ButtonID <= 0 || _deed.Deleted || !_deed.IsChildOf(from.Backpack))
++            {
++                return;
++            }
++
++            var index = info.ButtonID - 1;
++
++            foreach (var (_, items) in _deed.Choices)
++            {
++                if (index < items.Length)
++                {
++                    _deed.Give(from, items[index].Type);
++                    return;
++                }
++
++                index -= items.Length;
++            }
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class ArtifactDeed : ArtifactChoiceDeed
++{
++    private static readonly (string, (string, Type)[])[] _choices =
++    [
++        ("Weapons", [
++            ("Axe Of The Heavens", typeof(AxeOfTheHeavens)), ("Blade Of Insanity", typeof(BladeOfInsanity)),
++            ("Blade Of The Righteous", typeof(BladeOfTheRighteous)), ("Bone Crusher", typeof(BoneCrusher)),
++            ("Breath Of The Dead", typeof(BreathOfTheDead)), ("Frostbringer", typeof(Frostbringer)),
++            ("Legacy Of The Dread Lord", typeof(LegacyOfTheDreadLord)), ("Serpent's Fang", typeof(SerpentsFang)),
++            ("Staff Of The Magi", typeof(StaffOfTheMagi)), ("The Beserker's Maul", typeof(TheBeserkersMaul)),
++            ("The Dragon Slayer", typeof(TheDragonSlayer)), ("The Dryad Bow", typeof(TheDryadBow)),
++            ("The TaskMaster", typeof(TheTaskmaster)), ("Titan's Hammer", typeof(TitansHammer)),
++            ("Zyronic Claw", typeof(ZyronicClaw))
++        ]),
++        ("Armor", [
++            ("Armor Of Fortune", typeof(ArmorOfFortune)), ("Gauntlets Of Nobility", typeof(GauntletsOfNobility)),
++            ("Helm Of Insight", typeof(HelmOfInsight)), ("Holy Knight's Breastplate", typeof(HolyKnightsBreastplate)),
++            ("Inquisitor's Resolution", typeof(InquisitorsResolution)), ("Jackal's Collar", typeof(JackalsCollar)),
++            ("Legging's Of Bane", typeof(LeggingsOfBane)), ("Midnight Bracers", typeof(MidnightBracers)),
++            ("Ornate Crown Of The Harrower", typeof(OrnateCrownOfTheHarrower)),
++            ("Shadow Dancer Leggings", typeof(ShadowDancerLeggings)), ("Tunic Of Fire", typeof(TunicOfFire)),
++            ("Voice Of The Fallen King", typeof(VoiceOfTheFallenKing))
++        ]),
++        ("Jewelery", [
++            ("Bracelet Of Health", typeof(BraceletOfHealth)), ("Ornament Of The Magician", typeof(OrnamentOfTheMagician)),
++            ("Ring Of The Elements", typeof(RingOfTheElements)), ("Ring Of The Vile", typeof(RingOfTheVile))
++        ]),
++        ("Shields", [("Aegis", typeof(Aegis)), ("Arcane Shield", typeof(ArcaneShield))]),
++        ("Hats And Masks", [
++            ("Divine Countenance", typeof(DivineCountenance)), ("Hat Of The Magi", typeof(HatOfTheMagi)),
++            ("Spirit Of The Totem", typeof(SpiritOfTheTotem))
++        ])
++    ];
++
++    [Constructible]
++    public ArtifactDeed() : base(1160)
++    {
++    }
++
++    public override string DefaultName => "Artifact Deed";
++    protected override string Title => "Artifact List";
++    protected override (string, (string, Type)[])[] Choices => _choices;
++}
++
++[SerializationGenerator(0)]
++public partial class ChampionArtifactDeed : ArtifactChoiceDeed
++{
++    private static readonly (string, (string, Type)[])[] _choices =
++    [
++        ("Decorative", [
++            ("Artifact Large Vase", typeof(ArtifactLargeVase)), ("Artifact Vase", typeof(ArtifactVase)),
++            ("DemonSkull", typeof(DemonSkull)), ("Evil Idol Skull", typeof(EvilIdolSkull)), ("Futon", typeof(Futon)),
++            ("Lava Tile", typeof(LavaTile)), ("Pier", typeof(Pier)), ("Skull Pole", typeof(SkullPole)),
++            ("Swamp Tile", typeof(SwampTile)),
++            ("Tattered Anciet Mummy Wrapping", typeof(TatteredAncientMummyWrapping)), ("Wall Blood", typeof(WallBlood)),
++            ("Water Tile", typeof(WaterTile)), ("Web", typeof(Web)), ("Wind Spirit", typeof(WindSpirit))
++        ]),
++        ("Shared", [
++            ("A Necromancer Shroud", typeof(ANecromancerShroud)),
++            ("Brave Knight of the Britannia", typeof(BraveKnightOfTheBritannia)),
++            ("Captain Johns Hat", typeof(CaptainJohnsHat)), ("Detective Boots", typeof(DetectiveBoots)),
++            ("Djinnis Ring", typeof(DjinnisRing)), ("Embroidered Oak Leaf Cloak", typeof(EmbroideredOakLeafCloak)),
++            ("Guantlets of Anger", typeof(GuantletsOfAnger)),
++            ("Lieutenant of the Britannian Royal Guard", typeof(LieutenantOfTheBritannianRoyalGuard)),
++            ("Oblivions Needle", typeof(OblivionsNeedle)), ("Royal Guard Survival Knife", typeof(RoyalGuardSurvivalKnife)),
++            ("Samaritan Robe", typeof(SamaritanRobe)), ("The Most Knowledge Person", typeof(TheMostKnowledgePerson)),
++            ("The Robe of Britannia Ari", typeof(TheMostKnowledgePerson))
++        ]),
++        ("Unique", [
++            ("Acid Proof Robe", typeof(AcidProofRobe)), ("Calm", typeof(Calm)), ("Crown of Tal Keesh", typeof(CrownOfTalKeesh)),
++            ("Fang of Ractus", typeof(FangOfRactus)), ("Gladiators Collar", typeof(GladiatorsCollar)),
++            ("Orc Chieftain Helm", typeof(OrcChieftainHelm)), ("Pacify", typeof(Pacify)), ("Quell", typeof(Quell)),
++            ("Shroud of Deceit", typeof(ShroudOfDeciet)), ("Subdue", typeof(Subdue))
++        ])
++    ];
++
++    [Constructible]
++    public ChampionArtifactDeed() : base(1150)
++    {
++    }
++
++    public override string DefaultName => "Champion Artifact Deed";
++    protected override string Title => "Champion Artifact List";
++    protected override (string, (string, Type)[])[] Choices => _choices;
++}
++
++[SerializationGenerator(0)]
++public partial class MinorArtieDeed : ArtifactChoiceDeed
++{
++    private static readonly (string, (string, Type)[])[] _choices =
++    [
++        ("Weapons", [
++            ("Blaze of Death", typeof(BlazeOfDeath)), ("Pixie Swatter", typeof(PixieSwatter)),
++            ("Captain Quacklebushs Cutlass", typeof(CaptainQuacklebushsCutlass)),
++            ("Nox Rangers Heavy Crossbow", typeof(NoxRangersHeavyCrossbow)), ("Wrath of The Dryad", typeof(WrathOfTheDryad)),
++            ("Enchanted Titan Leg Bone", typeof(EnchantedTitanLegBone)), ("Nights Kiss", typeof(NightsKiss)),
++            ("Cold Blood", typeof(ColdBlood)), ("Staff Of Power", typeof(StaffOfPower)), ("Cavorting Club", typeof(CavortingClub)),
++            ("The Dragon Slayer", typeof(LunaLance)), ("Bow Of The Juka King", typeof(BowOfTheJukaKing)),
++            ("Artic Death Dealer", typeof(ArcticDeathDealer))
++        ]),
++        ("Armor", [
++            ("Heart Of The Lion", typeof(HeartOfTheLion)), ("Violet Courage", typeof(VioletCourage)),
++            ("Gloves Of The Pugilist", typeof(GlovesOfThePugilist))
++        ]),
++        ("Shields", [("Shield of Invulnerability", typeof(ShieldOfInvulnerability))]),
++        ("Hats And Masks", [
++            ("Orcish Visage", typeof(OrcishVisage)), ("Dread Pirate Hat", typeof(DreadPirateHat)),
++            ("Polar Bear Mask", typeof(PolarBearMask)), ("Burglars Bandana", typeof(BurglarsBandana))
++        ])
++    ];
++
++    [Constructible]
++    public MinorArtieDeed() : base(1153)
++    {
++    }
++
++    public override string DefaultName => "Minor Artifact Deed";
++    protected override string Title => "Minor Artifact List";
++    protected override (string, (string, Type)[])[] Choices => _choices;
++}
+diff --git a/Projects/UOContent/Custom/DFI/Items/PlayerItems.cs b/Projects/UOContent/Custom/DFI/Items/PlayerItems.cs
+new file mode 100644
+index 000000000..894df4066
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Items/PlayerItems.cs
+@@ -0,0 +1,275 @@
++// Player items from the kopia 2012 RunUO shard (Scripts/Custom/DonationShroud.cs, EquipBag.cs, PvPBag.cs,
++// Pozostale/otherHoodedRobe.cs) and DFI RunUO (Scripts/Custom/Opticon/Misc/Kale/Emblem.cs).
++
++using ModernUO.Serialization;
++using Server.Mobiles;
++
++namespace Server.Items;
++
++// An anonymity robe: with the hood up its wearer shows no name, guild title or murderer flag.
++[Flippable(0x2683, 0x2684)]
++[SerializationGenerator(0)]
++public partial class HoodedRobe : BaseOuterTorso
++{
++    [Constructible]
++    public HoodedRobe() : base(0x2683)
++    {
++    }
++
++    public override double DefaultWeight => 5.0;
++    public override string DefaultName => "Shroud";
++
++    private bool HoodUp => ItemID is 0x2683 or 0x2684;
++
++    public override void OnDoubleClick(Mobile m)
++    {
++        if (Parent != m)
++        {
++            m.SendMessage("You must be wearing the robe to use it!");
++            return;
++        }
++
++        m.PlaySound(0x57);
++
++        if (HoodUp)
++        {
++            m.SendMessage("You lower the hood.");
++            ItemID = 0x1F03;
++            Reveal(m);
++        }
++        else
++        {
++            m.SendMessage("You pull the hood over your head.");
++            ItemID = 0x2683;
++            Conceal(m);
++        }
++
++        m.RemoveItem(this);
++        m.EquipItem(this);
++    }
++
++    public override bool OnEquip(Mobile from)
++    {
++        if (ItemID == 0x2683)
++        {
++            Conceal(from);
++        }
++
++        return base.OnEquip(from);
++    }
++
++    public override void OnRemoved(IEntity parent)
++    {
++        if (parent is Mobile m)
++        {
++            Reveal(m);
++        }
++
++        base.OnRemoved(parent);
++    }
++
++    private static void Conceal(Mobile m)
++    {
++        m.NameMod = ".";
++        m.DisplayGuildTitle = false;
++        m.Criminal = false;
++    }
++
++    private static void Reveal(Mobile m)
++    {
++        m.NameMod = null;
++
++        if (m.Kills >= 5)
++        {
++            m.Criminal = true;
++        }
++
++        if (m.GuildTitle != null)
++        {
++            m.DisplayGuildTitle = true;
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class DonationShroud : HoodedRobe
++{
++    [Constructible]
++    public DonationShroud()
++    {
++        Hue = 1153;
++        LootType = LootType.Blessed;
++
++        Attributes.BonusHits = 20;
++        Attributes.BonusMana = 25;
++        Attributes.BonusStam = 25;
++        Attributes.AttackChance = 45;
++        Attributes.DefendChance = 45;
++        Attributes.CastRecovery = 12;
++        Attributes.CastSpeed = 4;
++        Attributes.EnhancePotions = 50;
++        Attributes.LowerManaCost = 40;
++        Attributes.LowerRegCost = 100;
++        Attributes.Luck = 666;
++        Attributes.RegenMana = 14;
++        Attributes.RegenHits = 10;
++        Attributes.RegenStam = 10;
++        Attributes.SpellDamage = 33;
++        Attributes.WeaponDamage = 100;
++    }
++
++    public override string DefaultName => "Donation Shroud";
++    public override int ArtifactRarity => 1337;
++    public override int BasePhysicalResistance => 70;
++    public override int BaseFireResistance => 70;
++    public override int BaseColdResistance => 70;
++    public override int BasePoisonResistance => 70;
++    public override int BaseEnergyResistance => 70;
++}
++
++// Ten random jewels with five properties each, 40-70% minimum intensity.
++[SerializationGenerator(0)]
++public partial class EquipBag : Bag
++{
++    [Constructible]
++    public EquipBag()
++    {
++        for (var i = 0; i < 10; ++i)
++        {
++            if (Loot.RandomJewelry() is not { } jewel)
++            {
++                continue;
++            }
++
++            var min = Utility.Random(10) switch
++            {
++                < 2 => 40,
++                < 4 => 50,
++                < 6 => 60,
++                < 8 => 65,
++                _   => 70
++            };
++
++            BaseRunicTool.ApplyAttributesTo(jewel, 5, min, 100);
++            DropItem(jewel);
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class PvPBag : Bag
++{
++    [Constructible]
++    public PvPBag()
++    {
++        LootType = LootType.Blessed;
++        Hue = 0x480;
++
++        DropItem(new Arrow(60000));
++        DropItem(new Bolt(60000));
++        DropItem(new Bandage(60000));
++        DropItem(new BlackPearl(60000));
++        DropItem(new Bloodmoss(60000));
++        DropItem(new Garlic(60000));
++        DropItem(new Ginseng(60000));
++        DropItem(new MandrakeRoot(60000));
++        DropItem(new Nightshade(60000));
++        DropItem(new SulfurousAsh(60000));
++        DropItem(new SpidersSilk(60000));
++        DropItem(new BatWing(60000));
++        DropItem(new GraveDust(60000));
++        DropItem(new DaemonBlood(60000));
++        DropItem(new NoxCrystal(60000));
++        DropItem(new PigIron(60000));
++    }
++
++    public override string DefaultName => "PvP Supply Bag";
++}
++
++// Cursed earrings: once worn they cannot be taken off, mark the wearer a criminal with five extra kills
++// and grant bonuses by the wearer's main school. Only death removes them, and the kills with them.
++[SerializationGenerator(0)]
++public partial class Emblem : GoldEarrings
++{
++    [Constructible]
++    public Emblem()
++    {
++        LootType = LootType.Cursed;
++        Weight = 0.1;
++    }
++
++    public override string DefaultName => " Royal Emblem of Britannia ";
++
++    public override bool OnEquip(Mobile from)
++    {
++        Movable = false;
++        from.SolidHueOverride = from.Kills > 4 ? 33 : 1266;
++        from.Criminal = true;
++        from.Kills += 5;
++
++        if (from.Skills.Magery.Value > 50)
++        {
++            Attributes.BonusHits = 15;
++            Attributes.SpellDamage = 5;
++            Attributes.LowerManaCost = 5;
++            Attributes.RegenHits = 5;
++            Attributes.RegenStam = 10;
++        }
++        else if (from.Skills.Necromancy.Value > 50)
++        {
++            Attributes.BonusStam = 20;
++            Attributes.BonusHits = 10;
++            Attributes.RegenMana = 2;
++            Attributes.RegenHits = 2;
++            Attributes.RegenStam = 5;
++        }
++        else if (from.Skills.Healing.Value > 50)
++        {
++            Attributes.BonusHits = 15;
++            Attributes.WeaponSpeed = 10;
++            Attributes.WeaponDamage = 20;
++            Attributes.RegenMana = 2;
++            Attributes.RegenHits = 3;
++        }
++
++        from.SendMessage("The voice in your head tells you :  I am thy blessing and thy curse.");
++        from.SendMessage("You feel the power of the Royal Britannian Emblem surge through you!");
++
++        return base.OnEquip(from);
++    }
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        if (from == RootParent)
++        {
++            from.SendMessage("POWER OVERWHELMING");
++        }
++    }
++
++    public override bool OnDragLift(Mobile from)
++    {
++        from.SendMessage(" Only death can save thee");
++        return true;
++    }
++
++    public override DeathMoveResult OnParentDeath(Mobile parent)
++    {
++        Movable = true;
++        Attributes.BonusHits = 0;
++        Attributes.SpellDamage = 0;
++        Attributes.LowerManaCost = 0;
++        Attributes.RegenHits = 0;
++        Attributes.RegenStam = 0;
++        Attributes.BonusStam = 0;
++        Attributes.RegenMana = 0;
++        Attributes.WeaponSpeed = 0;
++        Attributes.WeaponDamage = 0;
++
++        parent.SolidHueOverride = -1;
++
++        // DFI negated the kill count when it was under five; kept so old murder counts behave the same.
++        parent.Kills = parent.Kills >= 5 ? parent.Kills - 5 : -parent.Kills;
++
++        return base.OnParentDeath(parent);
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Items/RunicTools.cs b/Projects/UOContent/Custom/DFI/Items/RunicTools.cs
+new file mode 100644
+index 000000000..fe2760260
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Items/RunicTools.cs
+@@ -0,0 +1,736 @@
++// Runic tools from the kopia 2012 RunUO shard (Scripts/Custom/Runic Tools): ready-made runic hammers,
++// saws, fletcher and tinker tools in eight metals and sewing kits in three leathers, their bags and the
++// two stones that hand the bags out. The Valorite and Barbed tools carry 5000 uses, the rest 50.
++
++using ModernUO.Serialization;
++using Server.Engines.Craft;
++
++namespace Server.Items;
++
++[Flippable(0x13E4, 0x13E3)]
++[SerializationGenerator(0)]
++public abstract partial class RunicHammer1 : BaseRunicTool
++{
++    public RunicHammer1(CraftResource resource, int uses) : base(resource, uses, 0x13E3) =>
++        Hue = CraftResources.GetHue(resource);
++
++    public override double DefaultWeight => 8.0;
++    public override CraftSystem CraftSystem => DefBlacksmithy.CraftSystem;
++
++    public override void AddNameProperties(IPropertyList list)
++    {
++        base.AddNameProperties(list);
++
++        var index = CraftResources.GetIndex(Resource);
++
++        if (index is >= 1 and <= 8 || CraftResources.IsStandard(Resource))
++        {
++            return;
++        }
++
++        var num = CraftResources.GetLocalizationNumber(Resource);
++
++        if (num > 0)
++        {
++            list.Add(num);
++        }
++        else
++        {
++            list.Add(CraftResources.GetName(Resource));
++        }
++    }
++}
++
++[Flippable(0x1022, 0x1023)]
++[SerializationGenerator(0)]
++public abstract partial class RunicFletcherTools : BaseRunicTool
++{
++    public RunicFletcherTools(CraftResource resource, int uses) : base(resource, uses, 0x1022) =>
++        Hue = CraftResources.GetHue(resource);
++
++    public override double DefaultWeight => 2.0;
++    public override CraftSystem CraftSystem => DefBowFletching.CraftSystem;
++
++    public override void AddNameProperties(IPropertyList list)
++    {
++        base.AddNameProperties(list);
++
++        var index = CraftResources.GetIndex(Resource);
++
++        if (index is >= 1 and <= 8 || CraftResources.IsStandard(Resource))
++        {
++            return;
++        }
++
++        var num = CraftResources.GetLocalizationNumber(Resource);
++
++        if (num > 0)
++        {
++            list.Add(num);
++        }
++        else
++        {
++            list.Add(CraftResources.GetName(Resource));
++        }
++    }
++}
++
++[Flippable(0x1034, 0x1035)]
++[SerializationGenerator(0)]
++public abstract partial class RunicSaw : BaseRunicTool
++{
++    public RunicSaw(CraftResource resource, int uses) : base(resource, uses, 0x1034) =>
++        Hue = CraftResources.GetHue(resource);
++
++    public override double DefaultWeight => 2.0;
++    public override CraftSystem CraftSystem => DefCarpentry.CraftSystem;
++
++    public override void AddNameProperties(IPropertyList list)
++    {
++        base.AddNameProperties(list);
++
++        var index = CraftResources.GetIndex(Resource);
++
++        if (index is >= 1 and <= 8 || CraftResources.IsStandard(Resource))
++        {
++            return;
++        }
++
++        var num = CraftResources.GetLocalizationNumber(Resource);
++
++        if (num > 0)
++        {
++            list.Add(num);
++        }
++        else
++        {
++            list.Add(CraftResources.GetName(Resource));
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public abstract partial class RunicSewingKit1 : BaseRunicTool
++{
++    public RunicSewingKit1(CraftResource resource, int uses) : base(resource, uses, 0xF9D) =>
++        Hue = CraftResources.GetHue(resource);
++
++    public override double DefaultWeight => 2.0;
++    public override CraftSystem CraftSystem => DefTailoring.CraftSystem;
++
++    public override void AddNameProperties(IPropertyList list)
++    {
++        base.AddNameProperties(list);
++
++        var index = CraftResources.GetIndex(Resource);
++
++        if (index is >= 1 and <= 8 || CraftResources.IsStandard(Resource))
++        {
++            return;
++        }
++
++        var num = CraftResources.GetLocalizationNumber(Resource);
++
++        if (num > 0)
++        {
++            list.Add(num);
++        }
++        else
++        {
++            list.Add(CraftResources.GetName(Resource));
++        }
++    }
++}
++
++[Flippable(0x1EB8, 0x1EB9)]
++[SerializationGenerator(0)]
++public abstract partial class RunicTinkerTools : BaseRunicTool
++{
++    public RunicTinkerTools(CraftResource resource, int uses) : base(resource, uses, 0x1EB8) =>
++        Hue = CraftResources.GetHue(resource);
++
++    public override double DefaultWeight => 1.0;
++    public override CraftSystem CraftSystem => DefTinkering.CraftSystem;
++
++    public override void AddNameProperties(IPropertyList list)
++    {
++        base.AddNameProperties(list);
++
++        var index = CraftResources.GetIndex(Resource);
++
++        if (index is >= 1 and <= 8 || CraftResources.IsStandard(Resource))
++        {
++            return;
++        }
++
++        var num = CraftResources.GetLocalizationNumber(Resource);
++
++        if (num > 0)
++        {
++            list.Add(num);
++        }
++        else
++        {
++            list.Add(CraftResources.GetName(Resource));
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class AgapiteFletcherTools : RunicFletcherTools
++{
++    [Constructible]
++    public AgapiteFletcherTools(int uses = 50) : base(CraftResource.Agapite, uses)
++    {
++        Weight = 1.0;
++        Name = "Runic Fletcher Tools";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class BronzeFletcherTools : RunicFletcherTools
++{
++    [Constructible]
++    public BronzeFletcherTools(int uses = 50) : base(CraftResource.Bronze, uses)
++    {
++        Weight = 1.0;
++        Name = "Runic Fletcher Tools";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class CopperFletcherTools : RunicFletcherTools
++{
++    [Constructible]
++    public CopperFletcherTools(int uses = 50) : base(CraftResource.Copper, uses)
++    {
++        Weight = 1.0;
++        Name = "Runic Fletcher Tools";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class DullCopperFletcherTools : RunicFletcherTools
++{
++    [Constructible]
++    public DullCopperFletcherTools(int uses = 50) : base(CraftResource.DullCopper, uses)
++    {
++        Weight = 1.0;
++        Name = "Runic Fletcher Tools";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class GoldFletcherTools : RunicFletcherTools
++{
++    [Constructible]
++    public GoldFletcherTools(int uses = 50) : base(CraftResource.Gold, uses)
++    {
++        Weight = 1.0;
++        Name = "Runic Fletcher Tools";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class ShadowIronFletcherTools : RunicFletcherTools
++{
++    [Constructible]
++    public ShadowIronFletcherTools(int uses = 50) : base(CraftResource.ShadowIron, uses)
++    {
++        Weight = 1.0;
++        Name = "Runic Fletcher Tools";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class ValoriteFletcherTools : RunicFletcherTools
++{
++    [Constructible]
++    public ValoriteFletcherTools(int uses = 5000) : base(CraftResource.Valorite, uses)
++    {
++        Weight = 0.0;
++        Name = "Valorite Runic Fletcher Tools";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class VeriteFletcherTools : RunicFletcherTools
++{
++    [Constructible]
++    public VeriteFletcherTools(int uses = 50) : base(CraftResource.Verite, uses)
++    {
++        Weight = 1.0;
++        Name = "Runic Fletcher Tools";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class AgapiteHammer : RunicHammer1
++{
++    [Constructible]
++    public AgapiteHammer(int uses = 50) : base(CraftResource.Agapite, uses)
++    {
++        Weight = 1.0;
++        Name = "A runic hammer";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class BronzeHammer : RunicHammer1
++{
++    [Constructible]
++    public BronzeHammer(int uses = 50) : base(CraftResource.Bronze, uses)
++    {
++        Weight = 1.0;
++        Name = "A runic hammer";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class CopperHammer : RunicHammer1
++{
++    [Constructible]
++    public CopperHammer(int uses = 50) : base(CraftResource.Copper, uses)
++    {
++        Weight = 1.0;
++        Name = "A runic hammer";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class DullCopperHammer : RunicHammer1
++{
++    [Constructible]
++    public DullCopperHammer(int uses = 50) : base(CraftResource.DullCopper, uses)
++    {
++        Weight = 1.0;
++        Name = "A runic hammer";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class GoldHammer : RunicHammer1
++{
++    [Constructible]
++    public GoldHammer(int uses = 50) : base(CraftResource.Gold, uses)
++    {
++        Weight = 1.0;
++        Name = "A runic hammer";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class ShadowIronHammer : RunicHammer1
++{
++    [Constructible]
++    public ShadowIronHammer(int uses = 50) : base(CraftResource.ShadowIron, uses)
++    {
++        Weight = 1.0;
++        Name = "A runic hammer";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class ValoriteHammer : RunicHammer1
++{
++    [Constructible]
++    public ValoriteHammer(int uses = 5000) : base(CraftResource.Valorite, uses)
++    {
++        Weight = 0.0;
++        Name = "Valorite runic hammer";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class VeriteHammer : RunicHammer1
++{
++    [Constructible]
++    public VeriteHammer(int uses = 50) : base(CraftResource.Verite, uses)
++    {
++        Weight = 1.0;
++        Name = "A runic hammer";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class AgapiteSaw : RunicSaw
++{
++    [Constructible]
++    public AgapiteSaw(int uses = 50) : base(CraftResource.Agapite, uses)
++    {
++        Weight = 1.0;
++        Name = "A runic saw";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class BronzeSaw : RunicSaw
++{
++    [Constructible]
++    public BronzeSaw(int uses = 50) : base(CraftResource.Bronze, uses)
++    {
++        Weight = 1.0;
++        Name = "A runic saw";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class CopperSaw : RunicSaw
++{
++    [Constructible]
++    public CopperSaw(int uses = 50) : base(CraftResource.Copper, uses)
++    {
++        Weight = 1.0;
++        Name = "A runic saw";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class DullCopperSaw : RunicSaw
++{
++    [Constructible]
++    public DullCopperSaw(int uses = 50) : base(CraftResource.DullCopper, uses)
++    {
++        Weight = 1.0;
++        Name = "A runic saw";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class GoldSaw : RunicSaw
++{
++    [Constructible]
++    public GoldSaw(int uses = 50) : base(CraftResource.Gold, uses)
++    {
++        Weight = 1.0;
++        Name = "A runic saw";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class ShadowIronSaw : RunicSaw
++{
++    [Constructible]
++    public ShadowIronSaw(int uses = 50) : base(CraftResource.ShadowIron, uses)
++    {
++        Weight = 1.0;
++        Name = "A runic saw";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class ValoriteSaw : RunicSaw
++{
++    [Constructible]
++    public ValoriteSaw(int uses = 5000) : base(CraftResource.Valorite, uses)
++    {
++        Weight = 0.0;
++        Name = "Valorite runic saw";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class VeriteSaw : RunicSaw
++{
++    [Constructible]
++    public VeriteSaw(int uses = 50) : base(CraftResource.Verite, uses)
++    {
++        Weight = 1.0;
++        Name = "A runic saw";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class BarbedSewingKit : RunicSewingKit1
++{
++    [Constructible]
++    public BarbedSewingKit(int uses = 5000) : base(CraftResource.BarbedLeather, uses)
++    {
++        Weight = 0.0;
++        Name = "Barbed runic sewing kit";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class HornedSewingKit : RunicSewingKit1
++{
++    [Constructible]
++    public HornedSewingKit(int uses = 50) : base(CraftResource.HornedLeather, uses)
++    {
++        Weight = 1.0;
++        Name = "A runic sewing kit";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class SpinedSewingKit : RunicSewingKit1
++{
++    [Constructible]
++    public SpinedSewingKit(int uses = 50) : base(CraftResource.SpinedLeather, uses)
++    {
++        Weight = 1.0;
++        Name = "A runic sewing kit";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class AgapiteTinkerTools : RunicTinkerTools
++{
++    [Constructible]
++    public AgapiteTinkerTools(int uses = 50) : base(CraftResource.Agapite, uses)
++    {
++        Weight = 1.0;
++        Name = "Runic Tinker Tools";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class BronzeTinkerTools : RunicTinkerTools
++{
++    [Constructible]
++    public BronzeTinkerTools(int uses = 50) : base(CraftResource.Bronze, uses)
++    {
++        Weight = 1.0;
++        Name = "Runic Tinker Tools";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class CopperTinkerTools : RunicTinkerTools
++{
++    [Constructible]
++    public CopperTinkerTools(int uses = 50) : base(CraftResource.Copper, uses)
++    {
++        Weight = 1.0;
++        Name = "Runic Tinker Tools";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class DullCopperTinkerTools : RunicTinkerTools
++{
++    [Constructible]
++    public DullCopperTinkerTools(int uses = 50) : base(CraftResource.DullCopper, uses)
++    {
++        Weight = 1.0;
++        Name = "Runic Tinker Tools";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class GoldTinkerTools : RunicTinkerTools
++{
++    [Constructible]
++    public GoldTinkerTools(int uses = 50) : base(CraftResource.Gold, uses)
++    {
++        Weight = 1.0;
++        Name = "Runic Tinker Tools";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class ShadowIronTinkerTools : RunicTinkerTools
++{
++    [Constructible]
++    public ShadowIronTinkerTools(int uses = 50) : base(CraftResource.ShadowIron, uses)
++    {
++        Weight = 1.0;
++        Name = "Runic Tinker Tools";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class ValoriteTinkerTools : RunicTinkerTools
++{
++    [Constructible]
++    public ValoriteTinkerTools(int uses = 5000) : base(CraftResource.Valorite, uses)
++    {
++        Weight = 0.0;
++        Name = "Valorite Runic Tinker Tools";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class VeriteTinkerTools : RunicTinkerTools
++{
++    [Constructible]
++    public VeriteTinkerTools(int uses = 50) : base(CraftResource.Verite, uses)
++    {
++        Weight = 1.0;
++        Name = "Runic Tinker Tools";
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class BagOfHammers : Bag
++{
++    [Constructible]
++    public BagOfHammers()
++    {
++        DropItem(new ValoriteHammer());
++        DropItem(new VeriteHammer());
++        DropItem(new AgapiteHammer());
++        DropItem(new GoldHammer());
++        DropItem(new BronzeHammer());
++        DropItem(new CopperHammer());
++        DropItem(new ShadowIronHammer());
++        DropItem(new DullCopperHammer());
++    }
++
++    public override string DefaultName => "Bag of Runic Hammers";
++}
++
++[SerializationGenerator(0)]
++public partial class BagOfSaws : Bag
++{
++    [Constructible]
++    public BagOfSaws()
++    {
++        DropItem(new ValoriteSaw());
++        DropItem(new VeriteSaw());
++        DropItem(new AgapiteSaw());
++        DropItem(new GoldSaw());
++        DropItem(new BronzeSaw());
++        DropItem(new CopperSaw());
++        DropItem(new ShadowIronSaw());
++        DropItem(new DullCopperSaw());
++    }
++
++    public override string DefaultName => "Bag of Runic Saws";
++}
++
++[SerializationGenerator(0)]
++public partial class BagOfTinkerTools : Bag
++{
++    [Constructible]
++    public BagOfTinkerTools()
++    {
++        DropItem(new ValoriteTinkerTools());
++        DropItem(new VeriteTinkerTools());
++        DropItem(new AgapiteTinkerTools());
++        DropItem(new GoldTinkerTools());
++        DropItem(new BronzeTinkerTools());
++        DropItem(new CopperTinkerTools());
++        DropItem(new ShadowIronTinkerTools());
++        DropItem(new DullCopperTinkerTools());
++    }
++
++    public override string DefaultName => "Bag of Runic Tinker Tools";
++}
++
++[SerializationGenerator(0)]
++public partial class BagOfFletcherTools : Bag
++{
++    [Constructible]
++    public BagOfFletcherTools()
++    {
++        DropItem(new ValoriteFletcherTools());
++        DropItem(new VeriteFletcherTools());
++        DropItem(new AgapiteFletcherTools());
++        DropItem(new GoldFletcherTools());
++        DropItem(new BronzeFletcherTools());
++        DropItem(new CopperFletcherTools());
++        DropItem(new ShadowIronFletcherTools());
++        DropItem(new DullCopperFletcherTools());
++    }
++
++    public override string DefaultName => "Bag of Runic Fletcher Tools";
++}
++
++[SerializationGenerator(0)]
++public partial class BagOfSewingKits : Bag
++{
++    [Constructible]
++    public BagOfSewingKits()
++    {
++        DropItem(new BarbedSewingKit());
++        DropItem(new SpinedSewingKit());
++        DropItem(new HornedSewingKit());
++    }
++
++    public override string DefaultName => "Bag of Runic Sewing Kits";
++}
++
++[SerializationGenerator(0)]
++public partial class BagOfRunicTools : Bag
++{
++    [Constructible]
++    public BagOfRunicTools()
++    {
++        DropItem(new BagOfHammers());
++        DropItem(new BagOfSewingKits());
++    }
++
++    public override string DefaultName => "Bag of Runic Tools";
++}
++
++[SerializationGenerator(0)]
++public partial class BagOfCraft : Bag
++{
++    [Constructible]
++    public BagOfCraft()
++    {
++        DropItem(new ValoriteHammer());
++        DropItem(new ValoriteFletcherTools());
++        DropItem(new ValoriteSaw());
++        DropItem(new BarbedSewingKit());
++        DropItem(new ValoriteTinkerTools());
++        DropItem(new Cloth(5000));
++        DropItem(new Hides(5000));
++        DropItem(new BarbedLeather(5000));
++        DropItem(new ValoriteIngot(5000));
++        DropItem(new DullCopperIngot(5000));
++        DropItem(new Log(5000));
++        DropItem(new Bone(5000));
++    }
++
++    public override string DefaultName => "Crafting Bag";
++}
++
++// Free: hands a BagOfRunicTools to whoever double-clicks it.
++[SerializationGenerator(0)]
++public partial class RunicStone : Item
++{
++    [Constructible]
++    public RunicStone() : base(0xED4)
++    {
++        Movable = false;
++        Hue = 1209;
++    }
++
++    public override string DefaultName => "A Runic Stone";
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        var bag = new BagOfRunicTools();
++
++        if (!from.AddToBackpack(bag))
++        {
++            bag.Delete();
++        }
++    }
++}
++
++// Free: hands a BagOfCraft to whoever double-clicks it.
++[SerializationGenerator(0)]
++public partial class CraftingStone : Item
++{
++    [Constructible]
++    public CraftingStone() : base(0xED4)
++    {
++        Movable = false;
++        Hue = 1177;
++    }
++
++    public override string DefaultName => "Crafting Stone";
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        var bag = new BagOfCraft();
++
++        if (!from.AddToBackpack(bag))
++        {
++            bag.Delete();
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Items/Shrink.cs b/Projects/UOContent/Custom/DFI/Items/Shrink.cs
+new file mode 100644
+index 000000000..162b102cf
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Items/Shrink.cs
+@@ -0,0 +1,366 @@
++// The shrink system from the kopia 2012 RunUO shard (Scripts/Custom/Pozostale/shrink): potions, an
++// everlasting potion, a bag of ten, a stone that sells the bag, hitching posts and the [Shrink command.
++// A shrunk pet is stabled out of the world and comes back to whoever double-clicks the statuette.
++
++using System;
++using ModernUO.Serialization;
++using Server.Commands;
++using Server.Mobiles;
++using Server.Targeting;
++
++namespace Server.Items;
++
++public static class ShrinkFunctions
++{
++    public static void Configure()
++    {
++        CommandSystem.Register("Shrink", AccessLevel.GameMaster, e =>
++            {
++                e.Mobile.SendMessage("What do you wish to shrink?");
++                e.Mobile.Target = new ShrinkTarget(15, (from, targ) => Shrink(from, targ, false));
++            }
++        );
++    }
++
++    public static bool Shrink(Mobile from, object targ, bool restricted = true)
++    {
++        string error = null;
++        var errorCliloc = 0;
++
++        if (from == targ)
++        {
++            error = "You can't shrink yourself!";
++        }
++        else if (targ is not BaseCreature t)
++        {
++            error = "You can't shrink that!";
++        }
++        else if (restricted)
++        {
++            if (t.Summoned)
++            {
++                error = "You cannot shrink summoned creatures.";
++            }
++            else if (t.Combatant != null && t.InRange(t.Combatant, 12) && t.Map == t.Combatant.Map)
++            {
++                error = "You cannot shrink your pet while it is in combat.";
++            }
++            else if (!(t.Controlled && t.ControlMaster == from))
++            {
++                errorCliloc = 1042562; // That is not your pet!
++            }
++            else if (t is PackLlama or PackHorse or Beetle && t.Backpack?.Items.Count > 0)
++            {
++                errorCliloc = 1042563; // Unload the pet first
++            }
++        }
++
++        if (error != null || errorCliloc != 0)
++        {
++            if (errorCliloc != 0)
++            {
++                from?.SendLocalizedMessage(errorCliloc);
++            }
++            else
++            {
++                from?.SendMessage(error);
++            }
++
++            return false;
++        }
++
++        var pet = (BaseCreature)targ;
++        var shrunk = new ShrinkItem(pet);
++
++        if (from != null)
++        {
++            from.SendMessage("You shrink the pet");
++
++            if (!from.AddToBackpack(shrunk))
++            {
++                shrunk.MoveToWorld(from.Location, from.Map);
++                from.SendMessage("Your backpack is full so the shrunken pet falls to the ground");
++            }
++        }
++        else
++        {
++            shrunk.MoveToWorld(pet.Location, pet.Map);
++        }
++
++        // Controlled so a spawner stops counting it as its own.
++        pet.Controlled = true;
++        pet.SetControlMaster(null);
++        pet.SummonMaster = null;
++        pet.Internalize();
++        pet.IsStabled = true;
++        return true;
++    }
++
++    public sealed class ShrinkTarget : Target
++    {
++        private readonly Action<Mobile, object> _onTarget;
++
++        public ShrinkTarget(int range, Action<Mobile, object> onTarget) : base(range, false, TargetFlags.None) =>
++            _onTarget = onTarget;
++
++        protected override void OnTarget(Mobile from, object targeted) => _onTarget(from, targeted);
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class ShrinkItem : Item
++{
++    [SerializableField(0)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private BaseCreature _link;
++
++    [SerializableField(1)]
++    private bool _deletePetWithItem;
++
++    public ShrinkItem(BaseCreature pet) : base(ShrinkTable.Lookup(pet))
++    {
++        _link = pet;
++        _deletePetWithItem = true;
++
++        if (pet.Body != 400 && pet.Body != 401)
++        {
++            Hue = pet.Hue;
++        }
++
++        Name = $"{pet.Name} [shrunk]";
++    }
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        if (!Movable)
++        {
++            return;
++        }
++
++        if (!from.InRange(GetWorldLocation(), 2))
++        {
++            from.SendLocalizedMessage(500486); // That is too far away.
++        }
++        else if (_link?.Deleted != false)
++        {
++            from.SendMessage("Your pet is lost forever...");
++        }
++        else if (!from.CheckAlive())
++        {
++            from.SendLocalizedMessage(1060190); // You cannot do that while dead!
++        }
++        else if (from.Followers + _link.ControlSlots > from.FollowersMax)
++        {
++            from.SendMessage("You have too many followers to unshrink that creature.");
++        }
++        else
++        {
++            var pet = _link;
++
++            if (!pet.Owners.Contains(from))
++            {
++                pet.Owners.Add(from);
++            }
++
++            pet.IsStabled = false;
++            pet.SetControlMaster(from);
++            pet.MoveToWorld(from.Location, from.Map);
++            pet.ControlTarget = from;
++            pet.ControlOrder = OrderType.Follow;
++
++            if (pet.Summoned)
++            {
++                pet.SummonMaster = from;
++            }
++
++            DeletePetWithItem = false;
++            Delete();
++        }
++    }
++
++    public override void OnDelete()
++    {
++        if (_deletePetWithItem)
++        {
++            _link?.Delete();
++        }
++
++        base.OnDelete();
++    }
++
++    public override void OnAfterDelete()
++    {
++        _link = null;
++        base.OnAfterDelete();
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class ShrinkPotion : Item
++{
++    [Constructible]
++    public ShrinkPotion() : base(0xF04)
++    {
++    }
++
++    public override string DefaultName => "a Shrink potion";
++    protected virtual bool Consumed => true;
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        if (!Movable)
++        {
++            return;
++        }
++
++        if (!from.InRange(GetWorldLocation(), 2))
++        {
++            from.SendLocalizedMessage(500486); // That is too far away.
++            return;
++        }
++
++        if (Parent != from && Parent != from.Backpack)
++        {
++            from.SendLocalizedMessage(1042001); // That must be in your pack for you to use it.
++            return;
++        }
++
++        from.SendMessage("What do you wish to shrink?");
++        from.Target = new ShrinkFunctions.ShrinkTarget(3, (m, targ) =>
++            {
++                if (!Deleted && ShrinkFunctions.Shrink(m, targ) && Consumed)
++                {
++                    Delete();
++                }
++            }
++        );
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class EverlastingShrinkPotion : ShrinkPotion
++{
++    [Constructible]
++    public EverlastingShrinkPotion()
++    {
++        Hue = 38;
++        LootType = LootType.Blessed;
++    }
++
++    public override string DefaultName => "an Everlasting Shrink Potion";
++    protected override bool Consumed => false;
++}
++
++[SerializationGenerator(0)]
++public partial class Shrinkbag : Bag
++{
++    [Constructible]
++    public Shrinkbag()
++    {
++        for (var i = 0; i < 10; i++)
++        {
++            DropItem(new ShrinkPotion());
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class ShrinkStone : Item
++{
++    [Constructible]
++    public ShrinkStone() : base(0xED4)
++    {
++        Movable = false;
++        Hue = 0x26;
++    }
++
++    public override string DefaultName => "10 Shrink Potions Stone";
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        if (from.Backpack?.ConsumeTotal(typeof(Gold), 5000) == true)
++        {
++            var bag = new Shrinkbag();
++
++            if (!from.AddToBackpack(bag))
++            {
++                bag.Delete();
++            }
++        }
++        else
++        {
++            from.SendMessage(0xAD, "You need at least 5000gp in your backpack to use this.");
++        }
++    }
++}
++
++[Flippable(0x14E8, 0x14E7)]
++[SerializationGenerator(0)]
++public partial class HitchingPost : AddonComponent
++{
++    [Constructible]
++    public HitchingPost(int itemID = 0x14E7) : base(itemID)
++    {
++    }
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        if (!from.InRange(GetWorldLocation(), 2))
++        {
++            from.SendLocalizedMessage(500486); // That is too far away.
++            return;
++        }
++
++        from.SendMessage("What do you wish to shrink?");
++        from.Target = new ShrinkFunctions.ShrinkTarget(3, (m, targ) =>
++            {
++                if (!Deleted)
++                {
++                    ShrinkFunctions.Shrink(m, targ);
++                }
++            }
++        );
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class HitchingPostEastAddon : BaseAddon
++{
++    [Constructible]
++    public HitchingPostEastAddon() => AddComponent(new HitchingPost(0x14E7), 0, 0, 0);
++
++    public override BaseAddonDeed Deed => new HitchingPostEastDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class HitchingPostEastDeed : BaseAddonDeed
++{
++    [Constructible]
++    public HitchingPostEastDeed()
++    {
++    }
++
++    public override string DefaultName => "Hitching Post (east)";
++    public override BaseAddon Addon => new HitchingPostEastAddon();
++}
++
++[SerializationGenerator(0)]
++public partial class HitchingPostSouthAddon : BaseAddon
++{
++    [Constructible]
++    public HitchingPostSouthAddon() => AddComponent(new HitchingPost(0x14E8), 0, 0, 0);
++
++    public override BaseAddonDeed Deed => new HitchingPostSouthDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class HitchingPostSouthDeed : BaseAddonDeed
++{
++    [Constructible]
++    public HitchingPostSouthDeed()
++    {
++    }
++
++    public override string DefaultName => "Hitching Post (south)";
++    public override BaseAddon Addon => new HitchingPostSouthAddon();
++}
