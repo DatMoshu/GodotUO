@@ -71,8 +71,10 @@ internal partial class GameScene
         // Observe after the classic wind/expiry update, preserving its state.
         var state = SpeedModeWeather.Observe(_world, profile);
         var origin = SpeedModeCameraOrigin();
+        float daylight = CloudLighting.Resolve(_world, profile, RealtimeAmbientLevel()).Daylight;
         _speedWeatherRuntime.Arm(_world, profile, state, batcher, classic,
             batcher.SpeedWeatherSurface, batcher.SpeedWeatherColor, view,
-            new Vector3(origin.X, origin.Y, _world.Player.Z), 1f / Camera.Zoom, Time.Ticks / 1000.0);
+            new Vector3(origin.X, origin.Y, _world.Player.Z), 1f / Camera.Zoom, Time.Ticks / 1000.0,
+            daylight);
     }
 }

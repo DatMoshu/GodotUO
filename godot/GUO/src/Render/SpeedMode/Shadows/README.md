@@ -63,7 +63,12 @@ native alpha stamps combine with MAX, never additive opacity. Its CPU twin
 is absent. The batcher retains the existing view transform for full camera
 coverage at every zoom. Props use their lowest opaque row; mobiles use
 interpolated offsets; Bridge, roofs, floors and lying items are excluded.
-The light pass consumes the mask on floor ambient only.
+The light pass consumes the mask on floor ambient only. An upright static
+whose base is under an active cover stamps only the silhouette above that
+cover; a span that does not clear the cover, or a sheared partial, stamps
+nothing. Hiding roofs does not exempt an indoor caster. A cover at or above
+the camera max Z stays on the existing visibility slice. Roof-plane receivers
+and the inverse per-pixel mask are not in this stamp.
 
 `World.ShardClock` retains validated packet 0x5B time and advances it by elapsed
 client monotonic ticks. Logout invalidates the stamp. Missing time uses the

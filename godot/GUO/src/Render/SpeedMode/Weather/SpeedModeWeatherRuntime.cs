@@ -27,6 +27,7 @@ public partial class SpeedModeWeatherRuntime : Node
     private Vector3 _camera;
     private float _artScale;
     private double _seconds;
+    private float _daylight = 1f;
     private uint _tick;
     private bool _armed, _released;
     internal bool Bound { get; private set; }
@@ -62,11 +63,12 @@ public partial class SpeedModeWeatherRuntime : Node
 
     internal void Arm(World world, Profile profile, SpeedModeWeather state, UltimaBatcher2D batcher,
         UltimaBatcher2D.WeatherLines classic, Texture2D surface, Texture2D color,
-        Transform2D view, Vector3 camera, float artScale, double seconds)
+        Transform2D view, Vector3 camera, float artScale, double seconds, float daylight = 1f)
     {
         _world = world; _profile = profile; _state = state; _batcher = batcher;
         _classic = classic; _expectedSurface = surface; _color = color;
         _camera = camera; _artScale = artScale; _seconds = seconds; _tick = Time.Ticks;
+        _daylight = float.IsFinite(daylight) ? Math.Clamp(daylight, 0f, 1f) : 1f;
         _armed = true;
         var inverse = view.AffineInverse();
         foreach (var item in _items) RenderingServer.CanvasItemSetTransform(item, inverse);
@@ -81,7 +83,7 @@ public partial class SpeedModeWeatherRuntime : Node
         {
             var size = new Vector2I(Target.Width, Target.Height);
             Bound = SpeedModeWeatherTargets.BindCurrent(_world, _profile, _state, _expectedSurface,
-                frame.Sequence, _tick, _color, size, _camera, _artScale, _seconds, _rain, _wet, _fog, _batcher);
+                frame.Sequence, _tick, _color, size, _camera, _artScale, _seconds, _rain, _wet, _fog, _batcher, _daylight);
             BoundSequence = Bound ? frame.Sequence : 0;
             if (!Bound) { ResetFrame(); return; }
             bool replaceLines = Bound && _rain.Active;

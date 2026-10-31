@@ -46,7 +46,7 @@
       "id": "wet-reflection-fixtures",
       "do": {
         "kind": "note",
-        "text": "With a Godot slot, run SpeedModeWetProbe.tscn and SpeedModeReflectionProbe.tscn under res://src/Render/SpeedMode/Weather/. Require wet PASS and reflection PASS. Test floor darkening, allowlisted rings/light response, four nearest reflection taps in wet/water, upright/wall classes, d/8 height and XY column consistency, wrong height/class rejection, 1x/2x art grids, cover/off, origin and storey-offset parity. No object base-Z input is needed."
+        "text": "With a Godot slot, run SpeedModeWetProbe.tscn and SpeedModeReflectionProbe.tscn under res://src/Render/SpeedMode/Weather/. Require wet PASS and reflection PASS. Test floor darkening, allowlisted rings/light response, four nearest reflection taps in wet/water, upright/wall classes, d/4 height and XY column consistency, wrong height/class rejection, 1x/2x art grids, cover/off, origin and storey-offset parity. No object base-Z input is needed."
       }
     },
     {
@@ -60,7 +60,7 @@
       "id": "cloud-fixture",
       "do": {
         "kind": "note",
-        "text": "With an admitted Godot slot, run res://src/Render/SpeedMode/Weather/SpeedModeCloudProbe.tscn. Require [speed-cloud] PASS and exit0. Check disabled/4x exact original pixels, visible5x below/above plane, wind motion, clouds beyond5x without surface/light, pin clearance and exact fallback. Live camera uses existing ExperimentalWorldOverview, continuous4..5 entry, overview beyond5; lead owns that integration."
+        "text": "With an admitted Godot slot, run res://src/Render/SpeedMode/Weather/SpeedModeCloudProbe.tscn. Require [speed-cloud] PASS and exit0. Check disabled/4x exact original pixels, visible5x below/above plane, wind motion, night daylight darkening, clouds beyond5x without surface/light, pin clearance and exact fallback. Daylight 1 keeps the previous day colours. Live camera uses existing ExperimentalWorldOverview, continuous4..5 entry, overview beyond5; lead owns that integration."
       }
     },
     {
@@ -74,7 +74,7 @@
       "id": "native-water-qualification-limit",
       "do": {
         "kind": "note",
-        "text": "Native rain/fog/wet paving and corrected unload have actual scene witnesses. Controlled classic-water reflection pixels remain unqualified after bounded existing-water/donor attempts. Retain failed packets and missing geometry witnesses; do not promote incidental dry-pair water differences, synthetic buffers or drawable entity state into a native controlled pass. No shader defect or broader search follows from that result."
+        "text": "Native rain/fog/wet paving and corrected unload have actual scene witnesses. The reflection height gate is separation/4, matching the published surface. Re-run NativeWeatherSceneProbe on a machine with client art before treating controlled classic-water pixels as qualified. Do not promote incidental dry-pair differences or synthetic buffers into that native pass."
       }
     },
     {

@@ -50,6 +50,11 @@ public partial class NativeStaticShadowProbe : Node
             Check(helper.TryContact(resizedFrame,out var frameContact) && frameContact.DistanceTo(contact)<.001f,
                 "changed frame region is independent of graphic cache");
             var degenerate=quad with { W=quad.V };
+            var exposed=quad.TryKeepAbove(220,out var keptWhole)&&keptWhole.C==quad.C;
+            var sheltered=!quad.TryKeepAbove(180,out _);
+            var clipped=quad.TryKeepAbove(206,out var crown)&&Mathf.Abs(crown.C.Y-206)<.001f&&crown.A==quad.A;
+            var shearedCut=!sheared.TryKeepAbove(206,out _);
+            Check(exposed&&sheltered&&clipped&&shearedCut,"upright cover clip keeps the span above the plane and rejects a sheared partial");
             Check(!NativeStaticShadow.TryMap(degenerate,u,out _),"degenerate UV rejected");
             Check(helper.TryContactFromPage(quad,image,1,out var unchanged)&&unchanged.DistanceTo(contact)<.001f,
                 "borrowed CPU page initial source version");

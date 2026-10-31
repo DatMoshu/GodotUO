@@ -11,7 +11,7 @@ internal readonly record struct SpeedModeCloudView(bool Enabled, float Zoom, flo
 public partial class SpeedModeCloudPass : ColorRect
 {
     private ShaderMaterial _cloudMaterial;
-    internal void Bind(Vector2I size, Vector3 camera, SpeedModeCloudView view, float wind, double seconds)
+    internal void Bind(Vector2I size, Vector3 camera, SpeedModeCloudView view, float wind, double seconds, float daylight = 1f)
     {
         if (!view.Enabled || !float.IsFinite(view.Zoom) || view.Zoom <= 4
             || !float.IsFinite(view.Height) || view.Height <= 0 || size.X <= 0 || size.Y <= 0)
@@ -31,6 +31,7 @@ public partial class SpeedModeCloudPass : ColorRect
         _cloudMaterial.SetShaderParameter("camera_height", view.Height);
         _cloudMaterial.SetShaderParameter("wind", float.IsFinite(wind) ? Math.Clamp(wind, -2, 2) : 0);
         _cloudMaterial.SetShaderParameter("seconds", double.IsFinite(seconds) ? (float)(seconds % 3600) : 0);
+        _cloudMaterial.SetShaderParameter("daylight", float.IsFinite(daylight) ? Math.Clamp(daylight, 0, 1) : 1);
         Visible = true;
     }
     internal void ProtectPin(Vector2 pixel,bool overview)

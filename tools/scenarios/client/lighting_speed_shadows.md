@@ -10,6 +10,10 @@ Use the project's pinned `godot-console`, taking a GUO runtime lease for GPU wor
    `[sun-shadow-probe] PASS`: profile persistence/clamps, contact rules and
    monotonic clock advance/wrap. Parent remains off; lamp count defaults6 and
    clamps0..10; sun/window children default true but remain inert under off.
+   Also run headless `ReceiverHeightProbe.tscn` in that folder. Expect
+   `[receiver-height] PASS`: analytic floor, deck, roof and shelter cases,
+   the upright cover clip, and the cloud daylight cycle. A Debug build also
+   runs the reference-index probe. This does not draw a mask.
 2. Run the headless scene `res://src/Render/SpeedMode/Shadows/ShardClockProbe.tscn`.
    Expect `[shard-clock-probe] PASS`: actual packet0x5B remains four bytes,
    fragmented input waits, invalid clock fields clear the stamp without consuming
