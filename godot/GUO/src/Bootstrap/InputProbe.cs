@@ -18,7 +18,7 @@ namespace GUO.Host;
 /// Every event carries its own position and nothing touches the real pointer,
 /// so a probe run does not fight whoever is using the machine.
 /// </remarks>
-internal static class InputProbe
+internal static partial class InputProbe
 {
     /// <summary>
     /// The account-name field of the login gump, in client pixels. Read off
@@ -271,6 +271,7 @@ internal static class InputProbe
         character ??= DefaultCharacter;
 
         await Frames(host, settleFrames);
+        bool pregameTargets = Pregame3D.PregameScreen.Active;
 
         if (Strict)
         {
@@ -291,29 +292,29 @@ internal static class InputProbe
 
             await Frames(host, 120);
             GD.Print("[GUO] input probe: selecting the shard");
-            await Click(host, ShardEntry);
+            if (!await ClickLoginTarget(host, ShardEntry, LoginTarget.Server, pregameTargets)) return;
             await Frames(host, 180);
         }
         else if (!AutoLogin)
         {
             GD.Print("[GUO] input probe: typing the account");
 
-            await Click(host, AccountField);
-            await Type(host, account);
+            if (!await ClickLoginTarget(host, AccountField, LoginTarget.Account, pregameTargets)) return;
+            if (!await TypeLoginField(host, account, LoginTarget.Account, pregameTargets)) return;
 
-            await Click(host, PasswordField);
-            await Type(host, password);
+            if (!await ClickLoginTarget(host, PasswordField, LoginTarget.Password, pregameTargets)) return;
+            if (!await TypeLoginField(host, password, LoginTarget.Password, pregameTargets)) return;
 
             GD.Print("[GUO] input probe: clicking Login");
 
-            await Click(host, LoginButton);
+            if (!await ClickLoginTarget(host, LoginButton, LoginTarget.Login, pregameTargets)) return;
 
             // The handshake, then the shard list.
             await Frames(host, 120);
 
             GD.Print("[GUO] input probe: selecting the shard");
 
-            await Click(host, ShardEntry);
+            if (!await ClickLoginTarget(host, ShardEntry, LoginTarget.Server, pregameTargets)) return;
 
             await Frames(host, 180);
         }
@@ -346,14 +347,18 @@ internal static class InputProbe
                 return;
             }
 
-            if (Game.Managers.UIManager.GetGump<Game.UI.Gumps.Login.CharacterSelectionGump>() != null)
+            if (pregameTargets
+                ? Pregame3D.PregameScreen.Active && Pregame3D.PregameScreen.Instance?.Stage is Pregame3D.CharacterStage { ProbeCharactersCurrent: true }
+                : Game.Managers.UIManager.GetGump<Game.UI.Gumps.Login.CharacterSelectionGump>() != null)
             {
                 creating = false;
                 sawList = true;
                 break;
             }
 
-            if (FindControl<Game.UI.Gumps.CharCreation.CreateCharAppearanceGump>() != null)
+            if (pregameTargets
+                ? Pregame3D.PregameScreen.Instance?.Stage is Pregame3D.CreationStage
+                : FindControl<Game.UI.Gumps.CharCreation.CreateCharAppearanceGump>() != null)
             {
                 sawCreation = true;
                 break;
@@ -388,6 +393,18 @@ internal static class InputProbe
                 Check($"the account has {character} (no creation allowed)", false,
                     "the list is " + string.Join(", ", loginScene?.Characters ?? System.Array.Empty<string>()));
                 return;
+            }
+
+            if (pregameTargets)
+            {
+                if (!byName || slot < 0)
+                {
+                    Check("pregame expected existing character", false, "no exact expected row; creation is not supported by this probe path");
+                    return;
+                }
+                if (!await ClickLoginTarget(host, default, LoginTarget.Character, true, character)) return;
+                await Frames(host, 240);
+                return; // Caller verifies actual world arrival; never substitute a scene method.
             }
 
             if (!byName)
@@ -428,6 +445,12 @@ internal static class InputProbe
 
                 creating = true;
             }
+        }
+
+        if (creating && pregameTargets)
+        {
+            Check("pregame expected existing character", false, "creation path is not authorized by an existing-character probe");
+            return;
         }
 
         if (creating)

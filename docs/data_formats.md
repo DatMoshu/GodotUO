@@ -3758,6 +3758,17 @@ default) are compared as given, in either flag order, and a strict run with
 whose `[go` did not arrive within three tiles in x and y, and two in z when
 the `[go` names one, has no row. A parity row whose test captures did not
 all come from the pass fails the run.
+The explicit `--perf-scene current-location` case measures the existing allocated
+player position without sending a chat command or changing position. It is not
+included in the default scene suite. Require an actual GameScene, in-game player
+and explicit matching `--perf-expect-map`; the result carries
+`existing_location_witness` with map, x/y/z and `command_sent=false`. It is not a
+substitute for feature-positive render witnesses or a same-machine baseline.
+Pregame3D existing-character probes resolve the exact named actual row through
+the guarded global-rectangle/hit-test/raw-pointer path, reject replaced list
+identities and ambiguous names, and never fall back to classic coordinates or
+creation. Classic character selection is unchanged. Disconnected geometry
+qualification alone does not establish Linux login or world arrival.
 Since PERF-MM-01 each scene also carries `p50_ms`, `multimesh_sprites`
 (whether `--multimesh-sprites` was on), `mm_instances` (sprites drawn as
 MultiMesh instances), `mm_runs` (MultiMeshes drawn), `mm_calls`

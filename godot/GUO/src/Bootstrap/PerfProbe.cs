@@ -40,6 +40,7 @@ internal static partial class PerfProbe
     // photographed there and timed here.
     private static readonly Scene[] Scenes =
     {
+        new("current-location", null, "existing allocated player location; no command or teleport"),
         new("open-field", "[go 1164 1668", "Felucca grassland south of Britain: land and a few trees"),
         new("britain-bank", "[go 1434 1699 0", "the Britain bank: dense statics, roofs, vendors and passers-by"),
         new("owner-3469", "[go 3469 2544 31", "where the owner compared the clients on 2026-10-26: roofs, a yard, NPCs"),
@@ -407,7 +408,7 @@ internal static partial class PerfProbe
             && GUO.Game.Managers.UIManager.GetGump<GUO.Game.UI.Gumps.MiniMapGump>() == null)
             GUO.Game.Managers.UIManager.Add(new GUO.Game.UI.Gumps.MiniMapGump(world));
 
-        Scene[] scenes = Only.Count == 0 ? Scenes : System.Array.FindAll(Scenes, s => Only.Contains(s.Name));
+        Scene[] scenes = Only.Count == 0 ? Scenes.Where(s => s.Go != null).ToArray() : System.Array.FindAll(Scenes, s => Only.Contains(s.Name));
         // A misspelt --perf-scene measured nothing and still passed (review M6).
         List<string> unknown = Only.Where(n => !Scenes.Any(s => s.Name == n)).ToList();
         if (unknown.Count > 0)
@@ -424,7 +425,7 @@ internal static partial class PerfProbe
             else if (scene.Walks && _walkOrigin != "field")
                 scene = scene with { Go = Scenes.Single(s => s.Name == "britain-" + _walkOrigin).Go,
                     What = $"running from Britain {_walkOrigin}, turning where blocked" };
-            await InputProbe.Say(host, scene.Go);
+            if (scene.Go != null) await InputProbe.Say(host, scene.Go);
             // Chunks newly in view load and build their meshes first; that is a
             // one-off, not what a player standing still pays every frame.
             await InputProbe.Wait(host, Settle);
@@ -437,6 +438,10 @@ internal static partial class PerfProbe
 
             if (scene.Walks && _walkRoute != null) await PrepareReplayOrigin(host, _walkRoute);
             var sceneResult=await Measure(host, viewport, scene.Name, scene.What, scene.Walks);
+            if (scene.Go == null)
+                sceneResult["existing_location_witness"] = new { in_game=world.InGame,
+                    map=world.MapIndex, x=world.Player.X, y=world.Player.Y, z=world.Player.Z,
+                    command_sent=false, expected_map=ExpectMap };
             // PORT DEVIATION (GUO): ADR-0048; untimed live off/on/off lifetime proof.
             if(_profilePreset=="lighting-speed" && scene.Name=="britain-bank")
                 sceneResult["speed_off_proof"]=await LightingSpeedProbe.CheckLiveOff(host,outDir,label);
@@ -488,9 +493,13 @@ internal static partial class PerfProbe
             GD.PrintErr("[GUO] perf probe: a world parity capture did not exercise its diagnostic target; see parity_target_exercised");
 
         bool replayValid = results.All(r => r.GetValueOrDefault("walk_replay_valid") is not false);
-        Passed = unknown.Count == 0 && idle.Count == 0 && arrivedEverywhere && capturesValid && diagnosticCapturesValid && replayValid
+        Passed = results.All(r => r.GetValueOrDefault("measurement_valid") is true)
+            && unknown.Count == 0 && idle.Count == 0 && arrivedEverywhere && capturesValid && diagnosticCapturesValid && replayValid
             && results.Count == (_parity ? 2 : 1) * scenes.Length + 1;
     }
+
+    internal static bool CurrentLocationValid(bool inGame, bool hasPlayer, bool worldScene, int map, int expectedMap) =>
+        inGame && hasPlayer && worldScene && map == expectedMap;
 
     /// <summary>The player stands at the scene's [go target: x, y, z and map, by LoginPreflight.ArrivedAt.</summary>
     private static bool Arrived(World world, Scene scene, out string where)
@@ -502,6 +511,11 @@ internal static partial class PerfProbe
             return false;
         }
 
+        if (scene.Go == null)
+        {
+            where = $"existing map {world.MapIndex} at {player.X},{player.Y},{player.Z}; no command";
+            return CurrentLocationValid(world.InGame, true, Client.Game.Scene is Game.Scenes.GameScene, world.MapIndex, ExpectMap);
+        }
         return LoginPreflight.ArrivedAt(player.X, player.Y, player.Z, world.MapIndex, scene.Go, ExpectMap, out where);
     }
 
@@ -773,7 +787,8 @@ internal static partial class PerfProbe
                 || pageUploadMs.Capacity > sampleCapacity, sampleWindowClosed: true);
         }
         double[] sorted = ms.OrderBy(v => v).ToArray();
-        double P(double q) => sorted[System.Math.Min(sorted.Length - 1, (int)System.Math.Ceiling(q * sorted.Length) - 1)];
+        double mean = ms.Count > 0 ? ms.Average() : double.NaN;
+        double P(double q) => sorted.Length == 0 ? double.NaN : sorted[System.Math.Min(sorted.Length - 1, (int)System.Math.Ceiling(q * sorted.Length) - 1)];
         var player = Client.Game.UO.World?.Player;
         var r = new Dictionary<string, object>
         {
@@ -800,11 +815,11 @@ internal static partial class PerfProbe
             ["walk_replay_valid"] = replay == null || replay.Valid,
             ["walk_replay_drain_draws"] = replayDoneDraw < 0 ? 0 : UltimaBatcher2D.FramesBegun - replayDoneDraw,
             ["draws_per_frame"] = System.Math.Round((double)draws / n, 2),
-            ["mean_ms"] = System.Math.Round(ms.Average(), 3),
+            ["mean_ms"] = System.Math.Round(mean, 3),
             ["p50_ms"] = System.Math.Round(P(0.5), 3),
             ["p95_ms"] = System.Math.Round(P(0.95), 3),
             ["p99_ms"] = System.Math.Round(P(0.99), 3),
-            ["fps"] = System.Math.Round(1000.0 / ms.Average(), 1),
+            ["fps"] = System.Math.Round(1000.0 / mean, 1),
             ["draw_calls"] = System.Math.Round(calls / n, 1),
             ["canvas_objects"] = System.Math.Round(objects / n, 1),
             ["batcher_items"] = System.Math.Round(items / n, 1),
@@ -908,7 +923,7 @@ internal static partial class PerfProbe
             ["land_upload_mib_per_frame"] = System.Math.Round((double)uploads * LandPages.LayerBytes / (1 << 20) / n, 2),
             ["upload_frames_mean_ms"] = uploadMs.Count > 0 ? System.Math.Round(uploadMs.Average(), 3) : 0.0,
             ["upload_frames_max_ms"] = uploadMs.Count > 0 ? System.Math.Round(uploadMs.Max(), 3) : 0.0,
-            ["max_ms"] = System.Math.Round(ms.Max(), 3),
+            ["max_ms"] = System.Math.Round(ms.Count > 0 ? ms.Max() : double.NaN, 3),
             ["render_frame_ms"] = System.Math.Round(renderFrame / n, 3),
             ["ui_ms"] = System.Math.Round(ui / n, 3),
             ["update_world_ms"] = System.Math.Round(update / n, 3),
@@ -918,7 +933,7 @@ internal static partial class PerfProbe
             ["runtime_attribution"] = _runtimeAttribution,
             ["retained_canvas_enabled"] = UltimaBatcher2D.RetainCanvas,
             ["reclaim_empty_retained_canvas_enabled"] = UltimaBatcher2D.ReclaimEmptyRetainedCanvas,
-            ["counter_intervals"] = intervals?.Report(ms),
+            ["counter_intervals"] = n > 0 ? intervals?.Report(ms) : null,
             ["counter_intervals_dropped"] = intervals?.Dropped ?? 0,
             ["counter_interval_thread_changed"] = intervals?.ThreadChanged ?? false,
             ["cover_candidate_hits"] = GUO.Game.Scenes.CoverCandidates.Hits - candidateHitsBefore,
@@ -969,6 +984,9 @@ internal static partial class PerfProbe
                  + $"{r["draw_calls"]} draw calls, {r["batcher_items"]} batcher items, {r["texture_switches"]} texture switches, "
                  + $"{r["draw_commands"]} commands"
                  + (walks || uploads > 0 ? $"; {r["tiles_moved"]} tiles moved, {uploads} land-array uploads ({r["land_upload_mib_per_frame"]} MiB/frame)" : ""));
+        string sampleIssue = PerfResultJson.SampleIssue(n, elapsed, mean);
+        r["measurement_valid"] = sampleIssue == null && PerfResultJson.NumbersFinite(r);
+        r["measurement_issue"] = sampleIssue ?? ((bool)r["measurement_valid"] ? null : "nonfinite_metric");
         return r;
     }
 
@@ -1228,8 +1246,8 @@ internal static partial class PerfProbe
         md.AppendLine();
         md.AppendLine("Batcher items: canvas items the batcher opened (each is a batch break). Draw commands: sprites, meshes and triangle lists added.");
         File.WriteAllText(Path.Combine(dir, stem + ".md"), md.ToString());
-        File.WriteAllText(Path.Combine(dir, stem + ".json"),
-            JsonSerializer.Serialize(new Dictionary<string, object>
+        PerfResultJson.WriteAtomic(Path.Combine(dir, stem + ".json"),
+            PerfResultJson.Serialize(new Dictionary<string, object>
                 {
                     ["label"] = label, ["window"] = $"{size.X}x{size.Y}", ["zoom"] = System.Math.Round(Client.Game?.Scene?.Camera?.Zoom ?? 0, 2),
                     ["sample_window_version"] = 2,

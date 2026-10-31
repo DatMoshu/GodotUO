@@ -298,3 +298,25 @@ dies, and it needs Desktop mode and the client data on the Deck.
 | `run` says "could not start the client" | `guo.sh` is not there (`push` first), or the Deck has no user systemd session: log in once on the Deck itself |
 | The client says the shard is unreachable | `guo.sh` points at `127.0.0.1`; `push --host <the shard's LAN address>` |
 | `export` fails in `dotnet publish` | run `dotnet build godot\GUO\GUO.csproj` first and fix what it says; the export log is `build\steamdeck\export.log` |
+
+
+## Clean-worktree Linux Release export
+
+For an isolated Linux benchmark package, use a new external `UO_BUILD_DIR` and
+`python3 tools/steamdeck/run.py export --release` (or the existing export launcher
+with `--release`). This generates the gitignored classic-format `GUO.sln` and
+adds `GUO.csproj` before invoking Godot. The Release template is required; Debug
+remains the default export. Release writes `steamdeck-release/` and refuses an
+existing output directory, preserving prior attempts. Import the clean project
+with the pinned mono editor before exporting, using isolated cache/workspace paths.
+
+Do not replace this command with preset plus raw `--export-release`: an absent
+solution can yield a stock executable/pack with exporter exit zero and no managed
+client. The tool now fails unless it finds the executable/pack headers, one
+managed data directory, nonempty GUO/GodotSharp assemblies and parsed deps/runtime
+metadata. `artifact-manifest.json` records every package file's size/SHA-256, or
+`qualified:false` with the failure reason. These are presence/header/hash checks,
+not proof of runtime dependency closure, login, world arrival or performance.
+Record exact source/engine/template identities and validate this manifest before
+running a benchmark. Use the already allocated existing account/character/map;
+missing private identity is a blocker, never permission to guess or create one.
