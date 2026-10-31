@@ -67,7 +67,11 @@ internal sealed partial class OrderedWorldDevice
             }
             _speedOutput=_softenB;
         }
-        SpeedLightTexture.TextureRdRid=_speedOutput;
+        // ReadSpeedLightRT reads _speedOutput: retain the final raw HDR values
+        // for diagnostics while only the published texture uses the transfer.
+        Rid presented=PresentLightRT(_speedOutput);
+        SpeedLightTexture.TextureRdRid=presented;
+        SpeedModeBindings.PublishShelter(this,frame.PhysicalShelter);
         SpeedModeBindings.PublishLight(this,SpeedLightTexture,new Vector4(0,0,Size.X,Size.Y),frame.Ambient);
     }
     private void DisposeSoftenRT()

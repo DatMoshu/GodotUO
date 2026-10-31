@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Godot;
 using GUO.Renderer.SpeedMode;
+using GUO.Renderer.SpeedMode.PhysicalWorld;
 using GUO.Renderer.Lights;
 using RD=Godot.RenderingDevice;
 
@@ -26,6 +27,8 @@ internal sealed partial class OrderedWorldDevice
     private Rid _speedLight,_speedLightFramebuffer,_speedLightShader,_speedLightPipeline;
     private Rid _speedLightSet,_speedCurvesBuffer,_speedReachSampler,_speedAmbientSet;
     private Rid _speedShadowSet,_speedBoundPolar,_speedBoundSun;
+    private Rid _speedBoundStructuralDepth,_speedBoundStructuralParameters,_speedEmptyStructuralParameters;
+    private Rid _speedBoundLampDepth,_speedBoundLampParameters;
     private readonly Dictionary<Rid,Rid> _speedMobileSets=new();
     private Action _speedReleaseInputs;
     private readonly float[] _speedCurves=new float[RealtimeLightEffects.FrameLightCap*36];
@@ -80,7 +83,8 @@ internal sealed partial class OrderedWorldDevice
     private Rid SpeedProgramRT(string vertex,string fragment)
     {
         using var source=new RDShaderSource { Language=RD.ShaderLanguage.Glsl,
-            SourceVertex=SpeedShader(vertex),SourceFragment=SpeedShader(fragment) };
+            SourceVertex=SpeedShader(vertex),SourceFragment=SpeedShader(fragment)
+                .Replace("// STRUCTURAL_LAMP_SAMPLING",StructuralLampDepthRd.SamplingGlsl) };
         using var code=_rd.ShaderCompileSpirVFromSource(source);
         if(!string.IsNullOrEmpty(code.CompileErrorVertex)||!string.IsNullOrEmpty(code.CompileErrorFragment))
             throw new InvalidOperationException(code.CompileErrorVertex+code.CompileErrorFragment);
@@ -118,16 +122,35 @@ internal sealed partial class OrderedWorldDevice
     {
         Rid polar=frame.LampShadowAtlas.IsValid ? frame.LampShadowAtlas : _surfaceColor;
         Rid sun=frame.SunMask.IsValid ? frame.SunMask : _surfaceColor;
-        if(_speedBoundPolar!=polar || _speedBoundSun!=sun) {
+        Rid structuralDepth=frame.StructuralSunDepth.IsValid ? frame.StructuralSunDepth : _surfaceColor;
+        if(!_speedEmptyStructuralParameters.IsValid) {
+            // Zero-ready header makes the fallback sampler unreachable in GLSL.
+            _speedEmptyStructuralParameters=_rd.StorageBufferCreate(132,new byte[132]);
+            Require(_speedEmptyStructuralParameters,"empty structural parameters");
+        }
+        Rid structuralParameters=frame.StructuralSunParameters.IsValid ? frame.StructuralSunParameters : _speedEmptyStructuralParameters;
+        Rid lampDepth=frame.StructuralLampDepth.IsValid ? frame.StructuralLampDepth : _surfaceColor;
+        Rid lampParameters=frame.StructuralLampParameters.IsValid ? frame.StructuralLampParameters : _speedEmptyStructuralParameters;
+        if(_speedBoundPolar!=polar || _speedBoundSun!=sun || _speedBoundStructuralDepth!=structuralDepth
+            || _speedBoundStructuralParameters!=structuralParameters || _speedBoundLampDepth!=lampDepth
+            || _speedBoundLampParameters!=lampParameters) {
             foreach(var set in _speedMobileSets.Values) if(_rd.UniformSetIsValid(set)) _rd.FreeRid(set);
             _speedMobileSets.Clear();
         }
         _speedBoundPolar=polar; _speedBoundSun=sun;
+        _speedBoundStructuralDepth=structuralDepth; _speedBoundStructuralParameters=structuralParameters;
+        _speedBoundLampDepth=lampDepth; _speedBoundLampParameters=lampParameters;
         if(_speedMobileSets.TryGetValue(mobile,out var cached) && _rd.UniformSetIsValid(cached)) return cached;
         using var a=SamplerUniform(new RDUniform { UniformType=RD.UniformType.SamplerWithTexture,Binding=0 },polar);
         using var b=SamplerUniform(new RDUniform { UniformType=RD.UniformType.SamplerWithTexture,Binding=1 },sun);
         using var c=SamplerUniform(new RDUniform { UniformType=RD.UniformType.SamplerWithTexture,Binding=2 },mobile.IsValid ? mobile : _surfaceColor);
-        _speedShadowSet=_rd.UniformSetCreate(new Godot.Collections.Array<RDUniform> { a,b,c },_speedLightShader,2);
+        using var d=SamplerUniform(new RDUniform { UniformType=RD.UniformType.SamplerWithTexture,Binding=3 },structuralDepth);
+        using var e=new RDUniform { UniformType=RD.UniformType.StorageBuffer,Binding=4 };
+        e.AddId(structuralParameters);
+        using var f=SamplerUniform(new RDUniform { UniformType=RD.UniformType.SamplerWithTexture,Binding=5 },lampDepth);
+        using var g=new RDUniform { UniformType=RD.UniformType.StorageBuffer,Binding=6 };
+        g.AddId(lampParameters);
+        _speedShadowSet=_rd.UniformSetCreate(new Godot.Collections.Array<RDUniform> { a,b,c,d,e,f,g },_speedLightShader,2);
         Require(_speedShadowSet,"speed shadow inputs");
         _speedMobileSets[mobile]=_speedShadowSet;
         return _speedShadowSet;
@@ -142,6 +165,7 @@ internal sealed partial class OrderedWorldDevice
             EnsureLightRT();
             if(_speedReleaseInputs!=frame.ReleaseInputs) { _speedReleaseInputs?.Invoke(); _speedReleaseInputs=frame.ReleaseInputs; }
             frame.TargetSize=Size;
+            frame.ReceiverSurface=_surfaceColor;
             frame.RenderInputs?.Invoke(_rd,frame);
             Rid ambientShadows=BindShadowInputsRT(frame);
             if(_speedReachGpu.Count>512) ClearReachGpuRT();
@@ -205,8 +229,8 @@ internal sealed partial class OrderedWorldDevice
             SpeedLightReady=true;
             frame.RenderPatches?.Invoke(_rd,_speedLightFramebuffer,_surfaceColor,frame.Origin,Size);
             _speedOutput=_speedLight;
-            SpeedLightTexture.TextureRdRid=_speedLight;
-            SpeedModeBindings.PublishLight(this,SpeedLightTexture,new Vector4(0,0,Size.X,Size.Y),frame.Ambient);
+            // Presentation and publication occur after optional soften, so no
+            // consumer observes the unbounded intermediate HDR accumulator.
         }
         catch { DisposeLightRT(); throw; }
     }
@@ -225,12 +249,16 @@ internal sealed partial class OrderedWorldDevice
     }
     private void DisposeLightRT()
     {
-        DisposeSoftenRT();
         SpeedLightReady=false; SpeedLightTexture.TextureRdRid=default;
+        DisposeLightPresentationRT();
+        DisposeSoftenRT();
         if(_rd==null) return;
         ClearReachGpuRT();
         foreach(var set in _speedMobileSets.Values) if(_rd.UniformSetIsValid(set)) _rd.FreeRid(set);
         _speedMobileSets.Clear(); _speedShadowSet=_speedBoundPolar=_speedBoundSun=default;
+        _speedBoundStructuralDepth=_speedBoundStructuralParameters=default;
+        _speedBoundLampDepth=_speedBoundLampParameters=default;
+        Free(ref _speedEmptyStructuralParameters);
         _speedReleaseInputs?.Invoke(); _speedReleaseInputs=null;
         FreeSpeedSet(ref _speedLightSet); FreeSpeedSet(ref _speedAmbientSet); Free(ref _speedCurvesBuffer); Free(ref _speedReachSampler);
         Free(ref _speedLightPipeline); Free(ref _speedLightShader);

@@ -31,12 +31,16 @@ internal static class SpeedModeWeatherTargets
             Clear(rain, wet, fog, batcher);
             return false;
         }
+        // This optional texture is published by the same admitted receiver/light
+        // ticket. A missing or mismatched shelter result retains legacy cover.
+        Texture2D shelter = frame.Shelter;
+        if (shelter != null && (shelter.GetWidth() != size.X || shelter.GetHeight() != size.Y)) shelter = null;
         if (profile.SpeedModeWeather)
-            rain.Bind(frame.Surface, size, state.RainIntensity, state.Wind, seconds, world, frame.Origin);
+            rain.Bind(frame.Surface, size, state.RainIntensity, state.Wind, seconds, world, frame.Origin, shelter);
         else rain.HideForFallback();
         wet.Bind(frame.Surface, frame.LightTarget, size, frame.Origin,
             profile.SpeedModeWeather ? state.Wetness : 0,
-            profile.SpeedModeWeather ? state.RainIntensity : 0, seconds, artScale, profile.SpeedModeReflections);
+            profile.SpeedModeWeather ? state.RainIntensity : 0, seconds, artScale, profile.SpeedModeReflections, shelter);
         fog.Bind(frame.Surface, size, frame.Origin, cameraWorld, state.FogDensity,
             profile.SpeedModeMorningHaze, state.Wind, seconds, profile.SpeedModeFog, daylight);
         if (batcher != null)

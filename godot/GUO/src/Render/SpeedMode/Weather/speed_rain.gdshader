@@ -3,6 +3,8 @@ shader_type canvas_item;
 render_mode unshaded;
 
 uniform sampler2D surface_buffer : filter_nearest, repeat_disable;
+uniform sampler2D shelter_status : filter_nearest, repeat_disable;
+uniform bool shelter_ready = false;
 uniform sampler2D drop_sheet : filter_nearest, repeat_disable;
 uniform vec2 target_size = vec2(1280.0, 720.0);
 // Integer camera-centre tile, kept at float32 precision outside RGBA16F.
@@ -29,6 +31,12 @@ void fragment() {
 	int packed = int(round(surface.w));
 	int kind = packed & 15;
 	bool covered = ((packed / 16) & 1) != 0;
+	//0 unknown retains native cover;128 exposed and255 protected come from
+	//actual receiver height against admitted physical roof/floor geometry.
+	if (shelter_ready) {
+		float shelter = texture(shelter_status, uv).r;
+		if (shelter > 0.25) covered = shelter > 0.75;
+	}
 	float alpha = 0.0;
 	if (!covered && intensity > 0.0) {
 		vec2 pixel = uv * target_size;

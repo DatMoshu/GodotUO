@@ -27,7 +27,7 @@ public partial class SpeedModeRainPass : ColorRect
     // The core supplies world only after validating this frame's mode and
     // surface target. Fixtures omit world and never suppress classic weather.
     internal void Bind(Texture2D surface, Vector2I size, float rainIntensity, float wind, double seconds,
-        World world = null, Vector2I? surfaceOrigin = null)
+        World world = null, Vector2I? surfaceOrigin = null, Texture2D shelter = null)
     {
         if (surface == null || (world != null && !surfaceOrigin.HasValue) || size.X <= 0 || size.Y <= 0
             || surface.GetWidth() != size.X || surface.GetHeight() != size.Y)
@@ -49,6 +49,9 @@ public partial class SpeedModeRainPass : ColorRect
         }
         Size = size;
         _rainMaterial.SetShaderParameter("surface_buffer", surface);
+        bool shelterReady = shelter != null && shelter.GetWidth() == size.X && shelter.GetHeight() == size.Y;
+        _rainMaterial.SetShaderParameter("shelter_ready", shelterReady);
+        _rainMaterial.SetShaderParameter("shelter_status", shelterReady ? Variant.From(shelter) : default);
         _rainMaterial.SetShaderParameter("target_size", new Vector2(size.X, size.Y));
         var origin = surfaceOrigin ?? Vector2I.Zero;
         _rainMaterial.SetShaderParameter("surface_origin", new Vector2(origin.X, origin.Y));
@@ -78,6 +81,8 @@ public partial class SpeedModeRainPass : ColorRect
         Visible = false;
         _world = null;
         _rainMaterial?.SetShaderParameter("surface_buffer", default(Variant));
+        _rainMaterial?.SetShaderParameter("shelter_ready", false);
+        _rainMaterial?.SetShaderParameter("shelter_status", default(Variant));
     }
 
     internal static ImageTexture CreateSheet()

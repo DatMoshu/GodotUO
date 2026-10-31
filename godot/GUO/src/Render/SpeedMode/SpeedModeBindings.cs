@@ -12,7 +12,7 @@ namespace GUO.Renderer.SpeedMode;
 internal static class SpeedModeBindings
 {
     internal readonly record struct Frame(Texture2D Surface, Texture2D LightTarget,
-        Vector2I Origin, Vector4 TargetPixelBounds, Vector3 Ambient, long Sequence);
+        Vector2I Origin, Vector4 TargetPixelBounds, Vector3 Ambient, long Sequence, Texture2D Shelter=null);
     internal static Frame Current { get; private set; }
     internal static event System.Action<Frame> LightReady;
     internal static event System.Action<Frame> Invalidated;
@@ -39,6 +39,13 @@ internal static class SpeedModeBindings
             throw new System.InvalidOperationException("Light target has no matching surface frame.");
         Current=Current with { LightTarget=texture,TargetPixelBounds=bounds,Ambient=ambient };
         LightReady?.Invoke(Current);
+    }
+
+    internal static void PublishShelter(object owner, Texture2D shelter)
+    {
+        if (!ReferenceEquals(owner,_owner) || Current.Surface==null)
+            throw new System.InvalidOperationException("Shelter has no matching native surface frame.");
+        Current=Current with { Shelter=shelter };
     }
 
     internal static void Clear(object owner)

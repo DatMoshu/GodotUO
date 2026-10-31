@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 #version 450
-// ADR-0048 approximate soften: one separable box kernel, class/cover edges stop it.
+// ADR-0048 approximate soften: class, physical confidence and XYZ edges stop it.
 layout(set=0,binding=0) uniform sampler2D light_buffer;
 layout(set=0,binding=1) uniform sampler2D surface_buffer;
 layout(push_constant,std430) uniform Blur { vec4 screen_direction; ivec4 settings; } pc;
@@ -8,17 +8,28 @@ layout(location=0) out vec4 colour;
 void main() {
     ivec2 pixel=ivec2(gl_FragCoord.xy), size=ivec2(pc.screen_direction.xy);
     ivec2 direction=ivec2(pc.screen_direction.zw);
-    int centre=int(texelFetch(surface_buffer,pixel,0).w+0.5)&31;
+    vec4 centre_surface=texelFetch(surface_buffer,pixel,0);
+    int centre=int(centre_surface.w+0.5)&287; // class, cover and physical-confidence bit
     float weight=float(pc.settings.x+1);
     vec4 sum=texelFetch(light_buffer,pixel,0)*weight;
     for(int side=-1;side<=1;side+=2) {
+        vec3 previous=centre_surface.xyz;
         for(int step=1;step<=10;step++) {
             if(step>pc.settings.x) break;
             ivec2 at=clamp(pixel+direction*(side*step),ivec2(0),size-1);
-            int kind=int(texelFetch(surface_buffer,at,0).w+0.5)&31;
+            vec4 receiver=texelFetch(surface_buffer,at,0);
+            int kind=int(receiver.w+0.5)&287;
             if(kind!=centre) break;
+            // Compare adjacent physical receivers, never shadow intensity.
+            // Native flat floor layers differ by whole Z units; 0.5 permits
+            // half-float noise/slopes but cannot cross to the next floor.
+            // A quarter-tile XY jump is a separate piece of world geometry.
+            // Very steep/zoomed-out slopes conservatively retain sharp light.
+            vec3 gap=abs(receiver.xyz-previous);
+            if(gap.z>0.5 || max(gap.x,gap.y)>0.25) break;
             float w=float(pc.settings.x+1-step);
             sum+=texelFetch(light_buffer,at,0)*w; weight+=w;
+            previous=receiver.xyz;
         }
     }
     colour=sum/max(weight,1.0);

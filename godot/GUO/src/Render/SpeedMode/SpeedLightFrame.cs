@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 using Godot;
 using GUO.Renderer.Lights;
+using GUO.Renderer.SpeedMode.PhysicalWorld;
 
 namespace GUO.Renderer.SpeedMode;
 
@@ -23,6 +24,12 @@ internal sealed class SpeedLightFrame
     internal Vector2I Origin,TargetSize;
     // Borrowed RD views; default means no contribution from that optional pass.
     internal Rid LampShadowAtlas,SunMask;
+    internal Rid StructuralSunDepth,StructuralSunParameters;
+    internal Rid StructuralLampDepth,StructuralLampParameters;
+    internal Rid ReceiverSurface;
+    internal PhysicalWorldSnapshot PhysicalWorld;
+    internal Texture2D PhysicalShelter;
+    internal bool WeatherShelterEnabled;
     internal float ShadowSoftnessTenths=3;
     internal System.Action<RenderingDevice,SpeedLightFrame> RenderInputs;
     internal System.Action ReleaseInputs;

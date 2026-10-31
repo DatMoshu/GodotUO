@@ -7,11 +7,34 @@ layout(set=1,binding=0) uniform sampler2D reach_map;
 layout(set=2,binding=0) uniform sampler2D polar_map;
 layout(set=2,binding=1) uniform sampler2D sun_mask;
 layout(set=2,binding=2) uniform sampler2D mobile_mask;
+layout(set=2,binding=3) uniform sampler2D structural_depth;
+layout(set=2,binding=4,std430) readonly buffer PhysicalSun {
+    vec4 row_u; vec4 row_v; vec4 row_depth; vec4 bounds;
+    vec4 info; vec4 sun; vec4 domain; vec4 origin; uint known[];
+} physical_sun;
+layout(set=2,binding=5) uniform sampler2D structural_lamp_depth;
+layout(set=2,binding=6,std430) readonly buffer PhysicalLamp {
+    vec4 lamp; vec4 info; vec4 bounds; vec4 domain; vec4 origin; uint known[];
+} physical_lamp;
 layout(push_constant,std430) uniform Light {
     vec4 rect; vec4 world_radius; vec4 colour_energy; vec4 reach_bounds;
     vec4 screen_mode; vec4 origin_curve; vec4 ambient_roof; vec4 unused;
 } pc;
 layout(location=0) out vec4 light;
+// STRUCTURAL_LAMP_SAMPLING
+// A qualified opaque hit proves blockage even when the distant live domain is
+// incomplete. A miss there is an unknown fallback, never proof of empty sky.
+float structural_sun(vec3 position,int packed) {
+    if((packed&256)==0 || physical_sun.domain.z<0.5 || physical_sun.sun.w<=0.0) return 1.0;
+    if(position.z<physical_sun.domain.x || position.z>physical_sun.domain.y
+        || any(lessThan(position.xy,physical_sun.bounds.xy))
+        || any(greaterThanEqual(position.xy,physical_sun.bounds.zw))) return 1.0;
+    vec4 p=vec4(position,1.0);
+    vec3 q=vec3(dot(physical_sun.row_u,p),dot(physical_sun.row_v,p),dot(physical_sun.row_depth,p));
+    if(any(lessThan(q,vec3(0))) || any(greaterThanEqual(q,vec3(1)))) return 1.0;
+    float depth=textureLod(structural_depth,q.xy,0.0).r;
+    return depth<q.z-physical_sun.info.w ? 1.0-physical_sun.sun.w : 1.0;
+}
 // Matches the shadow slice's ShadowSampling contract: nearest row, angular
 // interpolation only; atlas RG = horizontal distance / wall-top UO Z.
 float lamp_shadow(vec3 relative_position,vec2 normal_xy) {
@@ -37,6 +60,9 @@ void main() {
     if(pc.screen_mode.z<0.0) {
         float roof=(packed&16)!=0 ? pc.ambient_roof.w : 1.0;
         float sun=pc.unused.w>0.5 && kind==1 ? 1.0-clamp(texelFetch(sun_mask,ivec2(gl_FragCoord.xy),0).r,0.0,1.0) : 1.0;
+        // Union overlapping occlusion; repeated shadow sources must not multiply
+        // the same blocked sun into an artificially black patch.
+        sun=min(sun,structural_sun(surface.xyz,packed));
         light=vec4(pc.ambient_roof.rgb*(roof*sun),1); return;
     }
     if(kind==0) discard;
@@ -47,10 +73,15 @@ void main() {
     if(t>=1.0) discard;
     vec2 world=surface.xy+pc.origin_curve.xy;
     vec2 sample_uv=(world-pc.reach_bounds.xy)/pc.reach_bounds.zw;
-    if(any(lessThan(sample_uv,vec2(0))) || any(greaterThanEqual(sample_uv,vec2(1)))) discard;
-    vec2 reach=textureLod(reach_map,sample_uv,0.0).rg;
+    int structural=structural_lamp_status(surface.xyz,packed,int(pc.screen_mode.z+0.5));
+    bool inside_reach=all(greaterThanEqual(sample_uv,vec2(0))) && all(lessThan(sample_uv,vec2(1)));
+    if(structural<0 && !inside_reach) discard;
+    vec2 reach=inside_reach ? textureLod(reach_map,sample_uv,0.0).rg : vec2(0);
     // Four reach samples per tile: a half-texel ramp is exactly 1/8 tile.
     float visibility=smoothstep(0.25,0.75,reach.r)*step(0.001,reach.g);
+    // Certified segments supersede the old top-only reach grid. Multiplying
+    // both would keep a raised beam's false ground shadow even when clear.
+    if(structural>=0) visibility=1.0;
     int curve=int(pc.origin_curve.z+0.5);
     float falloff;
     if(curve==0) falloff=1.0-t;
@@ -70,6 +101,7 @@ void main() {
     else if(kind==4) facing=max(0.2,dot(direction,normalize(vec3(1,1,0))));
     vec2 normal_xy=kind==2 ? vec2(0,1) : kind==3 ? vec2(1,0) : vec2(0);
     float shadow=lamp_shadow(surface.xyz-pc.world_radius.xyz,normal_xy);
-    if(pc.screen_mode.w>0.5 && kind==1) shadow*=1.0-clamp(texelFetch(mobile_mask,ivec2(gl_FragCoord.xy),0).r,0.0,1.0);
+    if(structural>=0) shadow=structural==1 ? 0.0 : 1.0;
+    if(pc.screen_mode.w>0.5 && kind==1) shadow=min(shadow,1.0-clamp(texelFetch(mobile_mask,ivec2(gl_FragCoord.xy),0).r,0.0,1.0));
     light=vec4(pc.colour_energy.rgb*(pc.colour_energy.w*falloff*facing*visibility*shadow),0);
 }

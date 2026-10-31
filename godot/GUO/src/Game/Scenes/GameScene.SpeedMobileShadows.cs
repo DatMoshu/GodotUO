@@ -57,14 +57,15 @@ internal partial class GameScene
             Vector2 anchor=new(mobile.RealScreenPosition.X+(int)mobile.Offset.X+22,
                 mobile.RealScreenPosition.Y-3+(int)(mobile.Offset.Y-mobile.Offset.Z)+22);
             float height=Math.Max(1,anchor.Y-_speedMobileTops[mobile]);
-            if(inputs.SunEnabled) inputs.Sun.Add(quad.Project(anchor,direction*length,height,strength,view));
+            float receiverZ=mobile.Z+mobile.Offset.Z/4f;
+            if(inputs.SunEnabled) inputs.Sun.Add(quad.Project(anchor,direction*length,height,strength,view) with { ReceiverZ=receiverZ });
             var foot=new N3(mobile.X+(mobile.Offset.X+mobile.Offset.Y)/44f,
                 mobile.Y+(mobile.Offset.Y-mobile.Offset.X)/44f,mobile.Z);
             int lamps=MobileLampProjection.Select(inputs.Lamps.AsSpan(0,inputs.LampCount),foot,affecting);
             for(int j=0;j<lamps;j++) for(int row=0;row<selected.Length;row++) if(selected[row]==affecting[j].Offer) {
                 var cast=affecting[j]; inputs.Mobile[row]??=new List<SpeedShadowInputs.Stamp>(32);
                 inputs.Mobile[row].Add(quad.Project(anchor,new Vector2(cast.Direction.X,cast.Direction.Y)*cast.Length,
-                    height,cast.Strength,view));
+                    height,cast.Strength,view) with { ReceiverZ=receiverZ });
             }
         }
         SpeedMobileQuadCount=_speedMobileQuads.Count;

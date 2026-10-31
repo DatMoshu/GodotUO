@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using Godot;
 using GUO.Renderer.Lights;
 using GUO.Renderer.SpeedMode.WindowLight;
+using GUO.Renderer.SpeedMode.PhysicalWorld;
 using N2 = System.Numerics.Vector2;
 using N3 = System.Numerics.Vector3;
 
@@ -30,17 +31,27 @@ internal sealed class SpeedShadowInputs
     internal int LampCount, Requested;
     internal N3 Viewer;
     internal bool SunEnabled;
+    internal PhysicalWorldSnapshot PhysicalWorld;
+    internal PhysicalSunProjection PhysicalSun;
+    internal StructuralSunDepthRd StructuralSun { get; private set; }
+    internal PhysicalLampProjection PhysicalLamp;
+    internal int StructuralLampOffer=-1;
+    internal StructuralLampDepthRd StructuralLamp { get; private set; }
+    internal bool ShelterEnabled;
+    internal PhysicalShelterPassRd Shelter { get; private set; }
     private LampShadowFrame _polar;
     private ProjectedShadowMaskRd _sun;
     private readonly ProjectedShadowMaskRd[] _mobile = new ProjectedShadowMaskRd[10];
     private WindowLightPassRd _windows;
 
     internal readonly record struct Stamp(Texture2D Texture,Vector2 A,Vector2 B,Vector2 C,
-        Vector2 U,Vector2 V,Vector2 W,float Opacity,float From,float To);
+        Vector2 U,Vector2 V,Vector2 W,float Opacity,float From,float To,float ReceiverZ=float.NaN);
 
     internal void Begin()
     {
         Sun.Clear(); Windows.Clear(); Rays.Clear();
+        PhysicalWorld=null;
+        PhysicalSun=default; StructuralLampOffer=-1;
         _generation++; _rayGate.Clear(); _rayMask=default;
         foreach(var list in Mobile) list?.Clear();
     }
@@ -50,6 +61,10 @@ internal sealed class SpeedShadowInputs
     {
         _rayGate.Clear(); _rayMask=default;
         frame.LampShadowAtlas=frame.SunMask=default;
+        frame.StructuralSunDepth=frame.StructuralSunParameters=default;
+        frame.StructuralLampDepth=frame.StructuralLampParameters=default;
+        frame.PhysicalWorld=PhysicalWorld;
+        frame.PhysicalShelter=null;
         for(int i=0;i<frame.Count;i++) { frame.Lights[i].ShadowRow=-1; frame.Lights[i].MobileShadow=default; }
         if(Requested>0 && LampCount>0)
         {
@@ -60,25 +75,45 @@ internal sealed class SpeedShadowInputs
                     int row=_polar.RowForOffer(i); frame.Lights[i].ShadowRow=row;
                     if(row>=0 && Mobile[row]?.Count>0) {
                         _mobile[row]??=new ProjectedShadowMaskRd(rd,publish:false);
-                        frame.Lights[i].MobileShadow=Draw(_mobile[row],Mobile[row],frame.TargetSize);
+                        frame.Lights[i].MobileShadow=Draw(_mobile[row],Mobile[row],frame.TargetSize,frame.ReceiverSurface);
                     }
                 }
             }
         }
         if(SunEnabled && Sun.Count>0) {
             _sun??=new ProjectedShadowMaskRd(rd,publish:false);
-            frame.SunMask=Draw(_sun,Sun,frame.TargetSize);
+            frame.SunMask=Draw(_sun,Sun,frame.TargetSize,frame.ReceiverSurface);
         }
+        if(SunEnabled && PhysicalWorld!=null && PhysicalSun.Strength>0) {
+            StructuralSun??=new StructuralSunDepthRd();
+            StructuralSun.Render(rd,PhysicalWorld,PhysicalSun);
+            frame.StructuralSunDepth=StructuralSun.DepthRid;
+            frame.StructuralSunParameters=StructuralSun.ParametersRid;
+        }
+        else { StructuralSun?.Dispose(); StructuralSun=null; }
+        if(Requested>0 && StructuralLampOffer>=0 && PhysicalWorld!=null) {
+            StructuralLamp??=new StructuralLampDepthRd();
+            StructuralLamp.Render(rd,PhysicalWorld,PhysicalLamp);
+            frame.StructuralLampDepth=StructuralLamp.DepthRid;
+            frame.StructuralLampParameters=StructuralLamp.ParametersRid;
+        }
+        else { StructuralLamp?.Dispose(); StructuralLamp=null; }
+        if(ShelterEnabled && PhysicalWorld!=null) {
+            Shelter??=new PhysicalShelterPassRd();
+            Shelter.Render(rd,PhysicalWorld,frame.ReceiverSurface,frame.Origin,frame.TargetSize);
+            if(Shelter.Ready) frame.PhysicalShelter=Shelter.Texture;
+        }
+        else { Shelter?.Dispose(); Shelter=null; }
         _rayMask=frame.SunMask;
         bool rayReady=SunEnabled && Rays.Count>0 && _rayMask.IsValid;
         _rayGate.Prepare(_generation,rayReady,frame.Origin,frame.TargetSize);
         if(!rayReady) { _rays?.Dispose(); _rays=null; }
     }
 
-    private static Rid Draw(ProjectedShadowMaskRd mask,List<Stamp> stamps,Vector2I size)
+    private static Rid Draw(ProjectedShadowMaskRd mask,List<Stamp> stamps,Vector2I size,Rid receiverSurface)
     {
-        mask.Begin(size.X,size.Y);
-        foreach(var s in stamps) mask.Stamp(s.Texture,s.A,s.B,s.C,s.U,s.V,s.W,s.Opacity,s.From,s.To);
+        mask.Begin(size.X,size.Y,receiverSurface);
+        foreach(var s in stamps) mask.Stamp(s.Texture,s.A,s.B,s.C,s.U,s.V,s.W,s.Opacity,s.From,s.To,s.ReceiverZ);
         return mask.Finish()!=null && !mask.Failed ? mask.ShadowRid : default;
     }
 
@@ -103,6 +138,9 @@ internal sealed class SpeedShadowInputs
     {
         _polar?.Dispose(); _polar=null;
         _sun?.DisposeAll(); _sun=null;
+        StructuralSun?.Dispose(); StructuralSun=null;
+        StructuralLamp?.Dispose(); StructuralLamp=null;
+        Shelter?.Dispose(); Shelter=null;
         for(int i=0;i<_mobile.Length;i++) { _mobile[i]?.DisposeAll(); _mobile[i]=null; }
         _windows?.Dispose(); _windows=null;
         _rays?.Dispose(); _rays=null; _rayGate.Clear(); _rayMask=default;

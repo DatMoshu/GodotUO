@@ -10,7 +10,7 @@ public partial class SpeedModeWetPass : ColorRect
     private ShaderMaterial _wetMaterial;
 
     internal void Bind(Texture2D surface, Texture2D lights, Vector2I size, Vector2I surfaceOrigin,
-        float wetness, float rainIntensity, double seconds, float artScale = 1f, bool reflections = false)
+        float wetness, float rainIntensity, double seconds, float artScale = 1f, bool reflections = false, Texture2D shelter = null)
     {
         if (surface == null || lights == null || size.X <= 0 || size.Y <= 0
             || surface.GetWidth() != size.X || surface.GetHeight() != size.Y
@@ -32,6 +32,9 @@ public partial class SpeedModeWetPass : ColorRect
         }
         Size = size;
         _wetMaterial.SetShaderParameter("surface_buffer", surface);
+        bool shelterReady = shelter != null && shelter.GetWidth() == size.X && shelter.GetHeight() == size.Y;
+        _wetMaterial.SetShaderParameter("shelter_ready", shelterReady);
+        _wetMaterial.SetShaderParameter("shelter_status", shelterReady ? Variant.From(shelter) : default);
         _wetMaterial.SetShaderParameter("light_target", lights);
         _wetMaterial.SetShaderParameter("target_size", new Vector2(size.X, size.Y));
         _wetMaterial.SetShaderParameter("surface_origin", new Vector2(surfaceOrigin.X, surfaceOrigin.Y));
@@ -49,6 +52,8 @@ public partial class SpeedModeWetPass : ColorRect
         Visible = false;
         _wetMaterial?.SetShaderParameter("surface_buffer", default(Variant));
         _wetMaterial?.SetShaderParameter("light_target", default(Variant));
+        _wetMaterial?.SetShaderParameter("shelter_ready", false);
+        _wetMaterial?.SetShaderParameter("shelter_status", default(Variant));
     }
 
     public override void _ExitTree()

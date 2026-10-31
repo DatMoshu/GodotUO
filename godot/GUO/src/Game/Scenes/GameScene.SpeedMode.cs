@@ -57,7 +57,12 @@ internal partial class GameScene
             _speedLights ??=new SpeedLightFrame { BindLightTarget=OnSpeedLightTarget,ClearLightTarget=OnSpeedLightClear };
             var frame=_speedLights;
             frame.Batcher=batcher;
-            frame.LampShadowAtlas=frame.SunMask=default; frame.RenderInputs=null; frame.RenderPatches=null;
+            frame.LampShadowAtlas=frame.SunMask=default;
+            frame.StructuralSunDepth=frame.StructuralSunParameters=default; frame.PhysicalWorld=null;
+            frame.StructuralLampDepth=frame.StructuralLampParameters=default;
+            frame.ReceiverSurface=default;
+            frame.PhysicalShelter=null; frame.WeatherShelterEnabled=false;
+            frame.RenderInputs=null; frame.RenderPatches=null;
             frame.Count=Math.Min(_rtSourceCount,frame.Lights.Length);
             frame.Origin=batcher.SpeedSurfaceOrigin;
             frame.Soften=Math.Clamp(ProfileManager.CurrentProfile.SpeedModeSoften,0,10);

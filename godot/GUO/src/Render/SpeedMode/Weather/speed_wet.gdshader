@@ -4,6 +4,8 @@ render_mode unshaded;
 #include "res://src/Render/SpeedMode/Weather/speed_reflection.gdshaderinc"
 uniform sampler2D scene_color : hint_screen_texture, filter_nearest, repeat_disable;
 uniform sampler2D surface_buffer : filter_nearest, repeat_disable;
+uniform sampler2D shelter_status : filter_nearest, repeat_disable;
+uniform bool shelter_ready = false;
 uniform sampler2D light_target : filter_linear, repeat_disable;
 uniform vec2 target_size = vec2(1280.0, 720.0);
 uniform vec2 surface_origin = vec2(0.0);
@@ -31,6 +33,10 @@ void fragment() {
 	bool floor_pixel = (data & 15) == 1;
 	bool water_pixel = (data & 15) == 6;
 	bool covered = ((data / 16) & 1) != 0;
+	if (shelter_ready) {
+		float shelter = texture(shelter_status, uv).r;
+		if (shelter > 0.25) covered = shelter > 0.75;
+	}
 	vec3 color = texture(scene_color, uv).rgb;
 	float alpha = 0.0;
 	if (floor_pixel && !covered && wetness > 0.0) {

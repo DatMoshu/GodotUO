@@ -49,7 +49,7 @@ internal partial class GameScene
             }
             float top=Math.Min(Math.Min(used.A.Y,used.B.Y),Math.Min(used.C.Y,(used.B+used.C-used.A).Y));
             float height=Math.Max(1,contact.Y-top);
-            inputs.Sun.Add(used.Project(contact,direction*length,height,strength,view));
+            inputs.Sun.Add(used.Project(contact,direction*length,height,strength,view) with { ReceiverZ=owner.Z });
             SpeedStaticQuadCount++;
             SpeedStaticShadowObserver?.Invoke(owner,quad,contact,resident);
         }

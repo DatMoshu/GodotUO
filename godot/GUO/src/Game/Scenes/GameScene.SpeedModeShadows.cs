@@ -11,6 +11,7 @@ using GUO.Renderer.Lights;
 using GUO.Renderer.SpeedMode;
 using GUO.Renderer.SpeedMode.Shadows;
 using GUO.Renderer.SpeedMode.WindowLight;
+using GUO.Renderer.SpeedMode.PhysicalWorld;
 using N2=System.Numerics.Vector2;
 using N3=System.Numerics.Vector3;
 using N4=System.Numerics.Vector4;
@@ -21,6 +22,9 @@ internal partial class GameScene
 {
     private SpeedShadowInputs _speedShadows;
     private ulong _shadowGridHash;
+    private static long _physicalWorldIdentityCounter;
+    private readonly ulong _physicalWorldIdentity=(ulong)System.Threading.Interlocked.Increment(ref _physicalWorldIdentityCounter);
+    private ulong _physicalGeneration;
     internal int SpeedWindowCount=>_speedShadows?.Windows.Count??0;
     internal int SpeedSunStampCount=>_speedShadows?.Sun.Count??0;
     internal string SpeedSunSource { get; private set; }
@@ -35,6 +39,7 @@ internal partial class GameScene
         _speedShadows??=new SpeedShadowInputs();
         var inputs=_speedShadows; inputs.Begin();
         inputs.LampCount=frame.Count; inputs.Requested=Math.Clamp(lamps,0,10); inputs.SunEnabled=sun;
+        inputs.ShelterEnabled=frame.WeatherShelterEnabled=profile.SpeedModeWeather;
         inputs.Viewer=new N3(_world.Player.X,_world.Player.Y,_world.Player.Z);
         for(int i=0;i<frame.Count;i++) {
             var s=frame.Lights[i].Source;
@@ -71,12 +76,26 @@ internal partial class GameScene
         var sky=SunShadowProjection.Resolve(_world.ShardClock,RealtimeAmbientLevel(),Time.Ticks);
 #endif
         SpeedSunSource=sky.Source;
+        if(sun && sky.Strength>0 || inputs.Requested>0 && frame.Count>0 || inputs.ShelterEnabled) {
+            // Physical source is independent of visible chunks and roof cutaways.
+            // Keep a bounded, chunk-aligned region around the current viewer.
+            int x=(_world.Player.X>>3)*8-24,y=(_world.Player.Y>>3)*8-24;
+            inputs.PhysicalWorld=CaptureSpeedPhysicalWorld(_physicalWorldIdentity,++_physicalGeneration,
+                new PhysicalRect(x,y,PhysicalWorldBuilder.MaxSide,PhysicalWorldBuilder.MaxSide));
+            if(sun && sky.Strength>0) inputs.PhysicalSun=PhysicalSunProjection.Create(inputs.PhysicalWorld,
+                new N2(frame.Origin.X,frame.Origin.Y),sky.Direction,sky.Length,sky.Strength);
+        }
         N2 ray=sky.Direction;
         Vector2 direction=new(ray.X-ray.Y,ray.X+ray.Y);
         direction=direction.Normalized();
         Transform2D view=matrix;
         Span<int> selected=stackalloc int[10];
         int selectedCount=PolarShadowGeometry.Select(inputs.Lamps.AsSpan(0,frame.Count),inputs.Viewer,inputs.Requested,selected);
+        if(selectedCount>0 && inputs.PhysicalWorld!=null) {
+            inputs.StructuralLampOffer=selected[0];
+            inputs.PhysicalLamp=PhysicalLampProjection.Create(inputs.PhysicalWorld,inputs.Lamps[selected[0]],
+                new N2(frame.Origin.X,frame.Origin.Y),selected[0]);
+        }
         foreach(var chunk in _visibleChunks) {
             if(chunk==null || chunk.IsDestroyed) continue;
             for(int y=0;y<8;y++) for(int x=0;x<8;x++) for(var obj=chunk.Tiles[x,y];obj!=null;obj=obj.TNext) {
