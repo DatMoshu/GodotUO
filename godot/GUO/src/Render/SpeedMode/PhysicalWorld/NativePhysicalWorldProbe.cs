@@ -43,6 +43,10 @@ public partial class NativePhysicalWorldProbe : Node
         _root = System.Environment.GetEnvironmentVariable("GUO_PHYSICAL_WORLD_OUT");
         Require(!string.IsNullOrWhiteSpace(_root) && Path.IsPathRooted(_root), "external GUO_PHYSICAL_WORLD_OUT required");
         _root = Path.GetFullPath(_root);
+        if (System.Environment.GetEnvironmentVariable("GUO_PHYSICAL_PERF") == "1")
+            Require(!File.Exists(Path.Combine(_root, "data", "native-physical-world-results.json"))
+                && !File.Exists(Path.Combine(_root, "data", "native-physical-performance.json")),
+                "performance diagnostics require a new output run; prior acceptance artifacts are immutable");
         string project = Path.GetFullPath(ProjectSettings.GlobalizePath("res://"));
         Require(!_root.StartsWith(project, StringComparison.OrdinalIgnoreCase), "evidence must stay outside project");
         string scratch = Path.Combine(_root, "data", "fixture");
@@ -308,6 +312,11 @@ public partial class NativePhysicalWorldProbe : Node
             _scene.UpdateDrawPosition = true;
             for (int i = 0; i < 12; i++) await Frame();
             _game.SetProcess(false);
+            if (System.Environment.GetEnvironmentVariable("GUO_PHYSICAL_PERF") == "1") {
+                await RunPerformanceCases();
+                GD.Print("[native-physical-performance] PASS shared-load Debug mode comparison; no Release/FPS claim");
+                GetTree().Quit(0); return;
+            }
             for (int i = 0; i < 3; i++) { using var warm = await Capture("bootstrap-" + i); }
             _rows.Add(new { test = "pure-contract", checks = PhysicalWorldProbe.Run() });
             await Cases();
@@ -427,6 +436,8 @@ public partial class NativePhysicalWorldProbe : Node
         await RunLampCases();
         await RunWallReceiverCases();
         await RunShelterCases();
+        if (System.Environment.GetEnvironmentVariable("GUO_PHYSICAL_EMITTED_WEATHER") == "1")
+            await RunEmittedWeatherCases();
         await RunResidentReceiverCases();
 
         _profile.LightingSpeedMode = false;

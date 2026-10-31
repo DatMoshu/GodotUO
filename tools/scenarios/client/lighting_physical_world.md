@@ -49,5 +49,38 @@ a miss in incomplete source coverage cannot prove clear sky. All roof shapes,
 all selected point lights, wind-driven precipitation, low-angle full-world
 coverage and performance acceptance are separate requirements. The shelter
 fixture verifies the status texture consumed by weather; it does not establish
-the appearance of falling rain. Debug correctness runs do not establish Release
+the appearance of falling rain. To add emitted-weather acceptance, set
+`GUO_PHYSICAL_EMITTED_WEATHER=1` on the native fixture command. This adds real
+rain packets, a hidden native Item canopy, same-ticket rain/wet shader checks,
+exposed positive controls, unknown fallback, first-frame roof removal and
+Classic/failure comparisons with a positive native-precipitation witness. Both
+the world target and final viewport must pass. The separate
+`Weather/SpeedModeWeatherRuntimeProbe.tscn` also verifies that approaching-storm
+lines remain visible when the procedural pass emits no rain.
+
+Debug correctness runs do not establish Release
 frame times or justify whole-world visibility bakes.
+
+For a bounded CPU/memory diagnostic, set `GUO_PHYSICAL_PERF=1` and use a new
+`GUO_PHYSICAL_WORLD_OUT` directory with the same native scene command. This
+selects the performance fixture instead of the image acceptance cases. Require
+`[native-physical-performance] PASS` and inspect
+`data/native-physical-performance.json`. Clear the variable before running the
+normal image acceptance cases again.
+
+The diagnostic freezes the scene, clock and camera, warms 30 draws and samples
+120 draws per mode, Classic then enhanced. It records direct `DrawFrame` CPU
+submission separately from paced wall intervals; readbacks and GPU/memory
+queries stay outside those samples. The mode comparison includes all enabled
+enhanced lighting work, not just the new physical passes. A separate no-draw
+cache diagnostic measures full `Capture` calls, including signatures and
+snapshot sealing. Fresh cache means a new physical cache with already warm
+native file/art caches, not cold disk loading.
+
+Memory counters describe the process and engine allocations, not total adapter
+residency. GPU marker observations are a separate, delayed diagnostic window;
+cached depth work may have no marker and the existing markers do not cover all
+lighting work. On the pinned Vulkan engine, GPU timestamps are nanoseconds and
+CPU timestamps are microseconds, despite the SDK XML describing both as
+microseconds. The pinned implementation is authoritative. These Debug samples
+under shared load establish neither Release performance nor uncapped FPS.

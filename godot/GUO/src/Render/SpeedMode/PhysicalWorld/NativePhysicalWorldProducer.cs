@@ -138,7 +138,10 @@ internal static class NativePhysicalWorldProducer
                 {
                     int x = bx * 8 + (i & 7), y = by * 8 + (i >> 3);
                     var cell = block.Cells[i];
-                    _ground[(x, y)] = new Ground((ushort)(cell.TileID & 0x3FFF), cell.Z);
+                    // Block reads include more than the required one-tile halo.
+                    // Keep source hashing/validation unchanged, but do not retain
+                    // cells that no terrain corner or roof neighbour can use.
+                    if (InHalo(x, y)) _ground[(x, y)] = new Ground((ushort)(cell.TileID & 0x3FFF), cell.Z);
                     Hash((uint)x | ((ulong)(uint)y << 32));
                     Hash(cell.TileID | ((ulong)(byte)cell.Z << 16));
                     _builder.MarkComplete(x, y);
@@ -235,12 +238,15 @@ internal static class NativePhysicalWorldProducer
                 _builder.MarkUnknown(source.X, source.Y, PhysicalUnknownReason.InvalidSource);
                 return;
             }
-            _sources.Add(source);
             Hash((uint)source.X | ((ulong)(uint)source.Y << 32));
             Hash((uint)source.Z | ((ulong)source.Graphic << 32));
             Hash((ulong)source.Owner.Kind); Hash(source.Owner.Identity); Hash(source.Owner.Component);
             Hash((ulong)source.Tile.Flags); Hash(source.Tile.Height);
             Hash(source.Moving ? 1UL : 0UL);
+            // Every native record still counts against the shared visit limit,
+            // and contributes to the same fingerprint, including outside cells.
+            if (!InHalo(source.X, source.Y)) return;
+            _sources.Add(source);
             if (source.Tile.IsRoof && !source.Moving)
             {
                 if (!_roofs.TryGetValue((source.X, source.Y), out List<Source> roofs))
