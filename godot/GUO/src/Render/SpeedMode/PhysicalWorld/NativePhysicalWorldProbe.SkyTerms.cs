@@ -194,6 +194,7 @@ public partial class NativePhysicalWorldProbe
                 Place(0x0B1D, X - 1, Y, _z); Mutated();
                 _scene.SpeedAmbientProbeTerm = 0; _profile.LightingSpeedMode = false;
                 using var off = await Capture("legacy-expression-transition-off", false);
+                RecordSkyPreCompose("legacy-expression-after-off-before-first-reenable");
                 _profile.LightingSpeedMode = true;
                 using var first = await CaptureSkyTerm("legacy-expression-reenabled-first-normal", 0, .20f, 51);
                 using var second = await CaptureSkyTerm("legacy-expression-reenabled-second-normal", 0, .20f, 51);
@@ -203,7 +204,7 @@ public partial class NativePhysicalWorldProbe
                     && second.Presented.AsSpan().SequenceEqual(third.Presented), "original-expression stable neutral repeat exact");
                 _rows.Add(new { test = "legacy-expression-transition-scope",
                     shader = "original ambient expression compiled before child Main; current host bookkeeping",
-                    comparison = "term0 only, no diagnostic sky/direct outputs; transition observation, not a fix" }); Save();
+                    comparison = "term0 only; first, second and third successful frames require exact HDR/world/final parity" }); Save();
                 return;
             }
             var cases = new[] { (Name: "noon", Hour: 12, Overall: 0, Strength: .55f, Budget: 141),
@@ -215,9 +216,8 @@ public partial class NativePhysicalWorldProbe
                 world.Light.Overall = item.Overall; world.Light.Personal = 0;
                 if (item.Hour < 0) world.ShardClock = default; else world.ShardClock.Set((byte)item.Hour, 0, 0, Time.Ticks);
                 var lamp = Place(0x0B1D, X - 1, Y, _z); Mutated();
-                // Stable-frame term isolation. Native01 preserved a distinct
-                // first-reenabled presentation mismatch despite exact HDR/world.
-                // Record this setup draw rather than treating it as term output.
+                // Preserve the first setup capture as a strict transition check;
+                // subsequent sky/direct isolation also retains its stable baseline.
                 using var setup = await CaptureSkyTerm(item.Name + "-setup-normal", 0, item.Strength, item.Budget);
                 using var normal = await CaptureSkyTerm(item.Name + "-normal", 0, item.Strength, item.Budget);
                 RecordSkySetup(item.Name + "-setup", setup, normal);
@@ -245,12 +245,31 @@ public partial class NativePhysicalWorldProbe
                 Check(_scene.SpeedSunSource == (item.Hour < 0 ? "shard-brightness-approximation" : "shard-clock"),
                     "actual scene sun provenance " + item.Name);
                 Check(FrozenState() == frozen, "same native time/player/camera across sky and lamp comparisons " + item.Name);
+                // Keep an actual native lamp for transition proof: a missing
+                // first-frame pool must fail even when the HDR producer is ready.
+                var transitionLamp = Place(0x0B1D, X - 1, Y, _z); Mutated();
+                using var transitionBaseline = await CaptureSkyTerm(item.Name + "-transition-lamp-baseline", 0, item.Strength, item.Budget);
+                // Compare actual old/new canvas recording at the same frozen
+                // tick with a valid settled texture, independently of shaders.
+                UltimaBatcher2D.ProbeLegacySpeedCompose = true;
+                using var legacyCompose = await CaptureSkyTerm(item.Name + "-settled-legacy-compose", 0, item.Strength, item.Budget);
+                UltimaBatcher2D.ProbeLegacySpeedCompose = false;
+                using var currentCompose = await CaptureSkyTerm(item.Name + "-settled-current-compose", 0, item.Strength, item.Budget);
+                RecordSkySetup(item.Name + "-settled-old-new-compose", legacyCompose, currentCompose);
                 _scene.SpeedAmbientProbeTerm = 0; _profile.LightingSpeedMode = false;
                 using var off = await Capture(item.Name + "-parent-off", false);
+                RecordSkyPreCompose(item.Name + "-after-off-before-failure");
                 _profile.LightingSpeedMode = true; _scene.SpeedAmbientProbeTerm = 1;
                 OrderedWorldCapture.InjectSpeedLightFailure = true;
                 using var failed = await Capture(item.Name + "-failure", false);
                 OrderedWorldCapture.InjectSpeedLightFailure = false;
+                RecordSkyPreCompose(item.Name + "-after-failure-before-first-recovery");
+                _scene.SpeedAmbientProbeTerm = 0;
+                // No intervening draw, native mutation or warm frame is allowed.
+                using var recovered = await CaptureSkyTerm(item.Name + "-recovered-first-normal", 0, item.Strength, item.Budget);
+                using var recoveryRepeat = await CaptureSkyTerm(item.Name + "-recovered-second-normal", 0, item.Strength, item.Budget);
+                RecordSkySetup(item.Name + "-immediate-failure-recovery", recovered, recoveryRepeat);
+                RecordSkySetup(item.Name + "-baseline-to-first-recovery", transitionBaseline, recovered);
                 _profile.LightingSpeedMode = false; _scene.SpeedAmbientProbeTerm = 2;
                 using var offAfter = await Capture(item.Name + "-parent-off-after", false);
                 Check(off.World.AsSpan().SequenceEqual(failed.World) && off.World.AsSpan().SequenceEqual(offAfter.World)
@@ -260,12 +279,15 @@ public partial class NativePhysicalWorldProbe
                     offFinalSha256 = Convert.ToHexString(SHA256.HashData(off.Presented)),
                     failedFinalSha256 = Convert.ToHexString(SHA256.HashData(failed.Presented)),
                     offAfterFinalSha256 = Convert.ToHexString(SHA256.HashData(offAfter.Presented)) });
+                RecordSkyPreCompose(item.Name + "-after-off-before-first-reenable");
                 _profile.LightingSpeedMode = true; _scene.SpeedAmbientProbeTerm = 0;
                 // Independent term0-only toggle witness: no scene, clock,
                 // geometry or diagnostic-term mutation occurs between draws.
                 using var reenabled = await CaptureSkyTerm(item.Name + "-reenabled-first-normal", 0, item.Strength, item.Budget);
                 using var settled = await CaptureSkyTerm(item.Name + "-reenabled-second-normal", 0, item.Strength, item.Budget);
                 RecordSkySetup(item.Name + "-term0-only-reenable", reenabled, settled);
+                RecordSkySetup(item.Name + "-baseline-to-first-reenable", transitionBaseline, reenabled);
+                transitionLamp.Destroy(); Mutated();
                 Save();
             }
             _rows.Add(new { test = "native-sky-terms-scope", x = X, y = Y, z = _z, wall, soften = 0,
@@ -275,6 +297,7 @@ public partial class NativePhysicalWorldProbe
         finally
         {
             _scene.SpeedAmbientProbeTerm = 0; OrderedWorldCapture.InjectSpeedLightFailure = false;
+            UltimaBatcher2D.ProbeLegacySpeedCompose = false;
             OrderedWorldDevice.ProbeLegacyAmbientOutput = false;
             _skySunMasks.Clear();
             world.ShardClock = savedClock; world.Light.Overall = savedOverall; world.Light.Personal = savedPersonal;
@@ -284,15 +307,29 @@ public partial class NativePhysicalWorldProbe
 
     private void RecordSkySetup(string name, Shot first, Shot second)
     {
+        bool rawHdrEqual = first.Light.AsSpan().SequenceEqual(second.Light);
+        bool worldEqual = first.World.AsSpan().SequenceEqual(second.World);
+        bool finalEqual = first.Presented.AsSpan().SequenceEqual(second.Presented);
+        Check(rawHdrEqual && worldEqual && finalEqual, "first successful native frame exact HDR/world/final " + name);
         int finalChangedPixels = 0;
         for (int i = 0; i < first.Presented.Length; i += 4)
             if (first.Presented[i] != second.Presented[i] || first.Presented[i + 1] != second.Presented[i + 1]
                 || first.Presented[i + 2] != second.Presented[i + 2]) finalChangedPixels++;
         _rows.Add(new { test = "native-sky-setup-observation", name, finalChangedPixels,
-            rawHdrEqual = first.Light.AsSpan().SequenceEqual(second.Light),
-            worldEqual = first.World.AsSpan().SequenceEqual(second.World),
+            rawHdrEqual, worldEqual, finalEqual, strict = true,
             sameSnapshot = ReferenceEquals(first.Snapshot, second.Snapshot), sameOffers = first.Offers == second.Offers,
-            note = "Observation outside stable diagnostic-term acceptance; first-reenabled final presentation is not claimed fixed" }); Save();
+            note = "First successful frame is accepted only when HDR, native world and complete final RGBA all match exactly" }); Save();
+    }
+
+    private void RecordSkyPreCompose(string name)
+    {
+        // Read the borrowed Texture2Drd before Capture queues any successful
+        // draw. Its dimensions may be zero after off/failure retires its RD view.
+        var texture = Device.SpeedLightTexture; var size = texture.GetSize();
+        _rows.Add(new { test = "native-light-pre-compose-texture", name,
+            width = size.X, height = size.Y, rdRidValid = texture.TextureRdRid.IsValid,
+            deviceLightReady = Device.SpeedLightReady, beforeNextDraw = true,
+            diagnosticTerm = _scene.SpeedAmbientProbeTerm, enhancedOption = _profile.LightingSpeedMode }); Save();
     }
 }
 #endif

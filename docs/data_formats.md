@@ -4451,6 +4451,13 @@ original output expression. The ambient draw uses spare push-constant W
 components for budget and Debug selection without changing its 128-byte layout.
 No AO cache, brightness change or new profile setting follows from this split.
 
+The enhanced light composite records a whole-texture canvas draw using the
+stable texture wrapper. It does not freeze a source rectangle from dimensions
+that may still be zero before the render-thread backing is recreated. The
+existing blend subtree, nearest sampler and Classic/failure election remain
+unchanged; the first successful draw after disable or failure uses that frame's
+published light texture.
+
 `PhysicalWorldSnapshot` owns native tile-X/tile-Y/UO-Z triangles, stable source
 owners (land, effective map static ordinal, item serial, multi component), material
 bits, provenance, per-cell unknown reasons and an immutable world/generation key.

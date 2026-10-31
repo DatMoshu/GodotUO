@@ -104,12 +104,13 @@ that independently excluded domain. The native restoration compares
 two current-code captures; the GPU suite supplies original-expression parity.
 Clear the sky variable before normal physical-world acceptance.
 
-Setup and term0-only re-enable captures are retained as separate observations.
-The first displayed frame after re-enabling currently differs from the settled
-frame despite identical HDR/world targets. To reproduce with the original
-ambient expression, add `GUO_PHYSICAL_SKY_TRANSITION_LEGACY=1` in a fresh process
-alongside the sky variable. This control does not run diagnostic term outputs.
-Stable sky-term acceptance does not claim that presentation transition fixed.
+Setup, immediate failure recovery and term0-only re-enable captures must also
+match the settled HDR/world/final image exactly, with a real native lamp present.
+The fixture records the light texture dimensions before those first draws and
+compares settled old/new canvas composition at the same frozen tick. To check
+the original ambient expression, add `GUO_PHYSICAL_SKY_TRANSITION_LEGACY=1` in a
+fresh process alongside the sky variable. This control does not run diagnostic
+term outputs; its first, second and third successful frames must match exactly.
 
 These terms retain the current artistic shadow strength, roof factor and night
 floor. They are prerequisites for later local sky-visibility work, not a claim
