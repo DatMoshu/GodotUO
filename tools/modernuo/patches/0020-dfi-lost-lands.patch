@@ -1,0 +1,1257 @@
+diff --git a/Projects/UOContent.Tests/Tests/Custom/DfiLostLandsTests.cs b/Projects/UOContent.Tests/Tests/Custom/DfiLostLandsTests.cs
+new file mode 100644
+index 000000000..d9d908594
+--- /dev/null
++++ b/Projects/UOContent.Tests/Tests/Custom/DfiLostLandsTests.cs
+@@ -0,0 +1,230 @@
++using System;
++using System.Collections.Generic;
++using Server;
++using Server.Custom.Dfi;
++using Server.Engines.Insurance;
++using Server.Items;
++using Server.Misc;
++using Server.Mobiles;
++using Xunit;
++
++namespace UOContent.Tests.Custom;
++
++[Collection("Sequential UOContent Tests")]
++public class DfiLostLandsTests : IDisposable
++{
++    private static readonly Point3D Inside = new(5672, 3130, 14);
++    private static readonly Point3D Britain = new(1440, 1702, 0);
++
++    private readonly List<IEntity> _created = new();
++
++    public DfiLostLandsTests()
++    {
++        if (NameList.GetNameList("male") == null)
++        {
++            NameList.Configure();
++        }
++    }
++
++    public void Dispose()
++    {
++        foreach (var e in _created)
++        {
++            e?.Delete();
++        }
++
++        _created.Clear();
++    }
++
++    private T Track<T>(T e) where T : IEntity
++    {
++        _created.Add(e);
++        return e;
++    }
++
++    private PlayerMobile Player(Point3D at, int gold = 0)
++    {
++        var m = Track(new PlayerMobile());
++        m.Player = true;
++        m.Body = 0x190;
++        m.RawStr = 100;
++        m.AddItem(new Backpack());
++        m.AddItem(new BankBox(m));
++        m.MoveToWorld(at, Map.Felucca);
++
++        if (gold > 0)
++        {
++            m.BankBox.DropItem(new BankCheck(gold));
++        }
++
++        return m;
++    }
++
++    [Fact]
++    public void Zone_IsFeluccaT2AOnly()
++    {
++        Assert.True(LostLands.Contains(Map.Felucca, Inside));
++        Assert.False(LostLands.Contains(Map.Felucca, Britain));
++        Assert.False(LostLands.Contains(Map.Trammel, Inside));
++    }
++
++    [Fact]
++    public void Vendors_ChargeTenTimesInside()
++    {
++        var inside = Track(new Mage());
++        inside.MoveToWorld(Inside, Map.Felucca);
++        var outside = Track(new Mage());
++        outside.MoveToWorld(Britain, Map.Felucca);
++
++        Assert.Equal(LostLands.PriceScalar, inside.GetPriceScalar());
++        Assert.NotEqual(LostLands.PriceScalar, outside.GetPriceScalar());
++    }
++
++    [Fact]
++    public void Insurance_CannotBeSetInside()
++    {
++        var player = Player(Inside);
++
++        Insurance.ToggleItemInsurance(player);
++
++        Assert.Null(player.Target);
++    }
++
++    [Fact]
++    public void Gate_RefusesClothingOnTheWayIn_AndChargesForEquipment()
++    {
++        var player = Player(Britain);
++        var gate = Track(new LostLandsGate(Inside, Map.Felucca));
++        gate.MoveToWorld(new Point3D(1440, 1700, 0), Map.Felucca);
++
++        player.Backpack.DropItem(new Katana());
++        player.Backpack.DropItem(new PlateHelm());
++        Assert.Equal(2000, gate.CalculateCost(player));
++
++        player.Backpack.DropItem(new Robe());
++        Assert.Equal(-1, gate.CalculateCost(player));
++
++        var exit = Track(new LostLandsGate(Britain, Map.Felucca));
++        Assert.False(exit.IsEntrance);
++        Assert.Equal(3000, exit.CalculateCost(player));
++    }
++
++    [Fact]
++    public void Gate_PassingInChargesTheBankAndStripsProtection()
++    {
++        var player = Player(new Point3D(1440, 1701, 0), 5000);
++        var gate = Track(new LostLandsGate(Inside, Map.Felucca));
++        gate.MoveToWorld(new Point3D(1440, 1700, 0), Map.Felucca);
++
++        var helm = new PlateHelm { Insured = true };
++        var hat = new WizardsHat { LootType = LootType.Blessed };
++        player.Backpack.DropItem(helm);
++        player.Backpack.DropItem(hat);
++
++        gate.Pass(player);
++
++        Assert.Equal(Inside, player.Location);
++        Assert.Equal(3000, Banker.GetBalance(player));
++        Assert.False(helm.Insured);
++        Assert.Equal(LootType.Regular, hat.LootType);
++    }
++
++    [Fact]
++    public void Gate_WithoutTheGoldLetsNobodyThrough()
++    {
++        var player = Player(new Point3D(1440, 1701, 0), 500);
++        var gate = Track(new LostLandsGate(Inside, Map.Felucca));
++        gate.MoveToWorld(new Point3D(1440, 1700, 0), Map.Felucca);
++        player.Backpack.DropItem(new Katana());
++
++        gate.Pass(player);
++
++        Assert.Equal(new Point3D(1440, 1701, 0), player.Location);
++        Assert.Equal(500, Banker.GetBalance(player));
++    }
++
++    [Fact]
++    public void Creatures_InsideLeaveGemsForGold()
++    {
++        var orc = Track(new Orc());
++        orc.MoveToWorld(Inside, Map.Felucca);
++        var corpse = Track(new Corpse(orc, []));
++        corpse.DropItem(new Gold(600));
++
++        LostLands.OnCreatureDeath(orc, corpse);
++
++        Assert.Null(corpse.FindItemByType<Gold>());
++        Assert.Equal(10, corpse.GetAmount(typeof(VeriteGem)));
++    }
++
++    [Fact]
++    public void Creatures_OutsideKeepTheirGold()
++    {
++        var orc = Track(new Orc());
++        orc.MoveToWorld(Britain, Map.Felucca);
++        var corpse = Track(new Corpse(orc, []));
++        corpse.DropItem(new Gold(600));
++
++        LostLands.OnCreatureDeath(orc, corpse);
++
++        Assert.Equal(600, corpse.GetAmount(typeof(Gold)));
++        Assert.Null(corpse.FindItemByType<VeriteGem>());
++    }
++
++    [Fact]
++    public void Papun_SellsForGemsAtThreePerFiftyGold()
++    {
++        var player = Player(Inside);
++        var pearl = Array.Find(LostLandsWares.All, w => w.Name == "999 Black Pearl");
++
++        Assert.Equal(300, pearl.GemPrice);
++        Assert.Equal(47, LostLandsWares.All.Length);
++
++        player.Backpack.DropItem(new VeriteGem(299));
++        LostLandsWares.Buy(player, pearl);
++        Assert.Null(player.Backpack.FindItemByType<BlackPearl>());
++
++        player.Backpack.DropItem(new VeriteGem(1));
++        LostLandsWares.Buy(player, pearl);
++        Assert.Equal(999, player.Backpack.GetAmount(typeof(BlackPearl)));
++        Assert.Equal(0, player.Backpack.GetAmount(typeof(VeriteGem)));
++    }
++
++    [Fact]
++    public void Papun_EveryWareCanBeBought()
++    {
++        var player = Player(Inside);
++        player.Backpack.MaxItems = 10000;
++
++        foreach (var ware in LostLandsWares.All)
++        {
++            player.Backpack.DropItem(new VeriteGem(ware.GemPrice));
++            LostLandsWares.Buy(player, ware);
++            Assert.Equal(0, player.Backpack.GetAmount(typeof(VeriteGem)));
++        }
++
++        foreach (var m in player.GetMobilesInRange(1))
++        {
++            if (m is BaseCreature pet && pet.ControlMaster == player)
++            {
++                _created.Add(pet);
++            }
++        }
++    }
++
++    [Fact]
++    public void ForgottenOne_IsCertainOfAnArtifactAtFirst()
++    {
++        var knight = Track(new LLKnight());
++
++        Assert.True(knight.ArtifactChance >= 100000);
++        Assert.Equal(25000, knight.HitsMax);
++
++        for (var i = 0; i < 40; i++)
++        {
++            var artifact = LLKnight.CreateRandomArtifact();
++            Assert.NotNull(artifact);
++            artifact.Delete();
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Loot/DfiLoot.cs b/Projects/UOContent/Custom/DFI/Loot/DfiLoot.cs
+index ec42b4e15..c32b4d7ed 100644
+--- a/Projects/UOContent/Custom/DFI/Loot/DfiLoot.cs
++++ b/Projects/UOContent/Custom/DFI/Loot/DfiLoot.cs
+@@ -118,6 +118,8 @@ public static void OnCreatureDeath(BaseCreature creature, Container c)
+             AddMoreLoot(creature, c, false, 1000, 1);
+             MultiplyGold(c, 1.50);
+         }
++
++        LostLands.OnCreatureDeath(creature, c);
+     }
+ 
+     private static bool IsChampionSpawnCreature(BaseCreature creature) =>
+diff --git a/Projects/UOContent/Custom/DFI/LostLands/DfiLostLandsGen.cs b/Projects/UOContent/Custom/DFI/LostLands/DfiLostLandsGen.cs
+new file mode 100644
+index 000000000..10789fb3f
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/LostLands/DfiLostLandsGen.cs
+@@ -0,0 +1,75 @@
++// Places the way into the Lost Lands: a gate on Britain's main street to Papua, one back in Papua's bank, and
++// Papun beside Papua's banker. DFI's saves kept none of these; the Forgotten One is spawned by staff.
++
++using System.Collections.Generic;
++using Server.Commands;
++using Server.Items;
++using Server.Logging;
++using Server.Mobiles;
++
++namespace Server.Custom.Dfi;
++
++public static class DfiLostLandsGen
++{
++    private static readonly ILogger logger = LogFactory.GetLogger(typeof(DfiLostLandsGen));
++
++    public static readonly Point3D BritainGate = new(1440, 1700, 0);
++    public static readonly Point3D BritainArrival = new(1440, 1702, 0);
++    public static readonly Point3D PapuaGate = new(5673, 3131, 14);
++    public static readonly Point3D PapuaArrival = new(5672, 3130, 14);
++    public static readonly Point3D PapunSpot = new(5665, 3131, 14);
++
++    public static void Configure()
++    {
++        CommandSystem.Register("DfiLostLands", AccessLevel.Administrator, OnCommand);
++    }
++
++    [Usage("DfiLostLands")]
++    [Description("Places the Lost Lands gates (Britain and Papua) and Papun, replacing any placed before.")]
++    private static void OnCommand(CommandEventArgs e)
++    {
++        var removed = Remove();
++        var placed = Place();
++        e.Mobile.SendMessage($"DfiLostLands: removed {removed}, placed {placed}.");
++        logger.Information("{User} placed {Placed} Lost Lands fixtures ({Removed} removed)", e.Mobile, placed, removed);
++    }
++
++    public static int Remove()
++    {
++        var doomed = new List<IEntity>();
++
++        foreach (var item in World.Items.Values)
++        {
++            if (item is LostLandsGate)
++            {
++                doomed.Add(item);
++            }
++        }
++
++        foreach (var m in World.Mobiles.Values)
++        {
++            if (m is LostLandsVendor)
++            {
++                doomed.Add(m);
++            }
++        }
++
++        foreach (var entity in doomed)
++        {
++            entity.Delete();
++        }
++
++        return doomed.Count;
++    }
++
++    public static int Place()
++    {
++        new LostLandsGate(PapuaArrival, Map.Felucca).MoveToWorld(BritainGate, Map.Felucca);
++        new LostLandsGate(BritainArrival, Map.Felucca).MoveToWorld(PapuaGate, Map.Felucca);
++
++        var papun = new LostLandsVendor { Home = PapunSpot, RangeHome = 0, Direction = Direction.South };
++        papun.MoveToWorld(PapunSpot, Map.Felucca);
++
++        return 3;
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/LostLands/ForgottenOne.cs b/Projects/UOContent/Custom/DFI/LostLands/ForgottenOne.cs
+new file mode 100644
+index 000000000..cda3d0d97
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/LostLands/ForgottenOne.cs
+@@ -0,0 +1,224 @@
++// "The Forgotten One", DFI Network's Lost Lands knight, ported from DFI RUNUO Scripts/Custom/Mobiles/Monsters/
++// LLDemonKnight.cs (class LLKnight). A 25,000-hit dark knight staff spawn for events. The longer he lives the
++// smaller the chance he leaves an artifact: certain in his first ten minutes, 40% after an hour (plus luck).
++// Every few minutes he is announced to the shard with his health and the current chance; in Khaldun he may
++// vanish once the chance has fallen and nobody has hurt him. Without an artifact he leaves copper bars.
++
++using System;
++using ModernUO.Serialization;
++using Server.Commands;
++using Server.Custom.Dfi;
++using Server.Engines.Quests.Midas;
++using Server.Engines.Quests.Plague;
++using Server.Items;
++
++namespace Server.Mobiles;
++
++[SerializationGenerator(0)]
++public partial class LLKnight : DemonKnight
++{
++    private static readonly Type[] _artifacts =
++    [
++        typeof(TheTaskmaster), typeof(LegacyOfTheDreadLord), typeof(TheDragonSlayer), typeof(GauntletsOfNobility),
++        typeof(HolyKnightsBreastplate), typeof(LeggingsOfBane), typeof(MidnightBracers), typeof(OrnateCrownOfTheHarrower),
++        typeof(ShadowDancerLeggings), typeof(TunicOfFire), typeof(VoiceOfTheFallenKing), typeof(BraceletOfHealth),
++        typeof(RingOfTheElements), typeof(RingOfTheVile), typeof(Aegis), typeof(AxeOfTheHeavens), typeof(BladeOfInsanity),
++        typeof(BoneCrusher), typeof(BreathOfTheDead), typeof(Frostbringer), typeof(SerpentsFang), typeof(StaffOfTheMagi),
++        typeof(TheBeserkersMaul), typeof(TheDryadBow), typeof(DivineCountenance),
++        // From here on the more valuable ones.
++        typeof(ArcaneShield), typeof(ArmorOfFortune), typeof(JackalsCollar), typeof(HelmOfInsight),
++        typeof(OrnamentOfTheMagician), typeof(HatOfTheMagi), typeof(HuntersHeaddress), typeof(SpiritOfTheTotem),
++        // DFI's own.
++        typeof(BookOfLostKnowledge), typeof(BowOfWeakening), typeof(GlovesOfTheLepracon), typeof(GrizzlysCourage)
++    ];
++
++    [SerializableField(0, fieldChanged: nameof(OnBroadcastChanged))]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private bool _broadcast;
++
++    private void OnBroadcastChanged(bool oldValue, bool newValue)
++    {
++        if (newValue && !oldValue && _announcer?.Running != true)
++        {
++            StartAnnouncer(TimeSpan.FromMinutes(5.0));
++        }
++    }
++
++    [SerializableField(1)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private bool _curseArtifact;
++
++    [SerializableField(2)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private int _cursedDurationMinutes = 7;
++
++    [SerializableField(3)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private string _knightLocation;
++
++    [SerializableField(4, setter: "private")]
++    private DateTime _spawnTime;
++
++    private Timer _announcer;
++
++    [Constructible(AccessLevel.GameMaster)]
++    public LLKnight(int broadcastDelayMinutes = 5)
++    {
++        Name = NameList.RandomName("male");
++        Title = "the Forgotten One";
++        Body = 256;
++        SetHits(25000);
++        _spawnTime = Core.Now;
++        StartAnnouncer(TimeSpan.FromMinutes(Math.Max(1, broadcastDelayMinutes)));
++    }
++
++    public override string CorpseName => "a dark knight corpse";
++
++    public bool InKhaldun => Region?.IsPartOf("Khaldun") == true;
++
++    public override void GenerateLoot()
++    {
++        AddLoot(LootPack.SuperBoss, 2);
++
++        for (var i = 0; i < 8; i++)
++        {
++            var reg = Loot.RandomPossibleReagent();
++            reg.Amount = Utility.RandomMinMax(20, 50);
++            PackItem(reg);
++        }
++    }
++
++    // Out of 100,000.
++    public int ArtifactChance
++    {
++        get
++        {
++            var minutes = (Core.Now - _spawnTime).TotalMinutes;
++            var chance = minutes switch
++            {
++                > 60 => 40000,
++                > 50 => 50000,
++                > 40 => 60000,
++                > 30 => 70000,
++                > 20 => 80000,
++                > 10 => 90000,
++                _    => 100000
++            };
++
++            return chance + LootPack.GetLuckChanceForKiller(this) / 5;
++        }
++    }
++
++    // A quarter of the time from the whole list, half the time only from the regular ones, else up to DFI's own.
++    public static Item CreateRandomArtifact() =>
++        Loot.Construct(_artifacts[Utility.Random(Utility.Random(4) switch { 0 => _artifacts.Length, 1 => 33, _ => 25 })]);
++
++    public override void OnDeath(Container c)
++    {
++        base.OnDeath(c);
++
++        Item artifact = null;
++
++        if (!Summoned && !NoKillAwards && ArtifactChance > Utility.Random(100000))
++        {
++            artifact = CreateRandomArtifact();
++            DistributeArtifact(this, artifact);
++
++            if (_curseArtifact && artifact != null)
++            {
++                new CursedArtifactTimer(artifact, _cursedDurationMinutes).Start();
++            }
++        }
++        else
++        {
++            c.DropItem(new CopperBar(Utility.Random(1, 5)));
++        }
++
++        CommandHandlers.BroadcastMessage(AccessLevel.Player, 1150, "The Forgotten One has been killed.");
++
++        if (artifact?.Name != null)
++        {
++            CommandHandlers.BroadcastMessage(AccessLevel.Player, 1150, $"The reward was {artifact.Name}.");
++        }
++
++        _announcer?.Stop();
++    }
++
++    [AfterDeserialization]
++    private void AfterDeserialization()
++    {
++        if (InKhaldun || _broadcast)
++        {
++            StartAnnouncer(TimeSpan.FromMinutes(5.0));
++        }
++    }
++
++    public override void OnAfterDelete()
++    {
++        _announcer?.Stop();
++        _announcer = null;
++        base.OnAfterDelete();
++    }
++
++    private void StartAnnouncer(TimeSpan delay)
++    {
++        _announcer?.Stop();
++        _announcer = Timer.DelayCall(TimeSpan.Zero, delay, Announce);
++    }
++
++    private void Announce()
++    {
++        if (Deleted)
++        {
++            _announcer?.Stop();
++            return;
++        }
++
++        var chance = ArtifactChance / 1000;
++
++        if (InKhaldun)
++        {
++            if (chance <= 40 && Utility.Random(3) == 0)
++            {
++                if (Hits == HitsMax && Utility.RandomBool())
++                {
++                    CommandHandlers.BroadcastMessage(AccessLevel.Player, 1150, "The Forgotten One has vanished.");
++                    Delete();
++                    return;
++                }
++
++                var hurry = Hits == HitsMax ? " Hurry up, it will vanish soon!" : "";
++                CommandHandlers.BroadcastMessage(
++                    AccessLevel.Player, 1150,
++                    $"The Forgotten one is still in Khaldun! If you find and kill him, you have {chance}% chance to receive an artifact!{hurry}"
++                );
++                return;
++            }
++
++            AnnounceHealth("Khaldun", chance);
++        }
++        else if (_broadcast)
++        {
++            AnnounceHealth(string.IsNullOrEmpty(_knightLocation) ? "the world" : _knightLocation, chance);
++        }
++        else
++        {
++            _announcer?.Stop();
++        }
++    }
++
++    private void AnnounceHealth(string where, int chance)
++    {
++        var health = Hits < HitsMax / 4 ? ", and it has less than 1/4 of its health!" :
++            Hits < HitsMax / 2 ? ", and it has less than half of its health!" :
++            Hits < HitsMax - HitsMax / 4 ? ", and it has less than 3/4 of its health!" : "!";
++
++        CommandHandlers.BroadcastMessage(AccessLevel.Player, 1150, $"The Forgotten one roams in {where}{health}");
++        CommandHandlers.BroadcastMessage(AccessLevel.Player, 1150, $"If you kill him, you have {chance}% chance to receive an artifact!");
++
++        if (chance >= 90)
++        {
++            CommandHandlers.BroadcastMessage(AccessLevel.Player, 1150, "The slower you kill him, the lower the chance gets.");
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/LostLands/LostLands.cs b/Projects/UOContent/Custom/DFI/LostLands/LostLands.cs
+new file mode 100644
+index 000000000..f617b4b11
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/LostLands/LostLands.cs
+@@ -0,0 +1,311 @@
++// DFI Network's Lost Lands: T2A Felucca and Khaldun played by harder rules. Ported from DFI RUNUO
++// Scripts/Custom/Items/Misc/LLTeleporter.cs, Custom/Engines/LostLandsVendor/VeriteGem.cs and the "Lost Lands"
++// changes DFI made to RunUO's BaseCreature, BaseChampion, Banker, BaseVendor and PlayerMobile.
++//
++// Inside: no insurance, no bank box (balance, withdraw and deposit still work), shop prices ten times over,
++// creatures carry verite gems and magic items instead of gold, and champions may drop the Armor of the Sun.
++// The way in is a Lost Lands gate, which takes only equipment, charges 1,000 gp per item and on entry ends
++// every item's insurance and unblesses blessed hats.
++
++using System;
++using System.Collections.Generic;
++using ModernUO.Serialization;
++using Server.Custom.Dfi;
++using Server.Engines.CannedEvil;
++using Server.Gumps;
++using Server.Mobiles;
++using Server.Network;
++using Server.Spells;
++
++namespace Server.Items
++{
++    public static class LostLands
++    {
++        public const int PriceScalar = 1000;
++        public const int GatePricePerItem = 1000;
++
++        public static bool Contains(Map map, Point3D loc) =>
++            SpellHelper.IsFeluccaT2A(map, loc) || map != null && map != Map.Internal && Region.Find(loc, map).IsPartOf("Khaldun");
++
++        public static bool Contains(Mobile m) => m != null && Contains(m.Map, m.Location);
++
++        // Called from DfiLoot.OnCreatureDeath with the corpse. Each 50 gold becomes a verite gem (up to ten) and
++        // pays for a chance at a magic item (up to six); champions may leave a piece of the Armor of the Sun.
++        public static void OnCreatureDeath(BaseCreature creature, Container corpse)
++        {
++            if (!Contains(creature.Map, creature.Location))
++            {
++                return;
++            }
++
++            if (corpse.FindItemByType<Gold>() is { } gold)
++            {
++                var amount = gold.Amount;
++                gold.Delete();
++
++                if (creature.LastKiller != null)
++                {
++                    DfiLoot.AddRandomLoot(
++                        corpse, Math.Min(6, Utility.Random(amount / 50)), LootPack.GetLuckChanceForKiller(creature), 4, 4, 60, 90
++                    );
++                }
++
++                if (amount >= 50)
++                {
++                    corpse.DropItem(new VeriteGem(Math.Min(10, amount / 50)));
++                }
++            }
++
++            if (creature is BaseChampion && Utility.RandomDouble() < 0.6)
++            {
++                corpse.DropItem(
++                    Utility.Random(6) switch
++                    {
++                        0 => new SunChest(),
++                        1 => new SunGloves(),
++                        2 => new SunArms(),
++                        3 => new SunLegs(),
++                        4 => new SunGorget(),
++                        _ => (Item)new SunHelm()
++                    }
++                );
++            }
++        }
++    }
++
++    // The Lost Lands' currency, spent at Papun's.
++    [SerializationGenerator(0)]
++    public partial class VeriteGem : Item
++    {
++        [Constructible]
++        public VeriteGem(int amount = 1) : base(0x3191)
++        {
++            Stackable = true;
++            Amount = Math.Max(1, amount);
++            Hue = 2210;
++        }
++
++        public override string DefaultName => "verite gem";
++        public override double DefaultWeight => 0.02;
++
++        public override int GetDropSound() => 0x2E4;
++    }
++
++    // A gate into or out of the Lost Lands. Its direction is where it leads: a gate whose target is in the Lost
++    // Lands is an entrance.
++    [SerializationGenerator(0)]
++    public partial class LostLandsGate : Moongate
++    {
++        [Constructible(AccessLevel.Administrator)]
++        public LostLandsGate() : this(Point3D.Zero, null)
++        {
++        }
++
++        // A red moongate: DFI's own gate art (14170) is an effect graphic that does not draw as an item.
++        public LostLandsGate(Point3D target, Map targetMap) : base(target, targetMap, false) => Hue = 0x21;
++
++        public override string DefaultName => "a Lost Lands gate";
++
++        public bool IsEntrance => LostLands.Contains(TargetMap, Target);
++
++        private static bool AllowedThrough(Item item) =>
++            item is BaseArmor or BaseWeapon or BaseJewel or BaseHat or Spellbook or Runebook;
++
++        // The gold the passage costs, or -1 (with a message) when the player carries what may not go in.
++        public int CalculateCost(Mobile m)
++        {
++            if (m.AccessLevel > AccessLevel.Player || m.Backpack == null)
++            {
++                return 0;
++            }
++
++            if (m.Holding != null)
++            {
++                m.Backpack.DropItem(m.Holding);
++            }
++
++            var entrance = IsEntrance;
++            var cost = 0;
++
++            foreach (var item in m.Backpack.Items)
++            {
++                if (AllowedThrough(item) || item is EtherealMount || !entrance)
++                {
++                    cost += LostLands.GatePricePerItem;
++                }
++                else
++                {
++                    m.SendMessage("You can only carry armors, weapons, jewels, spellbooks, runebooks and ethereal mounts through this gate.");
++                    return -1;
++                }
++            }
++
++            foreach (var item in m.Items)
++            {
++                if (item.Layer is Layer.Backpack or Layer.Bank or Layer.Hair or Layer.FacialHair ||
++                    item.Layer == Layer.Mount && m.Mount is EtherealMount)
++                {
++                    continue;
++                }
++
++                if (AllowedThrough(item) || !entrance)
++                {
++                    cost += LostLands.GatePricePerItem;
++                }
++                else
++                {
++                    m.SendMessage("You can only wear armors, weapons, jewels and spellbooks through this gate. Please remove all clothing.");
++                    return -1;
++                }
++            }
++
++            return cost;
++        }
++
++        public override void UseGate(Mobile m)
++        {
++            if (m.AccessLevel > AccessLevel.Player && m.AccessLevel < AccessLevel.Administrator)
++            {
++                m.SendLocalizedMessage(1019004); // You are not allowed to travel there.
++                return;
++            }
++
++            if (TargetMap == null || TargetMap == Map.Internal)
++            {
++                m.SendMessage("This moongate does not seem to go anywhere.");
++                return;
++            }
++
++            if (!m.Alive)
++            {
++                m.SendLocalizedMessage(500590); // You're a ghost, and can't do that.
++                return;
++            }
++
++            var cost = CalculateCost(m);
++
++            if (cost < 0)
++            {
++                return;
++            }
++
++            if (Banker.GetBalance(m) < cost)
++            {
++                m.SendMessage(
++                    "You do not have enough gold in bank to use this gate. It costs 1000 gp per item, so you must either drop your items on the ground, or collect more gold in your bank."
++                );
++                return;
++            }
++
++            m.SendGump(new LostLandsGateGump(this, cost), true);
++        }
++
++        public void Pass(Mobile m)
++        {
++            if (!ValidateUse(m, true) || !m.Alive)
++            {
++                return;
++            }
++
++            var cost = CalculateCost(m);
++
++            if (cost < 0)
++            {
++                return;
++            }
++
++            if (cost > 0 && !Banker.Withdraw(m, cost))
++            {
++                m.SendLocalizedMessage(1062507); // You do not have that much money in your bank account.
++                return;
++            }
++
++            if (IsEntrance && m.AccessLevel == AccessLevel.Player)
++            {
++                StripProtection(m);
++            }
++
++            // Pets stay behind: the Lost Lands are crossed alone.
++            m.MoveToWorld(Target, TargetMap);
++
++            if (m.AccessLevel == AccessLevel.Player || !m.Hidden)
++            {
++                m.PlaySound(0x1FE);
++            }
++        }
++
++        public static void StripProtection(Mobile m)
++        {
++            var items = new List<Item>(m.Items);
++
++            if (m.Backpack != null)
++            {
++                items.AddRange(m.Backpack.Items);
++            }
++
++            foreach (var item in items)
++            {
++                if (item is BaseHat && item.LootType == LootType.Blessed)
++                {
++                    item.LootType = LootType.Regular;
++                }
++                else
++                {
++                    item.Insured = false;
++                }
++            }
++
++            m.SendMessage("The insurance of all your items has been cancelled and all your blessed armors are regular now.");
++        }
++    }
++
++    public class LostLandsGateGump : StaticGump<LostLandsGateGump>
++    {
++        private readonly LostLandsGate _gate;
++        private readonly int _cost;
++
++        public LostLandsGateGump(LostLandsGate gate, int cost) : base(150, 150)
++        {
++            _gate = gate;
++            _cost = cost;
++        }
++
++        public override bool Singleton => true;
++
++        protected override void BuildLayout(ref StaticGumpBuilder builder)
++        {
++            builder.AddPage();
++            builder.AddBackground(0, 0, 300, 210, 5054);
++            builder.AddImageTiled(10, 10, 280, 22, 2624);
++            builder.AddAlphaRegion(10, 10, 280, 22);
++            builder.AddHtmlLocalized(10, 12, 280, 20, 1019005, 0x7800); // Warning!
++            builder.AddImageTiled(10, 40, 280, 130, 2624);
++            builder.AddAlphaRegion(10, 40, 280, 130);
++            builder.AddHtmlPlaceholder(14, 44, 272, 122, "message");
++            builder.AddButton(10, 180, 0xFA5, 0xFA7, 1);
++            builder.AddHtmlLocalized(40, 182, 100, 20, 1011036, 0x7FFF); // OKAY
++            builder.AddButton(160, 180, 0xFB1, 0xFB2, 0);
++            builder.AddHtmlLocalized(190, 182, 100, 20, 1011012, 0x7FFF); // CANCEL
++        }
++
++        protected override void BuildStrings(ref GumpStringsBuilder builder)
++        {
++            var entrance = _gate.IsEntrance;
++            var charge = _cost > 0 ? $"You will be charged {_cost} gp for the items you are carrying (1000 gp per item)." : "";
++
++            builder.SetHtmlText(
++                "message",
++                $"If you select OKAY, you will {(entrance ? "enter" : "exit")} the Lost Lands and insurance {(entrance ? "will NOT work anymore, and all your blessed items will become regular" : "will work again")}. {charge}<BR><BR>Are you sure you wish to pass?",
++                "#FFFFFF"
++            );
++        }
++
++        public override void OnResponse(NetState sender, in RelayInfo info)
++        {
++            if (info.ButtonID == 1 && !_gate.Deleted)
++            {
++                _gate.Pass(sender.Mobile);
++            }
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/LostLands/LostLandsVendor.cs b/Projects/UOContent/Custom/DFI/LostLands/LostLandsVendor.cs
+new file mode 100644
+index 000000000..53666a2e5
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/LostLands/LostLandsVendor.cs
+@@ -0,0 +1,317 @@
++// Papun, the Lost Lands' variety dealer, ported from DFI RUNUO Scripts/Custom/Mobiles/Townfolks and Vendors/NPC/
++// LLVarietyDealer. He sells verite gems for gold (20 gp, 200 inside the Lost Lands), buys them back for 50, and
++// through his gump sells supplies for gems at three gems per 50 gp of DFI's gold price.
++
++using System;
++using System.Collections.Generic;
++using ModernUO.Serialization;
++using Server.Collections;
++using Server.ContextMenus;
++using Server.Engines.BulkOrders;
++using Server.Gumps;
++using Server.Items;
++using Server.Multis;
++using Server.Network;
++
++namespace Server.Mobiles;
++
++public enum LostLandsCategory
++{
++    MageRegs = 1,
++    NecroRegs,
++    Potions,
++    Bands,
++    Arrows,
++    Weaps,
++    Armors,
++    Misc
++}
++
++public record LostLandsWare(LostLandsCategory Category, string Name, int ItemID, int GoldPrice, Func<Mobile, bool> Give)
++{
++    public int GemPrice => (int)Math.Ceiling(GoldPrice * 3 / 50.0);
++}
++
++public static class LostLandsWares
++{
++    public static readonly LostLandsWare[] All =
++    [
++        Stack(LostLandsCategory.MageRegs, "999 Black Pearl", 3962, 5000, () => new BlackPearl(999)),
++        Stack(LostLandsCategory.MageRegs, "999 Blood Moss", 3963, 5000, () => new Bloodmoss(999)),
++        Stack(LostLandsCategory.MageRegs, "999 Mandrake Root", 3974, 3000, () => new MandrakeRoot(999)),
++        Stack(LostLandsCategory.MageRegs, "999 Garlic", 3972, 3000, () => new Garlic(999)),
++        Stack(LostLandsCategory.MageRegs, "999 Ginseng", 3973, 3000, () => new Ginseng(999)),
++        Stack(LostLandsCategory.MageRegs, "999 Nightshade", 3976, 3000, () => new Nightshade(999)),
++        Stack(LostLandsCategory.MageRegs, "999 Spider's Silk", 3981, 3000, () => new SpidersSilk(999)),
++        Stack(LostLandsCategory.MageRegs, "999 Sulfurous Ash", 3980, 3000, () => new SulfurousAsh(999)),
++        Stack(LostLandsCategory.MageRegs, "Bag of reagents (100)", 3702, 2800, () => new BagOfReagents(100)),
++        Stack(LostLandsCategory.NecroRegs, "999 Batwing", 3960, 3000, () => new BatWing(999)),
++        Stack(LostLandsCategory.NecroRegs, "999 Grave Dust", 3983, 3000, () => new GraveDust(999)),
++        Stack(LostLandsCategory.NecroRegs, "999 Daemon Blood", 3965, 6000, () => new DaemonBlood(999)),
++        Stack(LostLandsCategory.NecroRegs, "999 Nox Crystal", 3982, 6000, () => new NoxCrystal(999)),
++        Stack(LostLandsCategory.NecroRegs, "999 Pig Iron", 3978, 5000, () => new PigIron(999)),
++        Stack(LostLandsCategory.NecroRegs, "Bag of reagents (100)", 3702, 2250, () => new BagOfNecroReagents(100)),
++        Potions("3 Refresh Potions", 3851, () => new RefreshPotion()),
++        Potions("3 Lesser Cure Potions", 3847, () => new LesserCurePotion()),
++        Potions("3 Lesser Heal Potions", 3852, () => new LesserHealPotion()),
++        Potions("3 NightSight Potions", 3846, () => new NightSightPotion()),
++        Stack(LostLandsCategory.Bands, "50 Clean Bandages", 3617, 250, () => new Bandage(50)),
++        Stack(LostLandsCategory.Bands, "200 Clean Bandages", 3617, 1000, () => new Bandage(200)),
++        Stack(LostLandsCategory.Bands, "1000 Clean Bandages", 3617, 5000, () => new Bandage(1000)),
++        Stack(LostLandsCategory.Arrows, "100 Arrows", 3903, 300, () => new Arrow(100)),
++        Stack(LostLandsCategory.Arrows, "1000 Arrows", 3903, 3000, () => new Arrow(1000)),
++        Stack(LostLandsCategory.Arrows, "100 Crossbow Bolts", 7163, 600, () => new Bolt(100)),
++        Stack(LostLandsCategory.Arrows, "1000 Crossbow Bolts", 7163, 6000, () => new Bolt(1000)),
++        Pet("A Horse", 8484, 1100, () => new Horse()),
++        Pet("A Pack Llama", 8487, 1130, () => new PackLlama()),
++        Magic(LostLandsCategory.Weaps, "Club", 5044, 250, () => new Club()),
++        Magic(LostLandsCategory.Weaps, "War Fork", 5125, 250, () => new WarFork()),
++        Magic(LostLandsCategory.Weaps, "Katana", 5119, 250, () => new Katana()),
++        Magic(LostLandsCategory.Weaps, "Bow", 5042, 250, () => new Bow()),
++        Magic(LostLandsCategory.Armors, "Metal Kite Shield", 7028, 700, () => new MetalKiteShield()),
++        Magic(LostLandsCategory.Armors, "Wooden Shield", 7034, 250, () => new WoodenShield()),
++        Magic(LostLandsCategory.Armors, "Leather Tunic", 5068, 605, () => new LeatherChest()),
++        Magic(LostLandsCategory.Armors, "Leather Gloves", 5062, 400, () => new LeatherGloves()),
++        Magic(LostLandsCategory.Armors, "Leather Gorget", 5063, 470, () => new LeatherGorget()),
++        Magic(LostLandsCategory.Armors, "Leather Leggings", 5067, 500, () => new LeatherLegs()),
++        Magic(LostLandsCategory.Armors, "Leather Cap", 7609, 150, () => new LeatherCap()),
++        Magic(LostLandsCategory.Armors, "Leather Sleeves", 5069, 500, () => new LeatherArms()),
++        Stack(LostLandsCategory.Misc, "300 Gold coins", 3823, 100, () => new Gold(300)),
++        Stack(LostLandsCategory.Misc, "3000 Gold coins", 3823, 1000, () => new Gold(3000)),
++        Stack(LostLandsCategory.Misc, "Bulk Order Book", 8793, 6000, () => new BulkOrderBook()),
++        Stack(LostLandsCategory.Misc, "Drums", 3740, 21, () => new Drums { Quality = InstrumentQuality.Exceptional }),
++        Stack(LostLandsCategory.Misc, "Exceptional Quality Tambourine", 3742, 5000,
++            () => new TambourineTassel { Quality = InstrumentQuality.Exceptional }),
++        Stack(LostLandsCategory.Misc, "Small Dragon Ship", 5364, 10177, () => new SmallDragonBoatDeed()),
++        Stack(LostLandsCategory.Misc, "Large Dragon Ship", 5364, 12927, () => new LargeDragonBoatDeed())
++    ];
++
++    public static List<LostLandsWare> In(LostLandsCategory category) => new(Array.FindAll(All, w => w.Category == category));
++
++    private static LostLandsWare Stack(LostLandsCategory category, string name, int itemID, int price, Func<Item> make) =>
++        new(category, name, itemID, price, m => m.AddToBackpack(make()));
++
++    private static LostLandsWare Potions(string name, int itemID, Func<Item> make) =>
++        new(LostLandsCategory.Potions, name, itemID, 45, m =>
++        {
++            m.AddToBackpack(new RefreshPotion());
++            m.AddToBackpack(new RefreshPotion());
++            return m.AddToBackpack(make());
++        });
++
++    private static LostLandsWare Magic(LostLandsCategory category, string name, int itemID, int price, Func<Item> make) =>
++        new(category, name, itemID, price, m =>
++        {
++            var item = make();
++            var props = Utility.RandomMinMax(1, 4);
++
++            switch (item)
++            {
++                case BaseWeapon weapon:
++                    {
++                        BaseRunicTool.ApplyAttributesTo(weapon, props, 40, 80);
++                        break;
++                    }
++                case BaseArmor armor:
++                    {
++                        BaseRunicTool.ApplyAttributesTo(armor, props, 40, 80);
++                        break;
++                    }
++            }
++
++            return m.AddToBackpack(item);
++        });
++
++    private static LostLandsWare Pet(string name, int itemID, int price, Func<BaseCreature> make) =>
++        new(LostLandsCategory.Misc, name, itemID, price, m =>
++        {
++            var pet = make();
++            pet.SetControlMaster(m);
++            pet.MoveToWorld(m.Location, m.Map);
++            return true;
++        });
++
++    public static void Buy(Mobile m, LostLandsWare ware)
++    {
++        if (m.Backpack?.ConsumeTotal(typeof(VeriteGem), ware.GemPrice) != true)
++        {
++            m.SendMessage("You do not have enough Verite Gems in your backpack.");
++            return;
++        }
++
++        ware.Give(m);
++        m.SendMessage(ware.Category == LostLandsCategory.Misc && ware.Name.StartsWith("A ") ? "Here is the pet you requested." : "Here are the goods you requested.");
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class LostLandsVendor : BaseVendor
++{
++    private readonly List<SBInfo> _sbInfos = [];
++
++    [Constructible(AccessLevel.GameMaster)]
++    public LostLandsVendor() : base("the Variety Dealer")
++    {
++    }
++
++    protected override List<SBInfo> SBInfos => _sbInfos;
++
++    public override string DefaultName => "Papun";
++    public override bool ClickTitle => true;
++
++    public override void InitSBInfo()
++    {
++        _sbInfos.Add(new SBLostLandsVendor());
++    }
++
++    public override void InitBody()
++    {
++        InitStats(100, 100, 25);
++        Hue = 34869;
++        Female = false;
++        Body = 0x190;
++        Name = "Papun";
++        CantWalk = true;
++        HairItemID = Race.Human.RandomHair(false);
++        HairHue = Race.Human.RandomHairHue();
++    }
++
++    public override void InitOutfit()
++    {
++        AddItem(new HoodedShroudOfShadows(1427));
++        AddItem(new Sandals(1427));
++    }
++
++    public override void GetContextMenuEntries(Mobile from, ref PooledRefList<ContextMenuEntry> list)
++    {
++        list.Add(new TalkEntry());
++        base.GetContextMenuEntries(from, ref list);
++    }
++
++    private class TalkEntry : ContextMenuEntry
++    {
++        public TalkEntry() : base(6146, 3) // Talk
++        {
++        }
++
++        public override void OnClick(Mobile from, IEntity target) => from.SendGump(new LostLandsCategoriesGump(), true);
++    }
++}
++
++public class SBLostLandsVendor : SBInfo
++{
++    public override IShopSellInfo SellInfo { get; } = new InternalSellInfo();
++
++    public override List<GenericBuyInfo> BuyInfo { get; } = [new(typeof(VeriteGem), 20, 100, 12689, 2210)];
++
++    public class InternalSellInfo : GenericSellInfo
++    {
++        public InternalSellInfo() => Add(typeof(VeriteGem), 50);
++    }
++}
++
++public abstract class LostLandsGump : DynamicGump
++{
++    protected LostLandsGump() : base(60, 60)
++    {
++    }
++
++    protected static void AddFrame(ref DynamicGumpBuilder builder, string title)
++    {
++        builder.AddPage();
++        builder.AddBackground(50, 30, 350, 467, 9260);
++        builder.AddImage(0, 0, 10440);
++        builder.AddImage(365, 0, 10441);
++        builder.AddBackground(125, 30, 200, 55, 9260);
++        builder.AddImageTiled(81, 30, 271, 11, 9261);
++        builder.AddHtml(50, 50, 350, 16, title, "#FFFFFF", align: TextAlignment.Center);
++    }
++}
++
++public class LostLandsCategoriesGump : LostLandsGump
++{
++    private static readonly string[] _names =
++    [
++        "Mage Reagents", "Necro Reagents", "Potions", "Bandages", "Arrows / Bolts", "Weapons with random bonuses",
++        "Armors with random bonuses", "Misc"
++    ];
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        AddFrame(ref builder, "Item Categories");
++        builder.AddLabel(125, 110, 1152, "Category:");
++
++        for (var i = 0; i < _names.Length; i++)
++        {
++            builder.AddButton(85, 140 + i * 30, 4005, 4006, i + 1);
++            builder.AddLabel(125, 140 + i * 30, 1152, _names[i]);
++        }
++
++        builder.AddButton(200, 450, 247, 248, 0);
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        if (info.ButtonID is > 0 and <= 8)
++        {
++            sender.Mobile.SendGump(new LostLandsWaresGump((LostLandsCategory)info.ButtonID), true);
++        }
++    }
++}
++
++public class LostLandsWaresGump : LostLandsGump
++{
++    private readonly List<LostLandsWare> _wares;
++
++    public LostLandsWaresGump(LostLandsCategory category) => _wares = LostLandsWares.In(category);
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        AddFrame(ref builder, "Available Items");
++        builder.AddLabel(110, 100, 1152, "Select an item to buy for Verite Gems.");
++        builder.AddLabel(110, 135, 1152, "Item:");
++        builder.AddLabel(335, 135, 1152, "Price:");
++        builder.AddButton(200, 450, 242, 241, 0);
++
++        builder.AddPage(1);
++        var page = 1;
++        var row = 0;
++
++        for (var i = 0; i < _wares.Count; i++)
++        {
++            if (row >= 9)
++            {
++                builder.AddButton(360, 450, 5601, 5605, 0, GumpButtonType.Page, ++page);
++                row = 0;
++                builder.AddPage(page);
++                builder.AddButton(80, 450, 5603, 5607, 0, GumpButtonType.Page, page - 1);
++            }
++
++            var ware = _wares[i];
++            builder.AddButton(75, 165 + row * 30, 4005, 4006, 1000 + i);
++            builder.AddItem(100, 165 + row * 30, ware.ItemID);
++            builder.AddLabel(145, 165 + row * 30, 1152, ware.Name);
++            builder.AddLabel(335, 165 + row * 30, 1152, $"{ware.GemPrice}");
++            row++;
++        }
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        var m = sender.Mobile;
++        var index = info.ButtonID - 1000;
++
++        if (info.ButtonID == 0)
++        {
++            m.SendGump(new LostLandsCategoriesGump(), true);
++        }
++        else if (index >= 0 && index < _wares.Count)
++        {
++            LostLandsWares.Buy(m, _wares[index]);
++        }
++    }
++}
+diff --git a/Projects/UOContent/Engines/Insurance/Insurance.cs b/Projects/UOContent/Engines/Insurance/Insurance.cs
+index 8ba3985e5..4918c8d18 100644
+--- a/Projects/UOContent/Engines/Insurance/Insurance.cs
++++ b/Projects/UOContent/Engines/Insurance/Insurance.cs
+@@ -158,6 +158,12 @@ public static void ToggleItemInsurance(Mobile from)
+             return;
+         }
+ 
++        if (Server.Items.LostLands.Contains(from))
++        {
++            from.SendMessage("You cannot insure items in this region.");
++            return;
++        }
++
+         from.BeginTarget(-1, false, TargetFlags.None, ToggleItemInsurance);
+         from.SendLocalizedMessage(1060868); // Target the item you wish to toggle insurance status on <ESC> to cancel
+     }
+diff --git a/Projects/UOContent/Mobiles/Townfolk/Banker.cs b/Projects/UOContent/Mobiles/Townfolk/Banker.cs
+index d0982d45b..c4418dc08 100644
+--- a/Projects/UOContent/Mobiles/Townfolk/Banker.cs
++++ b/Projects/UOContent/Mobiles/Townfolk/Banker.cs
+@@ -538,6 +538,12 @@ public override void OnSpeech(SpeechEventArgs e)
+                         {
+                             e.Handled = true;
+ 
++                            if (LostLands.Contains(e.Mobile))
++                            {
++                                Say("You do not have access to your bank box here. You should say \"balance\", \"withdraw\" or \"deposit\"");
++                                break;
++                            }
++
+                             if (e.Mobile.Criminal && !ServesCriminals)
+                             {
+                                 Say(500378); // Thou art a criminal and cannot access thy bank box.
+@@ -619,7 +625,7 @@ public override void OnSpeech(SpeechEventArgs e)
+ 
+     public override void AddCustomContextEntries(Mobile from, ref PooledRefList<ContextMenuEntry> list)
+     {
+-        if (from.Alive)
++        if (from.Alive && !LostLands.Contains(from))
+         {
+             list.Add(new OpenBankEntry());
+         }
+diff --git a/Projects/UOContent/Mobiles/Vendors/BaseVendor.cs b/Projects/UOContent/Mobiles/Vendors/BaseVendor.cs
+index a6467746b..1e553512d 100644
+--- a/Projects/UOContent/Mobiles/Vendors/BaseVendor.cs
++++ b/Projects/UOContent/Mobiles/Vendors/BaseVendor.cs
+@@ -1350,7 +1350,8 @@ public override void AddCustomContextEntries(Mobile from, ref PooledRefList<Cont
+ 
+         public virtual IBuyItemInfo[] GetBuyInfo() => _buyInfo.ToArray();
+ 
+-        public virtual int GetPriceScalar() => 100 + Town.FromRegion(Region)?.Tax ?? 0;
++        public virtual int GetPriceScalar() =>
++            LostLands.Contains(Map, Location) ? LostLands.PriceScalar : 100 + Town.FromRegion(Region)?.Tax ?? 0;
+ 
+         public void UpdateBuyInfo()
+         {
