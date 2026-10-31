@@ -347,14 +347,18 @@ internal static partial class InputProbe
                 return;
             }
 
-            if (Game.Managers.UIManager.GetGump<Game.UI.Gumps.Login.CharacterSelectionGump>() != null)
+            if (pregameTargets
+                ? Pregame3D.PregameScreen.Active && Pregame3D.PregameScreen.Instance?.Stage is Pregame3D.CharacterStage { ProbeCharactersCurrent: true }
+                : Game.Managers.UIManager.GetGump<Game.UI.Gumps.Login.CharacterSelectionGump>() != null)
             {
                 creating = false;
                 sawList = true;
                 break;
             }
 
-            if (FindControl<Game.UI.Gumps.CharCreation.CreateCharAppearanceGump>() != null)
+            if (pregameTargets
+                ? Pregame3D.PregameScreen.Instance?.Stage is Pregame3D.CreationStage
+                : FindControl<Game.UI.Gumps.CharCreation.CreateCharAppearanceGump>() != null)
             {
                 sawCreation = true;
                 break;
@@ -389,6 +393,18 @@ internal static partial class InputProbe
                 Check($"the account has {character} (no creation allowed)", false,
                     "the list is " + string.Join(", ", loginScene?.Characters ?? System.Array.Empty<string>()));
                 return;
+            }
+
+            if (pregameTargets)
+            {
+                if (!byName || slot < 0)
+                {
+                    Check("pregame expected existing character", false, "no exact expected row; creation is not supported by this probe path");
+                    return;
+                }
+                if (!await ClickLoginTarget(host, default, LoginTarget.Character, true, character)) return;
+                await Frames(host, 240);
+                return; // Caller verifies actual world arrival; never substitute a scene method.
             }
 
             if (!byName)
@@ -429,6 +445,12 @@ internal static partial class InputProbe
 
                 creating = true;
             }
+        }
+
+        if (creating && pregameTargets)
+        {
+            Check("pregame expected existing character", false, "creation path is not authorized by an existing-character probe");
+            return;
         }
 
         if (creating)

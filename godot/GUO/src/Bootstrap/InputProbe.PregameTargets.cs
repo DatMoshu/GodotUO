@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 // GUO probe only: actual Pregame3D controls use window coordinates already.
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Godot;
 using GUO.Pregame3D;
@@ -9,12 +10,12 @@ namespace GUO.Host;
 
 internal static partial class InputProbe
 {
-    private enum LoginTarget { Account, Password, Login, Server }
+    private enum LoginTarget { Account, Password, Login, Server, Character }
 
     // Freeze the mode at entry. Losing a 3D stage must never fall back to a
     // guessed Classic click. The Classic Click/Send path itself is unchanged.
     private static async Task<bool> ClickLoginTarget(Node host, Vector2 classic,
-        LoginTarget target, bool pregame)
+        LoginTarget target, bool pregame, string character = null)
     {
         if (!pregame)
         {
@@ -25,13 +26,13 @@ internal static partial class InputProbe
 
         PregameScreen screen = PregameScreen.Instance;
         Stage stage = screen?.Stage;
-        if (!TryLoginTarget(screen, stage, target, out Control control, out IFocusable focus, out Vector2 at))
+        if (!TryLoginTarget(screen, stage, target, out Control control, out IFocusable focus, out Vector2 at, character))
             return LoginTargetFailure(target, "not ready or hit identity differs");
 
         SendWindowPointer(new InputEventMouseMotion { Position = at });
         await Frames(host, 2);
         // Hover, painting drift, layout and focus lift may all move the target.
-        if (!TryLoginTarget(screen, stage, target, out Control current, out IFocusable currentFocus, out at)
+        if (!TryLoginTarget(screen, stage, target, out Control current, out IFocusable currentFocus, out at, character)
             || !ReferenceEquals(current, control) || !ReferenceEquals(currentFocus, focus))
             return LoginTargetFailure(target, "stale target before press");
 
@@ -40,7 +41,7 @@ internal static partial class InputProbe
         try
         {
             // No await between the final readiness check and the raw press.
-            if (!TryLoginTarget(screen, stage, target, out current, out currentFocus, out at)
+            if (!TryLoginTarget(screen, stage, target, out current, out currentFocus, out at, character)
                 || !ReferenceEquals(current, control) || !ReferenceEquals(currentFocus, focus))
                 return LoginTargetFailure(target, "target changed before press");
             pressed = true;
@@ -64,16 +65,19 @@ internal static partial class InputProbe
     }
 
     private static bool TryLoginTarget(PregameScreen screen, Stage stage, LoginTarget target,
-        out Control control, out IFocusable focus, out Vector2 at)
+        out Control control, out IFocusable focus, out Vector2 at, string character = null)
     {
         control = null; focus = null; at = default;
         if (!ScreenReady(screen, stage) || screen.Keyboard?.IsOpen == true) return false;
+        if (target == LoginTarget.Character
+            && stage is not CharacterStage { ProbeCharactersCurrent: true }) return false;
         control = target switch
         {
             LoginTarget.Account => LoginStage.ProbeAccountField,
             LoginTarget.Password => LoginStage.ProbePasswordField,
             LoginTarget.Login => LoginStage.ProbeLoginButton,
             LoginTarget.Server => ServerStage.ProbeFirstServer,
+            LoginTarget.Character => ExpectedCharacterRow(stage.OverlayItems, character)?.Control,
             _ => null
         };
         if (!LoginTargetControlReady(control, out at)) return false;
@@ -82,6 +86,20 @@ internal static partial class InputProbe
             if (ReferenceEquals(item.Control, control)) { focus = item; break; }
         }
         return focus?.CanFocus == true && ReferenceEquals(screen.HitAt(at), focus);
+    }
+
+    // Resolve only the expected actual row; an ambiguous or stale list cannot select another slot.
+    internal static IOverlayFocusable ExpectedCharacterRow(IEnumerable<IOverlayFocusable> items, string name)
+    {
+        if (items == null || string.IsNullOrWhiteSpace(name)) return null;
+        IOverlayFocusable found = null;
+        foreach (IOverlayFocusable item in items)
+        {
+            if (item is not UiFocus { Tag: string tag } || !string.Equals(tag, "char:" + name, StringComparison.Ordinal)) continue;
+            if (found != null) return null;
+            found = item;
+        }
+        return found;
     }
 
     // No painting/overlay/DPI multiplier: GetGlobalRect is already in the

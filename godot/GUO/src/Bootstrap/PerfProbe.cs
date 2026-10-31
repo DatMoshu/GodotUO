@@ -40,6 +40,7 @@ internal static partial class PerfProbe
     // photographed there and timed here.
     private static readonly Scene[] Scenes =
     {
+        new("current-location", null, "existing allocated player location; no command or teleport"),
         new("open-field", "[go 1164 1668", "Felucca grassland south of Britain: land and a few trees"),
         new("britain-bank", "[go 1434 1699 0", "the Britain bank: dense statics, roofs, vendors and passers-by"),
         new("owner-3469", "[go 3469 2544 31", "where the owner compared the clients on 2026-10-26: roofs, a yard, NPCs"),
@@ -407,7 +408,7 @@ internal static partial class PerfProbe
             && GUO.Game.Managers.UIManager.GetGump<GUO.Game.UI.Gumps.MiniMapGump>() == null)
             GUO.Game.Managers.UIManager.Add(new GUO.Game.UI.Gumps.MiniMapGump(world));
 
-        Scene[] scenes = Only.Count == 0 ? Scenes : System.Array.FindAll(Scenes, s => Only.Contains(s.Name));
+        Scene[] scenes = Only.Count == 0 ? Scenes.Where(s => s.Go != null).ToArray() : System.Array.FindAll(Scenes, s => Only.Contains(s.Name));
         // A misspelt --perf-scene measured nothing and still passed (review M6).
         List<string> unknown = Only.Where(n => !Scenes.Any(s => s.Name == n)).ToList();
         if (unknown.Count > 0)
@@ -424,7 +425,7 @@ internal static partial class PerfProbe
             else if (scene.Walks && _walkOrigin != "field")
                 scene = scene with { Go = Scenes.Single(s => s.Name == "britain-" + _walkOrigin).Go,
                     What = $"running from Britain {_walkOrigin}, turning where blocked" };
-            await InputProbe.Say(host, scene.Go);
+            if (scene.Go != null) await InputProbe.Say(host, scene.Go);
             // Chunks newly in view load and build their meshes first; that is a
             // one-off, not what a player standing still pays every frame.
             await InputProbe.Wait(host, Settle);
@@ -437,6 +438,10 @@ internal static partial class PerfProbe
 
             if (scene.Walks && _walkRoute != null) await PrepareReplayOrigin(host, _walkRoute);
             var sceneResult=await Measure(host, viewport, scene.Name, scene.What, scene.Walks);
+            if (scene.Go == null)
+                sceneResult["existing_location_witness"] = new { in_game=world.InGame,
+                    map=world.MapIndex, x=world.Player.X, y=world.Player.Y, z=world.Player.Z,
+                    command_sent=false, expected_map=ExpectMap };
             // PORT DEVIATION (GUO): ADR-0048; untimed live off/on/off lifetime proof.
             if(_profilePreset=="lighting-speed" && scene.Name=="britain-bank")
                 sceneResult["speed_off_proof"]=await LightingSpeedProbe.CheckLiveOff(host,outDir,label);
@@ -493,6 +498,9 @@ internal static partial class PerfProbe
             && results.Count == (_parity ? 2 : 1) * scenes.Length + 1;
     }
 
+    internal static bool CurrentLocationValid(bool inGame, bool hasPlayer, bool worldScene, int map, int expectedMap) =>
+        inGame && hasPlayer && worldScene && map == expectedMap;
+
     /// <summary>The player stands at the scene's [go target: x, y, z and map, by LoginPreflight.ArrivedAt.</summary>
     private static bool Arrived(World world, Scene scene, out string where)
     {
@@ -503,6 +511,11 @@ internal static partial class PerfProbe
             return false;
         }
 
+        if (scene.Go == null)
+        {
+            where = $"existing map {world.MapIndex} at {player.X},{player.Y},{player.Z}; no command";
+            return CurrentLocationValid(world.InGame, true, Client.Game.Scene is Game.Scenes.GameScene, world.MapIndex, ExpectMap);
+        }
         return LoginPreflight.ArrivedAt(player.X, player.Y, player.Z, world.MapIndex, scene.Go, ExpectMap, out where);
     }
 
