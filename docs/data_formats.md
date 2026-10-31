@@ -4407,3 +4407,17 @@ Live extension: local_lighting_test_minute (0..59, default0), local_lighting_tes
 
 
 Debug `GuoLabs=true` only: profile `local_lighting_test_time` (default false) and `local_lighting_test_hour` (default 12, clamped to 0–23). UO+ stages edits until Apply; Defaults stages off/12; Cancel discards edits. Lighting speed mode must be enabled. The fixed local hour controls ambient brightness, window eligibility and sun/moon direction without changing the received shard clock. Off restores the original resolver. Standard and export builds exclude the feature. See [ADR](architecture/ADR-local-lighting-clock.md) and [scenario](../tools/scenarios/client/local_lighting_clock.md).
+
+### Offline art-capacity contract lab (Proposed ADR-0047)
+
+The L4 art-capacity harness uses synthetic GAC1 files and GAF1 complete-buffer
+frames described in docs/architecture/ADR-0047-bounded-art-capacity.md. These
+are not installed UO data formats or assigned game packet opcodes. No live
+loader, packet table, command or option consumes them. Default and exported
+clients exclude src/Labs/ArtCapacity/. Static art is bounded to 0x40000 slots;
+land remains 0x4000. The 9-byte static layout preserves signed-byte Z; 14/18-byte
+multi layouts preserve signed-short Z. No wider-Z support is implied.
+
+Run launchers/dev/art_capacity.bat doctor, then the launcher without arguments;
+see tools/scenarios/art-capacity/README.md and docs/art_capacity_audit.md.
+Promotion requires an Accepted ADR and matched client/server/tool qualification.
