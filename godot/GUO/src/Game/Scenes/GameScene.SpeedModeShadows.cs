@@ -76,6 +76,7 @@ internal partial class GameScene
         var sky=SunShadowProjection.Resolve(_world.ShardClock,RealtimeAmbientLevel(),Time.Ticks);
 #endif
         SpeedSunSource=sky.Source;
+        frame.SunShadowStrength=sun ? sky.Strength : 0;
         if(sun && sky.Strength>0 || inputs.Requested>0 && frame.Count>0 || inputs.ShelterEnabled) {
             // Physical source is independent of visible chunks and roof cutaways.
             // Keep a bounded, chunk-aligned region around the current viewer.

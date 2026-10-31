@@ -80,11 +80,20 @@ internal sealed partial class OrderedWorldDevice
         SpeedLightTexture.TextureRdRid=_speedLight;
     }
 
+#if DEBUG
+    // Fixture-only baseline: compile the original ambient output in a new device.
+    internal static bool ProbeLegacyAmbientOutput;
+#endif
     private Rid SpeedProgramRT(string vertex,string fragment)
     {
+        string ambientOutput="light=vec4(pc.ambient_roof.rgb*(roof*sun),1); return;";
+#if DEBUG
+        if(!ProbeLegacyAmbientOutput) ambientOutput=SkyLightTerms.OutputGlsl;
+#endif
         using var source=new RDShaderSource { Language=RD.ShaderLanguage.Glsl,
             SourceVertex=SpeedShader(vertex),SourceFragment=SpeedShader(fragment)
-                .Replace("// STRUCTURAL_LAMP_SAMPLING",StructuralLampDepthRd.SamplingGlsl) };
+                .Replace("// STRUCTURAL_LAMP_SAMPLING",StructuralLampDepthRd.SamplingGlsl)
+                .Replace("// AMBIENT_LIGHT_OUTPUT",ambientOutput) };
         using var code=_rd.ShaderCompileSpirVFromSource(source);
         if(!string.IsNullOrEmpty(code.CompileErrorVertex)||!string.IsNullOrEmpty(code.CompileErrorFragment))
             throw new InvalidOperationException(code.CompileErrorVertex+code.CompileErrorFragment);
@@ -201,8 +210,12 @@ internal sealed partial class OrderedWorldDevice
                     Span<LightPush> push=stackalloc LightPush[1];
                     push[0]=new LightPush { Rect=new Vector4(0,0,Size.X,Size.Y),
                         ScreenMode=new Vector4(Size.X,Size.Y,-1,0),
+                        OriginCurve=new Vector4(0,0,0,SkyLightTerms.QuantizedSunBudget(frame.SunShadowStrength)),
                         AmbientRoof=new Vector4(frame.Ambient.X,frame.Ambient.Y,frame.Ambient.Z,frame.RoofShare),
                         Unused=new Vector4(-1,frame.ShadowSoftnessTenths,0,frame.SunMask.IsValid ? 1 : 0) };
+#if DEBUG
+                    push[0].ScreenMode.W=frame.AmbientProbeTerm;
+#endif
                     _rd.DrawListSetPushConstant(list,MemoryMarshal.AsBytes(push),128);
                     _rd.DrawListDraw(list,false,1,6); SpeedLightDrawCalls++;
                     for(int i=0;i<frame.Count;i++)

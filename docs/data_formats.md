@@ -4435,6 +4435,22 @@ The existing optional Lighting speed mode can consume a bounded physical snapsho
 alongside the native surface buffer. Classic presentation, draw ordering, picking
 and nearest art sampling remain unchanged. No GLB or generated art is installed.
 
+Sky/direct compatibility bookkeeping carries the once-resolved active sun
+shadow strength `S` on `SpeedLightFrame`. The legacy R8 mask already includes
+strength, so the direct budget is `Q=ceil(255*S)/255` (float arithmetic), zero
+with sun shadows disabled. For existing ambient RGB `A`, roof factor `R` and
+combined sun visibility `V`, the diagnostic terms are `A*(R*(1-Q))` and
+`A*(R*max(0,V-(1-Q)))`. Upward byte quantization admits the .32-strength moon
+mask stored as 82/255 without double-applying attenuation. These are artistic
+compatibility terms; night floor and roof policy remain embedded in them.
+
+Normal output retains the original literal `A*(R*V)` operation order. Debug-only
+fixtures can select a term in the ambient draw; lamp draws, HDR storage and
+final presentation remain on their existing paths. Release compiles the
+original output expression. The ambient draw uses spare push-constant W
+components for budget and Debug selection without changing its 128-byte layout.
+No AO cache, brightness change or new profile setting follows from this split.
+
 `PhysicalWorldSnapshot` owns native tile-X/tile-Y/UO-Z triangles, stable source
 owners (land, effective map static ordinal, item serial, multi component), material
 bits, provenance, per-cell unknown reasons and an immutable world/generation key.

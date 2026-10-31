@@ -91,6 +91,15 @@ Unknown classifications preserve the existing fallback. Final presentation
 restores the prior realtime renderer's max-channel light normalization after
 softening, retaining unmodified HDR diagnostics and native pixel sampling.
 
+Before local sky visibility can attenuate ambient light, separate compatibility
+sky/direct terms without changing the current output. Existing sun masks already
+encode artistic strength, including R8 quantization; the direct budget rounds
+that strength upward to an R8 step. Preserve the original neutral expression
+and isolate diagnostic term selection to Debug fixtures. This split retains
+the current night-floor and roof policy and does not establish physical
+irradiance or authorize a new brightness policy. A future visibility cache
+still needs a bounded supported domain and explicit unknown fallback.
+
 ## Acceptance
 
 - Native Britain structural shadow positive, ground-caster/upper-floor negative

@@ -40,13 +40,18 @@ public partial class NativePhysicalWorldProbe : Node
     public override void _EnterTree()
     {
 #if DEBUG
+        // A separate process/output runs only the original-expression transition
+        // control. Set before child Main can compile any light shader.
+        if (System.Environment.GetEnvironmentVariable("GUO_PHYSICAL_SKY_TRANSITION_LEGACY") == "1")
+            OrderedWorldDevice.ProbeLegacyAmbientOutput = true;
         _root = System.Environment.GetEnvironmentVariable("GUO_PHYSICAL_WORLD_OUT");
         Require(!string.IsNullOrWhiteSpace(_root) && Path.IsPathRooted(_root), "external GUO_PHYSICAL_WORLD_OUT required");
         _root = Path.GetFullPath(_root);
-        if (System.Environment.GetEnvironmentVariable("GUO_PHYSICAL_PERF") == "1")
+        if (System.Environment.GetEnvironmentVariable("GUO_PHYSICAL_PERF") == "1"
+            || System.Environment.GetEnvironmentVariable("GUO_PHYSICAL_SKY_TERMS") == "1")
             Require(!File.Exists(Path.Combine(_root, "data", "native-physical-world-results.json"))
                 && !File.Exists(Path.Combine(_root, "data", "native-physical-performance.json")),
-                "performance diagnostics require a new output run; prior acceptance artifacts are immutable");
+                "isolated diagnostics require a new output run; prior acceptance artifacts are immutable");
         string project = Path.GetFullPath(ProjectSettings.GlobalizePath("res://"));
         Require(!_root.StartsWith(project, StringComparison.OrdinalIgnoreCase), "evidence must stay outside project");
         string scratch = Path.Combine(_root, "data", "fixture");
@@ -315,6 +320,13 @@ public partial class NativePhysicalWorldProbe : Node
             if (System.Environment.GetEnvironmentVariable("GUO_PHYSICAL_PERF") == "1") {
                 await RunPerformanceCases();
                 GD.Print("[native-physical-performance] PASS shared-load Debug mode comparison; no Release/FPS claim");
+                GetTree().Quit(0); return;
+            }
+            if (System.Environment.GetEnvironmentVariable("GUO_PHYSICAL_SKY_TERMS") == "1") {
+                await RunSkyTermCases();
+                Require(!NetClient.Socket.IsConnected, "sky-term fixture never connected"); Save();
+                if (_failures.Count != 0) throw new InvalidOperationException(string.Join("; ", _failures));
+                GD.Print("[native-physical-sky-terms] PASS native clock/terms/lamp/restoration/off-fallback");
                 GetTree().Quit(0); return;
             }
             for (int i = 0; i < 3; i++) { using var warm = await Capture("bootstrap-" + i); }

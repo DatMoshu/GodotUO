@@ -63,7 +63,7 @@ void main() {
         // Union overlapping occlusion; repeated shadow sources must not multiply
         // the same blocked sun into an artificially black patch.
         sun=min(sun,structural_sun(surface.xyz,packed));
-        light=vec4(pc.ambient_roof.rgb*(roof*sun),1); return;
+        // AMBIENT_LIGHT_OUTPUT
     }
     if(kind==0) discard;
     vec3 delta=pc.world_radius.xyz-surface.xyz;

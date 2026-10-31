@@ -12,6 +12,9 @@ internal partial class GameScene
 {
     private SpeedLightFrame _speedLights;
     private Texture2D _speedLightOverride;
+#if DEBUG
+    internal int SpeedAmbientProbeTerm;
+#endif
     internal int SpeedLightOfferCount=>_speedLights?.Count??0;
     internal bool UseSpeedLights=>SpeedModeDebug.Active && _world.InGame
         && !(_world.Player.IsDead && ProfileManager.CurrentProfile.EnableBlackWhiteEffect);
@@ -62,6 +65,10 @@ internal partial class GameScene
             frame.StructuralLampDepth=frame.StructuralLampParameters=default;
             frame.ReceiverSurface=default;
             frame.PhysicalShelter=null; frame.WeatherShelterEnabled=false;
+            frame.SunShadowStrength=0;
+#if DEBUG
+            frame.AmbientProbeTerm=SpeedAmbientProbeTerm;
+#endif
             frame.RenderInputs=null; frame.RenderPatches=null;
             frame.Count=Math.Min(_rtSourceCount,frame.Lights.Length);
             frame.Origin=batcher.SpeedSurfaceOrigin;

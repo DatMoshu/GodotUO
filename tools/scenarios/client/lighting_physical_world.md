@@ -84,3 +84,34 @@ lighting work. On the pinned Vulkan engine, GPU timestamps are nanoseconds and
 CPU timestamps are microseconds, despite the SDK XML describing both as
 microseconds. The pinned implementation is authoritative. These Debug samples
 under shared load establish neither Release performance nor uncapped FPS.
+
+For appearance-neutral sky/direct bookkeeping, run the headless
+`res://src/Render/SpeedMode/SkyLightTermsProbe.tscn` and require its PASS line.
+Then run `SkyLightTermsGpuProbe.tscn` in the physical-world scene directory with
+the real RenderingDevice and a new external evidence directory. It compares
+the original ambient expression with the current full light shader, requiring
+bit-exact normal HDR, independent sky/direct numeric expectations and unchanged
+lamp-only HDR. Its receivers and depth inputs are synthetic, not native art.
+
+Finally set `GUO_PHYSICAL_SKY_TERMS=1` for the native command above, using a new
+output directory with the performance/weather variables cleared. This selects
+a separate native suite for noon, night and missing-clock moon fallback.
+Require the native PASS line, positive terms in the actual displayed frame,
+unchanged lamp contribution after removing one real fixture lamp on pixels with
+identical measured sun-mask bytes, exact stable normal restoration, and exact
+disabled/failure output. Lamp removal also removes its sprite shadow; report
+that independently excluded domain. The native restoration compares
+two current-code captures; the GPU suite supplies original-expression parity.
+Clear the sky variable before normal physical-world acceptance.
+
+Setup and term0-only re-enable captures are retained as separate observations.
+The first displayed frame after re-enabling currently differs from the settled
+frame despite identical HDR/world targets. To reproduce with the original
+ambient expression, add `GUO_PHYSICAL_SKY_TRANSITION_LEGACY=1` in a fresh process
+alongside the sky variable. This control does not run diagnostic term outputs.
+Stable sky-term acceptance does not claim that presentation transition fixed.
+
+These terms retain the current artistic shadow strength, roof factor and night
+floor. They are prerequisites for later local sky-visibility work, not a claim
+of physical irradiance, ambient occlusion or global illumination. Debug term
+selection is fixture-only and does not add a player setting.

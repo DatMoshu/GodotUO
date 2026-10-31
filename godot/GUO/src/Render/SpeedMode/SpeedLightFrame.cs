@@ -21,6 +21,11 @@ internal sealed class SpeedLightFrame
     internal int Count, Soften;
     internal Vector3 Ambient;
     internal float RoofShare;
+    // Once-resolved artistic shadow strength; it is not solar irradiance.
+    internal float SunShadowStrength;
+#if DEBUG
+    internal int AmbientProbeTerm;
+#endif
     internal Vector2I Origin,TargetSize;
     // Borrowed RD views; default means no contribution from that optional pass.
     internal Rid LampShadowAtlas,SunMask;

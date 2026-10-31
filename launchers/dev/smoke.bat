@@ -77,6 +77,8 @@ echo [smoke] Window receiver shaft gates and failure contract (headless; ADR-004
 
 echo [smoke] Physical lighting source and ray contracts (headless; ADR-0049)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/SpeedMode/PhysicalWorld/PhysicalWorldProbe.tscn || set "FAIL=1"
+echo [smoke] Sky/direct compatibility arithmetic (headless; ADR-0049)
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/SpeedMode/SkyLightTermsProbe.tscn || set "FAIL=1"
 echo [smoke] Lighting shard clock framing and logout contract (offline; ADR-0048)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/SpeedMode/Shadows/ShardClockProbe.tscn || set "FAIL=1"
 
