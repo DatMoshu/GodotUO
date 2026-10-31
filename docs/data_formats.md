@@ -4428,3 +4428,76 @@ multi layouts preserve signed-short Z. No wider-Z support is implied.
 Run launchers/dev/art_capacity.bat doctor, then the launcher without arguments;
 see tools/scenarios/art-capacity/README.md and docs/art_capacity_audit.md.
 Promotion requires an Accepted ADR and matched client/server/tool qualification.
+
+## 52. Native physical lighting snapshots (ADR-0049)
+
+The existing optional Lighting speed mode can consume a bounded physical snapshot
+alongside the native surface buffer. Classic presentation, draw ordering, picking
+and nearest art sampling remain unchanged. No GLB or generated art is installed.
+
+`PhysicalWorldSnapshot` owns native tile-X/tile-Y/UO-Z triangles, stable source
+owners (land, effective map static ordinal, item serial, multi component), material
+bits, provenance, per-cell unknown reasons and an immutable world/generation key.
+The first domain is at most 64 by 64 tiles and 131,072 triangles. Native data comes
+through the active patched loaders; live Items and house components are included
+independently of roof cutaway. Missing live coverage, unsupported openings,
+animation, motion and ambiguous geometry remain explicit unknowns.
+
+The cache compares loader revisions, exact bounded live records, facet/world,
+art/theme/season and loaded-cell coverage. Stable snapshots reuse GPU geometry.
+Art recipes retain bounded derived metadata rather than copies of native images.
+Map, art, door and structural edits invalidate the next admitted snapshot.
+Live/source enumeration has a shared 131,072-record work limit; a truncated
+snapshot admits no inferred geometry and marks its domain unknown. Live coverage
+checks only inspect the existing chunk table, without loading or retaining chunks.
+Unrecognized NoShoot/Bridge structures remain unknown rather than decorative.
+
+Native surface metadata remains eight bytes per occurrence. Output class/flags
+gain bit256 for a qualified physical receiver. Full native floors and terrain,
+fitted planar roofs, and single opaque wall faces can qualify; cutouts and
+unsupported recipes do not. Roof apparent lift is per graphic/slope, separate
+from native physical Z. Internal kinds8/9/10 encode roof and wall recipes and are
+decoded back to ordinary roof/wall classes in the surface target.
+Moving, PNG-themed and numerically replaced map-art receivers do not qualify.
+Physical art analysis is dormant with speed lighting off; the first active frame
+upgrades cached native mesh metadata in place. Subsequent roof-neighbour and
+motion changes refresh that metadata before GPU admission. Native colour meshes
+are not rebuilt by this refresh.
+
+Structural sunlight uses a 2048-square D32 map with nearest depth lookup. Its
+128-byte header stores origin-relative projection rows, domain, bias and source
+direction, followed by per-cell complete-ray flags. The native metric is
+`4/(22*sqrt(2))` tiles per UO Z. Qualified opaque hits prove blockage; incomplete
+misses preserve the existing lighting fallback and never certify clear sky.
+
+The local-light pilot uses the first offer selected by the existing lamp budget,
+with six 256-square D32 faces in one 3-by-2 atlas and an 80-byte header. A qualified
+complete segment replaces the old reach/polar result so a raised beam can permit
+light beneath it. Unknown segments keep the existing result. Other selected
+lamps retain their existing route; expanding the pilot requires measured evidence.
+The old `Z/11` attenuation metric is preserved, so this does not migrate presets.
+
+Weather shelter uses a cached 1024-square D32 overhead map of `BlocksWeather`
+triangles. A per-frame compute pass classifies the actual physical receiver into
+an R8 target: 0 unknown, 128 exposed, 255 protected. An overhead hit proves
+protection; a miss proves exposure only in a complete source cell. Roof cutaway
+does not remove physical shelter. Rain and wetness consume this target on the
+same surface/light publication; unknown pixels retain the previous cover rule.
+This models overhead precipitation, not wind-driven rain through openings.
+
+Final light presentation restores the older realtime renderer's max-channel
+normalization: when accumulated RGB exceeds one, divide RGB by its largest
+channel. Dim light and alpha remain unchanged. This happens after optional
+softening, in a separate nearest RGBA16F target, before native-art multiplication.
+The raw HDR target remains intact for diagnostics. Overlapping lamps therefore
+preserve pale-art detail rather than clipping the displayed result to white.
+
+Frame callbacks bind only matching surface/snapshot resources. Optional RD
+failures discard the whole enhanced-light transaction and restore Classic.
+Disable, resize and scene teardown retire resources through the render thread.
+Sprite masks are restricted to their supporting receiver plane; soften stops
+across physical discontinuities instead of mixing different floors.
+
+See `tools/scenarios/client/lighting_physical_world.md` for disconnected Britain
+proofs. Pure tests are distinct from GPU/native acceptance. These contracts do not
+claim full-world coverage, all roof shapes, full GI, or complete point-light rollout.

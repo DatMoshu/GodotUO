@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Runs the fast health check (engine, import, C# build, client data, offline load, editor add-on, launcher lint) and prints OK or FAILED.
 set -euo pipefail
+# Build helpers must retire with Godot's console process.
+export UseSharedCompilation=false MSBUILDDISABLENODEREUSE=1
 . "$(dirname "$0")/../_shared/common.sh" || exit 1
 FAIL=0
 
@@ -56,6 +58,9 @@ echo "[smoke] Lighting speed weather state and callback contract (headless; ADR-
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/SpeedMode/Weather/SpeedModeWeatherProbe.tscn || FAIL=1
 echo "[smoke] Window receiver shaft gates and failure contract (headless; ADR-0048)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/SpeedMode/WindowLight/WindowRayProbe.tscn || FAIL=1
+
+echo "[smoke] Physical lighting source and ray contracts (headless; ADR-0049)"
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/SpeedMode/PhysicalWorld/PhysicalWorldProbe.tscn || FAIL=1
 echo "[smoke] Lighting shard clock framing and logout contract (offline; ADR-0048)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/SpeedMode/Shadows/ShardClockProbe.tscn || FAIL=1
 

@@ -1,8 +1,9 @@
 @echo off
 rem Runs the fast health check (engine, import, C# build, client data, offline load, editor add-on, launcher lint) and prints OK or FAILED.
 setlocal
-REM  Godot's console wrapper waits for descendants; Roslyn must exit with the build.
+REM  Godot's console wrapper waits for descendants; build servers must exit too.
 set "UseSharedCompilation=false"
+set "MSBUILDDISABLENODEREUSE=1"
 REM ============================================================================
 REM  Fast health check: engine present, project imports, C# builds,
 REM  client data readable, and the editor add-on (headless, about 20 s).
@@ -73,6 +74,9 @@ echo [smoke] Lighting speed weather state and callback contract (headless; ADR-0
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/SpeedMode/Weather/SpeedModeWeatherProbe.tscn || set "FAIL=1"
 echo [smoke] Window receiver shaft gates and failure contract (headless; ADR-0048)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/SpeedMode/WindowLight/WindowRayProbe.tscn || set "FAIL=1"
+
+echo [smoke] Physical lighting source and ray contracts (headless; ADR-0049)
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/SpeedMode/PhysicalWorld/PhysicalWorldProbe.tscn || set "FAIL=1"
 echo [smoke] Lighting shard clock framing and logout contract (offline; ADR-0048)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/SpeedMode/Shadows/ShardClockProbe.tscn || set "FAIL=1"
 
