@@ -33,7 +33,7 @@ jobs:
           cp -r site/. _src/
           cp docs/wiki/*.md _src/wiki/
           rm -f _src/wiki/README.md
-          cp docs/images/* _src/images/
+          cp -r docs/images/. _src/images/
           cat > _src/_config.yml <<'EOF'
           title: GodotUO
           description: Classic Ultima Online on Godot 4 .NET

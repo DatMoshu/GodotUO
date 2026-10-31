@@ -1,5 +1,10 @@
 # Water
 
+![Water authoring in GUO](../images/guides/water-authoring.png)
+
+Water controls and Britain docks. The left test preview is explicitly synthetic; the right view uses installed art. No shard is needed for the preview. [Capture conditions and limits](Visual-Guide.md#water-authoring).
+
+
 GUO can draw the sea, rivers and lakes as moving water instead of the still
 tiles of the original client. It is off by default: **Classic tiles** draws the
 water exactly as ClassicUO does.

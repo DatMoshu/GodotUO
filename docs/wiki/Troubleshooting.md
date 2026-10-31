@@ -99,3 +99,17 @@ engine build. See [Web Client](Web-Client.md) and ADR-0008.
   your platform, client version and shard emulator, and attach the client log.
   Never attach game data or screenshots of proprietary art you can't share.
 - Security problems go through `SECURITY.md`, never a public issue.
+
+## Current renderer and upgrade recovery
+
+For rendering defects, first try [canvas recovery](Renderer-and-Performance.md#recover-with-canvas)
+with the same shard/profile/location. Record the actual rendering method and
+viewport. A still image cannot establish frame pacing or remote animation.
+For mixed exports, keep the executable, `.pck` and .NET data folder from one
+build together; use [Install and Update](Install-and-Update.md) to preserve
+the previous install/profile. Diagnose a scratch profile before deleting a real one.
+
+If editor automation is unavailable, check the [AI preference and MCP policy](AI-and-MCP.md).
+An unreadable permission file denies calls; keep a copy before repairing it.
+Missing provider credentials, a stopped local service and a denied permission
+are separate causes. Turning on AI does not grant server mutation access.
