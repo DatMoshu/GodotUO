@@ -162,6 +162,16 @@ class FetchCases:
         self.assertRegex(r.stderr, r"patch failed|already exists in working directory")  # git's own reason
         self.assertEqual((s.read("a.txt"), s.read("b.txt")), ("one\nTwo, the old way\n", "old new\n"))
 
+    def test_fresh_no_checkout_clone_goes_to_the_pin_and_applies(self):
+        # git clone --no-checkout leaves a HEAD but an empty index: nothing is on it,
+        # so no patch is taken off (a file absent from the index cannot be reset).
+        s = self.s
+        r = s.run(self.kind)
+        self.assertEqual(r.returncode, 0, self.out(r))
+        self.assertNotIn("taking the patches off", r.stdout)
+        self.assertEqual(s.head(), s.pin)
+        self.assertEqual((s.read("a.txt"), s.read("b.txt"), s.read("c.txt")), (PATCHED_A, NEW_B, "pin\n"))
+
     def test_pin_move_takes_a_clean_patch_off_and_puts_it_back(self):
         s = self.s.at(self.s.old)
         s.write("a.txt", PATCHED_A)

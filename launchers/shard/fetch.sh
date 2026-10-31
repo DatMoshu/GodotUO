@@ -15,6 +15,9 @@ fi
 git -C "$src" cat-file -e "$UO_SHARD_REF^{commit}" 2>/dev/null || git -C "$src" fetch origin || exit 1
 head="$(git -C "$src" rev-parse -q --verify HEAD 2>/dev/null || true)"
 want="$(git -C "$src" rev-parse -q --verify "$UO_SHARD_REF^{commit}" || true)"
+# A fresh --no-checkout clone has a HEAD but an empty index: nothing is on it, so
+# there are no patches to take off (resetting a file absent from the index fails).
+if [ -z "$(git -C "$src" ls-files 2>/dev/null | head -n 1)" ]; then head=""; fi
 if [ -z "$want" ]; then
     echo "[shard] The pin $UO_SHARD_REF is not in $UO_SHARD_REPO."
     exit 1

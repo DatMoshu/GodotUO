@@ -24,6 +24,11 @@ set "SHARD_HEAD="
 set "SHARD_WANT="
 for /f %%H in ('git -C "%UO_SHARD_SRC%" rev-parse -q --verify HEAD 2^>nul') do set "SHARD_HEAD=%%H"
 for /f %%H in ('git -C "%UO_SHARD_SRC%" rev-parse "%UO_SHARD_REF%^{commit}"') do set "SHARD_WANT=%%H"
+REM  A fresh --no-checkout clone has a HEAD but an empty index: nothing is on it, so
+REM  there are no patches to take off (resetting a file absent from the index fails).
+set "SHARD_TRACKED="
+for /f "delims=" %%F in ('git -C "%UO_SHARD_SRC%" ls-files 2^>nul') do if not defined SHARD_TRACKED set "SHARD_TRACKED=1"
+if not defined SHARD_TRACKED set "SHARD_HEAD="
 if not defined SHARD_WANT (
     echo [shard] The pin %UO_SHARD_REF% is not in %UO_SHARD_REPO%.
     exit /b 1
