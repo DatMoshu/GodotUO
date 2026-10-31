@@ -3,6 +3,7 @@ using System;
 using System.Runtime.InteropServices;
 using GUO.Game.GameObjects;
 using GUO.Renderer.Lights;
+using GUO.Renderer.SpeedMode.PhysicalWorld;
 
 namespace GUO.Renderer.SpeedMode;
 
@@ -11,13 +12,15 @@ namespace GUO.Renderer.SpeedMode;
 internal readonly struct SurfaceRow
 {
     internal readonly uint Tile, Data;
-    internal SurfaceRow(int x, int y, int z, int height, int kind, int flags = 0, int planeX = 0, int planeY = 0)
+    internal SurfaceRow(int x, int y, int z, int height, int kind, int flags = 0, int planeX = 0, int planeY = 0, bool physical = false)
     {
         Tile = (uint)(ushort)x | ((uint)(ushort)y << 16);
         Data = (uint)(kind + 16 * flags) | ((uint)(byte)(z + 128) << 12)
             | ((uint)(byte)Math.Clamp(height, 0, 255) << 20);
-        if (kind == 5) Data |= (uint)(Math.Clamp(planeX,-6,6)+8) << 8 | (uint)(Math.Clamp(planeY,-6,6)+8) << 28;
+        if (kind is 5 or 8) Data |= (uint)(Math.Clamp(planeX,-6,6)+8) << 8 | (uint)(Math.Clamp(planeY,-6,6)+8) << 28;
         else if (kind == 4) Data |= ((uint)planeX & 15u) << 8 | ((uint)planeY & 15u) << 28;
+        else if (kind is 9 or 10) Data |= ((uint)planeX & 15u) << 8 | (((uint)planeX >> 4) & 15u) << 28;
+        else if (kind == 1 && physical) Data |= 256u;
     }
 
     internal SurfaceRow(uint tile, uint data) { Tile = tile; Data = data; }
@@ -56,7 +59,9 @@ internal readonly struct SurfaceRow
         return false;
     }
 
-    internal static SurfaceRow For(GameObject obj)
+    internal static SurfaceRow For(GameObject obj) => For(obj, SpeedModeDebug.Active);
+
+    internal static SurfaceRow For(GameObject obj, bool qualifyPhysical)
     {
         if (obj == null) return default;
         int kind = 4, flags = 0, height = 0;
@@ -116,6 +121,20 @@ internal readonly struct SurfaceRow
             gx=(int)MathF.Round((x-tileX)*16f); gy=(int)MathF.Round((y-tileY)*16f);
             if (gx==16) { tileX++; gx=0; } if (gy==16) { tileY++; gy=0; }
         }
-        return new SurfaceRow(tileX, tileY, obj.Z, height, kind, flags,gx,gy);
+        // Land correspondence is exact and costs no art decode. New static-art
+        // coverage/fit work runs only for the optional lighting path; a cached
+        // Classic-built mesh is upgraded by its first active receiver refresh.
+        bool physical = kind == 1 && (obj is Land || qualifyPhysical) && PhysicalReceiverRecipe.Flat(obj, height);
+        if (qualifyPhysical && kind == 5 && PhysicalReceiverRecipe.PlanarRoof(obj, out int roofX, out int roofY, out byte liftCode))
+        {
+            // Qualified roof recipes carry their apparent art lift separately
+            // from native source Z. Fragment output restores public class5.
+            kind = 8; gx = roofX; gy = roofY; height = liftCode;
+        }
+        if (qualifyPhysical && (kind is 2 or 3 or 7) && PhysicalReceiverRecipe.Wall(obj, out bool wallAlongX, out byte wallOffset))
+        {
+            kind = wallAlongX ? 9 : 10; gx = wallOffset; gy = 0;
+        }
+        return new SurfaceRow(tileX, tileY, obj.Z, height, kind, flags,gx,gy,physical);
     }
 }

@@ -35,7 +35,26 @@ void main() {
         }
     }
     uint kind = surface_data & 15u;
+    // Bit8 is spare only for an original flat receiver. A wall cap reclassified
+    // below must never inherit physical confidence from a different recipe.
     vec3 point = surface_point;
+    vec2 receiver_local = point.xy - surface_tile;
+    bool inside_patch = all(greaterThanEqual(receiver_local,vec2(0.0))) && all(lessThanEqual(receiver_local,vec2(1.0)));
+    bool physical = kind == 1u && (surface_data & 256u) != 0u && inside_patch;
+    if (kind == 8u) {
+        kind = 5u;
+        // Only the fitted top plane is a qualified receiver. Native fascia
+        // pixels remain visible, but cannot inherit the top plane's identity.
+        physical = inside_patch;
+    }
+    if (kind == 9u || kind == 10u) {
+        kind = kind == 9u ? 2u : 3u;
+        float base_z = float(int((surface_data >> 12u) & 255u) - 128);
+        float height = float((surface_data >> 20u) & 255u);
+        // Only the qualified front face, never a cap or decorative overhang.
+        // The actual sprite bounds additionally clip the producer's short span.
+        physical = inside_patch && point.z >= base_z && point.z <= base_z + height;
+    }
     if (kind == 7u) {
         // Corner wall: the right half shows the east face.
         kind = point.x - point.y > surface_tile.x - surface_tile.y ? 3u : 2u;
@@ -48,9 +67,10 @@ void main() {
     }
     float top = float(int((surface_data >> 12u) & 255u) - 128) + float((surface_data >> 20u) & 255u);
     if ((kind == 2u || kind == 3u) && point.z > top) {
-        kind = 1u; point.xy += vec2((top-point.z)/11.0); point.z = top;
+        kind = 1u; point.xy += vec2((top-point.z)/11.0); point.z = top; physical = false;
     }
     uint flags = surface_data & 240u;
     if (packed_hue.a < 1.0 || alpha < 1.0) flags |= 128u;
-    surface = vec4(point.xy-vec2(tile_origin.xy),point.z,float(kind+flags));
+    if ((flags & 128u) != 0u) physical = false;
+    surface = vec4(point.xy-vec2(tile_origin.xy),point.z,float(kind+flags+(physical ? 256u : 0u)));
 }

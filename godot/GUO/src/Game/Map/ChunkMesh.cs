@@ -153,6 +153,49 @@ namespace GUO.Game.Map
         /// </remarks>
         private readonly List<(GameObjects.Land Land, float Depth, int Texture, int Seq)> _landOrder = new(64);
         private TextureBucketTracker _staticsBuckets = new(32);
+        // PORT DEVIATION (GUO): ADR-0049. Only source-dependent receiver rows
+        // need a live check. Owners/indices belong to this mesh build and are
+        // cleared with it; native colour vertices are never rebuilt by this seam.
+        private readonly record struct PhysicalReceiverOwner(GameObject Owner, int Index, bool Roof, bool Moving);
+        private readonly List<PhysicalReceiverOwner> _physicalReceivers = new();
+        private bool _physicalQualificationEnabled;
+        internal int PhysicalReceiverCount => _physicalReceivers.Count;
+        internal long PhysicalReceiverChecks { get; private set; }
+        internal long PhysicalReceiverChanges { get; private set; }
+
+        // Called only with speed lighting active, before the resident layer is
+        // captured. A roof's neighbouring Item can change without dirtying this
+        // static mesh, including across a chunk boundary. Conservatively check
+        // cached roof owners each frame; art fits remain cached by graphic/slope.
+        // A Classic-built mesh qualifies all candidates once on first enable;
+        // subsequent non-roof rows need only a moving/stationary transition.
+        internal void RefreshPhysicalRoofReceivers()
+        {
+            bool changed = false;
+            bool firstActive = !_physicalQualificationEnabled;
+            for (int i = 0; i < _physicalReceivers.Count; i++)
+            {
+                var receiver = _physicalReceivers[i];
+                var obj = receiver.Owner;
+                if (obj.IsDestroyed || !obj.InChunkMesh || obj.MeshSpriteIndex != receiver.Index
+                    || (uint)receiver.Index >= (uint)Statics.Count) continue;
+                PhysicalReceiverChecks++;
+                bool moving = obj.Offset.X != 0 || obj.Offset.Y != 0 || obj.Offset.Z != 0;
+                if (!firstActive && !receiver.Roof && moving == receiver.Moving) continue;
+                uint data = Renderer.SpeedMode.SurfaceRow.For(obj, true).Data;
+                if (Statics.SurfaceData[receiver.Index] != data)
+                {
+                    Statics.SurfaceData[receiver.Index] = data;
+                    PhysicalReceiverChanges++;
+                    changed = true;
+                }
+                if (moving != receiver.Moving) _physicalReceivers[i] = receiver with { Moving = moving };
+            }
+            // DepthWorldResident.Add compares this stamp and repacks the same
+            // layer's quad range, including Aux.W, before this frame uploads.
+            if (changed) Statics.ContentStamp++;
+            _physicalQualificationEnabled = true;
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void MarkDirtyIfNeeded(GameObject obj)
@@ -172,6 +215,8 @@ namespace GUO.Game.Map
         {
             Land.Reset();
             Statics.Reset();
+            _physicalReceivers.Clear();
+            _physicalQualificationEnabled = Renderer.SpeedMode.SpeedModeDebug.Active;
             IsDirty = false;
 
             var profile = ProfileManager.CurrentProfile;
@@ -283,6 +328,8 @@ namespace GUO.Game.Map
             Land.Dispose();
             Statics.Reset();
             Statics.Dispose();
+            _physicalReceivers.Clear();
+            _physicalQualificationEnabled = false;
             Instances.Clear();
             _instanced = false;
             IsDirty = true;
@@ -297,6 +344,8 @@ namespace GUO.Game.Map
             Statics.SoftReset();
             _landOrder.Clear();
             _staticsBuckets.Clear();
+            _physicalReceivers.Clear();
+            _physicalQualificationEnabled = false;
             Instances.Clear();
             _instanced = false;
             IsDirty = true;
@@ -737,6 +786,9 @@ namespace GUO.Game.Map
                 Statics.ObjectZ[idx] = obj.Z; // PORT DEVIATION (GUO): ADR-0044
                 // PORT DEVIATION (GUO): ADR-0048 parallel surface metadata.
                 Statics.SurfaceData[idx] = Renderer.SpeedMode.SurfaceRow.For(obj).Data;
+                if (itemData.IsRoof || itemData.IsWall || itemData.IsDoor || itemData.IsSurface && itemData.Height == 0)
+                    _physicalReceivers.Add(new PhysicalReceiverOwner(obj, idx, itemData.IsRoof,
+                        obj.Offset.X != 0 || obj.Offset.Y != 0 || obj.Offset.Z != 0));
             }
 
             obj.InChunkMesh = true;

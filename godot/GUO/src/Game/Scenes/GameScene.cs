@@ -741,6 +741,14 @@ namespace GUO.Game.Scenes
                         stageAt = PerfStages.Add(PerfStages.Stage.MeshBuild, stageAt);
                     }
 
+                    // PORT DEVIATION (GUO): ADR-0049. Neighbouring live roof
+                    // edits can change a resident receiver without changing its
+                    // native colour mesh. Refresh before resident admission.
+                    if (UseSpeedLights)
+                    {
+                        chunk.Mesh.RefreshPhysicalRoofReceivers();
+                    }
+
                     if (chunk.Mesh.Instanced)
                     {
                         chunk.Mesh.Instances.Show(); // PORT DEVIATION (GUO): --gpu-world

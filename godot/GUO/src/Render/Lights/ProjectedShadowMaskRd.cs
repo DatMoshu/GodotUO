@@ -18,7 +18,7 @@ namespace GUO.Renderer.Lights;
 /// </summary>
 internal sealed class ProjectedShadowMaskRd : IDisposable
 {
-    private const int QuadBytes = 64;
+    private const int QuadBytes = 80;
     private const int MaxQuads = 65536;
     private const float AlphaCap = 166f / 255f;
 
@@ -29,6 +29,7 @@ internal sealed class ProjectedShadowMaskRd : IDisposable
         public float Cx, Cy, From, To;
         public float Ux, Uy, Vx, Vy;
         public float Wx, Wy, Opacity, Solid;
+        public float ReceiverZ, ReceiverGated, Pad0, Pad1;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -39,11 +40,12 @@ internal sealed class ProjectedShadowMaskRd : IDisposable
     }
 
     private const string VertexGlsl = @"#version 450
-struct Quad { vec4 ab; vec4 c_from_to; vec4 uv; vec4 w_opacity_solid; };
+struct Quad { vec4 ab; vec4 c_from_to; vec4 uv; vec4 w_opacity_solid; vec4 receiver; };
 layout(set = 0, binding = 0, std430) readonly buffer Quads { Quad quads[]; };
 layout(push_constant, std430) uniform Frame { vec4 screen; uvec4 draw; } pc;
 layout(location = 0) out vec2 uv;
 layout(location = 1) out vec3 opacity_t_solid;
+layout(location = 2) flat out vec2 receiver_plane;
 void main() {
     uint v = pc.draw.x + uint(gl_VertexIndex);
     Quad q = quads[v / 6u];
@@ -55,17 +57,27 @@ void main() {
     uv = corner == 0u ? u : corner == 1u ? w1 : corner == 2u ? w2 : w1 + w2 - u;
     float t = corner < 2u ? q.c_from_to.z : q.c_from_to.w;
     opacity_t_solid = vec3(q.w_opacity_solid.z, t, q.w_opacity_solid.w);
+    receiver_plane = q.receiver.xy;
     gl_Position = vec4(p * (2.0 / pc.screen.xy) - 1.0, 0.0, 1.0);
 }
 ";
 
     private const string FragmentGlsl = @"#version 450
 layout(set = 1, binding = 0) uniform sampler2D art;
+layout(set = 2, binding = 0) uniform sampler2D receiver_surface;
 layout(push_constant, std430) uniform Frame { vec4 screen; uvec4 draw; } pc;
 layout(location = 0) in vec2 uv;
 layout(location = 1) in vec3 opacity_t_solid;
+layout(location = 2) flat in vec2 receiver_plane;
 layout(location = 0) out vec4 color;
 void main() {
+    if (receiver_plane.y > 0.5) {
+        vec4 receiver = texelFetch(receiver_surface, ivec2(gl_FragCoord.xy), 0);
+        int packed = int(receiver.w + 0.5);
+        // The old billboard is projected onto its owner's supporting plane.
+        // It contains no evidence about an unrelated elevated floor or roof.
+        if ((packed & 15) != 1 || (packed & 128) != 0 || abs(receiver.z - receiver_plane.x) > 0.5) discard;
+    }
     float alpha = opacity_t_solid.z > 0.5 ? 1.0 : texture(art, uv).a;
     float value = alpha * opacity_t_solid.x;
     if (pc.draw.y == 0u) {
@@ -82,6 +94,7 @@ void main() {
     private RD _rd;
     private Rid _shader, _pipeline, _sampler, _white, _storage, _storageSet;
     private Rid _shadow, _occlusion, _shadowFramebuffer, _occlusionFramebuffer;
+    private Rid _receiverSurface, _receiverKey, _receiverSet;
     private uint _storageCapacity;
     private int _width, _height, _frame;
     private readonly Dictionary<Rid, (Rid set, int frame)> _textureSets = new();
@@ -106,13 +119,13 @@ void main() {
 
     public void Register(Texture2D texture, Image image) { } // The device samples the texture itself.
 
-    public void Begin(int width, int height)
+    public void Begin(int width, int height, Rid receiverSurface = default)
     {
         _frame++;
         _stamps.Clear(); _occluders.Clear(); _stampTextures.Clear(); _occluderTextures.Clear();
         Collecting = Supported = !Failed && width > 0 && height > 0 && (_rd != null || Available);
         if (!Supported) return;
-        try { EnsureDevice(width, height); }
+        try { EnsureDevice(width, height); BindReceiver(receiverSurface); }
         catch (Exception e) { Fail(e); }
     }
 
@@ -129,12 +142,16 @@ void main() {
     }
 
     public void Stamp(Texture2D texture, Vector2 a, Vector2 b, Vector2 c,
-        Vector2 u, Vector2 v, Vector2 w, float opacity, float from, float to)
+        Vector2 u, Vector2 v, Vector2 w, float opacity, float from, float to, float receiverZ = float.NaN)
     {
         if (!Collecting || !Supported || texture == null) return;
         if (_stamps.Count == MaxQuads) { Supported = false; return; }
+        bool gated = float.IsFinite(receiverZ);
+        if (gated && !_receiverSurface.IsValid)
+            throw new InvalidOperationException("A receiver-gated shadow requires the admitted native surface.");
         _stamps.Add(new Quad { Ax = a.X, Ay = a.Y, Bx = b.X, By = b.Y, Cx = c.X, Cy = c.Y, From = from, To = to,
-            Ux = u.X, Uy = u.Y, Vx = v.X, Vy = v.Y, Wx = w.X, Wy = w.Y, Opacity = opacity, Solid = 0f });
+            Ux = u.X, Uy = u.Y, Vx = v.X, Vy = v.Y, Wx = w.X, Wy = w.Y, Opacity = opacity, Solid = 0f,
+            ReceiverZ = gated ? receiverZ : 0, ReceiverGated = gated ? 1 : 0 });
         _stampTextures.Add(texture.GetRid());
     }
 
@@ -273,6 +290,22 @@ void main() {
         if (!rid.IsValid) throw new InvalidOperationException("Could not create " + name);
     }
 
+    private void BindReceiver(Rid surface)
+    {
+        if (surface.IsValid && !_rd.TextureIsValid(surface))
+            throw new InvalidOperationException("Borrowed native receiver surface is unavailable.");
+        Rid key = surface.IsValid ? surface : _white;
+        _receiverSurface = surface;
+        if (_receiverKey == key && _receiverSet.IsValid && _rd.UniformSetIsValid(_receiverSet)) return;
+        if (_receiverSet.IsValid && _rd.UniformSetIsValid(_receiverSet)) _rd.FreeRid(_receiverSet);
+        _receiverSet = default;
+        using var uniform = new RDUniform { UniformType = RD.UniformType.SamplerWithTexture, Binding = 0 };
+        uniform.AddId(_sampler); uniform.AddId(key);
+        _receiverSet = _rd.UniformSetCreate(new Godot.Collections.Array<RDUniform> { uniform }, _shader, 2);
+        Require(_receiverSet, "receiver surface set");
+        _receiverKey = key;
+    }
+
     private void Draw()
     {
         int total = _stamps.Count + _occluders.Count;
@@ -352,6 +385,7 @@ void main() {
             if (count == 0) return;
             _rd.DrawListBindRenderPipeline(list, _pipeline);
             _rd.DrawListBindUniformSet(list, _storageSet, 0);
+            _rd.DrawListBindUniformSet(list, _receiverSet, 2);
             Span<Push> push = stackalloc Push[1];
             push[0].ScreenX = _width; push[0].ScreenY = _height; push[0].Mode = mode;
             int runStart = 0;
@@ -408,6 +442,8 @@ void main() {
         if (_rd == null) return;
         foreach (var entry in _textureSets) if (_rd.UniformSetIsValid(entry.Value.set)) _rd.FreeRid(entry.Value.set);
         _textureSets.Clear();
+        if (_receiverSet.IsValid && _rd.UniformSetIsValid(_receiverSet)) _rd.FreeRid(_receiverSet);
+        _receiverSet = _receiverKey = _receiverSurface = default;
         FreeTargets();
         Free(ref _storageSet); Free(ref _storage); _storageCapacity = 0;
         Free(ref _pipeline); Free(ref _white); Free(ref _sampler); Free(ref _shader);
