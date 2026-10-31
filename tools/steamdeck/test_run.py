@@ -185,3 +185,10 @@ def test_each_launcher_passes_its_flags_through(bat):
     assert f'run.py" {command} %*' in bat.read_text(encoding="utf-8")
     sh = bat.with_suffix(".sh").read_text(encoding="utf-8")
     assert f'run.py" {command} "$@"' in sh
+
+
+def test_release_export_dry_run_uses_release_template_and_fresh_output(deck,capsys):
+    assert deck("export","--release")==0
+    out=capsys.readouterr().out
+    assert "--export-release Linux" in out
+    assert "steamdeck-release" in out
