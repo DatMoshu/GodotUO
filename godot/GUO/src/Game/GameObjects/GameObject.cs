@@ -171,6 +171,9 @@ namespace GUO.Game.GameObjects
         internal void ClearTileMembership()
         {
             InvalidateTileLand();
+            // PORT DEVIATION (GUO): direct unlink/Destroy bypasses Chunk.RemoveGameObject.
+            // Retire cached geometry and its physical-cover SurfaceData before membership is lost.
+            _tileChunk?.Mesh.MarkDirtyIfNeeded(this);
             _tileChunk = null;
             _tileCell = 0;
         }

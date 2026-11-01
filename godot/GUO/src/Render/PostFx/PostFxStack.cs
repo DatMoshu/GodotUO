@@ -117,6 +117,43 @@ namespace GUO.Renderer.PostFx
 
         public event Action PresetChanged;
 
+        /// <summary>Which light the last Process fed to light_tex: "classic" or "realtime" (task 1150).</summary>
+        internal string LastLightInput { get; private set; } = "classic";
+#if GUO_LABS
+        /// <summary>Labs witness only: 0 normal, 1 force the classic target, 2 feed the raw field.</summary>
+        internal static int LabsLightInput;
+#endif
+
+        // PORT DEVIATION (GUO) task 1150 (ADR-0023, ADR-0048): materials of passes declaring BOTH light_tex and
+        // light_ambient that this frame offered to the render-thread election. Frame scoped: re-baselined by
+        // the next Process, reset on SpeedModeBindings.Invalidated, dropped on Teardown.
+        private readonly List<ShaderMaterial> _offered = new();
+        private Rid[] _offeredRids;
+        private Rid _baselineLight;
+        private bool _subscribed;
+        /// <summary>The materials to elect to the enhanced light this frame, or false (classic stands).</summary>
+        internal bool TryGetLightElection(out Rid[] materials)
+        {
+            materials = null;
+            if (_offeredRids == null || _offeredRids.Length == 0) return false;
+            if (!GodotObject.IsInstanceValid(_viewport) || Engine.GetProcessFrames() == _builtFrame) return false;
+            foreach (var r in _offeredRids) if (!r.IsValid) return false;
+            materials = _offeredRids; return true;
+        }
+        private void ResetElection()
+        {
+            if (_offered.Count > 0)
+                foreach (var m in _offered)
+                    if (GodotObject.IsInstanceValid(m))
+                    {
+                        var rid = m.GetRid();
+                        RenderingServer.MaterialSetParam(rid, "light_tex", _baselineLight.IsValid ? _baselineLight : default);
+                        RenderingServer.MaterialSetParam(rid, "light_ambient", Vector3.Zero);
+                    }
+            _offered.Clear(); _offeredRids = null;
+        }
+        private void OnBindingsInvalidated(SpeedMode.SpeedModeBindings.Frame _) => ResetElection();
+
         /// <summary>The GPU time of the last frame's post-processing, in ms (0 when Classic).</summary>
         public double LastGpuMs =>
             _viewport != null ? RenderingServer.ViewportGetMeasuredRenderTimeGpu(_viewport.GetViewportRid()) : 0;
@@ -167,10 +204,13 @@ namespace GUO.Renderer.PostFx
         /// The texture to draw for the world this frame. <paramref name="light"/>
         /// is offered to passes that declare <c>light_tex</c>.
         /// </summary>
-        public Texture2D Process(RenderTarget2D world, RenderTarget2D light)
+        public Texture2D Process(RenderTarget2D world, RenderTarget2D light,
+            Texture2D lightOverride = null, Vector3 lightAmbient = default)
         {
             Housekeeping();
             LastWorld = world;
+            if (!_subscribed) { SpeedMode.SpeedModeBindings.Invalidated += OnBindingsInvalidated; _subscribed = true; }
+            _offered.Clear(); _offeredRids = null; _baselineLight = default;
 
             if (world == null || world.IsDisposed)
             {
@@ -228,7 +268,20 @@ namespace GUO.Renderer.PostFx
             {
                 if (b.material.Shader != null && HasUniform(b.material.Shader, "light_tex"))
                 {
-                    b.material.SetShaderParameter("light_tex", light?.Texture);
+                    // Realtime lights: their field replaces the (cleared) classic target,
+                    // with its ambient for the pass to subtract. Otherwise classic, zero.
+                    bool own = lightOverride != null && GodotObject.IsInstanceValid(lightOverride);
+#if GUO_LABS
+                    if (LabsLightInput == 1) own = false;               // witness: the pre-1150 classic input
+                    else if (LabsLightInput == 2 && own) lightAmbient = default; // witness: raw field, no subtraction
+#endif
+                    LastLightInput = own ? "realtime" : "classic";
+                    b.material.SetShaderParameter("light_tex", own ? lightOverride : light?.Texture);
+                    if (HasUniform(b.material.Shader, "light_ambient"))
+                    {
+                        b.material.SetShaderParameter("light_ambient", own ? lightAmbient : Vector3.Zero);
+                        if (!own) _offered.Add(b.material);
+                    }
                 }
 
                 if (_idViewport != null && b.material.Shader != null && HasUniform(b.material.Shader, "id_tex"))
@@ -236,6 +289,16 @@ namespace GUO.Renderer.PostFx
                     b.material.SetShaderParameter("id_tex", _idViewport.GetTexture());
                 }
             }
+
+            if (_offered.Count > 0)
+            {
+                _baselineLight = light?.Texture?.GetRid() ?? default;
+                _offeredRids = new Rid[_offered.Count];
+                for (int i = 0; i < _offered.Count; i++) _offeredRids[i] = _offered[i].GetRid();
+            }
+#if GUO_LABS
+            if (LabsLightInput == 3) { _offered.Clear(); _offeredRids = null; } // witness: never elect (pre-change)
+#endif
 
             if (_split != null)
             {
@@ -350,6 +413,7 @@ namespace GUO.Renderer.PostFx
 
         private void Teardown()
         {
+            _offered.Clear(); _offeredRids = null;
             if (GodotObject.IsInstanceValid(_idViewport)) _idViewport.QueueFree();
             _idViewport = null;
             _idHost = null;

@@ -61,7 +61,8 @@ namespace GUO.Game.GameObjects
             drawX += 22;
             drawY += 22;
 
-            bool hasShadow = !IsDead && !IsHidden && ProfileManager.CurrentProfile.ShadowsEnabled;
+            bool hasShadow = !IsDead && !IsHidden && ProfileManager.CurrentProfile.ShadowsEnabled
+                && !GUO.Configuration.GuoEffectPolicy.ClassicShadowsSuppressed(ProfileManager.CurrentProfile); // PORT DEVIATION (GUO): enhanced shadows replace classic ones (task 1136)
 
             if (World.AuraManager.IsEnabled && Pass != DrawPass.Body) // PORT DEVIATION (GUO): the aura is drawn with the shadow
             {

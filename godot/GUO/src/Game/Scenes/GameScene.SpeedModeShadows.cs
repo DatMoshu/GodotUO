@@ -1,0 +1,169 @@
+// SPDX-License-Identifier: BSD-2-Clause
+// PORT DEVIATION (GUO): ADR-0048 opt-in scene adapter. Native draw/pick lists unchanged.
+using System;
+using System.Collections.Generic;
+using Godot;
+using GUO.Assets;
+using GUO.Configuration;
+using GUO.Game.GameObjects;
+using GUO.Renderer;
+using GUO.Renderer.Lights;
+using GUO.Renderer.SpeedMode;
+using GUO.Renderer.SpeedMode.Shadows;
+using GUO.Renderer.SpeedMode.WindowLight;
+using GUO.Renderer.SpeedMode.PhysicalWorld;
+using N2=System.Numerics.Vector2;
+using N3=System.Numerics.Vector3;
+using N4=System.Numerics.Vector4;
+
+namespace GUO.Game.Scenes;
+
+internal partial class GameScene
+{
+    private SpeedShadowInputs _speedShadows;
+    private ulong _shadowGridHash;
+    private static long _physicalWorldIdentityCounter;
+    private readonly ulong _physicalWorldIdentity=(ulong)System.Threading.Interlocked.Increment(ref _physicalWorldIdentityCounter);
+    private ulong _physicalGeneration;
+    internal int SpeedWindowCount=>_speedShadows?.Windows.Count??0;
+    internal int SpeedSunStampCount=>_speedShadows?.Sun.Count??0;
+    internal string SpeedSunSource { get; private set; }
+
+    // Called after the core has retired its previous ticket and built reaches.
+    // The existing profile and validated world clock are read at this seam.
+    partial void PrepareSpeedShadowInputs(SpeedLightFrame frame,UltimaBatcher2D batcher,Transform2D matrix)
+    {
+        var profile=ProfileManager.CurrentProfile;
+        int lamps=profile.SpeedModeLampShadows;
+        bool sun=profile.SpeedModeSunShadows,windows=profile.SpeedModeWindowLight;
+        _speedShadows??=new SpeedShadowInputs();
+        var inputs=_speedShadows; inputs.Begin();
+        inputs.LampCount=frame.Count; inputs.Requested=Math.Clamp(lamps,0,10); inputs.SunEnabled=sun;
+        inputs.ShelterEnabled=frame.WeatherShelterEnabled=profile.SpeedModeWeather;
+        inputs.Viewer=new N3(_world.Player.X,_world.Player.Y,_world.Player.Z);
+        for(int i=0;i<frame.Count;i++) {
+            var s=frame.Lights[i].Source;
+            inputs.Lamps[i]=new ShadowLamp(new N3(s.X+s.OffsetX+.5f,s.Y+s.OffsetY+.5f,s.Z+10),s.Radius,(uint)i);
+        }
+        ref var tiles=ref Client.Game.UO.FileManager.TileData.StaticData;
+        // The reach snapshot already has stable chunk membership/content stamps.
+        // Rebuild from source, never aggregate BlockTop (which includes trees).
+        if(_shadowGridHash!=_speedGridHash || inputs.Grid.Width==0) {
+            inputs.Grid.Begin(_rtField.OriginX,_rtField.OriginY,_rtField.Width,_rtField.Height);
+            foreach(var chunk in _speedGridChunks) for(int y=0;y<8;y++) for(int x=0;x<8;x++) {
+                bool foliage=false;
+                for(var o=chunk.Tiles[x,y];o!=null;o=o.TNext)
+                    if(o is Static or Multi && o.Graphic<tiles.Length && tiles[o.Graphic].IsFoliage) foliage=true;
+                for(var o=chunk.Tiles[x,y];o!=null;o=o.TNext) {
+                    if(o is not (Static or Multi) || o.Graphic>=tiles.Length) continue;
+                    ref var data=ref tiles[o.Graphic];
+                    if(!WallShadowGrid.Accepts(data.Flags,data.Height,data.Name,foliage)) continue;
+                    WallFaces faces=data.IsWall ? WallFaces.For(o.Graphic) : default;
+                    if(faces.Count==0) inputs.Grid.AddBlocker(o.X,o.Y,o.Z+data.Height,data.Flags,data.Height,data.Name,foliage);
+                    else {
+                        inputs.Grid.AddEdge(o.X,o.Y,faces.First.AlongX,faces.First.Offset,o.Z+data.Height);
+                        if(faces.Count>1) inputs.Grid.AddEdge(o.X,o.Y,faces.Second.AlongX,faces.Second.Offset,o.Z+data.Height);
+                    }
+                }
+            }
+            _shadowGridHash=_speedGridHash;
+        }
+        // Validated packet0x5B wins; otherwise use the named brightness
+        // approximation. Never derive server time from the PC clock.
+#if GUO_LABS
+        var sky=GUO.Labs.LightingClock.LightingTestClock.Resolve(profile,_world.ShardClock,RealtimeAmbientLevel(),Time.Ticks);
+#else
+        var sky=SunShadowProjection.Resolve(_world.ShardClock,RealtimeAmbientLevel(),Time.Ticks);
+#endif
+        SpeedSunSource=sky.Source;
+        frame.SunShadowStrength=sun ? sky.Strength : 0;
+        if(sun && sky.Strength>0 || inputs.Requested>0 && frame.Count>0 || inputs.ShelterEnabled) {
+            // Physical source is independent of visible chunks and roof cutaways.
+            // Keep a bounded, chunk-aligned region around the current viewer.
+            int x=(_world.Player.X>>3)*8-24,y=(_world.Player.Y>>3)*8-24;
+            inputs.PhysicalWorld=CaptureSpeedPhysicalWorld(_physicalWorldIdentity,++_physicalGeneration,
+                new PhysicalRect(x,y,PhysicalWorldBuilder.MaxSide,PhysicalWorldBuilder.MaxSide));
+            if(sun && sky.Strength>0) inputs.PhysicalSun=PhysicalSunProjection.Create(inputs.PhysicalWorld,
+                new N2(frame.Origin.X,frame.Origin.Y),sky.Direction,sky.Length,sky.Strength);
+        }
+        N2 ray=sky.Direction;
+        Vector2 direction=new(ray.X-ray.Y,ray.X+ray.Y);
+        direction=direction.Normalized();
+        Transform2D view=matrix;
+        Span<int> selected=stackalloc int[10];
+        int selectedCount=PolarShadowGeometry.Select(inputs.Lamps.AsSpan(0,frame.Count),inputs.Viewer,inputs.Requested,selected);
+        if(selectedCount>0 && inputs.PhysicalWorld!=null) {
+            inputs.StructuralLampOffer=selected[0];
+            inputs.PhysicalLamp=PhysicalLampProjection.Create(inputs.PhysicalWorld,inputs.Lamps[selected[0]],
+                new N2(frame.Origin.X,frame.Origin.Y),selected[0]);
+        }
+        foreach(var chunk in _visibleChunks) {
+            if(chunk==null || chunk.IsDestroyed) continue;
+            for(int y=0;y<8;y++) for(int x=0;x<8;x++) for(var obj=chunk.Tiles[x,y];obj!=null;obj=obj.TNext) {
+                if(!obj.AllowedToDraw || obj.Z>=_maxZ) continue;
+                // Mobile silhouettes come from the completed native draw below.
+                if(obj is Mobile) continue;
+                if(obj is not (Static or Multi or Item) || obj.Graphic>=tiles.Length) continue;
+                ref var td=ref tiles[obj.Graphic];
+                if(windows && WindowLightTable.BuiltIn.TryGetValue(obj.Graphic,out var opening))
+                    CollectSpeedWindow(inputs,opening,obj,ray,view);
+
+            }
+        }
+        CollectSpeedStaticShadows(inputs,batcher,view,direction,sky.Length,sky.Strength);
+        CollectSpeedMobileShadows(inputs,batcher,view,direction,sky.Length,sky.Strength,selected[..selectedCount]);
+        // PORT DEVIATION (GUO): task 1136. Enhanced shadows exist this frame only with a sun shadow
+        // (strength > 0) or a selected lamp shadow; at night with no lamp in reach there are none.
+        GuoEffectPolicy.EnhancedShadowsProduced=(sun && sky.Strength>0) || selectedCount>0;
+        frame.RenderInputs=inputs.RenderCallback; frame.RenderPatches=inputs.PatchCallback; frame.ReleaseInputs=inputs.ReleaseCallback;
+    }
+
+    partial void DisposeSpeedShadows()
+    {
+        var inputs=_speedShadows;
+        GuoEffectPolicy.EnhancedShadowsProduced=false;
+        _speedShadows=null;
+        _shadowGridHash=0;
+        // Same queue discipline as OrderedWorldCapture.Dispose: outstanding
+        // render callbacks retain the captured inputs until they have retired.
+        // Release is idempotent with the core light target's ReleaseInputs.
+        if(inputs!=null) RenderingServer.CallOnRenderThread(Callable.From(inputs.Release));
+    }
+
+    private void CollectSpeedWindow(SpeedShadowInputs inputs,WindowOpening opening,GameObject obj,N2 ray,Transform2D view)
+    {
+        if(inputs.Windows.Count>=4096 || opening.Shape==OpeningShape.None) return;
+        var faces=WallFaces.For(obj.Graphic);
+        if(faces.Count==0) return;
+        for(int i=0;i<faces.Count;i++) {
+            var face=i==0 ? faces.First : faces.Second;
+            N2 tangent=face.AlongX ? N2.UnitX : N2.UnitY;
+            N2 normal=face.AlongX ? N2.UnitY : N2.UnitX;
+            for(int side=0;side<2;side++) {
+                float sign=side==0 ? 1 : -1;
+                N2 inward=normal*sign;
+                N2 origin=new N2(obj.X,obj.Y)+(face.AlongX ? new N2(.5f,face.Offset) : new N2(face.Offset,.5f));
+                N2 inside=origin+inward*.6f,outside=origin-inward*.6f;
+                bool covered=_rtField.IsRoofed((int)MathF.Floor(inside.X),(int)MathF.Floor(inside.Y));
+                bool open=!_rtField.IsRoofed((int)MathF.Floor(outside.X),(int)MathF.Floor(outside.Y));
+                float z=_rtField.GroundZ((int)MathF.Floor(inside.X),(int)MathF.Floor(inside.Y));
+                if(!opening.TryProject(origin,tangent,inward,ray,out N2 width,out N2 depth)) continue;
+                origin-=width*.5f;
+                Vector2 lo=new(float.MaxValue,float.MaxValue),hi=new(float.MinValue,float.MinValue);
+                for(int corner=0;corner<4;corner++) for(int upright=0;upright<2;upright++) {
+                    N2 p=origin+width*(corner&1)+depth*((corner>>1)&1);
+                    Vector2 pixel=view*new Vector2((p.X-p.Y)*22-_offset.X,(p.X+p.Y)*22-(z+upright*4)*4-_offset.Y);
+                    lo=lo.Min(pixel); hi=hi.Max(pixel);
+                }
+                if(WindowLightPatch.TryCreate(opening,origin,z,tangent,inward,ray,covered,open,RealtimeAmbientLevel(),
+                    new N4(lo.X-1,lo.Y-1,hi.X+1,hi.Y+1),new N4(1,.88f,.65f,1),out var patch)) {
+                    inputs.Windows.Add(patch);
+                    N2 paneCentre=origin+width*.5f;
+                    Vector2 source=view*new Vector2((paneCentre.X-paneCentre.Y)*22-_offset.X,(paneCentre.X+paneCentre.Y)*22-z*4-_offset.Y);
+                    if(inputs.Rays.Count<WindowRayPatch.Limit && WindowRayPatch.TryCreate(patch,source,inputs.SunEnabled,covered,open,out var shaft))
+                        inputs.Rays.Add(shaft);
+                }
+            }
+        }
+    }
+}

@@ -358,6 +358,7 @@ namespace GUO.Renderer
 
         public void Dispose()
         {
+            RetireCloudOverlayDraws(null, null, 0); // PORT DEVIATION (GUO): drop cloud texture borrows.
             _orderedWorld?.Dispose();
             _orderedPresentMaterial?.Dispose();
             for (int i = 0; i < _items.Count; i++)
@@ -492,6 +493,7 @@ namespace GUO.Renderer
         /// synchronous frame will call <see cref="EndFrame"/> in a finally block.</summary>
         public void BeginFrame(bool deferRetainedHiding)
         {
+            RetireCloudOverlayDraws(null, null, 0); // PORT DEVIATION (GUO): before pool reuse.
             bool previousRetainedFrame = _retainCanvasFrame;
             bool recovering = _deferredCanvasFrameOpen || _canvasRecoveryPending;
             // PORT DEVIATION (GUO): a missing EndFrame must not carry a
@@ -516,6 +518,7 @@ namespace GUO.Renderer
             // its existing eager lifecycle. Ordinary embedded/probe callers
             // retain the default behavior without needing an EndFrame call.
             _deferredCanvasFrameOpen = deferRetainedHiding && _retainCanvasFrame && !GpuWorld.Enabled;
+            _canvasFrameTransaction = deferRetainedHiding;
 
             LastFrame = (TextureSwitches, _itemCount, Commands);
             LastNativeTextureMeasurements = NativeTextureMeasurements;
@@ -617,6 +620,7 @@ namespace GUO.Renderer
         {
             EnsureStarted();
             FlushRun();
+            if (InjectEndFailure) { InjectEndFailure = false; throw new InvalidOperationException("injected End failure"); }
             FinishCanvasCommands();
 
             _started = false;

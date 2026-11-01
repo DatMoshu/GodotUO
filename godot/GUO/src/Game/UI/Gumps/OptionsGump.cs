@@ -196,10 +196,10 @@ namespace GUO.Game.UI.Gumps
         // video
         private Checkbox _use_old_status_gump, _statusGumpBarMutuallyExclusive, _windowBorderless, _enableDeathScreen, _enableBlackWhiteEffect, _altLights, _enableLight, _enableShadows, _enableShadowsStatics, _auraMouse, _runMouseInSeparateThread, _useColoredLights, _darkNights, _partyAura, _hideChatGradient, _animatedWaterEffect;
         private Checkbox _enhancedHD; // PORT DEVIATION (GUO): Enhanced HD repaint detail
-        private Checkbox _realtimeLights; // PORT DEVIATION (GUO): Realtime lights (ADR-0039)
+        // PORT DEVIATION (GUO): the one-line effective-state labels of the GUO page's detail buttons.
+        private readonly Dictionary<GuoSection, Label> _guoSummaries = new Dictionary<GuoSection, Label>();
         private Combobox _lightLevelType;
         private Combobox _hdFilter; // PORT DEVIATION (GUO): optional HD pack sampling.
-        private Combobox _waterStyle; // PORT DEVIATION (GUO): water render style (ADR-0037).
         private Checkbox _use_smooth_boat_movement;
         private HSliderBar _terrainShadowLevel;
 
@@ -400,6 +400,20 @@ namespace GUO.Game.UI.Gumps
                 }
             );
 
+            // PORT DEVIATION (GUO): the GUO page (task 1136).
+            Add
+            (
+                new NiceButton
+                (
+                    10,
+                    10 + 30 * i++,
+                    140,
+                    25,
+                    ButtonAction.SwitchPage,
+                    "GUO"
+                ) { ButtonParameter = 13 }
+            );
+
             Add
             (
                 new Line
@@ -475,6 +489,7 @@ namespace GUO.Game.UI.Gumps
             BuildInfoBar();
             BuildContainers();
             BuildExperimental();
+            BuildGuo(); // PORT DEVIATION (GUO)
 
             ChangePage(1);
         }
@@ -490,6 +505,495 @@ namespace GUO.Game.UI.Gumps
 
                 return _logoTexture2D;
             }
+        }
+
+        // PORT DEVIATION (GUO): the GUO page (task 1136). Every GUO tweak to
+        // the UO options lives here: the enhanced lighting and effects detail
+        // panels (one source of truth: the panels, not this gump), then the
+        // GUO options relocated from Video, General, Containers and Sound.
+        // Native upstream controls stay on their native pages.
+        private void BuildGuo()
+        {
+            const int PAGE = 13;
+
+            ScrollArea rightArea = new ScrollArea
+            (
+                190,
+                20,
+                WIDTH - 210,
+                420,
+                true
+            );
+
+            int startX = 5;
+            int startY = 5;
+
+            DataBox box = new DataBox(startX, startY, rightArea.Width - 15, 1);
+            box.WantUpdateSize = true;
+            rightArea.Add(box);
+
+            // Each section sits 40 below the last one that was shown; a
+            // section is created only when its controls are, so nothing hidden
+            // is built (and nothing hidden is written by Apply).
+            SettingsSection previous = null;
+
+            SettingsSection NextSection(string title)
+            {
+                SettingsSection s = AddSettingsSection(box, title);
+
+                if (previous != null)
+                {
+                    s.Y = previous.Bounds.Bottom + 40;
+                }
+
+                previous = s;
+
+                return s;
+            }
+
+            // --- Enhanced lighting and effects: the focused detail panels.
+            SettingsSection sectionDetail = NextSection("Enhanced lighting and effects");
+
+            void AddDetailButton(string title, GuoSection which)
+            {
+                NiceButton open = new NiceButton(startX, startY, 260, 28, ButtonAction.Activate, title, font: 1)
+                {
+                    IsSelectable = false, ButtonParameter = (int) Buttons.Disabled
+                };
+                open.MouseUp += (s, e) => OpenGuoSection(which);
+                sectionDetail.Add(open);
+
+                Label summary = new Label(GuoOptions.Summary(_currentProfile, which), true, HUE_FONT, box.Width - 40);
+                sectionDetail.Add(summary);
+                _guoSummaries[which] = summary;
+            }
+
+            AddDetailButton("Lighting and shadows...", GuoSection.Lighting);
+            AddDetailButton("Weather and ambience...", GuoSection.Weather);
+            AddDetailButton("World map and water...", GuoSection.World);
+            GuoOptions.Applied += OnGuoApplied;
+
+            // --- Art (relocated from Video).
+            SettingsSection sectionArt = NextSection("Art");
+
+            // PORT DEVIATION (GUO): Enhanced HD repaint detail (world art
+            // only; cursor/containers stay native).
+            sectionArt.Add
+            (
+                _enhancedHD = AddCheckBox
+                (
+                    null,
+                    "Enhanced HD (installed packs)",
+                    _currentProfile.EnhancedHD,
+                    startX,
+                    startY
+                )
+            );
+
+            sectionArt.Add(AddLabel(null, "HD filtering", startX, startY));
+            sectionArt.AddRight(_hdFilter = AddCombobox(null,
+                new[] { "Auto", "Point", "Point mipmaps", "Smooth" },
+                Math.Clamp((int)_currentProfile.HdFilter, 0, 3), startX, startY, 180));
+
+            // --- Interface (relocated from General and Containers).
+            SettingsSection sectionUi = NextSection("Interface");
+
+            // PORT DEVIATION (GUO): the size and screen handle (GumpPresentation)
+            // drawn on every supported window. Off: on touch a hold-and-release
+            // opens its menu; with a mouse it fades in near the window's top edge.
+            // A desktop without touch is ClassicUO; this dev toggle turns the
+            // mobile window controls on there, for Android emulation.
+            sectionUi.Add(_showHandles = AddCheckBox(null, "Show window handles", _currentProfile.ShowWindowHandles, 0, 0));
+
+            if (!Godot.OS.HasFeature("mobile"))
+            {
+                sectionUi.Add(_mobileControls = AddCheckBox(null, "Mobile window controls (for Android emulation)", _currentProfile.MobileWindowControls, 0, 0));
+            }
+
+            sectionUi.Add(_gridContainers = AddCheckBox(null, "Open containers as a grid of slots", _currentProfile.GridContainers, startX, startY));
+            sectionUi.PushIndent();
+            sectionUi.Add(AddLabel(null, "Grid slot size", startX, startY));
+            sectionUi.AddRight(_gridSlotSize = AddHSlider(null, GridContainerGump.MIN_SLOT, GridContainerGump.MAX_SLOT, _currentProfile.GridContainerSlotSize, startX, startY, 200));
+            sectionUi.PopIndent();
+            sectionUi.Add(_fitContainerPlacement = AddCheckBox(null, "Open containers clear of the character and each other", _currentProfile.FitContainerPlacement, startX, startY));
+
+            // --- Touch and second screen (relocated from General), where they apply.
+            bool oneScreen = !GUO.Platform.Android.DualScreen.HasSecondaryDisplay && GUO.Platform.Android.DualScreen.IsPanel;
+
+            if (GUO.Input.Touch.TouchInput.Enabled || GUO.Platform.Android.DualScreen.HasSecondaryDisplay || oneScreen)
+            {
+                SettingsSection secTouch = NextSection("Touch and second screen");
+
+                // The second screen, where there is one. The same settings the
+                // pre-game card on that screen offers (PregameCard); DualScreen
+                // applies them live. On one screen, the side panel that stands
+                // in for it (DualScreen.Panel): on or off, its edge, and on a
+                // near-square screen the split.
+                if (oneScreen)
+                {
+                    secTouch.Add(AddLabel(null, "Side panel (the second screen on one screen)", 0, 0));
+                    secTouch.AddRight(_onePanel = AddCombobox(null, new[] { "Touch screens", "On", "Off" }, System.Math.Clamp(_currentProfile.OneScreenPanel, 0, 2), 0, 0, 150));
+                    secTouch.PushIndent();
+                    secTouch.Add(AddLabel(null, "The drawer's edge", 0, 0));
+                    secTouch.AddRight(_oneSide = AddCombobox(null, new[] { "Left", "Right" }, _currentProfile.OneScreenDrawerSide == 1 ? 1 : 0, 0, 0, 150));
+                    secTouch.Add(AddLabel(null, "On a near-square screen", 0, 0));
+                    secTouch.AddRight(_oneSquare = AddCombobox(null, new[] { "The drawer", "Top and bottom" }, _currentProfile.OneScreenSquareLayout == 1 ? 1 : 0, 0, 0, 150));
+                    secTouch.PopIndent();
+                }
+
+                if (GUO.Platform.Android.DualScreen.HasSecondaryDisplay || oneScreen)
+                {
+                    secTouch.Add
+                    (
+                        _dualScreen = AddCheckBox
+                        (
+                            null,
+                            oneScreen ? "Use the side panel as a shelf for gumps" : "Use the second screen as a shelf for gumps",
+                            _currentProfile.DualScreenEnabled,
+                            0,
+                            0
+                        )
+                    );
+
+                    secTouch.PushIndent();
+                    secTouch.Add(_dualShelvePaperdoll = AddCheckBox(null, "Shelve the paperdoll when opened", _currentProfile.DualScreenShelvePaperdoll, 0, 0));
+                    secTouch.Add(_dualShelveBackpack = AddCheckBox(null, "Shelve the backpack when opened", _currentProfile.DualScreenShelveBackpack, 0, 0));
+                    secTouch.Add(_dualShelveStatus = AddCheckBox(null, "Shelve the status bar when opened", _currentProfile.DualScreenShelveStatus, 0, 0));
+                    secTouch.Add(_dualShelveJournal = AddCheckBox(null, "Shelve the journal when opened", _currentProfile.DualScreenShelveJournal, 0, 0));
+                    secTouch.Add(_dualShelveOthers = AddCheckBox(null, "Shelve other gumps (skills, spellbook, containers)", _currentProfile.DualScreenShelveOthers, 0, 0));
+
+                    // The panel is at the main screen's scale; a display has its own.
+                    if (!oneScreen)
+                    {
+                        secTouch.Add(AddLabel(null, "Second screen scale (0 = as the main screen)", 0, 0));
+                        secTouch.AddRight(_dualScale = AddHSlider(null, 0, GUO.Platform.Android.DualScreenSettings.MaxScale, _currentProfile.DualScreenScale, 0, 0, 120));
+                        secTouch.Add(AddLabel(null, "Fine second screen scale (overrides the slider)", 0, 0));
+                        secTouch.AddRight(_dualScaleFine = AddCombobox(null, new[] { "Off", "1.0x", "1.25x", "1.5x" }, System.Math.Max(0, System.Array.IndexOf(DualScaleFinePercents, _currentProfile.DualScreenScalePercent)), 0, 0, 120));
+                    }
+                    secTouch.PopIndent();
+                }
+
+                // The touch settings, on a touch build only, grouped: the
+                // command bar, then windows, then debugging.
+                if (GUO.Input.Touch.TouchInput.Enabled)
+                {
+                // The command bar's thirty slots (TouchGumpBar), row 1 first.
+                string[] choices = GUO.Input.Touch.TouchGumpBar.Choices;
+                string[] titles = System.Array.ConvertAll(choices, GUO.Input.Touch.TouchGumpBar.LongTitle);
+                string[] slots = GUO.Input.Touch.TouchGumpBar.Slots;
+                _barSlots = new Combobox[slots.Length];
+
+                for (int i = 0; i < slots.Length; i++)
+                {
+                    int per = GUO.Input.Touch.TouchGumpBar.PerRow;
+                    secTouch.Add(AddLabel(null, $"Command bar row {i / per + 1}, slot {i % per + 1}", 0, 0));
+                    secTouch.AddRight(_barSlots[i] = AddCombobox(null, titles, System.Math.Max(0, System.Array.IndexOf(choices, slots[i])), 0, 0, 170));
+                }
+
+                // What the speech slots say, for a shard that answers to other words.
+                string[] sayNames = { "Bank", "Guards", "All Follow Me", "All Stop" };
+                string[] sayWords = { _currentProfile.TouchSayBank, _currentProfile.TouchSayGuards, _currentProfile.TouchSayFollow, _currentProfile.TouchSayStop };
+                _barSay = new InputField[sayNames.Length];
+
+                for (int i = 0; i < sayNames.Length; i++)
+                {
+                    secTouch.Add(AddLabel(null, $"{sayNames[i]} says", 0, 0));
+                    secTouch.AddRight(_barSay[i] = AddInputField(null, 0, 0, 170, TEXTBOX_HEIGHT, null, 0, false, false));
+                    _barSay[i].SetText(sayWords[i] ?? "");
+                }
+
+                secTouch.Add(_modernGumps = AddCheckBox(null, "Modern gumps on touch (Options and more)", !_currentProfile.ModernGumpsOff, 0, 0));
+                secTouch.Add(_barVibrate = AddCheckBox(null, "Vibrate when the command bar snaps", _currentProfile.TouchVibrate, 0, 0));
+                secTouch.Add(_barReduceMotion = AddCheckBox(null, "Reduce motion (the command bar snaps without sliding)", _currentProfile.TouchReduceMotion, 0, 0));
+
+                // The arrow, moved in from the corner. An option to compare; 0 is the corner.
+                secTouch.Add(AddLabel(null, "Command bar arrow inset from the corner", 0, 0));
+                secTouch.AddRight(_chevronInset = AddHSlider(null, 0, 200, _currentProfile.TouchChevronInset, 0, 0, 120));
+
+                // Hold a gump still, then flick: what each direction does (GumpFlick).
+                int[] currentFlick = { _currentProfile.FlickUp, _currentProfile.FlickDown, _currentProfile.FlickLeft, _currentProfile.FlickRight };
+                _flick = new Combobox[4];
+
+                for (int i = 0; i < 4; i++)
+                {
+                    secTouch.Add(AddLabel(null, $"Hold and flick {GUO.Input.Touch.GumpFlick.DirectionNames[i]}", 0, 0));
+                    secTouch.AddRight(_flick[i] = AddCombobox(null, GUO.Input.Touch.GumpFlick.ActionTitles,
+                        System.Math.Clamp(currentFlick[i], 0, GUO.Input.Touch.GumpFlick.ActionTitles.Length - 1), 0, 0, 170));
+                }
+
+                if (GUO.Platform.Android.DualScreen.HasSecondaryDisplay)
+                {
+                    secTouch.Add(_companionTabs = AddCheckBox(null, "Companion tabs on the second screen (prototype)", _currentProfile.CompanionTabs, 0, 0));
+                }
+
+                secTouch.Add(_showTouches = AddCheckBox(null, "Debug: show touches on screen", _currentProfile.DebugShowTouches, 0, 0));
+                }
+            }
+
+            // --- Controller (relocated from Video).
+            // PORT DEVIATION (GUO): the gamepad's A/B/X/Y (Input.Gamepad). A
+            // pad the client cannot recognise waits for this choice.
+            // A pad works on every platform (ADR-0025), so this section shows on the desktop too.
+            SettingsSection sectionPad = NextSection("Controller buttons");
+            sectionPad.Add(AddLabel(null, "A/B/X/Y", startX, startY));
+            sectionPad.AddRight
+            (
+                _gamepadLayout = AddCombobox
+                (
+                    null,
+                    new[] { "Automatic (known devices)", "As printed on the pad", "A/B and X/Y swapped (Thor in XBox mode)" },
+                    Math.Max(0, Array.IndexOf(GamepadLayouts, _currentProfile.GamepadLayout)),
+                    startX,
+                    startY,
+                    250
+                )
+            );
+
+            // PORT DEVIATION (GUO): the pad is on by default; this turns it off.
+            sectionPad.Add(_gamepad = AddCheckBox(null, "Use a controller", _currentProfile.Gamepad, startX, startY));
+
+            // PORT DEVIATION (GUO): "Set controls", the pad's rebinding (Input.Gamepad.PadWizard).
+            NiceButton setControls = new NiceButton(startX, startY, 160, 20, ButtonAction.Activate, "Set controls...")
+            {
+                IsSelectable = false, ButtonParameter = (int) Buttons.Disabled
+            };
+            setControls.MouseUp += (s, e) => GUO.Input.Gamepad.PadWizard.OpenList();
+            sectionPad.Add(setControls);
+
+            // PORT DEVIATION (GUO): what each pad button does, in the glyphs of
+            // the pad last used (Input.Glyphs, ADR-0025).
+            foreach ((GUO.Input.PadAction action, string words) in GUO.Input.Glyphs.GlyphPic.Legend)
+            {
+                sectionPad.Add(new GUO.Input.Glyphs.GlyphPic(action));
+                sectionPad.AddRight(AddLabel(null, words, startX, startY), 6);
+            }
+
+            // PORT DEVIATION (GUO): the canvas background (ADR-0016). Mode,
+            // the file or folder it shows, the frame rate of a frames
+            // folder, and low power (video and frames freeze on frame one).
+            SettingsSection section6 = NextSection("Background");
+
+            // The dropdown: the two code-defined tiles, the shipped
+            // backgrounds from assets/backgrounds/backgrounds.json, then the
+            // player's own image, video and frames.
+            _canvasBackgroundChoices = new List<CanvasBackgroundSettings>();
+            List<string> choiceTitles = new List<string>();
+
+            void Choice(CanvasBackgroundMode mode, string builtinName, string title)
+            {
+                _canvasBackgroundChoices.Add(new CanvasBackgroundSettings(mode, builtinName ?? "", 12, false));
+                choiceTitles.Add(title);
+            }
+
+            Choice(CanvasBackgroundMode.BuiltinGrey, null, "Grey tile (original)");
+            Choice(CanvasBackgroundMode.BuiltinWood, null, "Dark wood");
+
+            foreach (BuiltinBackground b in BuiltinBackground.All)
+            {
+                Choice(CanvasBackgroundMode.BuiltinMedia, b.Name, b.Title);
+            }
+
+            Choice(CanvasBackgroundMode.Image, null, "Image");
+            Choice(CanvasBackgroundMode.Video, null, "Video (.ogv)");
+            Choice(CanvasBackgroundMode.Frames, null, "Frames (folder or sheet)");
+
+            CanvasBackgroundSettings current = CanvasBackgroundSettings.FromProfile(_currentProfile);
+            int selected = 0;
+
+            for (int i = 0; i < _canvasBackgroundChoices.Count; i++)
+            {
+                CanvasBackgroundSettings c = _canvasBackgroundChoices[i];
+
+                if (c.Mode == current.Mode && (c.Mode != CanvasBackgroundMode.BuiltinMedia || c.Path == current.Path))
+                {
+                    selected = i;
+
+                    break;
+                }
+            }
+
+            section6.Add(AddLabel(null, "Behind the world and gumps", startX, startY));
+            section6.AddRight
+            (
+                _canvasBackgroundMode = AddCombobox
+                (
+                    null,
+                    choiceTitles.ToArray(),
+                    selected,
+                    startX,
+                    startY,
+                    170
+                )
+            );
+
+            section6.Add(AddLabel(null, "File or folder", startX, startY));
+            section6.AddRight(_canvasBackgroundPath = AddInputField(null, startX, startY, 220, TEXTBOX_HEIGHT, null, 0, false, false));
+            _canvasBackgroundPath.SetText(_currentProfile.CanvasBackgroundPath ?? "");
+
+            // On a phone the picked file is copied under user://; in a
+            // browser there is no picker to open (ADR-0008), so the button
+            // stays off and the path can still be typed.
+            bool web = PlatformDefaults.Platform == ProfilePlatform.Web;
+
+            NiceButton browse = new NiceButton(startX, startY, 70, TEXTBOX_HEIGHT + 4, ButtonAction.Activate, web ? "No browse on web" : "Browse...")
+            {
+                ButtonParameter = (int) Buttons.BrowseBackground,
+                IsSelectable = false,
+                IsEnabled = !web
+            };
+
+            section6.AddRight(browse, 4);
+
+            section6.Add(AddLabel(null, "Frames per second", startX, startY));
+            section6.AddRight(_canvasBackgroundFps = AddHSlider(null, 1, 60, _currentProfile.CanvasBackgroundFps, startX, startY, 150));
+
+            section6.Add
+            (
+                _canvasBackgroundLowPower = AddCheckBox
+                (
+                    null,
+                    "Low power: video and frames show their first frame only",
+                    _currentProfile.CanvasBackgroundLowPower,
+                    startX,
+                    startY
+                )
+            );
+
+            // PORT DEVIATION (GUO): Store button and installed ADR-0016 backgrounds.
+            _canvasBackgroundMode = GUO.Store.StoreOptions.Attach(section6, _canvasBackgroundMode,
+                _canvasBackgroundChoices, choiceTitles, value => _canvasBackgroundPath.SetText(value), _currentProfile);
+
+            // PORT DEVIATION (GUO): the idle screen saver (ScreenSaver).
+            SettingsSection section7 = NextSection("Screen saver");
+
+            section7.Add
+            (
+                _screenSaver = AddCheckBox
+                (
+                    null,
+                    "When idle, black out the screen with drifting effects (protects OLED screens)",
+                    _currentProfile.ScreenSaver,
+                    startX,
+                    startY
+                )
+            );
+
+            section7.Add(AddLabel(null, "Minutes idle", startX, startY));
+            section7.AddRight(_screenSaverMinutes = AddHSlider(null, 1, 60, Math.Max(1, _currentProfile.ScreenSaverMinutes), startX, startY, 150));
+
+            // PORT DEVIATION (GUO): the device settings below (sleep, screen
+            // effects, Start) are shown on a touch build or with mobile
+            // controls only, so the desktop Options stays ClassicUO's. Where
+            // hidden they are not built, and Apply does not write them.
+            bool deviceSettings = GUO.Input.Touch.TouchInput.Enabled || _currentProfile.MobileWindowControls;
+
+            if (deviceSettings)
+            {
+                section7.Add(AddLabel(null, "Then let the device sleep after (minutes, 0 = never)", startX, startY));
+                section7.AddRight(_screenSaverSleepMinutes = AddHSlider(null, 0, 120, Math.Max(0, _currentProfile.ScreenSaverSleepMinutes), startX, startY, 150));
+            }
+
+            // The effects, the built-in loops, then installed store packs.
+            _screenSaverChoices = new List<string>();
+            List<string> saverTitles = new List<string>();
+
+            foreach ((string value, string title) in GUO.Game.Managers.ScreenSaver.Choices())
+            {
+                _screenSaverChoices.Add(value);
+                saverTitles.Add(title);
+            }
+
+            section7.Add(AddLabel(null, "Show", startX, startY));
+            section7.AddRight
+            (
+                _screenSaverChoice = AddCombobox
+                (
+                    null,
+                    saverTitles.ToArray(),
+                    Math.Max(0, _screenSaverChoices.IndexOf(_currentProfile.ScreenSaverChoice)),
+                    startX,
+                    startY,
+                    200
+                )
+            );
+
+            if (deviceSettings)
+            {
+                // PORT DEVIATION (GUO): screen effects (ADR-0023). The looks live in
+                // their own card; Classic, the default, is ClassicUO's own picture.
+                SettingsSection sectionFx = NextSection("Screen effects");
+                NiceButton effects = new NiceButton(startX, startY, 160, 20, ButtonAction.Activate, "Screen effects...")
+                {
+                    IsSelectable = false, ButtonParameter = (int) Buttons.Disabled
+                };
+                effects.MouseUp += (s, e) => GUO.Renderer.PostFx.PostFxMenu.Toggle();
+                sectionFx.Add(effects);
+                sectionFx.Add(AddLabel(null, "Looks for the world only (never the gumps); Ctrl+Shift+E", startX, startY));
+
+                // PORT DEVIATION (GUO): the boot splash (GUO.Host.SplashIntro). Not a
+                // profile setting: it plays before anyone logs in, so it is kept
+                // for the device in user://guo_splash.cfg.
+                SettingsSection section8 = NextSection("Start");
+                section8.Add
+                (
+                    _splashIntro = AddCheckBox
+                    (
+                        null,
+                        "Play the GUO intro on start",
+                        GUO.Host.SplashIntro.Enabled,
+                        startX,
+                        startY
+                    )
+                );
+
+                // PORT DEVIATION (GUO): the UO folder (ADR-0021). Opens the
+                // first-run screen in change mode; the new folder is saved to
+                // settings.json and used on the next start.
+                NiceButton changeFolder = new NiceButton(startX, startY, 160, 20, ButtonAction.Activate, "Change UO folder...")
+                {
+                    IsSelectable = false, ButtonParameter = (int) Buttons.Disabled
+                };
+                changeFolder.MouseUp += (s, e) => GUO.Host.FirstRunScreen.OpenChange();
+                section8.Add(changeFolder);
+            }
+
+            // PORT DEVIATION (GUO): packet mods from Data/Mods (ADR-0038). Kept
+            // in settings.json like the plugins list, since packets arrive before
+            // a profile exists; read on the next start. Hidden where mods cannot load.
+            if (GUO.Network.Mods.ClientMods.Supported)
+            {
+                SettingsSection sectionMods = NextSection("Mods");
+                sectionMods.Add(_loadMods = AddCheckBox(null, "Load mods on the next start", Settings.GlobalSettings.LoadMods, startX, startY));
+                sectionMods.Add(AddLabel(null, GUO.Network.Mods.ClientMods.Status, startX, startY));
+            }
+
+            // --- Content (relocated from Sound).
+            SettingsSection sectionContent = NextSection("Content");
+            sectionContent.Add(_contentAudio = AddCheckBox(null, "Regional audio and recorded NPC voices",
+                _currentProfile.ContentAudioEnabled, startX, startY));
+
+            Add(rightArea, PAGE);
+        }
+
+        // PORT DEVIATION (GUO): the one place that opens a focused GUO detail panel.
+        private void OpenGuoSection(GuoSection section)
+        {
+            UoPlusOptionsGump.Open(World, section); // PORT DEVIATION (GUO): focused GUO detail panel
+        }
+
+        // PORT DEVIATION (GUO): a detail panel committed; show what is now in force.
+        private void OnGuoApplied(GuoSection section)
+        {
+            foreach (KeyValuePair<GuoSection, Label> kv in _guoSummaries)
+            {
+                kv.Value.Text = GuoOptions.Summary(_currentProfile, kv.Key);
+            }
+        }
+
+        public override void Dispose()
+        {
+            GuoOptions.Applied -= OnGuoApplied; // PORT DEVIATION (GUO)
+            base.Dispose();
         }
 
         private void BuildGeneral()
@@ -971,68 +1475,7 @@ namespace GUO.Game.UI.Gumps
                 )
             );
 
-            // PORT DEVIATION (GUO): the second screen, where there is one.
-            // The same settings the pre-game card on that screen offers
-            // (PregameCard); DualScreen applies them live. On one screen, the
-            // side panel that stands in for it (DualScreen.Panel): on or off,
-            // its edge, and on a near-square screen the split.
-            bool oneScreen = !GUO.Platform.Android.DualScreen.HasSecondaryDisplay && GUO.Platform.Android.DualScreen.IsPanel;
-
-            if (oneScreen)
-            {
-                section3.Add(AddLabel(null, "Side panel (the second screen on one screen)", 0, 0));
-                section3.AddRight(_onePanel = AddCombobox(null, new[] { "Touch screens", "On", "Off" }, System.Math.Clamp(_currentProfile.OneScreenPanel, 0, 2), 0, 0, 150));
-                section3.PushIndent();
-                section3.Add(AddLabel(null, "The drawer's edge", 0, 0));
-                section3.AddRight(_oneSide = AddCombobox(null, new[] { "Left", "Right" }, _currentProfile.OneScreenDrawerSide == 1 ? 1 : 0, 0, 0, 150));
-                section3.Add(AddLabel(null, "On a near-square screen", 0, 0));
-                section3.AddRight(_oneSquare = AddCombobox(null, new[] { "The drawer", "Top and bottom" }, _currentProfile.OneScreenSquareLayout == 1 ? 1 : 0, 0, 0, 150));
-                section3.PopIndent();
-            }
-
-            if (GUO.Platform.Android.DualScreen.HasSecondaryDisplay || oneScreen)
-            {
-                section3.Add
-                (
-                    _dualScreen = AddCheckBox
-                    (
-                        null,
-                        oneScreen ? "Use the side panel as a shelf for gumps" : "Use the second screen as a shelf for gumps",
-                        _currentProfile.DualScreenEnabled,
-                        0,
-                        0
-                    )
-                );
-
-                section3.PushIndent();
-                section3.Add(_dualShelvePaperdoll = AddCheckBox(null, "Shelve the paperdoll when opened", _currentProfile.DualScreenShelvePaperdoll, 0, 0));
-                section3.Add(_dualShelveBackpack = AddCheckBox(null, "Shelve the backpack when opened", _currentProfile.DualScreenShelveBackpack, 0, 0));
-                section3.Add(_dualShelveStatus = AddCheckBox(null, "Shelve the status bar when opened", _currentProfile.DualScreenShelveStatus, 0, 0));
-                section3.Add(_dualShelveJournal = AddCheckBox(null, "Shelve the journal when opened", _currentProfile.DualScreenShelveJournal, 0, 0));
-                section3.Add(_dualShelveOthers = AddCheckBox(null, "Shelve other gumps (skills, spellbook, containers)", _currentProfile.DualScreenShelveOthers, 0, 0));
-
-                // The panel is at the main screen's scale; a display has its own.
-                if (!oneScreen)
-                {
-                    section3.Add(AddLabel(null, "Second screen scale (0 = as the main screen)", 0, 0));
-                    section3.AddRight(_dualScale = AddHSlider(null, 0, GUO.Platform.Android.DualScreenSettings.MaxScale, _currentProfile.DualScreenScale, 0, 0, 120));
-                    section3.Add(AddLabel(null, "Fine second screen scale (overrides the slider)", 0, 0));
-                    section3.AddRight(_dualScaleFine = AddCombobox(null, new[] { "Off", "1.0x", "1.25x", "1.5x" }, System.Math.Max(0, System.Array.IndexOf(DualScaleFinePercents, _currentProfile.DualScreenScalePercent)), 0, 0, 120));
-                }
-                section3.PopIndent();
-            }
-
-            // PORT DEVIATION (GUO): the size and screen handle (GumpPresentation)
-            // drawn on every supported window. Off: on touch a hold-and-release
-            // opens its menu; with a mouse it fades in near the window's top edge.
-            // A desktop without touch is ClassicUO; this dev toggle turns the
-            // mobile window controls on there, for Android emulation.
-            if (!Godot.OS.HasFeature("mobile"))
-            {
-                section3.Add(_mobileControls = AddCheckBox(null, "Mobile window controls (for Android emulation)", _currentProfile.MobileWindowControls, 0, 0));
-            }
-
-            section3.Add(_showHandles = AddCheckBox(null, "Show window handles", _currentProfile.ShowWindowHandles, 0, 0));
+            // PORT DEVIATION (GUO): the second screen, window handles and mobile controls moved to the GUO page.
 
             section3.Add
             (
@@ -1221,69 +1664,10 @@ namespace GUO.Game.UI.Gumps
             );
 
 
-            // PORT DEVIATION (GUO): the touch settings, on a touch build only,
-            // grouped: the command bar, then windows, then debugging.
-            SettingsSection sectionTouch = null;
-
-            if (GUO.Input.Touch.TouchInput.Enabled)
-            {
-                sectionTouch = AddSettingsSection(box, "Touch");
-                sectionTouch.Y = section3.Bounds.Bottom + 40;
-
-                // The command bar's thirty slots (TouchGumpBar), row 1 first.
-                string[] choices = GUO.Input.Touch.TouchGumpBar.Choices;
-                string[] titles = System.Array.ConvertAll(choices, GUO.Input.Touch.TouchGumpBar.LongTitle);
-                string[] slots = GUO.Input.Touch.TouchGumpBar.Slots;
-                _barSlots = new Combobox[slots.Length];
-
-                for (int i = 0; i < slots.Length; i++)
-                {
-                    int per = GUO.Input.Touch.TouchGumpBar.PerRow;
-                    sectionTouch.Add(AddLabel(null, $"Command bar row {i / per + 1}, slot {i % per + 1}", 0, 0));
-                    sectionTouch.AddRight(_barSlots[i] = AddCombobox(null, titles, System.Math.Max(0, System.Array.IndexOf(choices, slots[i])), 0, 0, 170));
-                }
-
-                // What the speech slots say, for a shard that answers to other words.
-                string[] sayNames = { "Bank", "Guards", "All Follow Me", "All Stop" };
-                string[] sayWords = { _currentProfile.TouchSayBank, _currentProfile.TouchSayGuards, _currentProfile.TouchSayFollow, _currentProfile.TouchSayStop };
-                _barSay = new InputField[sayNames.Length];
-
-                for (int i = 0; i < sayNames.Length; i++)
-                {
-                    sectionTouch.Add(AddLabel(null, $"{sayNames[i]} says", 0, 0));
-                    sectionTouch.AddRight(_barSay[i] = AddInputField(null, 0, 0, 170, TEXTBOX_HEIGHT, null, 0, false, false));
-                    _barSay[i].SetText(sayWords[i] ?? "");
-                }
-
-                sectionTouch.Add(_modernGumps = AddCheckBox(null, "Modern gumps on touch (Options and more)", !_currentProfile.ModernGumpsOff, 0, 0));
-                sectionTouch.Add(_barVibrate = AddCheckBox(null, "Vibrate when the command bar snaps", _currentProfile.TouchVibrate, 0, 0));
-                sectionTouch.Add(_barReduceMotion = AddCheckBox(null, "Reduce motion (the command bar snaps without sliding)", _currentProfile.TouchReduceMotion, 0, 0));
-
-                // The arrow, moved in from the corner. An option to compare; 0 is the corner.
-                sectionTouch.Add(AddLabel(null, "Command bar arrow inset from the corner", 0, 0));
-                sectionTouch.AddRight(_chevronInset = AddHSlider(null, 0, 200, _currentProfile.TouchChevronInset, 0, 0, 120));
-
-                // Hold a gump still, then flick: what each direction does (GumpFlick).
-                int[] current = { _currentProfile.FlickUp, _currentProfile.FlickDown, _currentProfile.FlickLeft, _currentProfile.FlickRight };
-                _flick = new Combobox[4];
-
-                for (int i = 0; i < 4; i++)
-                {
-                    sectionTouch.Add(AddLabel(null, $"Hold and flick {GUO.Input.Touch.GumpFlick.DirectionNames[i]}", 0, 0));
-                    sectionTouch.AddRight(_flick[i] = AddCombobox(null, GUO.Input.Touch.GumpFlick.ActionTitles,
-                        System.Math.Clamp(current[i], 0, GUO.Input.Touch.GumpFlick.ActionTitles.Length - 1), 0, 0, 170));
-                }
-
-                if (GUO.Platform.Android.DualScreen.HasSecondaryDisplay)
-                {
-                    sectionTouch.Add(_companionTabs = AddCheckBox(null, "Companion tabs on the second screen (prototype)", _currentProfile.CompanionTabs, 0, 0));
-                }
-
-                sectionTouch.Add(_showTouches = AddCheckBox(null, "Debug: show touches on screen", _currentProfile.DebugShowTouches, 0, 0));
-            }
+            // PORT DEVIATION (GUO): the touch settings moved to the GUO page.
 
             SettingsSection section4 = AddSettingsSection(box, "Miscellaneous");
-            section4.Y = (sectionTouch ?? section3).Bounds.Bottom + 40;
+            section4.Y = section3.Bounds.Bottom + 40;
 
             section4.Add
             (
@@ -1732,8 +2116,7 @@ namespace GUO.Game.UI.Gumps
 
             startY += _musicInBackground.Height + 2;
 
-            _contentAudio = AddCheckBox(rightArea, "Regional audio and recorded NPC voices",
-                _currentProfile.ContentAudioEnabled, startX, startY);
+            // PORT DEVIATION (GUO): "Regional audio and recorded NPC voices" moved to the GUO page.
 
             Add(rightArea, PAGE);
         }
@@ -2113,49 +2496,8 @@ namespace GUO.Game.UI.Gumps
                 )
             );
 
-            // PORT DEVIATION (GUO): Enhanced HD repaint detail (world art
-            // only; cursor/containers stay native).
-            section4.Add
-            (
-                _enhancedHD = AddCheckBox
-                (
-                    null,
-                    "Enhanced HD (installed packs)",
-                    _currentProfile.EnhancedHD,
-                    startX,
-                    startY
-                )
-            );
-
-
-            // PORT DEVIATION (GUO): Realtime lights (ADR-0039): a tile-grid
-            // light field walls block, coloured by the shard's light level.
-            section4.Add
-            (
-                _realtimeLights = AddCheckBox
-                (
-                    null,
-                    "Realtime lights",
-                    _currentProfile.RealtimeLights,
-                    startX,
-                    startY
-                )
-            );
-
-            // PORT DEVIATION (GUO): shared UO+ settings (ADR-uoplus-settings).
-            section4.Add(new NiceButton(startX, startY, 210, 28, ButtonAction.Activate, "UO+ effects...", font: 1)
-                { ButtonParameter = (int)Buttons.UoPlus, IsSelectable = false });
-            section4.Add(AddLabel(null, "HD filtering", startX, startY));
-            section4.AddRight(_hdFilter = AddCombobox(null,
-                new[] { "Auto", "Point", "Point mipmaps", "Smooth" },
-                Math.Clamp((int)_currentProfile.HdFilter, 0, 3), startX, startY, 180));
-
-            // PORT DEVIATION (GUO): water render style (ADR-0037); Classic
-            // draws the tiles as upstream does and replaces nothing.
-            section4.Add(AddLabel(null, "Water", startX, startY));
-            section4.AddRight(_waterStyle = AddCombobox(null,
-                GUO.Renderer.Water.WaterRender.PlayerChoiceLists(_currentProfile).Names,
-                GUO.Renderer.Water.WaterRender.PlayerChoiceIndex(_currentProfile), startX, startY, 180));
+            // PORT DEVIATION (GUO): Enhanced HD, HD filtering moved to the GUO page; realtime lights,
+            // lighting speed mode, UO+ effects and water belong to the GUO detail panels only.
 
             SettingsSection section5 = AddSettingsSection(box, "Shadows");
             section5.Y = section4.Bounds.Bottom + 40;
@@ -2191,246 +2533,6 @@ namespace GUO.Game.UI.Gumps
             section5.Add(AddLabel(null, ResGumps.TerrainShadowsLevel, startX, startY));
             section5.AddRight(_terrainShadowLevel = AddHSlider(null, Constants.MIN_TERRAIN_SHADOWS_LEVEL, Constants.MAX_TERRAIN_SHADOWS_LEVEL, _currentProfile.TerrainShadowsLevel, startX, startY, 200));
 
-            // PORT DEVIATION (GUO): the canvas background (ADR-0016). Mode,
-            // the file or folder it shows, the frame rate of a frames
-            // folder, and low power (video and frames freeze on frame one).
-            SettingsSection section6 = AddSettingsSection(box, "Background");
-            section6.Y = section5.Bounds.Bottom + 40;
-
-            // The dropdown: the two code-defined tiles, the shipped
-            // backgrounds from assets/backgrounds/backgrounds.json, then the
-            // player's own image, video and frames.
-            _canvasBackgroundChoices = new List<CanvasBackgroundSettings>();
-            List<string> choiceTitles = new List<string>();
-
-            void Choice(CanvasBackgroundMode mode, string builtinName, string title)
-            {
-                _canvasBackgroundChoices.Add(new CanvasBackgroundSettings(mode, builtinName ?? "", 12, false));
-                choiceTitles.Add(title);
-            }
-
-            Choice(CanvasBackgroundMode.BuiltinGrey, null, "Grey tile (original)");
-            Choice(CanvasBackgroundMode.BuiltinWood, null, "Dark wood");
-
-            foreach (BuiltinBackground b in BuiltinBackground.All)
-            {
-                Choice(CanvasBackgroundMode.BuiltinMedia, b.Name, b.Title);
-            }
-
-            Choice(CanvasBackgroundMode.Image, null, "Image");
-            Choice(CanvasBackgroundMode.Video, null, "Video (.ogv)");
-            Choice(CanvasBackgroundMode.Frames, null, "Frames (folder or sheet)");
-
-            CanvasBackgroundSettings current = CanvasBackgroundSettings.FromProfile(_currentProfile);
-            int selected = 0;
-
-            for (int i = 0; i < _canvasBackgroundChoices.Count; i++)
-            {
-                CanvasBackgroundSettings c = _canvasBackgroundChoices[i];
-
-                if (c.Mode == current.Mode && (c.Mode != CanvasBackgroundMode.BuiltinMedia || c.Path == current.Path))
-                {
-                    selected = i;
-
-                    break;
-                }
-            }
-
-            section6.Add(AddLabel(null, "Behind the world and gumps", startX, startY));
-            section6.AddRight
-            (
-                _canvasBackgroundMode = AddCombobox
-                (
-                    null,
-                    choiceTitles.ToArray(),
-                    selected,
-                    startX,
-                    startY,
-                    170
-                )
-            );
-
-            section6.Add(AddLabel(null, "File or folder", startX, startY));
-            section6.AddRight(_canvasBackgroundPath = AddInputField(null, startX, startY, 220, TEXTBOX_HEIGHT, null, 0, false, false));
-            _canvasBackgroundPath.SetText(_currentProfile.CanvasBackgroundPath ?? "");
-
-            // On a phone the picked file is copied under user://; in a
-            // browser there is no picker to open (ADR-0008), so the button
-            // stays off and the path can still be typed.
-            bool web = PlatformDefaults.Platform == ProfilePlatform.Web;
-
-            NiceButton browse = new NiceButton(startX, startY, 70, TEXTBOX_HEIGHT + 4, ButtonAction.Activate, web ? "No browse on web" : "Browse...")
-            {
-                ButtonParameter = (int) Buttons.BrowseBackground,
-                IsSelectable = false,
-                IsEnabled = !web
-            };
-
-            section6.AddRight(browse, 4);
-
-            section6.Add(AddLabel(null, "Frames per second", startX, startY));
-            section6.AddRight(_canvasBackgroundFps = AddHSlider(null, 1, 60, _currentProfile.CanvasBackgroundFps, startX, startY, 150));
-
-            section6.Add
-            (
-                _canvasBackgroundLowPower = AddCheckBox
-                (
-                    null,
-                    "Low power: video and frames show their first frame only",
-                    _currentProfile.CanvasBackgroundLowPower,
-                    startX,
-                    startY
-                )
-            );
-
-            // PORT DEVIATION (GUO): Store button and installed ADR-0016 backgrounds.
-            _canvasBackgroundMode = GUO.Store.StoreOptions.Attach(section6, _canvasBackgroundMode,
-                _canvasBackgroundChoices, choiceTitles, value => _canvasBackgroundPath.SetText(value), _currentProfile);
-
-            // PORT DEVIATION (GUO): the idle screen saver (ScreenSaver).
-            SettingsSection section7 = AddSettingsSection(box, "Screen saver");
-            section7.Y = section6.Bounds.Bottom + 40;
-
-            section7.Add
-            (
-                _screenSaver = AddCheckBox
-                (
-                    null,
-                    "When idle, black out the screen with drifting effects (protects OLED screens)",
-                    _currentProfile.ScreenSaver,
-                    startX,
-                    startY
-                )
-            );
-
-            section7.Add(AddLabel(null, "Minutes idle", startX, startY));
-            section7.AddRight(_screenSaverMinutes = AddHSlider(null, 1, 60, Math.Max(1, _currentProfile.ScreenSaverMinutes), startX, startY, 150));
-            _screenSaverSleepMinutes = AddHSlider(null, 0, 120, Math.Max(0, _currentProfile.ScreenSaverSleepMinutes), startX, startY, 150);
-
-            // PORT DEVIATION (GUO): the device settings below (sleep, screen
-            // effects, Start, controller buttons) are shown on a touch build
-            // or with mobile controls only, so the desktop Options stays
-            // ClassicUO's. Hidden, their controls still exist and Apply
-            // writes back the values they were built with.
-            bool deviceSettings = GUO.Input.Touch.TouchInput.Enabled || _currentProfile.MobileWindowControls;
-
-            if (deviceSettings)
-            {
-                section7.Add(AddLabel(null, "Then let the device sleep after (minutes, 0 = never)", startX, startY));
-                section7.AddRight(_screenSaverSleepMinutes);
-            }
-
-            // The effects, the built-in loops, then installed store packs.
-            _screenSaverChoices = new List<string>();
-            List<string> saverTitles = new List<string>();
-
-            foreach ((string value, string title) in GUO.Game.Managers.ScreenSaver.Choices())
-            {
-                _screenSaverChoices.Add(value);
-                saverTitles.Add(title);
-            }
-
-            section7.Add(AddLabel(null, "Show", startX, startY));
-            section7.AddRight
-            (
-                _screenSaverChoice = AddCombobox
-                (
-                    null,
-                    saverTitles.ToArray(),
-                    Math.Max(0, _screenSaverChoices.IndexOf(_currentProfile.ScreenSaverChoice)),
-                    startX,
-                    startY,
-                    200
-                )
-            );
-
-            // PORT DEVIATION (GUO): the boot splash (GUO.Host.SplashIntro). Not a
-            // profile setting: it plays before anyone logs in, so it is kept
-            // for the device in user://guo_splash.cfg.
-            // PORT DEVIATION (GUO): screen effects (ADR-0023). The looks live in
-            // their own card; Classic, the default, is ClassicUO's own picture.
-            SettingsSection sectionFx = deviceSettings ? AddSettingsSection(box, "Screen effects") : new SettingsSection("Screen effects", box.Width);
-            sectionFx.Y = section7.Bounds.Bottom + 40;
-            NiceButton effects = new NiceButton(startX, startY, 160, 20, ButtonAction.Activate, "Screen effects...")
-            {
-                IsSelectable = false, ButtonParameter = (int) Buttons.Disabled
-            };
-            effects.MouseUp += (s, e) => GUO.Renderer.PostFx.PostFxMenu.Toggle();
-            sectionFx.Add(effects);
-            sectionFx.Add(AddLabel(null, "Looks for the world only (never the gumps); Ctrl+Shift+E", startX, startY));
-            // END PORT DEVIATION (GUO)
-
-            SettingsSection section8 = deviceSettings ? AddSettingsSection(box, "Start") : new SettingsSection("Start", box.Width); // PORT DEVIATION (GUO)
-            section8.Y = sectionFx.Bounds.Bottom + 40; // PORT DEVIATION (GUO): after Screen effects
-
-            section8.Add
-            (
-                _splashIntro = AddCheckBox
-                (
-                    null,
-                    "Play the GUO intro on start",
-                    GUO.Host.SplashIntro.Enabled,
-                    startX,
-                    startY
-                )
-            );
-
-            // PORT DEVIATION (GUO): the UO folder (ADR-0021). Opens the
-            // first-run screen in change mode; the new folder is saved to
-            // settings.json and used on the next start.
-            NiceButton changeFolder = new NiceButton(startX, startY, 160, 20, ButtonAction.Activate, "Change UO folder...")
-            {
-                IsSelectable = false, ButtonParameter = (int) Buttons.Disabled
-            };
-            changeFolder.MouseUp += (s, e) => GUO.Host.FirstRunScreen.OpenChange();
-            section8.Add(changeFolder);
-
-            // PORT DEVIATION (GUO): the gamepad's A/B/X/Y (Input.Gamepad). A
-            // pad the client cannot recognise waits for this choice.
-            // A pad works on every platform (ADR-0025), so this section shows on the desktop too.
-            SettingsSection sectionPad = AddSettingsSection(box, "Controller buttons");
-            sectionPad.Y = (deviceSettings ? section8 : section7).Bounds.Bottom + 40; // PORT DEVIATION (GUO): after Start, or the screen saver where Start is hidden
-            sectionPad.Add(AddLabel(null, "A/B/X/Y", startX, startY));
-            sectionPad.AddRight
-            (
-                _gamepadLayout = AddCombobox
-                (
-                    null,
-                    new[] { "Automatic (known devices)", "As printed on the pad", "A/B and X/Y swapped (Thor in XBox mode)" },
-                    Math.Max(0, Array.IndexOf(GamepadLayouts, _currentProfile.GamepadLayout)),
-                    startX,
-                    startY,
-                    250
-                )
-            );
-
-            // PORT DEVIATION (GUO): the pad is on by default; this turns it off.
-            sectionPad.Add(_gamepad = AddCheckBox(null, "Use a controller", _currentProfile.Gamepad, startX, startY));
-
-            // PORT DEVIATION (GUO): "Set controls", the pad's rebinding (Input.Gamepad.PadWizard).
-            NiceButton setControls = new NiceButton(startX, startY, 160, 20, ButtonAction.Activate, "Set controls...")
-            {
-                IsSelectable = false, ButtonParameter = (int) Buttons.Disabled
-            };
-            setControls.MouseUp += (s, e) => GUO.Input.Gamepad.PadWizard.OpenList();
-            sectionPad.Add(setControls);
-
-            // PORT DEVIATION (GUO): what each pad button does, in the glyphs of
-            // the pad last used (Input.Glyphs, ADR-0025).
-            foreach ((GUO.Input.PadAction action, string words) in GUO.Input.Glyphs.GlyphPic.Legend)
-            {
-                sectionPad.Add(new GUO.Input.Glyphs.GlyphPic(action));
-                sectionPad.AddRight(AddLabel(null, words, startX, startY), 6);
-            }
-
-            // PORT DEVIATION (GUO): packet mods from Data/Mods (ADR-0038). Kept
-            // in settings.json like the plugins list, since packets arrive before
-            // a profile exists; read on the next start. Hidden where mods cannot load.
-            SettingsSection sectionMods = GUO.Network.Mods.ClientMods.Supported ? AddSettingsSection(box, "Mods") : new SettingsSection("Mods", box.Width);
-            sectionMods.Y = sectionPad.Bounds.Bottom + 40;
-            sectionMods.Add(_loadMods = AddCheckBox(null, "Load mods on the next start", Settings.GlobalSettings.LoadMods, startX, startY));
-            sectionMods.Add(AddLabel(null, GUO.Network.Mods.ClientMods.Status, startX, startY));
-            // END PORT DEVIATION (GUO)
 
             Add(rightArea, PAGE);
         }
@@ -3905,14 +4007,7 @@ namespace GUO.Game.UI.Gumps
                 startY += _useLargeContianersGumps.Height + 2;
             }
 
-            // PORT DEVIATION (GUO): see the field declaration.
-            _gridContainers = AddCheckBox(rightArea, "Open containers as a grid of slots", _currentProfile.GridContainers, startX, startY);
-            startY += _gridContainers.Height + 2;
-            text = AddLabel(rightArea, "Grid slot size", startX + 20, startY);
-            _gridSlotSize = AddHSlider(rightArea, GridContainerGump.MIN_SLOT, GridContainerGump.MAX_SLOT, _currentProfile.GridContainerSlotSize, startX + 20 + text.Width + 5, startY, 200);
-            startY += text.Height + 2;
-            _fitContainerPlacement = AddCheckBox(rightArea, "Open containers clear of the character and each other", _currentProfile.FitContainerPlacement, startX, startY);
-            startY += _fitContainerPlacement.Height + 2;
+            // PORT DEVIATION (GUO): the grid container options moved to the GUO page.
 
             _containerDoubleClickToLoot = AddCheckBox
             (
@@ -4046,7 +4141,7 @@ namespace GUO.Game.UI.Gumps
                 case Buttons.DeleteMacro: break;
 
                 case Buttons.UoPlus:
-                    UoPlusOptionsGump.Open(World); // PORT DEVIATION (GUO): one UO+ surface
+                    // PORT DEVIATION (GUO): no longer built here; the GUO page opens the detail panels.
                     break;
                 case Buttons.BrowseBackground:
                     // PORT DEVIATION (GUO): a native file picker for the
@@ -4155,7 +4250,6 @@ namespace GUO.Game.UI.Gumps
                     _soundsVolume.Value = 100;
                     _musicVolume.Value = 100;
                     _musicInBackground.IsChecked = false;
-                    _contentAudio.IsChecked = false;
                     _footStepsSound.IsChecked = true;
                     _loginMusicVolume.Value = 100;
                     _loginMusic.IsChecked = true;
@@ -4182,18 +4276,6 @@ namespace GUO.Game.UI.Gumps
                     Client.Game.Scene.Camera.Zoom = videoDefaults.DefaultScale;
                     _currentProfile.DefaultScale = videoDefaults.DefaultScale;
                     _sliderZoom.Value = (int)Math.Round((videoDefaults.DefaultScale - Client.Game.Scene.Camera.ZoomMin) / Client.Game.Scene.Camera.ZoomStep);
-                    _canvasBackgroundMode.SelectedIndex = 0; // PORT DEVIATION (GUO)
-                    _canvasBackgroundPath.SetText(""); // PORT DEVIATION (GUO)
-                    _canvasBackgroundFps.Value = 12; // PORT DEVIATION (GUO)
-                    _canvasBackgroundLowPower.IsChecked = false; // PORT DEVIATION (GUO)
-                    _screenSaver.IsChecked = false; // PORT DEVIATION (GUO)
-                    _screenSaverMinutes.Value = 10; // PORT DEVIATION (GUO)
-                    _screenSaverSleepMinutes.Value = 0; // PORT DEVIATION (GUO)
-                    _screenSaverChoice.SelectedIndex = 0; // PORT DEVIATION (GUO)
-                    _splashIntro.IsChecked = true; // PORT DEVIATION (GUO)
-                    _loadMods.IsChecked = false; // PORT DEVIATION (GUO)
-                    _gamepadLayout.SelectedIndex = 0; // PORT DEVIATION (GUO)
-                    _gamepad.IsChecked = true; // PORT DEVIATION (GUO)
                     _sliderScreenZoom.Value = 0;
                     _lightBar.Value = 0;
                     _enableLight.IsChecked = false;
@@ -4207,11 +4289,111 @@ namespace GUO.Game.UI.Gumps
                     _auraMouse.IsChecked = true;
                     _partyAura.IsChecked = true;
                     _animatedWaterEffect.IsChecked = false;
-                    _enhancedHD.IsChecked = videoDefaults.EnhancedHD; // PORT DEVIATION (GUO)
-                    _hdFilter.SelectedIndex = (int)videoDefaults.HdFilter;
-                    _realtimeLights.IsChecked = videoDefaults.RealtimeLights; // PORT DEVIATION (GUO)
-                    _waterStyle.SelectedIndex = 0; // PORT DEVIATION (GUO): Classic
                     _partyAuraColorPickerBox.Hue = 0x0044;
+
+                    break;
+
+                case 13: // PORT DEVIATION (GUO): the GUO page; the only page that resets these controls
+                    var guoDefaults = new Profile();
+                    _enhancedHD.IsChecked = guoDefaults.EnhancedHD;
+                    _hdFilter.SelectedIndex = (int)guoDefaults.HdFilter;
+                    _showHandles.IsChecked = guoDefaults.ShowWindowHandles;
+
+                    if (_mobileControls != null)
+                    {
+                        _mobileControls.IsChecked = guoDefaults.MobileWindowControls;
+                    }
+
+                    _gridContainers.IsChecked = false;
+                    _gridSlotSize.Value = 44;
+                    _fitContainerPlacement.IsChecked = false;
+
+                    if (_onePanel != null)
+                    {
+                        _onePanel.SelectedIndex = guoDefaults.OneScreenPanel;
+                        _oneSide.SelectedIndex = guoDefaults.OneScreenDrawerSide == 1 ? 1 : 0;
+                        _oneSquare.SelectedIndex = guoDefaults.OneScreenSquareLayout == 1 ? 1 : 0;
+                    }
+
+                    if (_dualScreen != null)
+                    {
+                        _dualScreen.IsChecked = guoDefaults.DualScreenEnabled;
+                        _dualShelvePaperdoll.IsChecked = guoDefaults.DualScreenShelvePaperdoll;
+                        _dualShelveBackpack.IsChecked = guoDefaults.DualScreenShelveBackpack;
+                        _dualShelveStatus.IsChecked = guoDefaults.DualScreenShelveStatus;
+                        _dualShelveJournal.IsChecked = guoDefaults.DualScreenShelveJournal;
+                        _dualShelveOthers.IsChecked = guoDefaults.DualScreenShelveOthers;
+
+                        if (_dualScale != null)
+                        {
+                            _dualScale.Value = guoDefaults.DualScreenScale;
+                            _dualScaleFine.SelectedIndex = 0;
+                        }
+                    }
+
+                    if (_barSlots != null)
+                    {
+                        string[] guoChoices = GUO.Input.Touch.TouchGumpBar.Choices;
+                        string[] guoSlots = GUO.Input.Touch.TouchGumpBar.DefaultSlots.Split(',');
+
+                        for (int s = 0; s < _barSlots.Length && s < guoSlots.Length; s++)
+                        {
+                            _barSlots[s].SelectedIndex = Math.Max(0, Array.IndexOf(guoChoices, guoSlots[s]));
+                        }
+
+                        string[] guoSay = { guoDefaults.TouchSayBank, guoDefaults.TouchSayGuards, guoDefaults.TouchSayFollow, guoDefaults.TouchSayStop };
+
+                        for (int s = 0; s < _barSay.Length; s++)
+                        {
+                            _barSay[s].SetText(guoSay[s] ?? "");
+                        }
+
+                        _modernGumps.IsChecked = !guoDefaults.ModernGumpsOff;
+                        _barVibrate.IsChecked = guoDefaults.TouchVibrate;
+                        _barReduceMotion.IsChecked = guoDefaults.TouchReduceMotion;
+                        _chevronInset.Value = guoDefaults.TouchChevronInset;
+                        _flick[0].SelectedIndex = guoDefaults.FlickUp;
+                        _flick[1].SelectedIndex = guoDefaults.FlickDown;
+                        _flick[2].SelectedIndex = guoDefaults.FlickLeft;
+                        _flick[3].SelectedIndex = guoDefaults.FlickRight;
+                    }
+
+                    if (_companionTabs != null)
+                    {
+                        _companionTabs.IsChecked = guoDefaults.CompanionTabs;
+                    }
+
+                    if (_showTouches != null)
+                    {
+                        _showTouches.IsChecked = guoDefaults.DebugShowTouches;
+                    }
+
+                    _gamepadLayout.SelectedIndex = 0;
+                    _gamepad.IsChecked = true;
+                    _canvasBackgroundMode.SelectedIndex = 0;
+                    _canvasBackgroundPath.SetText("");
+                    _canvasBackgroundFps.Value = 12;
+                    _canvasBackgroundLowPower.IsChecked = false;
+                    _screenSaver.IsChecked = false;
+                    _screenSaverMinutes.Value = 10;
+                    _screenSaverChoice.SelectedIndex = 0;
+
+                    if (_screenSaverSleepMinutes != null)
+                    {
+                        _screenSaverSleepMinutes.Value = 0;
+                    }
+
+                    if (_splashIntro != null)
+                    {
+                        _splashIntro.IsChecked = true;
+                    }
+
+                    if (_loadMods != null)
+                    {
+                        _loadMods.IsChecked = false;
+                    }
+
+                    _contentAudio.IsChecked = false;
 
                     break;
 
@@ -4303,9 +4485,6 @@ namespace GUO.Game.UI.Gumps
                     _containersScale.Value = 100;
                     _containerScaleItems.IsChecked = false;
                     _useLargeContianersGumps.IsChecked = false;
-                    _gridContainers.IsChecked = false; // PORT DEVIATION (GUO)
-                    _gridSlotSize.Value = 44; // PORT DEVIATION (GUO)
-                    _fitContainerPlacement.IsChecked = false; // PORT DEVIATION (GUO)
                     _containerDoubleClickToLoot.IsChecked = false;
                     _relativeDragAnDropItems.IsChecked = false;
                     _highlightContainersWhenMouseIsOver.IsChecked = false;
@@ -4736,15 +4915,18 @@ namespace GUO.Game.UI.Gumps
             _currentProfile.CanvasBackgroundLowPower = _canvasBackgroundLowPower.IsChecked;
             _currentProfile.ScreenSaver = _screenSaver.IsChecked; // PORT DEVIATION (GUO)
             _currentProfile.ScreenSaverMinutes = _screenSaverMinutes.Value; // PORT DEVIATION (GUO)
-            _currentProfile.ScreenSaverSleepMinutes = _screenSaverSleepMinutes.Value; // PORT DEVIATION (GUO)
+            if (_screenSaverSleepMinutes != null) // PORT DEVIATION (GUO): only where the control is shown
+            {
+                _currentProfile.ScreenSaverSleepMinutes = _screenSaverSleepMinutes.Value;
+            }
             _currentProfile.ScreenSaverChoice = _screenSaverChoices[Math.Max(0, _screenSaverChoice.SelectedIndex)]; // PORT DEVIATION (GUO)
 
-            if (_splashIntro.IsChecked != GUO.Host.SplashIntro.Enabled)
+            if (_splashIntro != null && _splashIntro.IsChecked != GUO.Host.SplashIntro.Enabled) // PORT DEVIATION (GUO): only where shown
             {
                 GUO.Host.SplashIntro.Enabled = _splashIntro.IsChecked; // PORT DEVIATION (GUO)
             }
 
-            if (_loadMods.IsChecked != Settings.GlobalSettings.LoadMods) // PORT DEVIATION (GUO): ADR-0038
+            if (_loadMods != null && _loadMods.IsChecked != Settings.GlobalSettings.LoadMods) // PORT DEVIATION (GUO): ADR-0038, only where shown
             {
                 Settings.GlobalSettings.LoadMods = _loadMods.IsChecked;
                 Settings.GlobalSettings.Save();
@@ -4793,11 +4975,8 @@ namespace GUO.Game.UI.Gumps
             }
 
             _currentProfile.HdFilter = (HdFilterMode)Math.Clamp(_hdFilter.SelectedIndex, 0, 3);
-            _currentProfile.RealtimeLights = _realtimeLights.IsChecked; // PORT DEVIATION (GUO): ADR-0039
-
-            // PORT DEVIATION (GUO): the renderer rebuilds the meshes when it sees the change.
-            GUO.Renderer.Water.WaterRender.SetPlayerChoice(_currentProfile,
-                GUO.Renderer.Water.WaterRender.PlayerChoiceId(_currentProfile, _waterStyle.SelectedIndex));
+            // PORT DEVIATION (GUO): lighting speed mode, night floor, soften, realtime lights and
+            // water are owned by the GUO detail panels; Apply no longer writes them.
 
             _currentProfile.PartyAura = _partyAura.IsChecked;
             _currentProfile.PartyAuraHue = _partyAuraColorPickerBox.Hue;

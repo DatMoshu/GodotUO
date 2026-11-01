@@ -172,6 +172,11 @@ public partial class Main : Node
         // Before the client-data checks on purpose: the batcher probe draws
         // synthetic art and has nothing to do with a UO install, so it must
         // still run on a machine that has none.
+        if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--lighting-speed-probe") >= 0)
+        {
+            LightingSpeedProbe.Run(this);
+            return;
+        }
         if (_options.Mode == RunMode.BatcherProbe)
         {
             BatcherProbe.Run(this);
@@ -2049,6 +2054,9 @@ public partial class Main : Node
                     case "--screenshot":
                         o.Mode = RunMode.Screenshot;
                         break;
+                    case "--lighting-speed-probe":
+                        o._noFocus = true;
+                        break;
                     case "--batcher-probe":
                         o.Mode = RunMode.BatcherProbe;
                         break;
@@ -2626,7 +2634,8 @@ public partial class Main : Node
                         Next(); // the catalogue URL; the probe already ran in _Ready
                         break;
                     default:
-                        GD.Print($"[GUO] ignoring unknown argument: {arg}");
+                        if (!arg.StartsWith("--lighting-speed-out=", StringComparison.Ordinal))
+                            GD.Print($"[GUO] ignoring unknown argument: {arg}");
                         break;
                 }
             }

@@ -69,10 +69,22 @@ internal static class WeatherLab
             ? Math.Clamp(count / 70f, 0, 1) : 0;
 
     internal static bool IsRain(World world) => RainIntensity(world) > 0;
+    // Task 1149: enhanced (speed-mode) weather draws its own puddles and puddle rings
+    // on ground. Labs ground puddles/rings yield only while it ACTUALLY presented on the
+    // previous rendered frame (bound weather and an enhanced-lit frame, both written on the
+    // render thread, read here on the game thread); any failure, fallback, disable or
+    // rejected frame returns them on the next frame. Requested + supported + !GBuffer stay
+    // prerequisites. Water rings and the wet player stay (enhanced weather has neither).
+    // Preferences are untouched.
+    internal static bool EnhancedOwnsGround(Configuration.Profile p) =>
+        p is { LightingSpeedMode: true, SpeedModeWeather: true } && Renderer.SpeedMode.SpeedModeDebug.Supported
+        && !Renderer.SpeedMode.SpeedModeDebug.GBuffer
+        && Renderer.SpeedMode.Weather.SpeedModeWeatherRuntime.LastFrameBound
+        && Renderer.DepthWorld.OrderedWorldCapture.LastFrameEnhancedLit;
 
     internal static void Open(World world)
     {
-        Game.UI.Gumps.UoPlusOptionsGump.Open(world);
+        Game.UI.Gumps.UoPlusOptionsGump.Open(world, GuoSection.Weather);
     }
 
     internal static void SyncProfile(WeatherSettings settings, Profile profile)

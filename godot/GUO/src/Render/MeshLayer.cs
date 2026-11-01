@@ -92,6 +92,8 @@ namespace GUO.Renderer
         // ContentStamp to know when a chunk's resident copy is stale.
         public float[] Depths = new float[INITIAL_CAPACITY];
         public sbyte[] ObjectZ = new sbyte[INITIAL_CAPACITY];
+        // PORT DEVIATION (GUO): ADR-0046 metadata; no change to MeshQuad.
+        internal uint[] SurfaceData = new uint[INITIAL_CAPACITY];
         public int ContentStamp;
 
         // Per-frame visibility filtering
@@ -157,6 +159,7 @@ namespace GUO.Renderer
             Array.Resize(ref Visible, newSize);
             Array.Resize(ref Depths, newSize);
             Array.Resize(ref ObjectZ, newSize);
+            Array.Resize(ref SurfaceData, newSize);
         }
 
         /// <summary>

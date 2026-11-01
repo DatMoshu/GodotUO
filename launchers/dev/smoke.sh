@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Runs the fast health check (engine, import, C# build, client data, offline load, editor add-on, launcher lint) and prints OK or FAILED.
 set -euo pipefail
+# Build helpers must retire with Godot's console process.
+export UseSharedCompilation=false MSBUILDDISABLENODEREUSE=1
 . "$(dirname "$0")/../_shared/common.sh" || exit 1
 FAIL=0
 
@@ -36,6 +38,9 @@ echo "[smoke] selection seam (synthetic; no shard or install)"
 echo "[smoke] world depth ordering (CPU only; no shard or install)"
 dotnet run --project "$UO_ROOT/tools/world_depth_tests/WorldDepthTests.csproj" --artifacts-path "$UO_BUILD_DIR/world-depth-tests" --nologo || FAIL=1
 
+echo "[smoke] art-capacity offline Labs contract (synthetic; no live protocol)"
+"$UO_PYTHON" "$UO_TOOLS/art_capacity/run.py" test || FAIL=1
+
 echo "[smoke] diagnostics correctness (fragmented loopback, plugins, compression; no FPS sampling)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://addons/guo_editor/Tests/DiagnosticsFunctionalProbe.tscn || FAIL=1
 
@@ -49,7 +54,25 @@ echo "[smoke] UO+ ambient particles contract (synthetic; ADR-0042)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/Particles/AmbientParticlesProbe.tscn || FAIL=1
 echo "[smoke] shared UO+ flags, densities and Touch UI persistence (synthetic; ADR-uoplus-settings, UX-03)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Configuration/UoPlusProbe.tscn || FAIL=1
+echo "[smoke] GUO effect ownership: spell lights and classic shadow replacement (synthetic; task 1136)"
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Configuration/GuoEffectPolicyProbe.tscn || FAIL=1
+echo "[smoke] GUO options category: no stale overwrites, section-scoped Apply/Defaults/Cancel, Classic+Modern entry (client data; task 1136)"
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Game/UI/Gumps/GuoOptionsFlowProbe.tscn -- --scratch-profile --no-focus --no-splash --silent --pregame-classic --cache-dir "$UO_BUILD_DIR/guo-options-flow/cache" --client-data "$UO_CLIENT_DATA" --client-version "$UO_CLIENT_VERSION" || FAIL=1
+echo "[smoke] Lighting speed weather state and callback contract (headless; ADR-0048)"
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/SpeedMode/Weather/SpeedModeWeatherProbe.tscn || FAIL=1
+echo "[smoke] Window receiver shaft gates and failure contract (headless; ADR-0048)"
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/SpeedMode/WindowLight/WindowRayProbe.tscn || FAIL=1
+
+echo "[smoke] Physical lighting source and ray contracts (headless; ADR-0049)"
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/SpeedMode/PhysicalWorld/PhysicalWorldProbe.tscn || FAIL=1
+echo "[smoke] Sky/direct compatibility arithmetic (headless; ADR-0049)"
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/SpeedMode/SkyLightTermsProbe.tscn || FAIL=1
+echo "[smoke] Lighting shard clock framing and logout contract (offline; ADR-0048)"
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/SpeedMode/Shadows/ShardClockProbe.tscn || FAIL=1
+
 echo "[smoke] Realtime lights contract (synthetic; ADR-0039)"
+echo "[smoke] Lighting speed surface transport and default-off persistence (headless contract; ADR-0048)"
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" -- --lighting-speed-probe "--lighting-speed-out=$UO_BUILD_DIR/lighting-speed-probe" --no-focus || FAIL=1
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/Lights/RealtimeLightsProbe.tscn || FAIL=1
 echo "[smoke] UO+ spell lighting contract (synthetic; no shard or install)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/Lights/SpellLightingProbe.tscn || FAIL=1

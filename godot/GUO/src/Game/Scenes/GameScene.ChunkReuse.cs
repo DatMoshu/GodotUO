@@ -120,6 +120,9 @@ internal partial class GameScene
             if ((walkMask & (1UL << tile)) == 0)
             {
                 if (moved) light.UpdateRealScreenPosition(_offset.X, _offset.Y);
+#if DEBUG
+                ObserveAttributionLight(light,"cached-skipped-tile-offer");
+#endif
                 AddLight(light, light, light.RealScreenPosition.X + 22, light.RealScreenPosition.Y + 22);
             }
         if (moved) walk.StaleTiles |= ~walkMask;

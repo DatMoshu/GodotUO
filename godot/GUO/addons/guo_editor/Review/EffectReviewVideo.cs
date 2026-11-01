@@ -37,7 +37,7 @@ public partial class EffectReviewVideo : Node2D
             var profile = new Profile { AmbientFog = true, AmbientLeaves = true, AmbientDust = true,
                 AmbientParticleDensity = 100, AmbientParticleCap = 512 };
             var waves = new WaterRipples(); waves.CentreOnForProbe(1000, 1000); waves.StepForProbe(0);
-            var emitter = new RainRippleEmitter();
+            var emitter = new GUO.Labs.WaterRain.RainRippleEmitter();
             using var mask = Image.CreateEmpty(128, 128, false, Image.Format.Rgba8);
             mask.Fill(new Color(1, 123f / 255, 0, 1));
             using var maskTexture = ImageTexture.CreateFromImage(mask);

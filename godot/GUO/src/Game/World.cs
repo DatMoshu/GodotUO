@@ -21,6 +21,10 @@ namespace GUO.Game
 {
     internal sealed class World
     {
+        // PORT DEVIATION (GUO): ADR-0048 optional sun direction from the last
+        // validated shard clock packet. No gameplay or local-clock fallback.
+        internal GUO.Renderer.SpeedMode.Shadows.ShardClockState ShardClock;
+
         private readonly EffectManager _effectManager;
         private readonly List<uint> _toRemove = new List<uint>();
         private uint _timeToDelete;
@@ -823,6 +827,7 @@ namespace GUO.Game
 
         public void Clear()
         {
+            ShardClock = default; // PORT DEVIATION (GUO): ADR-0048; clock never crosses logout.
             Scripts.Stop("Logged out");
             _packScripts?.Dispose();
             _packScripts = null;

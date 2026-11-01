@@ -13,8 +13,8 @@ an MP4 with ffmpeg and writes summary.md: each segment and whether it worked.
     python tools/editor_tour/run.py --size 2560x1440 --scale 1 --segments layout,maps --no-video
 
 By default the tour records at 3840x2160 with the editor's display scale at
-1.5, so the interface is laid out like a 2560x1440 screen and is readable in
-the video. The scale is not set in the user's editor settings: the editor is
+1.25, so the interface is laid out like a 3072x1728 screen: readable in the
+video without crowding the docks. The scale is not set in the user's editor settings: the editor is
 started on a scratch settings folder (build/editor_tour/appdata, through
 APPDATA) holding just that scale, so the user's own settings, layout and
 theme are neither read nor changed.
@@ -100,10 +100,13 @@ def scratch_settings(root: Path, scale: float) -> dict:
     (so popup menus are drawn inside the window the tour captures)."""
     folder = root / "Godot"
     folder.mkdir(parents=True, exist_ok=True)
-    custom = 2 if scale == 1.0 else 6   # 2 = 100%, 6 = custom
+    # The editor's display_scale choices: 0 Auto, 1 75%, 2 100%, 3 125%, 4 150%,
+    # 5 175%, 6 200%, 7 Custom (read from custom_display_scale).
+    presets = {0.75: 1, 1.0: 2, 1.25: 3, 1.5: 4, 1.75: 5, 2.0: 6}
+    choice = presets.get(scale, 7)
     (folder / "editor_settings-4.7.tres").write_text(
         "[gd_resource type=\"EditorSettings\" format=3]\n\n[resource]\n"
-        f"interface/editor/appearance/display_scale = {custom}\n"
+        f"interface/editor/appearance/display_scale = {choice}\n"
         f"interface/editor/appearance/custom_display_scale = {scale}\n"
         "interface/multi_window/enable = false\n"
         "interface/editor/display/single_window_mode = true\n",
@@ -174,7 +177,7 @@ def main() -> int:
     ap.add_argument("--no-live", action="store_true", help="do not start the private shard; show the Shard dock offline")
     ap.add_argument("--no-build", action="store_true")
     ap.add_argument("--size", default="3840x2160", help="window size, default 3840x2160")
-    ap.add_argument("--scale", type=float, default=1.5, help="editor display scale for the run, default 1.5")
+    ap.add_argument("--scale", type=float, default=1.25, help="editor display scale for the run, default 1.25")
     ap.add_argument("--segments", help="comma separated segment ids to run (default all)")
     ap.add_argument("--no-video", action="store_true", help="frames only")
     ap.add_argument("--out", type=Path, help="output folder (default build/editor_tour/<stamp>)")

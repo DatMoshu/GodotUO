@@ -51,6 +51,7 @@ internal sealed class UoRealtimeWaterStyle : IWaterStyle
     public void Bind(Action<string, Variant> set)
     {
         set("water_model", WaterRender.Model("uo"));
+        set("water_environment", false);
         set("water_tint", new Color(0.12f, 0.24f, 0.42f, 1f));
         // speed, scale (1 / world px), wave strength, foam strength
         set("water_params", new Vector4(1.0f, 0.045f, 0.22f, 0.85f));
@@ -88,6 +89,7 @@ internal sealed class PackWaterStyle : IWaterStyle
     public void Bind(Action<string, Variant> set)
     {
         set("water_model", WaterRender.Model(_style.Model));
+        set("water_environment", false);
         set("water_tint", new Color(_style.Tint[0], _style.Tint[1], _style.Tint[2], 1f));
         set("water_params", new Vector4(_style.Speed, _style.Scale, _style.Wave, _style.Foam));
         set("water_params2", new Vector4(_style.Glint, _style.FoamWidth, _style.Levels, _style.RippleStrength > 0f ? 1f : 0f));
@@ -98,6 +100,29 @@ internal sealed class PackWaterStyle : IWaterStyle
     {
         ripples.Strength = _style.RippleStrength;
         ripples.Damping = _style.RippleDamping;
+    }
+}
+
+/// <summary>Opt-in lighting-mode water; existing styles retain their original shading.</summary>
+internal sealed class LightingWaterStyle : IWaterStyle
+{
+    public string Id => "lighting";
+    public string DisplayName => "Lighting (sky, wind and light glints)";
+
+    public void Bind(Action<string, Variant> set)
+    {
+        set("water_model", WaterRender.Model("realistic"));
+        set("water_environment", true);
+        set("water_tint", new Color(0.06f, 0.22f, 0.30f, 1f));
+        set("water_params", new Vector4(0.65f, 0.025f, 0.16f, 0.72f));
+        set("water_params2", new Vector4(0.28f, 0.38f, 0f, 1f));
+        set("water_params3", new Vector4(1f, 0f, 0f, 0f));
+    }
+
+    public void BindRipples(WaterRipples ripples)
+    {
+        ripples.Strength = 0.8f;
+        ripples.Damping = 0.98f;
     }
 }
 
@@ -114,7 +139,7 @@ internal static class WaterRender
     /// <summary>Bit 6 of the shader mode byte: a Wet tile under a water style (uo_water.gdshaderinc).</summary>
     public const int ModeBit = 0x40;
 
-    private static readonly IWaterStyle[] BuiltIn = { new UoRealtimeWaterStyle() };
+    private static readonly IWaterStyle[] BuiltIn = { new UoRealtimeWaterStyle(), new LightingWaterStyle() };
     private static readonly HashSet<string> _warned = new HashSet<string>();
 
     /// <summary>
@@ -175,6 +200,7 @@ internal static class WaterRender
     internal static IWaterStyle EditorStyle;
     internal static float EditorSeconds;
     internal static bool EditorPaused;
+    private static bool _lightingTargetBound;
     private static bool InEditorPreview => EditorWorld != null && ReferenceEquals(EditorWorld, Client.Game?.UO?.World);
 
     /// <summary>Read-only scene-thread diagnostics for authoring and private interaction proofs.</summary>
@@ -190,6 +216,10 @@ internal static class WaterRender
             playerWet = wet, surfaceZ = wet ? (int?)z : null,
             playerDisturbs = wet && player.Z <= z + 1,
             rippleStamps = _ripples.Stamps, rippleSteps = _ripples.Steps,
+            rainStamps = _ripples.RainStamps,
+            lightTargetBound = _lightingTargetBound,
+            daylight = Daylight(world, ProfileManager.CurrentProfile),
+            wind = Wind(world, ProfileManager.CurrentProfile),
             lastUpdateMs = _ripples.LastUpdateMs
         };
     }
@@ -203,6 +233,52 @@ internal static class WaterRender
     private static int _lastMap = -1;
     private static Vector4 _styleParams2;
     private static bool _ripplesEnabled;
+
+    // ADR-0048: called after the current speed-mode light target is ready.
+    // Bounds are target pixels (origin x/y, width/height), not world tiles.
+    // The core must clear this binding on every canvas/fallback frame.
+    internal static void BindLightTarget(UltimaBatcher2D batcher, Texture2D texture, Vector4 bounds, Vector3 ambient)
+    {
+        if (_bound is not LightingWaterStyle || !_styled) return;
+        batcher.SetWaterUniform("water_light_target", texture);
+        batcher.SetWaterUniform("water_light_bounds", bounds);
+        batcher.SetWaterUniform("water_light_ambient", ambient);
+        batcher.SetWaterUniform("water_has_light_target", true);
+#if TOOLS
+        _lightingTargetBound = true;
+#endif
+    }
+
+    internal static void ClearLightTarget(UltimaBatcher2D batcher)
+    {
+        if (_bound is not LightingWaterStyle) return;
+        batcher.SetWaterUniform("water_has_light_target", false);
+        batcher.SetWaterUniform("water_light_target", default(Variant));
+        batcher.SetWaterUniform("water_has_reflections", false);
+        batcher.SetWaterUniform("water_surface_buffer", default(Variant));
+        batcher.SetWaterUniform("water_scene_color", default(Variant));
+#if TOOLS
+        _lightingTargetBound = false;
+#endif
+    }
+
+    // Same-frame, nearest source buffers for ADR-0048 geometric reflections.
+    // The caller validates the borrowed SpeedModeBindings.Current ticket.
+    internal static void BindReflectionTargets(UltimaBatcher2D batcher, Texture2D surface,
+        Texture2D color, Vector2I size, Vector2I origin, float artScale, bool enabled)
+    {
+        if (_bound is not LightingWaterStyle || !_styled) return;
+        bool valid = enabled && surface != null && color != null && size.X > 0 && size.Y > 0
+            && surface.GetWidth() == size.X && surface.GetHeight() == size.Y
+            && color.GetWidth() == size.X && color.GetHeight() == size.Y;
+        batcher.SetWaterUniform("water_has_reflections", valid);
+        batcher.SetWaterUniform("water_surface_buffer", valid ? surface : default(Variant));
+        batcher.SetWaterUniform("water_scene_color", valid ? color : default(Variant));
+        if (!valid) return;
+        batcher.SetWaterUniform("water_reflection_target_size", new Vector2(size.X, size.Y));
+        batcher.SetWaterUniform("water_reflection_origin", new Vector2(origin.X, origin.Y));
+        batcher.SetWaterUniform("water_reflection_art_scale", float.IsFinite(artScale) ? Math.Clamp(artScale, 0.125f, 8f) : 1f);
+    }
 
     internal static bool RipplesEnabled(Profile profile) =>
         IsStyled(profile) && UoPlusOptions.Enabled(profile, UoPlusFeature.WaterRipples);
@@ -374,6 +450,25 @@ internal static class WaterRender
     /// <summary>Whether Wet tiles carry the water bit for this profile.</summary>
     public static bool IsStyled(Profile profile) => Resolve(profile) != null;
 
+    internal static bool EnvironmentEnabled(Profile profile) => Resolve(profile) is LightingWaterStyle;
+
+    internal static float Wind(World world, Profile profile)
+    {
+        float weather = (world?.Weather.Wind ?? 0) / 4f;
+        return weather + (profile?.WindStrength ?? 0f) * (weather == 0f ? 0.4f : weather);
+    }
+
+    // The shard's daylight and the player's explicit light override are the
+    // clock available to the renderer; never infer sky time from the PC clock.
+    internal static float Daylight(World world, Profile profile)
+    {
+        if (world == null) return 1f;
+        int overall = world.Light.Overall;
+        if (profile?.UseCustomLightLevel == true)
+            overall = profile.LightLevelType == 1 ? Math.Min(overall, profile.LightLevel) : profile.LightLevel;
+        return Math.Clamp(Math.Max(world.Light.Personal, 32 - overall) / 32f, 0f, 1f);
+    }
+
     /// <summary>
     /// Upstream's Animated water effect, which a water style replaces
     /// (ADR-0037 decision 4): on only when the player asked for it and the
@@ -388,6 +483,9 @@ internal static class WaterRender
 
     /// <summary>The mode value to add to a tile's hue vector this frame: the bit, or 0.</summary>
     public static float Flag(bool wet) => wet && _styled ? ModeBit : 0f;
+
+    internal static Vector2 SurfacePoint(int x, int y, float bx, float by)
+        => new(x + (bx + by - 22f) / 44f, y + (by - bx + 22f) / 44f);
 
     /// <summary>
     /// After Profile.WaterStyle changes: Wet land is baked into the chunk
@@ -430,6 +528,7 @@ internal static class WaterRender
                 Changed(world);
             }
             _boundOnce = true;
+            ClearLightTarget(batcher);
             _bound = style;
             if (style == null)
             {
@@ -456,6 +555,19 @@ internal static class WaterRender
             _ripplesEnabled = false;
             _lastTicks = 0;
             return;
+        }
+
+        bool environment = style is LightingWaterStyle;
+        batcher.SetWaterUniform("water_environment", environment);
+        if (environment)
+        {
+            if (world != null) SpeedMode.Weather.SpeedModeWeather.Observe(world, ProfileManager.CurrentProfile);
+            float daylight = Daylight(world, ProfileManager.CurrentProfile);
+            batcher.SetWaterUniform("water_daylight", daylight);
+            // Weather.Wind also drives the rain angle. Calm weather still has
+            // a gentle swell; storms steepen and advect the same wave field.
+            batcher.SetWaterUniform("water_wind", Wind(world, ProfileManager.CurrentProfile));
+            ClearLightTarget(batcher);
         }
 
         bool ripplesEnabled = RipplesEnabled(ProfileManager.CurrentProfile);

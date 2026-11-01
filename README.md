@@ -1,7 +1,7 @@
 # GodotUO
 
 <p align="center">
-  <img src="docs/images/guo-emblem.png" alt="GodotUO emblem" width="240" />
+  <img src="godot/GUO/assets/brand/splash_sigil.png" alt="GodotUO — the Ultima Online ankh sigil from the GUO splash screen" width="320" />
 </p>
 
 **Classic Ultima Online on Godot .NET.** GodotUO (GUO) carries over

@@ -101,6 +101,8 @@ effect that wants light reads it as an input and does not replace that blend.
 The framework creates a buffer only when an enabled pass declares it, so
 Classic pays nothing.
 
+Task 1150 clarification: a pass that declares both `light_tex` and `light_ambient` (today `bloom`) is elected, inside the render-thread success transaction of the frame, to the light that actually lit that frame (the enhanced speed light, with its ambient in `light_ambient`, when the enhanced transaction succeeds; otherwise the input `Process` set that frame: the classic target, or the CPU realtime field handed through the light override); on any failure that frame keeps the classic input. A pass declaring only `light_tex` keeps the classic contract.
+
 #### The object-id buffer
 
 `id_tex` is a SubViewport the world target's size, created only while an

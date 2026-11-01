@@ -27,6 +27,12 @@ namespace GUO.Game.Managers
             GUO.Labs.LabsRegistration.Register(_world, command: Register);
 #endif
             // PORT DEVIATION (GUO): explicit local UI authoring capture/apply, preserving live control behavior.
+            // PORT DEVIATION (GUO): ADR-0046 diagnostic view, mode remains opt-in.
+            Register("speedmode", args => {
+                if (args.Length == 1 && args[0] == "gbuf")
+                    Renderer.SpeedMode.SpeedModeDebug.GBuffer = !Renderer.SpeedMode.SpeedModeDebug.GBuffer;
+                else GameActions.Print(_world, "speedmode gbuf: toggle surface classes (enable Lighting speed mode first).");
+            });
             Register("gumpcapture", _ => GUO.UI.Authoring.GumpCapture.SaveOpen(_world));
             Register("gumpapply", args => GUO.UI.Authoring.GumpCapture.ApplyFile(_world, args));
             Register("gumpopen", args => Input.Touch.Modern.ModernAuthoredGump.PreviewFile(_world, args));
