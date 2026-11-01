@@ -67,6 +67,8 @@ echo [smoke] UO+ ambient particles contract (synthetic; ADR-0042)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/Particles/AmbientParticlesProbe.tscn || set "FAIL=1"
 echo [smoke] shared UO+ flags, densities and Touch UI persistence (synthetic; ADR-uoplus-settings, UX-03)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Configuration/UoPlusProbe.tscn || set "FAIL=1"
+echo [smoke] GUO effect ownership: spell lights and classic shadow replacement (synthetic; task 1136)
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Configuration/GuoEffectPolicyProbe.tscn || set "FAIL=1"
 echo [smoke] Lighting speed surface transport and default-off persistence (headless contract; ADR-0048)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" -- --lighting-speed-probe "--lighting-speed-out=%UO_BUILD_DIR%\lighting-speed-probe" --no-focus || set "FAIL=1"
 

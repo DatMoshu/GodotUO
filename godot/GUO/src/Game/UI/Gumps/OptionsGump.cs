@@ -978,7 +978,7 @@ namespace GUO.Game.UI.Gumps
         // PORT DEVIATION (GUO): the one place that opens a focused GUO detail panel.
         private void OpenGuoSection(GuoSection section)
         {
-            UoPlusOptionsGump.Open(World); // TODO(1136-integrate): Open(World, section)
+            UoPlusOptionsGump.Open(World, section); // PORT DEVIATION (GUO): focused GUO detail panel
         }
 
         // PORT DEVIATION (GUO): a detail panel committed; show what is now in force.
