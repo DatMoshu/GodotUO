@@ -72,7 +72,7 @@ internal static class WeatherLab
 
     internal static void Open(World world)
     {
-        Game.UI.Gumps.UoPlusOptionsGump.Open(world);
+        Game.UI.Gumps.UoPlusOptionsGump.Open(world, GuoSection.Weather);
     }
 
     internal static void SyncProfile(WeatherSettings settings, Profile profile)

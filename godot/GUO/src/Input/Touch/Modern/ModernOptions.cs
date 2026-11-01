@@ -51,7 +51,7 @@ internal sealed partial class ModernOptions : ModernGump
         public Action<object> Show; // puts a value into the setting's control
     }
 
-    private static readonly string[] Pages = { "General", "Sound", "Video", "Macros", "Tooltip", "Fonts", "Speech", "Combat", "Containers", "Touch" };
+    private static readonly string[] Pages = { "General", "Sound", "Video", "GUO", "Macros", "Tooltip", "Fonts", "Speech", "Combat", "Touch" };
 
     private readonly List<Setting> _settings = new();
     private readonly Dictionary<Setting, object> _values = new();
@@ -111,7 +111,7 @@ internal sealed partial class ModernOptions : ModernGump
         Bool("General", "Names overhead always on", p => p.NameOverheadToggled, (p, v) => p.NameOverheadToggled = v);
         // Packet mods (ADR-0038): settings.json, not the profile; read on the next start.
         if (GUO.Network.Mods.ClientMods.Supported)
-            Bool("General", "Load mods on the next start", _ => Settings.GlobalSettings.LoadMods, (_, v) =>
+            Bool("GUO", "Load mods on the next start", _ => Settings.GlobalSettings.LoadMods, (_, v) =>
             {
                 if (v == Settings.GlobalSettings.LoadMods) return;
                 Settings.GlobalSettings.LoadMods = v;
@@ -124,7 +124,7 @@ internal sealed partial class ModernOptions : ModernGump
         Int("Sound", "Music volume", 0, 100, p => p.MusicVolume, (p, v) => { p.MusicVolume = v; _audioChanged = true; });
         Bool("Sound", "Footsteps", p => p.EnableFootstepsSound, (p, v) => p.EnableFootstepsSound = v);
         Bool("Sound", "Combat music", p => p.EnableCombatMusic, (p, v) => p.EnableCombatMusic = v);
-        Bool("Sound", "Regional audio and recorded NPC voices", p => p.ContentAudioEnabled, (p, v) => p.ContentAudioEnabled = v);
+        Bool("GUO", "Regional audio and recorded NPC voices", p => p.ContentAudioEnabled, (p, v) => p.ContentAudioEnabled = v);
 
         // "Hide roofs" is the classic box: checked means DrawRoofs off, and a
         // change redraws the roofs (OptionsGump.Apply).
@@ -148,10 +148,11 @@ internal sealed partial class ModernOptions : ModernGump
         Bool("Video", "Circle of transparency", p => p.UseCircleOfTransparency, (p, v) => p.UseCircleOfTransparency = v);
         Bool("Video", "Shadows", p => p.ShadowsEnabled, (p, v) => p.ShadowsEnabled = v);
         Bool("Video", "Death screen", p => p.EnableDeathScreen, (p, v) => p.EnableDeathScreen = v);
-        Bool("Video", "Realtime lights", p => p.RealtimeLights, (p, v) => p.RealtimeLights = v);
-        // One shared UO+ surface for mouse, touch and controller.
-        Action_("Video", "UO+ effects...", () => { Close(); UoPlusOptionsGump.Open(World); });
-        Bool("Video", "Enhanced HD", p => p.EnhancedHD, (p, v) =>
+        // One GUO category: focused detail panels shared by mouse, touch and controller.
+        Action_("GUO", "Lighting and shadows...", () => { Close(); UoPlusOptionsGump.Open(World, GuoSection.Lighting); });
+        Action_("GUO", "Weather and ambience...", () => { Close(); UoPlusOptionsGump.Open(World, GuoSection.Weather); });
+        Action_("GUO", "World map and water...", () => { Close(); UoPlusOptionsGump.Open(World, GuoSection.World); });
+        Bool("GUO", "Enhanced HD", p => p.EnhancedHD, (p, v) =>
         {
             if (p.EnhancedHD != v)
             {
@@ -161,13 +162,9 @@ internal sealed partial class ModernOptions : ModernGump
             }
         });
 
-        Choice("Video", "HD filtering", new[] { "Auto", "Point", "Point mipmaps", "Smooth" },
+        Choice("GUO", "HD filtering", new[] { "Auto", "Point", "Point mipmaps", "Smooth" },
             p => (int)p.HdFilter, (p, v) => p.HdFilter = (HdFilterMode)Math.Clamp(v, 0, 3));
 
-        // ADR-0037: the water style; the renderer rebuilds the meshes when it sees the change.
-        Choice("Video", "Water", GUO.Renderer.Water.WaterRender.PlayerChoiceLists(ProfileManager.CurrentProfile).Names,
-            p => GUO.Renderer.Water.WaterRender.PlayerChoiceIndex(p),
-            (p, v) => GUO.Renderer.Water.WaterRender.SetPlayerChoice(p, GUO.Renderer.Water.WaterRender.PlayerChoiceId(p, v)));
         // Moved here from Classic view (UX-02), the same Profile fields the
         // classic Apply writes: the canvas background, the second screen's
         // fine scale and the command bar arrow's inset.
@@ -229,8 +226,8 @@ internal sealed partial class ModernOptions : ModernGump
         Hue("Combat", "Harmful spell colour", p => p.HarmfulHue, (p, v) => p.HarmfulHue = v);
         Hue("Combat", "Neutral spell colour", p => p.NeutralHue, (p, v) => p.NeutralHue = v);
 
-        Bool("Containers", "Grid view", p => p.GridContainers, (p, v) => p.GridContainers = v);
-        Int("Containers", "Grid slot size", GridContainerGump.MIN_SLOT, GridContainerGump.MAX_SLOT, p => p.GridContainerSlotSize, (p, v) => p.GridContainerSlotSize = v);
+        Bool("GUO", "Grid view", p => p.GridContainers, (p, v) => p.GridContainers = v);
+        Int("GUO", "Grid slot size", GridContainerGump.MIN_SLOT, GridContainerGump.MAX_SLOT, p => p.GridContainerSlotSize, (p, v) => p.GridContainerSlotSize = v);
 
         Bool("Touch", "Vibrate when the command bar snaps", p => p.TouchVibrate, (p, v) => p.TouchVibrate = v);
         Bool("Touch", "Reduce motion", p => p.TouchReduceMotion, (p, v) => p.TouchReduceMotion = v);
@@ -311,7 +308,7 @@ internal sealed partial class ModernOptions : ModernGump
             return i < 0 ? 0 : i;
         }
 
-        Choice("Video", "Background behind the world", titles.ToArray(), Index, (p, v) =>
+        Choice("GUO", "Background behind the world", titles.ToArray(), Index, (p, v) =>
         {
             CanvasBackgroundSettings c = choices[Math.Clamp(v, 0, choices.Count - 1)];
             p.CanvasBackgroundMode = c.ModeString;
