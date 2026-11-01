@@ -219,7 +219,7 @@ jobs:
 
       # Godot 4.7's Android export builds with a JDK 17 and signs with the
       # SDK's build-tools; its prebuilt template is net9.0 (tools/android).
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
