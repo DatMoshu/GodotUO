@@ -18,9 +18,19 @@ internal static class GuoEffectPolicy
         && (profile.RealtimeLights || SpeedModeDebug.Active);
 
     /// <summary>
+    /// Game-thread only. True when the last prepared enhanced frame actually produced
+    /// shadows (sun strength above 0, or at least one selected lamp shadow). Reset at the
+    /// start of every enhanced-light pass and on scene dispose, so an unprepared or failed
+    /// frame leaves it false. Set after the world draw, so it describes the previous frame.
+    /// </summary>
+    internal static bool EnhancedShadowsProduced;
+
+    /// <summary>
     /// True while the enhanced shadow path replaces classic native shadows: enhanced
     /// lighting is requested and supported, its sun or lamp shadows are on, AND the
-    /// previous rendered frame was actually lit by the enhanced path.
+    /// previous rendered frame was actually lit by the enhanced path, AND enhanced shadows
+    /// were really produced for it (a night frame with no lamp in reach has none, so
+    /// classic shadows stay).
     /// One-frame boundary: classic shadows are drawn into the world target before the
     /// GPU learns whether enhanced lighting succeeds for the current frame, so the
     /// decision uses the last completed frame. After any failure, fallback, device
@@ -32,16 +42,16 @@ internal static class GuoEffectPolicy
     internal static bool ClassicShadowsSuppressed(Profile profile) =>
         profile != null && SpeedModeDebug.Active
         && (profile.SpeedModeSunShadows || profile.SpeedModeLampShadows > 0)
-        && OrderedWorldCapture.LastFrameEnhancedLit;
+        && EnhancedShadowsProduced && OrderedWorldCapture.LastFrameEnhancedLit;
 
     /// <summary>Player-facing effective status of the classic shadow preference.</summary>
     internal static string ClassicShadowsStatus(Profile profile)
     {
         if (profile == null || !profile.ShadowsEnabled) return "Classic shadows: off (your setting)";
         if (ClassicShadowsSuppressed(profile))
-            return "Classic shadows: replaced by enhanced shadows while enhanced lighting is active (your setting is kept)";
+            return "Classic shadows: replaced by enhanced shadows while they are drawn (your setting is kept)";
         if (SpeedModeDebug.Requested && (profile.SpeedModeSunShadows || profile.SpeedModeLampShadows > 0))
-            return "Classic shadows: on (enhanced lighting not active)";
+            return "Classic shadows: on (enhanced shadows not active)";
         return "Classic shadows: on";
     }
 }

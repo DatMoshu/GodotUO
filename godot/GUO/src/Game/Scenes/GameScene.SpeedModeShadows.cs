@@ -112,12 +112,16 @@ internal partial class GameScene
         }
         CollectSpeedStaticShadows(inputs,batcher,view,direction,sky.Length,sky.Strength);
         CollectSpeedMobileShadows(inputs,batcher,view,direction,sky.Length,sky.Strength,selected[..selectedCount]);
+        // PORT DEVIATION (GUO): task 1136. Enhanced shadows exist this frame only with a sun shadow
+        // (strength > 0) or a selected lamp shadow; at night with no lamp in reach there are none.
+        GuoEffectPolicy.EnhancedShadowsProduced=(sun && sky.Strength>0) || selectedCount>0;
         frame.RenderInputs=inputs.RenderCallback; frame.RenderPatches=inputs.PatchCallback; frame.ReleaseInputs=inputs.ReleaseCallback;
     }
 
     partial void DisposeSpeedShadows()
     {
         var inputs=_speedShadows;
+        GuoEffectPolicy.EnhancedShadowsProduced=false;
         _speedShadows=null;
         _shadowGridHash=0;
         // Same queue discipline as OrderedWorldCapture.Dispose: outstanding
