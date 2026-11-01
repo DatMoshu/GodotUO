@@ -120,6 +120,34 @@ public partial class GuoOptionsFlowProbe : Node
         for (int i = 0; i < n; i++) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
     }
 
+    // Rendered review captures (set GUO_OPTIONS_CAPTURE; needs a real renderer, not --headless).
+    private async System.Threading.Tasks.Task Capture(World world, string tmp, string folder)
+    {
+        System.IO.Directory.CreateDirectory(folder);
+        Client.Game.SetPinnedWindowSize();
+        await Frames(10);
+        async System.Threading.Tasks.Task Shot(string name)
+        {
+            await Frames(8);
+            await ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
+            using var image = GetViewport().GetTexture().GetImage();
+            Check(image.SavePng(System.IO.Path.Combine(folder, name + ".png")) == Error.Ok, "save " + name);
+        }
+        SetCurrent(NonDefault(), tmp);
+        var options = NewOptions(world);
+        UIManager.Add(options);
+        options.ChangePage(13);
+        await Shot("guo-options-classic-page");
+        foreach (var section in new[] { GuoSection.Lighting, GuoSection.Weather, GuoSection.World })
+        {
+            UoPlusOptionsGump.Open(world, section);
+            await Shot("guo-options-panel-" + section.ToString().ToLowerInvariant());
+            UIManager.GetGump<UoPlusOptionsGump>()?.Dispose();
+        }
+        options.Dispose();
+        _notes.Add("captures saved to " + folder);
+    }
+
     private static void SetCurrent(Profile p, string path)
     {
         typeof(ProfileManager).GetProperty("CurrentProfile").SetValue(null, p);
@@ -153,6 +181,8 @@ public partial class GuoOptionsFlowProbe : Node
             await Step("classic pages", () => ClassicPages(world, tmp));
             await Step("modern options", () => Modern(world, tmp));
             await Step("effect policy", EffectPolicy);
+            string shots = OS.GetEnvironment("GUO_OPTIONS_CAPTURE");
+            if (!string.IsNullOrWhiteSpace(shots)) await Capture(world, tmp, shots);
         }
         finally
         {
