@@ -509,6 +509,9 @@ internal sealed partial class OrderedWorldCapture : IDisposable
 
     private void RenderThread()
     {
+#if GUO_LABS
+        GUO.Labs.CompetitionBench.BenchGpuMarkers.PreDrawBegin(); // task 1155; inert unless the bench runs
+#endif
         long started = System.Diagnostics.Stopwatch.GetTimestamp();
         bool success = false;
         try
@@ -568,6 +571,9 @@ internal sealed partial class OrderedWorldCapture : IDisposable
             LastFrameOnPass = success;
             SetEnhancedLit(lit);
             ElectGlowLight(lit);
+#if GUO_LABS
+            GUO.Labs.CompetitionBench.BenchGpuMarkers.PreDrawEnd();
+#endif
             RecordTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started;
             Volatile.Write(ref _pending, 0);
         }
