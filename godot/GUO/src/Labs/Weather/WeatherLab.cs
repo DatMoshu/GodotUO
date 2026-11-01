@@ -69,6 +69,12 @@ internal static class WeatherLab
             ? Math.Clamp(count / 70f, 0, 1) : 0;
 
     internal static bool IsRain(World world) => RainIntensity(world) > 0;
+    // Task 1149: enhanced (speed-mode) weather draws its own puddles and puddle rings
+    // on ground. While it is requested and supported, Labs ground puddles/rings yield;
+    // water rings and the wet player stay (enhanced weather has neither). Decided
+    // before the draw, as WaterRender.UpstreamWobble does; preferences are untouched.
+    internal static bool EnhancedOwnsGround(Configuration.Profile p) =>
+        p is { LightingSpeedMode: true, SpeedModeWeather: true } && Renderer.SpeedMode.SpeedModeDebug.Supported;
 
     internal static void Open(World world)
     {
