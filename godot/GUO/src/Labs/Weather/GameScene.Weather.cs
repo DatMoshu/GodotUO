@@ -30,6 +30,7 @@ internal partial class GameScene
         state.LastTicks = now;
         state.Step(dt, WeatherLab.IsRain(_world));
         bool simulatedWaterRain = GUO.Labs.WaterRain.WaterRainLab.IsActive(_world);
+        bool enhancedGround = WeatherLab.EnhancedOwnsGround(Configuration.ProfileManager.CurrentProfile);
         // Fixed 512-slot spatial cache. Collisions evict old puddles; memory cannot grow.
         // Only known visible land is eligible; never infer water in unloaded cells.
         int candidates = 0;
@@ -65,7 +66,7 @@ internal partial class GameScene
                 if (covered || o != null) continue;
                 bool water = waterSurface != null;
                 // Preserve density gating and avoid double-stamping styled water.
-                bool puddle = !water && state.Settings.Puddles && ((land.X * 73u ^ land.Y * 193u) % 100 < state.Settings.PuddleDensity)
+                bool puddle = !water && !enhancedGround && state.Settings.Puddles && ((land.X * 73u ^ land.Y * 193u) % 100 < state.Settings.PuddleDensity)
                     && (state.Settings.PuddleTiles.Contains(land.Graphic) ||
                     state.Settings.Cobblestone && (land.TileData.Name?.Contains("cobblestone", StringComparison.OrdinalIgnoreCase) ?? false));
                 if ((!water || !state.Settings.WaterDrops) && !puddle) continue;
