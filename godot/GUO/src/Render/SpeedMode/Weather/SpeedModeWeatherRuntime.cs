@@ -31,6 +31,15 @@ public partial class SpeedModeWeatherRuntime : Node
     private uint _tick;
     private bool _armed, _released;
     internal bool Bound { get; private set; }
+    // PORT DEVIATION (GUO): task 1149. Bound is wiped by the game thread's per-frame ResetFrame
+    // before the next queue pass, so Labs cannot read it. This is the last published result:
+    // written on the render thread (Volatile), read on the game thread, like
+    // OrderedWorldCapture.LastFrameEnhancedLit. Cleared on reject and release. NOT on Invalidated: the batcher
+    // clears the surface binding on the game thread at every frame begin, before the Labs queue pass; a failed
+    // frame is covered by LastFrameEnhancedLit (Labs ANDs the two).
+    private static int _lastFrameBound;
+    internal static bool LastFrameBound => System.Threading.Volatile.Read(ref _lastFrameBound) != 0;
+    private static void SetLastFrameBound(bool bound) => System.Threading.Volatile.Write(ref _lastFrameBound, bound ? 1 : 0);
     internal long BoundSequence { get; private set; }
 
     internal void Initialize(RenderTarget2D target)
@@ -85,6 +94,7 @@ public partial class SpeedModeWeatherRuntime : Node
             Bound = SpeedModeWeatherTargets.BindCurrent(_world, _profile, _state, _expectedSurface,
                 frame.Sequence, _tick, _color, size, _camera, _artScale, _seconds, _rain, _wet, _fog, _batcher, _daylight);
             BoundSequence = Bound ? frame.Sequence : 0;
+            SetLastFrameBound(Bound);
             if (!Bound) { ResetFrame(); return; }
             bool replaceLines = Bound && _rain.Active;
             DrawPass(0, _wet, _wet.Visible, size);
@@ -96,6 +106,7 @@ public partial class SpeedModeWeatherRuntime : Node
         }
         catch (Exception error)
         {
+            SetLastFrameBound(false);
             ClearOutputs();
             GD.PrintErr("[speed-weather] frame rejected: " + error.Message);
         }
@@ -129,6 +140,7 @@ public partial class SpeedModeWeatherRuntime : Node
     {
         if (_released) return;
         _released = true;
+        SetLastFrameBound(false);
         SpeedModeBindings.LightReady -= OnLightReady;
         SpeedModeBindings.Invalidated -= OnInvalidated;
         ClearOutputs();
