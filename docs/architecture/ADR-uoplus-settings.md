@@ -91,3 +91,38 @@ no filtering changes or new engine dependency. Native pixels stay nearest.
 ## GDD Requirements Addressed
 
 Owner's 2026-10-21 UO+ toggles-surface assignment (#12070); no registered GDD.
+
+## Amendment 2026-11-01: GUO options category (task 1136, owner request)
+
+The owner asked for every GUO addition in one GUO category, with buttons that
+open focused detail menus, one source of truth, checked flows, and legacy
+effects off while they would clash with the new systems.
+
+- **Classic Options** gains a **GUO** page (page 13). Its first section has three
+  buttons, *Lighting and shadows*, *Weather and ambience* and *World map and
+  water*, each with a one-line effective-state summary (`GuoOptions.Summary`)
+  that refreshes when a panel applies (`GuoOptions.Applied`). The other GUO
+  additions (Enhanced HD, HD filtering, window handles, grid containers,
+  touch and second screen, controller, background, screen saver, screen
+  effects, start, mods, content audio) moved from the native pages to this page;
+  native UO pages keep only upstream controls.
+- **Modern Options** gains the same GUO page; its rows open the same panels.
+- **One editor per setting.** `UoPlusOptionsGump` takes a `GuoSection`; each
+  section builds, applies and resets only its own fields
+  (`GuoOptions.ResetSection`). Lighting owns speed mode, its children, spell
+  lights, classic realtime lights (moved here) and the Labs clock; Weather owns
+  weather, fog, haze, wind, ambient effects and the cap; World owns water, shard
+  consent, ripples, world overview and Touch UI. Classic and Modern Options no
+  longer hold copies, so a parent Apply cannot rewrite a panel's values (the old
+  stale-overwrite bug). Cancel writes nothing. The live clock stays immediate.
+- **Effect ownership** (`GuoEffectPolicy`). Spell-effect lights follow whichever
+  lighting is active (enhanced or classic realtime). Classic native shadows yield
+  only while the previous frame was lit by the enhanced path *and* produced an
+  enhanced sun or lamp shadow; any failed, disabled or shadowless frame restores
+  them on the next frame. Stored preferences are never rewritten; the Lighting
+  panel shows the effective state. Classic light-target preparation for
+  same-frame fallback is unchanged.
+- Not covered: Labs weather overlap with enhanced rain, and PostFx bloom reading
+  the classic light target.
+- Checks: `GuoEffectPolicyProbe` and `GuoOptionsFlowProbe` (smoke; the latter
+  was shown to fail when a stale write is reintroduced).
