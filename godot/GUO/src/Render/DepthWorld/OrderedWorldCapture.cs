@@ -589,8 +589,10 @@ internal sealed partial class OrderedWorldCapture : IDisposable
                     foreach (var m in mats)
                         if (m.IsValid)
                         {
-                            RenderingServer.MaterialSetParam(m, "light_tex", rid);
+                            // Ambient first: if the texture write failed, the classic texture with this
+                            // ambient can only under-bloom, never wash out (review 1150).
                             RenderingServer.MaterialSetParam(m, "light_ambient", GlowAmbient);
+                            RenderingServer.MaterialSetParam(m, "light_tex", rid);
                             elected++;
                         }
             }
