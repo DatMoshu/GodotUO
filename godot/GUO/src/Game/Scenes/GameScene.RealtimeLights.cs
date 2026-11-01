@@ -186,6 +186,7 @@ namespace GUO.Game.Scenes
 
                 RealtimeLightTexture = _rtTarget.Texture;
                 renderTargets.LightOverride = RealtimeLightTexture;
+                renderTargets.LightOverrideAmbient = new Godot.Vector3(_rtField.Ambient.R, _rtField.Ambient.G, _rtField.Ambient.B);
 
                 if (Time.Ticks - _rtLogAt > 5000)
                 {

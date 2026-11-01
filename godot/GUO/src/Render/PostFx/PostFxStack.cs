@@ -117,6 +117,13 @@ namespace GUO.Renderer.PostFx
 
         public event Action PresetChanged;
 
+        /// <summary>Which light the last Process fed to light_tex: "classic" or "realtime" (task 1150).</summary>
+        internal string LastLightInput { get; private set; } = "classic";
+#if GUO_LABS
+        /// <summary>Labs witness only: 0 normal, 1 force the classic target, 2 feed the raw field.</summary>
+        internal static int LabsLightInput;
+#endif
+
         /// <summary>The GPU time of the last frame's post-processing, in ms (0 when Classic).</summary>
         public double LastGpuMs =>
             _viewport != null ? RenderingServer.ViewportGetMeasuredRenderTimeGpu(_viewport.GetViewportRid()) : 0;
@@ -167,7 +174,8 @@ namespace GUO.Renderer.PostFx
         /// The texture to draw for the world this frame. <paramref name="light"/>
         /// is offered to passes that declare <c>light_tex</c>.
         /// </summary>
-        public Texture2D Process(RenderTarget2D world, RenderTarget2D light)
+        public Texture2D Process(RenderTarget2D world, RenderTarget2D light,
+            Texture2D lightOverride = null, Vector3 lightAmbient = default)
         {
             Housekeeping();
             LastWorld = world;
@@ -228,7 +236,19 @@ namespace GUO.Renderer.PostFx
             {
                 if (b.material.Shader != null && HasUniform(b.material.Shader, "light_tex"))
                 {
-                    b.material.SetShaderParameter("light_tex", light?.Texture);
+                    // Realtime lights: their field replaces the (cleared) classic target,
+                    // with its ambient for the pass to subtract. Otherwise classic, zero.
+                    bool own = lightOverride != null && GodotObject.IsInstanceValid(lightOverride);
+#if GUO_LABS
+                    if (LabsLightInput == 1) own = false;               // witness: the pre-1150 classic input
+                    else if (LabsLightInput == 2 && own) lightAmbient = default; // witness: raw field, no subtraction
+#endif
+                    LastLightInput = own ? "realtime" : "classic";
+                    b.material.SetShaderParameter("light_tex", own ? lightOverride : light?.Texture);
+                    if (HasUniform(b.material.Shader, "light_ambient"))
+                    {
+                        b.material.SetShaderParameter("light_ambient", own ? lightAmbient : Vector3.Zero);
+                    }
                 }
 
                 if (_idViewport != null && b.material.Shader != null && HasUniform(b.material.Shader, "id_tex"))

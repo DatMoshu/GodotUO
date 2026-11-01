@@ -39,6 +39,9 @@ namespace GUO.Renderer
         // PORT DEVIATION (GUO): Realtime lights (ADR-0039) draw their own
         // light texture; set, it is blended in place of the classic target.
         public Texture2D LightOverride { get; set; }
+        // PORT DEVIATION (GUO): the realtime field's ambient, set with LightOverride.
+        // Only the Glow preset reads it, to bloom local light, not the daylight floor.
+        internal Vector3 LightOverrideAmbient;
         // PORT DEVIATION (GUO): ADR-0048 defers the light branch election until
         // this frame's surface/light transaction succeeds; fallback stays classic.
         internal Func<BlendState> SpeedLightBlend;
@@ -184,7 +187,10 @@ namespace GUO.Renderer
                 // PORT DEVIATION (GUO): the world goes through the post-processing
                 // stack (ADR-0023). With Classic, the default, this is the world
                 // target's own texture, drawn exactly as upstream draws it.
-                PostFx.PostFxStack.Instance.Process(WorldRenderTarget, LightRenderTarget),
+                // Realtime lights (not the deferred enhanced path, whose success is only
+                // known at presentation) hand Glow their own field minus its ambient.
+                PostFx.PostFxStack.Instance.Process(WorldRenderTarget, LightRenderTarget,
+                    SpeedLightBlend == null ? LightOverride : null, LightOverrideAmbient),
                 _gameWorldSceneOnScreen,
                 fullAlphaNoColor,
                 0f

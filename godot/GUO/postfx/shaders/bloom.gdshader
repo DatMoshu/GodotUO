@@ -8,6 +8,7 @@ render_mode blend_disabled;
 
 uniform sampler2D source : hint_screen_texture, filter_nearest;
 uniform sampler2D light_tex : filter_nearest;
+uniform vec3 light_ambient = vec3(0.0);   // realtime field's ambient, subtracted so daylight does not bloom; 0 for the classic target
 uniform float threshold : hint_range(0.0, 1.0, 0.01) = 0.55;
 uniform float radius : hint_range(1.0, 12.0, 0.5) = 6.0;
 uniform float intensity : hint_range(0.0, 2.0, 0.01) = 0.7;
@@ -15,7 +16,7 @@ uniform float from_world : hint_range(0.0, 1.0, 0.01) = 0.25;   // how much brig
 uniform vec4 glow_tint : source_color = vec4(1.0, 0.86, 0.6, 1.0);
 
 float bright(vec2 uv) {
-	vec3 lt = texture(light_tex, uv).rgb;
+	vec3 lt = max(texture(light_tex, uv).rgb - light_ambient, vec3(0.0));
 	vec3 w = texture(source, uv).rgb;
 	float l = max(max(lt.r, lt.g), lt.b);
 	float wl = dot(w, vec3(0.299, 0.587, 0.114)) * from_world;

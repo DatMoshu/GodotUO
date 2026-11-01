@@ -24,7 +24,7 @@ namespace GUO.Renderer.PostFx
     internal static class PostFxUniforms
     {
         // Filled by the framework, never shown: the inputs, not the knobs.
-        private static readonly HashSet<string> Inputs = new() { "source", "light_tex", "classic_tex", "split" };
+        private static readonly HashSet<string> Inputs = new() { "source", "light_tex", "light_ambient", "classic_tex", "split" };
 
         private static readonly System.Collections.Generic.Dictionary<ulong, List<PostFxUniform>> _cache = new();
 
