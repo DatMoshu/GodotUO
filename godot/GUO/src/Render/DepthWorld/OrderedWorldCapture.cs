@@ -22,6 +22,11 @@ internal sealed partial class OrderedWorldCapture : IDisposable
     internal static long ReferencedQuads, DynamicCaptureBytes, ReplayedQuads;
     internal static string LastFallback;
     internal static bool LastFrameOnPass;
+    // GUO task 1136: written by the render thread (and Fallback/Retire/Dispose), read by the
+    // game thread while it records the next frame's views. Volatile int; see GuoEffectPolicy.
+    private static int _lastFrameEnhancedLit;
+    internal static bool LastFrameEnhancedLit => Volatile.Read(ref _lastFrameEnhancedLit) != 0;
+    internal static void SetEnhancedLit(bool lit) => Volatile.Write(ref _lastFrameEnhancedLit, lit ? 1 : 0);
     internal static int InjectFailure; // Probe only: 1 before upload, 2 after recording, 3/4 geometry/order, 5/6 before/after state upload.
     internal static int InjectResidentFailureAfter = -1; // Diagnostic admission failure, no runtime option.
     internal static bool InjectStateIndexFault; // Probe-only oracle negative control; no runtime option.
@@ -72,6 +77,7 @@ internal sealed partial class OrderedWorldCapture : IDisposable
         if (_disposed || Interlocked.CompareExchange(ref _sceneRetiring, 1, 0) != 0) return;
         CancelUnsubmittedFrame();
         Recording = false;
+        SetEnhancedLit(false);
         ClearSurfaceBinding(true);
         // Submitted callbacks retain their immutable inputs until this serialized
         // retirement runs. New captures are refused until retirement completes.
@@ -554,6 +560,7 @@ internal sealed partial class OrderedWorldCapture : IDisposable
             if(SpeedClassicCompose.IsValid) RenderingServer.CanvasItemSetVisible(SpeedClassicCompose,!lit);
             if(SpeedCompose.IsValid) RenderingServer.CanvasItemSetVisible(SpeedCompose,lit);
             LastFrameOnPass = success;
+            SetEnhancedLit(lit);
             RecordTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started;
             Volatile.Write(ref _pending, 0);
         }
@@ -562,6 +569,7 @@ internal sealed partial class OrderedWorldCapture : IDisposable
     internal static void Fallback(string reason)
     {
         LastFrameOnPass = false;
+        SetEnhancedLit(false);
         FramesFallback++;
         if (LastFallback != reason) GD.Print("[rd-world] canvas fallback: " + reason);
         LastFallback = reason;
@@ -571,6 +579,7 @@ internal sealed partial class OrderedWorldCapture : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        SetEnhancedLit(false);
         RenderingServer.FramePreDraw -= BeforeDraw;
         // Queued after outstanding callbacks; their immutable lists remain alive until then.
         RenderingServer.CallOnRenderThread(Callable.From(() =>

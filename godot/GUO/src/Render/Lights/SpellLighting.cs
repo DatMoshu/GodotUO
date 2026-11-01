@@ -8,8 +8,7 @@ namespace GUO.Renderer.Lights;
 
 internal static class SpellLighting
 {
-    internal static bool Enabled(Profile profile) => profile is { RealtimeLights: true }
-        && UoPlusOptions.Enabled(profile, UoPlusFeature.SpellLights);
+    internal static bool Enabled(Profile profile) => GuoEffectPolicy.SpellLightsEligible(profile);
 
     internal static int Budget(Profile profile) =>
         (RealtimeLightEffects.MaxSpellLights * UoPlusOptions.Density(profile, UoPlusFeature.SpellLights) + 99) / 100;

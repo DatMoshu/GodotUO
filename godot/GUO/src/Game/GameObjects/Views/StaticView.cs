@@ -83,6 +83,7 @@ namespace GUO.Game.GameObjects
                 posY,
                 hueVec,
                 ProfileManager.CurrentProfile.ShadowsEnabled
+                    && !GUO.Configuration.GuoEffectPolicy.ClassicShadowsSuppressed(ProfileManager.CurrentProfile) // PORT DEVIATION (GUO): task 1136
                     && ProfileManager.CurrentProfile.ShadowsStatics
                     && (isTree || ItemData.IsFoliage || StaticFilters.IsRock(graphic)),
                 depth,

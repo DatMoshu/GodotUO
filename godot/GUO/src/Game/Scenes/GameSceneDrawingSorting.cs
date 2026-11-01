@@ -702,6 +702,7 @@ namespace GUO.Game.Scenes
             // hacky way to render shadows without z-fight
             bool isShadow =
                 ProfileManager.CurrentProfile.ShadowsEnabled
+                && !GUO.Configuration.GuoEffectPolicy.ClassicShadowsSuppressed(ProfileManager.CurrentProfile) // PORT DEVIATION (GUO): task 1136
                 && ProfileManager.CurrentProfile.ShadowsStatics
                 && (
                     StaticFilters.IsTree(obj.Graphic, out _)
