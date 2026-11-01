@@ -11,6 +11,7 @@ using System.Reflection;
 using Godot;
 using GUO.Configuration;
 using GUO.Game.Managers;
+using GUO.Host;
 using GUO.Game.UI.Controls;
 using GUO.Renderer.Lights;
 using GUO.Renderer.SpeedMode;
@@ -181,6 +182,10 @@ public partial class GuoOptionsFlowProbe : Node
             await Step("classic pages", () => ClassicPages(world, tmp));
             await Step("modern options", () => Modern(world, tmp));
             await Step("effect policy", EffectPolicy);
+            await Step("modern -> panel clicks", () => ModernPanels(world, tmp));
+            await Step("modern apply keeps panel fields", () => ModernKeepsPanel(world, tmp));
+            await Step("persistence round trip", () => Persistence(world, tmp));
+            await Step("shard water consent", () => ShardWater(world, tmp));
             string shots = OS.GetEnvironment("GUO_OPTIONS_CAPTURE");
             if (!string.IsNullOrWhiteSpace(shots)) await Capture(world, tmp, shots);
         }
@@ -193,7 +198,7 @@ public partial class GuoOptionsFlowProbe : Node
         }
 
         foreach (var n in _notes) GD.Print("[guo-options-flow] note: " + n);
-        if (_failures == 0) GD.Print($"[guo-options-flow] PASS: {_checks} checks (stale-overwrite, reverse order, section scope, construction, summary, classic pages, modern, effect policy)");
+        if (_failures == 0) GD.Print($"[guo-options-flow] PASS: {_checks} checks (stale-overwrite, reverse order, section scope, construction, summary, classic pages, modern, effect policy, modern->panel, persistence, shard water)");
         else GD.PrintErr($"[guo-options-flow] FAIL: {_failures} of {_checks} checks failed");
         return _failures == 0;
     }
@@ -439,5 +444,199 @@ public partial class GuoOptionsFlowProbe : Node
         Check(!SpellLighting.Enabled(p), "speed-only profile + speed mode inactive: spell lights off");
         p.RealtimeLights = true;
         Check(SpellLighting.Enabled(p), "realtime-only: spell lights enabled");
+    }
+
+    private static object ModernRow(System.Collections.IList list, string page, string label)
+    {
+        foreach (var s in list)
+        {
+            var t = s.GetType();
+            if ((string)t.GetField("Page").GetValue(s) == page && (string)t.GetField("Label").GetValue(s) == label) return s;
+        }
+        return null;
+    }
+
+    private static string ProfileFile(string tmp) => System.IO.Path.Combine(tmp, "profile.json");
+
+    private static void StagePanelEdit(UoPlusOptionsGump panel, GuoSection section)
+    {
+        switch (section)
+        {
+            case GuoSection.Lighting: F<HSliderBar>(panel, "_speedNightFloor").Value = 37; break;
+            case GuoSection.Weather: F<HSliderBar>(panel, "_speedHaze").Value = 21; break;
+            case GuoSection.World: F<Combobox>(panel, "_overviewStyle").SelectedIndex = 3; break;
+        }
+    }
+
+    // 9: Modern GUO rows open the matching panel; panel Apply / Cancel
+    private void ModernPanels(World world, string tmp)
+    {
+        var p = new Profile();
+        tmp = System.IO.Path.Combine(tmp, "modern-panels"); System.IO.Directory.CreateDirectory(tmp);
+        SetCurrent(p, tmp);
+        var view = new GUO.Input.Touch.Modern.ModernOptions(world);
+        try
+        {
+            var list = (System.Collections.IList)typeof(GUO.Input.Touch.Modern.ModernOptions).GetField("_settings", Inst).GetValue(view);
+            var cases = new[]
+            {
+                ("Lighting and shadows...", GuoSection.Lighting), ("Weather and ambience...", GuoSection.Weather), ("World map and water...", GuoSection.World),
+            };
+            foreach (var (label, section) in cases)
+            {
+                UIManager.GetGump<UoPlusOptionsGump>()?.Dispose();
+                var row = ModernRow(list, "GUO", label);
+                Check(row != null, "Modern row present: " + label);
+                if (row == null) continue;
+                var run = (Action)row.GetType().GetField("Run").GetValue(row);
+                run();
+                var panel = UIManager.GetGump<UoPlusOptionsGump>();
+                Check(panel != null, label + " click opens a UoPlusOptionsGump");
+                if (panel == null) continue;
+                Check(F<GuoSection>(panel, "_section") == section, $"{label} opens section {section}, got {F<GuoSection>(panel, "_section")}");
+                _notes.Add($"Modern IsOpen after '{label}' click: {GUO.Input.Touch.Modern.ModernGump.IsOpen} (view never Shown headless, so Close() is a no-op)");
+
+                string before = LightingSnap(p) + "|" + WeatherSnap(p) + "|" + WorldSnap(p);
+                StagePanelEdit(panel, section);
+                panel.OnButtonClick(1); // Cancel
+                Check(panel.IsDisposed, label + " Cancel closes");
+                Check(before == LightingSnap(p) + "|" + WeatherSnap(p) + "|" + WorldSnap(p), label + " Cancel writes nothing to the profile");
+                Check(!System.IO.File.Exists(ProfileFile(tmp)), label + " Cancel writes no profile file");
+
+                run();
+                panel = UIManager.GetGump<UoPlusOptionsGump>();
+                Check(panel != null && F<GuoSection>(panel, "_section") == section, label + " reopens with the same section");
+                if (panel == null) continue;
+                StagePanelEdit(panel, section);
+                Check(panel.ApplyChanges(), label + " panel Apply");
+                switch (section)
+                {
+                    case GuoSection.Lighting: Check(p.SpeedModeNightFloor == 37, "profile night floor 37, got " + p.SpeedModeNightFloor); break;
+                    case GuoSection.Weather: Check(p.SpeedModeMorningHaze == 21, "profile haze 21, got " + p.SpeedModeMorningHaze); break;
+                    case GuoSection.World: Check(p.WorldOverviewStyle == 3, "profile overview style 3, got " + p.WorldOverviewStyle); break;
+                }
+                panel.Dispose();
+            }
+        }
+        finally { UIManager.GetGump<UoPlusOptionsGump>()?.Dispose(); view.QueueFree(); }
+    }
+
+    // 10: Modern Apply must not clobber panel-owned fields
+    private void ModernKeepsPanel(World world, string tmp)
+    {
+        var p = NonDefault();
+        SetCurrent(p, tmp);
+        var view = new GUO.Input.Touch.Modern.ModernOptions(world);
+        try
+        {
+            string snap = LightingSnap(p) + "|" + WeatherSnap(p) + "|" + WorldSnap(p);
+            var list = (System.Collections.IList)typeof(GUO.Input.Touch.Modern.ModernOptions).GetField("_settings", Inst).GetValue(view);
+            var grid = ModernRow(list, "GUO", "Grid view");
+            Check(grid != null, "Modern Grid view row present");
+            if (grid == null) return;
+            var values = (System.Collections.IDictionary)typeof(GUO.Input.Touch.Modern.ModernOptions).GetField("_values", Inst).GetValue(view);
+            bool g0 = p.GridContainers;
+            values[grid] = !g0;
+            try { Invoke(view, "Apply"); }
+            catch (Exception e) { Check(false, "Modern Apply threw: " + e); return; }
+            Check(p.GridContainers == !g0, "Modern Apply wrote Grid view");
+            string after = LightingSnap(p) + "|" + WeatherSnap(p) + "|" + WorldSnap(p);
+            Check(snap == after, "Modern Apply left lighting/weather/world fields intact: " + snap + " vs " + after);
+            Check(System.IO.File.Exists(ProfileFile(tmp)), "Modern Apply saved profile.json to the scratch path");
+        }
+        finally { view.QueueFree(); }
+    }
+
+    // 11: panel Apply(save) then reload the JSON
+    private void Persistence(World world, string tmp)
+    {
+        string dir = System.IO.Path.Combine(tmp, "persist");
+        System.IO.Directory.CreateDirectory(dir);
+        var p = new Profile();
+        SetCurrent(p, dir);
+        foreach (var section in new[] { GuoSection.Lighting, GuoSection.Weather, GuoSection.World })
+        {
+            var panel = Panel(world, p, section);
+            switch (section)
+            {
+                case GuoSection.Lighting:
+                    Box(panel, "Lighting speed mode (GPU per-pixel lights)").IsChecked = true;
+                    Box(panel, "Classic realtime lights (CPU)").IsChecked = true;
+                    F<HSliderBar>(panel, "_speedNightFloor").Value = 43; F<HSliderBar>(panel, "_speedSoften").Value = 6;
+                    F<Combobox>(panel, "_speedLampShadows").SelectedIndex = 2; F<Checkbox>(panel, "_speedSunShadows").IsChecked = false; break;
+                case GuoSection.Weather:
+                    F<Checkbox>(panel, "_speedFog").IsChecked = false; F<HSliderBar>(panel, "_speedHaze").Value = 27;
+                    F<HSliderBar>(panel, "_speedWind").Value = 60; F<HSliderBar>(panel, "_cap").Value = 150; break;
+                case GuoSection.World:
+                    F<Checkbox>(panel, "_overview").IsChecked = true; F<Combobox>(panel, "_overviewStyle").SelectedIndex = 2;
+                    F<Combobox>(panel, "_touchUi").SelectedIndex = 1; break;
+            }
+            Check(panel.ApplyChanges(save: true), section + " panel Apply(save)");
+            panel.Dispose();
+        }
+        string expected = LightingSnap(p) + "|" + WeatherSnap(p) + "|" + WorldSnap(p);
+        string file = ProfileFile(dir);
+        bool saved = System.IO.File.Exists(file);
+        Check(saved == world.InGame, "panel save writes a file exactly when World.InGame (InGame=" + world.InGame + ", saved=" + saved + ")");
+        if (!saved)
+        {
+            _notes.Add("panel Apply(save:true) does not save headless (World.InGame false); round trip done by serialising the Profile with ProfileJsonContext directly");
+            ConfigurationResolver.Save(p, file, ProfileJsonContext.DefaultToUse.Profile);
+        }
+        var back = ConfigurationResolver.Load<Profile>(file, ProfileJsonContext.DefaultToUse.Profile);
+        Check(back != null, "profile JSON reloads");
+        if (back == null) return;
+        string got = LightingSnap(back) + "|" + WeatherSnap(back) + "|" + WorldSnap(back);
+        Check(got == expected, $"lighting/weather/world round-trip: [{expected}] vs [{got}]");
+        Check(back.SpeedModeNightFloor == 43 && back.SpeedModeMorningHaze == 27 && back.WorldOverviewStyle == 2 && back.TouchUi == true, "spot values survive JSON");
+    }
+
+    // 12: shard water consent through a scratch ShardSession + Settings.GlobalSettings
+    private void ShardWater(World world, string tmp)
+    {
+        const string Consent = "Use this shard's water settings (consent)";
+        var oldSession = ShardSession.Current;
+        string oldIp = Settings.GlobalSettings.IP; ushort oldPort = Settings.GlobalSettings.Port;
+        try
+        {
+            Settings.GlobalSettings.IP = "scratch.invalid"; Settings.GlobalSettings.Port = 25930;
+            ShardSession.SetCurrentForProbe(new ShardSession.Data
+            {
+                Host = "scratch.invalid", Port = 25930, ContentUrl = "http://scratch.invalid/content", ContentLock = "scratch",
+                Water = new GUO.Store.StoreWaterPolicy { Default = "uo", Allowed = new[] { "classic", "uo" }, Lock = true },
+            });
+            Check(WaterRender.ShardPolicy != null, "scratch shard policy active");
+            var p = new Profile();
+            SetCurrent(p, tmp);
+            string personal = p.WaterStyle;
+            var panel = Panel(world, p, GuoSection.World);
+            var box = Box(panel, Consent);
+            Check(box != null && !box.IsChecked, "consent checkbox present and unchecked before consent");
+            if (box == null) return;
+            box.IsChecked = true;
+            Check(panel.ApplyChanges(save: false), "apply with consent");
+            Check(WaterRender.ShardAccepted(p) && p.ShardWaterConsent == WaterRender.ShardConsentKey, "consent recorded under the shard key");
+            Check(p.ShardWaterStyle == "uo", "accepted shard starts at policy default, got '" + p.ShardWaterStyle + "'");
+            Check(p.WaterStyle == personal, "personal WaterStyle untouched by shard consent");
+            panel.Dispose();
+
+            var again = Panel(world, p, GuoSection.World);
+            var box2 = Box(again, Consent);
+            Check(box2 != null && box2.IsChecked, "reopen shows consent checked");
+            Check(WaterRender.PlayerChoiceLists(p).Ids.Contains("uo"), "locked choice list contains the shard default");
+            if (box2 == null) return;
+            box2.IsChecked = false;
+            Check(!F<Combobox>(again, "_water").IsEnabled, "toggling consent off disables the style combo until reopen");
+            Check(again.ApplyChanges(save: false), "apply revoke");
+            Check(p.ShardWaterConsent == "" && !WaterRender.ShardAccepted(p), "revoke clears consent");
+            Check(p.WaterStyle == personal, "personal WaterStyle still untouched after revoke");
+            again.Dispose();
+        }
+        finally
+        {
+            ShardSession.SetCurrentForProbe(oldSession);
+            Settings.GlobalSettings.IP = oldIp; Settings.GlobalSettings.Port = oldPort;
+        }
+        Check(ShardSession.Current == oldSession, "scratch shard session restored");
     }
 }
