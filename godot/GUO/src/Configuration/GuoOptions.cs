@@ -29,8 +29,8 @@ internal static class GuoOptions
                     if (!SpeedModeDebug.Supported)
                         return "Enhanced lighting unavailable: " + (SpeedModeDebug.UnavailableReason ?? "not supported here");
                     string text = "Enhanced lighting on";
-                    if (profile.SpeedModeSunShadows) text += " · sun shadows";
-                    if (profile.SpeedModeLampShadows > 0) text += $" · {profile.SpeedModeLampShadows} lamp shadows";
+                    if (profile.SpeedModeSunShadows) text += ", sun shadows";
+                    if (profile.SpeedModeLampShadows > 0) text += $", {profile.SpeedModeLampShadows} lamp shadows";
                     return text;
                 }
                 return profile.RealtimeLights ? "Classic realtime lights" : "Classic lighting";
@@ -44,14 +44,14 @@ internal static class GuoOptions
                 foreach (var f in UoPlusOptions.Features)
                     if ((f.Id & WeatherFeatures) != 0 && UoPlusOptions.Enabled(profile, f.Id)) ambient++;
                 if (ambient > 0) parts.Add(ambient == 1 ? "1 ambient effect" : $"{ambient} ambient effects");
-                return parts.Count == 0 ? "Weather effects off" : string.Join(" · ", parts);
+                return parts.Count == 0 ? "Weather effects off" : string.Join(", ", parts);
             }
             case GuoSection.World:
             {
                 var choices = WaterRender.PlayerChoiceLists(profile);
                 int index = WaterRender.PlayerChoiceIndex(profile);
                 string water = index >= 0 && index < choices.Names.Length ? choices.Names[index] : "Classic";
-                return $"Water: {water} · world map {(profile.ExperimentalWorldOverview ? "on" : "off")}";
+                return $"Water: {water}, world map {(profile.ExperimentalWorldOverview ? "on" : "off")}";
             }
             default:
                 return "";
