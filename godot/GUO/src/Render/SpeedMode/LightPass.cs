@@ -260,9 +260,14 @@ internal sealed partial class OrderedWorldDevice
         if(SurfaceReady) SpeedModeBindings.PublishSurface(this,SurfaceTexture,SurfaceOrigin,Size);
         else SpeedModeBindings.Clear(this);
     }
+    // PORT DEVIATION (GUO) task 1152: a size change retires the light target inside the frame's render-thread
+    // transaction, after the canvas already queued SpeedLightTexture's RS wrapper. Like Presenter, the wrapper is
+    // kept across that replacement (it is re-pointed when the light pass renders again; SpeedLightReady stays
+    // false and the compose item stays hidden until then) instead of being reset to an empty texture.
+    private bool _keepSpeedLightWrapper;
     private void DisposeLightRT()
     {
-        SpeedLightReady=false; SpeedLightTexture.TextureRdRid=default;
+        SpeedLightReady=false; if(!_keepSpeedLightWrapper) SpeedLightTexture.TextureRdRid=default;
         DisposeLightPresentationRT();
         DisposeSoftenRT();
         if(_rd==null) return;

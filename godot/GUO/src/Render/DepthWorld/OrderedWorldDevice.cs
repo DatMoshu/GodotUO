@@ -628,7 +628,8 @@ internal sealed partial class OrderedWorldDevice
     // Do not call DisposeRT twice while a frame callback still references this object.
     public void DisposeRT(bool detachPresenter = true)
     {
-        DisposeSurfaceRT();
+        _keepSpeedLightWrapper = !detachPresenter; // PORT DEVIATION (GUO) task 1152: see LightPass.DisposeLightRT
+        try { DisposeSurfaceRT(); } finally { _keepSpeedLightWrapper = false; }
         if (_rd == null) return;
         // Replacement must retain the RS wrapper RID already queued by this frame.
         if (detachPresenter) Presenter.TextureRdRid = default;
