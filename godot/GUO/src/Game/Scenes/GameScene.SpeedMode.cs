@@ -98,7 +98,7 @@ internal partial class GameScene
             PrepareSpeedShadowInputs(frame,batcher,matrix);
             SpeedLightFrame.ReachTicks+=System.Diagnostics.Stopwatch.GetTimestamp()-reachStart;
             _speedLightOverride=batcher.QueueSpeedLight(frame);
-            if(_speedLightOverride!=null) { targets.LightOverride=_speedLightOverride; targets.SpeedLightBlend=_darknessBlend; }
+            if(_speedLightOverride!=null) { targets.LightOverride=_speedLightOverride; targets.SpeedLightBlend=_darknessBlend; targets.SpeedLightAmbient=frame.Ambient; }
         }
         catch(Exception error) { GD.PrintErr("[lighting-speed] classic lighting this frame: "+error.Message); }
         finally { _rtSourceCount=0; }

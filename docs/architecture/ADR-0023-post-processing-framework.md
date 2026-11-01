@@ -93,6 +93,8 @@ effect that wants light reads it as an input and does not replace that blend.
 | Uniform a shader may declare | Filled with | When |
 |---|---|---|
 | `light_tex` | `LightRenderTarget`'s texture | now (bloom from lights) |
+
+Task 1150 clarification: a pass that declares both `light_tex` and `light_ambient` (today `bloom`) is elected, inside the render-thread success transaction of the frame, to the light that actually lit that frame (the classic target, the CPU realtime field, or the enhanced speed light with its ambient in `light_ambient`); on any failure that frame keeps the classic input. A pass declaring only `light_tex` keeps the classic contract.
 | `palette_tex` | a palette strip from the preset (LUT or EGA/handheld palettes) | now |
 | `lut_tex` | a 3D LUT laid out as a strip (N*N x N) | now |
 | `id_tex` | the object-id buffer: one colour per world object (below) | built; the Silhouettes look uses it |

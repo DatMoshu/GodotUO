@@ -191,6 +191,8 @@ constants exactly as `OrderedWorldDevice` does today (`docs/engine-reference/god
 and R32F are checked with `TextureIsFormatSupportedForUsage` at init; an unsupported format disables the option
 with that reason. Compatibility has no RenderingDevice: the option is disabled there.
 
+Task 1150 note: PostFx materials elected to this frame's light (`light_tex`/`light_ambient` of Glow) are frame scoped like every other borrowed binding: the next `PostFxStack.Process` re-baselines them to the classic input, and `SpeedModeBindings.Clear`, a PostFx rebuild and any failed transaction reset them.
+
 ## GDD Requirements Addressed
 
 Owner request, task 959 (2026-10-29): realistic lighting, shadows, GI, improved water, simulations and presets

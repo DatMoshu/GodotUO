@@ -18,6 +18,12 @@ public sealed partial class UltimaBatcher2D
         if(!CanQueueSpeedLight) return null;
         _orderedWorld.SpeedLights=frame; return _orderedWorld.SpeedLightTexture;
     }
+    // PORT DEVIATION (GUO) task 1150: hand the render-thread transaction the PostFx materials to elect.
+    internal void PublishGlowLight(Rid[] materials,Vector3 ambient)
+    {
+        if(_orderedWorld?.SpeedLights==null || !CanQueueSpeedLight || !RenderingServer.IsOnRenderThread()) return;
+        _orderedWorld.GlowMaterials=materials; _orderedWorld.GlowAmbient=ambient;
+    }
     internal bool TryDrawSpeedLight(Texture2D classic,Texture2D light,Rectangle destination,Vector3 classicHue,BlendState speedBlend)
     {
         if(!SpeedModeDebug.Active || _orderedWorld?.SpeedLights==null || !CanQueueSpeedLight || light==null) return false;

@@ -27,6 +27,12 @@ internal sealed partial class OrderedWorldCapture : IDisposable
     private static int _lastFrameEnhancedLit;
     internal static bool LastFrameEnhancedLit => Volatile.Read(ref _lastFrameEnhancedLit) != 0;
     internal static void SetEnhancedLit(bool lit) => Volatile.Write(ref _lastFrameEnhancedLit, lit ? 1 : 0);
+    // PORT DEVIATION (GUO) task 1150: materials of light-consuming PostFx passes (light_tex + light_ambient)
+    // elected, in this frame's success transaction, to the light that lit the frame. Frame scoped.
+    internal Rid[] GlowMaterials; internal Vector3 GlowAmbient;
+    private static int _lastGlowElected;
+    /// <summary>Materials switched to the enhanced light in the last transaction (0 = classic stood). Read-out.</summary>
+    internal static int LastGlowElected => Volatile.Read(ref _lastGlowElected);
     internal static int InjectFailure; // Probe only: 1 before upload, 2 after recording, 3/4 geometry/order, 5/6 before/after state upload.
     internal static int InjectResidentFailureAfter = -1; // Diagnostic admission failure, no runtime option.
     internal static bool InjectStateIndexFault; // Probe-only oracle negative control; no runtime option.
@@ -88,7 +94,7 @@ internal sealed partial class OrderedWorldCapture : IDisposable
                 _device.DisableSurfaceRT(); // Also releases light inputs and optional GPU targets.
                 ClearSpeedLightConsumer();
                 SpeedLights = null;
-                SpeedClassicCompose = SpeedCompose = default;
+                SpeedClassicCompose = SpeedCompose = default; GlowMaterials = null;
             }
             finally { Volatile.Write(ref _sceneRetiring, 0); }
         }));
@@ -222,7 +228,7 @@ internal sealed partial class OrderedWorldCapture : IDisposable
         _occurrences.Clear(); _dynamic.Clear(); _states.Clear(); _segments.Clear(); _textures.Clear(); _commands.Clear();
         Records.Begin();
         _speedMode = SpeedMode.SpeedModeDebug.Active;
-        SpeedLights=null; SpeedClassicCompose=SpeedCompose=default;
+        SpeedLights=null; SpeedClassicCompose=SpeedCompose=default; GlowMaterials=null;
         if (_speedMode) { _surfaceRows ??= new(8192); _surfaceRows.Clear(); }
         _batchArtCount = _textureRuns = 0;
         _canvas = default;
@@ -561,15 +567,43 @@ internal sealed partial class OrderedWorldCapture : IDisposable
             if(SpeedCompose.IsValid) RenderingServer.CanvasItemSetVisible(SpeedCompose,lit);
             LastFrameOnPass = success;
             SetEnhancedLit(lit);
+            ElectGlowLight(lit);
             RecordTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started;
             Volatile.Write(ref _pending, 0);
         }
+    }
+
+    // PORT DEVIATION (GUO) task 1150 (ADR-0023): same transaction, same `lit`, as the compose flip above.
+    // Fails closed: anything missing leaves the classic baseline PostFxStack.Process wrote this frame.
+    private void ElectGlowLight(bool lit)
+    {
+        var mats = GlowMaterials; GlowMaterials = null;
+        int elected = 0;
+        try
+        {
+            var tex = lit ? _device.SpeedLightTexture : null;
+            if (mats != null && tex != null && Volatile.Read(ref _sceneRetiring) == 0 && RenderingServer.IsOnRenderThread())
+            {
+                var rid = tex.GetRid();
+                if (rid.IsValid)
+                    foreach (var m in mats)
+                        if (m.IsValid)
+                        {
+                            RenderingServer.MaterialSetParam(m, "light_tex", rid);
+                            RenderingServer.MaterialSetParam(m, "light_ambient", GlowAmbient);
+                            elected++;
+                        }
+            }
+        }
+        catch (Exception e) { GD.PrintErr("[postfx] glow light election failed; classic input: " + e.Message); }
+        Volatile.Write(ref _lastGlowElected, elected);
     }
 
     internal static void Fallback(string reason)
     {
         LastFrameOnPass = false;
         SetEnhancedLit(false);
+        Volatile.Write(ref _lastGlowElected, 0);
         FramesFallback++;
         if (LastFallback != reason) GD.Print("[rd-world] canvas fallback: " + reason);
         LastFallback = reason;

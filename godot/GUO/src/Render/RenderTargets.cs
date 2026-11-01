@@ -45,6 +45,8 @@ namespace GUO.Renderer
         // PORT DEVIATION (GUO): ADR-0048 defers the light branch election until
         // this frame's surface/light transaction succeeds; fallback stays classic.
         internal Func<BlendState> SpeedLightBlend;
+        // PORT DEVIATION (GUO) task 1150 (ADR-0023): the enhanced frame's ambient, for light-consuming PostFx passes.
+        internal Vector3 SpeedLightAmbient;
 
         /// <summary>The world target's size in its own pixels; see GameScene.DrawWorld.</summary>
         public Rectangle GameWorldSceneAfterDPI => _gameWorldSceneAfterDPI;
@@ -183,14 +185,20 @@ namespace GUO.Renderer
 
             batcher.SetSampler(_defaultSamplerState);
 
+            // PORT DEVIATION (GUO) task 1150: Process re-baselines Glow to the classic input; this publishes
+            // the pass materials so the frame's render-thread transaction can elect the enhanced light.
+            var glowOutput = PostFx.PostFxStack.Instance.Process(WorldRenderTarget, LightRenderTarget,
+                SpeedLightBlend == null ? LightOverride : null, LightOverrideAmbient);
+            if (SpeedLightBlend != null && PostFx.PostFxStack.Instance.TryGetLightElection(out var glowMaterials))
+                batcher.PublishGlowLight(glowMaterials, SpeedLightAmbient);
+
             batcher.Draw(
                 // PORT DEVIATION (GUO): the world goes through the post-processing
                 // stack (ADR-0023). With Classic, the default, this is the world
                 // target's own texture, drawn exactly as upstream draws it.
                 // Realtime lights (not the deferred enhanced path, whose success is only
                 // known at presentation) hand Glow their own field minus its ambient.
-                PostFx.PostFxStack.Instance.Process(WorldRenderTarget, LightRenderTarget,
-                    SpeedLightBlend == null ? LightOverride : null, LightOverrideAmbient),
+                glowOutput,
                 _gameWorldSceneOnScreen,
                 fullAlphaNoColor,
                 0f
