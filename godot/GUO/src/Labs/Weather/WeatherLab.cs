@@ -74,7 +74,8 @@ internal static class WeatherLab
     // water rings and the wet player stay (enhanced weather has neither). Decided
     // before the draw, as WaterRender.UpstreamWobble does; preferences are untouched.
     internal static bool EnhancedOwnsGround(Configuration.Profile p) =>
-        p is { LightingSpeedMode: true, SpeedModeWeather: true } && Renderer.SpeedMode.SpeedModeDebug.Supported;
+        p is { LightingSpeedMode: true, SpeedModeWeather: true } && Renderer.SpeedMode.SpeedModeDebug.Supported
+        && !Renderer.SpeedMode.SpeedModeDebug.GBuffer;
 
     internal static void Open(World world)
     {

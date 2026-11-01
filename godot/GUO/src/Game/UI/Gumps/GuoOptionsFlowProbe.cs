@@ -198,7 +198,7 @@ public partial class GuoOptionsFlowProbe : Node
         }
 
         foreach (var n in _notes) GD.Print("[guo-options-flow] note: " + n);
-        if (_failures == 0) GD.Print($"[guo-options-flow] PASS: {_checks} checks (stale-overwrite, reverse order, section scope, construction, summary, classic pages, modern, effect policy, modern->panel, persistence, shard water)");
+        if (_failures == 0) GD.Print($"[guo-options-flow] PASS: {_checks} checks (stale-overwrite, reverse order, section scope, construction, summary, classic pages, modern, effect policy, modern->panel, persistence (Profile JSON round-trip; panel save needs a live world and is not exercised headless), shard water)");
         else GD.PrintErr($"[guo-options-flow] FAIL: {_failures} of {_checks} checks failed");
         return _failures == 0;
     }

@@ -82,11 +82,14 @@ public partial class NativeShadowOwnershipProbe : Node
     }
     private async Task<Img> Settle(string name, int frames = 4) { Img last = null; for (int i = 0; i < frames; i++) last = (await Draw(i == frames - 1 ? name : null)).Img; return last; }
 
-    private static Diff Compare(Img a, Img b)
+    // Fixture neighbourhood around the centred player (fixed before the run; review 1149).
+    private const int BoxX0 = 440, BoxX1 = 840, BoxY0 = 200, BoxY1 = 520;
+    private static Diff Compare(Img a, Img b, bool fixtureOnly = false)
     {
         int n = 0, x0 = int.MaxValue, x1 = -1, y0 = int.MaxValue, y1 = -1;
         for (int i = 0; i < a.W * a.H; i++) {
             int o = i * 4;
+            if (fixtureOnly) { int px = i % a.W, py = i / a.W; if (px < BoxX0 || px > BoxX1 || py < BoxY0 || py > BoxY1) continue; }
             if (Math.Max(Math.Abs(a.Rgba[o] - b.Rgba[o]), Math.Max(Math.Abs(a.Rgba[o + 1] - b.Rgba[o + 1]), Math.Abs(a.Rgba[o + 2] - b.Rgba[o + 2]))) <= 8) continue;
             n++; int x = i % a.W, y = i / a.W; x0 = Math.Min(x0, x); x1 = Math.Max(x1, x); y0 = Math.Min(y0, y); y1 = Math.Max(y1, y);
         }
@@ -162,11 +165,11 @@ public partial class NativeShadowOwnershipProbe : Node
             var b = await ClassicPixels("b-enhanced-day");
             _profile.ShadowsEnabled = false; _profile.SpeedModeSunShadows = true; var sunOn = await Settle("b-sun-on-ref");
             _profile.SpeedModeSunShadows = false; var sunOff = await Settle("b-sun-off-ref"); _profile.SpeedModeSunShadows = true;
-            var bSun = Compare(sunOn, sunOff);
+            var bSun = Compare(sunOn, sunOff, fixtureOnly: true);
             _rows.Add(new { test = "b-enhanced-day", classic = b.D, seenOn = b.On, enhancedSunShadow = bSun });
             Check(b.On.Active && b.On.Lit && b.On.Produced && b.On.Suppressed, $"b: gates true on the shadows-on frame {b.On}");
             Check(b.D.Count <= MaxAbsent, $"b: classic tree shadow absent while enhanced ({b.D.Count} px, allow <= {MaxAbsent})");
-            Check(bSun.Count >= MinShadow, $"b: enhanced sun shadow present ({bSun.Count} px, need >= {MinShadow})");
+            Check(bSun.Count >= MinShadow, $"b: enhanced sun shadow present near the fixture ({bSun.Count} px in box, need >= {MinShadow})");
 
             // c) enhanced on, nothing produced (night, sun off, lamp shadows on, no lamp in reach) -> classic drawn
             _profile.SpeedModeSunShadows = false; _profile.SpeedModeLampShadows = 3; LightingTestClock.Seek(_profile, 0);
@@ -186,14 +189,15 @@ public partial class NativeShadowOwnershipProbe : Node
             _profile.ShadowsEnabled = false; await Settle(null, 3);
             var failRef = await Settle("d-fallback-ref", 2);
             OrderedWorldCapture.InjectFailure = 0;
-            int neither = 0; bool returned = false; var perFrame = new List<object>();
+            int neither = 0, gapAfterReturn = 0; bool returned = false; var perFrame = new List<object>();
             for (int i = 0; i < failFrames.Count; i++) {
                 var dd = Compare(failFrames[i].Img, failRef);
-                bool classic = dd.Count >= MinShadow; if (!classic && !returned) neither++; else returned = true;
+                bool classic = dd.Count >= MinShadow; if (!classic && !returned) neither++; else if (!classic) gapAfterReturn++; else returned = true;
                 perFrame.Add(new { frame = i + 1, classicPixels = dd.Count, seen = failFrames[i].Seen });
             }
             _rows.Add(new { test = "d-failure-fallback", framesWithNeither = neither, perFrame, lastFallback = OrderedWorldCapture.LastFallback });
             Check(returned, "d: classic shadows returned after forced failure");
+            Check(gapAfterReturn == 0, $"d: classic shadows stay after returning (gaps {gapAfterReturn})");
             Check(neither <= 1, $"d: at most the one-frame boundary shows neither shadow (measured {neither})");
 
             Check(!NetClient.Socket.IsConnected, "never connected"); Save();
