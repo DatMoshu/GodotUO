@@ -64,16 +64,22 @@ def shard_src() -> Path | None:
 
 
 def apply_check(src: Path, ref: str, patches: list[Path]) -> subprocess.CompletedProcess:
-    """git apply --check of patches, in order, on the pin, in a temporary index."""
+    """Apply the patches one at a time, in order, on the pin, in a temporary index, as fetch.bat does:
+    a later patch may change a file an earlier one created, which one combined git apply refuses."""
     with tempfile.TemporaryDirectory(prefix="guo-mu1-") as tmp:
         env = dict(os.environ, GIT_INDEX_FILE=str(Path(tmp) / "index"))
         subprocess.run(["git", "-C", str(src), "read-tree", ref], env=env, check=True)
-        return subprocess.run(
-            ["git", "-C", str(src), "apply", "--cached", "--check", *map(str, patches)],
-            env=env,
-            capture_output=True,
-            text=True,
-        )
+        result = None
+        for patch in patches:
+            result = subprocess.run(
+                ["git", "-C", str(src), "apply", "--cached", str(patch)],
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                break
+        return result
 
 
 class PatchListTests(unittest.TestCase):
