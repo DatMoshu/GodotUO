@@ -1,0 +1,294 @@
+diff --git a/Projects/UOContent/Custom/DFI/Loot/DfiLoot.cs b/Projects/UOContent/Custom/DFI/Loot/DfiLoot.cs
+new file mode 100644
+index 000000000..ec42b4e15
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Loot/DfiLoot.cs
+@@ -0,0 +1,173 @@
++// DFI Network loot rules, ported from the DefianceUO-based DFI RunUO shard
++// (Scripts/Misc/LootPack.cs helpers and Scripts/Custom/Misc/BaseCreatureLoot.cs).
++// The plague and elder bonuses are not ported: ModernUO has neither creature state.
++
++using System;
++using System.Collections.Generic;
++using Server.Engines.CannedEvil;
++using Server.Items;
++using Server.Mobiles;
++
++namespace Server.Custom.Dfi;
++
++public static class DfiLoot
++{
++    // Index by fame / 5000, clamped to Average..SuperBoss, exactly as DFI did.
++    public static LootPack GetLootPackFromFame(int fame) =>
++        Math.Clamp(fame / 5000, 2, 6) switch
++        {
++            2 => LootPack.Average,
++            3 => LootPack.Rich,
++            4 => LootPack.FilthyRich,
++            5 => LootPack.UltraRich,
++            _ => LootPack.SuperBoss
++        };
++
++    public static Item Mutate(Item item, int attributeCount, int min, int max, int luckChance)
++    {
++        switch (item)
++        {
++            case BaseWeapon weapon:
++                {
++                    BaseRunicTool.ApplyAttributesTo(weapon, false, luckChance, attributeCount, min, max);
++                    break;
++                }
++            case BaseArmor armor:
++                {
++                    BaseRunicTool.ApplyAttributesTo(armor, false, luckChance, attributeCount, min, max);
++                    break;
++                }
++            case BaseJewel jewel:
++                {
++                    BaseRunicTool.ApplyAttributesTo(jewel, false, luckChance, attributeCount, min, max);
++                    break;
++                }
++            case BaseHat hat:
++                {
++                    BaseRunicTool.ApplyAttributesTo(hat, false, luckChance, attributeCount, min, max);
++                    break;
++                }
++            case BaseInstrument instrument:
++                {
++                    instrument.Quality = InstrumentQuality.Regular;
++                    instrument.Slayer = BaseRunicTool.GetRandomSlayer();
++                    break;
++                }
++        }
++
++        return item;
++    }
++
++    // 2% of the rolls are a slayer instrument; the rest are a random armor, shield, weapon or jewel.
++    public static void AddRandomLoot(
++        Container c, int amount, int luckChance, int minAttributeCount, int maxAttributeCount, int min, int max
++    )
++    {
++        if (c == null)
++        {
++            return;
++        }
++
++        for (var i = 0; i < amount; i++)
++        {
++            if (Utility.RandomDouble() < 0.02)
++            {
++                var instrument = Loot.RandomInstrument();
++                instrument.Slayer = BaseRunicTool.GetRandomSlayer();
++                c.DropItem(instrument);
++                continue;
++            }
++
++            var item = Loot.RandomArmorOrShieldOrWeaponOrJewelry();
++
++            if (item != null)
++            {
++                var count = Utility.RandomMinMax(minAttributeCount, maxAttributeCount);
++                c.DropItem(Mutate(item, count, min, max, luckChance));
++            }
++        }
++    }
++
++    public static void AddMoreLoot(BaseCreature creature, Container c, bool spawning, int luckChance, int packs)
++    {
++        if (creature == null || c == null)
++        {
++            return;
++        }
++
++        for (var i = 0; i < packs; ++i)
++        {
++            GetLootPackFromFame(creature.Fame).Generate(creature, c, spawning, luckChance);
++        }
++    }
++
++    public static void OnCreatureDeath(BaseCreature creature, Container c)
++    {
++        if (creature.Controlled || creature.Summoned || creature.NoKillAwards || c == null)
++        {
++            return;
++        }
++
++        if (Utility.RandomDouble() < 0.0005 && IsChampionSpawnCreature(creature))
++        {
++            GivePowerScroll(creature);
++        }
++
++        if (creature.IsParagon)
++        {
++            AddMoreLoot(creature, c, false, 1000, 1);
++            MultiplyGold(c, 1.50);
++        }
++    }
++
++    private static bool IsChampionSpawnCreature(BaseCreature creature) =>
++        creature.Region.GetRegion<ChampionSpawnRegion>()?.Spawn?.IsChampionSpawn(creature) == true;
++
++    private static void MultiplyGold(Container c, double factor)
++    {
++        var gold = c.FindItemByType<Gold>();
++
++        if (gold != null)
++        {
++            gold.Amount = (int)(gold.Amount * factor);
++        }
++    }
++
++    private static void GivePowerScroll(BaseCreature creature)
++    {
++        if (creature.Map != Map.Felucca)
++        {
++            return;
++        }
++
++        var rights = BaseCreature.GetLootingRights(creature.DamageEntries, creature.HitsMax);
++        var eligible = new List<Mobile>();
++
++        for (var i = 0; i < rights.Count; ++i)
++        {
++            if (rights[i].m_HasRight)
++            {
++                eligible.Add(rights[i].m_Mobile);
++            }
++        }
++
++        if (eligible.Count == 0)
++        {
++            return;
++        }
++
++        var m = eligible[Utility.Random(eligible.Count)];
++        var ps = PowerScroll.CreateRandomNoCraft(5, 5);
++
++        m.SendLocalizedMessage(1049524); // You have received a scroll of power!
++
++        if (m.Alive || m.Corpse?.Deleted != false)
++        {
++            m.AddToBackpack(ps);
++        }
++        else
++        {
++            m.Corpse.DropItem(ps);
++        }
++    }
++}
+diff --git a/Projects/UOContent/Misc/LootPack.cs b/Projects/UOContent/Misc/LootPack.cs
+index 92cb06eb2..d4beb53f4 100644
+--- a/Projects/UOContent/Misc/LootPack.cs
++++ b/Projects/UOContent/Misc/LootPack.cs
+@@ -259,7 +259,7 @@ public void Generate(Mobile from, Container cont, bool spawning, int luckChance)
+ 
+         public static readonly LootPack SePoor = new(
+             [
+-                new LootPackEntry(true, Gold, 100.00, "2d10+20"),
++                new LootPackEntry(true, Gold, 100.00, "3d10+20"),
+                 new LootPackEntry(false, AosMagicItemsPoor, 1.00, 1, 5, 0, 100),
+                 new LootPackEntry(false, Instruments, 0.02, 1)
+             ]
+@@ -277,8 +277,8 @@ public void Generate(Mobile from, Container cont, bool spawning, int luckChance)
+         public static readonly LootPack SeAverage = new(
+             [
+                 new LootPackEntry(true, Gold, 100.00, "8d10+100"),
+-                new LootPackEntry(false, AosMagicItemsAverageType1, 32.80, 1, 3, 0, 50),
+-                new LootPackEntry(false, AosMagicItemsAverageType1, 32.80, 1, 4, 0, 75),
++                new LootPackEntry(false, AosMagicItemsAverageType1, 32.80, 1, 5, 0, 50),
++                new LootPackEntry(false, AosMagicItemsAverageType1, 32.80, 1, 5, 0, 75),
+                 new LootPackEntry(false, AosMagicItemsAverageType2, 19.50, 1, 5, 0, 100),
+                 new LootPackEntry(false, Instruments, 0.40, 1)
+             ]
+@@ -286,48 +286,58 @@ public void Generate(Mobile from, Container cont, bool spawning, int luckChance)
+ 
+         public static readonly LootPack SeRich = new(
+             [
+-                new LootPackEntry(true, Gold, 100.00, "15d10+225"),
+-                new LootPackEntry(false, AosMagicItemsRichType1, 76.30, 1, 4, 0, 75),
+-                new LootPackEntry(false, AosMagicItemsRichType1, 76.30, 1, 4, 0, 75),
+-                new LootPackEntry(false, AosMagicItemsRichType2, 61.70, 1, 5, 0, 100),
++                new LootPackEntry(true, Gold, 100.00, "15d10+200"),
++                new LootPackEntry(false, AosMagicItemsRichType1, 76.30, 1, 5, 0, 100),
++                new LootPackEntry(false, AosMagicItemsRichType1, 76.30, 1, 5, 0, 100),
++                new LootPackEntry(false, AosMagicItemsRichType1, 76.30, 1, 5, 30, 100),
++                new LootPackEntry(false, AosMagicItemsRichType1, 40.00, 3, 5, 60, 100),
++                new LootPackEntry(false, AosMagicItemsRichType1, 76.30, 2, 5, 20, 100),
++                new LootPackEntry(false, AosMagicItemsRichType2, 30.00, 1, 5, 0, 100),
+                 new LootPackEntry(false, Instruments, 1.00, 1)
+             ]
+         );
+ 
+         public static readonly LootPack SeFilthyRich = new(
+             [
+-                new LootPackEntry(true, Gold, 100.00, "3d100+400"),
+-                new LootPackEntry(false, AosMagicItemsFilthyRichType1, 79.50, 1, 5, 0, 100),
+-                new LootPackEntry(false, AosMagicItemsFilthyRichType1, 79.50, 1, 5, 0, 100),
+-                new LootPackEntry(false, AosMagicItemsFilthyRichType2, 77.60, 1, 5, 25, 100),
++                new LootPackEntry(true, Gold, 100.00, "3d75+200"),
++                new LootPackEntry(false, AosMagicItemsFilthyRichType1, 100.00, 1, 5, 0, 100),
++                new LootPackEntry(false, AosMagicItemsFilthyRichType1, 100.00, 2, 5, 0, 100),
++                new LootPackEntry(false, AosMagicItemsFilthyRichType1, 79.50, 3, 5, 0, 100),
++                new LootPackEntry(false, AosMagicItemsFilthyRichType1, 79.50, 1, 5, 30, 100),
++                new LootPackEntry(false, AosMagicItemsFilthyRichType1, 40.00, 3, 5, 60, 100),
++                new LootPackEntry(false, AosMagicItemsFilthyRichType1, 50.00, 3, 5, 40, 100),
++                new LootPackEntry(false, AosMagicItemsFilthyRichType2, 20.00, 1, 5, 10, 100),
++                new LootPackEntry(false, AosMagicItemsFilthyRichType2, 5.00, 1, 5, 10, 100),
+                 new LootPackEntry(false, Instruments, 2.00, 1)
+             ]
+         );
+ 
+         public static readonly LootPack SeUltraRich = new(
+             [
+-                new LootPackEntry(true, Gold, 100.00, "6d100+600"),
+-                new LootPackEntry(false, AosMagicItemsUltraRich, 100.00, 1, 5, 25, 100),
++                new LootPackEntry(true, Gold, 100.00, "4d50+400"),
+                 new LootPackEntry(false, AosMagicItemsUltraRich, 100.00, 1, 5, 25, 100),
+                 new LootPackEntry(false, AosMagicItemsUltraRich, 100.00, 1, 5, 25, 100),
+                 new LootPackEntry(false, AosMagicItemsUltraRich, 100.00, 1, 5, 25, 100),
+                 new LootPackEntry(false, AosMagicItemsUltraRich, 100.00, 1, 5, 25, 100),
+-                new LootPackEntry(false, AosMagicItemsUltraRich, 100.00, 1, 5, 33, 100),
++                new LootPackEntry(false, AosMagicItemsUltraRich, 100.00, 2, 5, 25, 100),
++                new LootPackEntry(false, AosMagicItemsUltraRich, 30.00, 3, 5, 40, 100),
++                new LootPackEntry(false, AosMagicItemsUltraRich, 30.00, 3, 5, 40, 100),
++                new LootPackEntry(false, AosMagicItemsUltraRich, 50.00, 3, 5, 60, 100),
+                 new LootPackEntry(false, Instruments, 2.00, 1)
+             ]
+         );
+ 
+         public static readonly LootPack SeSuperBoss = new(
+             [
+-                new LootPackEntry(true, Gold, 100.00, "10d100+800"),
+-                new LootPackEntry(false, AosMagicItemsUltraRich, 100.00, 1, 5, 25, 100),
+-                new LootPackEntry(false, AosMagicItemsUltraRich, 100.00, 1, 5, 25, 100),
+-                new LootPackEntry(false, AosMagicItemsUltraRich, 100.00, 1, 5, 25, 100),
+-                new LootPackEntry(false, AosMagicItemsUltraRich, 100.00, 1, 5, 25, 100),
+-                new LootPackEntry(false, AosMagicItemsUltraRich, 100.00, 1, 5, 33, 100),
+-                new LootPackEntry(false, AosMagicItemsUltraRich, 100.00, 1, 5, 33, 100),
+-                new LootPackEntry(false, AosMagicItemsUltraRich, 100.00, 1, 5, 33, 100),
++                new LootPackEntry(true, Gold, 100.00, "4d50+600"),
++                new LootPackEntry(false, AosMagicItemsUltraRich, 100.00, 3, 5, 25, 100),
++                new LootPackEntry(false, AosMagicItemsUltraRich, 100.00, 3, 5, 25, 100),
++                new LootPackEntry(false, AosMagicItemsUltraRich, 100.00, 2, 5, 25, 100),
++                new LootPackEntry(false, AosMagicItemsUltraRich, 100.00, 2, 5, 25, 100),
++                new LootPackEntry(false, AosMagicItemsUltraRich, 100.00, 2, 5, 33, 100),
++                new LootPackEntry(false, AosMagicItemsUltraRich, 100.00, 2, 5, 33, 100),
+                 new LootPackEntry(false, AosMagicItemsUltraRich, 100.00, 1, 5, 33, 100),
++                new LootPackEntry(false, AosMagicItemsUltraRich, 60.00, 3, 5, 60, 100),
+                 new LootPackEntry(false, AosMagicItemsUltraRich, 100.00, 1, 5, 50, 100),
+                 new LootPackEntry(false, AosMagicItemsUltraRich, 100.00, 1, 5, 50, 100),
+                 new LootPackEntry(false, Instruments, 2.00, 1)
+diff --git a/Projects/UOContent/Mobiles/BaseCreature.cs b/Projects/UOContent/Mobiles/BaseCreature.cs
+index f0210d4f6..9a20a47d8 100644
+--- a/Projects/UOContent/Mobiles/BaseCreature.cs
++++ b/Projects/UOContent/Mobiles/BaseCreature.cs
+@@ -3474,6 +3474,8 @@ public virtual void OnKilledBy(Mobile mob)
+ 
+         public override void OnDeath(Container c)
+         {
++            Server.Custom.Dfi.DfiLoot.OnCreatureDeath(this, c);
++
+             if (Spawner is BaseSpawner spawner)
+             {
+                 spawner.NotifySpawnedDeath(this, LastKiller);
