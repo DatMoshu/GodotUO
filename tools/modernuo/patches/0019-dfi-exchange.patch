@@ -1,0 +1,2416 @@
+diff --git a/Projects/UOContent.Tests/Tests/Custom/DfiExchangeTests.cs b/Projects/UOContent.Tests/Tests/Custom/DfiExchangeTests.cs
+new file mode 100644
+index 000000000..6daf16548
+--- /dev/null
++++ b/Projects/UOContent.Tests/Tests/Custom/DfiExchangeTests.cs
+@@ -0,0 +1,243 @@
++using System;
++using System.Collections.Generic;
++using Server;
++using Server.Custom.Dfi;
++using Server.Custom.Dfi.Exchange;
++using Server.Items;
++using Server.Misc;
++using Server.Mobiles;
++using Xunit;
++
++namespace UOContent.Tests.Custom;
++
++[Collection("Sequential UOContent Tests")]
++public class DfiExchangeTests : IDisposable
++{
++    private readonly List<IEntity> _created = new();
++
++    public DfiExchangeTests()
++    {
++        if (NameList.GetNameList("male") == null)
++        {
++            NameList.Configure();
++        }
++    }
++
++    public void Dispose()
++    {
++        foreach (var e in _created)
++        {
++            e?.Delete();
++        }
++
++        _created.Clear();
++
++        foreach (var category in ExchangeConfig.Categories)
++        {
++            foreach (var c in category.Commodities)
++            {
++                c.Bids.Clear();
++                c.Offers.Clear();
++            }
++        }
++
++        foreach (var category in AdvertSystem.Categories)
++        {
++            category.Entries.Clear();
++        }
++
++        ExchangeSystem.History.Clear();
++    }
++
++    private T Track<T>(T e) where T : IEntity
++    {
++        _created.Add(e);
++        return e;
++    }
++
++    private PlayerMobile Player(int gold = 0)
++    {
++        var m = Track(new PlayerMobile());
++        m.Player = true;
++        m.Body = 0x190;
++        m.AddItem(new Backpack());
++        m.AddItem(new BankBox(m));
++        m.MoveToWorld(new Point3D(1434, 1690, 0), Map.Felucca);
++
++        if (gold > 0)
++        {
++            ExchangeSystem.GiveMoney(m, gold);
++        }
++
++        return m;
++    }
++
++    private CommodityDeed DeedIn(Mobile m, Type type, int amount)
++    {
++        var deed = ExchangeSystem.MakeDeed(type, amount);
++        m.Backpack.DropItem(deed);
++        return deed;
++    }
++
++    private static int DeedAmount(Mobile m, Type type)
++    {
++        var total = 0;
++
++        foreach (var item in m.BankBox.Items)
++        {
++            if (item is CommodityDeed { Commodity: { } c } && c.GetType() == type)
++            {
++                total += c.Amount;
++            }
++        }
++
++        return total;
++    }
++
++    private static ExchangeCommodity Iron => ExchangeSystem.Find(typeof(IronIngot));
++
++    [Fact]
++    public void Exchange_EveryCommodityIsFoundAndDeedable()
++    {
++        foreach (var category in ExchangeConfig.Categories)
++        {
++            foreach (var c in category.Commodities)
++            {
++                Assert.Same(c, ExchangeSystem.Find(c.Type));
++                var deed = ExchangeSystem.MakeDeed(c.Type, 30);
++                Assert.NotNull(deed);
++                deed.Delete();
++            }
++        }
++    }
++
++    [Fact]
++    public void Bid_TakesMoneyAndFeeFromTheBankAndWaits()
++    {
++        var buyer = Player(10_000);
++
++        Assert.Null(ExchangeSystem.PlaceBid(buyer, Iron, 5, 100));
++
++        Assert.Equal(10_000 - 500 - ExchangeConfig.BuyCosts, Banker.GetBalance(buyer));
++        Assert.Single(Iron.Bids);
++    }
++
++    [Fact]
++    public void Bid_RefusesTooFewOrUnaffordable()
++    {
++        var buyer = Player(100);
++
++        Assert.NotNull(ExchangeSystem.PlaceBid(buyer, Iron, 5, 10));
++        Assert.NotNull(ExchangeSystem.PlaceBid(buyer, Iron, 5, 100));
++        Assert.Empty(Iron.Bids);
++        Assert.Equal(100, Banker.GetBalance(buyer));
++    }
++
++    [Fact]
++    public void Offer_MeetingABid_TradesAtTheBidsPrice()
++    {
++        var buyer = Player(10_000);
++        var seller = Player();
++        ExchangeSystem.PlaceBid(buyer, Iron, 6, 100);
++
++        var deed = DeedIn(seller, typeof(IronIngot), 60);
++        Assert.Null(ExchangeSystem.PlaceOffer(seller, deed, 4));
++
++        Assert.True(deed.Deleted);
++        Assert.Equal(60, DeedAmount(buyer, typeof(IronIngot)));
++        Assert.Equal(360, Banker.GetBalance(seller));
++        Assert.Equal(40, Iron.Bids[0].Quantity);
++        Assert.Empty(Iron.Offers);
++        Assert.Equal(6, Iron.LastPrice);
++        Assert.Equal(60, Iron.LastQuantity);
++        Assert.Single(ExchangeSystem.History[seller]);
++    }
++
++    [Fact]
++    public void Bid_MeetingCheaperOffers_TakesTheCheapestFirst()
++    {
++        var sellerA = Player();
++        var sellerB = Player();
++        var buyer = Player(10_000);
++        ExchangeSystem.PlaceOffer(sellerA, DeedIn(sellerA, typeof(IronIngot), 50), 5);
++        ExchangeSystem.PlaceOffer(sellerB, DeedIn(sellerB, typeof(IronIngot), 50), 3);
++
++        Assert.Equal(3, Iron.Offers[0].Price);
++
++        ExchangeSystem.PlaceBid(buyer, Iron, 4, 80);
++
++        Assert.Equal(50, DeedAmount(buyer, typeof(IronIngot)));
++        Assert.Equal(200, Banker.GetBalance(sellerB));
++        Assert.Equal(0, Banker.GetBalance(sellerA));
++        Assert.Single(Iron.Offers);
++        Assert.Equal(30, Iron.Bids[0].Quantity);
++    }
++
++    [Fact]
++    public void Offer_RefusesSmallDeedsAndForeignGoods()
++    {
++        var seller = Player();
++
++        Assert.NotNull(ExchangeSystem.PlaceOffer(seller, DeedIn(seller, typeof(IronIngot), 10), 5));
++        Assert.NotNull(ExchangeSystem.PlaceOffer(seller, DeedIn(seller, typeof(Log), 100), 5));
++        Assert.Empty(Iron.Offers);
++    }
++
++    [Fact]
++    public void Cancel_ReturnsBidMoneyButNotTheFee_AndOfferGoodsLessTheSeizure()
++    {
++        var buyer = Player(10_000);
++        var seller = Player();
++        ExchangeSystem.PlaceBid(buyer, Iron, 5, 100);
++        ExchangeSystem.PlaceOffer(seller, DeedIn(seller, typeof(IronIngot), 200), 9);
++
++        ExchangeSystem.Cancel(Iron.Bids[0]);
++        ExchangeSystem.Cancel(Iron.Offers[0]);
++
++        Assert.Equal(10_000 - ExchangeConfig.BuyCosts, Banker.GetBalance(buyer));
++        Assert.Equal(195, DeedAmount(seller, typeof(IronIngot)));
++        Assert.Empty(Iron.Bids);
++        Assert.Empty(Iron.Offers);
++    }
++
++    [Fact]
++    public void Adverts_RankByPriceAndChargeOnlyOncePerAccount()
++    {
++        var owner = Player(1000);
++        var visitor = Player();
++        var vendor = Track(new PlayerVendor(owner, null));
++        vendor.MoveToWorld(new Point3D(1500, 1600, 0), Map.Felucca);
++        var category = AdvertSystem.Categories[0];
++
++        var cheap = new AdvertEntry(owner) { Vendor = vendor, Category = category, Description = "cheap", Price = 10 };
++        var dear = new AdvertEntry(owner) { Vendor = vendor, Category = category, Description = "dear", Price = 40 };
++        AdvertSystem.Add(cheap);
++        AdvertSystem.Add(dear);
++
++        Assert.Same(dear, category.Entries[0]);
++        Assert.Equal(2, AdvertSystem.RankFor(category, 20));
++
++        Assert.True(AdvertSystem.Use(visitor, dear));
++        Assert.Equal(vendor.Location, visitor.Location);
++        Assert.Equal(960, Banker.GetBalance(owner));
++
++        visitor.MoveToWorld(new Point3D(1434, 1690, 0), Map.Felucca);
++        Assert.True(AdvertSystem.Use(visitor, dear));
++        Assert.Equal(960, Banker.GetBalance(owner));
++    }
++
++    [Fact]
++    public void Adverts_ThatCannotPayTheFeeLapse()
++    {
++        var owner = Player(60);
++        var vendor = Track(new PlayerVendor(owner, null));
++        var category = AdvertSystem.Categories[1];
++        AdvertSystem.Add(new AdvertEntry(owner) { Vendor = vendor, Category = category, Description = "plate", Price = 10 });
++
++        AdvertSystem.VerifyAll();
++        Assert.Single(category.Entries);
++
++        AdvertSystem.VerifyAll();
++        Assert.Empty(category.Entries);
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Town/Adverts.cs b/Projects/UOContent/Custom/DFI/Town/Adverts.cs
+new file mode 100644
+index 000000000..175e0a0e1
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Town/Adverts.cs
+@@ -0,0 +1,698 @@
++// DFI Network's vendor advertisements, ported from DFI RUNUO Scripts/Custom/Mobiles/Townfolks and Vendors/VendorAd.
++// A player vendor's owner pays 50 gp every 12 hours to keep an advert up, plus a price of their choosing (10 gp
++// or more, half while they are online) each time someone uses it to travel to the vendor; each account travels
++// once per 12 hours on one payment. Higher prices rank higher. Advertisers announce a random advert every three
++// minutes; anyone near one can say "go", "show adds", "I wish to place a new advertisement" or "I wish to
++// review my advertisements".
++
++using System;
++using System.Collections.Generic;
++using ModernUO.Serialization;
++using Server.Collections;
++using Server.ContextMenus;
++using Server.Gumps;
++using Server.Items;
++using Server.Mobiles;
++using Server.Network;
++using Server.Spells;
++using Server.Targeting;
++
++namespace Server.Custom.Dfi;
++
++public class AdvertCategory
++{
++    public AdvertCategory(int index, string name)
++    {
++        Index = index;
++        Name = name;
++    }
++
++    public int Index { get; }
++    public string Name { get; }
++    public List<AdvertEntry> Entries { get; } = [];
++}
++
++public class AdvertEntry
++{
++    public AdvertEntry(Mobile owner) => Owner = owner;
++
++    public Mobile Owner { get; set; }
++    public PlayerVendor Vendor { get; set; }
++    public AdvertCategory Category { get; set; }
++    public string Description { get; set; } = "";
++    public int Price { get; set; }
++
++    // Accounts that have paid passage since the last 12-hour fee.
++    public HashSet<string> FreeAccounts { get; } = [];
++
++    public bool IsValid => AdvertSystem.Exists(Vendor) && AdvertSystem.Exists(Owner);
++}
++
++public class AdvertSystem : GenericPersistence
++{
++    public const int MinimumPrice = 10;
++    public const int DailyFee = 50;
++
++    public static readonly AdvertCategory[] Categories =
++        [new(0, "Weapons"), new(1, "Armor"), new(2, "Misc"), new(3, "Resources")];
++
++    public static List<AdvertMobile> Advertisers { get; } = [];
++    public static AdvertEntry CurrentPublicAdvert { get; private set; }
++
++    private static Timer _verify;
++    private static Timer _announce;
++
++    public AdvertSystem() : base("DfiAdverts", 10)
++    {
++    }
++
++    public static void Configure()
++    {
++        _ = new AdvertSystem();
++        _verify = Timer.DelayCall(TimeSpan.FromHours(12.0), TimeSpan.FromHours(12.0), VerifyAll);
++        _announce = Timer.DelayCall(TimeSpan.FromMinutes(3.0), TimeSpan.FromMinutes(3.0), AnnounceRandom);
++    }
++
++    public static bool Exists(Mobile m) => m?.Deleted == false;
++
++    // Ranks are by price, highest first.
++    public static void Add(AdvertEntry entry)
++    {
++        foreach (var category in Categories)
++        {
++            category.Entries.Remove(entry);
++        }
++
++        var list = entry.Category.Entries;
++        var i = list.FindIndex(e => e.Price < entry.Price);
++        list.Insert(i < 0 ? list.Count : i, entry);
++    }
++
++    public static void Remove(AdvertEntry entry) => entry.Category?.Entries.Remove(entry);
++
++    public static int RankFor(AdvertCategory category, int price)
++    {
++        var rank = 1;
++
++        foreach (var e in category.Entries)
++        {
++            if (e.Price < price)
++            {
++                break;
++            }
++
++            rank++;
++        }
++
++        return rank;
++    }
++
++    public static void AnnounceRandom()
++    {
++        var category = Categories.RandomElement();
++
++        if (category.Entries.Count == 0)
++        {
++            return;
++        }
++
++        var entry = category.Entries.RandomElement();
++
++        if (!entry.IsValid)
++        {
++            return;
++        }
++
++        CurrentPublicAdvert = entry;
++
++        foreach (var advertiser in Advertisers)
++        {
++            if (!advertiser.Deleted)
++            {
++                advertiser.Say($"[public advertisement]    {entry.Vendor.Name}: {entry.Description}");
++                advertiser.Say("Say \"Go\" to meet this vendor");
++            }
++        }
++    }
++
++    // Charges every advert its 12-hour fee, dropping those that cannot pay or whose vendor is gone.
++    public static void VerifyAll()
++    {
++        var lapsed = new List<AdvertEntry>();
++
++        foreach (var category in Categories)
++        {
++            foreach (var entry in category.Entries)
++            {
++                if (!entry.IsValid || !Banker.Withdraw(entry.Owner, DailyFee))
++                {
++                    lapsed.Add(entry);
++                }
++                else
++                {
++                    entry.FreeAccounts.Clear();
++                }
++            }
++        }
++
++        foreach (var entry in lapsed)
++        {
++            Remove(entry);
++        }
++    }
++
++    public static bool CanTravel(Mobile m) =>
++        Exists(m) && m.Player && m.Alive && !m.Criminal && !SpellHelper.CheckCombat(m) && m.Spell == null;
++
++    public static bool Use(Mobile m, AdvertEntry entry)
++    {
++        if (!CanTravel(m))
++        {
++            m.SendMessage("You cannot travel to a vendor right now.");
++            return false;
++        }
++
++        var account = m.Account?.Username ?? "";
++        var paid = entry?.IsValid == true && (entry.FreeAccounts.Contains(account) ||
++                                              Banker.Withdraw(entry.Owner, entry.Owner.NetState != null ? entry.Price / 2 : entry.Price));
++
++        if (!paid)
++        {
++            m.SendMessage("We are sorry, this is an old advertisement, please select a different one.");
++
++            if (entry != null)
++            {
++                Remove(entry);
++            }
++
++            m.SendGump(new AdvertCategoriesGump(), true);
++            return false;
++        }
++
++        entry.FreeAccounts.Add(account);
++        m.MoveToWorld(entry.Vendor.Location, entry.Vendor.Map);
++        m.SendMessage("You have been moved to the chosen vendor.");
++        return true;
++    }
++
++    public override void Serialize(IGenericWriter writer)
++    {
++        writer.WriteEncodedInt(0); // version
++        writer.WriteEncodedInt(Categories.Length);
++
++        foreach (var category in Categories)
++        {
++            writer.Write(category.Name);
++            writer.WriteEncodedInt(category.Entries.Count);
++
++            foreach (var e in category.Entries)
++            {
++                writer.Write(e.Vendor);
++                writer.Write(e.Owner);
++                writer.Write(e.Description);
++                writer.WriteEncodedInt(e.Price);
++            }
++        }
++    }
++
++    public override void Deserialize(IGenericReader reader)
++    {
++        reader.ReadEncodedInt(); // version
++        var count = reader.ReadEncodedInt();
++
++        for (var i = 0; i < count; i++)
++        {
++            var name = reader.ReadString();
++            var category = Array.Find(Categories, c => c.Name == name);
++            var entries = reader.ReadEncodedInt();
++
++            for (var j = 0; j < entries; j++)
++            {
++                var vendor = reader.ReadEntity<PlayerVendor>();
++                var owner = reader.ReadEntity<Mobile>();
++                var description = reader.ReadString();
++                var price = reader.ReadEncodedInt();
++
++                if (category != null && vendor != null && owner != null)
++                {
++                    category.Entries.Add(
++                        new AdvertEntry(owner) { Vendor = vendor, Category = category, Description = description, Price = price }
++                    );
++                }
++            }
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class AdvertMobile : BaseCreature
++{
++    [Constructible(AccessLevel.GameMaster)]
++    public AdvertMobile() : base(AIType.AI_Vendor, FightMode.None, 2, 1)
++    {
++        InitStats(100, 100, 25);
++        Title = "the advertiser";
++        Hue = Race.Human.RandomSkinHue();
++        Body = 0x190;
++        Name = NameList.RandomName("male");
++        HairItemID = Race.Human.RandomHair(false);
++        HairHue = Race.Human.RandomHairHue();
++        Blessed = true;
++        CantWalk = true;
++
++        AddItem(new FancyShirt(Utility.RandomBlueHue()));
++        AddItem(new Kilt(Utility.RandomGreenHue()));
++        AddItem(new FeatheredHat(Utility.RandomGreenHue()));
++        AddItem(new ThighBoots());
++
++        AdvertSystem.Advertisers.Add(this);
++    }
++
++    public override bool CanBeDamaged() => false;
++    public override bool HandlesOnSpeech(Mobile from) => true;
++
++    [AfterDeserialization]
++    private void AfterDeserialization() => AdvertSystem.Advertisers.Add(this);
++
++    public override void OnDelete()
++    {
++        AdvertSystem.Advertisers.Remove(this);
++        base.OnDelete();
++    }
++
++    public override void GetContextMenuEntries(Mobile from, ref PooledRefList<ContextMenuEntry> list)
++    {
++        base.GetContextMenuEntries(from, ref list);
++
++        if (from.Alive)
++        {
++            list.Add(new InformationEntry());
++            list.Add(new TalkEntry());
++        }
++    }
++
++    public override void OnSpeech(SpeechEventArgs e)
++    {
++        base.OnSpeech(e);
++
++        if (e.Handled || !InRange(e.Mobile, 6))
++        {
++            return;
++        }
++
++        var m = e.Mobile;
++
++        switch (e.Speech.Trim().ToLowerInvariant())
++        {
++            case "go" when AdvertSystem.CurrentPublicAdvert != null:
++                {
++                    e.Handled = true;
++                    AdvertSystem.Use(m, AdvertSystem.CurrentPublicAdvert);
++                    break;
++                }
++            case "show adds":
++                {
++                    e.Handled = true;
++                    m.SendGump(new AdvertCategoriesGump(), true);
++                    break;
++                }
++            case "i wish to place a new advertisement":
++                {
++                    e.Handled = true;
++                    m.SendGump(new AddAdvertGump(new AdvertEntry(m)), true);
++                    break;
++                }
++            case "i wish to review my advertisements":
++                {
++                    e.Handled = true;
++                    m.SendGump(new AdvertEntriesGump(null, 0, m), true);
++                    break;
++                }
++        }
++    }
++
++    private class InformationEntry : ContextMenuEntry
++    {
++        public InformationEntry() : base(98, 12) // Information
++        {
++        }
++
++        public override void OnClick(Mobile from, IEntity target) => from.SendGump(new AdvertInfoGump(), true);
++    }
++
++    private class TalkEntry : ContextMenuEntry
++    {
++        public TalkEntry() : base(6146, 12) // Talk
++        {
++        }
++
++        public override void OnClick(Mobile from, IEntity target) => from.SendGump(new AdvertCategoriesGump(), true);
++    }
++}
++
++public abstract class AdvertGump : DynamicGump
++{
++    protected AdvertGump() : base(50, 50)
++    {
++    }
++
++    protected static void AddFrame(ref DynamicGumpBuilder builder, int width, int height, string subtitle)
++    {
++        builder.AddPage();
++        builder.AddBackground(0, 0, width, height, 9270);
++        builder.AddAlphaRegion(10, 10, width - 20, height - 20);
++        builder.AddHtml(0, 25, width, 20, "Advertisement System", "#FFFFFF", align: TextAlignment.Center);
++        builder.AddHtml(0, 45, width, 20, subtitle, "#FFFFFF", align: TextAlignment.Center);
++    }
++}
++
++public class AdvertInfoGump : AdvertGump
++{
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        AddFrame(ref builder, 400, 420, "Information");
++        builder.AddHtml(
++            40, 80, 320, 280,
++            "Welcome to the advertisement system. This system provides you with an opportunity to advertise your vendors.<br>In exchange for this service you have to pay a small fee. The fee is based on a daily fee of 50gp, and a fee based on the usage of your advertisement which you can determine yourself.<br>The higher you set the price per usage the higher it will be in the ranks when someone views the advertisements. The fee is substracted per usage, and has a maximum of once per 12 hours per account.<br><br>Commands you can say near an advertiser:<br>Go (to go to the current advertisement)<br>Show adds<br>I wish to place a new advertisement<br>I wish to review my advertisements<br><br>Advertisements that are used while the owner is online only cost half the fee.<br>The advertisers shout out a random advertisement every few minutes, players near them can say \"Go\" to go to the vendor.<br>If you do not have enough money to keep your advertisement campaign running, your advertisement will be removed. When adding an advertisement please keep it clean or we will see it our duty to take actions upon you.",
++            "#FFFFFF", scrollbar: true
++        );
++        builder.AddButton(168, 375, 247, 248, 0);
++    }
++}
++
++public class AddAdvertGump : AdvertGump
++{
++    private const int Commit = 1;
++    private const int PickVendor = 2;
++    private const int SetDescription = 3;
++    private const int SetPrice = 4;
++    private const int CategoryBase = 1000;
++
++    private readonly AdvertEntry _entry;
++
++    public AddAdvertGump(AdvertEntry entry) => _entry = entry;
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        AddFrame(ref builder, 560, 360, "Add an Advertisement");
++
++        builder.AddLabel(430, 75, 0x34, "Category:");
++
++        for (var i = 0; i < AdvertSystem.Categories.Length; i++)
++        {
++            var category = AdvertSystem.Categories[i];
++            builder.AddButton(400, 100 + i * 22, category == _entry.Category ? 209 : 208, 209, CategoryBase + i);
++            builder.AddLabel(430, 100 + i * 22, 0x481, category.Name);
++        }
++
++        builder.AddButton(30, 88, 4005, 4006, PickVendor);
++        builder.AddLabel(73, 89, 0x481, _entry.Vendor?.Name ?? "No vendor assigned");
++
++        builder.AddButton(30, 122, 4005, 4006, SetDescription);
++        builder.AddImageTiled(80, 125, 260, 90, 0xBBC);
++        builder.AddTextEntry(83, 128, 254, 85, 0, 0, _entry.Description.Length == 0 ? "No description entered" : _entry.Description);
++
++        builder.AddButton(30, 232, 4005, 4006, SetPrice);
++        builder.AddImageTiled(80, 233, 94, 20, 0xBBC);
++        builder.AddTextEntry(82, 233, 90, 20, 0, 1, $"{_entry.Price}");
++        builder.AddLabel(180, 233, 0x481, "gp/use");
++
++        builder.AddLabel(74, 266, 0x481, "Rank with this price:");
++        builder.AddLabel(
++            220, 266, 0x481,
++            _entry.Price < AdvertSystem.MinimumPrice ? $"Minimum price is {AdvertSystem.MinimumPrice}" :
++            _entry.Category == null ? "No category selected" : $"{AdvertSystem.RankFor(_entry.Category, _entry.Price)}"
++        );
++
++        builder.AddButton(271, 310, 247, 248, Commit);
++        builder.AddButton(78, 310, 241, 242, 0);
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        var m = sender.Mobile;
++        var description = info.GetTextEntry(0)?.Trim();
++
++        if (description != null && description != "No description entered")
++        {
++            _entry.Description = description;
++        }
++
++        if (int.TryParse(info.GetTextEntry(1)?.Trim(), out var price))
++        {
++            _entry.Price = price;
++        }
++
++        var id = info.ButtonID;
++
++        if (id >= CategoryBase && id < CategoryBase + AdvertSystem.Categories.Length)
++        {
++            _entry.Category = AdvertSystem.Categories[id - CategoryBase];
++            m.SendGump(new AddAdvertGump(_entry), true);
++            return;
++        }
++
++        switch (id)
++        {
++            case Commit:
++                {
++                    if (_entry.Price >= AdvertSystem.MinimumPrice && _entry.Vendor != null && _entry.Description.Length > 0 &&
++                        _entry.Category != null)
++                    {
++                        AdvertSystem.Add(_entry);
++                        m.SendMessage("Your advertisement has been successfully added.");
++                    }
++                    else
++                    {
++                        m.SendMessage("Some of the required information was missing.");
++                        m.SendGump(new AddAdvertGump(_entry), true);
++                    }
++
++                    break;
++                }
++            case PickVendor:
++                {
++                    m.SendMessage("Please target your vendor.");
++                    m.Target = new VendorTarget(_entry);
++                    break;
++                }
++            case SetDescription or SetPrice:
++                {
++                    m.SendGump(new AddAdvertGump(_entry), true);
++                    break;
++                }
++        }
++    }
++
++    private class VendorTarget : Target
++    {
++        private readonly AdvertEntry _entry;
++
++        public VendorTarget(AdvertEntry entry) : base(18, false, TargetFlags.None) => _entry = entry;
++
++        protected override void OnTarget(Mobile from, object targeted)
++        {
++            if (targeted is PlayerVendor vendor && (vendor.Owner == from || from.AccessLevel >= AccessLevel.GameMaster))
++            {
++                _entry.Vendor = vendor;
++            }
++            else
++            {
++                from.SendMessage("That is not an eligible vendor.");
++            }
++
++            from.SendGump(new AddAdvertGump(_entry), true);
++        }
++    }
++}
++
++public class AdvertCategoriesGump : AdvertGump
++{
++    private AdvertEntry _featured;
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        AddFrame(ref builder, 400, 360, "Choose your category");
++
++        builder.AddLabel(69, 85, 0x34, "Categories:");
++        builder.AddLabel(296, 85, 0x34, "Entries:");
++
++        var withEntries = new List<AdvertCategory>();
++
++        for (var i = 0; i < AdvertSystem.Categories.Length; i++)
++        {
++            var category = AdvertSystem.Categories[i];
++            builder.AddButton(30, 110 + i * 25, 4005, 4006, 100 + i);
++            builder.AddLabel(69, 110 + i * 25, 0x481, category.Name);
++            builder.AddLabel(300, 110 + i * 25, 0x481, $"{category.Entries.Count}");
++
++            if (category.Entries.Count > 0)
++            {
++                withEntries.Add(category);
++            }
++        }
++
++        if (withEntries.Count > 0)
++        {
++            _featured = withEntries.RandomElement().Entries.RandomElement();
++
++            if (_featured.IsValid)
++            {
++                builder.AddButton(32, 245, 4005, 4006, 1);
++                builder.AddLabel(80, 245, 0x481, _featured.Vendor.Name);
++                builder.AddHtml(80, 268, 253, 65, _featured.Description, "#FFFFFF", scrollbar: true);
++            }
++        }
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        var m = sender.Mobile;
++        var id = info.ButtonID;
++
++        if (id >= 100 && id < 100 + AdvertSystem.Categories.Length)
++        {
++            m.SendGump(new AdvertEntriesGump(AdvertSystem.Categories[id - 100], 0, m), true);
++        }
++        else if (id == 1 && _featured != null)
++        {
++            AdvertSystem.Use(m, _featured);
++        }
++    }
++}
++
++// A page of adverts: one category's, or (with no category) the viewer's own.
++public class AdvertEntriesGump : AdvertGump
++{
++    private const int PerPage = 8;
++    private const int Previous = 10;
++    private const int Next = 20;
++
++    private readonly AdvertCategory _category;
++    private readonly int _start;
++    private readonly List<AdvertEntry> _entries;
++
++    public AdvertEntriesGump(AdvertCategory category, int start, Mobile viewer)
++    {
++        _category = category;
++        _start = Math.Max(0, start);
++
++        if (category != null)
++        {
++            _entries = new List<AdvertEntry>(category.Entries);
++        }
++        else
++        {
++            _entries = [];
++
++            foreach (var c in AdvertSystem.Categories)
++            {
++                _entries.AddRange(c.Entries.FindAll(e => e.Owner == viewer && AdvertSystem.Exists(e.Vendor)));
++            }
++        }
++    }
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        var show = Math.Clamp(_entries.Count - _start, 0, PerPage);
++        var rows = Math.Max(Math.Min(show, 4), 1);
++        var wide = show > 4;
++        var width = wide ? 700 : 400;
++        var height = 150 + rows * 110;
++
++        AddFrame(ref builder, width, height, "Find your shop");
++
++        if (show == 0)
++        {
++            builder.AddLabel(80, 90, 0x481, "There are no advertisements here.");
++        }
++
++        for (var i = 0; i < show; i++)
++        {
++            var entry = _entries[_start + i];
++            var x = i < 4 ? 30 : 360;
++            var y = 85 + 110 * (i % 4);
++
++            builder.AddButton(x, y, 4005, 4006, 100 + i);
++            builder.AddButton(x, y + 25, 4011, 4012, 1000 + i);
++            builder.AddButton(x, y + 50, 4017, 4018, 1100 + i);
++            builder.AddLabel(x + 50, y + 5, 0x481, entry.Vendor?.Name ?? "a vendor");
++            builder.AddHtml(x + 50, y + 30, 253, 65, entry.Description, "#FFFFFF", scrollbar: true);
++        }
++
++        if (_start > 0)
++        {
++            builder.AddButton(29, height - 40, 4014, 4015, Previous);
++        }
++
++        if (_start + show < _entries.Count)
++        {
++            builder.AddButton(width - 70, height - 40, 4005, 4006, Next);
++        }
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        var m = sender.Mobile;
++        var id = info.ButtonID;
++
++        AdvertEntry Pick(int baseId) => id - baseId + _start is var at && at >= 0 && at < _entries.Count ? _entries[at] : null;
++
++        bool MayEdit(AdvertEntry e) => m.AccessLevel >= AccessLevel.GameMaster || e.Owner == m;
++
++        switch (id)
++        {
++            case >= 1100:
++                {
++                    if (Pick(1100) is { } entry && MayEdit(entry))
++                    {
++                        AdvertSystem.Remove(entry);
++                        m.SendMessage("The advertisement has been removed.");
++                    }
++
++                    break;
++                }
++            case >= 1000:
++                {
++                    if (Pick(1000) is { } entry && MayEdit(entry))
++                    {
++                        m.SendGump(new AddAdvertGump(entry), true);
++                    }
++
++                    break;
++                }
++            case >= 100:
++                {
++                    if (Pick(100) is { } entry)
++                    {
++                        AdvertSystem.Use(m, entry);
++                    }
++
++                    break;
++                }
++            case Previous:
++                {
++                    m.SendGump(new AdvertEntriesGump(_category, _start - PerPage, m), true);
++                    break;
++                }
++            case Next:
++                {
++                    m.SendGump(new AdvertEntriesGump(_category, _start + PerPage, m), true);
++                    break;
++                }
++            case 0:
++                {
++                    m.SendGump(new AdvertCategoriesGump(), true);
++                    break;
++                }
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Town/DfiTownGen.cs b/Projects/UOContent/Custom/DFI/Town/DfiTownGen.cs
+new file mode 100644
+index 000000000..c1df8c28c
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Town/DfiTownGen.cs
+@@ -0,0 +1,79 @@
++// Places DFI's town services: the West Britain Exchange's five traders and an advertiser on the street by
++// Britain's west bank, and the criminal banker in Buccaneer's Den. DFI's saves kept none of their spots.
++// The stones, healers, necromancer, crier, prisoners and the Riddler are left for staff to place.
++
++using System.Collections.Generic;
++using Server.Commands;
++using Server.Custom.Dfi.Exchange;
++using Server.Logging;
++using Server.Mobiles;
++
++namespace Server.Custom.Dfi;
++
++public static class DfiTownGen
++{
++    private static readonly ILogger logger = LogFactory.GetLogger(typeof(DfiTownGen));
++
++    public static readonly Point3D[] TraderSpots =
++        [new(1427, 1689, 0), new(1428, 1689, 0), new(1429, 1689, 0), new(1430, 1689, 0), new(1431, 1689, 0)];
++
++    public static readonly Point3D AdvertiserSpot = new(1428, 1695, 0);
++    public static readonly Point3D CriminalBankerSpot = new(2730, 2188, 0);
++
++    public static void Configure()
++    {
++        CommandSystem.Register("DfiTown", AccessLevel.Administrator, OnCommand);
++    }
++
++    [Usage("DfiTown")]
++    [Description("Places DFI's exchange traders, an advertiser and the criminal banker, replacing any placed before.")]
++    private static void OnCommand(CommandEventArgs e)
++    {
++        var removed = Remove();
++        var placed = Place();
++        e.Mobile.SendMessage($"DfiTown: removed {removed}, placed {placed}.");
++        logger.Information("{User} placed {Placed} DFI town fixtures ({Removed} removed)", e.Mobile, placed, removed);
++    }
++
++    public static int Remove()
++    {
++        var doomed = new List<Mobile>();
++
++        foreach (var m in World.Mobiles.Values)
++        {
++            if (m is ExchangeNPC or CriminalBanker ||
++                m is AdvertMobile && m.Map == Map.Felucca && m.Location == AdvertiserSpot)
++            {
++                doomed.Add(m);
++            }
++        }
++
++        foreach (var m in doomed)
++        {
++            m.Delete();
++        }
++
++        return doomed.Count;
++    }
++
++    public static int Place()
++    {
++        for (var i = 0; i < TraderSpots.Length; i++)
++        {
++            Put(new ExchangeNPC { Category = (ExchangeNpcCategory)i, ItemHue = i * 4 }, TraderSpots[i]);
++        }
++
++        Put(new AdvertMobile(), AdvertiserSpot);
++        Put(new CriminalBanker(), CriminalBankerSpot);
++
++        return TraderSpots.Length + 2;
++    }
++
++    private static void Put(BaseCreature npc, Point3D at)
++    {
++        npc.Home = at;
++        npc.RangeHome = 0;
++        npc.Direction = Direction.South;
++        npc.MoveToWorld(at, Map.Felucca);
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Town/Exchange.cs b/Projects/UOContent/Custom/DFI/Town/Exchange.cs
+new file mode 100644
+index 000000000..fd0322291
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Town/Exchange.cs
+@@ -0,0 +1,747 @@
++// DFI Network's West Britain Exchange, ported from DFI RUNUO Scripts/Custom/Mobiles/Townfolks and Vendors/Vendor
++// System. Traders take bids and offers on commodities: a bid of at least 25 units is paid up front from the
++// bank plus a 150 gp fee; an offer is a filled commodity deed of at least 25 units. Bids and offers that meet
++// trade at the bid's price, the buyer receiving a commodity deed and the seller gold in the bank. Unfilled
++// orders lapse after five days: a bid's money goes back, an offer's deed goes back less 2.5%.
++
++using System;
++using System.Collections.Generic;
++using ModernUO.CodeGeneratedEvents;
++using Server.Gumps;
++using Server.Items;
++using Server.Mobiles;
++
++namespace Server.Custom.Dfi.Exchange;
++
++public static class ExchangeConfig
++{
++    public const double SellGoodsSeizure = 0.025;
++    public const int BuyCosts = 150;
++    public const int MinimumQuantity = 25;
++    public const int DaysKept = 20;
++    public static readonly TimeSpan BidTime = TimeSpan.FromDays(5.0);
++    public static readonly TimeSpan SellTime = TimeSpan.FromDays(5.0);
++    public static readonly TimeSpan HistoryCleanTime = TimeSpan.FromDays(5.0);
++
++    public static readonly ExchangeCategory[] Categories =
++    [
++        new(0, "BlackSmith Resources", [
++            (typeof(IronIngot), "Iron Ingot"), (typeof(DullCopperIngot), "Dull Copper Ingot"),
++            (typeof(ShadowIronIngot), "Shadow Iron Ingot"), (typeof(CopperIngot), "Copper Ingot"), (typeof(BronzeIngot), "Bronze Ingot"),
++            (typeof(GoldIngot), "Gold Ingot"), (typeof(AgapiteIngot), "Agapite Ingot"), (typeof(VeriteIngot), "Verite Ingot"),
++            (typeof(ValoriteIngot), "Valorite Ingot"), (typeof(RedScales), "Red Scales"), (typeof(YellowScales), "Yellow Scales"),
++            (typeof(BlackScales), "Black Scales"), (typeof(GreenScales), "Green Scales"), (typeof(WhiteScales), "White Scales"),
++            (typeof(BlueScales), "Blue Scales")
++        ]),
++        new(1, "Magic Resources", [
++            (typeof(SulfurousAsh), "Sulfurous Ash"), (typeof(SpidersSilk), "Spider Silk"), (typeof(PigIron), "Pig Iron"),
++            (typeof(NoxCrystal), "Nox Crystal"), (typeof(Nightshade), "Night Shade"), (typeof(MandrakeRoot), "Mandrake Root"),
++            (typeof(GraveDust), "Grave Dust"), (typeof(Ginseng), "Ginseng"), (typeof(Garlic), "Garlic"),
++            (typeof(DaemonBlood), "Demon Blood"), (typeof(Bloodmoss), "Bloodmoss"), (typeof(BlackPearl), "Black Pearl"),
++            (typeof(BatWing), "Bat Wing")
++        ]),
++        new(2, "Tailor Resources", [
++            (typeof(UncutCloth), "Uncut Cloth"), (typeof(Leather), "Leather"), (typeof(SpinedLeather), "Spined Leather"),
++            (typeof(HornedLeather), "Horned Leather"), (typeof(BarbedLeather), "Barbed Leather"), (typeof(Cloth), "Cloth"),
++            (typeof(Bone), "Bones"), (typeof(BoltOfCloth), "Bolt of Cloth")
++        ]),
++        new(3, "Other Craft Resources", [
++            (typeof(Shaft), "Shaft"), (typeof(Feather), "Feather"), (typeof(Board), "Board"), (typeof(Sand), "Sand")
++        ]),
++        new(4, "Archery Related Resources", [(typeof(Arrow), "Arrow"), (typeof(Bolt), "Bolt")])
++    ];
++}
++
++public enum ExchangeNpcCategory
++{
++    BlackSmith = 0,
++    Magic = 1,
++    Tailor = 2,
++    OtherCrafts = 3,
++    Archery = 4
++}
++
++public class ExchangeCategory
++{
++    public ExchangeCategory(int id, string name, (Type Type, string Name)[] commodities)
++    {
++        ID = id;
++        Name = name;
++        Commodities = new List<ExchangeCommodity>();
++
++        foreach (var (type, commodityName) in commodities)
++        {
++            Commodities.Add(new ExchangeCommodity(this, type, commodityName));
++        }
++    }
++
++    public int ID { get; }
++    public string Name { get; }
++    public List<ExchangeCommodity> Commodities { get; }
++
++    public ExchangeCommodity Find(Type type) => Commodities.Find(c => c.Type == type);
++}
++
++public class ExchangeDay
++{
++    public int Day;
++    public double HighestPrice;
++    public double LowestPrice = double.MaxValue;
++    public long TotalQuantity;
++    public long TotalRevenue;
++
++    public double Average => TotalQuantity == 0 ? 0 : Math.Round((double)TotalRevenue / TotalQuantity, 2);
++
++    public void Add(double price, int quantity, long revenue)
++    {
++        TotalRevenue += revenue;
++        TotalQuantity += quantity;
++        HighestPrice = Math.Max(HighestPrice, price);
++        LowestPrice = Math.Min(LowestPrice, price);
++    }
++}
++
++public abstract class ExchangeOrder
++{
++    protected ExchangeOrder(Mobile mobile, ExchangeCommodity commodity, double price, int quantity, DateTime date)
++    {
++        Mobile = mobile;
++        Commodity = commodity;
++        Price = price;
++        Quantity = quantity;
++        Date = date;
++    }
++
++    public Mobile Mobile { get; }
++    public ExchangeCommodity Commodity { get; }
++    public double Price { get; }
++    public int Quantity { get; set; }
++    public DateTime Date { get; }
++
++    public bool OwnerExists => Mobile?.Deleted == false;
++
++    public abstract TimeSpan Lifetime { get; }
++}
++
++public class ExchangeBid : ExchangeOrder
++{
++    public ExchangeBid(Mobile mobile, ExchangeCommodity commodity, double price, int quantity, DateTime date)
++        : base(mobile, commodity, price, quantity, date)
++    {
++    }
++
++    public override TimeSpan Lifetime => ExchangeConfig.BidTime;
++}
++
++public class ExchangeOffer : ExchangeOrder
++{
++    public ExchangeOffer(Mobile mobile, ExchangeCommodity commodity, double price, int quantity, DateTime date)
++        : base(mobile, commodity, price, quantity, date)
++    {
++    }
++
++    public override TimeSpan Lifetime => ExchangeConfig.SellTime;
++
++    // What a lapsed or cancelled offer keeps back for the exchange's expenses.
++    public int Seizure => Math.Max((int)(Quantity * ExchangeConfig.SellGoodsSeizure), 1);
++}
++
++public record ExchangeTransaction(string Name, double Price, int Quantity, bool Bought, DateTime Date);
++
++public class ExchangeCommodity
++{
++    public ExchangeCommodity(ExchangeCategory category, Type type, string name)
++    {
++        Category = category;
++        Type = type;
++        Name = name;
++    }
++
++    public ExchangeCategory Category { get; }
++    public Type Type { get; }
++    public string Name { get; }
++
++    // Bids best (highest) first, offers best (lowest) first; earlier orders first at the same price.
++    public List<ExchangeBid> Bids { get; } = [];
++    public List<ExchangeOffer> Offers { get; } = [];
++    public List<ExchangeDay> Days { get; } = [];
++
++    public double LastPrice;
++    public int LastQuantity;
++    public DateTime LastExchangeTime;
++    public double HighestPrice;
++    public double LowestPrice = double.MaxValue;
++    public long TotalQuantity;
++    public long TotalRevenue;
++
++    public double AveragePrice => TotalQuantity == 0 ? 0 : Math.Round((double)TotalRevenue / TotalQuantity, 2);
++
++    // Units on the other side of the book that an order at this price would take at once.
++    public int ImmediateBuy(double price, int quantity)
++    {
++        var available = 0;
++
++        foreach (var offer in Offers)
++        {
++            if (offer.Price <= price)
++            {
++                available += offer.Quantity;
++            }
++        }
++
++        return Math.Min(quantity, available);
++    }
++
++    public int ImmediateSell(double price, int quantity)
++    {
++        var wanted = 0;
++
++        foreach (var bid in Bids)
++        {
++            if (bid.Price >= price)
++            {
++                wanted += bid.Quantity;
++            }
++        }
++
++        return Math.Min(quantity, wanted);
++    }
++
++    public void RecordTrade(double price, int quantity)
++    {
++        var revenue = (long)(price * quantity);
++        var now = Core.Now;
++
++        if (Days.Count == 0 || Days[^1].Day != now.Day)
++        {
++            Days.Add(new ExchangeDay { Day = now.Day });
++
++            if (Days.Count > ExchangeConfig.DaysKept)
++            {
++                var old = Days[0];
++                Days.RemoveAt(0);
++                TotalQuantity -= old.TotalQuantity;
++                TotalRevenue -= old.TotalRevenue;
++            }
++        }
++
++        Days[^1].Add(price, quantity, revenue);
++
++        LastPrice = price;
++        LastQuantity = quantity;
++        LastExchangeTime = now;
++        TotalQuantity += quantity;
++        TotalRevenue += revenue;
++        HighestPrice = Math.Max(HighestPrice, price);
++        LowestPrice = Math.Min(LowestPrice, price);
++    }
++
++    public void Insert(ExchangeBid bid)
++    {
++        var i = Bids.FindIndex(b => b.Price < bid.Price);
++        Bids.Insert(i < 0 ? Bids.Count : i, bid);
++    }
++
++    public void Insert(ExchangeOffer offer)
++    {
++        var i = Offers.FindIndex(o => o.Price > offer.Price);
++        Offers.Insert(i < 0 ? Offers.Count : i, offer);
++    }
++}
++
++public class ExchangeSystem : GenericPersistence
++{
++    public static Dictionary<Mobile, List<ExchangeTransaction>> History { get; } = [];
++
++    private static Timer _cleanup;
++
++    public ExchangeSystem() : base("DfiExchange", 10)
++    {
++    }
++
++    public static void Configure()
++    {
++        _ = new ExchangeSystem();
++        _cleanup = Timer.DelayCall(TimeSpan.FromHours(13.0), TimeSpan.FromHours(13.0), CleanUp);
++    }
++
++    public static ExchangeCategory GetCategory(ExchangeNpcCategory category) =>
++        ExchangeConfig.Categories[Math.Clamp((int)category, 0, ExchangeConfig.Categories.Length - 1)];
++
++    public static ExchangeCommodity Find(Type type)
++    {
++        foreach (var category in ExchangeConfig.Categories)
++        {
++            if (category.Find(type) is { } commodity)
++            {
++                return commodity;
++            }
++        }
++
++        return null;
++    }
++
++    [OnEvent(nameof(PlayerMobile.PlayerLoginEvent))]
++    public static void OnLogin(PlayerMobile pm) => SendHistoryTo(pm);
++
++    public static void SendHistoryTo(Mobile m)
++    {
++        if (m?.NetState != null && History.TryGetValue(m, out var list) && list.Count > 0)
++        {
++            m.SendGump(new ExchangeHistoryGump(list), true);
++        }
++    }
++
++    public static IEnumerable<ExchangeOrder> OrdersOf(Mobile m, ExchangeCategory category)
++    {
++        foreach (var commodity in category.Commodities)
++        {
++            foreach (var bid in commodity.Bids)
++            {
++                if (bid.Mobile == m)
++                {
++                    yield return bid;
++                }
++            }
++
++            foreach (var offer in commodity.Offers)
++            {
++                if (offer.Mobile == m)
++                {
++                    yield return offer;
++                }
++            }
++        }
++    }
++
++    // Pays for a bid from the bank and matches it against the offers; what is left waits on the board.
++    // Returns null on success, or why it failed.
++    public static string PlaceBid(Mobile m, ExchangeCommodity commodity, double price, int quantity)
++    {
++        price = Math.Round(price, 2);
++
++        if (price <= 0)
++        {
++            return "Please enter a valid price.";
++        }
++
++        if (quantity < ExchangeConfig.MinimumQuantity)
++        {
++            return "We do not accept bids of under 25 goods.";
++        }
++
++        var cost = (long)(price * quantity) + ExchangeConfig.BuyCosts;
++
++        if (cost > int.MaxValue || !Banker.Withdraw(m, (int)cost))
++        {
++            return "You would not be able to afford such a transaction.";
++        }
++
++        var bid = new ExchangeBid(m, commodity, price, quantity, Core.Now);
++        var traders = new HashSet<Mobile> { m };
++
++        for (var i = 0; i < commodity.Offers.Count && bid.Quantity > 0;)
++        {
++            var offer = commodity.Offers[i];
++
++            if (!offer.OwnerExists)
++            {
++                commodity.Offers.RemoveAt(i);
++                continue;
++            }
++
++            if (offer.Price > bid.Price)
++            {
++                break;
++            }
++
++            Trade(bid, offer, bid.Price, traders);
++
++            if (offer.Quantity == 0)
++            {
++                commodity.Offers.RemoveAt(i);
++            }
++            else
++            {
++                i++;
++            }
++        }
++
++        if (bid.Quantity > 0)
++        {
++            commodity.Insert(bid);
++            m.SendMessage("Your order has been added to the exchange board.");
++        }
++        else
++        {
++            m.SendMessage("Your order has been executed.");
++        }
++
++        foreach (var trader in traders)
++        {
++            SendHistoryTo(trader);
++        }
++
++        return null;
++    }
++
++    // Takes a filled commodity deed and matches it against the bids; what is left waits on the board.
++    public static string PlaceOffer(Mobile m, CommodityDeed deed, double price)
++    {
++        price = Math.Round(price, 2);
++
++        if (price <= 0)
++        {
++            return "Please enter a valid price.";
++        }
++
++        if (deed?.Deleted != false || deed.Commodity == null || !deed.IsChildOf(m.Backpack))
++        {
++            return "Please make sure your deed is in your backpack.";
++        }
++
++        if (deed.Commodity.Amount < ExchangeConfig.MinimumQuantity)
++        {
++            return "We only accept deeds that contain at least 25 goods.";
++        }
++
++        var commodity = Find(deed.Commodity.GetType());
++
++        if (commodity == null)
++        {
++            return "I am sorry i do not exchange that kind of goods, you may want to try it at my collegues.";
++        }
++
++        var offer = new ExchangeOffer(m, commodity, price, deed.Commodity.Amount, Core.Now);
++        deed.Delete();
++
++        var traders = new HashSet<Mobile> { m };
++
++        for (var i = 0; i < commodity.Bids.Count && offer.Quantity > 0;)
++        {
++            var bid = commodity.Bids[i];
++
++            if (!bid.OwnerExists)
++            {
++                commodity.Bids.RemoveAt(i);
++                continue;
++            }
++
++            if (bid.Price < offer.Price)
++            {
++                break;
++            }
++
++            Trade(bid, offer, bid.Price, traders);
++
++            if (bid.Quantity == 0)
++            {
++                commodity.Bids.RemoveAt(i);
++            }
++            else
++            {
++                i++;
++            }
++        }
++
++        if (offer.Quantity > 0)
++        {
++            commodity.Insert(offer);
++            m.SendMessage("Your order has been added to the exchange board.");
++        }
++        else
++        {
++            m.SendMessage("Your order has been executed.");
++        }
++
++        foreach (var trader in traders)
++        {
++            SendHistoryTo(trader);
++        }
++
++        return null;
++    }
++
++    private static void Trade(ExchangeBid bid, ExchangeOffer offer, double price, HashSet<Mobile> traders)
++    {
++        var quantity = Math.Min(bid.Quantity, offer.Quantity);
++
++        GiveGoods(bid.Mobile, offer.Commodity.Type, quantity);
++        GiveMoney(offer.Mobile, (long)(price * quantity));
++        bid.Quantity -= quantity;
++        offer.Quantity -= quantity;
++
++        offer.Commodity.RecordTrade(price, quantity);
++        AddHistory(bid.Mobile, new ExchangeTransaction(offer.Commodity.Name, price, quantity, true, Core.Now));
++        AddHistory(offer.Mobile, new ExchangeTransaction(offer.Commodity.Name, price, quantity, false, Core.Now));
++
++        traders.Add(bid.Mobile);
++        traders.Add(offer.Mobile);
++    }
++
++    private static void AddHistory(Mobile m, ExchangeTransaction t)
++    {
++        if (!History.TryGetValue(m, out var list))
++        {
++            History[m] = list = [];
++        }
++
++        list.Add(t);
++    }
++
++    public static CommodityDeed MakeDeed(Type type, int amount)
++    {
++        var item = type.CreateInstance<Item>();
++        item.Amount = amount;
++
++        var deed = new CommodityDeed();
++
++        if (!deed.SetCommodity(item))
++        {
++            deed.Delete();
++            item.Delete();
++            return null;
++        }
++
++        return deed;
++    }
++
++    private static void GiveGoods(Mobile m, Type type, int amount)
++    {
++        if (amount > 0 && MakeDeed(type, amount) is { } deed)
++        {
++            m.BankBox.DropItem(deed);
++        }
++    }
++
++    // Large sums go into the bank as checks of up to a million, the rest as gold.
++    public static void GiveMoney(Mobile m, long money)
++    {
++        if (m?.Deleted != false)
++        {
++            return;
++        }
++
++        while (money > 2000)
++        {
++            var check = (int)Math.Min(money, 1_000_000);
++            m.BankBox.DropItem(new BankCheck(check));
++            money -= check;
++        }
++
++        if (money > 0)
++        {
++            m.BankBox.DropItem(new Gold((int)money));
++        }
++    }
++
++    // A cancelled bid gets its money back but not the fee; a cancelled offer gets its deed back less the seizure.
++    public static void Cancel(ExchangeOrder order)
++    {
++        switch (order)
++        {
++            case ExchangeBid bid when bid.Commodity.Bids.Remove(bid):
++                {
++                    GiveMoney(bid.Mobile, (long)(bid.Price * bid.Quantity));
++                    break;
++                }
++            case ExchangeOffer offer when offer.Commodity.Offers.Remove(offer):
++                {
++                    if (offer.OwnerExists && offer.Quantity - offer.Seizure > 0)
++                    {
++                        GiveGoods(offer.Mobile, offer.Commodity.Type, offer.Quantity - offer.Seizure);
++                    }
++
++                    break;
++                }
++        }
++    }
++
++    public static void CleanUp()
++    {
++        var now = Core.Now;
++        var lapsed = new List<ExchangeOrder>();
++
++        foreach (var category in ExchangeConfig.Categories)
++        {
++            foreach (var commodity in category.Commodities)
++            {
++                lapsed.AddRange(commodity.Bids.FindAll(b => now - b.Date > b.Lifetime || !b.OwnerExists));
++                lapsed.AddRange(commodity.Offers.FindAll(o => now - o.Date > o.Lifetime || !o.OwnerExists));
++            }
++        }
++
++        foreach (var order in lapsed)
++        {
++            Cancel(order);
++        }
++
++        var stale = new List<Mobile>();
++
++        foreach (var (m, list) in History)
++        {
++            list.RemoveAll(t => now - t.Date > ExchangeConfig.HistoryCleanTime);
++
++            if (list.Count == 0 || m.Deleted)
++            {
++                stale.Add(m);
++            }
++        }
++
++        foreach (var m in stale)
++        {
++            History.Remove(m);
++        }
++    }
++
++    public override void Serialize(IGenericWriter writer)
++    {
++        writer.WriteEncodedInt(0); // version
++
++        var commodities = new List<ExchangeCommodity>();
++
++        foreach (var category in ExchangeConfig.Categories)
++        {
++            commodities.AddRange(category.Commodities);
++        }
++
++        writer.WriteEncodedInt(commodities.Count);
++
++        foreach (var c in commodities)
++        {
++            writer.Write(c.Type.FullName);
++            writer.Write(c.LastPrice);
++            writer.WriteEncodedInt(c.LastQuantity);
++            writer.Write(c.LastExchangeTime);
++            writer.Write(c.HighestPrice);
++            writer.Write(c.LowestPrice);
++            writer.Write(c.TotalQuantity);
++            writer.Write(c.TotalRevenue);
++
++            writer.WriteEncodedInt(c.Days.Count);
++
++            foreach (var d in c.Days)
++            {
++                writer.WriteEncodedInt(d.Day);
++                writer.Write(d.HighestPrice);
++                writer.Write(d.LowestPrice);
++                writer.Write(d.TotalQuantity);
++                writer.Write(d.TotalRevenue);
++            }
++
++            WriteOrders(writer, c.Bids);
++            WriteOrders(writer, c.Offers);
++        }
++
++        writer.WriteEncodedInt(History.Count);
++
++        foreach (var (m, list) in History)
++        {
++            writer.Write(m);
++            writer.WriteEncodedInt(list.Count);
++
++            foreach (var t in list)
++            {
++                writer.Write(t.Name);
++                writer.Write(t.Price);
++                writer.WriteEncodedInt(t.Quantity);
++                writer.Write(t.Bought);
++                writer.Write(t.Date);
++            }
++        }
++    }
++
++    private static void WriteOrders<T>(IGenericWriter writer, List<T> orders) where T : ExchangeOrder
++    {
++        writer.WriteEncodedInt(orders.Count);
++
++        foreach (var o in orders)
++        {
++            writer.Write(o.Mobile);
++            writer.Write(o.Price);
++            writer.WriteEncodedInt(o.Quantity);
++            writer.Write(o.Date);
++        }
++    }
++
++    public override void Deserialize(IGenericReader reader)
++    {
++        reader.ReadEncodedInt(); // version
++
++        var count = reader.ReadEncodedInt();
++
++        for (var i = 0; i < count; i++)
++        {
++            var type = AssemblyHandler.FindTypeByFullName(reader.ReadString());
++            // A commodity no longer traded still has to be read past.
++            var c = (type != null ? Find(type) : null) ?? new ExchangeCommodity(null, typeof(Gold), "removed");
++
++            c.LastPrice = reader.ReadDouble();
++            c.LastQuantity = reader.ReadEncodedInt();
++            c.LastExchangeTime = reader.ReadDateTime();
++            c.HighestPrice = reader.ReadDouble();
++            c.LowestPrice = reader.ReadDouble();
++            c.TotalQuantity = reader.ReadLong();
++            c.TotalRevenue = reader.ReadLong();
++
++            var days = reader.ReadEncodedInt();
++
++            for (var d = 0; d < days; d++)
++            {
++                c.Days.Add(
++                    new ExchangeDay
++                    {
++                        Day = reader.ReadEncodedInt(),
++                        HighestPrice = reader.ReadDouble(),
++                        LowestPrice = reader.ReadDouble(),
++                        TotalQuantity = reader.ReadLong(),
++                        TotalRevenue = reader.ReadLong()
++                    }
++                );
++            }
++
++            var bids = reader.ReadEncodedInt();
++
++            for (var b = 0; b < bids; b++)
++            {
++                var bid = new ExchangeBid(reader.ReadEntity<Mobile>(), c, reader.ReadDouble(), reader.ReadEncodedInt(), reader.ReadDateTime());
++
++                if (bid.OwnerExists)
++                {
++                    c.Bids.Add(bid);
++                }
++            }
++
++            var offers = reader.ReadEncodedInt();
++
++            for (var o = 0; o < offers; o++)
++            {
++                var offer = new ExchangeOffer(reader.ReadEntity<Mobile>(), c, reader.ReadDouble(), reader.ReadEncodedInt(), reader.ReadDateTime());
++
++                if (offer.OwnerExists)
++                {
++                    c.Offers.Add(offer);
++                }
++            }
++        }
++
++        var people = reader.ReadEncodedInt();
++
++        for (var i = 0; i < people; i++)
++        {
++            var m = reader.ReadEntity<Mobile>();
++            var list = new List<ExchangeTransaction>();
++            var n = reader.ReadEncodedInt();
++
++            for (var j = 0; j < n; j++)
++            {
++                list.Add(new ExchangeTransaction(reader.ReadString(), reader.ReadDouble(), reader.ReadEncodedInt(), reader.ReadBool(), reader.ReadDateTime()));
++            }
++
++            if (m?.Deleted == false && list.Count > 0)
++            {
++                History[m] = list;
++            }
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Town/ExchangeGumps.cs b/Projects/UOContent/Custom/DFI/Town/ExchangeGumps.cs
+new file mode 100644
+index 000000000..3ef108b5d
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Town/ExchangeGumps.cs
+@@ -0,0 +1,619 @@
++// The West Britain Exchange's trader and gumps, ported from DFI RUNUO Scripts/Custom/Mobiles/Townfolks and
++// Vendors/Vendor System (ExchangeNPC.cs, ExchangeGumps.cs). DFI's price and volume bar charts are summed up here
++// as figures.
++
++using System;
++using System.Collections.Generic;
++using ModernUO.Serialization;
++using Server.Collections;
++using Server.ContextMenus;
++using Server.Gumps;
++using Server.Items;
++using Server.Mobiles;
++using Server.Network;
++using Server.Targeting;
++
++namespace Server.Custom.Dfi.Exchange;
++
++[SerializationGenerator(0)]
++public partial class ExchangeNPC : BaseCreature
++{
++    private static readonly int[] _hues =
++    [
++        0x483, 0x48C, 0x488, 0x48A, 0x495, 0x48B, 0x486, 0x485, 0x48D, 0x490, 0x48E, 0x491, 0x48F, 0x494, 0x484, 0x497,
++        0x489, 0x47F, 0x482, 0x47E
++    ];
++
++    [SerializableField(0)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private ExchangeNpcCategory _category;
++
++    [Constructible(AccessLevel.GameMaster)]
++    public ExchangeNPC() : base(AIType.AI_Vendor, FightMode.None, 2, 1)
++    {
++        InitStats(100, 100, 25);
++        Title = "the trader";
++        Body = 0x190;
++        Hue = 33770;
++        Name = NameList.RandomName("male");
++        HairItemID = 8252;
++        HairHue = 2125;
++        FacialHairItemID = 8267;
++        FacialHairHue = 2125;
++        Blessed = true;
++        CantWalk = true;
++        Direction = Direction.South;
++
++        AddItem(new BodySash(1195) { Name = "I can make thee rich!", Layer = Layer.Talisman, Movable = false });
++        Wear(new Tunic());
++        Wear(new FurBoots());
++        Wear(new FurCape());
++        Wear(new Kilt());
++        Wear(new LongPants());
++        Wear(new Necklace());
++        Wear(new GoldRing());
++        Wear(new SilverBracelet());
++    }
++
++    public override bool CanBeDamaged() => false;
++
++    // One of DFI's twenty clothing hues, by index.
++    [CommandProperty(AccessLevel.GameMaster)]
++    public int ItemHue
++    {
++        get => Array.IndexOf(_hues, HairHue);
++        set
++        {
++            var hue = _hues[Math.Clamp(value, 0, _hues.Length - 1)];
++
++            foreach (var item in Items)
++            {
++                if (item is not BodySash)
++                {
++                    item.Hue = hue;
++                }
++            }
++
++            HairHue = hue;
++            FacialHairHue = hue;
++        }
++    }
++
++    private void Wear(Item item)
++    {
++        item.Movable = false;
++        item.Hue = 2125;
++        AddItem(item);
++    }
++
++    public override void GetContextMenuEntries(Mobile from, ref PooledRefList<ContextMenuEntry> list)
++    {
++        base.GetContextMenuEntries(from, ref list);
++
++        if (from.Alive)
++        {
++            list.Add(new TalkEntry());
++        }
++    }
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        if (from.Alive && from.InRange(this, 12))
++        {
++            Open(from);
++        }
++        else
++        {
++            base.OnDoubleClick(from);
++        }
++    }
++
++    public void Open(Mobile from) => from.SendGump(new ExchangeEntryGump(ExchangeSystem.GetCategory(_category)), true);
++
++    private class TalkEntry : ContextMenuEntry
++    {
++        public TalkEntry() : base(6146, 12) // Talk
++        {
++        }
++
++        public override void OnClick(Mobile from, IEntity target)
++        {
++            (target as ExchangeNPC)?.Open(from);
++        }
++    }
++}
++
++public abstract class ExchangeGump : DynamicGump
++{
++    protected const string Title = "West Britain Exchange";
++
++    protected ExchangeGump() : base(50, 50)
++    {
++    }
++
++    protected static void AddFrame(ref DynamicGumpBuilder builder, int width, int height, string subtitle)
++    {
++        builder.AddPage();
++        builder.AddBackground(0, 0, width, height, 9270);
++        builder.AddAlphaRegion(10, 10, width - 20, height - 20);
++        builder.AddHtml(0, 22, width, 18, Title, "#FFFFFF", align: TextAlignment.Center);
++        builder.AddHtml(0, 42, width, 18, subtitle, "#FFFFFF", align: TextAlignment.Center);
++    }
++
++    protected static string Price(double price) => price is 0 or double.MaxValue ? "N/A" : $"{price:0.##}";
++}
++
++public class ExchangeEntryGump : ExchangeGump
++{
++    private const int Info = 1;
++    private const int MyOrders = 2;
++    private const int BidBase = 100;
++    private const int SellBase = 200;
++
++    private readonly ExchangeCategory _category;
++
++    public ExchangeEntryGump(ExchangeCategory category) => _category = category;
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        var height = 160 + 20 * _category.Commodities.Count;
++        AddFrame(ref builder, 560, height, _category.Name);
++
++        builder.AddLabel(30, 72, 0x34, "Bid");
++        builder.AddLabel(65, 72, 0x34, "Sell");
++        builder.AddLabel(110, 72, 0x34, "Commodity");
++        builder.AddLabel(280, 72, 0x34, "Bids");
++        builder.AddLabel(350, 72, 0x34, "Offers");
++        builder.AddLabel(430, 72, 0x34, "Average Price");
++
++        for (var i = 0; i < _category.Commodities.Count; i++)
++        {
++            var c = _category.Commodities[i];
++            var y = 95 + 20 * i;
++            builder.AddButton(30, y, 4005, 4006, BidBase + i);
++            builder.AddButton(65, y, 4005, 4006, SellBase + i);
++            builder.AddLabel(110, y, 0x481, c.Name);
++            builder.AddLabel(280, y, 0x481, $"{c.Bids.Count}");
++            builder.AddLabel(350, y, 0x481, $"{c.Offers.Count}");
++            builder.AddLabel(430, y, 0x481, Price(c.AveragePrice));
++        }
++
++        builder.AddButton(30, height - 45, 4011, 4012, Info);
++        builder.AddLabel(65, height - 45, 0x481, "Information");
++        builder.AddButton(320, height - 45, 4011, 4012, MyOrders);
++        builder.AddLabel(355, height - 45, 0x481, "View My Offers/Biddings");
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        var m = sender.Mobile;
++        var id = info.ButtonID;
++
++        if (id == Info)
++        {
++            m.SendGump(new ExchangeInfoGump(), true);
++        }
++        else if (id == MyOrders)
++        {
++            var orders = new List<ExchangeOrder>(ExchangeSystem.OrdersOf(m, _category));
++
++            if (orders.Count > 0)
++            {
++                m.SendGump(new ExchangeMyOrdersGump(_category, orders), true);
++            }
++            else
++            {
++                m.SendMessage("I am sorry i couldn't find any bids/offers from you.");
++            }
++        }
++        else if (id >= BidBase && id - BidBase < _category.Commodities.Count)
++        {
++            m.SendGump(new ExchangeBidGump(_category.Commodities[id - BidBase], 0, ExchangeConfig.MinimumQuantity), true);
++        }
++        else if (id >= SellBase && id - SellBase < _category.Commodities.Count)
++        {
++            m.SendMessage("Please target the commodity deed you wish to sell.");
++            m.Target = new SellTarget(_category);
++        }
++    }
++
++    private class SellTarget : Target
++    {
++        private readonly ExchangeCategory _category;
++
++        public SellTarget(ExchangeCategory category) : base(12, false, TargetFlags.None) => _category = category;
++
++        protected override void OnTarget(Mobile m, object targeted)
++        {
++            if (targeted is not CommodityDeed deed)
++            {
++                m.SendMessage("I am sorry we only accept deeded commodities.");
++            }
++            else if (!deed.IsChildOf(m.Backpack))
++            {
++                m.SendMessage("Please make sure your deed is in your backpack.");
++            }
++            else if (deed.Commodity == null)
++            {
++                m.SendMessage("We only accept deeds that are already filled.");
++            }
++            else if (deed.Commodity.Amount < ExchangeConfig.MinimumQuantity)
++            {
++                m.SendMessage("We only accept deeds that contain at least 25 goods.");
++            }
++            else if (_category.Find(deed.Commodity.GetType()) is not { } commodity)
++            {
++                m.SendMessage("I am sorry i do not exchange that kind of goods, you may want to try it at my collegues.");
++            }
++            else
++            {
++                m.SendGump(new ExchangeSellGump(commodity, deed, 0), true);
++            }
++        }
++    }
++}
++
++// The bid and offer gumps share the order book and the commodity's figures.
++public abstract class ExchangeOrderGump : ExchangeGump
++{
++    protected const int Commit = 5;
++    protected const int UpdatePrice = 1;
++    protected const int UpdateQuantity = 2;
++
++    protected ExchangeOrderGump(ExchangeCommodity commodity) => Commodity = commodity;
++
++    protected ExchangeCommodity Commodity { get; }
++
++    protected void AddBook(ref DynamicGumpBuilder builder, string subtitle)
++    {
++        AddFrame(ref builder, 620, 400, subtitle);
++
++        builder.AddLabel(40, 75, 0x34, "Bids");
++        builder.AddLabel(40, 95, 0x3B2, "Price");
++        builder.AddLabel(120, 95, 0x3B2, "Quantity");
++
++        for (var i = 0; i < 5 && i < Commodity.Bids.Count; i++)
++        {
++            builder.AddLabel(40, 115 + 18 * i, 0x481, Price(Commodity.Bids[i].Price));
++            builder.AddLabel(120, 115 + 18 * i, 0x481, $"{Commodity.Bids[i].Quantity}");
++        }
++
++        builder.AddLabel(230, 75, 0x34, "Offers");
++        builder.AddLabel(230, 95, 0x3B2, "Price");
++        builder.AddLabel(310, 95, 0x3B2, "Quantity");
++
++        for (var i = 0; i < 5 && i < Commodity.Offers.Count; i++)
++        {
++            builder.AddLabel(230, 115 + 18 * i, 0x481, Price(Commodity.Offers[i].Price));
++            builder.AddLabel(310, 115 + 18 * i, 0x481, $"{Commodity.Offers[i].Quantity}");
++        }
++
++        var c = Commodity;
++        var last = c.LastExchangeTime == DateTime.MinValue
++            ? "N/A"
++            : $"{(int)Math.Ceiling((Core.Now - c.LastExchangeTime).TotalHours)} h ago";
++
++        builder.AddLabel(430, 75, 0x34, "Market");
++        builder.AddLabel(430, 95, 0x3B2, "Last:");
++        builder.AddLabel(510, 95, 0x481, last);
++        builder.AddLabel(430, 113, 0x3B2, "Last-P:");
++        builder.AddLabel(510, 113, 0x481, Price(c.LastPrice));
++        builder.AddLabel(430, 131, 0x3B2, "Last-Q:");
++        builder.AddLabel(510, 131, 0x481, c.LastQuantity == 0 ? "N/A" : $"{c.LastQuantity}");
++        builder.AddLabel(430, 149, 0x3B2, "Highest-P:");
++        builder.AddLabel(510, 149, 0x481, Price(c.HighestPrice));
++        builder.AddLabel(430, 167, 0x3B2, "Lowest-P:");
++        builder.AddLabel(510, 167, 0x481, Price(c.LowestPrice));
++        builder.AddLabel(430, 185, 0x3B2, "Average-P:");
++        builder.AddLabel(510, 185, 0x481, Price(c.AveragePrice));
++        builder.AddLabel(430, 203, 0x3B2, "Total-Q:");
++        builder.AddLabel(510, 203, 0x481, $"{c.TotalQuantity}");
++        builder.AddLabel(430, 221, 0x3B2, "Total-R:");
++        builder.AddLabel(510, 221, 0x481, $"{c.TotalRevenue}");
++    }
++
++    protected static double ReadPrice(in RelayInfo info, double current) =>
++        double.TryParse(info.GetTextEntry(1)?.Trim(), out var price) ? Math.Round(price, 2) : current;
++}
++
++public class ExchangeBidGump : ExchangeOrderGump
++{
++    private readonly double _price;
++    private readonly int _quantity;
++
++    public ExchangeBidGump(ExchangeCommodity commodity, double price, int quantity) : base(commodity)
++    {
++        _price = price;
++        _quantity = quantity;
++    }
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        AddBook(ref builder, $"Buying {Commodity.Name}");
++
++        builder.AddLabel(40, 260, 0x481, "Commodity:");
++        builder.AddLabel(130, 260, 0x481, Commodity.Name);
++        builder.AddLabel(40, 285, 0x481, "Price:");
++        builder.AddImageTiled(130, 285, 120, 20, 0xBBC);
++        builder.AddTextEntry(132, 285, 116, 20, 0, 1, $"{_price:0.##}");
++        builder.AddButton(260, 285, 4029, 4030, UpdatePrice);
++        builder.AddLabel(40, 310, 0x481, "Quantity:");
++        builder.AddImageTiled(130, 310, 120, 20, 0xBBC);
++        builder.AddTextEntry(132, 310, 116, 20, 0, 2, $"{_quantity}");
++        builder.AddButton(260, 310, 4029, 4030, UpdateQuantity);
++        builder.AddLabel(320, 285, 0x481, $"Immediate acquisitions: {Commodity.ImmediateBuy(_price, _quantity)}");
++        builder.AddLabel(320, 310, 0x481, $"Cost: {(long)(_price * _quantity) + ExchangeConfig.BuyCosts} gp from the bank");
++
++        builder.AddButton(40, 350, 4011, 4012, Commit);
++        builder.AddLabel(75, 350, 0x481, "Commit");
++        builder.AddButton(180, 350, 4020, 4021, 0);
++        builder.AddLabel(215, 350, 0x481, "Cancel");
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        var m = sender.Mobile;
++        var price = ReadPrice(info, _price);
++        var quantity = int.TryParse(info.GetTextEntry(2)?.Trim(), out var q) ? q : _quantity;
++
++        switch (info.ButtonID)
++        {
++            case UpdatePrice or UpdateQuantity:
++                {
++                    m.SendGump(new ExchangeBidGump(Commodity, price, quantity), true);
++                    break;
++                }
++            case Commit:
++                {
++                    if (ExchangeSystem.PlaceBid(m, Commodity, price, quantity) is { } error)
++                    {
++                        m.SendMessage(error);
++                        m.SendGump(new ExchangeBidGump(Commodity, price, quantity), true);
++                    }
++
++                    break;
++                }
++            default:
++                {
++                    m.SendMessage("Your bid has not been added to the exchange board.");
++                    m.SendGump(new ExchangeEntryGump(Commodity.Category), true);
++                    break;
++                }
++        }
++    }
++}
++
++public class ExchangeSellGump : ExchangeOrderGump
++{
++    private readonly CommodityDeed _deed;
++    private readonly double _price;
++
++    public ExchangeSellGump(ExchangeCommodity commodity, CommodityDeed deed, double price) : base(commodity)
++    {
++        _deed = deed;
++        _price = price;
++    }
++
++    public override bool Singleton => true;
++
++    private int Quantity => _deed.Commodity?.Amount ?? 0;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        AddBook(ref builder, $"Selling {Commodity.Name}");
++
++        builder.AddLabel(40, 260, 0x481, "Commodity:");
++        builder.AddLabel(130, 260, 0x481, Commodity.Name);
++        builder.AddLabel(40, 285, 0x481, "Price:");
++        builder.AddImageTiled(130, 285, 120, 20, 0xBBC);
++        builder.AddTextEntry(132, 285, 116, 20, 0, 1, $"{_price:0.##}");
++        builder.AddButton(260, 285, 4029, 4030, UpdatePrice);
++        builder.AddLabel(40, 310, 0x481, "Quantity:");
++        builder.AddLabel(130, 310, 0x481, $"{Quantity}");
++        builder.AddLabel(320, 285, 0x481, $"Immediate sales: {Commodity.ImmediateSell(_price, Quantity)}");
++
++        builder.AddButton(40, 350, 4011, 4012, Commit);
++        builder.AddLabel(75, 350, 0x481, "Commit");
++        builder.AddButton(180, 350, 4020, 4021, 0);
++        builder.AddLabel(215, 350, 0x481, "Cancel");
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        var m = sender.Mobile;
++        var price = ReadPrice(info, _price);
++
++        switch (info.ButtonID)
++        {
++            case UpdatePrice:
++                {
++                    m.SendGump(new ExchangeSellGump(Commodity, _deed, price), true);
++                    break;
++                }
++            case Commit:
++                {
++                    if (ExchangeSystem.PlaceOffer(m, _deed, price) is { } error)
++                    {
++                        m.SendMessage(error);
++
++                        if (!_deed.Deleted)
++                        {
++                            m.SendGump(new ExchangeSellGump(Commodity, _deed, price), true);
++                        }
++                    }
++
++                    break;
++                }
++            default:
++                {
++                    m.SendMessage("Your offer has not been added to the exchange board.");
++                    m.SendGump(new ExchangeEntryGump(Commodity.Category), true);
++                    break;
++                }
++        }
++    }
++}
++
++public class ExchangeMyOrdersGump : ExchangeGump
++{
++    private readonly ExchangeCategory _category;
++    private readonly List<ExchangeOrder> _orders;
++
++    public ExchangeMyOrdersGump(ExchangeCategory category, List<ExchangeOrder> orders)
++    {
++        _category = category;
++        _orders = orders;
++    }
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        var height = 150 + 20 * _orders.Count;
++        AddFrame(ref builder, 600, height, "Reviewing");
++
++        string[] heads = ["Commodity", "Action", "Price", "Quantity", "Revenue", "Days Left"];
++        int[] xs = [60, 190, 260, 340, 420, 510];
++
++        for (var i = 0; i < heads.Length; i++)
++        {
++            builder.AddLabel(xs[i], 72, 0x34, heads[i]);
++        }
++
++        for (var i = 0; i < _orders.Count; i++)
++        {
++            var o = _orders[i];
++            var y = 95 + 20 * i;
++            var daysLeft = Math.Max(0, (int)(o.Lifetime - (Core.Now - o.Date)).TotalDays);
++
++            builder.AddButton(25, y, 4017, 4018, 100 + i);
++            builder.AddLabel(xs[0], y, 0x481, o.Commodity.Name);
++            builder.AddLabel(xs[1], y, 0x481, o is ExchangeBid ? "Buying" : "Selling");
++            builder.AddLabel(xs[2], y, 0x481, Price(o.Price));
++            builder.AddLabel(xs[3], y, 0x481, $"{o.Quantity}");
++            builder.AddLabel(xs[4], y, 0x481, $"{(long)(o.Quantity * o.Price)}");
++            builder.AddLabel(xs[5], y, 0x481, $"{daysLeft}");
++        }
++
++        builder.AddLabel(60, height - 45, 0x3B2, "Press a red button to remove that order from the board.");
++        builder.AddButton(480, height - 45, 247, 248, 0);
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        var index = info.ButtonID - 100;
++
++        if (index >= 0 && index < _orders.Count)
++        {
++            sender.Mobile.SendGump(new ExchangeCancelGump(_category, _orders[index]), true);
++        }
++    }
++}
++
++public class ExchangeCancelGump : ExchangeGump
++{
++    private readonly ExchangeCategory _category;
++    private readonly ExchangeOrder _order;
++
++    public ExchangeCancelGump(ExchangeCategory category, ExchangeOrder order)
++    {
++        _category = category;
++        _order = order;
++    }
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        AddFrame(ref builder, 500, 260, _order is ExchangeBid ? "Buying" : "Selling");
++
++        var warning = _order is ExchangeOffer offer
++            ? $"Warning!<br>Canceling this offer will result in the removal of {offer.Seizure} units of your goods."
++            : "Warning!<br>Canceling this bid will remove it from the exchange board, the incurred costs will not be returned";
++
++        builder.AddHtml(60, 90, 380, 90, warning, "#FFFFFF");
++        builder.AddButton(80, 200, 247, 248, 1);
++        builder.AddLabel(80, 180, 0x481, "Remove it");
++        builder.AddButton(340, 200, 241, 242, 0);
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        var m = sender.Mobile;
++
++        if (info.ButtonID == 1 && _order.Mobile == m)
++        {
++            ExchangeSystem.Cancel(_order);
++            m.SendMessage("Your order has been removed from the exchange board; what it held went to your bank.");
++        }
++
++        m.SendGump(new ExchangeEntryGump(_category), true);
++    }
++}
++
++public class ExchangeHistoryGump : ExchangeGump
++{
++    private readonly List<ExchangeTransaction> _list;
++
++    public ExchangeHistoryGump(List<ExchangeTransaction> list) => _list = list;
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        var shown = Math.Min(_list.Count, 20);
++        var height = 160 + 20 * shown;
++        AddFrame(ref builder, 520, height, "Transaction History");
++
++        string[] heads = ["Commodity", "Action", "Price", "Quantity", "Revenue"];
++        int[] xs = [40, 170, 250, 330, 410];
++
++        for (var i = 0; i < heads.Length; i++)
++        {
++            builder.AddLabel(xs[i], 72, 0x34, heads[i]);
++        }
++
++        for (var i = 0; i < shown; i++)
++        {
++            var t = _list[_list.Count - shown + i];
++            var y = 95 + 20 * i;
++            builder.AddLabel(xs[0], y, 0x481, t.Name);
++            builder.AddLabel(xs[1], y, 0x481, t.Bought ? "Bought" : "Sold");
++            builder.AddLabel(xs[2], y, 0x481, Price(t.Price));
++            builder.AddLabel(xs[3], y, 0x481, $"{t.Quantity}");
++            builder.AddLabel(xs[4], y, 0x481, $"{(long)(t.Price * t.Quantity)}");
++        }
++
++        builder.AddLabel(40, height - 45, 0x3B2, "Goods and gold from trades are in your bank. OK clears this list.");
++        builder.AddButton(420, height - 45, 247, 248, 1);
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        if (info.ButtonID == 1)
++        {
++            ExchangeSystem.History.Remove(sender.Mobile);
++        }
++    }
++}
++
++public class ExchangeInfoGump : ExchangeGump
++{
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        AddFrame(ref builder, 500, 520, "Information");
++
++        builder.AddHtml(
++            40, 80, 420, 380,
++            "Welcome to the West Britain Commodities Exchange!<br><br>We trade just about every commodity.<br>If you own a commodity you have to fill it into a commodity deed and than contact the designated trader that is able to exchange your goods. If you want to buy a commodity you can just fill out a bid at a trader. All bids and sale-entries are removed after a period of 5 days. All downpayment will be returned and goods will be returned minus the non-sale expenses as explained below.<br><br>Costs inclined:<br>As a bidder you have to pay 150 gp per bid, so in small bids this is a lot of money on  large bid it isn't much.<br>Sellers don't have to pay anything in the first place but if the goods havn't been sold within 5 days 2.5% will be held back to pay for the expenses.<br><br>What you buy, and the gold for what you sell, is put in your bank.<br><br>We hope you will enjoy our services!",
++            "#FFFFFF", background: false, scrollbar: true
++        );
++        builder.AddButton(210, 475, 247, 248, 0);
++    }
++}

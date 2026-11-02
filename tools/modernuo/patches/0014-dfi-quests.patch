@@ -1,0 +1,3305 @@
+diff --git a/Distribution/Data/Spawns/dfi/dfi-rare-plants.json b/Distribution/Data/Spawns/dfi/dfi-rare-plants.json
+new file mode 100644
+index 000000000..c96d27149
+--- /dev/null
++++ b/Distribution/Data/Spawns/dfi/dfi-rare-plants.json
+@@ -0,0 +1,102 @@
++[
++  {
++    "$type": "Spawner",
++    "guid": "b5c8dbd6-4869-5e03-834d-e620e298b3d2",
++    "name": "dfi-rare-plants cove-orc-fort",
++    "location": [
++      2171,
++      1332,
++      0
++    ],
++    "map": "Felucca",
++    "count": 6,
++    "minDelay": "00:05:00",
++    "maxDelay": "00:10:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 6,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "MandrakeQuestReagent",
++        "maxCount": 6,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "10cba29f-67a4-54d1-8669-fba9c5693d0c",
++    "name": "dfi-rare-plants fire-island-temple",
++    "location": [
++      2923,
++      3407,
++      9
++    ],
++    "map": "Felucca",
++    "count": 6,
++    "minDelay": "00:05:00",
++    "maxDelay": "00:10:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 6,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "GarlicQuestReagent",
++        "maxCount": 6,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "46220b99-6edc-5e57-a447-e915a5aef89d",
++    "name": "dfi-rare-plants yew-cemetery",
++    "location": [
++      724,
++      1138,
++      0
++    ],
++    "map": "Felucca",
++    "count": 6,
++    "minDelay": "00:05:00",
++    "maxDelay": "00:10:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 6,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "NightShadeQuestReagent",
++        "maxCount": 6,
++        "probability": 100
++      }
++    ]
++  },
++  {
++    "$type": "Spawner",
++    "guid": "48ff2b23-d135-5372-9c57-68409e029eb4",
++    "name": "dfi-rare-plants compassion-shrine",
++    "location": [
++      1856,
++      872,
++      0
++    ],
++    "map": "Felucca",
++    "count": 6,
++    "minDelay": "00:05:00",
++    "maxDelay": "00:10:00",
++    "team": 0,
++    "group": false,
++    "homeRange": 6,
++    "walkingRange": -1,
++    "entries": [
++      {
++        "name": "GinsengQuestReagent",
++        "maxCount": 6,
++        "probability": 100
++      }
++    ]
++  }
++]
+diff --git a/Projects/UOContent.Tests/Tests/Custom/DfiQuestTests.cs b/Projects/UOContent.Tests/Tests/Custom/DfiQuestTests.cs
+new file mode 100644
+index 000000000..f180b63a0
+--- /dev/null
++++ b/Projects/UOContent.Tests/Tests/Custom/DfiQuestTests.cs
+@@ -0,0 +1,307 @@
++using System;
++using System.Collections.Generic;
++using System.IO;
++using System.Text.Json;
++using Server;
++using Server.Custom.Dfi;
++using Server.Engines.Quests.ElderWizard;
++using Server.Engines.Quests.Midas;
++using Server.Engines.Quests.Plague;
++using Server.Engines.Spawners;
++using Server.Items;
++using Server.Misc;
++using Server.Mobiles;
++using Xunit;
++
++namespace UOContent.Tests.Custom;
++
++[Collection("Sequential UOContent Tests")]
++public class DfiQuestTests : IDisposable
++{
++    private readonly List<IEntity> _created = new();
++
++    public DfiQuestTests()
++    {
++        if (NameList.GetNameList("male") == null)
++        {
++            NameList.Configure();
++        }
++    }
++
++    public static TheoryData<Type> Types =>
++    [
++        typeof(Zuleika), typeof(ThePlague), typeof(PlagueSummoningAltar), typeof(PoisonFungus), typeof(PlagueChest),
++        typeof(PlaguedSkull), typeof(BookOfLostKnowledge), typeof(BowOfWeakening), typeof(GlovesOfTheLepracon),
++        typeof(GrizzlysCourage), typeof(MidasQuestGiver), typeof(Behemoth), typeof(DragonClenchingClaws), typeof(MidasTouch),
++        typeof(Necronomicon), typeof(YetisPads), typeof(GabrielleTheElderWizard), typeof(MandrakeQuestReagent),
++        typeof(GarlicQuestReagent), typeof(NightShadeQuestReagent), typeof(GinsengQuestReagent), typeof(RarePlantsBook),
++        typeof(QuestReagentBag), typeof(SunArms), typeof(SunChest), typeof(SunGloves), typeof(SunGorget), typeof(SunHelm),
++        typeof(SunLegs), typeof(EvilOrcHelm)
++    ];
++
++    public void Dispose()
++    {
++        foreach (var e in _created)
++        {
++            e?.Delete();
++        }
++
++        _created.Clear();
++    }
++
++    private T Track<T>(T e) where T : IEntity
++    {
++        _created.Add(e);
++        return e;
++    }
++
++    private PlayerMobile Player(Point3D at)
++    {
++        var m = Track(new PlayerMobile());
++        m.Player = true;
++        m.RawStr = 100;
++        m.RawDex = 100;
++        m.RawInt = 100;
++        m.Body = 0x190;
++        m.AddItem(new Backpack());
++        m.MoveToWorld(at, Map.Felucca);
++        return m;
++    }
++
++    [Theory]
++    [MemberData(nameof(Types))]
++    public void Type_Constructs(Type type)
++    {
++        var entity = Track(type.CreateInstance<IEntity>());
++
++        Assert.False(entity.Deleted);
++    }
++
++    [Fact]
++    public void Plagued_IsGreenStrongerAndNeverAlsoElder()
++    {
++        var rat = Track(new GiantRat());
++        var hits = rat.HitsMaxSeed;
++
++        DfiVariants.MakePlagued(rat);
++        DfiVariants.MakeElder(rat);
++
++        Assert.True(DfiVariants.IsPlagued(rat));
++        Assert.False(DfiVariants.IsElder(rat));
++        Assert.Equal(DfiVariants.PlagueHue, rat.Hue);
++        Assert.Equal(hits * 2, rat.HitsMaxSeed);
++    }
++
++    [Fact]
++    public void Plague_NeverRisesOutsideFeluccaDungeons()
++    {
++        var rat = Track(new GiantRat());
++
++        for (var i = 0; i < 200; i++)
++        {
++            Assert.False(DfiVariants.CheckPlague(rat, new Point3D(1500, 1600, 0), Map.Felucca));
++            Assert.False(DfiVariants.CheckPlague(rat, new Point3D(5200, 1470, 0), Map.Trammel));
++        }
++    }
++
++    [Theory]
++    [InlineData(500, 1, 1)]
++    [InlineData(5000, 5, 10)]
++    [InlineData(20000, 20, 25)]
++    public void PoisonFungus_ScalesWithFame(int fame, int min, int max)
++    {
++        for (var i = 0; i < 20; i++)
++        {
++            Assert.InRange(DfiVariants.PoisonFungusAmount(fame), min, max);
++        }
++    }
++
++    [Fact]
++    public void Zuleika_CountsFungusToTwoHundredAndKeepsTheRest()
++    {
++        var player = Player(new Point3D(2709, 2165, 0));
++        var zuleika = Track(new Zuleika { Altar = Track(new PlagueSummoningAltar()) });
++        zuleika.MoveToWorld(new Point3D(2709, 2163, 0), Map.Felucca);
++
++        var qs = new ThePlagueQuest(zuleika, player);
++        player.Quest = qs;
++        qs.AddObjective(new CollectFungusObjective());
++
++        var first = Track(new PoisonFungus(150));
++        Assert.False(zuleika.OnDragDrop(player, first));
++        Assert.True(first.Deleted);
++
++        var obj = qs.FindObjective(typeof(CollectFungusObjective));
++        Assert.Equal(150, obj.CurProgress);
++
++        var second = Track(new PoisonFungus(80));
++        player.Backpack.DropItem(second);
++        zuleika.OnDragDrop(player, second);
++
++        Assert.True(obj.Completed);
++        Assert.Equal(30, second.Amount);
++    }
++
++    [Fact]
++    public void Midas_SixRoundsEndInARewardBag()
++    {
++        var player = Player(new Point3D(5436, 1162, 0));
++        var nimre = Track(new MidasQuestGiver());
++        nimre.MoveToWorld(new Point3D(5436, 1160, 0), Map.Felucca);
++
++        var qs = new MidasQuest(player);
++        player.Quest = qs;
++        new SlayConversation(0) { System = qs }.OnRead();
++
++        Type[] kills = [typeof(DarknightCreeper), typeof(FleshRenderer), typeof(Impaler), typeof(ShadowKnight), typeof(AbysmalHorror), typeof(DemonKnight)];
++
++        for (var round = 0; round < kills.Length; round++)
++        {
++            var slay = Assert.IsType<SlayObjective>(qs.Objectives[^1]);
++            Assert.Equal(round, slay.Round);
++
++            slay.OnKill(Track(new Mongbat()), null);
++            Assert.False(slay.Completed);
++
++            slay.OnKill(Track(kills[round].CreateInstance<BaseCreature>()), null);
++            Assert.True(slay.Completed);
++
++            nimre.OnTalk(player, false);
++
++            if (round < kills.Length - 1)
++            {
++                Assert.IsType<SlayConversation>(qs.Conversations[^1]).OnRead();
++            }
++            else
++            {
++                Assert.IsType<Server.Engines.Quests.Midas.EndConversation>(qs.Conversations[^1]).OnRead();
++            }
++        }
++
++        Assert.Null(player.Quest);
++        Assert.NotNull(player.Backpack.FindItemByType<Bag>());
++    }
++
++    [Fact]
++    public void ElderWizard_PlantCountsOnlyWhenItIsTheOneWanted()
++    {
++        var player = Player(new Point3D(2171, 1334, 0));
++        var qs = new ElderWizardQuest(player);
++        player.Quest = qs;
++        qs.AddObjective(new FindPlantObjective(0));
++
++        var garlic = Track(new GarlicQuestReagent());
++        garlic.MoveToWorld(new Point3D(2171, 1333, 0), Map.Felucca);
++        garlic.OnDoubleClick(player);
++
++        var obj = (FindPlantObjective)qs.FindObjective(typeof(FindPlantObjective));
++        Assert.Equal(0, obj.CurProgress);
++
++        var mandrake = Track(new MandrakeQuestReagent());
++        mandrake.MoveToWorld(new Point3D(2171, 1333, 0), Map.Felucca);
++        mandrake.OnDoubleClick(player);
++
++        Assert.Equal(1, obj.CurProgress);
++        Assert.Equal(3254, mandrake.ItemID);
++
++        mandrake.OnDoubleClick(player);
++        Assert.Equal(1, obj.CurProgress);
++    }
++
++    [Fact]
++    public void ReagentBag_RefillsWhatIsMissingAtTheVendorsPrices()
++    {
++        var mage = Track(new Mage());
++        var bag = Track(new QuestReagentBag());
++        var full = bag.RefillAmount;
++
++        var pearl = bag.FindItemByType<BlackPearl>();
++        pearl.Amount = 10;
++
++        var entries = bag.RefillEntries(mage);
++        var pearlEntry = entries.Find(e => e.Type == typeof(BlackPearl));
++
++        Assert.Equal(full - 10, pearlEntry.Amount);
++        Assert.True(pearlEntry.Price > 0);
++
++        bag.Refill(entries);
++
++        Assert.Equal(full, bag.FindItemByType<BlackPearl>().Amount);
++        Assert.All(bag.RefillEntries(mage), e => Assert.Equal(0, e.Amount));
++    }
++
++    [Fact]
++    public void ReagentBag_RejectsAnythingButReagents()
++    {
++        var player = Player(new Point3D(1500, 1600, 0));
++        var bag = Track(new QuestReagentBag(QuestReagentBag.ReagentBagType.Necro));
++
++        Assert.False(bag.OnDragDrop(player, Track(new Gold(10))));
++        Assert.Equal(QuestReagentBag.ReagentBagType.Necro, bag.BagType);
++    }
++
++    [Fact]
++    public void SunArmor_FullSetGivesTheLegs900Luck()
++    {
++        var player = Player(new Point3D(1500, 1600, 0));
++        // The test server loads no tiledata, so the pieces get their layers here.
++        var legs = Track(new SunLegs { Layer = Layer.Pants });
++
++        foreach (var piece in (BaseArmor[])
++                 [
++                     new SunHelm { Layer = Layer.Helm }, new SunChest { Layer = Layer.InnerTorso },
++                     new SunGorget { Layer = Layer.Neck }, new SunArms { Layer = Layer.Arms },
++                     new SunGloves { Layer = Layer.Gloves }
++                 ])
++        {
++            Track(piece);
++            Assert.True(player.EquipItem(piece));
++        }
++
++        Assert.Equal(0, legs.Attributes.Luck);
++
++        player.EquipItem(legs);
++        Assert.Equal(900, legs.Attributes.Luck);
++
++        var helm = player.FindItemOnLayer(Layer.Helm);
++        player.AddToBackpack(helm);
++        Assert.Equal(0, legs.Attributes.Luck);
++
++        player.EquipItem(helm);
++        Assert.Equal(900, legs.Attributes.Luck);
++    }
++
++    [Fact]
++    public void EvilOrcHelm_TakesFromTheWearersHigherStat()
++    {
++        var player = Player(new Point3D(1500, 1600, 0));
++        player.RawInt = 80;
++        player.RawDex = 40;
++        var helm = Track(new EvilOrcHelm { Layer = Layer.Helm });
++
++        Assert.True(player.EquipItem(helm));
++
++        Assert.Equal(10, helm.Attributes.BonusStr);
++        Assert.Equal(-10, helm.Attributes.BonusInt);
++        Assert.Equal(0, helm.Attributes.BonusDex);
++    }
++
++    [Fact]
++    public void RarePlantsFile_PlacesEveryPlantKind()
++    {
++        var path = Path.Combine(Core.BaseDirectory, "Data", "Spawns", "dfi", "dfi-rare-plants.json");
++        var dtos = JsonSerializer.Deserialize<List<SpawnerDto>>(File.ReadAllText(path), SpawnerJsonSerializer.Options);
++        var kinds = new HashSet<string>();
++
++        foreach (var dto in dtos)
++        {
++            foreach (var entry in dto.EntryView)
++            {
++                Assert.NotNull(AssemblyHandler.FindTypeByName(entry.SpawnedName));
++                kinds.Add(entry.SpawnedName);
++            }
++        }
++
++        Assert.Equal(FindPlantObjective.Plants.Length, kinds.Count);
++    }
++}
+diff --git a/Projects/UOContent.Tests/Tests/Custom/DfiSpawnTests.cs b/Projects/UOContent.Tests/Tests/Custom/DfiSpawnTests.cs
+index 5b7c9eab6..83bc675b2 100644
+--- a/Projects/UOContent.Tests/Tests/Custom/DfiSpawnTests.cs
++++ b/Projects/UOContent.Tests/Tests/Custom/DfiSpawnTests.cs
+@@ -27,6 +27,7 @@ private static List<SpawnerDto> Load(string relative) =>
+     [InlineData("dfi/dfi-custom-monsters.json", 12)]
+     [InlineData("dfi/dfi-town-rares.json", 4)]
+     [InlineData("dfi/dfi-cursed-cave.json", 40)]
++    [InlineData("dfi/dfi-rare-plants.json", 4)]
+     public void DfiSpawnFile_LoadsAtLeastTheConvertedSpawners(string file, int minimum)
+     {
+         var dtos = Load(file);
+@@ -50,7 +51,7 @@ public void DfiCustomSpawners_ShareNoTileWithTheLayouts()
+             }
+         }
+ 
+-        foreach (var placed in new[] { "dfi-custom-monsters", "dfi-town-rares", "dfi-cursed-cave" })
++        foreach (var placed in new[] { "dfi-custom-monsters", "dfi-town-rares", "dfi-cursed-cave", "dfi-rare-plants" })
+         {
+             Assert.All(
+                 Load($"dfi/{placed}.json"),
+diff --git a/Projects/UOContent/Custom/DFI/Items/SunArmor.cs b/Projects/UOContent/Custom/DFI/Items/SunArmor.cs
+new file mode 100644
+index 000000000..453995b62
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Items/SunArmor.cs
+@@ -0,0 +1,264 @@
++// DFI Network's Armor of the Sun and evil orc helm, ported from DFI RUNUO Scripts/Custom/Items/Armor/Sun Armor and
++// Custom/Items/Misc/EvilOrcHelm.cs, with the drops DFI added to TreasureMap.cs, BaseChampion.cs, OrcBrute.cs and
++// OrcishLord.cs.
++
++using ModernUO.CodeGeneratedEvents;
++using ModernUO.Serialization;
++using Server.Items;
++using Server.Misc;
++using Server.Mobiles;
++using Server.Spells;
++
++namespace Server.Custom.Dfi
++{
++    public static class SunArmor
++    {
++        public const int Hue = 2213;
++
++        public static BaseArmor CreateRandomPiece() =>
++            Utility.Random(6) switch
++            {
++                0 => new SunChest(),
++                1 => new SunGloves(),
++                2 => new SunArms(),
++                3 => new SunLegs(),
++                4 => new SunGorget(),
++                _ => new SunHelm()
++            };
++
++        // A dug treasure chest may raise a Sun Guardian among its guardians, one in 80 times the map level
++        // (at least two), carrying a piece of the Armor of the Sun.
++        public static void CheckSunGuardian(int level, TreasureMapChest chest)
++        {
++            if (chest?.Map == null || Utility.Random(80) >= System.Math.Max(2, level))
++            {
++                return;
++            }
++
++            var bc = TreasureMap.Spawn(level, chest.Location, chest.Map, null, true);
++
++            if (bc == null)
++            {
++                return;
++            }
++
++            chest.Guardians.Add(bc);
++            bc.Hue = Hue;
++            bc.Title = "The Sun Guardian";
++            bc.PackItem(CreateRandomPiece());
++        }
++
++        // A champion slain in the Lost Lands carries a piece six times in ten; orc brutes carry an evil orc
++        // helm one time in ten, orcish lords one in twenty.
++        [OnEvent(nameof(CreatureEvents.CreatureDeathEvent))]
++        public static void OnCreatureDeath(BaseCreature bc)
++        {
++            if (bc.Corpse is not Container c || bc.Controlled || bc.Summoned)
++            {
++                return;
++            }
++
++            switch (bc)
++            {
++                case BaseChampion when SpellHelper.IsFeluccaT2A(bc.Map, bc.Location) && Utility.RandomDouble() < 0.6:
++                    {
++                        c.DropItem(CreateRandomPiece());
++                        break;
++                    }
++                case OrcBrute when Utility.RandomDouble() < 0.1:
++                case OrcishLord when Utility.RandomDouble() < 0.05:
++                    {
++                        c.DropItem(new EvilOrcHelm());
++                        break;
++                    }
++            }
++        }
++    }
++}
++
++namespace Server.Items
++{
++    // Five pieces with three or four magic properties each; wearing all six gives the legs 900 luck.
++    [SerializationGenerator(0)]
++    public abstract partial class BaseSunArmor : BaseArmor
++    {
++        public BaseSunArmor(int itemID, double weight) : base(itemID)
++        {
++            Hue = Server.Custom.Dfi.SunArmor.Hue;
++            Weight = weight;
++            BaseRunicTool.ApplyAttributesTo(this, Utility.RandomMinMax(3, 4), 40, 80);
++            Attributes.Luck = 0;
++        }
++
++        public override int BasePhysicalResistance => 6;
++        public override int BaseFireResistance => 6;
++        public override int BaseColdResistance => 6;
++        public override int BasePoisonResistance => 6;
++        public override int BaseEnergyResistance => 6;
++        public override int InitMinHits => 30;
++        public override int InitMaxHits => 40;
++        public override int AosStrReq => 20;
++        public override int OldStrReq => 10;
++        public override int ArmorBase => 13;
++        public override ArmorMaterialType MaterialType => ArmorMaterialType.Dragon;
++        public override ArmorMeditationAllowance DefMedAllowance => ArmorMeditationAllowance.All;
++        public override string DefaultName => "Armor of the Sun";
++
++        private static readonly Layer[] _setLayers = [Layer.Helm, Layer.InnerTorso, Layer.Neck, Layer.Pants, Layer.Arms, Layer.Gloves];
++
++        public override bool OnEquip(Mobile from)
++        {
++            var ok = base.OnEquip(from);
++
++            // The legs carry the set's luck; OnEquip runs before the piece is on, so count this one in.
++            if (ok && from.FindItemOnLayer(Layer.Pants) is SunLegs legs)
++            {
++                var full = true;
++
++                foreach (var layer in _setLayers)
++                {
++                    if (layer != Layer && from.FindItemOnLayer(layer) is not BaseSunArmor)
++                    {
++                        full = false;
++                        break;
++                    }
++                }
++
++                legs.Attributes.Luck = full ? 900 : 0;
++            }
++            else if (ok && this is SunLegs && WearsAllButLegs(from))
++            {
++                Attributes.Luck = 900;
++            }
++
++            return ok;
++        }
++
++        private static bool WearsAllButLegs(Mobile m)
++        {
++            foreach (var layer in _setLayers)
++            {
++                if (layer != Layer.Pants && m.FindItemOnLayer(layer) is not BaseSunArmor)
++                {
++                    return false;
++                }
++            }
++
++            return true;
++        }
++
++        public override void OnRemoved(IEntity parent)
++        {
++            base.OnRemoved(parent);
++
++            if (this is SunLegs)
++            {
++                Attributes.Luck = 0;
++            }
++            else if (parent is Mobile m && m.FindItemOnLayer(Layer.Pants) is SunLegs legs)
++            {
++                legs.Attributes.Luck = 0;
++            }
++        }
++    }
++
++    [SerializationGenerator(0)]
++    [Flippable(0x2657, 0x2658)]
++    public partial class SunArms : BaseSunArmor
++    {
++        [Constructible]
++        public SunArms() : base(0x2657, 5.0)
++        {
++        }
++    }
++
++    // DFI's SunArmor (the tunic), named SunChest so it does not clash with the SunArmor drop helper.
++    [SerializationGenerator(0)]
++    [Flippable(0x2641, 0x2642)]
++    public partial class SunChest : BaseSunArmor
++    {
++        [Constructible]
++        public SunChest() : base(0x2641, 10.0)
++        {
++        }
++    }
++
++    [SerializationGenerator(0)]
++    [Flippable(0x2643, 0x2644)]
++    public partial class SunGloves : BaseSunArmor
++    {
++        [Constructible]
++        public SunGloves() : base(0x2643, 2.0)
++        {
++        }
++    }
++
++    [SerializationGenerator(0)]
++    public partial class SunGorget : BaseSunArmor
++    {
++        [Constructible]
++        public SunGorget() : base(0x13C7, 1.0)
++        {
++        }
++    }
++
++    [SerializationGenerator(0)]
++    public partial class SunHelm : BaseSunArmor
++    {
++        [Constructible]
++        public SunHelm() : base(0x2645, 5.0)
++        {
++        }
++    }
++
++    [SerializationGenerator(0)]
++    public partial class SunLegs : BaseSunArmor
++    {
++        [Constructible]
++        public SunLegs() : base(0x2647, 6.0)
++        {
++        }
++    }
++
++    // +10 strength, and -10 to whichever of dexterity or intelligence is the wearer's higher; an evil act.
++    [SerializationGenerator(0)]
++    public partial class EvilOrcHelm : OrcHelm
++    {
++        [Constructible]
++        public EvilOrcHelm()
++        {
++            Hue = 0x96E;
++            Attributes.BonusStr = 10;
++            Attributes.BonusInt = -10;
++            Attributes.BonusDex = -10;
++        }
++
++        public override int LabelNumber => 1062021; // an evil orc helm
++
++        public override bool OnEquip(Mobile from)
++        {
++            if (from.RawInt > from.RawDex)
++            {
++                Attributes.BonusDex = 0;
++            }
++            else
++            {
++                Attributes.BonusInt = 0;
++            }
++
++            Titles.AwardKarma(from, -22, true);
++            return base.OnEquip(from);
++        }
++
++        public override void OnRemoved(IEntity parent)
++        {
++            base.OnRemoved(parent);
++
++            if (parent is Mobile)
++            {
++                Attributes.BonusInt = -10;
++                Attributes.BonusDex = -10;
++            }
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Quests/DfiQuestsGen.cs b/Projects/UOContent/Custom/DFI/Quests/DfiQuestsGen.cs
+new file mode 100644
+index 000000000..019b3589b
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Quests/DfiQuestsGen.cs
+@@ -0,0 +1,101 @@
++// Places the quest givers and the Plague's altar. Nimre stands where DFI's last world save had him; Gabrielle
++// in Buccaneer's Den, where DFI's hint gump put the Elder Wizard; Zuleika beside her (DFI's saves kept no
++// Zuleika). The Plague's altar is in the Alternate Dimension, the spiral halls on Trammel Zuleika sends players
++// to, with a passage back. The rare plants come from Data/Spawns/dfi/dfi-rare-plants.json.
++
++using System.Collections.Generic;
++using Server.Commands;
++using Server.Engines.Quests.ElderWizard;
++using Server.Engines.Quests.Midas;
++using Server.Engines.Quests.Plague;
++using Server.Items;
++using Server.Logging;
++using Server.Mobiles;
++
++namespace Server.Custom.Dfi;
++
++public static class DfiQuestsGen
++{
++    private static readonly ILogger logger = LogFactory.GetLogger(typeof(DfiQuestsGen));
++
++    public static readonly Point3D GabrielleSpot = new(2703, 2163, 0);
++    public static readonly Point3D ZuleikaSpot = new(2709, 2163, 0);
++    public static readonly Point3D[] NimreSpots = [new(5436, 1160, 0), new(5489, 1100, 0)];
++
++    public static readonly Point3D PlagueAltar = new(6083, 451, -2);
++    public static readonly Point3D AlternateDimensionExit = new(6074, 460, -22);
++
++    public static void Configure()
++    {
++        CommandSystem.Register("DfiQuests", AccessLevel.Administrator, OnCommand);
++    }
++
++    [Usage("DfiQuests")]
++    [Description("Places DFI's quest givers (Gabrielle, Zuleika, Nimre) and the Plague's altar, replacing any placed before.")]
++    private static void OnCommand(CommandEventArgs e)
++    {
++        var removed = Remove();
++        var placed = Place();
++        e.Mobile.SendMessage($"DfiQuests: removed {removed}, placed {placed}.");
++        logger.Information("{User} placed {Placed} DFI quest fixtures ({Removed} removed)", e.Mobile, placed, removed);
++    }
++
++    public static int Remove()
++    {
++        var doomed = new List<IEntity>();
++
++        foreach (var m in World.Mobiles.Values)
++        {
++            if (m is GabrielleTheElderWizard or Zuleika or MidasQuestGiver)
++            {
++                doomed.Add(m);
++            }
++        }
++
++        foreach (var item in World.Items.Values)
++        {
++            if (item is PlagueSummoningAltar ||
++                item is CursedCavePassage && item.Map == Map.Trammel && item.Location == AlternateDimensionExit)
++            {
++                doomed.Add(item);
++            }
++        }
++
++        foreach (var entity in doomed)
++        {
++            entity.Delete();
++        }
++
++        return doomed.Count;
++    }
++
++    public static int Place()
++    {
++        var placed = 0;
++
++        var altar = new PlagueSummoningAltar();
++        altar.MoveToWorld(PlagueAltar, Map.Trammel);
++        altar.IsActive = true;
++        placed++;
++
++        new CursedCavePassage(new Point3D(2706, 2165, 0)) { Name = "a way back to Buccaneer's Den" }.MoveToWorld(AlternateDimensionExit, Map.Trammel);
++        placed++;
++
++        Put(new GabrielleTheElderWizard(), GabrielleSpot);
++        Put(new Zuleika { Altar = altar }, ZuleikaSpot);
++
++        foreach (var spot in NimreSpots)
++        {
++            Put(new MidasQuestGiver(), spot);
++        }
++
++        return placed + 2 + NimreSpots.Length;
++    }
++
++    private static void Put(BaseCreature npc, Point3D at)
++    {
++        npc.Home = at;
++        npc.RangeHome = 2;
++        npc.MoveToWorld(at, Map.Felucca);
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Quests/DfiVariants.cs b/Projects/UOContent/Custom/DFI/Quests/DfiVariants.cs
+new file mode 100644
+index 000000000..9d077eccc
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Quests/DfiVariants.cs
+@@ -0,0 +1,205 @@
++// DFI Network's plagued and elder creatures, ported from DFI RUNUO Scripts/Custom/Engines/Quest System/Plague/
++// Plague.cs, Custom/Engines/AI/Creature/Elders.cs and the plague and elder loot in Custom/Misc/BaseCreatureLoot.cs
++// and Engines/AI/Creature/BaseCreature.cs.
++
++using System;
++using System.Collections.Generic;
++using ModernUO.CodeGeneratedEvents;
++using Server.Items;
++using Server.Mobiles;
++using Server.Regions;
++
++namespace Server.Custom.Dfi;
++
++// Plagued creatures rise in place of one in twenty new spawns in Felucca's dungeons: green, stronger, and
++// carrying poison fungus for Zuleika's quest and now and then a plague chest. Elders, white and stronger
++// still, come only out of the nests the Elder Wizard's plants hide (DFI never spawned them otherwise).
++// ModernUO's creatures have no flag for either, so the set of them is saved here.
++public class DfiVariants : GenericPersistence
++{
++    public const double PlagueChance = 0.05;
++    public const double PlagueChestChance = 0.10;
++    public const int PlagueHue = 0x558;
++    public const int ElderHue = 0x1B6;
++
++    private static readonly HashSet<BaseCreature> _plagued = [];
++    private static readonly HashSet<BaseCreature> _elders = [];
++
++    // Plagued creatures out of a skull the Plague throws give no plague loot.
++    private static readonly HashSet<BaseCreature> _noPlagueLoot = [];
++
++    public DfiVariants() : base("DfiVariants", 10)
++    {
++    }
++
++    public static void Configure()
++    {
++        _ = new DfiVariants();
++    }
++
++    public static bool IsPlagued(BaseCreature bc) => _plagued.Contains(bc);
++    public static bool IsElder(BaseCreature bc) => _elders.Contains(bc);
++
++    public static bool CheckPlague(BaseCreature bc, Point3D location, Map map) =>
++        map == Map.Felucca && bc is not (BaseChampion or Harrower or BaseVendor) && !bc.IsParagon &&
++        Region.Find(location, map) is DungeonRegion && Utility.RandomDouble() < PlagueChance;
++
++    public static void MakePlagued(BaseCreature bc, bool plagueLoot = true)
++    {
++        if (bc.IsParagon || IsPlagued(bc) || IsElder(bc))
++        {
++            return;
++        }
++
++        bc.Hue = PlagueHue;
++        Buff(bc, 2.0, 1.05, 1.10, 1.10, 1.10, 1.10, 1.20, 1.20);
++        _plagued.Add(bc);
++
++        if (!plagueLoot)
++        {
++            _noPlagueLoot.Add(bc);
++        }
++    }
++
++    public static void MakeElder(BaseCreature bc)
++    {
++        if (bc.IsParagon || IsPlagued(bc) || IsElder(bc))
++        {
++            return;
++        }
++
++        bc.Hue = ElderHue;
++        Buff(bc, 5.0, 1.05, 1.20, 1.20, 1.20, 1.20, 1.40, 1.40);
++        _elders.Add(bc);
++    }
++
++    private static void Buff(
++        BaseCreature bc, double hits, double str, double intel, double dex, double skills, double speed, double fame,
++        double karma
++    )
++    {
++        bc.HitsMaxSeed = (int)(bc.HitsMaxSeed * hits);
++        bc.RawStr = (int)(bc.RawStr * str);
++        bc.RawInt = (int)(bc.RawInt * intel);
++        bc.RawDex = (int)(bc.RawDex * dex);
++        bc.Hits = bc.HitsMax;
++
++        for (var i = 0; i < bc.Skills.Length; i++)
++        {
++            var skill = bc.Skills[i];
++
++            if (skill.Base > 0.0)
++            {
++                skill.Base *= skills;
++            }
++        }
++
++        bc.SetSpeed(bc.ActiveSpeed / speed, bc.PassiveSpeed / speed);
++        bc.DamageMin += 5;
++        bc.DamageMax += 5;
++
++        if (bc.Fame > 0)
++        {
++            bc.Fame = (int)(bc.Fame * fame);
++        }
++
++        if (bc.Karma != 0)
++        {
++            bc.Karma = (int)(bc.Karma * karma);
++        }
++    }
++
++    public static int PoisonFungusAmount(int fame)
++    {
++        var amount = fame / 1000;
++        return amount > 1 ? Utility.RandomMinMax(amount, amount + 5) : 1;
++    }
++
++    // DFI put the fungus on the corpse when it was carved; here it is on the corpse from the start.
++    [OnEvent(nameof(CreatureEvents.CreatureDeathEvent))]
++    public static void OnCreatureDeath(BaseCreature bc)
++    {
++        var plagued = _plagued.Remove(bc);
++        var elder = _elders.Remove(bc);
++        var loot = !_noPlagueLoot.Remove(bc);
++
++        if (!plagued && !elder || bc.Controlled || bc.Summoned || bc.NoKillAwards || bc.Corpse is not Container c)
++        {
++            return;
++        }
++
++        if (plagued && loot)
++        {
++            c.DropItem(new PoisonFungus(PoisonFungusAmount(bc.Fame)));
++
++            if (bc.TreasureMapLevel >= 0 && Utility.RandomDouble() < PlagueChestChance)
++            {
++                c.DropItem(new PlagueChest(bc.Name, bc.TreasureMapLevel));
++            }
++
++            DfiLoot.AddMoreLoot(bc, c, false, 1000, 1);
++            ScaleGold(c, 1.50);
++        }
++        else if (elder)
++        {
++            DfiLoot.AddMoreLoot(bc, c, false, 1000, 1);
++            ScaleGold(c, 1.60);
++        }
++    }
++
++    private static void ScaleGold(Container c, double factor)
++    {
++        if (c.FindItemByType<Gold>() is { } gold)
++        {
++            gold.Amount = Math.Max(1, (int)(gold.Amount * factor));
++        }
++    }
++
++    [OnEvent(nameof(CreatureEvents.CreatureDeletedEvent))]
++    public static void OnCreatureDeleted(BaseCreature bc)
++    {
++        _plagued.Remove(bc);
++        _elders.Remove(bc);
++        _noPlagueLoot.Remove(bc);
++    }
++
++    public override void Serialize(IGenericWriter writer)
++    {
++        writer.WriteEncodedInt(0); // version
++        Write(writer, _plagued);
++        Write(writer, _elders);
++        Write(writer, _noPlagueLoot);
++    }
++
++    private static void Write(IGenericWriter writer, HashSet<BaseCreature> set)
++    {
++        set.RemoveWhere(bc => bc.Deleted);
++        writer.WriteEncodedInt(set.Count);
++
++        foreach (var bc in set)
++        {
++            writer.Write(bc);
++        }
++    }
++
++    public override void Deserialize(IGenericReader reader)
++    {
++        reader.ReadEncodedInt(); // version
++        Read(reader, _plagued);
++        Read(reader, _elders);
++        Read(reader, _noPlagueLoot);
++    }
++
++    private static void Read(IGenericReader reader, HashSet<BaseCreature> set)
++    {
++        var count = reader.ReadEncodedInt();
++
++        for (var i = 0; i < count; i++)
++        {
++            if (reader.ReadEntity<BaseCreature>() is { } bc)
++            {
++                set.Add(bc);
++            }
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Quests/ElderWizardQuest.cs b/Projects/UOContent/Custom/DFI/Quests/ElderWizardQuest.cs
+new file mode 100644
+index 000000000..7822da327
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Quests/ElderWizardQuest.cs
+@@ -0,0 +1,788 @@
++// DFI Network's Elder Wizard quest, ported from DFI RUNUO Scripts/Custom/Engines/Quest System/ElderWizard.
++
++using System;
++using System.Collections.Generic;
++using ModernUO.Serialization;
++using Server.Custom.Dfi;
++using Server.Engines.Quests.CursedCave;
++using Server.Gumps;
++using Server.Items;
++using Server.Mobiles;
++using Server.Network;
++
++namespace Server.Engines.Quests.ElderWizard
++{
++    // Gabrielle hands the player Edwin's plant book and sends them for four of each of four rare roots, one
++    // kind after another; the reward is a reagent bag any reagent vendor refills.
++    public class ElderWizardQuest : DfiQuestSystem
++    {
++        private static readonly Type[] _typeReferenceTable =
++        [
++            typeof(AcceptConversation),
++            typeof(DuringFindPlantConversation),
++            typeof(DontOfferConversation),
++            typeof(EndConversation),
++            typeof(FindPlantObjective),
++            typeof(ReportBackObjective)
++        ];
++
++        public ElderWizardQuest(PlayerMobile from) : base(from)
++        {
++        }
++
++        public ElderWizardQuest()
++        {
++        }
++
++        public override Type[] TypeReferenceTable => _typeReferenceTable;
++        public override object Name => "Elder Wizard";
++
++        public override object OfferMessage =>
++            "<I>The Elder Wizard looks busy sorting some strange looking plants as you approach her, she turns around and " +
++            "says. </I><BR><BR>Hail traverel!<BR>Would you like to collect some rare plants for me? As reward i can give " +
++            "you a reagent bag that is easy to refill.";
++
++        public override TimeSpan RestartDelay => TimeSpan.Zero;
++        public override bool IsTutorial => false;
++        public override int Picture => 0x15C9;
++
++        public override void Accept()
++        {
++            base.Accept();
++            From.Backpack?.DropItem(new RarePlantsBook());
++            AddConversation(new AcceptConversation());
++        }
++    }
++
++    public class FindPlantObjective : DfiQuestObjective
++    {
++        public static readonly (Type Plant, string Name, int Amount)[] Plants =
++        [
++            (typeof(MandrakeQuestReagent), "Rare Mandrake Root", 4),
++            (typeof(GarlicQuestReagent), "Rare Garlic Root", 4),
++            (typeof(NightShadeQuestReagent), "Rare Nightshade Root", 4),
++            (typeof(GinsengQuestReagent), "Rare Ginseng Root", 4)
++        ];
++
++        private int _round;
++
++        public FindPlantObjective(int round) => _round = round;
++
++        public FindPlantObjective()
++        {
++        }
++
++        public (Type Plant, string Name, int Amount) Current => Plants[Math.Clamp(_round, 0, Plants.Length - 1)];
++
++        public override string Text => "Find this rare plant for the Elder Wizard.";
++        public override int MaxProgress => Current.Amount;
++
++        public override void OnComplete()
++        {
++            if (_round + 1 >= Plants.Length)
++            {
++                System.AddObjective(new ReportBackObjective());
++            }
++            else
++            {
++                System.AddObjective(new FindPlantObjective(_round + 1));
++            }
++        }
++
++        public override void RenderProgress(ref DynamicGumpBuilder builder)
++        {
++            if (Completed)
++            {
++                base.RenderProgress(ref builder);
++                return;
++            }
++
++            builder.AddHtml(70, 260, 270, 100, Current.Name.Color(0x8CADFF));
++            builder.AddLabel(70, 280, 0x64, $"{CurProgress} / {Current.Amount}");
++        }
++
++        public override void ChildDeserialize(IGenericReader reader)
++        {
++            reader.ReadEncodedInt(); // version
++            _round = reader.ReadEncodedInt();
++
++            if (CurProgress > MaxProgress)
++            {
++                CurProgress = MaxProgress - 1;
++            }
++        }
++
++        public override void ChildSerialize(IGenericWriter writer)
++        {
++            writer.WriteEncodedInt(0); // version
++            writer.WriteEncodedInt(_round);
++        }
++    }
++
++    public class ReportBackObjective : DfiQuestObjective
++    {
++        public override string Text => "Return to the Elder Wizard and tell her that you have found all ingredients.";
++
++        public override void OnComplete()
++        {
++            System.AddConversation(new EndConversation());
++        }
++    }
++
++    public class AcceptConversation : DfiQuestConversation
++    {
++        public override string Text =>
++            "<I>The wizard looks happy as you accept the task.</I><BR><BR>Return to me when you have collected all of the " +
++            "rare plants. The location of these plants can be found in this book.<BR><BR><I>She gives you a book.</I><BR><BR>Good Luck.";
++
++        public override void OnRead()
++        {
++            System.AddObjective(new FindPlantObjective(0));
++        }
++    }
++
++    public class DuringFindPlantConversation : DfiQuestConversation
++    {
++        public override string Text =>
++            "<I>The elder wizard looks up from her cauldron and says...</I><BR><BR>Back so soon..? Have you collected the " +
++            "reagents I told you to? No? Well return here when you have and I will reward you.";
++
++        public override bool Logged => false;
++    }
++
++    public class DontOfferConversation : DfiQuestConversation
++    {
++        public override string Text =>
++            "<I>The elder wizard says...</I><BR><BR>I could use some help, but you seem too busy with another quest. Come " +
++            "and speak with me again when you have completed your present quest.";
++
++        public override bool Logged => false;
++    }
++
++    public class EndConversation : DfiQuestConversation
++    {
++        public override string Text =>
++            "<I>The elder wizard looks happy as you tell her of your completed task.</I><BR><BR>Well done! I did not think " +
++            "you would find all of them!<BR><BR><I>She smiles and takes the reagents from you and place them in a bag.</I>" +
++            "<BR><BR>Here is your reward just as I promised.<BR><BR><I>She gives you a Refillable Reagent Bag.</I><BR><BR>" +
++            "The refillable reagent bag can be easily refilled by any vendor that sells reagents, just drag and drop the bag " +
++            "on the vendor and he will tell you the cost to refill the bag.";
++
++        public override void OnRead()
++        {
++            System.Complete();
++        }
++    }
++
++    // DFI's own shop list was a mage's; ModernUO's mage shop sells the same reagents and scrolls.
++    [SerializationGenerator(0)]
++    public partial class GabrielleTheElderWizard : BaseQuester
++    {
++        [Constructible]
++        public GabrielleTheElderWizard() : base("the Elder Wizard")
++        {
++        }
++
++        public override string DefaultName => "Gabrielle";
++        public override bool ClickTitle => true;
++        public override bool IsActiveVendor => true;
++
++        public override void InitSBInfo()
++        {
++            SBInfos.Add(new SBMage());
++        }
++
++        public override void InitBody()
++        {
++            InitStats(100, 100, 25);
++            Hue = 33770;
++            Female = true;
++            Body = 0x191;
++            HairItemID = 0x203C;
++        }
++
++        public override void InitOutfit()
++        {
++            AddItem(new Robe(0x482));
++            AddItem(new Sandals(0x482));
++            AddItem(new WizardsHat(0x482));
++            AddItem(new BlackStaff { Movable = false });
++        }
++
++        public override void OnTalk(PlayerMobile player, bool contextMenu)
++        {
++            Direction = GetDirectionTo(player);
++
++            var qs = player.Quest;
++
++            if (qs is ElderWizardQuest)
++            {
++                if (qs.IsObjectiveInProgress(typeof(FindPlantObjective)))
++                {
++                    qs.AddConversation(new DuringFindPlantConversation());
++                    return;
++                }
++
++                var obj = qs.FindObjective(typeof(ReportBackObjective));
++
++                if (obj?.Completed != false)
++                {
++                    return;
++                }
++
++                var magery = player.Skills.Magery.Base;
++                var necro = player.Skills.Necromancy.Base;
++                var type = necro > magery || necro == magery && Utility.RandomBool()
++                    ? QuestReagentBag.ReagentBagType.Necro
++                    : QuestReagentBag.ReagentBagType.Mage;
++
++                var bag = new QuestReagentBag(type);
++
++                if (player.PlaceInBackpack(bag))
++                {
++                    obj.Complete();
++                }
++                else
++                {
++                    bag.Delete();
++                    // You need to clear some space in your inventory to continue with the quest.  Come back here when you have more space in your inventory.
++                    player.SendLocalizedMessage(1046260);
++                }
++            }
++            else if (qs != null)
++            {
++                qs.AddConversation(new DontOfferConversation());
++            }
++            else if (QuestSystem.CanOfferQuest(player, typeof(ElderWizardQuest)))
++            {
++                new ElderWizardQuest(player).SendOffer();
++            }
++        }
++    }
++}
++
++namespace Server.Items
++{
++    // A rare root growing where Edwin's book says. Picking the one the quest wants now counts it, and one time in
++    // three disturbs a nest of snakes, spiders or serpents underneath, a third of those plagued or elder.
++    [SerializationGenerator(0)]
++    public abstract partial class BaseQuestReagent : Item
++    {
++        private static readonly (Type Creature, string Name, int Min, int Max)[] _nests =
++        [
++            (typeof(Snake), "Snakes", 2, 6),
++            (typeof(GiantSpider), "Spiders", 2, 3),
++            (typeof(GiantSerpent), "Serpents", 2, 3),
++            (typeof(SilverSerpent), "Serpents", 1, 2),
++            (typeof(GiantBlackWidow), "Spiders", 1, 2)
++        ];
++
++        private const double NestDisturbChance = 0.35;
++        private const double SpecialNestChance = 0.35;
++
++        private bool _picked;
++
++        public BaseQuestReagent(int itemID) : base(itemID) => Movable = false;
++
++        protected abstract int PickedItemID { get; }
++
++        public override void OnDoubleClick(Mobile from)
++        {
++            if (Parent != null || Movable || Map == null || Map == Map.Internal || _picked)
++            {
++                return;
++            }
++
++            if (!from.InRange(Location, 2) || !from.InLOS(this))
++            {
++                from.LocalOverheadMessage(MessageType.Regular, 0x3B2, 1019045); // I can't reach that.
++                return;
++            }
++
++            if (from is not PlayerMobile { Quest: Engines.Quests.ElderWizard.ElderWizardQuest qs } ||
++                qs.FindObjective(typeof(Engines.Quests.ElderWizard.FindPlantObjective)) is not
++                    Engines.Quests.ElderWizard.FindPlantObjective { Completed: false } obj)
++            {
++                from.SendMessage("You see no reason to take that.");
++                return;
++            }
++
++            if (obj.Current.Plant != GetType())
++            {
++                from.SendMessage("This is not the reagent you should collect now.");
++                return;
++            }
++
++            Pick(from, obj);
++        }
++
++        private void Pick(Mobile from, Engines.Quests.ElderWizard.FindPlantObjective obj)
++        {
++            ItemID = PickedItemID;
++            _picked = true;
++
++            var amount = obj.Current.Amount;
++            obj.CurProgress++;
++            from.SendMessage("This looks like the reagent the wizard wanted.");
++
++            if (obj.CurProgress < amount)
++            {
++                from.SendMessage($"You need to collect {amount - obj.CurProgress} more of this plant.");
++            }
++
++            if (Utility.RandomDouble() < NestDisturbChance)
++            {
++                DisturbNest(from);
++            }
++
++            Timer.StartTimer(TimeSpan.FromMinutes(5.0), Delete);
++        }
++
++        private void DisturbNest(Mobile from)
++        {
++            var nest = _nests.RandomElement();
++            var count = Utility.RandomMinMax(nest.Min, nest.Max);
++            var elder = false;
++            var plagued = false;
++
++            if (Utility.RandomDouble() < SpecialNestChance)
++            {
++                elder = Utility.RandomBool();
++                plagued = !elder;
++            }
++
++            for (var i = 0; i < count; i++)
++            {
++                var creature = nest.Creature.CreateInstance<BaseCreature>();
++                creature.Home = Location;
++
++                if (elder)
++                {
++                    DfiVariants.MakeElder(creature);
++                }
++                else if (plagued)
++                {
++                    DfiVariants.MakePlagued(creature);
++                }
++
++                creature.MoveToWorld(Location, Map);
++                creature.Combatant = from;
++            }
++
++            var special = plagued ? "A plagued" : elder ? "An elder" : "A";
++            PublicOverheadMessage(MessageType.Regular, 0, true, $"{special} {nest.Name} nest was disturbed under the plant!");
++        }
++
++        // A picked root is gone after a restart.
++        [AfterDeserialization(false)]
++        private void AfterDeserialization()
++        {
++            if (_picked)
++            {
++                Delete();
++            }
++        }
++    }
++
++    [SerializationGenerator(0)]
++    public partial class MandrakeQuestReagent : BaseQuestReagent
++    {
++        [Constructible]
++        public MandrakeQuestReagent() : base(Utility.RandomBool() ? 0x18DF : 0x18E0)
++        {
++        }
++
++        public override string DefaultName => "a rare mandrake root";
++        protected override int PickedItemID => 3254;
++    }
++
++    [SerializationGenerator(0)]
++    public partial class GarlicQuestReagent : BaseQuestReagent
++    {
++        [Constructible]
++        public GarlicQuestReagent() : base(Utility.RandomBool() ? 0x18E1 : 0x18E2)
++        {
++        }
++
++        public override string DefaultName => "a rare garlic";
++        protected override int PickedItemID => 3254;
++    }
++
++    [SerializationGenerator(0)]
++    public partial class NightShadeQuestReagent : BaseQuestReagent
++    {
++        [Constructible]
++        public NightShadeQuestReagent() : base(Utility.RandomBool() ? 0x18E5 : 0x18E6)
++        {
++        }
++
++        public override string DefaultName => "a rare nightshade";
++        protected override int PickedItemID => 3254;
++    }
++
++    [SerializationGenerator(0)]
++    public partial class GinsengQuestReagent : BaseQuestReagent
++    {
++        [Constructible]
++        public GinsengQuestReagent() : base(Utility.RandomBool() ? 0x18E9 : 0x18EA)
++        {
++        }
++
++        public override string DefaultName => "a rare ginseng";
++        protected override int PickedItemID => 3254;
++    }
++
++    [SerializationGenerator(0)]
++    public partial class RarePlantsBook : RedBook
++    {
++        public static readonly BookContent Content = new(
++            "Plant Book First Edition",
++            "Edwin the naturalist",
++            new BookPageInfo(
++                "This book contains, the",
++                "locations of some rare",
++                "plants in britannia.",
++                "",
++                "Rare Mandrake Root",
++                "This plant has been seen",
++                "at Cove Orc Fort.",
++                ""
++            ),
++            new BookPageInfo(
++                "Rare Garlic",
++                "This plant only grow at a",
++                "Temple on the Fire Island.",
++                "",
++                "Rare Nightshade",
++                "This plant has been seen",
++                "at Yew Grave.",
++                ""
++            ),
++            new BookPageInfo(
++                "Rare Ginseng",
++                "This plant only grow near",
++                "the Compassion Shrine",
++                "(Felucca).",
++                "",
++                "I also noticed that some",
++                "creatures like to build",
++                "their nests near these"
++            ),
++            new BookPageInfo(
++                "plants, so be careful so",
++                "you dont disturb them.",
++                "So far i have seen",
++                "spiders, snakes and",
++                "serpent nests near the",
++                "plants, they seem to eat",
++                "the roots of the plants.",
++                ""
++            )
++        );
++
++        [Constructible]
++        public RarePlantsBook() : base(false) => Hue = 0x89B;
++
++        public override BookContent DefaultContent => Content;
++    }
++
++    // Holds only reagents. Drop it on any vendor that sells reagents and the vendor offers to top every
++    // reagent of the bag's kind back up to its refill amount, at the vendor's own prices.
++    [SerializationGenerator(0)]
++    public partial class QuestReagentBag : Bag
++    {
++        public enum ReagentBagType
++        {
++            Mage,
++            Necro
++        }
++
++        private static readonly Type[] _mageReagents =
++        [
++            typeof(BlackPearl), typeof(Bloodmoss), typeof(Garlic), typeof(Ginseng), typeof(MandrakeRoot), typeof(Nightshade),
++            typeof(SulfurousAsh), typeof(SpidersSilk)
++        ];
++
++        private static readonly Type[] _necroReagents =
++            [typeof(BatWing), typeof(GraveDust), typeof(DaemonBlood), typeof(NoxCrystal), typeof(PigIron)];
++
++        [SerializableField(0)]
++        [SerializedCommandProperty(AccessLevel.Administrator)]
++        private ReagentBagType _bagType;
++
++        [SerializableField(1)]
++        [SerializedCommandProperty(AccessLevel.Administrator)]
++        private int _refillAmount;
++
++        [Constructible]
++        public QuestReagentBag(ReagentBagType bagType = ReagentBagType.Mage)
++        {
++            _bagType = bagType;
++            _refillAmount = 60 + Utility.Random(7) * 10;
++
++            if (bagType == ReagentBagType.Necro)
++            {
++                Name = "Necromancer Reagent Bag";
++                Hue = 0x482;
++            }
++            else
++            {
++                Name = "Mage Reagent Bag";
++                Hue = 0x1AF;
++            }
++
++            foreach (var type in ReagentTypes)
++            {
++                var reg = type.CreateInstance<Item>();
++                reg.Amount = _refillAmount;
++                DropItem(reg);
++            }
++        }
++
++        public Type[] ReagentTypes => _bagType == ReagentBagType.Necro ? _necroReagents : _mageReagents;
++
++        public override void GetProperties(IPropertyList list)
++        {
++            base.GetProperties(list);
++            list.Add(1070722, "(Refillable)");
++            list.Add(1060660, $"{"refill amount"}\t{_refillAmount}");
++        }
++
++        public override bool OnDragDropInto(Mobile from, Item item, Point3D p) =>
++            CheckItem(from, item) && base.OnDragDropInto(from, item, p);
++
++        public override bool OnDragDrop(Mobile from, Item dropped) => CheckItem(from, dropped) && base.OnDragDrop(from, dropped);
++
++        private static bool CheckItem(Mobile from, Item item)
++        {
++            if (item is BaseReagent)
++            {
++                return true;
++            }
++
++            from.SendLocalizedMessage(1042474); // The bag rejects that item.
++            return false;
++        }
++
++        public override bool OnDroppedToMobile(Mobile from, Mobile target)
++        {
++            if (target is not BaseVendor vendor || !SellsAnyOf(vendor))
++            {
++                return base.OnDroppedToMobile(from, target);
++            }
++
++            var entries = RefillEntries(vendor);
++            var amount = 0;
++
++            foreach (var entry in entries)
++            {
++                amount += entry.Amount;
++            }
++
++            if (amount <= 0)
++            {
++                vendor.Say("That bag seems to be full.");
++            }
++            else
++            {
++                from.SendGump(new RefillGump(vendor, this, entries), true);
++            }
++
++            // The bag stays with its owner; the vendor only quotes.
++            return false;
++        }
++
++        private bool SellsAnyOf(BaseVendor vendor)
++        {
++            foreach (var type in ReagentTypes)
++            {
++                if (PriceAt(vendor, type) > 0)
++                {
++                    return true;
++                }
++            }
++
++            return false;
++        }
++
++        public static int PriceAt(BaseVendor vendor, Type type)
++        {
++            foreach (var info in vendor.GetBuyInfo())
++            {
++                if (info is GenericBuyInfo gbi && gbi.Type == type)
++                {
++                    return gbi.Price;
++                }
++            }
++
++            return 0;
++        }
++
++        public List<RefillEntry> RefillEntries(BaseVendor vendor)
++        {
++            var list = new List<RefillEntry>();
++
++            foreach (var type in ReagentTypes)
++            {
++                var held = 0;
++
++                foreach (var item in Items)
++                {
++                    if (item.GetType() == type)
++                    {
++                        held += item.Amount;
++                    }
++                }
++
++                list.Add(new RefillEntry(type, Math.Max(0, _refillAmount - held), PriceAt(vendor, type)));
++            }
++
++            return list;
++        }
++
++        public void Refill(List<RefillEntry> entries)
++        {
++            foreach (var entry in entries)
++            {
++                if (entry.Amount <= 0 || entry.Price <= 0)
++                {
++                    continue;
++                }
++
++                Item stack = null;
++
++                foreach (var item in Items)
++                {
++                    if (item.GetType() == entry.Type)
++                    {
++                        stack = item;
++                        break;
++                    }
++                }
++
++                if (stack != null)
++                {
++                    stack.Amount += entry.Amount;
++                }
++                else
++                {
++                    var reg = entry.Type.CreateInstance<Item>();
++                    reg.Amount = entry.Amount;
++                    DropItem(reg);
++                }
++            }
++        }
++    }
++
++    public record RefillEntry(Type Type, int Amount, int Price)
++    {
++        public bool VendorSells => Price > 0;
++        public int TotalCost => VendorSells ? Amount * Price : 0;
++    }
++
++    public class RefillGump : DynamicGump
++    {
++        private readonly BaseVendor _vendor;
++        private readonly QuestReagentBag _bag;
++        private readonly List<RefillEntry> _entries;
++        private readonly int _price;
++
++        public RefillGump(BaseVendor vendor, QuestReagentBag bag, List<RefillEntry> entries) : base(50, 50)
++        {
++            _vendor = vendor;
++            _bag = bag;
++            _entries = entries;
++
++            foreach (var entry in entries)
++            {
++                _price += entry.TotalCost;
++            }
++        }
++
++        public override bool Singleton => true;
++
++        protected override void BuildLayout(ref DynamicGumpBuilder builder)
++        {
++            builder.AddPage();
++            builder.AddBackground(0, 0, 453, 285, 2620);
++            builder.AddAlphaRegion(4, 7, 443, 271);
++            builder.AddLabel(140, 13, 955, $"Refill {_bag.Name}");
++            builder.AddLabel(22, 45, 955, "Reagents");
++            builder.AddLabel(106, 45, 955, "Amount to refill");
++            builder.AddLabel(239, 45, 955, "Cost per reagent");
++            builder.AddLabel(371, 45, 955, "Total Cost");
++            builder.AddButton(410, 250, 4017, 4018, 0);
++
++            for (var i = 0; i < _entries.Count; ++i)
++            {
++                var entry = _entries[i];
++                var y = 70 + i * 20;
++                builder.AddLabel(22, y, 955, entry.Type.Name);
++
++                if (entry.VendorSells)
++                {
++                    builder.AddLabel(147, y, 955, $"{entry.Amount}");
++                    builder.AddLabel(277, y, 955, $"{entry.Price} gp");
++                    builder.AddLabel(380, y, 955, $"{entry.TotalCost} gp");
++                }
++                else
++                {
++                    builder.AddLabel(147, y, 955, "*Vendor does not sell this item*");
++                }
++            }
++
++            if (_price > 0)
++            {
++                builder.AddLabel(100, 229, 955, $"Do you want to refill your bag for {_price} gp?");
++                builder.AddButton(210, 250, 4023, 4024, 1);
++            }
++        }
++
++        public override void OnResponse(NetState sender, in RelayInfo info)
++        {
++            var from = sender.Mobile;
++
++            if (info.ButtonID != 1 || _bag.Deleted || _vendor.Deleted)
++            {
++                return;
++            }
++
++            if (!from.InRange(_vendor, 10))
++            {
++                from.SendLocalizedMessage(500295); // You are too far away to do that.
++                return;
++            }
++
++            var entries = _bag.RefillEntries(_vendor);
++            var cost = 0;
++
++            foreach (var entry in entries)
++            {
++                cost += entry.TotalCost;
++            }
++
++            if (cost != _price)
++            {
++                _vendor.SayTo(from, "Seems like you have changed the reagents in your bag!");
++                _vendor.SayTo(from, "I will not refill your bag to that price anymore!");
++                return;
++            }
++
++            if (from.Backpack?.ConsumeTotal(typeof(Gold), cost) == true)
++            {
++                from.SendMessage($"{cost} gp has been removed from your backpack.");
++            }
++            else if (Banker.Withdraw(from, cost))
++            {
++                from.SendLocalizedMessage(1060398, $"{cost}"); // ~1_AMOUNT~ gold has been withdrawn from your bank box.
++            }
++            else
++            {
++                _vendor.SayTo(from, 500192); // Begging thy pardon, but thou casnt afford that.
++                return;
++            }
++
++            _bag.Refill(entries);
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Quests/MidasQuest.cs b/Projects/UOContent/Custom/DFI/Quests/MidasQuest.cs
+new file mode 100644
+index 000000000..629d63e5d
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Quests/MidasQuest.cs
+@@ -0,0 +1,481 @@
++// DFI Network's "Slayer of evil!" quest (Opticon's Midas quest), ported from DFI RUNUO Scripts/Custom/Opticon/
++// MidasQuest. DFI wrote six kill objectives and six report-back objectives, one pair per creature; here one of
++// each carries the round.
++
++using System;
++using ModernUO.Serialization;
++using Server.Custom.Dfi;
++using Server.Engines.Quests.CursedCave;
++using Server.Gumps;
++using Server.Items;
++using Server.Mobiles;
++
++namespace Server.Engines.Quests.Midas
++{
++    public class MidasQuest : DfiQuestSystem
++    {
++        private static readonly Type[] _typeReferenceTable =
++        [
++            typeof(SlayConversation),
++            typeof(SlayObjective),
++            typeof(ReturnToNimreObjective),
++            typeof(DuringSlayConversation),
++            typeof(EndConversation),
++            typeof(DeclineConversation)
++        ];
++
++        public MidasQuest(PlayerMobile from) : base(from)
++        {
++        }
++
++        public MidasQuest()
++        {
++        }
++
++        public override Type[] TypeReferenceTable => _typeReferenceTable;
++        public override object Name => "Slayer of evil!";
++
++        public override object OfferMessage =>
++            "<i>Nimre starts to speak.</i><BR><BR>Help me slay demons that roam in this cursed dungeon.<BR><BR>Will you aid me?";
++
++        public override TimeSpan RestartDelay => TimeSpan.Zero;
++        public override bool IsTutorial => false;
++        public override int Picture => 0x15A9;
++
++        public override void Accept()
++        {
++            base.Accept();
++            AddConversation(new SlayConversation(0));
++        }
++
++        public override void Decline()
++        {
++            base.Decline();
++            AddConversation(new DeclineConversation());
++        }
++
++        // A bag of magic items, a 5,000 gold check and a treasure map; one time in ten a Kale artifact, and
++        // often the Midas Touch.
++        public static void GiveRewardTo(PlayerMobile player)
++        {
++            var bag = new Bag { Hue = Utility.RandomDyedHue() };
++            DfiLoot.AddRandomLoot(bag, 5, 600, 5, 5, 50, 100);
++            bag.DropItem(new BankCheck(5000));
++            bag.DropItem(new TreasureMap(Utility.RandomDouble() < 0.08 ? 6 : Utility.RandomMinMax(3, 5), Map.Felucca));
++
++            if (Utility.RandomDouble() < 0.1)
++            {
++                bag.DropItem(
++                    Utility.Random(4) switch
++                    {
++                        0 => new YetisPads(),
++                        1 => new Necronomicon(),
++                        2 => new Behemoth(),
++                        _ => new DragonClenchingClaws()
++                    }
++                );
++            }
++
++            if (Utility.RandomDouble() < 0.80)
++            {
++                bag.DropItem(new MidasTouch());
++            }
++
++            if (!player.KarmaLocked)
++            {
++                player.Karma = Math.Min(15000, player.Karma + 1500);
++            }
++
++            if (player.PlaceInBackpack(bag))
++            {
++                player.SendMessage("Reward bag has been placed in your backpack.");
++            }
++            else
++            {
++                player.SendMessage("Your backpack if full, reward is on the ground.");
++                bag.MoveToWorld(player.Location, player.Map);
++            }
++        }
++    }
++
++    public static class MidasRounds
++    {
++        public static readonly (Type Creature, string Name, string Text)[] All =
++        [
++            (typeof(DarknightCreeper), "Darknight Creeper",
++                "<U>Darknight creepers</U> Search britania's doom dungeon. There you can find plenty of Darknight creepers. Kill 1 of them."),
++            (typeof(FleshRenderer), "Flesh Renderer",
++                "<U>Flesh renderer</U> Search britania's Doom dungeon. There you can find plenty of Flesh Renderers. Kill 1 of them."),
++            (typeof(Impaler), "Impaler",
++                "<U>Impaler</U> Search britania's Doom dungeon. There you can find plenty of impalers. Kill 1 of them."),
++            (typeof(ShadowKnight), "ShadowKnight",
++                "<U>Shadow knight</U> Search britania's Doom dungeon. There you can find plenty of Shadow knights. Kill 1 of them."),
++            (typeof(AbysmalHorror), "Abysmal Horror",
++                "<U>Abysmal Horror</U> Search britania's Doom dungeon. There you can find plenty of Abysmal horrors. Kill 1 of them."),
++            (typeof(DemonKnight), "Dark Father",
++                "<U>Dark Father</U> Search britania's Doom dungeon. There you can find plenty of Dark Fathers. Kill 1 of them.")
++        ];
++
++        public static readonly string[] Orders =
++        [
++            "Kill 1 Darknight creeper and then return",
++            "Kill 1 Flesh renderer and then return",
++            "Kill 1 Impaler and then return",
++            "Kill 1 Shadowknight and then return",
++            "Kill 1 Abysmal horror and then return",
++            "You are a brave one, now for the final test kill the Dark father and then return!"
++        ];
++    }
++
++    public class SlayObjective : DfiQuestObjective
++    {
++        private int _round;
++
++        public SlayObjective(int round) => _round = round;
++
++        public SlayObjective()
++        {
++        }
++
++        public int Round => _round;
++
++        private (Type Creature, string Name, string Text) Current => MidasRounds.All[Math.Clamp(_round, 0, MidasRounds.All.Length - 1)];
++
++        public override string Text => Current.Text;
++
++        public override void RenderProgress(ref DynamicGumpBuilder builder)
++        {
++            if (Completed)
++            {
++                base.RenderProgress(ref builder);
++                return;
++            }
++
++            builder.AddLabel(70, 260, 270, Current.Name);
++            builder.AddLabel(70, 280, 0x64, $"{CurProgress}");
++            builder.AddLabel(100, 280, 0x64, "/");
++            builder.AddLabel(130, 280, 0x64, $"{MaxProgress}");
++        }
++
++        public override void OnKill(BaseCreature creature, Container corpse)
++        {
++            if (Current.Creature.IsInstanceOfType(creature))
++            {
++                CurProgress++;
++            }
++        }
++
++        public override void OnComplete()
++        {
++            System.AddObjective(new ReturnToNimreObjective(_round));
++        }
++
++        public override void ChildDeserialize(IGenericReader reader)
++        {
++            reader.ReadEncodedInt(); // version
++            _round = reader.ReadEncodedInt();
++        }
++
++        public override void ChildSerialize(IGenericWriter writer)
++        {
++            writer.WriteEncodedInt(0); // version
++            writer.WriteEncodedInt(_round);
++        }
++    }
++
++    public class ReturnToNimreObjective : DfiQuestObjective
++    {
++        private int _round;
++
++        public ReturnToNimreObjective(int round) => _round = round;
++
++        public ReturnToNimreObjective()
++        {
++        }
++
++        public int Round => _round;
++
++        public override string Text =>
++            _round >= MidasRounds.All.Length - 1
++                ? "Return to Nimre to talk and get your reward."
++                : "Return to Nimre for further instructions.";
++
++        public override void ChildDeserialize(IGenericReader reader)
++        {
++            reader.ReadEncodedInt(); // version
++            _round = reader.ReadEncodedInt();
++        }
++
++        public override void ChildSerialize(IGenericWriter writer)
++        {
++            writer.WriteEncodedInt(0); // version
++            writer.WriteEncodedInt(_round);
++        }
++    }
++
++    public class SlayConversation : DfiQuestConversation
++    {
++        private int _round;
++
++        public SlayConversation(int round) => _round = round;
++
++        public SlayConversation()
++        {
++        }
++
++        public override string Text => MidasRounds.Orders[Math.Clamp(_round, 0, MidasRounds.Orders.Length - 1)];
++
++        public override void OnRead()
++        {
++            System.AddObjective(new SlayObjective(_round));
++        }
++
++        public override void ChildDeserialize(IGenericReader reader)
++        {
++            reader.ReadEncodedInt(); // version
++            _round = reader.ReadEncodedInt();
++        }
++
++        public override void ChildSerialize(IGenericWriter writer)
++        {
++            writer.WriteEncodedInt(0); // version
++            writer.WriteEncodedInt(_round);
++        }
++    }
++
++    public class DeclineConversation : DfiQuestConversation
++    {
++        public override string Text => "Return if you change your mind.";
++        public override bool Logged => false;
++    }
++
++    public class DuringSlayConversation : DfiQuestConversation
++    {
++        public override string Text => "You didn't finish your task yet! Continue when you want.";
++        public override bool Logged => false;
++    }
++
++    public class EndConversation : DfiQuestConversation
++    {
++        public override string Text => "You truly are the brave one. <BR>Your reward is in your backpack!";
++
++        public override void OnRead()
++        {
++            MidasQuest.GiveRewardTo(System.From);
++            System.Complete();
++        }
++    }
++
++    [SerializationGenerator(0)]
++    public partial class MidasQuestGiver : BaseQuester
++    {
++        [Constructible]
++        public MidasQuestGiver()
++        {
++        }
++
++        public override string DefaultName => "Nimre slayer of evil";
++
++        public override void InitBody()
++        {
++            InitStats(100, 100, 25);
++            Hue = 0x83ED;
++            Female = false;
++            HairHue = 0x1F4;
++            HairItemID = 0x203C;
++            FacialHairItemID = 0x2040;
++            FacialHairHue = 1000;
++            Body = 0x190;
++        }
++
++        public override void InitOutfit()
++        {
++            foreach (var piece in (BaseArmor[])[new PlateArms(), new PlateGloves(), new PlateLegs(), new PlateGorget(), new PlateChest()])
++            {
++                piece.LootType = LootType.Newbied;
++                piece.Hue = 1153;
++                AddItem(piece);
++            }
++
++            AddItem(new OrderShield { LootType = LootType.Newbied, Hue = 1153 });
++        }
++
++        public override void OnTalk(PlayerMobile player, bool contextMenu)
++        {
++            Direction = GetDirectionTo(player);
++
++            var qs = player.Quest;
++
++            if (qs is not MidasQuest)
++            {
++                if (qs == null && QuestSystem.CanOfferQuest(player, typeof(MidasQuest)))
++                {
++                    new MidasQuest(player).SendOffer();
++                }
++
++                return;
++            }
++
++            if (qs.IsObjectiveInProgress(typeof(SlayObjective)))
++            {
++                qs.AddConversation(new DuringSlayConversation());
++                return;
++            }
++
++            // Every round leaves a report-back objective; the newest one not yet done is this round's.
++            ReturnToNimreObjective current = null;
++
++            foreach (var obj in qs.Objectives)
++            {
++                if (obj is ReturnToNimreObjective r && !r.Completed)
++                {
++                    current = r;
++                }
++            }
++
++            if (current == null)
++            {
++                return;
++            }
++
++            current.Complete();
++
++            if (current.Round >= MidasRounds.All.Length - 1)
++            {
++                qs.AddConversation(new EndConversation());
++            }
++            else
++            {
++                qs.AddConversation(new SlayConversation(current.Round + 1));
++            }
++        }
++    }
++}
++
++namespace Server.Items
++{
++    [SerializationGenerator(0)]
++    public partial class Behemoth : PlateGorget
++    {
++        [Constructible]
++        public Behemoth()
++        {
++            Hue = 0x44F;
++            Attributes.BonusStr = 10;
++            ArmorAttributes.MageArmor = 1;
++            ArmorAttributes.SelfRepair = 20;
++            Attributes.LowerManaCost = 8;
++        }
++
++        public override string DefaultName => "Behemoth";
++        public override int ArtifactRarity => 11;
++        public override int BasePhysicalResistance => 1;
++        public override int BaseFireResistance => 7;
++        public override int BaseColdResistance => 12;
++        public override int BasePoisonResistance => 13;
++        public override int BaseEnergyResistance => 15;
++        public override int InitMinHits => 255;
++        public override int InitMaxHits => 255;
++    }
++
++    [SerializationGenerator(0)]
++    public partial class DragonClenchingClaws : DragonGloves
++    {
++        // RunUO's Utility.RandomCombatSkill: one of the weapon skills.
++        private static readonly SkillName[] _combatSkills =
++            [SkillName.Archery, SkillName.Fencing, SkillName.Macing, SkillName.Swords, SkillName.Wrestling];
++
++        [Constructible]
++        public DragonClenchingClaws()
++        {
++            Hue = 0x489;
++            Attributes.WeaponSpeed = 10;
++            Attributes.WeaponDamage = 15;
++            SkillBonuses.SetValues(0, _combatSkills.RandomElement(), 10.0);
++        }
++
++        public override string DefaultName => "Dragon clenching claws";
++        public override int ArtifactRarity => 11;
++        public override int BasePhysicalResistance => 14;
++        public override int BaseFireResistance => 8;
++        public override int BaseColdResistance => 0;
++        public override int BasePoisonResistance => 15;
++        public override int BaseEnergyResistance => 10;
++        public override int InitMinHits => 255;
++        public override int InitMaxHits => 255;
++
++        public override bool OnEquip(Mobile from)
++        {
++            from.SendMessage(" Suddenly you feel more swift and thy grip feels stronger then ever ");
++
++            if (from.Skills.Chivalry.Value > 40 && from.Kills < 5)
++            {
++                from.SendMessage(" A distant whisper in your head echoes: I shall be used wisely on your righteous hands");
++            }
++
++            return base.OnEquip(from);
++        }
++    }
++
++    // A one-use ancient smithy hammer with a +300 bonus: one sure exceptional.
++    [SerializationGenerator(0)]
++    [Flippable(0x13E4, 0x13E3)]
++    public partial class MidasTouch : AncientSmithyHammer
++    {
++        [Constructible]
++        public MidasTouch() : base(300, 1)
++        {
++            Weight = 100.0;
++            Layer = Layer.OneHanded;
++            Hue = 0x501;
++        }
++
++        public override string DefaultName => "Midas touch";
++    }
++
++    // Spirit Speak +25 and a fey slayer; equipping it costs a thousand karma, unless the wearer is already
++    // at -5000 or below.
++    [SerializationGenerator(0)]
++    public partial class Necronomicon : NecromancerSpellbook
++    {
++        [Constructible]
++        public Necronomicon() : base(0UL)
++        {
++            LootType = LootType.Regular;
++            Slayer = SlayerName.Fey;
++            Attributes.CastRecovery = 2;
++            Hue = 0x4A6;
++            SkillBonuses.SetValues(0, SkillName.SpiritSpeak, 25.0);
++        }
++
++        public override string DefaultName => "Necronomicon";
++
++        public override bool OnEquip(Mobile from)
++        {
++            if (from.Karma > -5000)
++            {
++                from.SendMessage("You feel very strange.");
++                Misc.Titles.AwardKarma(from, -1000, true);
++            }
++            else
++            {
++                from.SendMessage("You are already cursed enough.");
++            }
++
++            return base.OnEquip(from);
++        }
++    }
++
++    [SerializationGenerator(0)]
++    public partial class YetisPads : FurBoots
++    {
++        [Constructible]
++        public YetisPads() : base(0x481)
++        {
++            Resistances.Cold = 3;
++        }
++
++        public override string DefaultName => "Yeti's Pads";
++        public override int ArtifactRarity => 11;
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Quests/PlagueQuest.cs b/Projects/UOContent/Custom/DFI/Quests/PlagueQuest.cs
+new file mode 100644
+index 000000000..9f263bb8e
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Quests/PlagueQuest.cs
+@@ -0,0 +1,960 @@
++// DFI Network's Plague quest, ported from DFI RUNUO Scripts/Custom/Engines/Quest System/Plague.
++
++using System;
++using ModernUO.Serialization;
++using Server.Custom.Dfi;
++using Server.Engines.PartySystem;
++using Server.Engines.Quests.CursedCave;
++using Server.Gumps;
++using Server.Items;
++using Server.Mobiles;
++using Server.Network;
++
++namespace Server.Engines.Quests.Plague
++{
++    // Zuleika keeps the poison fungus a player brings her; at 200 she opens the way to the Alternate
++    // Dimension, where her altar summons the Plague.
++    public class ThePlagueQuest : DfiQuestSystem
++    {
++        private static readonly Type[] _typeReferenceTable =
++        [
++            typeof(AcceptConversation),
++            typeof(CollectFungusObjective),
++            typeof(VanquishDaemonConversation),
++            typeof(DontOfferConversation),
++            typeof(DuringCollectFungusConversation)
++        ];
++
++        private Zuleika _zuleika;
++
++        public ThePlagueQuest(Zuleika zuleika, PlayerMobile from) : base(from) => _zuleika = zuleika;
++
++        public ThePlagueQuest()
++        {
++        }
++
++        public Zuleika Zuleika => _zuleika;
++
++        public override Type[] TypeReferenceTable => _typeReferenceTable;
++        public override object Name => "The Plague";
++
++        public override object OfferMessage =>
++            "<I>Zuleika turns to you and says...</I><BR><BR>I can help you find these evil plague beasts, i need 200 Poison " +
++            "fungus to create a spell that can teleport you and your party to the Alternate Dimension. If you accept my help, " +
++            "I will store the Poison fungus for you until you have collected all 200 of them. Once the fungus are collected " +
++            "in full, I will teleport you and your party to the Alternate Dimension.<BR><BR>";
++
++        public override bool IsTutorial => false;
++        public override TimeSpan RestartDelay => TimeSpan.Zero;
++        public override int Picture => 0x15B5;
++
++        public override void Cancel()
++        {
++            base.Cancel();
++
++            var obj = FindObjective(typeof(CollectFungusObjective));
++
++            if (obj?.CurProgress > 0)
++            {
++                From.BankBox?.DropItem(new PoisonFungus(obj.CurProgress));
++                From.SendMessage("The Poison fungus that you have thus far given to Zuleika have been returned to you.");
++            }
++        }
++
++        public override void Accept()
++        {
++            base.Accept();
++            AddConversation(new AcceptConversation());
++        }
++
++        public override void ChildDeserialize(IGenericReader reader)
++        {
++            reader.ReadEncodedInt(); // version
++            _zuleika = reader.ReadEntity<Zuleika>();
++        }
++
++        public override void ChildSerialize(IGenericWriter writer)
++        {
++            writer.WriteEncodedInt(0); // version
++            writer.Write(_zuleika);
++        }
++    }
++
++    public class CollectFungusObjective : DfiQuestObjective
++    {
++        public override string Text => "Find 200 Poison fungus and hand them to Zuleika as you find them.";
++        public override int MaxProgress => 200;
++
++        public override void OnComplete()
++        {
++            if (((ThePlagueQuest)System).Zuleika?.Altar == null)
++            {
++                System.From.SendMessage("Zuleika cannot be found to weave the spell; the quest cannot continue.");
++                System.Cancel();
++                return;
++            }
++
++            System.AddConversation(new VanquishDaemonConversation());
++        }
++
++        public override void RenderMessage(ref DynamicGumpBuilder builder)
++        {
++            if (CurProgress > 0 && CurProgress < MaxProgress)
++            {
++                BaseQuestGump.AddHtmlObject(
++                    ref builder,
++                    70,
++                    130,
++                    300,
++                    100,
++                    "Zuleika has accepted the Poison fungus, but the requirement is not yet met.",
++                    BaseQuestGump.Blue,
++                    false,
++                    false
++                );
++            }
++            else
++            {
++                base.RenderMessage(ref builder);
++            }
++        }
++
++        public override void RenderProgress(ref DynamicGumpBuilder builder)
++        {
++            if (CurProgress > 0 && CurProgress < MaxProgress)
++            {
++                BaseQuestGump.AddHtmlObject(ref builder, 70, 260, 270, 100, "Number of fungus collected:", BaseQuestGump.Blue, false, false);
++                builder.AddLabel(70, 280, 100, $"{CurProgress}");
++                builder.AddLabel(100, 280, 100, "/");
++                builder.AddLabel(130, 280, 100, $"{MaxProgress}");
++            }
++            else
++            {
++                base.RenderProgress(ref builder);
++            }
++        }
++    }
++
++    public class AcceptConversation : DfiQuestConversation
++    {
++        public override string Text =>
++            "You have accepted Zuleika's help. She requires 200 Poison fungus to create a spell that can teleport you and " +
++            "your party to the Alternate Dimension.<BR><BR>You may hand Zuleika the fungus as you collect them and she will " +
++            "keep count of how many you have brought her.<BR><BR>Poison fungus can be collected from (Plagued) creatures, " +
++            "these creatures can be found in all the dungeons in britannia.<BR><BR>Good luck.";
++
++        public override void OnRead()
++        {
++            System.AddObjective(new CollectFungusObjective());
++        }
++    }
++
++    public class DontOfferConversation : DfiQuestConversation
++    {
++        public override string Text =>
++            "<I>The gray skinned necromancer looks at you and says...</I><BR><BR>You seem to be busy with another quest. " +
++            "Come and speak with me again when you have completed your present quest.";
++
++        public override bool Logged => false;
++    }
++
++    public class DuringCollectFungusConversation : DfiQuestConversation
++    {
++        public override string Text =>
++            "<I>The old necromancer looks at you and says...</I><BR><BR>Have you collected the poison fungus already? If so " +
++            "give them to me so i can create the spell.";
++
++        public override bool Logged => false;
++    }
++
++    public class VanquishDaemonConversation : DfiQuestConversation
++    {
++        public override string Text =>
++            "Well done! I shall now use the spell to teleport you and your party to the Alternate Dimension.";
++
++        public override void OnRead()
++        {
++            var zuleika = ((ThePlagueQuest)System).Zuleika;
++
++            if (zuleika?.Altar == null)
++            {
++                System.From.SendMessage("Zuleika cannot be found to weave the spell; the quest cannot continue.");
++                System.Cancel();
++                return;
++            }
++
++            zuleika.Altar.MainQueue++;
++            zuleika.MovePlayers(System.From);
++            System.Complete();
++        }
++    }
++
++    [SerializationGenerator(0)]
++    public partial class Zuleika : BaseQuester
++    {
++        // The Alternate Dimension: the spiral halls on Trammel east of the dungeon block.
++        public static readonly Point3D Destination = new(6093, 441, -22);
++
++        [SerializableField(0)]
++        [SerializedCommandProperty(AccessLevel.GameMaster)]
++        private PlagueSummoningAltar _altar;
++
++        [Constructible]
++        public Zuleika() : base("the Necromancer")
++        {
++        }
++
++        public override string DefaultName => "Zuleika";
++        public override bool ClickTitle => true;
++        public override bool IsActiveVendor => true;
++        public override bool DisallowAllMoves => false;
++
++        public override void InitSBInfo()
++        {
++            SBInfos.Add(new SBZuleika());
++        }
++
++        public override void InitBody()
++        {
++            InitStats(100, 100, 25);
++            Body = 0x191;
++            Female = true;
++        }
++
++        public override void InitOutfit()
++        {
++            HairItemID = 0x203C;
++            HairHue = 0x457;
++
++            EquipItem(new Robe(0x455));
++            EquipItem(new Sandals(0x455));
++            EquipItem(new GnarledStaff { Hue = 0x455 });
++            EquipItem(new GoldBeadNecklace { Hue = 0x455 });
++            EquipItem(new GoldBracelet());
++            EquipItem(new GoldRing());
++            EquipItem(new HoodedShroudOfShadows(0x593));
++        }
++
++        public override bool OnDragDrop(Mobile from, Item dropped)
++        {
++            if (from is not PlayerMobile { Quest: ThePlagueQuest qs } || dropped is not PoisonFungus fungus)
++            {
++                return base.OnDragDrop(from, dropped);
++            }
++
++            var obj = qs.FindObjective(typeof(CollectFungusObjective));
++
++            if (obj == null || obj.Completed)
++            {
++                SayTo(from, "You have already given me all the Poison fungus necessary to weave the spell.  Keep these for a later time.");
++                return false;
++            }
++
++            var need = obj.MaxProgress - obj.CurProgress;
++
++            if (fungus.Amount < need)
++            {
++                obj.CurProgress += fungus.Amount;
++                fungus.Delete();
++                qs.ShowQuestLogUpdated();
++            }
++            else
++            {
++                fungus.Consume(need);
++                obj.Complete();
++
++                if (!fungus.Deleted)
++                {
++                    SayTo(from, "You have already given me all the Poison fungus necessary to weave the spell.  Keep these for a later time.");
++                }
++            }
++
++            return false;
++        }
++
++        public void MovePlayers(Mobile from)
++        {
++            var party = Server.Engines.PartySystem.Party.Get(from);
++
++            if (party != null)
++            {
++                foreach (var info in party.Members)
++                {
++                    var member = info.Mobile;
++
++                    if (member != from && member.Map == Map.Felucca && member.Region == from.Region)
++                    {
++                        member.SendGump(new ZuleikaPartyGump(from, member), true);
++                    }
++                }
++            }
++
++            Teleport(from);
++        }
++
++        public static void Teleport(Mobile from)
++        {
++            var map = Map.Trammel;
++            Effects.SendLocationParticles(EffectItem.Create(Destination, map, EffectItem.DefaultDuration), 0x3728, 10, 10, 2023);
++            Effects.PlaySound(Destination, map, 0x1FE);
++            BaseCreature.TeleportPets(from, Destination, map);
++            from.MoveToWorld(Destination, map);
++        }
++
++        public override void OnTalk(PlayerMobile player, bool contextMenu)
++        {
++            var qs = player.Quest;
++
++            if (qs is ThePlagueQuest)
++            {
++                if (qs.IsObjectiveInProgress(typeof(CollectFungusObjective)))
++                {
++                    qs.AddConversation(new DuringCollectFungusConversation());
++                }
++            }
++            else if (qs != null)
++            {
++                qs.AddConversation(new DontOfferConversation());
++            }
++            else if (QuestSystem.CanOfferQuest(player, typeof(ThePlagueQuest)))
++            {
++                Direction = GetDirectionTo(player);
++                new ThePlagueQuest(this, player).SendOffer();
++            }
++        }
++    }
++
++    public class ZuleikaPartyGump : StaticGump<ZuleikaPartyGump>
++    {
++        private readonly Mobile _leader;
++        private readonly Mobile _member;
++        private readonly Region _region;
++
++        public ZuleikaPartyGump(Mobile leader, Mobile member) : base(150, 50)
++        {
++            _leader = leader;
++            _member = member;
++            _region = member.Region;
++        }
++
++        public override bool Singleton => true;
++
++        protected override void BuildLayout(ref StaticGumpBuilder builder)
++        {
++            builder.SetNoClose();
++            builder.AddPage();
++
++            builder.AddImage(0, 0, 3600);
++            builder.AddImageTiled(0, 14, 15, 200, 3603);
++            builder.AddImageTiled(380, 14, 14, 200, 3605);
++            builder.AddImage(0, 201, 3606);
++            builder.AddImageTiled(15, 201, 370, 16, 3607);
++            builder.AddImageTiled(15, 0, 370, 16, 3601);
++            builder.AddImage(380, 0, 3602);
++            builder.AddImage(380, 201, 3608);
++            builder.AddImageTiled(15, 15, 365, 190, 2624);
++
++            builder.AddRadio(30, 140, 9727, 9730, true, 1);
++            builder.AddHtmlLocalized(65, 145, 300, 25, 1050050, 0x7FFF); // Yes, let's go!
++
++            builder.AddRadio(30, 175, 9727, 9730, false, 0);
++            builder.AddHtmlLocalized(65, 178, 300, 25, 1050049, 0x7FFF); // No thanks, I'd rather stay here.
++
++            builder.AddHtml(30, 20, 360, 35, "Another player has paid Zuleika for your passage to the Alternate Dimension:".Color(0xFFFFFF));
++            builder.AddHtmlLocalized(30, 105, 345, 40, 1050048, 0x5B2D); // Do you wish to accept their invitation at this time?
++
++            builder.AddImage(65, 72, 5605);
++            builder.AddImageTiled(80, 90, 200, 1, 9107);
++            builder.AddImageTiled(95, 92, 200, 1, 9157);
++            builder.AddLabelPlaceholder(90, 70, 1645, "leader");
++
++            builder.AddButton(290, 175, 247, 248, 2);
++
++            builder.AddImageTiled(15, 14, 365, 1, 9107);
++            builder.AddImageTiled(380, 14, 1, 190, 9105);
++            builder.AddImageTiled(15, 205, 365, 1, 9107);
++            builder.AddImageTiled(15, 14, 1, 190, 9105);
++            builder.AddImageTiled(0, 0, 395, 1, 9157);
++            builder.AddImageTiled(394, 0, 1, 217, 9155);
++            builder.AddImageTiled(0, 216, 395, 1, 9157);
++            builder.AddImageTiled(0, 0, 1, 217, 9155);
++        }
++
++        protected override void BuildStrings(ref GumpStringsBuilder builder)
++        {
++            builder.SetStringSlot("leader", _leader.Name);
++        }
++
++        public override void OnResponse(NetState sender, in RelayInfo info)
++        {
++            if (info.ButtonID == 2 && info.IsSwitched(1))
++            {
++                if (_member.Region == _region)
++                {
++                    _leader.SendMessage($"{_member.Name} has accepted your invitation to come to the Alternate Dimension.");
++                    Zuleika.Teleport(_member);
++                }
++                else
++                {
++                    _member.SendLocalizedMessage(1050051); // The invitation has been revoked.
++                }
++            }
++            else
++            {
++                _member.SendLocalizedMessage(1050052); // You have declined their invitation.
++                _leader.SendMessage($"{_member.Name} has declined your invitation to come to the Alternate Dimension.");
++            }
++        }
++    }
++
++    public class SBZuleika : SBInfo
++    {
++        public override IShopSellInfo SellInfo { get; } = new InternalSellInfo();
++        public override System.Collections.Generic.List<GenericBuyInfo> BuyInfo { get; } = BuildBuyInfo();
++
++        private static System.Collections.Generic.List<GenericBuyInfo> BuildBuyInfo()
++        {
++            var list = new System.Collections.Generic.List<GenericBuyInfo>();
++            var types = Loot.RegularScrollTypes;
++
++            for (var i = 0; i < 3 * 8 && i < types.Length; ++i)
++            {
++                var itemID = 0x1F2E + i;
++
++                if (i == 6)
++                {
++                    itemID = 0x1F2D;
++                }
++                else if (i > 6)
++                {
++                    --itemID;
++                }
++
++                list.Add(new GenericBuyInfo(types[i], 12 + i / 8 * 10, 20, itemID, 0));
++            }
++
++            list.Add(new GenericBuyInfo(typeof(GraveDust), 3, 999, 0xF8F, 0));
++            list.Add(new GenericBuyInfo(typeof(NoxCrystal), 6, 999, 0xF8E, 0));
++            list.Add(new GenericBuyInfo(typeof(PigIron), 5, 999, 0xF8A, 0));
++            list.Add(new GenericBuyInfo(typeof(DaemonBlood), 6, 999, 0xF7D, 0));
++            list.Add(new GenericBuyInfo(typeof(BatWing), 3, 999, 0xF78, 0));
++            list.Add(new GenericBuyInfo(typeof(SpidersSilk), 3, 999, 0xF8D, 0));
++            list.Add(new GenericBuyInfo(typeof(SulfurousAsh), 3, 999, 0xF8C, 0));
++            list.Add(new GenericBuyInfo(typeof(Nightshade), 3, 999, 0xF88, 0));
++            list.Add(new GenericBuyInfo(typeof(MandrakeRoot), 3, 999, 0xF86, 0));
++            list.Add(new GenericBuyInfo(typeof(Ginseng), 3, 999, 0xF85, 0));
++            list.Add(new GenericBuyInfo(typeof(Garlic), 3, 999, 0xF84, 0));
++            list.Add(new GenericBuyInfo(typeof(Bloodmoss), 5, 999, 0xF7B, 0));
++            list.Add(new GenericBuyInfo(typeof(BlackPearl), 5, 999, 0xF7A, 0));
++            list.Add(new GenericBuyInfo(typeof(LesserExplosionPotion), 21, 10, 0xF0D, 0));
++            list.Add(new GenericBuyInfo(typeof(LesserCurePotion), 15, 10, 0xF07, 0));
++            list.Add(new GenericBuyInfo(typeof(LesserPoisonPotion), 15, 10, 0xF0A, 0));
++            list.Add(new GenericBuyInfo(typeof(StrengthPotion), 15, 10, 0xF09, 0));
++            list.Add(new GenericBuyInfo(typeof(LesserHealPotion), 15, 10, 0xF0C, 0));
++            list.Add(new GenericBuyInfo(typeof(NightSightPotion), 15, 10, 0xF06, 0));
++            list.Add(new GenericBuyInfo(typeof(AgilityPotion), 15, 10, 0xF08, 0));
++            list.Add(new GenericBuyInfo(typeof(RefreshPotion), 15, 10, 0xF0B, 0));
++            list.Add(new GenericBuyInfo(typeof(RecallRune), 15, 10, 0x1F14, 0));
++            list.Add(new GenericBuyInfo("1041072", typeof(MagicWizardsHat), 11, 10, 0x1718, 0));
++            list.Add(new GenericBuyInfo(typeof(BlankScroll), 5, 20, 0x0E34, 0));
++            list.Add(new GenericBuyInfo(typeof(ScribesPen), 8, 10, 0xFBF, 0));
++            list.Add(new GenericBuyInfo(typeof(NecromancerSpellbook), 115, 10, 0x2253, 0));
++            list.Add(new GenericBuyInfo(typeof(Spellbook), 18, 10, 0xEFA, 0));
++            return list;
++        }
++
++        public class InternalSellInfo : GenericSellInfo
++        {
++            public InternalSellInfo()
++            {
++                Add(typeof(PoisonFungus), 47);
++                Add(typeof(Runebook), 1250);
++                Add(typeof(BlackPearl), 3);
++                Add(typeof(Bloodmoss), 3);
++                Add(typeof(MandrakeRoot), 2);
++                Add(typeof(Garlic), 2);
++                Add(typeof(Ginseng), 2);
++                Add(typeof(Nightshade), 2);
++                Add(typeof(SpidersSilk), 2);
++                Add(typeof(SulfurousAsh), 2);
++                Add(typeof(RecallRune), 8);
++                Add(typeof(Spellbook), 9);
++                Add(typeof(BlankScroll), 3);
++                Add(typeof(NightSightPotion), 7);
++                Add(typeof(AgilityPotion), 7);
++                Add(typeof(StrengthPotion), 7);
++                Add(typeof(RefreshPotion), 7);
++                Add(typeof(LesserCurePotion), 7);
++                Add(typeof(LesserHealPotion), 7);
++                Add(typeof(LesserPoisonPotion), 7);
++                Add(typeof(LesserExplosionPotion), 10);
++                Add(typeof(BatWing), 2);
++                Add(typeof(GraveDust), 2);
++                Add(typeof(DaemonBlood), 3);
++                Add(typeof(NoxCrystal), 3);
++                Add(typeof(PigIron), 3);
++
++                var types = Loot.RegularScrollTypes;
++
++                for (var i = 0; i < types.Length; ++i)
++                {
++                    Add(types[i], 6 + i / 8 * 5);
++                }
++            }
++        }
++    }
++}
++
++namespace Server.Mobiles
++{
++    [SerializationGenerator(0)]
++    public partial class ThePlague : BaseCreature
++    {
++        private static readonly MonsterAbility[] _abilities = [new PlagueBreath()];
++
++        private static readonly Type[] _rewards =
++            [typeof(BookOfLostKnowledge), typeof(BowOfWeakening), typeof(GlovesOfTheLepracon), typeof(GrizzlysCourage)];
++
++        [Constructible]
++        public ThePlague() : base(AIType.AI_Mage)
++        {
++            SetSpeed(0.1, 0.2);
++            Body = 0x307;
++            Hue = 0x232;
++
++            SetStr(500);
++            SetDex(100);
++            SetInt(1000);
++
++            SetHits(30000);
++            SetMana(5000);
++
++            SetDamage(17, 21);
++
++            SetDamageType(ResistanceType.Physical, 20);
++            SetDamageType(ResistanceType.Fire, 20);
++            SetDamageType(ResistanceType.Cold, 20);
++            SetDamageType(ResistanceType.Poison, 20);
++            SetDamageType(ResistanceType.Energy, 20);
++
++            SetResistance(ResistanceType.Physical, 30);
++            SetResistance(ResistanceType.Fire, 30);
++            SetResistance(ResistanceType.Cold, 30);
++            SetResistance(ResistanceType.Poison, 30);
++            SetResistance(ResistanceType.Energy, 30);
++
++            SetSkill(SkillName.EvalInt, 100.0);
++            SetSkill(SkillName.SpiritSpeak, 100.0);
++            SetSkill(SkillName.Necromancy, 100.0);
++            SetSkill(SkillName.Meditation, 100.0);
++            SetSkill(SkillName.MagicResist, 100.0);
++            SetSkill(SkillName.Tactics, 100.0);
++            SetSkill(SkillName.Wrestling, 100.0);
++            SetSkill(SkillName.Macing, 100.0);
++            SetSkill(SkillName.Anatomy, 100.0);
++
++            Fame = 22500;
++            Karma = -22500;
++
++            VirtualArmor = 30;
++        }
++
++        public override string DefaultName => "The Plague";
++        public override string CorpseName => "a plagued corpse";
++        public override bool AlwaysMurderer => true;
++        public override bool BardImmune => true;
++        public override Poison PoisonImmune => Poison.Lethal;
++        public override int TreasureMapLevel => 5;
++        public override bool ShowFameTitle => false;
++        public override bool ClickTitle => false;
++
++        public override MonsterAbility[] GetMonsterAbilities() => _abilities;
++
++        public static Item CreateRandomArtifact() => Loot.Construct(_rewards.RandomElement());
++
++        public override void GenerateLoot()
++        {
++            AddLoot(LootPack.SuperBoss, 2);
++        }
++
++        public override void OnGaveMeleeAttack(Mobile defender, int damage)
++        {
++            base.OnGaveMeleeAttack(defender, damage);
++
++            if (Utility.RandomDouble() <= 0.1)
++            {
++                AddPlaguedSkull(defender, 0.25);
++            }
++        }
++
++        public override void OnDamage(int amount, Mobile from, bool willKill)
++        {
++            base.OnDamage(amount, from, willKill);
++
++            if (from != null && Utility.RandomDouble() <= 0.1)
++            {
++                AddPlaguedSkull(from, 0.25);
++            }
++        }
++
++        public override void AlterDamageScalarFrom(Mobile caster, ref double scalar)
++        {
++            base.AlterDamageScalarFrom(caster, ref scalar);
++
++            if (Utility.RandomDouble() <= 0.1)
++            {
++                AddPlaguedSkull(caster, 1.0);
++            }
++        }
++
++        public override void AlterMeleeDamageTo(Mobile to, ref int damage)
++        {
++            if (to is BaseCreature { Controlled: true, Summoned: false })
++            {
++                damage *= 2;
++            }
++        }
++
++        public override void OnDeath(Container c)
++        {
++            base.OnDeath(c);
++
++            if (0.03 + LootPack.GetLuckChanceForKiller(this) / 180000.0 > Utility.RandomDouble())
++            {
++                DemonKnight.DistributeArtifact(this, CreateRandomArtifact());
++            }
++        }
++
++        // Throws a plagued skull at the target, or drops one at its own feet; the skull hatches a plagued
++        // slime or plague beast ten seconds later unless it is carved apart first.
++        public void AddPlaguedSkull(Mobile target, double chanceToThrow)
++        {
++            if (Utility.RandomDouble() > chanceToThrow)
++            {
++                new PlaguedSkull().MoveToWorld(Location, Map);
++                return;
++            }
++
++            Direction = GetDirectionTo(target);
++            MovingEffect(target, 0xF7E, 10, 1, true, false, 0x496, 0);
++
++            Timer.StartTimer(
++                TimeSpan.FromSeconds(1.0),
++                () =>
++                {
++                    if (!Deleted && CanBeHarmful(target))
++                    {
++                        DoHarmful(target);
++                        AOS.Damage(target, this, Utility.RandomMinMax(10, 20), 100, 0, 0, 0, 0);
++                        new PlaguedSkull().MoveToWorld(target.Location, target.Map);
++                    }
++                }
++            );
++        }
++    }
++
++    public class PlagueBreath : FireBreath
++    {
++        public override int FireDamage => 0;
++        public override int PoisonDamage => 100;
++        public override int BreathEffectHue => 0x3F;
++        public override int BreathEffectSound => 0x118;
++
++        public override int BreathComputeDamage(BaseCreature source) => 50;
++
++        public override void BreathDealDamage(BaseCreature source, Mobile target)
++        {
++            base.BreathDealDamage(source, target);
++            Effects.PlaySound(target.Location, target.Map, 0x1CA);
++        }
++    }
++}
++
++namespace Server.Items
++{
++    [SerializationGenerator(0)]
++    public partial class PlagueSummoningAltar : BaseSummoningAltar
++    {
++        [Constructible]
++        public PlagueSummoningAltar()
++        {
++        }
++
++        public override Type ChampionType => typeof(ThePlague);
++        public override int HueActive => 0x558;
++        public override int HueInactive => 0x472;
++    }
++
++    [SerializationGenerator(0)]
++    public partial class PoisonFungus : Food
++    {
++        [Constructible]
++        public PoisonFungus(int amount = 1) : base(0x26B7, amount)
++        {
++            Hue = 0x558;
++            Weight = 0.1;
++            Stackable = true;
++            FillFactor = 1;
++            Poison = Poison.Deadly;
++        }
++
++        public override string DefaultName => "Poison Fungus";
++    }
++
++    // A paragon chest, with a treasure map, from a plagued creature.
++    [SerializationGenerator(0)]
++    public partial class PlagueChest : ParagonChest
++    {
++        [Constructible]
++        public PlagueChest(string recoveredFrom = "", int level = 1) : base($"{recoveredFrom} (Plagued)", level) =>
++            DropItem(new TreasureMap(level, Map.Felucca));
++    }
++
++    // Hatches a plagued slime or plague beast ten seconds after it lands, unless carved first.
++    [SerializationGenerator(0)]
++    public partial class PlaguedSkull : Item, ICarvable
++    {
++        private TimerExecutionToken _timerToken;
++
++        [Constructible]
++        public PlaguedSkull() : base(Utility.Random(0x1AE0, 5))
++        {
++            Movable = false;
++            Hue = 0x55C;
++            StartTimer();
++        }
++
++        private void StartTimer() => Timer.StartTimer(TimeSpan.FromSeconds(10), Hatch, out _timerToken);
++
++        private void Hatch()
++        {
++            if (Deleted)
++            {
++                return;
++            }
++
++            BaseCreature spawn = Utility.RandomBool() ? new Slime() : new PlagueBeast();
++            DfiVariants.MakePlagued(spawn, false);
++            spawn.MoveToWorld(Location, Map);
++            Delete();
++        }
++
++        public void Carve(Mobile from, Item item)
++        {
++            Effects.PlaySound(GetWorldLocation(), Map, 0x48F);
++            Effects.SendLocationEffect(GetWorldLocation(), Map, 0x3728, 10, 10);
++
++            if (Utility.RandomDouble() < 0.3)
++            {
++                from.SendMessage("You destroy the skull.");
++                new Gold(25, 100).MoveToWorld(GetWorldLocation(), Map);
++                Delete();
++            }
++            else
++            {
++                from.SendMessage("You damage the skull.");
++            }
++        }
++
++        public override void OnAfterDelete()
++        {
++            _timerToken.Cancel();
++            base.OnAfterDelete();
++        }
++
++        [AfterDeserialization]
++        private void AfterDeserialization() => StartTimer();
++    }
++
++    [SerializationGenerator(0)]
++    public partial class BookOfLostKnowledge : NecromancerSpellbook
++    {
++        [Constructible]
++        public BookOfLostKnowledge() : base(0x1FFFFUL)
++        {
++            Hue = 0x51C;
++            LootType = LootType.Regular;
++            Attributes.LowerManaCost = 10;
++            Attributes.RegenMana = 3;
++            SkillBonuses.SetValues(0, SkillName.Necromancy, 10.0);
++            Slayer = SlayerName.Exorcism;
++        }
++
++        public override string DefaultName => "book of lost knowledge";
++    }
++
++    [SerializationGenerator(0)]
++    public partial class GlovesOfTheLepracon : LeatherGloves
++    {
++        [Constructible]
++        public GlovesOfTheLepracon()
++        {
++            Hue = 0x84F;
++            Attributes.BonusDex = 10;
++            Attributes.LowerRegCost = 20;
++            Attributes.Luck = 140;
++            ArmorAttributes.SelfRepair = 3;
++            PhysicalBonus = 10;
++            FireBonus = 5;
++            PoisonBonus = 5;
++        }
++
++        public override string DefaultName => "gloves of the lepracon";
++        public override int ArtifactRarity => 11;
++        public override int InitMinHits => 255;
++        public override int InitMaxHits => 255;
++    }
++
++    [SerializationGenerator(0)]
++    public partial class GrizzlysCourage : BearMask
++    {
++        [Constructible]
++        public GrizzlysCourage()
++        {
++            Hue = 0x840;
++            Attributes.BonusStr = 20;
++            Attributes.NightSight = 1;
++            Attributes.AttackChance = 15;
++            Resistances.Physical = 10;
++            Resistances.Cold = 10;
++            Resistances.Fire = 10;
++        }
++
++        public override string DefaultName => "grizzly's courage";
++        public override int ArtifactRarity => 11;
++        public override int InitMinHits => 255;
++        public override int InitMaxHits => 255;
++    }
++
++    // Levels on one of six kinds of creature, picked when it is made.
++    [SerializationGenerator(0)]
++    public partial class BowOfWeakening : Bow, ILevelable
++    {
++        private static readonly string[] _kindNames = ["Abyss", "Arachnid", "Cold Blood", "Forest Lord", "Vermin Horde", "Unholy Terror"];
++
++        private static readonly Type[][] _kinds =
++        [
++            [
++                typeof(Mongbat), typeof(Imp), typeof(Gargoyle), typeof(Harpy), typeof(FireGargoyle), typeof(StoneGargoyle),
++                typeof(Daemon), typeof(Succubus)
++            ],
++            [
++                typeof(Scorpion), typeof(GiantSpider), typeof(TerathanDrone), typeof(TerathanWarrior), typeof(DreadSpider),
++                typeof(TerathanMatriarch), typeof(PoisonElemental), typeof(TerathanAvenger)
++            ],
++            [
++                typeof(Lizardman), typeof(Snake), typeof(LavaLizard), typeof(OphidianWarrior), typeof(Drake),
++                typeof(OphidianArchmage), typeof(Dragon), typeof(OphidianKnight)
++            ],
++            [
++                typeof(Pixie), typeof(ShadowWisp), typeof(Kirin), typeof(Wisp), typeof(Centaur), typeof(Unicorn),
++                typeof(EtherealWarrior), typeof(SerpentineDragon)
++            ],
++            [
++                typeof(GiantRat), typeof(Slime), typeof(DireWolf), typeof(Ratman), typeof(HellHound), typeof(RatmanMage),
++                typeof(RatmanArcher), typeof(SilverSerpent)
++            ],
++            [
++                typeof(Bogle), typeof(Ghoul), typeof(Shade), typeof(Spectre), typeof(Wraith), typeof(BoneMagi),
++                typeof(Mummy), typeof(SkeletalMage), typeof(BoneKnight), typeof(Lich), typeof(SkeletalKnight),
++                typeof(LichLord), typeof(RottingCorpse)
++            ]
++        ];
++
++        [SerializableField(0, getter: "private", setter: "private")]
++        private int _kind;
++
++        [SerializableField(1, getter: "private", setter: "private")]
++        private int _exp;
++
++        [SerializableField(2, getter: "private", setter: "private")]
++        private int _lvl;
++
++        [Constructible]
++        public BowOfWeakening()
++        {
++            Hue = 0x59E;
++            _kind = Utility.Random(_kinds.Length);
++            Attributes.WeaponDamage = 40;
++            Attributes.WeaponSpeed = 30;
++            SkillBonuses.SetValues(0, SkillName.Archery, 10.0);
++            Slayer = SlayerName.ReptilianDeath;
++            WeaponAttributes.HitLowerAttack = 50;
++            LevelItemManager.InvalidateLevel(this);
++        }
++
++        public override string DefaultName => "bow of weakening";
++        public override int ArtifactRarity => 11;
++        public override int InitMinHits => 255;
++        public override int InitMaxHits => 255;
++
++        public Type[] Types => _kinds[Math.Clamp(_kind, 0, _kinds.Length - 1)];
++
++        [CommandProperty(AccessLevel.GameMaster)]
++        public int Experience
++        {
++            get => _exp;
++            set
++            {
++                _exp = LevelableWeapon.ClampExperience(value);
++                LevelItemManager.InvalidateLevel(this);
++                this.MarkDirty();
++            }
++        }
++
++        [CommandProperty(AccessLevel.GameMaster)]
++        public int Level
++        {
++            get => _lvl;
++            set
++            {
++                value = LevelableWeapon.ClampLevel(value);
++
++                if (_lvl != value)
++                {
++                    var oldLevel = _lvl;
++                    _lvl = value;
++                    OnLevel(oldLevel, _lvl);
++                    this.MarkDirty();
++                }
++            }
++        }
++
++        public override void GetDamageTypes(
++            Mobile wielder, out int phys, out int fire, out int cold, out int pois, out int nrgy, out int chaos, out int direct
++        )
++        {
++            phys = pois = cold = nrgy = chaos = direct = 0;
++            fire = 100;
++        }
++
++        public override void GetProperties(IPropertyList list)
++        {
++            base.GetProperties(list);
++            LevelableWeapon.AddProperties(list, _lvl, _exp);
++            list.Add(1060660, $"{"Type"}\t{_kindNames[Math.Clamp(_kind, 0, _kindNames.Length - 1)]}");
++        }
++
++        public override void GetContextMenuEntries(Mobile from, ref Server.Collections.PooledRefList<ContextMenus.ContextMenuEntry> list)
++        {
++            base.GetContextMenuEntries(from, ref list);
++
++            if (from.Alive && (from.Items.Contains(this) || IsChildOf(from.Backpack)))
++            {
++                list.Add(new LevelInfoEntry(this));
++            }
++        }
++
++        public void OnLevel(int oldLevel, int newLevel)
++        {
++            Attributes.WeaponDamage = LevelItemManager.CalculateProperty(40, _lvl);
++            Attributes.WeaponSpeed = LevelItemManager.CalculateProperty(30, _lvl);
++            WeaponAttributes.HitLowerAttack = LevelItemManager.CalculateProperty(50, _lvl);
++            SkillBonuses.SetValues(0, SkillName.Archery, LevelItemManager.CalculateProperty(10, _lvl));
++        }
++
++        public string GetHtml() =>
++            "<div align=center><i>ENHANCEMENTS</i></div>WeaponDamage: 40%<br>WeaponSpeed: 30%<br>HitLowerAttack: 50%<br>" +
++            "Archery: 10<br>" + LevelItemManager.LevelGainList();
++    }
++}
+diff --git a/Projects/UOContent/Items/Maps/TreasureMap.cs b/Projects/UOContent/Items/Maps/TreasureMap.cs
+index 25711e120..6f5a0c64d 100644
+--- a/Projects/UOContent/Items/Maps/TreasureMap.cs
++++ b/Projects/UOContent/Items/Maps/TreasureMap.cs
+@@ -809,6 +809,8 @@ protected override void OnTick()
+                         m_Chest.Guardians.Add(bc);
+                     }
+                 }
++
++                Server.Custom.Dfi.SunArmor.CheckSunGuardian(m_TreasureMap.Level, m_Chest);
+             }
+             else
+             {
+diff --git a/Projects/UOContent/Mobiles/BaseCreature.cs b/Projects/UOContent/Mobiles/BaseCreature.cs
+index 9a20a47d8..5712ca2af 100644
+--- a/Projects/UOContent/Mobiles/BaseCreature.cs
++++ b/Projects/UOContent/Mobiles/BaseCreature.cs
+@@ -1902,6 +1902,10 @@ public override void OnBeforeSpawn(Point3D location, Map m)
+             {
+                 IsParagon = true;
+             }
++            else if (Server.Custom.Dfi.DfiVariants.CheckPlague(this, location, m))
++            {
++                Server.Custom.Dfi.DfiVariants.MakePlagued(this);
++            }
+ 
+             base.OnBeforeSpawn(location, m);
+         }

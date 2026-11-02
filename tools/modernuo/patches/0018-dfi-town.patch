@@ -1,0 +1,1590 @@
+diff --git a/Projects/UOContent.Tests/Tests/Custom/DfiTownTests.cs b/Projects/UOContent.Tests/Tests/Custom/DfiTownTests.cs
+new file mode 100644
+index 000000000..da7a72a8c
+--- /dev/null
++++ b/Projects/UOContent.Tests/Tests/Custom/DfiTownTests.cs
+@@ -0,0 +1,205 @@
++using System;
++using System.Collections.Generic;
++using Server;
++using Server.Custom.Dfi;
++using Server.Items;
++using Server.Misc;
++using Server.Mobiles;
++using Xunit;
++
++namespace UOContent.Tests.Custom;
++
++[Collection("Sequential UOContent Tests")]
++public class DfiTownTests : IDisposable
++{
++    private readonly List<IEntity> _created = new();
++
++    public DfiTownTests()
++    {
++        if (NameList.GetNameList("male") == null)
++        {
++            NameList.Configure();
++        }
++    }
++
++    public static TheoryData<Type> Types =>
++    [
++        typeof(CriminalBanker), typeof(PrisonerNoble), typeof(PrisonerSeeker), typeof(PriestOfMondain), typeof(PaidFullHealer),
++        typeof(Necromancer), typeof(HavenCrier), typeof(RiddleNPC), typeof(BankWithdrawStone), typeof(LimitedItemStone),
++        typeof(LimitedRegStone), typeof(RegWithdrawStone), typeof(NecroRegWithdrawStone), typeof(PetBondingStone),
++        typeof(WebStone), typeof(WeaponStone)
++    ];
++
++    public void Dispose()
++    {
++        foreach (var e in _created)
++        {
++            e?.Delete();
++        }
++
++        _created.Clear();
++        Riddles.List.Clear();
++    }
++
++    private T Track<T>(T e) where T : IEntity
++    {
++        _created.Add(e);
++        return e;
++    }
++
++    private PlayerMobile Player()
++    {
++        var m = Track(new PlayerMobile());
++        m.Player = true;
++        m.Body = 0x190;
++        m.AddItem(new Backpack());
++        m.AddItem(new BankBox(m));
++        m.MoveToWorld(new Point3D(1434, 1690, 0), Map.Felucca);
++        return m;
++    }
++
++    private T Placed<T>(T item) where T : Item
++    {
++        Track(item);
++        item.MoveToWorld(new Point3D(1434, 1691, 0), Map.Felucca);
++        return item;
++    }
++
++    [Theory]
++    [MemberData(nameof(Types))]
++    public void Type_Constructs(Type type)
++    {
++        var entity = Track(type.CreateInstance<IEntity>());
++
++        Assert.False(entity.Deleted);
++    }
++
++    [Fact]
++    public void CriminalBanker_AloneServesCriminals()
++    {
++        Assert.True(Track(new CriminalBanker()).ServesCriminals);
++        Assert.False(Track(new Banker()).ServesCriminals);
++    }
++
++    [Fact]
++    public void Necromancer_SellsNecroReagentsAndBooks()
++    {
++        var shop = new SBNecromancer();
++
++        Assert.Contains(shop.BuyInfo, b => b.Type == typeof(NecromancerSpellbook));
++        Assert.Contains(shop.BuyInfo, b => b.Type == typeof(NoxCrystal));
++        Assert.True(shop.SellInfo.IsSellable(Track(new BatWing())));
++    }
++
++    [Fact]
++    public void PaidHealer_FullResurrectionRestoresHitsAndMana()
++    {
++        var player = Player();
++        player.RawStr = player.RawInt = 50;
++        player.Kill();
++
++        PaidFullHealerGump.FullResurrect(player);
++
++        Assert.True(player.Alive);
++        Assert.Equal(player.HitsMax, player.Hits);
++        Assert.Equal(player.ManaMax, player.Mana);
++        Assert.False(player.Frozen);
++    }
++
++    [Fact]
++    public void BankWithdrawStone_PaysFromTheBankUpToItsLimit()
++    {
++        var player = Player();
++        player.BankBox.DropItem(new Gold(1000));
++        var stone = Placed(new BankWithdrawStone { GoldAmount = 300 });
++
++        stone.OnDoubleClick(player);
++        stone.OnDoubleClick(player);
++
++        Assert.Equal(300, player.Backpack.GetAmount(typeof(Gold)));
++        Assert.Equal(700, Banker.GetBalance(player));
++        Assert.Equal("a limited 300 gp withdrawal stone", stone.Name ?? stone.DefaultName);
++    }
++
++    [Theory]
++    [InlineData(LimitedItemType.MageReagentBag, typeof(BagOfReagents))]
++    [InlineData(LimitedItemType.NecroReagentBag, typeof(BagOfNecroReagents))]
++    [InlineData(LimitedItemType.Bandages, typeof(Bandage))]
++    public void LimitedItemStone_GivesItsItemOnce(LimitedItemType kind, Type expected)
++    {
++        var player = Player();
++        var stone = Placed(new LimitedItemStone { ItemType = kind });
++
++        stone.OnDoubleClick(player);
++        stone.OnDoubleClick(player);
++
++        Assert.Single(player.Backpack.Items, i => i.GetType() == expected);
++    }
++
++    [Fact]
++    public void RegWithdrawStone_TakesReagentsFromTheBank()
++    {
++        var player = Player();
++        var stone = Placed(new RegWithdrawStone { RegAmount = 10 });
++
++        stone.OnDoubleClick(player);
++        Assert.Null(player.Backpack.FindItemByType<BagOfReagents>());
++
++        foreach (var type in (Type[])[typeof(BlackPearl), typeof(Bloodmoss), typeof(MandrakeRoot), typeof(SulfurousAsh),
++                     typeof(SpidersSilk), typeof(Garlic), typeof(Ginseng), typeof(Nightshade)])
++        {
++            var reg = type.CreateInstance<Item>();
++            reg.Amount = 15;
++            player.BankBox.DropItem(reg);
++        }
++
++        stone.OnDoubleClick(player);
++
++        Assert.NotNull(player.Backpack.FindItemByType<BagOfReagents>());
++        Assert.Equal(5, player.BankBox.GetAmount(typeof(BlackPearl)));
++    }
++
++    [Fact]
++    public void WeaponStone_LimitsEachAccountToFive()
++    {
++        var player = Player();
++        var stone = Placed(new WeaponStone { UseLimit = true });
++
++        for (var i = 0; i < 7; i++)
++        {
++            stone.Give(player, typeof(Katana), "Katana");
++        }
++
++        stone.Give(player, typeof(Arrow), "Arrows");
++
++        Assert.Equal(WeaponStone.AmountToGive, player.Backpack.Items.Count);
++    }
++
++    [Fact]
++    public void WeaponStone_HandsOutAmmunitionByTheHundred()
++    {
++        var player = Player();
++        var stone = Placed(new WeaponStone());
++
++        stone.Give(player, typeof(Arrow), "Arrows");
++
++        Assert.Equal(WeaponStone.StackAmount, player.Backpack.GetAmount(typeof(Arrow)));
++    }
++
++    [Fact]
++    public void Riddler_RightAnswerWinsTheBarsAndTheNextRiddleComesUp()
++    {
++        var player = Player();
++        var riddler = Track(new RiddleNPC());
++        riddler.MoveToWorld(new Point3D(1435, 1690, 0), Map.Felucca);
++        Riddles.List.Add(new Riddle("What has keys but no locks?", "A piano", 4));
++        Riddles.List.Add(new Riddle("What gets wetter as it dries?", "A towel", 2));
++
++        Assert.False(riddler.TryAnswer(player, "a door"));
++        Assert.True(riddler.TryAnswer(player, "  a PIANO "));
++
++        Assert.Equal(4, player.Backpack.GetAmount(typeof(CopperBar)));
++        Assert.Single(Riddles.List);
++        Assert.True(riddler.Hidden);
++    }
++}
+diff --git a/Projects/UOContent/Context Menus/OpenBankEntry.cs b/Projects/UOContent/Context Menus/OpenBankEntry.cs
+index 47ad75f02..734011036 100644
+--- a/Projects/UOContent/Context Menus/OpenBankEntry.cs	
++++ b/Projects/UOContent/Context Menus/OpenBankEntry.cs	
+@@ -13,7 +13,7 @@ public override void OnClick(Mobile from, IEntity target)
+                 return;
+             }
+ 
+-            if (from.Criminal)
++            if (from.Criminal && banker is not Server.Mobiles.Banker { ServesCriminals: true })
+             {
+                 banker.Say(500378); // Thou art a criminal and cannot access thy bank box.
+             }
+diff --git a/Projects/UOContent/Custom/DFI/Town/RiddleMan.cs b/Projects/UOContent/Custom/DFI/Town/RiddleMan.cs
+new file mode 100644
+index 000000000..101205eb0
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Town/RiddleMan.cs
+@@ -0,0 +1,344 @@
++// DFI Network's Riddler, ported from DFI RUNUO Scripts/Custom/Mobiles/Riddle Man. Administrators keep a list
++// of up to ten riddles; players who talk to him hear the first, and the first to answer it wins its copper bars.
++// He then vanishes for 20 to 30 hours, and comes back while riddles remain.
++
++using System;
++using System.Collections.Generic;
++using ModernUO.Serialization;
++using Server.Engines.Quests;
++using Server.Gumps;
++using Server.Mobiles;
++using Server.Network;
++using Server.Prompts;
++
++namespace Server.Custom.Dfi;
++
++public record Riddle(string Question, string Answer, int RewardAmount);
++
++public class Riddles : GenericPersistence
++{
++    public const int MaxRiddles = 10;
++    public const int MaxReward = 20;
++
++    public static List<Riddle> List { get; } = [];
++
++    public Riddles() : base("DfiRiddles", 10)
++    {
++    }
++
++    public static void Configure()
++    {
++        _ = new Riddles();
++    }
++
++    public override void Serialize(IGenericWriter writer)
++    {
++        writer.WriteEncodedInt(0); // version
++        writer.WriteEncodedInt(List.Count);
++
++        foreach (var r in List)
++        {
++            writer.Write(r.Question);
++            writer.Write(r.Answer);
++            writer.WriteEncodedInt(r.RewardAmount);
++        }
++    }
++
++    public override void Deserialize(IGenericReader reader)
++    {
++        reader.ReadEncodedInt(); // version
++        var count = reader.ReadEncodedInt();
++
++        for (var i = 0; i < count; i++)
++        {
++            List.Add(new Riddle(reader.ReadString(), reader.ReadString(), reader.ReadEncodedInt()));
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class RiddleNPC : BaseQuester
++{
++    private Timer _hiddenTimer;
++
++    [Constructible(AccessLevel.Administrator)]
++    public RiddleNPC() : base("the Riddler")
++    {
++    }
++
++    public override string DefaultName => "the Riddler";
++    public override bool ClickTitle => true;
++
++    public override void InitBody()
++    {
++        InitStats(100, 100, 25);
++        Hue = Race.Human.RandomSkinHue();
++        Body = 0x190;
++        Name = NameList.RandomName("male");
++        HairItemID = Race.Human.RandomHair(false);
++        HairHue = Race.Human.RandomHairHue();
++    }
++
++    public override void InitOutfit()
++    {
++        AddItem(new Items.FancyShirt(Utility.RandomBlueHue()));
++        AddItem(new Items.Kilt(Utility.RandomGreenHue()));
++        AddItem(new Items.FeatheredHat(Utility.RandomGreenHue()));
++        AddItem(new Items.ThighBoots());
++    }
++
++    public override void OnTalk(PlayerMobile talker, bool contextMenu)
++    {
++        if (talker.AccessLevel >= AccessLevel.Administrator)
++        {
++            talker.SendGump(new RiddlesGump(), true);
++            return;
++        }
++
++        if (talker.AccessLevel != AccessLevel.Player)
++        {
++            return;
++        }
++
++        if (Riddles.List.Count > 0)
++        {
++            Say(Riddles.List[0].Question);
++            talker.Prompt = new RiddlePrompt(this);
++        }
++        else
++        {
++            Say("Currently i am out of things to solve, come back later i may have something for you.");
++            Vanish();
++        }
++    }
++
++    // Returns whether the answer was right; the winner gets the riddle's copper bars.
++    public bool TryAnswer(Mobile m, string text)
++    {
++        if (Riddles.List.Count == 0 || m.Backpack == null)
++        {
++            return false;
++        }
++
++        var riddle = Riddles.List[0];
++
++        if (!string.Equals(text.Trim(), riddle.Answer.Trim(), StringComparison.OrdinalIgnoreCase))
++        {
++            m.SendMessage("I am sorry that is not the correct answer, try again.");
++            return false;
++        }
++
++        foreach (var ns in NetState.Instances)
++        {
++            if (ns.Mobile is { } listener)
++            {
++                listener.SendMessage(0x482, "Message from the Riddler:");
++                listener.SendMessage(0x482, $"{m.Name} just solved the following riddle: {riddle.Question}");
++                listener.SendMessage(0x482, $"The answer was: '{riddle.Answer}'. Expect more riddles when you see me again.");
++            }
++        }
++
++        m.SendMessage("Congratulations you have solved the riddle!");
++        EventRewardSystem.CreateCopperBar(m, riddle.RewardAmount, "solved a riddle");
++        Riddles.List.RemoveAt(0);
++        Vanish();
++        return true;
++    }
++
++    private void Vanish()
++    {
++        Effects.SendLocationEffect(Location, Map, 0x36BD, 10);
++        Hidden = true;
++        _hiddenTimer?.Stop();
++        _hiddenTimer = Timer.DelayCall(TimeSpan.FromHours(Utility.RandomMinMax(20, 30)), Return);
++    }
++
++    private void Return()
++    {
++        if (Deleted || !Hidden || Riddles.List.Count == 0)
++        {
++            return;
++        }
++
++        Hidden = false;
++        Effects.SendLocationEffect(Location, Map, 0x36BD, 10);
++
++        foreach (var ns in NetState.Instances)
++        {
++            ns.Mobile?.SendMessage(0x482, "The Riddler is back.");
++        }
++    }
++
++    // A riddler hidden at a restart has lost its timer, so it comes back then if riddles remain.
++    [AfterDeserialization]
++    private void AfterDeserialization()
++    {
++        if (Hidden)
++        {
++            Timer.DelayCall(TimeSpan.FromMinutes(1.0), Return);
++        }
++    }
++
++    public override void OnDelete()
++    {
++        _hiddenTimer?.Stop();
++        _hiddenTimer = null;
++        base.OnDelete();
++    }
++
++    private class RiddlePrompt : Prompt
++    {
++        private readonly RiddleNPC _riddler;
++
++        public RiddlePrompt(RiddleNPC riddler) => _riddler = riddler;
++
++        public override void OnResponse(Mobile from, string text)
++        {
++            if (!_riddler.Deleted)
++            {
++                _riddler.TryAnswer(from, text);
++            }
++        }
++    }
++}
++
++public class RiddlesGump : DynamicGump
++{
++    public RiddlesGump() : base(50, 50)
++    {
++    }
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        builder.AddPage();
++        builder.AddBackground(0, 0, 429, 297, 9200);
++        builder.AddLabel(18, 16, 0, "Riddles:");
++
++        for (var i = 0; i < Riddles.List.Count; i++)
++        {
++            var question = Riddles.List[i].Question;
++            var y = 46 + 18 * i;
++            builder.AddLabel(17, y, 0, $"{i + 1}.");
++            builder.AddButton(39, y, 1210, 1209, i + 1);
++            builder.AddLabel(62, y, 0, question.Length > 35 ? question[..30] : question);
++        }
++
++        builder.AddButton(20, 255, 247, 248, 0);
++        builder.AddButton(260, 255, 4029, 248, 20);
++        builder.AddLabel(300, 255, 0, "Add new riddle");
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        var m = sender.Mobile;
++
++        if (m.AccessLevel < AccessLevel.Administrator)
++        {
++            return;
++        }
++
++        if (info.ButtonID == 20)
++        {
++            if (Riddles.List.Count < Riddles.MaxRiddles)
++            {
++                m.SendGump(new RiddleGump(-1), true);
++            }
++            else
++            {
++                m.SendMessage("There are already 10 riddles, that is enough for now.");
++            }
++        }
++        else if (info.ButtonID > 0 && info.ButtonID <= Riddles.List.Count)
++        {
++            m.SendGump(new RiddleGump(info.ButtonID - 1), true);
++        }
++    }
++}
++
++public class RiddleGump : DynamicGump
++{
++    private const int Save = 1;
++    private const int Delete = 2;
++
++    private readonly int _index;
++
++    public RiddleGump(int index) : base(50, 50) => _index = index;
++
++    private Riddle Existing => _index >= 0 && _index < Riddles.List.Count ? Riddles.List[_index] : null;
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        var riddle = Existing;
++
++        builder.AddPage();
++        builder.AddBackground(0, 0, 400, 400, 9200);
++        builder.AddHtml(0, 15, 400, 22, "Riddle", align: TextAlignment.Center);
++        builder.AddLabel(15, 55, 0, "Question:");
++        builder.AddBackground(15, 80, 370, 120, 9350);
++        builder.AddTextEntry(20, 84, 360, 110, 0, 0, riddle?.Question ?? "");
++        builder.AddLabel(15, 220, 0, "Answer:");
++        builder.AddBackground(15, 240, 370, 83, 9350);
++        builder.AddTextEntry(20, 245, 360, 73, 0, 1, riddle?.Answer ?? "");
++        builder.AddLabel(15, 340, 0, "Reward Amount:");
++        builder.AddBackground(118, 336, 249, 30, 9350);
++        builder.AddTextEntry(123, 341, 239, 20, 0, 2, riddle != null ? $"{riddle.RewardAmount}" : "");
++
++        if (riddle != null)
++        {
++            builder.AddButton(158, 374, 2464, 2463, Delete);
++        }
++
++        builder.AddButton(290, 370, 247, 248, Save);
++        builder.AddButton(45, 370, 241, 242, 0);
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        var m = sender.Mobile;
++
++        if (m.AccessLevel < AccessLevel.Administrator)
++        {
++            return;
++        }
++
++        var question = info.GetTextEntry(0)?.Trim() ?? "";
++        var answer = info.GetTextEntry(1)?.Trim() ?? "";
++        _ = int.TryParse(info.GetTextEntry(2)?.Trim(), out var amount);
++        amount = Math.Clamp(amount, 1, Riddles.MaxReward);
++
++        switch (info.ButtonID)
++        {
++            case Save when question.Length == 0 || answer.Length == 0:
++                {
++                    m.SendMessage("A riddle needs a question and an answer.");
++                    break;
++                }
++            case Save when Existing != null:
++                {
++                    Riddles.List[_index] = new Riddle(question, answer, amount);
++                    break;
++                }
++            case Save when Riddles.List.Count < Riddles.MaxRiddles:
++                {
++                    Riddles.List.Add(new Riddle(question, answer, amount));
++                    break;
++                }
++            case Save:
++                {
++                    m.SendMessage("There are already 10 riddles, that is enough for now.");
++                    break;
++                }
++            case Delete when Existing != null:
++                {
++                    Riddles.List.RemoveAt(_index);
++                    break;
++                }
++        }
++
++        m.SendGump(new RiddlesGump(), true);
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Town/Stones.cs b/Projects/UOContent/Custom/DFI/Town/Stones.cs
+new file mode 100644
+index 000000000..a21acd088
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Town/Stones.cs
+@@ -0,0 +1,543 @@
++// DFI Network's service stones, ported from DFI RUNUO Scripts/Custom/Items/Stones: gold, reagent and weapon
++// handouts, the pet bonding stone and the web stone. A stone's per-player limit lasts until the server restarts,
++// as DFI's did.
++
++using System;
++using System.Collections.Generic;
++using ModernUO.Serialization;
++using Server.Gumps;
++using Server.Mobiles;
++using Server.Network;
++using Server.Targeting;
++
++namespace Server.Items;
++
++[SerializationGenerator(0)]
++public abstract partial class DfiStone : Item
++{
++    private readonly Dictionary<string, int> _uses = [];
++
++    protected DfiStone(int itemID, int hue) : base(itemID)
++    {
++        Movable = false;
++        Hue = hue;
++    }
++
++    // Uses are counted per account, so a player's other characters share the limit.
++    protected bool CheckLimit(Mobile from, bool useLimit, int limit, string message)
++    {
++        if (useLimit && _uses.TryGetValue(Key(from), out var used) && used >= limit)
++        {
++            from.SendMessage(message);
++            return false;
++        }
++
++        return true;
++    }
++
++    protected void CountUse(Mobile from)
++    {
++        var key = Key(from);
++        _uses[key] = _uses.GetValueOrDefault(key) + 1;
++    }
++
++    private static string Key(Mobile from) => from.Account?.Username ?? from.Serial.ToString();
++
++    protected bool CheckRange(Mobile from)
++    {
++        if (from.InRange(GetWorldLocation(), 2))
++        {
++            return true;
++        }
++
++        from.SendLocalizedMessage(500446); // That is too far away.
++        return false;
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class BankWithdrawStone : DfiStone
++{
++    [SerializableField(0)]
++    [InvalidateProperties]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private bool _active = true;
++
++    [SerializableField(1)]
++    [InvalidateProperties]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private bool _useLimit = true;
++
++    [SerializableField(2)]
++    [InvalidateProperties]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private int _limit = 1;
++
++    [SerializableField(3)]
++    [InvalidateProperties]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private int _goldAmount;
++
++    [Constructible(AccessLevel.GameMaster)]
++    public BankWithdrawStone() : base(0xED4, 0x2D1)
++    {
++    }
++
++    public override string DefaultName => $"{(_useLimit ? "a limited " : "a ")}{_goldAmount} gp withdrawal stone";
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++        list.Add(_active ? 1060742 : 1060743); // active / inactive
++    }
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        if (!_active || _goldAmount <= 0)
++        {
++            from.SendMessage("This stone is disabled.");
++            return;
++        }
++
++        if (!CheckRange(from) || !CheckLimit(from, _useLimit, _limit, "You cannot take anymore use this stone another time."))
++        {
++            return;
++        }
++
++        if (!Banker.Withdraw(from, _goldAmount))
++        {
++            from.SendMessage("You do not have enough money in your bank to withdraw this amount.");
++            return;
++        }
++
++        from.SendMessage($"Your new bank balance is: {Banker.GetBalance(from)}gp.");
++        from.AddToBackpack(_goldAmount < 1000 ? new Gold(_goldAmount) : new BankCheck(_goldAmount));
++        CountUse(from);
++    }
++}
++
++public enum LimitedItemType
++{
++    MageReagentBag,
++    NecroReagentBag,
++    Bandages
++}
++
++// Hands out a bag of 50 of each reagent, or 50 bandages, a set number of times per player.
++[SerializationGenerator(0)]
++public partial class LimitedItemStone : DfiStone
++{
++    [SerializableField(0)]
++    [InvalidateProperties]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private bool _active = true;
++
++    [SerializableField(1)]
++    [InvalidateProperties]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private bool _useLimit = true;
++
++    [SerializableField(2)]
++    [InvalidateProperties]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private LimitedItemType _itemType;
++
++    [SerializableField(3)]
++    [InvalidateProperties]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private int _limit = 1;
++
++    [Constructible(AccessLevel.GameMaster)]
++    public LimitedItemStone() : base(0xED4, 0x2D1)
++    {
++    }
++
++    public override string DefaultName =>
++        $"{(_useLimit ? "a limited " : "a ")}{_itemType switch
++        {
++            LimitedItemType.Bandages        => "bandage stone",
++            LimitedItemType.NecroReagentBag => "necro reagent stone",
++            _                               => "mage reagent stone"
++        }}";
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++
++        if (!_active)
++        {
++            list.Add(1060743); // inactive
++            return;
++        }
++
++        list.Add(1060742); // active
++
++        if (_useLimit)
++        {
++            list.Add(1060658, $"{"limit"}\t{_limit}"); // ~1_val~: ~2_val~
++        }
++    }
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        if (!_active)
++        {
++            from.SendMessage("This stone is disabled.");
++            return;
++        }
++
++        if (!CheckRange(from) || !CheckLimit(from, _useLimit, _limit, "You cannot take anymore items from this stone."))
++        {
++            return;
++        }
++
++        Item item = _itemType switch
++        {
++            LimitedItemType.NecroReagentBag => new BagOfNecroReagents(),
++            LimitedItemType.Bandages        => new Bandage(50),
++            _                               => new BagOfReagents()
++        };
++
++        if (!from.PlaceInBackpack(item))
++        {
++            from.SendLocalizedMessage(500720); // You don't have enough room in your backpack!
++            item.Delete();
++            return;
++        }
++
++        from.SendLocalizedMessage(1072223); // An item has been placed in your backpack.
++        CountUse(from);
++    }
++}
++
++// One bag of 50 reagents per account.
++[SerializationGenerator(0)]
++public partial class LimitedRegStone : DfiStone
++{
++    [Constructible(AccessLevel.GameMaster)]
++    public LimitedRegStone() : base(0xED4, 0x2D1)
++    {
++    }
++
++    public override string DefaultName => "a limited reagent stone";
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        if (!CheckRange(from) || !CheckLimit(from, true, 1, "You may only take 1 reagent bag."))
++        {
++            return;
++        }
++
++        var bag = new BagOfReagents();
++
++        if (from.AddToBackpack(bag))
++        {
++            CountUse(from);
++        }
++    }
++}
++
++// Takes reagents from the player's bank and hands them back as a bag.
++[SerializationGenerator(0)]
++public abstract partial class RegBankStone : DfiStone
++{
++    [SerializableField(0)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private int _regAmount = 30;
++
++    protected RegBankStone(int hue) : base(0xED4, hue)
++    {
++    }
++
++    protected abstract Type[] Reagents { get; }
++
++    protected abstract Item MakeBag(int amount);
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        var amount = _regAmount > 0 ? _regAmount : 30;
++        var amounts = new int[Reagents.Length];
++        Array.Fill(amounts, amount);
++
++        if (from.BankBox?.ConsumeTotal(Reagents, amounts) != -1)
++        {
++            from.SendMessage("You do not have enough reagents in your bank.");
++            return;
++        }
++
++        var bag = MakeBag(amount);
++
++        if (!from.AddToBackpack(bag))
++        {
++            bag.Delete();
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class RegWithdrawStone : RegBankStone
++{
++    private static readonly Type[] _reagents =
++    [
++        typeof(BlackPearl), typeof(Bloodmoss), typeof(MandrakeRoot), typeof(SulfurousAsh), typeof(SpidersSilk),
++        typeof(Garlic), typeof(Ginseng), typeof(Nightshade)
++    ];
++
++    [Constructible(AccessLevel.GameMaster)]
++    public RegWithdrawStone() : base(2118)
++    {
++    }
++
++    public override string DefaultName => "A Reagent Withdraw Stone";
++    protected override Type[] Reagents => _reagents;
++    protected override Item MakeBag(int amount) => new BagOfReagents(amount);
++}
++
++[SerializationGenerator(0)]
++public partial class NecroRegWithdrawStone : RegBankStone
++{
++    private static readonly Type[] _reagents =
++        [typeof(NoxCrystal), typeof(GraveDust), typeof(PigIron), typeof(BatWing), typeof(DaemonBlood)];
++
++    [Constructible(AccessLevel.GameMaster)]
++    public NecroRegWithdrawStone() : base(701)
++    {
++    }
++
++    public override string DefaultName => "A Necro Reagent Withdraw Stone";
++    protected override Type[] Reagents => _reagents;
++    protected override Item MakeBag(int amount) => new BagOfNecroReagents(amount);
++}
++
++[SerializationGenerator(0)]
++public partial class PetBondingStone : DfiStone
++{
++    [Constructible(AccessLevel.GameMaster)]
++    public PetBondingStone() : base(0xEDE, 0x482)
++    {
++    }
++
++    public override string DefaultName => "a pet bonding stone";
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        if (!CheckRange(from))
++        {
++            return;
++        }
++
++        from.SendMessage("Target a tamed creature that you want bonded.");
++        from.Target = new PetBondTarget();
++    }
++
++    private class PetBondTarget : Target
++    {
++        public PetBondTarget() : base(-1, false, TargetFlags.None)
++        {
++        }
++
++        protected override void OnTarget(Mobile from, object targeted)
++        {
++            if (targeted is not BaseCreature creature)
++            {
++                from.SendMessage("You cannot bond that!");
++            }
++            else if (creature.ControlMaster != from || !creature.Controlled || !creature.IsBondable)
++            {
++                from.SendMessage("You cannot bond that creature!");
++            }
++            else if (creature.IsBonded)
++            {
++                from.SendMessage("Creature is already bonded!");
++            }
++            else
++            {
++                creature.IsBonded = true;
++                creature.BondingBegin = DateTime.MinValue;
++                from.SendLocalizedMessage(1049666); // Your pet has bonded with you!
++            }
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class WebStone : DfiStone
++{
++    [SerializableField(0)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private string _url;
++
++    [Constructible(AccessLevel.GameMaster)]
++    public WebStone() : base(0xED4, 0x2D1)
++    {
++    }
++
++    public override string DefaultName => "a Web Stone";
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        if (CheckRange(from) && !string.IsNullOrEmpty(_url))
++        {
++            from.LaunchBrowser(_url);
++        }
++    }
++}
++
++// Five free weapons, shields or bundles of ammunition per account, when UseLimit is on.
++[SerializationGenerator(0)]
++public partial class WeaponStone : DfiStone
++{
++    public const int AmountToGive = 5;
++    public const int StackAmount = 100;
++
++    [SerializableField(0)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private bool _useLimit;
++
++    [Constructible(AccessLevel.GameMaster)]
++    public WeaponStone() : base(0xED4, 0x5A7)
++    {
++    }
++
++    public override string DefaultName => "a Weapon Stone";
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        if (CheckRange(from))
++        {
++            from.SendGump(new WeaponStoneGump(this, 0), true);
++        }
++    }
++
++    public void Give(Mobile from, Type type, string name)
++    {
++        if (!CheckLimit(from, _useLimit, AmountToGive, "You may not take anymore items from this stone."))
++        {
++            return;
++        }
++
++        var item = type.CreateInstance<Item>();
++
++        if (item.Stackable)
++        {
++            item.Amount = StackAmount;
++        }
++
++        from.AddToBackpack(item);
++        from.SendMessage($"The {name} has been placed into your packpack.");
++
++        if (_useLimit)
++        {
++            CountUse(from);
++        }
++    }
++}
++
++public class WeaponStoneGump : DynamicGump
++{
++    private static readonly string[] _categories =
++        ["Swords", "Spears And Forks", "Pole Arms", "Maces", "Knives", "Axes", "Shields", "Bows"];
++
++    public static readonly (Type Type, string Name)[][] Tables =
++    [
++        [
++            (typeof(BoneHarvester), "Bone Harvester"), (typeof(Broadsword), "Broadsword"), (typeof(CrescentBlade), "Crescent Blade"),
++            (typeof(Cutlass), "Cutlass"), (typeof(Katana), "Katana"), (typeof(Kryss), "Kryss"), (typeof(Lance), "Lance"),
++            (typeof(Longsword), "Longsword"), (typeof(Scimitar), "Scimitar"), (typeof(ThinLongsword), "Thin Longsword"),
++            (typeof(VikingSword), "Viking Sword")
++        ],
++        [
++            (typeof(BladedStaff), "Bladed Staff"), (typeof(DoubleBladedStaff), "Double Bladed Staff"), (typeof(Pike), "Pike"),
++            (typeof(Pitchfork), "Pitchfork"), (typeof(ShortSpear), "Short Spear"), (typeof(Spear), "Spear"),
++            (typeof(TribalSpear), "Tribal Spear"), (typeof(WarFork), "War Fork")
++        ],
++        [(typeof(Bardiche), "Bardiche"), (typeof(Halberd), "Halberd"), (typeof(Scythe), "Scythe")],
++        [
++            (typeof(Club), "Club"), (typeof(HammerPick), "Hammer Pick"), (typeof(Mace), "Mace"), (typeof(Maul), "Maul"),
++            (typeof(Scepter), "Scepter"), (typeof(WarHammer), "War Hammer"), (typeof(WarMace), "War Mace")
++        ],
++        [
++            (typeof(ButcherKnife), "Butcher Knife"), (typeof(Cleaver), "Cleaver"), (typeof(Dagger), "Dagger"),
++            (typeof(SkinningKnife), "Skinning Knife")
++        ],
++        [
++            (typeof(Axe), "Axe"), (typeof(BattleAxe), "Battle Axe"), (typeof(DoubleAxe), "Double Axe"),
++            (typeof(ExecutionersAxe), "Executioners Axe"), (typeof(Hatchet), "Hatchet"), (typeof(LargeBattleAxe), "Large Battle Axe"),
++            (typeof(Pickaxe), "Pickaxe"), (typeof(TwoHandedAxe), "Two Handed Axe"), (typeof(WarAxe), "War Axe")
++        ],
++        [
++            (typeof(BronzeShield), "Bronze Shield"), (typeof(Buckler), "Buckler"), (typeof(ChaosShield), "Chaos Shield"),
++            (typeof(HeaterShield), "Heater Shield"), (typeof(MetalKiteShield), "Metal Kite Shield"), (typeof(MetalShield), "Metal Shield"),
++            (typeof(OrderShield), "Order Shield"), (typeof(WoodenKiteShield), "Wooden Kite Shield"), (typeof(WoodenShield), "Wooden Shield")
++        ],
++        [
++            (typeof(Bow), "Bow"), (typeof(CompositeBow), "Composite Bow"), (typeof(Crossbow), "Crossbow"),
++            (typeof(HeavyCrossbow), "Heavy Crossbow"), (typeof(RepeatingCrossbow), "Repeating Crossbow"),
++            (typeof(Arrow), $"Arrows ({WeaponStone.StackAmount})"), (typeof(Bolt), $"Bolts ({WeaponStone.StackAmount})")
++        ]
++    ];
++
++    private readonly WeaponStone _stone;
++    private readonly int _category;
++
++    public WeaponStoneGump(WeaponStone stone, int category) : base(0, 0)
++    {
++        _stone = stone;
++        _category = Math.Clamp(category, 0, Tables.Length - 1);
++    }
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        builder.AddPage();
++        builder.AddBackground(78, 46, 527, 431, 9200);
++        builder.AddButton(224, 446, 5200, 5201, 0);
++        builder.AddBackground(181, 31, 321, 31, 9200);
++        builder.AddBackground(100, 73, 332, 369, 9350);
++        builder.AddLabel(295, 35, 0, "Weapon Stone");
++        builder.AddImage(27, 26, 10440);
++        builder.AddLabel(109, 77, 0, "Choose");
++        builder.AddLabel(170, 77, 0, "Name");
++
++        for (var i = 0; i < _categories.Length; i++)
++        {
++            builder.AddButton(445, 75 + 30 * i, 4005, 4006, i + 1);
++            builder.AddLabel(480, 75 + 30 * i, 0, _categories[i]);
++        }
++
++        var table = Tables[_category];
++
++        for (var i = 0; i < table.Length; i++)
++        {
++            builder.AddButton(120, 106 + 16 * i, 1209, 1210, 1000 + i);
++            builder.AddLabel(170, 103 + 16 * i, 0, table[i].Name);
++        }
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        var from = sender.Mobile;
++        var id = info.ButtonID;
++
++        if (_stone.Deleted || id == 0 || !from.InRange(_stone.GetWorldLocation(), 2))
++        {
++            return;
++        }
++
++        if (id <= _categories.Length)
++        {
++            from.SendGump(new WeaponStoneGump(_stone, id - 1), true);
++            return;
++        }
++
++        var table = Tables[_category];
++        var index = id - 1000;
++
++        if (index >= 0 && index < table.Length)
++        {
++            _stone.Give(from, table[index].Type, table[index].Name);
++            from.SendGump(new WeaponStoneGump(_stone, _category), true);
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Town/TownNpcs.cs b/Projects/UOContent/Custom/DFI/Town/TownNpcs.cs
+new file mode 100644
+index 000000000..47c22a5e2
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Town/TownNpcs.cs
+@@ -0,0 +1,411 @@
++// DFI Network's townsfolk, ported from DFI RUNUO Scripts/Custom/Mobiles/Townfolks and Vendors/NPC and SBInfo:
++// the criminal banker, the priest of Mondain, the necromancer and its shop, the priest of evil (a paid full
++// resurrection), Haven's town crier and the two escortable prisoners.
++
++using System;
++using System.Collections.Generic;
++using ModernUO.Serialization;
++using Server.Gumps;
++using Server.Items;
++using Server.Network;
++
++namespace Server.Mobiles;
++
++// The banker of the thieves' guild and the outlaws' towns: it does business with criminals.
++[SerializationGenerator(0)]
++public partial class CriminalBanker : Banker
++{
++    [Constructible]
++    public CriminalBanker()
++    {
++    }
++
++    public override bool ServesCriminals => true;
++}
++
++// Escorts out of DFI's prison; they take the escort quests of the noble and the seeker of adventure.
++[SerializationGenerator(0)]
++public partial class PrisonerNoble : Noble
++{
++    [Constructible]
++    public PrisonerNoble()
++    {
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class PrisonerSeeker : SeekerOfAdventure
++{
++    [Constructible]
++    public PrisonerSeeker()
++    {
++    }
++}
++
++// Resurrects murderers and teaches the dark priest's skills.
++[SerializationGenerator(0)]
++public partial class PriestOfMondain : BaseHealer
++{
++    [Constructible]
++    public PriestOfMondain()
++    {
++        Title = "the priest of Mondain";
++        Karma = -10000;
++
++        SetSkill(SkillName.Forensics, 80.0, 100.0);
++        SetSkill(SkillName.SpiritSpeak, 80.0, 100.0);
++        SetSkill(SkillName.Swords, 80.0, 100.0);
++    }
++
++    public override bool CanTeach => true;
++    public override bool AlwaysMurderer => true;
++
++    public override bool CheckTeach(SkillName skill, Mobile from) =>
++        base.CheckTeach(skill, from) && skill is SkillName.Anatomy or SkillName.Parry or SkillName.EvalInt
++            or SkillName.Healing or SkillName.Magery or SkillName.MagicResist or SkillName.Tactics or SkillName.SpiritSpeak;
++
++    public override bool CheckResurrect(Mobile m) => true;
++}
++
++// A dark healer whose resurrection, for a price, restores hits and mana as well.
++[SerializationGenerator(0)]
++public partial class PaidFullHealer : BaseHealer
++{
++    [Constructible]
++    public PaidFullHealer() : base(1000)
++    {
++        Title = "the Priest Of Evil";
++        Karma = -10000;
++        Blessed = true;
++
++        SetDamageType(ResistanceType.Cold, 100);
++
++        SetResistance(ResistanceType.Physical, 40, 80);
++        SetResistance(ResistanceType.Fire, 40, 80);
++        SetResistance(ResistanceType.Cold, 40, 80);
++        SetResistance(ResistanceType.Poison, 40, 80);
++        SetResistance(ResistanceType.Energy, 40, 80);
++
++        SetSkill(SkillName.Wrestling, 100.0, 140.5);
++        SetSkill(SkillName.Anatomy, 75.0, 97.5);
++        SetSkill(SkillName.EvalInt, 100.0, 140.0);
++        SetSkill(SkillName.Healing, 75.0, 97.5);
++        SetSkill(SkillName.Magery, 100.0, 140.0);
++        SetSkill(SkillName.MagicResist, 100.0, 140.0);
++        SetSkill(SkillName.Tactics, 82.0, 100.0);
++    }
++
++    public override bool CanTeach => false;
++
++    public override void InitOutfit()
++    {
++        AddItem(new HoodedShroudOfShadows { LootType = LootType.Blessed });
++
++        var ring = new GoldRing { LootType = LootType.Blessed };
++        ring.Attributes.CastSpeed = 2;
++        ring.Attributes.CastRecovery = 6;
++        AddItem(ring);
++    }
++
++    public override void OfferResurrection(Mobile m)
++    {
++        Direction = GetDirectionTo(m);
++        m.PlaySound(0x214);
++        m.FixedEffect(0x376A, 10, 16);
++        m.SendGump(new PaidFullHealerGump(this), true);
++    }
++}
++
++public class PaidFullHealerGump : StaticGump<PaidFullHealerGump>
++{
++    private readonly PaidFullHealer _healer;
++
++    public PaidFullHealerGump(PaidFullHealer healer) : base(50, 50) => _healer = healer;
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref StaticGumpBuilder builder)
++    {
++        builder.AddPage();
++        builder.AddBackground(0, 0, 400, 300, 3600);
++        builder.AddImage(-34, 16, 60970);
++        builder.AddImage(-34, 20, 60897, 1193);
++
++        builder.AddRadio(120, 180, 9727, 9730, true, 0);
++        builder.AddLabelPlaceholder(150, 180, 1149, "full");
++        builder.AddRadio(120, 210, 9727, 9730, false, 1);
++        builder.AddLabel(150, 210, 1149, "Regular Resurrection (free)");
++
++        builder.AddButton(270, 250, 247, 248, 1);
++        builder.AddButton(70, 250, 243, 241, 0);
++
++        builder.AddHtml(0, 28, 400, 25, "Resurrection Gump", "#FFFFFF", align: TextAlignment.Center);
++        builder.AddHtml(
++            118, 68, 253, 100,
++            "Psst... hey,<br>Come over here. I see you are in need of some assistance. I can offer you a resurrection and replenish your mana and health for a small price.",
++            "#FFFFFF"
++        );
++    }
++
++    protected override void BuildStrings(ref GumpStringsBuilder builder)
++    {
++        builder.SetStringSlot("full", $"Full Resurrection ({_healer.Price} gp)");
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        var m = sender.Mobile;
++
++        if (info.ButtonID != 1 || m.Alive)
++        {
++            return;
++        }
++
++        if (!m.InRange(_healer, 16))
++        {
++            m.SendMessage("You have wandered to far off to gain any benefits from the healers practices.");
++            return;
++        }
++
++        if (info.IsSwitched(0) && Banker.Withdraw(m, _healer.Price))
++        {
++            m.Frozen = true;
++            Timer.StartTimer(TimeSpan.FromSeconds(10.0), () => FullResurrect(m));
++        }
++        else
++        {
++            m.Resurrect();
++            m.PlaySound(0x214);
++            m.FixedEffect(0x376A, 10, 16);
++        }
++    }
++
++    public static void FullResurrect(Mobile m)
++    {
++        m.Resurrect();
++        m.Hits = m.HitsMax;
++        m.Mana = m.ManaMax;
++        m.Frozen = false;
++        m.PlaySound(0x214);
++        m.FixedEffect(0x376A, 10, 16);
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class Necromancer : BaseVendor
++{
++    private readonly List<SBInfo> _sbInfos = [];
++
++    [Constructible]
++    public Necromancer() : base("the necromancer")
++    {
++        SetSkill(SkillName.EvalInt, 80.0, 100.0);
++        SetSkill(SkillName.Inscribe, 80.0, 100.0);
++        SetSkill(SkillName.Necromancy, 80.0, 100.0);
++        SetSkill(SkillName.Meditation, 80.0, 100.0);
++        SetSkill(SkillName.MagicResist, 80.0, 100.0);
++
++        Hue = 0x3C6;
++    }
++
++    protected override List<SBInfo> SBInfos => _sbInfos;
++
++    public override VendorShoeType ShoeType => Utility.RandomBool() ? VendorShoeType.Shoes : VendorShoeType.Sandals;
++
++    public override void InitSBInfo()
++    {
++        _sbInfos.Add(new SBNecromancer());
++    }
++
++    public override void InitOutfit()
++    {
++        base.InitOutfit();
++        AddItem(new Robe(0x455));
++    }
++}
++
++public class SBNecromancer : SBInfo
++{
++    public override IShopSellInfo SellInfo { get; } = new InternalSellInfo();
++    public override List<GenericBuyInfo> BuyInfo { get; } = BuildBuyInfo();
++
++    private static List<GenericBuyInfo> BuildBuyInfo()
++    {
++        var list = new List<GenericBuyInfo>();
++        var types = Loot.RegularScrollTypes;
++
++        for (var i = 0; i < 3 * 8 && i < types.Length; ++i)
++        {
++            var itemID = 0x1F2E + i;
++
++            if (i == 6)
++            {
++                itemID = 0x1F2D;
++            }
++            else if (i > 6)
++            {
++                --itemID;
++            }
++
++            list.Add(new GenericBuyInfo(types[i], 12 + i / 8 * 10, 20, itemID, 0));
++        }
++
++        list.Add(new GenericBuyInfo(typeof(BlackPearl), 5, 999, 0xF7A, 0));
++        list.Add(new GenericBuyInfo(typeof(Bloodmoss), 5, 999, 0xF7B, 0));
++        list.Add(new GenericBuyInfo(typeof(MandrakeRoot), 3, 999, 0xF86, 0));
++        list.Add(new GenericBuyInfo(typeof(Garlic), 3, 999, 0xF84, 0));
++        list.Add(new GenericBuyInfo(typeof(Ginseng), 3, 999, 0xF85, 0));
++        list.Add(new GenericBuyInfo(typeof(Nightshade), 3, 999, 0xF88, 0));
++        list.Add(new GenericBuyInfo(typeof(SpidersSilk), 3, 999, 0xF8D, 0));
++        list.Add(new GenericBuyInfo(typeof(SulfurousAsh), 3, 999, 0xF8C, 0));
++
++        if (Core.AOS)
++        {
++            list.Add(new GenericBuyInfo(typeof(BatWing), 3, 999, 0xF78, 0));
++            list.Add(new GenericBuyInfo(typeof(GraveDust), 3, 999, 0xF8F, 0));
++            list.Add(new GenericBuyInfo(typeof(DaemonBlood), 6, 999, 0xF7D, 0));
++            list.Add(new GenericBuyInfo(typeof(NoxCrystal), 6, 999, 0xF8E, 0));
++            list.Add(new GenericBuyInfo(typeof(PigIron), 5, 999, 0xF8A, 0));
++            list.Add(new GenericBuyInfo(typeof(NecromancerSpellbook), 115, 10, 0x2253, 0));
++        }
++
++        list.Add(new GenericBuyInfo(typeof(BlankScroll), 5, 20, 0x0E34, 0));
++        list.Add(new GenericBuyInfo(typeof(RecallRune), 25, 10, 0x1f14, 0));
++        list.Add(new GenericBuyInfo(typeof(Spellbook), 50, 10, 0xEFA, 0));
++
++        return list;
++    }
++
++    public class InternalSellInfo : GenericSellInfo
++    {
++        public InternalSellInfo()
++        {
++            Add(typeof(Runebook), 1250);
++            Add(typeof(BlackPearl), 3);
++            Add(typeof(Bloodmoss), 3);
++            Add(typeof(MandrakeRoot), 2);
++            Add(typeof(Garlic), 2);
++            Add(typeof(Ginseng), 2);
++            Add(typeof(Nightshade), 2);
++            Add(typeof(SpidersSilk), 2);
++            Add(typeof(SulfurousAsh), 2);
++            Add(typeof(RecallRune), 8);
++            Add(typeof(Spellbook), 9);
++            Add(typeof(BlankScroll), 2);
++
++            Add(typeof(TotalRefreshPotion), 7);
++            Add(typeof(GreaterAgilityPotion), 7);
++            Add(typeof(GreaterHealPotion), 7);
++            Add(typeof(GreaterStrengthPotion), 7);
++            Add(typeof(GreaterPoisonPotion), 7);
++            Add(typeof(GreaterCurePotion), 7);
++            Add(typeof(GreaterExplosionPotion), 10);
++            Add(typeof(RefreshPotion), 7);
++            Add(typeof(AgilityPotion), 7);
++            Add(typeof(NightSightPotion), 7);
++            Add(typeof(LesserHealPotion), 7);
++            Add(typeof(StrengthPotion), 7);
++            Add(typeof(LesserPoisonPotion), 7);
++            Add(typeof(LesserCurePotion), 7);
++            Add(typeof(LesserExplosionPotion), 10);
++
++            if (Core.AOS)
++            {
++                Add(typeof(ConfusionBlastPotion), 10);
++                Add(typeof(ConflagrationPotion), 10);
++                Add(typeof(GreaterConflagrationPotion), 10);
++                Add(typeof(GreaterConfusionBlastPotion), 10);
++                Add(typeof(NoxCrystal), 3);
++                Add(typeof(BatWing), 1);
++                Add(typeof(GraveDust), 1);
++                Add(typeof(DaemonBlood), 3);
++                Add(typeof(PigIron), 2);
++
++                Add(typeof(AnimateDeadScroll), 26);
++                Add(typeof(BloodOathScroll), 26);
++                Add(typeof(CorpseSkinScroll), 26);
++                Add(typeof(CurseWeaponScroll), 26);
++                Add(typeof(EvilOmenScroll), 26);
++                Add(typeof(HorrificBeastScroll), 27);
++                Add(typeof(LichFormScroll), 64);
++                Add(typeof(MindRotScroll), 39);
++                Add(typeof(PainSpikeScroll), 26);
++                Add(typeof(PoisonStrikeScroll), 39);
++                Add(typeof(StrangleScroll), 64);
++                Add(typeof(SummonFamiliarScroll), 26);
++                Add(typeof(VampiricEmbraceScroll), 101);
++                Add(typeof(VengefulSpiritScroll), 114);
++                Add(typeof(WitherScroll), 64);
++                Add(typeof(WraithFormScroll), 51);
++                Add(typeof(ExorcismScroll), 114);
++            }
++
++            var types = Loot.RegularScrollTypes;
++
++            for (var i = 0; i < types.Length; ++i)
++            {
++                Add(types[i], 6 + i / 8 * 5);
++            }
++        }
++    }
++}
++
++// Haven's town crier: when a player comes near, it walks them through the young player region, a line every
++// ten seconds.
++[SerializationGenerator(0)]
++public partial class HavenCrier : BaseCreature
++{
++    private static readonly string[] _messages =
++    [
++        "Greetings young traveler, and welcome to the AOS shard of Defiance.",
++        "You are currently resisiding in the young player region, in this region you cannot harm players nor can they harm you.",
++        "The region around this city is inhabited by armed and dangerous creatures. The further you go the more dangerous the creatures will be.",
++        "Behind the blacksmith you will find some training dummies and a range to train your fighting skills up to 50 points.",
++        "If you want to go to Felucca, where most players are, follow the road south-east, until you see a sign pointing the Moongate.",
++        "Once you leave this region, you will NOT be able to return.",
++        "We hope you will have a pleasant stay, and good luck."
++    ];
++
++    private Timer _timer;
++
++    [Constructible]
++    public HavenCrier() : base(AIType.AI_Vendor, FightMode.None, 2, 1)
++    {
++        InitStats(100, 100, 25);
++        Title = "the town crier";
++        Hue = Race.Human.RandomSkinHue();
++        Female = Utility.RandomBool();
++        Body = Female ? 0x191 : 0x190;
++        Name = NameList.RandomName(Female ? "female" : "male");
++        HairItemID = Race.Human.RandomHair(Female);
++        HairHue = Race.Human.RandomHairHue();
++        Blessed = true;
++
++        AddItem(new FancyShirt(Utility.RandomBlueHue()));
++        AddItem(new Kilt(Utility.RandomGreenHue()));
++        AddItem(new FeatheredHat(Utility.RandomGreenHue()));
++        AddItem(new ThighBoots());
++    }
++
++    public override bool CanBeDamaged() => false;
++
++    public override void OnMovement(Mobile m, Point3D oldLocation)
++    {
++        base.OnMovement(m, oldLocation);
++
++        if (_timer?.Running != true && m.Player && m.AccessLevel == AccessLevel.Player && m.InRange(this, 12))
++        {
++            var line = 0;
++            _timer = Timer.DelayCall(TimeSpan.Zero, TimeSpan.FromSeconds(10.0), _messages.Length, () =>
++                PublicOverheadMessage(MessageType.Regular, 0x3B2, false, _messages[line++])
++            );
++        }
++    }
++
++    public override void OnDelete()
++    {
++        _timer?.Stop();
++        _timer = null;
++        base.OnDelete();
++    }
++}
+diff --git a/Projects/UOContent/Mobiles/Townfolk/Banker.cs b/Projects/UOContent/Mobiles/Townfolk/Banker.cs
+index e93ddcf4f..d0982d45b 100644
+--- a/Projects/UOContent/Mobiles/Townfolk/Banker.cs
++++ b/Projects/UOContent/Mobiles/Townfolk/Banker.cs
+@@ -23,6 +23,9 @@ public Banker() : base("the banker")
+ 
+     public override NpcGuild NpcGuild => NpcGuild.MerchantsGuild;
+ 
++    // DFI Network's criminal banker serves criminals.
++    public virtual bool ServesCriminals => false;
++
+     public override void InitSBInfo()
+     {
+         m_SBInfos.Add(new SBBanker());
+@@ -463,7 +466,7 @@ public override void OnSpeech(SpeechEventArgs e)
+                         {
+                             e.Handled = true;
+ 
+-                            if (e.Mobile.Criminal)
++                            if (e.Mobile.Criminal && !ServesCriminals)
+                             {
+                                 Say(500389); // I will not do business with a criminal!
+                                 break;
+@@ -510,7 +513,7 @@ public override void OnSpeech(SpeechEventArgs e)
+                         {
+                             e.Handled = true;
+ 
+-                            if (e.Mobile.Criminal)
++                            if (e.Mobile.Criminal && !ServesCriminals)
+                             {
+                                 Say(500389); // I will not do business with a criminal!
+                                 break;
+@@ -535,7 +538,7 @@ public override void OnSpeech(SpeechEventArgs e)
+                         {
+                             e.Handled = true;
+ 
+-                            if (e.Mobile.Criminal)
++                            if (e.Mobile.Criminal && !ServesCriminals)
+                             {
+                                 Say(500378); // Thou art a criminal and cannot access thy bank box.
+                                 break;
+@@ -554,7 +557,7 @@ public override void OnSpeech(SpeechEventArgs e)
+                                 break;
+                             }
+ 
+-                            if (e.Mobile.Criminal)
++                            if (e.Mobile.Criminal && !ServesCriminals)
+                             {
+                                 Say(500389); // I will not do business with a criminal!
+                                 break;

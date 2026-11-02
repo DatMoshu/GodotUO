@@ -1,0 +1,2555 @@
+diff --git a/Projects/UOContent.Tests/Tests/Custom/DfiEventTests.cs b/Projects/UOContent.Tests/Tests/Custom/DfiEventTests.cs
+new file mode 100644
+index 000000000..e19fe33b0
+--- /dev/null
++++ b/Projects/UOContent.Tests/Tests/Custom/DfiEventTests.cs
+@@ -0,0 +1,263 @@
++using System;
++using System.Collections.Generic;
++using Server;
++using Server.Custom.Dfi;
++using Server.Items;
++using Server.Misc;
++using Server.Mobiles;
++using Xunit;
++
++namespace UOContent.Tests.Custom;
++
++[Collection("Sequential UOContent Tests")]
++public class DfiEventTests : IDisposable
++{
++    private readonly List<IEntity> _created = new();
++
++    public DfiEventTests()
++    {
++        if (NameList.GetNameList("male") == null)
++        {
++            NameList.Configure();
++        }
++    }
++
++    public static TheoryData<Type> Types =>
++    [
++        typeof(EICSmallCrate), typeof(EICMediumCrate), typeof(EICLargeCrate), typeof(EICWooden), typeof(EICMetal),
++        typeof(EICMetalGolden), typeof(EICMetalGoldenRed), typeof(CopperBar), typeof(EventRewardNPC), typeof(LastManPentagram),
++        typeof(TempRobe), typeof(TempCloak), typeof(TempHorseEthereal), typeof(LayeredSashDeed), typeof(PersonalisationDeed),
++        typeof(AntiBlessDeed), typeof(KillResetDeed), typeof(MagicSewingKit), typeof(WhisperingRose), typeof(FireDeed),
++        typeof(CampfireDeed), typeof(CrystalPedestalAddonDeed), typeof(FountainStoneAddonDeed), typeof(FountainSandstoneAddonDeed)
++    ];
++
++    public static TheoryData<Type> AddonDeeds =>
++    [
++        typeof(FireDeed), typeof(CampfireDeed), typeof(CrystalPedestalAddonDeed), typeof(FountainStoneAddonDeed),
++        typeof(FountainSandstoneAddonDeed)
++    ];
++
++    public void Dispose()
++    {
++        foreach (var e in _created)
++        {
++            e?.Delete();
++        }
++
++        _created.Clear();
++    }
++
++    private T Track<T>(T e) where T : IEntity
++    {
++        _created.Add(e);
++        return e;
++    }
++
++    private PlayerMobile Player()
++    {
++        var m = Track(new PlayerMobile());
++        m.Player = true;
++        m.Body = 0x190;
++        m.AddItem(new Backpack());
++        m.MoveToWorld(new Point3D(1434, 1690, 0), Map.Felucca);
++        return m;
++    }
++
++    [Theory]
++    [MemberData(nameof(Types))]
++    public void Type_Constructs(Type type)
++    {
++        var entity = Track(type.CreateInstance<IEntity>());
++
++        Assert.False(entity.Deleted);
++    }
++
++    [Theory]
++    [MemberData(nameof(AddonDeeds))]
++    public void AddonDeed_BuildsItsAddonAndBack(Type type)
++    {
++        var deed = Track(type.CreateInstance<BaseAddonDeed>());
++        var addon = Track(deed.Addon);
++
++        Assert.NotEmpty(addon.Components);
++        Assert.Equal(type, Track(addon.Deed).GetType());
++    }
++
++    [Fact]
++    public void Catalogue_EveryRewardMakesAnItem()
++    {
++        var player = Player();
++
++        foreach (var info in EventRewardSystem.Rewards)
++        {
++            var item = Track(info.Create(player));
++            Assert.NotNull(item);
++            Assert.True(info.Price > 0, info.Name);
++        }
++
++        Assert.Equal(EventRewardSystem.Rewards.Length,
++            EventRewardSystem.GetList(EventRewardCategory.PlayItem).Count +
++            EventRewardSystem.GetList(EventRewardCategory.Deco).Count +
++            EventRewardSystem.GetList(EventRewardCategory.Fancy).Count);
++    }
++
++    [Fact]
++    public void Buy_TakesTheBarsOnlyWhenThereAreEnough()
++    {
++        var player = Player();
++        var rose = Array.Find(EventRewardSystem.Rewards, r => r.Name == "A Whispering Rose");
++
++        player.Backpack.DropItem(new CopperBar(rose.Price - 1));
++        Assert.False(EventRewardSystem.Buy(player, rose));
++        Assert.Equal(rose.Price - 1, player.Backpack.GetAmount(typeof(CopperBar)));
++
++        player.Backpack.DropItem(new CopperBar(1));
++        Assert.True(EventRewardSystem.Buy(player, rose));
++        Assert.Equal(0, player.Backpack.GetAmount(typeof(CopperBar)));
++        Assert.NotNull(player.Backpack.FindItemByType<WhisperingRose>());
++    }
++
++    [Fact]
++    public void HandOut_StopsAGameMasterAtTheDailyLimit()
++    {
++        var gm = Player();
++        gm.AccessLevel = AccessLevel.GameMaster;
++
++        Assert.True(EventRewardSystem.HandOut(gm, EventRewardSystem.MaxCopper, "test", ""));
++        Assert.False(EventRewardSystem.HandOut(gm, 1, "test", ""));
++        Assert.Equal(EventRewardSystem.MaxCopper, gm.Backpack.GetAmount(typeof(CopperBar)));
++    }
++
++    [Fact]
++    public void TemporaryItem_IsDeletedWhenItsTimeIsUp()
++    {
++        var robe = Track(new TempRobe());
++        var cloak = Track(new TempCloak());
++        robe.DaysLeft = -1;
++
++        TemporaryItems.Check();
++
++        Assert.True(robe.Deleted);
++        Assert.False(cloak.Deleted);
++    }
++
++    [Fact]
++    public void MagicSewingKit_GivesARobePhysicalResistOnce()
++    {
++        var player = Player();
++        var robe = new Robe();
++        player.Backpack.DropItem(robe);
++        var kit = Track(new MagicSewingKit());
++        player.Backpack.DropItem(kit);
++
++        kit.OnDoubleClick(player);
++        player.Target.Invoke(player, robe);
++
++        Assert.Equal(3, robe.PhysicalResistance);
++        Assert.True(kit.Deleted);
++    }
++
++    [Fact]
++    public void KillResetDeed_ClearsMurders()
++    {
++        var player = Player();
++        player.Kills = 7;
++        var deed = new KillResetDeed();
++        player.Backpack.DropItem(deed);
++
++        deed.OnDoubleClick(player);
++
++        Assert.Equal(0, player.Kills);
++        Assert.True(deed.Deleted);
++    }
++
++    [Theory]
++    [InlineData(1)]
++    [InlineData(4)]
++    [InlineData(7)]
++    public void TreasureChest_IsLockedToItsLevelAndRelocksEmpty(int level)
++    {
++        var chest = Track(level switch
++        {
++            1 => (BaseItemChest)new EICSmallCrate(),
++            4 => new EICWooden(),
++            _ => new EICMetalGoldenRed()
++        });
++        var player = Player();
++
++        Assert.True(chest.Locked);
++        Assert.InRange(chest.LockLevel, 13 * level, 14 * level);
++        Assert.Equal(level, chest.Level);
++
++        chest.TrapType = TrapType.None;
++        chest.LockPick(player);
++        Assert.False(chest.Locked);
++        Assert.True(chest.ItemsCreated);
++
++        chest.DropItem(new Gold(10));
++        chest.Relock();
++
++        Assert.True(chest.Locked);
++        Assert.Empty(chest.Items);
++        Assert.False(chest.ItemsCreated);
++    }
++
++    [Fact]
++    public void ChestLoot_FillsAContainerAtEveryLevel()
++    {
++        var player = Player();
++
++        for (var level = 1; level <= BaseItemChest.MaxLevel; level++)
++        {
++            var bag = Track(new Bag());
++
++            for (var i = 0; i < 20; i++)
++            {
++                BaseItemChest.AddLoot(player, bag, level);
++            }
++
++            Assert.NotEmpty(bag.Items);
++        }
++    }
++
++    [Fact]
++    public void PentagramRewards_AlwaysNameWhatTheWinnerGot()
++    {
++        var player = Player();
++        player.Backpack.MaxItems = 10000;
++
++        for (var i = 0; i < 300; i++)
++        {
++            Assert.False(string.IsNullOrEmpty(PentagramRewards.Give(player)));
++        }
++
++        var spawned = new List<Mobile>();
++
++        foreach (var m in player.Map.GetMobilesInRange(player.Location, 2))
++        {
++            if (m is Barracoon)
++            {
++                spawned.Add(m);
++            }
++        }
++
++        spawned.ForEach(m => m.Delete());
++
++        Assert.NotEmpty(player.Backpack.Items);
++    }
++
++    [Fact]
++    public void Pentagram_SettingsRoundTripAndTheAddonFollowsIt()
++    {
++        var pentagram = Track(new LastManPentagram { SecondsRequired = 90 });
++        pentagram.MoveToWorld(DfiEventsGen.PentagramSpot, Map.Malas);
++
++        Assert.Equal(90, pentagram.SecondsRequired);
++        Assert.Equal(10, pentagram.Count);
++
++        pentagram.Start();
++        Assert.True(pentagram.Running);
++        pentagram.Running = false;
++        Assert.False(pentagram.Running);
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Events/DfiEventsGen.cs b/Projects/UOContent/Custom/DFI/Events/DfiEventsGen.cs
+new file mode 100644
+index 000000000..509aceb60
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Events/DfiEventsGen.cs
+@@ -0,0 +1,73 @@
++// Places DFI's events: the Last Man Pentagram in Luna, started every evening at 19:15 UTC, and the Event Reward
++// Vendor on the street by Britain's bank. DFI's saves kept neither spot; both are open ground at a town centre.
++// [SpawnEIC turns the dungeons' locked chests into treasure chests separately.
++
++using System.Collections.Generic;
++using Server.Commands;
++using Server.Logging;
++using Server.Mobiles;
++
++namespace Server.Custom.Dfi;
++
++public static class DfiEventsGen
++{
++    private static readonly ILogger logger = LogFactory.GetLogger(typeof(DfiEventsGen));
++
++    public static readonly Point3D PentagramSpot = new(995, 512, -50);
++    public static readonly Point3D RewardVendorSpot = new(1434, 1689, 0);
++
++    public static void Configure()
++    {
++        CommandSystem.Register("DfiEvents", AccessLevel.Administrator, OnCommand);
++    }
++
++    [Usage("DfiEvents")]
++    [Description("Places DFI's Last Man Pentagram in Luna and the Event Reward Vendor in Britain, replacing any placed before.")]
++    private static void OnCommand(CommandEventArgs e)
++    {
++        var removed = Remove();
++        var placed = Place();
++        e.Mobile.SendMessage($"DfiEvents: removed {removed}, placed {placed}.");
++        logger.Information("{User} placed {Placed} DFI event fixtures ({Removed} removed)", e.Mobile, placed, removed);
++    }
++
++    public static int Remove()
++    {
++        var doomed = new List<IEntity>();
++
++        foreach (var m in World.Mobiles.Values)
++        {
++            if (m is EventRewardNPC)
++            {
++                doomed.Add(m);
++            }
++        }
++
++        foreach (var item in World.Items.Values)
++        {
++            if (item is LastManPentagram)
++            {
++                doomed.Add(item);
++            }
++        }
++
++        foreach (var entity in doomed)
++        {
++            entity.Delete();
++        }
++
++        return doomed.Count;
++    }
++
++    public static int Place()
++    {
++        var pentagram = new LastManPentagram { PentagramLocation = "Luna" };
++        pentagram.MoveToWorld(PentagramSpot, Map.Malas);
++        pentagram.AutoDaily = true;
++
++        var vendor = new EventRewardNPC { Home = RewardVendorSpot, RangeHome = 0 };
++        vendor.MoveToWorld(RewardVendorSpot, Map.Felucca);
++
++        return 2;
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Events/EventRewardItems.cs b/Projects/UOContent/Custom/DFI/Events/EventRewardItems.cs
+new file mode 100644
+index 000000000..a48fbd3d9
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Events/EventRewardItems.cs
+@@ -0,0 +1,512 @@
++// The items DFI Network's event reward vendor sells for copper bars, ported from DFI RUNUO
++// Scripts/Custom/Engines/EventRewardSystem/RewardItems, Items/Misc/WhisperingRose.cs, Items/Skill Items/Tailoring/
++// MagicSewingKit.cs and the donation deeds (AntiBlessDeed, KillResetDeedAOS).
++
++using System;
++using System.Collections.Generic;
++using ModernUO.Serialization;
++using Server.Mobiles;
++using Server.Targeting;
++
++namespace Server.Items;
++
++// Event rewards that last a set number of days; TemporaryItems deletes them when the time is up.
++public interface ITempItem
++{
++    DateTime RemovalTime { get; }
++}
++
++public static class TemporaryItems
++{
++    private static readonly HashSet<Item> _items = [];
++    private static Timer _timer;
++
++    public static void Register(Item item)
++    {
++        _items.Add(item);
++        _timer ??= Timer.DelayCall(TimeSpan.FromMinutes(6.0), TimeSpan.FromHours(1.0), Check);
++    }
++
++    public static string DeletionText(DateTime removal)
++    {
++        var days = (removal - Core.Now).Days;
++
++        return days switch
++        {
++            <= 0 => "Deletion today",
++            1    => "Deletion tomorrow",
++            _    => $"Deletion in {days} days"
++        };
++    }
++
++    public static void Check()
++    {
++        foreach (var item in new List<Item>(_items))
++        {
++            if (item.Deleted)
++            {
++                _items.Remove(item);
++            }
++            else if (item is ITempItem temp && temp.RemovalTime <= Core.Now)
++            {
++                _items.Remove(item);
++                item.Delete();
++            }
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class TempRobe : Robe, ITempItem
++{
++    [SerializableField(0, setter: "private")]
++    private DateTime _removalTime;
++
++    [Constructible]
++    public TempRobe(int days = 30)
++    {
++        _removalTime = Core.Now + TimeSpan.FromDays(Math.Min(days, 365));
++        TemporaryItems.Register(this);
++    }
++
++    [CommandProperty(AccessLevel.GameMaster)]
++    public int DaysLeft
++    {
++        get => (int)(_removalTime - Core.Now).TotalDays;
++        set
++        {
++            RemovalTime = Core.Now + TimeSpan.FromDays(Math.Min(value, 365));
++            InvalidateProperties();
++        }
++    }
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++        list.Add(TemporaryItems.DeletionText(_removalTime));
++    }
++
++    [AfterDeserialization]
++    private void AfterDeserialization() => TemporaryItems.Register(this);
++}
++
++[SerializationGenerator(0)]
++public partial class TempCloak : Cloak, ITempItem
++{
++    [SerializableField(0, setter: "private")]
++    private DateTime _removalTime;
++
++    [Constructible]
++    public TempCloak(int days = 30)
++    {
++        _removalTime = Core.Now + TimeSpan.FromDays(Math.Min(days, 365));
++        TemporaryItems.Register(this);
++    }
++
++    [CommandProperty(AccessLevel.GameMaster)]
++    public int DaysLeft
++    {
++        get => (int)(_removalTime - Core.Now).TotalDays;
++        set
++        {
++            RemovalTime = Core.Now + TimeSpan.FromDays(Math.Min(value, 365));
++            InvalidateProperties();
++        }
++    }
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++        list.Add(TemporaryItems.DeletionText(_removalTime));
++    }
++
++    [AfterDeserialization]
++    private void AfterDeserialization() => TemporaryItems.Register(this);
++}
++
++[SerializationGenerator(0)]
++public partial class TempHorseEthereal : EtherealHorse, ITempItem
++{
++    [SerializableField(0, setter: "private")]
++    private DateTime _removalTime;
++
++    [Constructible]
++    public TempHorseEthereal(int days = 50)
++    {
++        _removalTime = Core.Now + TimeSpan.FromDays(Math.Min(days, 365));
++        TemporaryItems.Register(this);
++    }
++
++    public override string DefaultName => "No age ethereal horse";
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++        list.Add(TemporaryItems.DeletionText(_removalTime));
++    }
++
++    [AfterDeserialization]
++    private void AfterDeserialization() => TemporaryItems.Register(this);
++}
++
++[SerializationGenerator(0)]
++public partial class LayeredSashDeed : DfiDeed
++{
++    [Constructible]
++    public LayeredSashDeed() : base(0) => LootType = LootType.Regular;
++
++    public override string DefaultName => "Layered Sash Deed";
++
++    protected override void Use(Mobile from)
++    {
++        from.Target = new DeedTarget(this, 30, OnTarget);
++        from.SendMessage("Please target the Sash, that you wish to enhance.");
++    }
++
++    private void OnTarget(Mobile from, object targeted)
++    {
++        if (targeted is not BodySash sash)
++        {
++            from.SendMessage("You cannot enhance that item.");
++        }
++        else if (!sash.IsChildOf(from.Backpack))
++        {
++            from.SendLocalizedMessage(1061005); // The item must be in your backpack to enhance it.
++        }
++        else
++        {
++            // The earrings layer is drawn over a robe, so the sash shows on top of one.
++            sash.Layer = Layer.Earrings;
++            sash.Name = sash.Name == null ? "Body Sash [Layered]" : $"{sash.Name} [Layered]";
++            from.SendMessage("You have enhanced the item.");
++            EventRewardEffects.Play(from);
++            Delete();
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class PersonalisationDeed : DfiDeed
++{
++    [Constructible]
++    public PersonalisationDeed() : base(0) => LootType = LootType.Regular;
++
++    public override string DefaultName => "Personalisation Deed";
++
++    protected override void Use(Mobile from)
++    {
++        from.Target = new DeedTarget(this, 30, OnTarget);
++        from.SendMessage("Please target the item, that you wish to engrave your name into.");
++    }
++
++    private void OnTarget(Mobile from, object targeted)
++    {
++        if (targeted is not Item item)
++        {
++            from.SendMessage("That is not an item.");
++        }
++        else if (!item.IsChildOf(from.Backpack))
++        {
++            from.SendLocalizedMessage(1061005); // The item must be in your backpack to enhance it.
++        }
++        else
++        {
++            item.Name = $"{from.Name}'s {(string.IsNullOrEmpty(item.Name) ? item.ItemData.Name : item.Name)}";
++            from.SendMessage("You have engraved your name into the item.");
++            EventRewardEffects.Play(from);
++            Delete();
++        }
++    }
++}
++
++// Takes the blessing off a blessed piece of dyable clothing, so a holy bless deed can go on it instead.
++[SerializationGenerator(0)]
++public partial class AntiBlessDeed : DfiDeed
++{
++    [Constructible]
++    public AntiBlessDeed() : base(0)
++    {
++    }
++
++    public override string DefaultName => "an Anti Bless Deed";
++
++    protected override void Use(Mobile from)
++    {
++        from.SendMessage("What item would you like to unbless? (Clothes Only)");
++        from.Target = new DeedTarget(this, 1, OnTarget);
++    }
++
++    private void OnTarget(Mobile from, object targeted)
++    {
++        if (targeted is not BaseClothing item || targeted is not IDyable || targeted is HoodedShroudOfShadows)
++        {
++            from.SendMessage("You cannot unbless that object.");
++        }
++        else if (item.LootType != LootType.Blessed || item.BlessedFor == from || item.Insured)
++        {
++            from.SendMessage("That item is not blessed.");
++        }
++        else if (item.RootParent != from)
++        {
++            from.SendLocalizedMessage(1045158); // You must have the item in your backpack to target it.
++        }
++        else
++        {
++            item.LootType = LootType.Regular;
++            from.SendLocalizedMessage(1075289); // Your item has been unblessed
++            Delete();
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class KillResetDeed : DfiDeed
++{
++    [Constructible]
++    public KillResetDeed() : base(0) => ItemID = 5360;
++
++    public override string DefaultName => "Kill Reset Deed";
++
++    protected override void Use(Mobile from)
++    {
++        if (from is not PlayerMobile pm || pm.ShortTermMurders == 0 && pm.Kills == 0)
++        {
++            from.SendMessage("You have no murders to disolve.");
++            return;
++        }
++
++        pm.ShortTermMurders = 0;
++        pm.Kills = 0;
++        from.SendMessage("Your long and short term murders have been disolved.");
++        Delete();
++    }
++}
++
++// Gives a robe or cloak 3% physical resistance, once per use.
++[SerializationGenerator(0)]
++public partial class MagicSewingKit : Item, IUsesRemaining
++{
++    [SerializableField(0)]
++    [InvalidateProperties]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private int _usesRemaining;
++
++    [Constructible]
++    public MagicSewingKit(int uses = 1) : base(0xF9D)
++    {
++        _usesRemaining = uses;
++        Hue = 1165;
++    }
++
++    public override string DefaultName => "Magic Sewing Kit";
++
++    public bool ShowUsesRemaining
++    {
++        get => true;
++        set { }
++    }
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++        list.Add(1060584, _usesRemaining); // uses remaining: ~1_val~
++    }
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        if (!IsChildOf(from.Backpack))
++        {
++            from.SendLocalizedMessage(1042001); // That must be in your pack for you to use it.
++            return;
++        }
++
++        from.Target = new SewingTarget(this);
++        from.SendMessage("Please target the Cloak or Robe that you wish to enhance.");
++    }
++
++    private class SewingTarget : Target
++    {
++        private readonly MagicSewingKit _kit;
++
++        public SewingTarget(MagicSewingKit kit) : base(30, false, TargetFlags.None) => _kit = kit;
++
++        protected override void OnTarget(Mobile from, object targeted)
++        {
++            if (targeted is not (Robe or Cloak))
++            {
++                from.SendMessage("You cannot enhance that item.");
++                return;
++            }
++
++            var cloth = (BaseClothing)targeted;
++
++            if (!cloth.IsChildOf(from.Backpack))
++            {
++                from.SendLocalizedMessage(1061005); // The item must be in your backpack to enhance it.
++            }
++            else if (cloth.PhysicalResistance != 0 || cloth.BasePhysicalResistance != 0)
++            {
++                from.SendMessage("That item is already enhanced.");
++            }
++            else if (!_kit.Deleted)
++            {
++                cloth.Resistances.Physical = 3;
++                from.SendMessage("You have enhanced the item.");
++                EventRewardEffects.Play(from);
++
++                if (--_kit.UsesRemaining < 1)
++                {
++                    _kit.Delete();
++                    from.SendMessage("The magic sewing kit broke.");
++                }
++            }
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class WhisperingRose : Item
++{
++    [Constructible]
++    public WhisperingRose(string name = "someone") : base(6377 + Utility.Random(2))
++    {
++        Name = $"Whispering Rose from {name}";
++        LootType = LootType.Blessed;
++
++        if (Utility.Random(3) == 0)
++        {
++            ItemID = 9035;
++            Hue = 33;
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class FireAddon : BaseAddon
++{
++    [Constructible]
++    public FireAddon()
++    {
++        AddComponent(new AddonComponent(0x19BB), 0, 0, 0);
++        AddComponent(new AddonComponent(0x19AB), 0, 0, 2);
++    }
++
++    public override BaseAddonDeed Deed => new FireDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class FireDeed : BaseAddonDeed
++{
++    [Constructible]
++    public FireDeed() => LootType = LootType.Blessed;
++
++    public override BaseAddon Addon => new FireAddon();
++    public override string DefaultName => "a fired brazier deed";
++}
++
++[SerializationGenerator(0)]
++public partial class CampfireAddon : BaseAddon
++{
++    [Constructible]
++    public CampfireAddon()
++    {
++        AddComponent(new AddonComponent(0xDE1), 0, 0, 0);
++        AddComponent(new AddonComponent(0xDE3), 0, 0, 1);
++    }
++
++    public override BaseAddonDeed Deed => new CampfireDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class CampfireDeed : BaseAddonDeed
++{
++    [Constructible]
++    public CampfireDeed() => LootType = LootType.Blessed;
++
++    public override BaseAddon Addon => new CampfireAddon();
++    public override string DefaultName => "a campfire deed";
++}
++
++[SerializationGenerator(0)]
++public partial class CrystalPedestalAddon : BaseAddon
++{
++    [Constructible]
++    public CrystalPedestalAddon() => AddComponent(new AddonComponent(0x2FD4), 0, 0, 0);
++
++    public override BaseAddonDeed Deed => new CrystalPedestalAddonDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class CrystalPedestalAddonDeed : BaseAddonDeed
++{
++    [Constructible]
++    public CrystalPedestalAddonDeed()
++    {
++    }
++
++    public override BaseAddon Addon => new CrystalPedestalAddon();
++    public override int LabelNumber => 1032244; // pedestal with crystal
++}
++
++// ModernUO's stone and sandstone fountains have no deed; these give them one.
++[SerializationGenerator(0)]
++public partial class FountainStoneAddon : StoneFountainAddon
++{
++    [Constructible]
++    public FountainStoneAddon()
++    {
++    }
++
++    public override BaseAddonDeed Deed => new FountainStoneAddonDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class FountainStoneAddonDeed : BaseAddonDeed
++{
++    [Constructible]
++    public FountainStoneAddonDeed()
++    {
++    }
++
++    public override BaseAddon Addon => new FountainStoneAddon();
++    public override int LabelNumber => 1026629; // fountain
++}
++
++[SerializationGenerator(0)]
++public partial class FountainSandstoneAddon : SandstoneFountainAddon
++{
++    [Constructible]
++    public FountainSandstoneAddon()
++    {
++    }
++
++    public override BaseAddonDeed Deed => new FountainSandstoneAddonDeed();
++}
++
++[SerializationGenerator(0)]
++public partial class FountainSandstoneAddonDeed : BaseAddonDeed
++{
++    [Constructible]
++    public FountainSandstoneAddonDeed()
++    {
++    }
++
++    public override BaseAddon Addon => new FountainSandstoneAddon();
++    public override int LabelNumber => 1026629; // fountain
++}
++
++public static class EventRewardEffects
++{
++    public static void Play(Mobile from)
++    {
++        Effects.SendLocationParticles(
++            EffectItem.Create(from.Location, from.Map, EffectItem.DefaultDuration), 0x376A, 1, 29, 0x47D, 2, 9962, 0
++        );
++        Effects.SendLocationParticles(
++            EffectItem.Create(new Point3D(from.X, from.Y, from.Z - 7), from.Map, EffectItem.DefaultDuration), 0x37C4, 1, 29, 0x47D,
++            2, 9502, 0
++        );
++        from.PlaySound(0x212);
++        from.PlaySound(0x206);
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Events/EventRewards.cs b/Projects/UOContent/Custom/DFI/Events/EventRewards.cs
+new file mode 100644
+index 000000000..3655d6736
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Events/EventRewards.cs
+@@ -0,0 +1,514 @@
++// DFI Network's event reward system: copper bars won at staff events, spent at the Event Reward Vendor.
++// Ported from DFI RUNUO Scripts/Custom/Engines/EventRewardSystem (CopperBar, EventRewardNPC, EventRewardSystem,
++// EventRewardItemGumps, ItemInfo). The wedding deed and the kill book are donation-system items DFI never
++// shipped here, so the catalogue leaves them out.
++
++using System;
++using System.Collections.Generic;
++using ModernUO.Serialization;
++using Server.Commands;
++using Server.Engines.Quests;
++using Server.Gumps;
++using Server.Items;
++using Server.Logging;
++using Server.Mobiles;
++using Server.Network;
++
++namespace Server.Custom.Dfi;
++
++// Cursed so it drops on death and stays out of the bank's insurance; it only buys event rewards.
++[SerializationGenerator(0)]
++public partial class CopperBar : Item
++{
++    [Constructible(AccessLevel.Administrator)]
++    public CopperBar(int amount = 1) : base(0x1BE3)
++    {
++        Stackable = true;
++        Amount = amount;
++        LootType = LootType.Cursed;
++    }
++
++    public override double DefaultWeight => 0.3;
++    public override string DefaultName => "Copper Bar";
++}
++
++public enum EventRewardCategory
++{
++    PlayItem = 1,
++    Deco = 2,
++    Fancy = 3
++}
++
++public record EventRewardInfo(
++    EventRewardCategory Category, string Name, string Info, int Price, int ItemID, int X, int Y, Func<Mobile, Item> Create
++);
++
++public static class EventRewardSystem
++{
++    private static readonly ILogger logger = LogFactory.GetLogger(typeof(EventRewardSystem));
++
++    // What a game master may hand out a day without an administrator.
++    public const int MaxCopper = 25;
++
++    private static readonly Dictionary<Mobile, int> _handedOut = [];
++    private static DateTime _handedOutDay;
++
++    public static readonly EventRewardInfo[] Rewards =
++    [
++        new(EventRewardCategory.PlayItem, "Magic Sewing Kit",
++            "The magic sewing kit will let you enhance one robe or cloak to a maximum of 3% physical resistance.",
++            10, 0xF9D, 195, 160, _ => new MagicSewingKit()),
++        new(EventRewardCategory.Deco, "Potted Cactus", "A random potted cactus, which you can place in your house.",
++            25, 0x1E0F, 210, 140, _ => RandomCactus()),
++        new(EventRewardCategory.Deco, "Potted Tree", "A random potted tree which you can place in your house.",
++            30, 0x11C8, 205, 135, _ => Utility.RandomBool() ? new PottedTree() : new PottedTree1()),
++        new(EventRewardCategory.Deco, "Potted Plant", "A random potted plant which you can place in your house",
++            25, 0x11CA, 205, 135, _ => Utility.Random(3) switch
++            {
++                0 => new PottedPlant(),
++                1 => new PottedPlant1(),
++                _ => new PottedPlant2()
++            }),
++        new(EventRewardCategory.Fancy, "Special Hair Dye", "A special hair dye that contains bright colors.",
++            25, 0xE26, 205, 160, _ => new SpecialHairDye()),
++        new(EventRewardCategory.Fancy, "Special Beard Dye", "A special beard dye that contains bright colors.",
++            25, 0xE26, 205, 160, _ => new SpecialBeardDye()),
++        new(EventRewardCategory.PlayItem, "Ethereal Horse",
++            "A no-aged ethereal horse with random color that will be removed after 50 days.",
++            20, 0x20DD, 210, 150, _ => new TempHorseEthereal(50) { Hue = Utility.Random(795, 7) }),
++        new(EventRewardCategory.Fancy, "Fireworks Wand", "A fireworks wand with 99 uses.",
++            1, 0xDF2, 205, 155, _ => new FireworksWand(99)),
++        new(EventRewardCategory.Fancy, "Layered Sash Deed",
++            "A deed to make one sash layered, so it will show on top of your robe.",
++            100, 0x14F0, 195, 155, _ => new LayeredSashDeed()),
++        SkillBallReward(1, 2),
++        SkillBallReward(5, 7),
++        SkillBallReward(10, 12),
++        SkillBallReward(25, 25),
++        SkillBallReward(50, 35),
++        new(EventRewardCategory.Fancy, "Personalisation Deed",
++            "This deed will add your name to the name of an item ex:\"Jack's Hooded Shroud\", this does not work on all items.",
++            100, 0x14F0, 195, 155, _ => new PersonalisationDeed()),
++        new(EventRewardCategory.Deco, "Crystal Pedestal", "A crystal pedestal, which you can place in your house.",
++            25, 0x2FD4, 205, 90, _ => new CrystalPedestalAddonDeed()),
++        new(EventRewardCategory.Deco, "Stone Fountain", "A stone fountain, which you can place in your house.",
++            125, 0x1741, 202, 135, _ => new FountainStoneAddonDeed()),
++        new(EventRewardCategory.Deco, "Sandstone Fountain", "A sandstone fountain, which you can place in your house.",
++            125, 0x19D3, 210, 140, _ => new FountainSandstoneAddonDeed()),
++        new(EventRewardCategory.Deco, "Squirrel Statue East", "A statue of a squirrel, which you can place in your house.",
++            50, 0x2D10, 210, 125, _ => new SquirrelStatueEastDeed()),
++        new(EventRewardCategory.Deco, "Squirrel Statue South", "A statue of a squirrel, which you can place in your house.",
++            50, 0x2D11, 210, 125, _ => new SquirrelStatueSouthDeed()),
++        new(EventRewardCategory.Deco, "Arcanist Statue East", "A statue, which you can place in your house.",
++            50, 0x2D0E, 210, 120, _ => new ArcanistStatueEastDeed()),
++        new(EventRewardCategory.Deco, "Arcanist Statue South", "A statue, which you can place in your house.",
++            50, 0x2D0F, 210, 120, _ => new ArcanistStatueSouthDeed()),
++        new(EventRewardCategory.Deco, "Warrior Statue East", "A statue of a warrior, which you can place in your house.",
++            50, 0x2D12, 210, 120, _ => new WarriorStatueEastDeed()),
++        new(EventRewardCategory.Deco, "Warrior Statue South", "A statue of a warrior, which you can place in your house.",
++            50, 0x2D13, 210, 120, _ => new WarriorStatueSouthDeed()),
++        new(EventRewardCategory.PlayItem, "3 Hit Point Regen Robe",
++            "A temp robe with 3 Hit Point Regeneration. It will be deleted in 30 days.",
++            10, 7939, 200, 140, _ =>
++            {
++                var robe = new TempRobe(31);
++                robe.Attributes.RegenHits = 3;
++                return robe;
++            }),
++        new(EventRewardCategory.PlayItem, "3 Hit Point Regen Cloak",
++            "A temp cloak with 3 Hit Point Regeneration. It will be deleted in 30 days.",
++            10, 5397, 200, 140, _ =>
++            {
++                var cloak = new TempCloak(31);
++                cloak.Attributes.RegenHits = 3;
++                return cloak;
++            }),
++        new(EventRewardCategory.Deco, "Campfire", "An animated campfire addon.",
++            20, 3555, 200, 150, _ => new CampfireDeed()),
++        new(EventRewardCategory.Deco, "Fired Brazier", "A brazier addon with animated fire.",
++            25, 6571, 200, 150, _ => new FireDeed()),
++        new(EventRewardCategory.PlayItem, "Soulstone Fragment",
++            "Bound to account! Transmit a skill from any of your characters onto the stone up to 5 times, and move these skills to any other character on the same account.",
++            30, 10915, 200, 150, m => new SoulstoneFragment(m.Account?.Username)),
++        new(EventRewardCategory.PlayItem, "Name change deed",
++            "A deed to change the name of your one character. That is irreversible (unless with another name change deed).",
++            30, 5360, 200, 150, _ => new NameChangeDeed()),
++        new(EventRewardCategory.PlayItem, "Sex change deed",
++            "A deed to change the gender of your character. Change your gender permanently.",
++            25, 5360, 200, 150, _ => new SexChangeDeed()),
++        new(EventRewardCategory.PlayItem, "Kill reset deed",
++            "Are you tired of waiting to get rid of your murder status? The kill reset deed is your solution! Resets your kill count instantly.",
++            30, 5360, 200, 150, _ => new KillResetDeed()),
++        new(EventRewardCategory.PlayItem, "Pet bonding deed",
++            "Make your pet bond to you instantly. It still requires you to have enough Taming skill though.",
++            20, 5360, 200, 150, _ => new PetBondingDeed()),
++        new(EventRewardCategory.PlayItem, "War horse bonding deed",
++            "A deed that bonds your faction war horse to you instantly.",
++            15, 5360, 200, 150, _ => new WarHorseBondingDeed()),
++        new(EventRewardCategory.Fancy, "Anti-bless deed",
++            "A deed that removes the blessing of an item. It is useful when you want to use a holy bless deed on a blessed item.",
++            10, 5360, 200, 150, _ => new AntiBlessDeed()),
++        new(EventRewardCategory.Fancy, "A Whispering Rose",
++            "A Whispering Rose from [Your Name]. A beautiful gift for someone you love. It comes in a random of three forms.",
++            30, 6377, 200, 150, m => new WhisperingRose(m.Name))
++    ];
++
++    public static void Configure()
++    {
++        CommandSystem.Register("CreateCopperBars", AccessLevel.GameMaster, e => e.Mobile.SendGump(new RequestCopperBarsGump()));
++    }
++
++    private static EventRewardInfo SkillBallReward(int points, int price) =>
++        new(EventRewardCategory.PlayItem, $"+{points} Skill Ball",
++            $"A limited skillball that adds {points} skillpoint{(points == 1 ? "" : "s")} to the skill you choose. It will not work for hard and crafting skills.",
++            price, 7885, 215, 160, _ => new SkillBall(points));
++
++    private static Item RandomCactus()
++    {
++        Item cactus = Utility.Random(6) switch
++        {
++            0 => new PottedCactus(),
++            1 => new PottedCactus1(),
++            2 => new PottedCactus2(),
++            3 => new PottedCactus3(),
++            4 => new PottedCactus4(),
++            _ => new PottedCactus5()
++        };
++
++        cactus.Weight = 100;
++        return cactus;
++    }
++
++    public static List<EventRewardInfo> GetList(EventRewardCategory category)
++    {
++        var list = new List<EventRewardInfo>();
++
++        foreach (var info in Rewards)
++        {
++            if (info.Category == category)
++            {
++                list.Add(info);
++            }
++        }
++
++        return list;
++    }
++
++    public static void CreateCopperBar(Mobile receiver, int amount, string reason)
++    {
++        if (receiver?.Backpack == null)
++        {
++            return;
++        }
++
++        receiver.AddToBackpack(new CopperBar(amount));
++        logger.Information("System created {Amount} copper bars for {Receiver}: {Reason}", amount, receiver, reason);
++    }
++
++    public static bool Buy(Mobile m, EventRewardInfo info)
++    {
++        if (m.Backpack?.ConsumeTotal(typeof(CopperBar), info.Price) != true)
++        {
++            m.SendMessage("You do not have enough copper bars in your backpack.");
++            return false;
++        }
++
++        m.AddToBackpack(info.Create(m));
++        m.SendMessage("The reward item has been placed into your backpack, have fun!");
++        return true;
++    }
++
++    // Returns false when the staff member has reached the day's limit.
++    public static bool HandOut(Mobile staff, int amount, string eventName, string explanation)
++    {
++        var today = Core.Now.Date;
++
++        if (today != _handedOutDay)
++        {
++            _handedOut.Clear();
++            _handedOutDay = today;
++        }
++
++        _handedOut.TryGetValue(staff, out var old);
++        var allowed = staff.AccessLevel >= AccessLevel.Administrator || old + amount <= MaxCopper;
++
++        logger.Information(
++            "{Status} copper bar request by {Staff}: {Amount} for {Event} ({Explanation})",
++            allowed ? "Allowed" : "Disallowed", staff, amount, eventName, explanation
++        );
++
++        if (!allowed)
++        {
++            return false;
++        }
++
++        _handedOut[staff] = old + amount;
++        staff.AddToBackpack(new CopperBar(amount));
++        return true;
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class EventRewardNPC : BaseQuester
++{
++    [Constructible]
++    public EventRewardNPC() : base("The Event Reward Vendor")
++    {
++    }
++
++    public override string DefaultName => NameList.RandomName("male");
++    public override bool ClickTitle => true;
++
++    public override void InitBody()
++    {
++        InitStats(100, 100, 25);
++        Hue = Race.Human.RandomSkinHue();
++        Female = false;
++        Body = 0x190;
++        Direction = Direction.South;
++    }
++
++    public override void InitOutfit()
++    {
++        AddItem(new Tunic(0x48D));
++        AddItem(new LongPants(0x48D));
++        AddItem(new SkullCap(0x48D));
++        AddItem(new Boots());
++        HairItemID = Race.Human.RandomHair(false);
++        HairHue = Race.Human.RandomHairHue();
++    }
++
++    public override void OnTalk(PlayerMobile talker, bool contextMenu)
++    {
++        talker.SendGump(new EventRewardOpeningGump(talker.Female), true);
++    }
++}
++
++public abstract class EventRewardFrameGump : DynamicGump
++{
++    protected EventRewardFrameGump() : base(60, 60)
++    {
++    }
++
++    protected static void AddFrame(ref DynamicGumpBuilder builder, int height, string title)
++    {
++        builder.AddPage();
++        builder.AddBackground(50, 30, 350, height, 9260);
++        builder.AddImage(0, 0, 10440);
++        builder.AddImage(365, 0, 10441);
++        builder.AddBackground(125, 30, 200, 55, 9260);
++        builder.AddImageTiled(81, 30, 271, 11, 9261);
++        builder.AddHtml(50, 50, 350, 16, title, "#FFFFFF", align: TextAlignment.Center);
++    }
++}
++
++public class EventRewardOpeningGump : EventRewardFrameGump
++{
++    private readonly bool _female;
++
++    public EventRewardOpeningGump(bool female) => _female = female;
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        AddFrame(ref builder, 467, "Event Reward Categories");
++
++        builder.AddHtml(
++            100, 110, 250, 175,
++            $"{(_female ? "Looking good today m'lady," : "Hey there young lad,")}<br><br>I have everything you are looking for, just choose a category and i will be glad to show you more. <br><br>Just make sure you have enough copper bars to spare.",
++            background: true
++        );
++        builder.AddLabel(125, 310, 1152, "Category:");
++        builder.AddLabel(285, 310, 1152, "Entries:");
++
++        ReadOnlySpan<string> names = ["Game Items", "House Decorations", "Fancy Items"];
++
++        for (var i = 0; i < names.Length; i++)
++        {
++            builder.AddButton(85, 340 + i * 30, 4005, 4006, i + 1);
++            builder.AddLabel(125, 340 + i * 30, 1152, names[i]);
++            builder.AddLabel(285, 340 + i * 30, 1152, $"{EventRewardSystem.GetList((EventRewardCategory)(i + 1)).Count}");
++        }
++
++        builder.AddButton(200, 450, 247, 248, 0);
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        if (info.ButtonID is > 0 and < 4)
++        {
++            sender.Mobile.SendGump(new EventRewardIndexGump((EventRewardCategory)info.ButtonID), true);
++        }
++    }
++}
++
++public class EventRewardIndexGump : EventRewardFrameGump
++{
++    private readonly EventRewardCategory _category;
++    private readonly List<EventRewardInfo> _list;
++
++    public EventRewardIndexGump(EventRewardCategory category)
++    {
++        _category = category;
++        _list = EventRewardSystem.GetList(category);
++    }
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        AddFrame(ref builder, 467, "Available Rewards");
++
++        builder.AddLabel(110, 100, 1152, "Select an item to see full description.");
++        builder.AddLabel(110, 135, 1152, "Reward:");
++        builder.AddLabel(300, 135, 1152, "Price:");
++        builder.AddButton(200, 450, 242, 241, 0);
++
++        builder.AddPage(1);
++        var page = 1;
++        var row = 0;
++
++        for (var i = 0; i < _list.Count; i++)
++        {
++            if (row >= 10)
++            {
++                builder.AddButton(360, 450, 5601, 5605, 0, GumpButtonType.Page, ++page);
++                row = 0;
++                builder.AddPage(page);
++                builder.AddButton(80, 450, 5603, 5607, 0, GumpButtonType.Page, page - 1);
++            }
++
++            builder.AddButton(75, 165 + row * 25, 4005, 4006, 1000 + i);
++            builder.AddLabel(110, 165 + row * 25, 1152, _list[i].Name);
++            builder.AddLabel(300, 165 + row * 25, 1152, $"{_list[i].Price}");
++            row++;
++        }
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        var id = info.ButtonID - 1000;
++
++        if (info.ButtonID == 0)
++        {
++            sender.Mobile.SendGump(new EventRewardOpeningGump(sender.Mobile.Female), true);
++        }
++        else if (id >= 0 && id < _list.Count)
++        {
++            sender.Mobile.SendGump(new EventRewardItemGump(_list[id]), true);
++        }
++    }
++}
++
++public class EventRewardItemGump : EventRewardFrameGump
++{
++    private readonly EventRewardInfo _info;
++
++    public EventRewardItemGump(EventRewardInfo info) => _info = info;
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        AddFrame(ref builder, 429, "Event Reward Details");
++
++        builder.AddButton(85, 407, 4005, 4006, 1);
++        builder.AddButton(300, 410, 242, 241, 0);
++        builder.AddBackground(85, 250, 280, 150, 9260);
++        builder.AddBackground(175, 120, 100, 100, 9200);
++        builder.AddItem(_info.X, _info.Y, _info.ItemID);
++        builder.AddHtml(50, 196, 350, 18, $"Bars: {_info.Price}", "#FFFFFF", align: TextAlignment.Center);
++        builder.AddHtml(50, 100, 350, 18, _info.Name, "#FFFFFF", align: TextAlignment.Center);
++        builder.AddHtml(50, 230, 350, 18, "Explanation:", "#FFFFFF", align: TextAlignment.Center);
++        builder.AddHtml(100, 265, 250, 120, _info.Info, "#FFFFFF");
++        builder.AddLabel(120, 410, 1152, "Order this item");
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        var m = sender.Mobile;
++
++        if (info.ButtonID == 1)
++        {
++            EventRewardSystem.Buy(m, _info);
++        }
++        else
++        {
++            m.SendGump(new EventRewardIndexGump(_info.Category), true);
++        }
++    }
++}
++
++public class RequestCopperBarsGump : DynamicGump
++{
++    public RequestCopperBarsGump() : base(60, 60)
++    {
++    }
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        builder.AddPage();
++        builder.AddBackground(0, 0, 550, 335, 9200);
++        AddBox(ref builder, 8, 8, 204, 22);
++        builder.AddLabel(12, 11, 1152, "GM Event Copper Bar Request");
++        AddBox(ref builder, 10, 42, 204, 22);
++        builder.AddLabel(11, 44, 1152, "Requested Bars:");
++        AddBox(ref builder, 9, 70, 84, 22);
++        builder.AddTextEntry(10, 72, 80, 20, 1152, 0, "");
++        AddBox(ref builder, 10, 98, 204, 22);
++        builder.AddLabel(16, 100, 1152, "Event Name:");
++        AddBox(ref builder, 9, 126, 204, 22);
++        builder.AddTextEntry(12, 127, 199, 20, 1152, 1, "");
++        AddBox(ref builder, 10, 159, 204, 22);
++        builder.AddLabel(17, 163, 1152, "Further Explanation:");
++        AddBox(ref builder, 10, 186, 204, 130);
++        builder.AddTextEntry(12, 189, 201, 130, 1152, 2, "");
++
++        AddBox(ref builder, 272, 12, 246, 273);
++        builder.AddLabel(283, 17, 1152, "Information:");
++        builder.AddHtml(
++            280, 40, 233, 239,
++            "Usual requests are 6 copper bars per event, or if it takes longer than an hour 6 extra copper bars per hour, so a 2 hour event would be 12 copper bars.<br>Make sure you enter all fields, or your request will be denied.<br>Under further explanation you can enter who will receive the rewards ie 1st place, 2nd place etc. Everything you enter is logged, and reviewed by senior staffmembers.",
++            "#FFFFFF"
++        );
++        builder.AddButton(280, 296, 241, 242, 0);
++        builder.AddButton(429, 295, 247, 248, 1);
++    }
++
++    private static void AddBox(ref DynamicGumpBuilder builder, int x, int y, int width, int height)
++    {
++        builder.AddImageTiled(x, y, width, height, 2624);
++        builder.AddAlphaRegion(x, y, width, height);
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        var m = sender.Mobile;
++
++        if (info.ButtonID != 1 || m.AccessLevel < AccessLevel.GameMaster)
++        {
++            return;
++        }
++
++        if (!int.TryParse(info.GetTextEntry(0)?.Trim(), out var amount) || amount <= 0)
++        {
++            m.SendMessage("Enter how many copper bars the event needs.");
++            return;
++        }
++
++        var eventName = info.GetTextEntry(1)?.Trim() ?? "";
++        var explanation = info.GetTextEntry(2)?.Trim() ?? "";
++
++        if (EventRewardSystem.HandOut(m, amount, eventName, explanation))
++        {
++            m.SendMessage("The copper bars have been created, good luck with your event!");
++        }
++        else
++        {
++            m.SendMessage("You have reached the daily limit of copper requests for this day.");
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Events/LastManPentagram.cs b/Projects/UOContent/Custom/DFI/Events/LastManPentagram.cs
+new file mode 100644
+index 000000000..f5a6139e3
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Events/LastManPentagram.cs
+@@ -0,0 +1,726 @@
++// DFI Network's Last Man Pentagram: after a countdown, the first player to stand alone on the pentagram long
++// enough wins a random reward, which stays cursed and marks its carrier for ten minutes. Ported from DFI RUNUO
++// Scripts/Custom/Items/Misc/LastManPentagram.cs and Misc/CursedArtifactSystem.cs; DFI's world timer started it
++// every evening, here the item's own daily schedule does.
++
++using System;
++using System.Collections.Generic;
++using ModernUO.Serialization;
++using Server.Commands;
++using Server.Engines.Events;
++using Server.Gumps;
++using Server.Items;
++using Server.Mobiles;
++using Server.Targeting;
++
++namespace Server.Custom.Dfi;
++
++[SerializationGenerator(0)]
++public partial class LastManPentagram : Item
++{
++    // The timer ticks every six seconds.
++    private const double TickSeconds = 6.0;
++
++    [SerializableField(0)]
++    [InvalidateProperties]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private string _pentagramLocation = "Luna";
++
++    [SerializableField(1)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private bool _giveReward = true;
++
++    [SerializableField(2, getter: "private", setter: "private")]
++    private int _ticksRequired = 10;
++
++    // Minutes of countdown before the pentagram becomes active.
++    [SerializableField(3)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private int _count = 10;
++
++    [SerializableField(4, getter: "private", setter: "private")]
++    private PentagramAddon _addon;
++
++    [SerializableField(5, setter: "private")]
++    private bool _daily;
++
++    [SerializableField(6, setter: "private")]
++    private TimeSpan _dailyAt = new(19, 15, 0);
++
++    private PentagramTimer _timer;
++    private CallbackScheduledEvent _schedule;
++
++    [Constructible(AccessLevel.Administrator)]
++    public LastManPentagram() : base(0x1F1C)
++    {
++        Movable = false;
++        Visible = false;
++        _addon = new PentagramAddon();
++    }
++
++    public override string DefaultName => "last man pentagram";
++
++    [CommandProperty(AccessLevel.GameMaster)]
++    public int SecondsRequired
++    {
++        get => (int)(_ticksRequired * TickSeconds);
++        set => TicksRequired = Math.Max(1, (int)(value / TickSeconds));
++    }
++
++    // Starts the event every day at DailyAt (UTC).
++    [CommandProperty(AccessLevel.GameMaster)]
++    public bool AutoDaily
++    {
++        get => _daily;
++        set
++        {
++            Daily = value;
++            Reschedule();
++        }
++    }
++
++    [CommandProperty(AccessLevel.GameMaster)]
++    public TimeSpan DailyAtUtc
++    {
++        get => _dailyAt;
++        set
++        {
++            DailyAt = new TimeSpan(value.Hours, value.Minutes, 0);
++            Reschedule();
++        }
++    }
++
++    [CommandProperty(AccessLevel.GameMaster)]
++    public bool Running
++    {
++        get => _timer?.Running == true;
++        set
++        {
++            if (value == Running)
++            {
++                return;
++            }
++
++            if (value)
++            {
++                Start();
++            }
++            else
++            {
++                Cancel();
++            }
++        }
++    }
++
++    public void Start()
++    {
++        if (Running || Map == null || Map == Map.Internal)
++        {
++            return;
++        }
++
++        _timer = new PentagramTimer(this);
++        _timer.Start();
++    }
++
++    public void Cancel()
++    {
++        if (!Running)
++        {
++            return;
++        }
++
++        _timer.Stop();
++        _timer = null;
++        CommandHandlers.BroadcastMessage(AccessLevel.Player, 1150, "The pentagram event has been cancelled.");
++    }
++
++    private void Reschedule()
++    {
++        _schedule?.Cancel();
++        _schedule = null;
++
++        if (_daily && !Deleted)
++        {
++            _schedule = new CallbackScheduledEvent(TimeOnly.FromTimeSpan(_dailyAt), Start, EventScheduler.Daily);
++            _schedule.Schedule(DateTime.UtcNow);
++        }
++    }
++
++    [AfterDeserialization]
++    private void AfterDeserialization()
++    {
++        if (_ticksRequired <= 0)
++        {
++            _ticksRequired = 10;
++        }
++
++        Reschedule();
++    }
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        if (from.AccessLevel > AccessLevel.Player)
++        {
++            from.SendGump(new PropertiesGump(from, this));
++        }
++    }
++
++    public override void OnLocationChange(Point3D oldLocation)
++    {
++        base.OnLocationChange(oldLocation);
++
++        if (_addon?.Deleted == false)
++        {
++            _addon.Location = Location;
++        }
++    }
++
++    public override void OnMapChange()
++    {
++        base.OnMapChange();
++
++        if (_addon?.Deleted == false)
++        {
++            _addon.Map = Map;
++        }
++    }
++
++    public override void OnAfterDelete()
++    {
++        _timer?.Stop();
++        _timer = null;
++        _schedule?.Cancel();
++        _schedule = null;
++        _addon?.Delete();
++        _addon = null;
++        base.OnAfterDelete();
++    }
++
++    private string Announcement(int minutes) =>
++        $"The pentagram at {_pentagramLocation} will be active in {minutes} minutes. The first one who stands on it alone for {SecondsRequired} seconds will receive a random reward. Hiding at this pentagram is deadly mistake.";
++
++    private class PentagramTimer : Timer
++    {
++        private readonly LastManPentagram _pentagram;
++        private int _countdown;
++        private bool _active;
++        private Mobile _winner;
++        private int _held;
++
++        public PentagramTimer(LastManPentagram pentagram) : base(TimeSpan.FromSeconds(TickSeconds), TimeSpan.FromSeconds(TickSeconds))
++        {
++            _pentagram = pentagram;
++            _countdown = pentagram._count * 10;
++            CommandHandlers.BroadcastMessage(AccessLevel.Player, 1150, pentagram.Announcement(pentagram._count));
++        }
++
++        protected override void OnTick()
++        {
++            var p = _pentagram;
++
++            if (p.Deleted || p.Map == null || p.Map == Map.Internal)
++            {
++                Stop();
++                return;
++            }
++
++            string message = null;
++
++            if (!_active)
++            {
++                if (--_countdown < 1)
++                {
++                    _active = true;
++                    CommandHandlers.BroadcastMessage(AccessLevel.Player, 1150, $"The pentagram at {p._pentagramLocation} is active!");
++                }
++                else if (_countdown % 10 == 0)
++                {
++                    CommandHandlers.BroadcastMessage(AccessLevel.Player, 1150, p.Announcement(_countdown / 10));
++                }
++            }
++            else
++            {
++                message = CheckWinner(p);
++            }
++
++            if (!Running)
++            {
++                return;
++            }
++
++            // Everyone near the pentagram may be attacked freely.
++            var near = new List<Mobile>();
++
++            foreach (var m in p.Map.GetMobilesInRange(p.Location, 20))
++            {
++                if (m.Player && m.Alive)
++                {
++                    near.Add(m);
++                }
++            }
++
++            foreach (var m in near)
++            {
++                if (m.AccessLevel == AccessLevel.Player)
++                {
++                    m.Criminal = true;
++                }
++
++                if (message != null)
++                {
++                    m.SendMessage(message);
++                }
++            }
++        }
++
++        private string CheckWinner(LastManPentagram p)
++        {
++            var standing = new List<Mobile>();
++
++            foreach (var m in p.Map.GetMobilesInRange(p.Location, 2))
++            {
++                if (m.Player && m.Alive && m.AccessLevel == AccessLevel.Player)
++                {
++                    standing.Add(m);
++                }
++            }
++
++            for (var i = standing.Count - 1; i >= 0; i--)
++            {
++                if (standing[i].Hidden)
++                {
++                    standing[i].Kill();
++                    standing.RemoveAt(i);
++                }
++            }
++
++            var location = p._pentagramLocation;
++
++            if (standing.Count != 1)
++            {
++                _held = 0;
++                var none = $"No person could be appointed to be the only one standing on the {location} pentagram";
++
++                if (Utility.Random(6) == 0)
++                {
++                    CommandHandlers.BroadcastMessage(AccessLevel.Player, 1150, none);
++                    return null;
++                }
++
++                return none;
++            }
++
++            string message = null;
++
++            if (standing[0] == _winner)
++            {
++                var appointed = $"{_winner.Name} was appointed as the sole person standing on the {location} pentagram!";
++
++                if (_held == 0)
++                {
++                    CommandHandlers.BroadcastMessage(AccessLevel.Player, 1150, appointed);
++                }
++                else
++                {
++                    message = appointed;
++                }
++
++                _held++;
++            }
++            else
++            {
++                _winner = standing[0];
++                _held = 0;
++            }
++
++            if (_held >= p._ticksRequired)
++            {
++                if (p._giveReward)
++                {
++                    var reward = PentagramRewards.Give(_winner);
++                    CommandHandlers.BroadcastMessage(AccessLevel.Player, 1150, $"{_winner.Name} has won the pentagram event, and received {reward}.");
++                }
++                else
++                {
++                    CommandHandlers.BroadcastMessage(AccessLevel.Player, 1150, $"{_winner.Name} has won the pentagram event.");
++                }
++
++                Stop();
++                return null;
++            }
++
++            return message;
++        }
++    }
++}
++
++public static class PentagramRewards
++{
++    private static readonly Type[] _statues =
++    [
++        typeof(StatueSouth), typeof(StatueEast), typeof(StatueEast2), typeof(StatueNorth), typeof(StatueSouth2),
++        typeof(StatueWest), typeof(StatueSouthEast)
++    ];
++
++    private static readonly Type[] _minorArtifacts =
++    [
++        typeof(LunaLance), typeof(VioletCourage), typeof(CavortingClub), typeof(NightsKiss), typeof(CaptainQuacklebushsCutlass),
++        typeof(ShipModelOfTheHMSCape), typeof(AdmiralsHeartyRum), typeof(CandelabraOfSouls), typeof(IolosLute),
++        typeof(GwennosHarp), typeof(ArcticDeathDealer), typeof(EnchantedTitanLegBone), typeof(NoxRangersHeavyCrossbow),
++        typeof(BlazeOfDeath), typeof(DreadPirateHat), typeof(BurglarsBandana), typeof(GoldBricks), typeof(AlchemistsBauble),
++        typeof(PhillipsWoodenSteed), typeof(PolarBearMask), typeof(BowOfTheJukaKing), typeof(GlovesOfThePugilist),
++        typeof(OrcishVisage), typeof(StaffOfPower), typeof(ShieldOfInvulnerability), typeof(HeartOfTheLion), typeof(ColdBlood),
++        typeof(GhostShipAnchor), typeof(SeahorseStatuette), typeof(WrathOfTheDryad), typeof(PixieSwatter)
++    ];
++
++    // Commonest first: the roll favours the low end.
++    private static readonly Type[] _stealables =
++    [
++        typeof(RockArtifact), typeof(SkullCandleArtifact), typeof(BottleArtifact), typeof(DamagedBooksArtifact),
++        typeof(StretchedHideArtifact), typeof(BrazierArtifact), typeof(LampPostArtifact), typeof(BooksNorthArtifact),
++        typeof(BooksWestArtifact), typeof(BooksFaceDownArtifact), typeof(StuddedLeggingsArtifact), typeof(EggCaseArtifact),
++        typeof(SkinnedGoatArtifact), typeof(GruesomeStandardArtifact), typeof(BloodyWaterArtifact), typeof(TarotCardsArtifact),
++        typeof(BackpackArtifact), typeof(StuddedTunicArtifact), typeof(CocoonArtifact), typeof(SkinnedDeerArtifact),
++        typeof(SaddleArtifact), typeof(LeatherTunicArtifact)
++    ];
++
++    private static readonly (Type Type, string Name)[] _ingots =
++    [
++        (typeof(DullCopperIngot), "dull copper"), (typeof(ShadowIronIngot), "shadow iron"), (typeof(CopperIngot), "copper"),
++        (typeof(BronzeIngot), "bronze"), (typeof(GoldIngot), "golden"), (typeof(AgapiteIngot), "agapite"),
++        (typeof(VeriteIngot), "verite"), (typeof(ValoriteIngot), "valorite")
++    ];
++
++    // Gives the winner a reward and returns what to call it in the broadcast.
++    public static string Give(Mobile m)
++    {
++        if (Utility.Random(100) < 33)
++        {
++            var statue = _statues.RandomElement().CreateInstance<Item>();
++            var now = Core.Now;
++            statue.Name = $"{m.Name} - pentagram event winner - {now.Day}/{now.Month}/{now.Year}";
++            statue.LootType = LootType.Blessed;
++            m.AddToBackpack(statue);
++            return "a named statue!!!";
++        }
++
++        var chance = Utility.Random(1000);
++        Item reward = null;
++        string text;
++
++        switch (chance)
++        {
++            case < 60:
++                {
++                    EventRewardSystem.CreateCopperBar(m, Utility.Random(5) + 1, "Pentagram event");
++                    text = "a few copper bars";
++                    break;
++                }
++            case < 100:
++                {
++                    var bonus = Utility.Random(5) * 5 + 5;
++                    reward = new SkillBall(bonus);
++                    text = $"a skillball training {bonus} skill points";
++                    break;
++                }
++            case < 140:
++                {
++                    reward = new RunicSewingKit(CraftResource.SpinedLeather, 5);
++                    text = "5 uses spined runic sewing kit";
++                    break;
++                }
++            case < 160:
++                {
++                    reward = new RunicSewingKit(CraftResource.HornedLeather, 2);
++                    text = "2 uses horned runic sewing kit";
++                    break;
++                }
++            case < 165:
++                {
++                    reward = new RunicSewingKit(CraftResource.BarbedLeather, 1);
++                    text = "1 use barbed runic sewing kit";
++                    break;
++                }
++            case < 345:
++                {
++                    (reward, text) = chance switch
++                    {
++                        < 205 => (new RunicHammer(CraftResource.DullCopper, 10), "10 uses dull copper runic hammer"),
++                        < 240 => (new RunicHammer(CraftResource.ShadowIron, 7), "7 uses shadow iron runic hammer"),
++                        < 270 => (new RunicHammer(CraftResource.Copper, 5), "5 uses copper runic hammer"),
++                        < 295 => (new RunicHammer(CraftResource.Bronze, 4), "4 uses bronze runic hammer"),
++                        < 315 => (new RunicHammer(CraftResource.Gold, 3), "3 uses gold runic hammer"),
++                        < 330 => (new RunicHammer(CraftResource.Agapite, 2), "2 uses agapite runic hammer"),
++                        < 340 => (new RunicHammer(CraftResource.Verite, 1), "1 use verite runic hammer"),
++                        _     => ((Item)new RunicHammer(CraftResource.Valorite, 1), "1 use valorite runic hammer")
++                    };
++                    break;
++                }
++            case < 395:
++                {
++                    var (type, name) = _ingots.RandomElement();
++                    reward = type.CreateInstance<Item>();
++                    reward.Amount = Utility.Random(150, 151);
++                    text = $"some {name} ingots";
++                    break;
++                }
++            case < 445:
++                {
++                    m.AddToBackpack(new Gold(500, 3000));
++                    text = "some gold coins";
++                    break;
++                }
++            case < 500:
++                {
++                    var amount = Utility.Random(1, 10) * 5000;
++                    reward = new BankCheck(amount);
++                    text = $"a bank check worth {amount} gold";
++                    break;
++                }
++            case < 570:
++                {
++                    reward = _minorArtifacts.RandomElement().CreateInstance<Item>();
++                    text = "a random minor artifact";
++                    break;
++                }
++            case < 610:
++                {
++                    reward = new ClothingBlessDeed();
++                    text = "a clothing bless deed";
++                    break;
++                }
++            case < 650:
++                {
++                    reward = new PowerScroll(PowerScroll.Skills.RandomElement(), 100 + (Utility.Random(3) + 1) * 5);
++                    text = "a random powerscroll";
++                    break;
++                }
++            case < 710:
++                {
++                    new Barracoon().MoveToWorld(m.Location, m.Map);
++                    text = "nothing, but managed to spawn Barracoon at the Pentagram!!!";
++                    break;
++                }
++            case < 720:
++                {
++                    reward = new StatCapScroll(225 + (Utility.Random(4) + 1) * 5);
++                    text = "a random statscroll";
++                    break;
++                }
++            case < 735: // DFI's kill book, a donation item here
++                {
++                    EventRewardSystem.CreateCopperBar(m, Utility.Random(5) + 1, "Pentagram event");
++                    text = "a few copper bars";
++                    break;
++                }
++            case < 900:
++                {
++                    var rnd = Math.Min(Utility.Random(1, 22), Utility.Random(1, 22));
++                    reward = _stealables[Utility.Random(rnd)].CreateInstance<Item>();
++                    text = "a random stealable artifact";
++                    break;
++                }
++            case < 930:
++                {
++                    reward = new PetBondingDeed();
++                    text = "a pet bonding deed";
++                    break;
++                }
++            default:
++                {
++                    EventRewardSystem.CreateCopperBar(m, Utility.Random(3) + 1, "Pentagram event");
++                    text = "several copper bars";
++                    break;
++                }
++        }
++
++        if (reward != null)
++        {
++            m.AddToBackpack(reward);
++            new CursedArtifactTimer(reward, 10).Start();
++        }
++
++        return text;
++    }
++}
++
++// Keeps an event prize cursed for a while and hues whoever carries it, so the rest can hunt them down. It cannot
++// be banked meanwhile.
++public class CursedArtifactTimer : Timer
++{
++    public const int DefaultMinutes = 7;
++
++    private readonly Item _artifact;
++    private Mobile _carrier;
++    private Container _container;
++    private int _ticksLeft;
++
++    public CursedArtifactTimer(Item artifact, int minutes) : base(TimeSpan.Zero, TimeSpan.FromSeconds(1.0))
++    {
++        _artifact = artifact;
++        _artifact.LootType = LootType.Cursed;
++        _ticksLeft = (minutes <= 0 ? DefaultMinutes : minutes) * 60;
++    }
++
++    protected override void OnTick()
++    {
++        if (_artifact.Deleted)
++        {
++            Clear();
++            Stop();
++            return;
++        }
++
++        if (_ticksLeft <= 0)
++        {
++            _artifact.LootType = _artifact switch
++            {
++                PetBondingDeed or BankCheck or ClothingBlessDeed => LootType.Blessed,
++                PowerScroll or StatCapScroll                     => LootType.Cursed,
++                _                                                => LootType.Regular
++            };
++
++            Clear();
++            Stop();
++            return;
++        }
++
++        switch (_artifact.RootParent)
++        {
++            case Mobile mob:
++                {
++                    if (_container != null)
++                    {
++                        _container.Hue = 0;
++                        _container = null;
++                    }
++                    else if (_carrier != mob)
++                    {
++                        if (_carrier != null)
++                        {
++                            _carrier.SolidHueOverride = -1;
++                        }
++
++                        _carrier = mob;
++                        _carrier.SolidHueOverride = 18;
++                    }
++
++                    for (var parent = _artifact.Parent as Container; parent != null; parent = parent.Parent as Container)
++                    {
++                        if (parent is BankBox)
++                        {
++                            mob.AddToBackpack(_artifact);
++                            mob.SendMessage("You are not allowed to bank event items.");
++                            mob.Kill();
++                            break;
++                        }
++                    }
++
++                    if (_carrier != null)
++                    {
++                        _carrier.Criminal = true;
++                    }
++
++                    break;
++                }
++            case Container root:
++                {
++                    if (_carrier != null)
++                    {
++                        _carrier.SolidHueOverride = -1;
++                        _carrier = null;
++                    }
++                    else if (_container != root)
++                    {
++                        if (_container != null)
++                        {
++                            _container.Hue = 0;
++                        }
++
++                        _container = root;
++                        _container.Hue = 18;
++                    }
++
++                    break;
++                }
++            default:
++                {
++                    if (_carrier != null && _carrier.Holding != _artifact)
++                    {
++                        _carrier.SolidHueOverride = -1;
++                        _carrier = null;
++                    }
++
++                    if (_container != null)
++                    {
++                        _container.Hue = 0;
++                        _container = null;
++                    }
++
++                    break;
++                }
++        }
++
++        _ticksLeft--;
++
++        if (_carrier?.Hidden == true)
++        {
++            _carrier.Hidden = false;
++        }
++    }
++
++    private void Clear()
++    {
++        if (_carrier != null)
++        {
++            _carrier.SolidHueOverride = -1;
++        }
++
++        if (_container != null)
++        {
++            _container.Hue = 0;
++        }
++    }
++}
++
++public static class CurseArtifactCommand
++{
++    public static void Configure()
++    {
++        CommandSystem.Register("CurseArtifact", AccessLevel.GameMaster, OnCommand);
++    }
++
++    [Usage("CurseArtifact [duration minutes]")]
++    [Description("Temporarily makes an item Cursed and highlights whoever player is carrying it.")]
++    private static void OnCommand(CommandEventArgs e)
++    {
++        var minutes = e.Length >= 1 ? e.GetInt32(0) : CursedArtifactTimer.DefaultMinutes;
++        e.Mobile.SendMessage("Target the item you want to curse.");
++        e.Mobile.Target = new InternalTarget(minutes);
++    }
++
++    private class InternalTarget : Target
++    {
++        private readonly int _minutes;
++
++        public InternalTarget(int minutes) : base(12, true, TargetFlags.None) => _minutes = minutes;
++
++        protected override void OnTarget(Mobile from, object targeted)
++        {
++            if (targeted is not Item item)
++            {
++                return;
++            }
++
++            if (!item.Movable)
++            {
++                from.SendMessage("That item is not movable");
++            }
++            else
++            {
++                new CursedArtifactTimer(item, _minutes).Start();
++            }
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Events/TreasureChests.cs b/Projects/UOContent/Custom/DFI/Events/TreasureChests.cs
+new file mode 100644
+index 000000000..d91ee7a4e
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Events/TreasureChests.cs
+@@ -0,0 +1,431 @@
++// DFI Network's dungeon treasure chests, ported from DFI RUNUO Scripts/Custom/Items/Containers/ItemChest
++// (BaseItemChest.cs, ItemChests.cs, SpawnEIC.cs, WorldTimer).
++
++using System;
++using System.Collections.Generic;
++using ModernUO.Serialization;
++using Server.Commands;
++using Server.Custom.Dfi;
++using Server.Logging;
++using Server.Mobiles;
++using Server.Regions;
++
++namespace Server.Items;
++
++// A locked, often trapped chest that fills when it is picked and locks itself again 20 to 40 minutes later,
++// emptied. Its level (1 to 7) sets the lock, the trap and the loot; relocking may call up a guard from the
++// dungeon it stands in. Level 7 is the Cursed Cave's.
++[SerializationGenerator(0)]
++public abstract partial class BaseItemChest : LockableContainer
++{
++    public const int MaxLevel = 7;
++
++    private static readonly HashSet<BaseItemChest> _waiting = [];
++    private static Timer _timer;
++
++    private static readonly Type[] _sePotions =
++        [typeof(ConflagrationPotion), typeof(GreaterConflagrationPotion), typeof(ConfusionBlastPotion), typeof(GreaterConfusionBlastPotion)];
++
++    [SerializableField(0)]
++    private bool _itemsCreated;
++
++    [SerializableField(1)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private int _level;
++
++    [SerializableField(2)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private TimeSpan _minDelay = TimeSpan.FromMinutes(20);
++
++    [SerializableField(3)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private TimeSpan _maxDelay = TimeSpan.FromMinutes(40);
++
++    [SerializableField(4)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private bool _canBeTrapped = true;
++
++    [SerializableField(5)]
++    private DateTime _relockAt;
++
++    public BaseItemChest(int level, int itemID) : base(itemID)
++    {
++        Movable = false;
++        _level = Math.Clamp(level, 1, MaxLevel);
++        SetLockAndTrap();
++    }
++
++    public override bool IsDecoContainer => false;
++
++    public static int Waiting => _waiting.Count;
++
++    public virtual void SetLockAndTrap()
++    {
++        if (!Locked || LockLevel == -255)
++        {
++            SpawnGuard();
++        }
++
++        Locked = true;
++        RequiredSkill = LockLevel = Utility.RandomMinMax(13 * _level, 14 * _level);
++        TrapPower = Utility.RandomMinMax(10 * _level, 14 * _level);
++
++        if (Utility.RandomBool() && _canBeTrapped && _level > Utility.Random(5))
++        {
++            TrapType = (TrapType)Utility.Random(5);
++        }
++
++        ItemsCreated = false;
++    }
++
++    public static bool CheckLootChance(int level, double chance) => level * chance > Utility.RandomDouble();
++
++    public override void LockPick(Mobile from)
++    {
++        base.LockPick(from);
++
++        if (!_itemsCreated)
++        {
++            if (CheckLootChance(_level, 0.15))
++            {
++                AddLoot(from, this, _level);
++            }
++
++            ItemsCreated = true;
++            ScheduleRelock();
++        }
++    }
++
++    public override void OnItemLifted(Mobile from, Item item)
++    {
++        from.RevealingAction();
++        base.OnItemLifted(from, item);
++    }
++
++    public static void AddLoot(Mobile from, Container c, int level)
++    {
++        var luck = (int)(Math.Pow(Math.Min(1200, from.Luck), 1 / 1.8) / 1000); // up to 0.05
++
++        if (CheckLootChance(level, 0.15 + luck))
++        {
++            c.DropItem(new Gold(level * 40, level * 80));
++        }
++
++        if (CheckLootChance(level, 0.10 + luck))
++        {
++            for (var i = 0; i < level; i++)
++            {
++                var necro = Utility.RandomBool();
++                var regs = Utility.RandomMinMax(1, 5);
++
++                for (var r = 0; r < regs; r++)
++                {
++                    c.DropItem(necro ? Loot.RandomNecromancyReagent() : Loot.RandomReagent());
++                }
++            }
++        }
++
++        if (CheckLootChance(level, 0.10 + luck))
++        {
++            for (var i = 0; i < level; i++)
++            {
++                c.DropItem(
++                    Utility.RandomBool()
++                        ? Loot.RandomScroll(0, 15, SpellbookType.Necromancer)
++                        : Loot.RandomScroll(0, 62, SpellbookType.Regular)
++                );
++            }
++        }
++
++        var minIntensity = level == 7 ? 50 + luck * 200 : level * luck * 200;
++        var minProps = Math.Max(1, Math.Min(4, (level + luck * 100) / 3));
++        var percentScale = luck * 10 + (level == 7 ? 30 : level * 3);
++        DfiLoot.AddRandomLoot(c, level, percentScale * 12, minProps, 5, minIntensity, 100);
++
++        if (CheckLootChance(level, 0.10))
++        {
++            if (level == 7)
++            {
++                var count = Utility.RandomMinMax(1, 5);
++
++                for (var i = 0; i < count; ++i)
++                {
++                    c.DropItem(Loot.Construct(_sePotions));
++                }
++            }
++
++            var potions = Utility.Random(level) + 1;
++
++            for (var i = 0; i < potions; i++)
++            {
++                c.DropItem(Loot.RandomPotion());
++            }
++        }
++
++        if (level == 7 && Utility.RandomDouble() < 0.05)
++        {
++            c.DropItem(new CCKey());
++        }
++
++        if (CheckLootChance(level, 0.10))
++        {
++            CursedCave.PackSkullsAndSmallBones(c, Utility.Random(1, 3));
++        }
++    }
++
++    private void ScheduleRelock()
++    {
++        RelockAt = Core.Now + TimeSpan.FromSeconds(Utility.RandomMinMax((int)_minDelay.TotalSeconds, (int)_maxDelay.TotalSeconds));
++        _waiting.Add(this);
++        _timer ??= Timer.DelayCall(TimeSpan.FromSeconds(30.0), TimeSpan.FromSeconds(30.0), CheckRelocks);
++    }
++
++    private static void CheckRelocks()
++    {
++        foreach (var chest in new List<BaseItemChest>(_waiting))
++        {
++            if (chest.Deleted)
++            {
++                _waiting.Remove(chest);
++            }
++            else if (chest._relockAt <= Core.Now)
++            {
++                _waiting.Remove(chest);
++                chest.Relock();
++            }
++        }
++    }
++
++    public void Relock()
++    {
++        for (var i = Items.Count - 1; i >= 0; --i)
++        {
++            Items[i].Delete();
++        }
++
++        SetLockAndTrap();
++    }
++
++    [AfterDeserialization]
++    private void AfterDeserialization()
++    {
++        if (!Locked || LockLevel == -255 || _itemsCreated)
++        {
++            ScheduleRelock();
++        }
++    }
++
++    public override void OnAfterDelete()
++    {
++        _waiting.Remove(this);
++        base.OnAfterDelete();
++    }
++
++    // One time in ten a relock calls a guard from the dungeon's own kind of creature.
++    private void SpawnGuard()
++    {
++        if (Map == null || Map == Map.Internal || Utility.Random(10) != 0)
++        {
++            return;
++        }
++
++        var region = Region.Find(Location, Map);
++        var group = region switch
++        {
++            _ when region.IsPartOf("Khaldun") || region.IsPartOf("Deceit") => 1,
++            _ when region.IsPartOf("Despise")                               => 2,
++            _ when region.IsPartOf("Shame")                                 => 3,
++            _ when region.IsPartOf("Orc Cave")                              => 4,
++            _ when region.IsPartOf("Hythloth")                              => 5,
++            _ when region.IsPartOf("Covetous")                              => 6,
++            _ when region.IsPartOf("Destard")                               => 7,
++            _ when region.IsPartOf("Fire")                                  => 8,
++            _ when region.IsPartOf("Ice")                                   => 9,
++            _ when region is CursedCaveRegion || _level == 7               => 10,
++            _ when _level == 6                                              => 11,
++            _ when _level == 5                                              => 12,
++            _ when _level == 4                                              => 13,
++            _                                                               => 0
++        };
++
++        var bc = _guards[group].RandomElement().CreateInstance<BaseCreature>();
++        bc.Home = Location;
++        bc.RangeHome = 5;
++
++        for (var i = 0; i < 10; ++i)
++        {
++            var x = X - 3 + Utility.Random(7);
++            var y = Y - 3 + Utility.Random(7);
++
++            if (Map.CanSpawnMobile(x, y, Z))
++            {
++                bc.MoveToWorld(new Point3D(x, y, Z), Map);
++                return;
++            }
++
++            var z = Map.GetAverageZ(x, y);
++
++            if (Map.CanSpawnMobile(x, y, z))
++            {
++                bc.MoveToWorld(new Point3D(x, y, z), Map);
++                return;
++            }
++        }
++
++        bc.Delete();
++    }
++
++    private static readonly Type[][] _guards =
++    [
++        [typeof(Mongbat), typeof(Ratman), typeof(HeadlessOne), typeof(Skeleton), typeof(Zombie), typeof(Mummy), typeof(Shade)],
++        [typeof(Lich), typeof(SpectralArmour), typeof(BoneKnight), typeof(BoneMagi), typeof(SkeletalMage), typeof(SkeletalKnight)],
++        [typeof(Ettin), typeof(Lizardman), typeof(Troll), typeof(EarthElemental)],
++        [typeof(Scorpion), typeof(EarthElemental), typeof(AirElemental), typeof(DullCopperElemental)],
++        [typeof(OrcishMage), typeof(OrcishLord), typeof(Orc), typeof(OrcBomber), typeof(DireWolf)],
++        [typeof(Gargoyle), typeof(FireGargoyle), typeof(StoneGargoyle), typeof(Gazer), typeof(ElderGazer), typeof(HellHound), typeof(Daemon), typeof(Imp)],
++        [typeof(Lich), typeof(Mummy), typeof(Shade), typeof(SkeletalKnight), typeof(DreadSpider), typeof(AirElemental), typeof(SwampTentacle), typeof(Gazer), typeof(ElderGazer)],
++        [typeof(Dragon), typeof(Drake), typeof(Wyvern), typeof(Snake), typeof(GiantSerpent), typeof(Lizardman)],
++        [typeof(FireElemental), typeof(LavaSerpent), typeof(LavaSnake), typeof(HellCat), typeof(HellHound), typeof(EvilMage)],
++        [typeof(IceElemental), typeof(SnowElemental), typeof(FrostSpider), typeof(IceSnake), typeof(FrostOoze), typeof(FrostTroll)],
++        [typeof(TheCursed), typeof(TheCursedArcher), typeof(TheCursedWarrior), typeof(TheCursedGuardian)],
++        [typeof(AncientWyrm), typeof(Balron), typeof(BloodElemental), typeof(PoisonElemental), typeof(Titan)],
++        [typeof(LichLord), typeof(Daemon), typeof(ElderGazer), typeof(PoisonElemental), typeof(BloodElemental)],
++        [typeof(DreadSpider), typeof(LichLord), typeof(Daemon), typeof(ElderGazer), typeof(OgreLord)]
++    ];
++}
++
++[SerializationGenerator(0)]
++public partial class EICSmallCrate : BaseItemChest
++{
++    [Constructible]
++    public EICSmallCrate() : base(1, 0x9A9)
++    {
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class EICMediumCrate : BaseItemChest
++{
++    [Constructible]
++    public EICMediumCrate() : base(2, 0xE3F)
++    {
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class EICLargeCrate : BaseItemChest
++{
++    [Constructible]
++    public EICLargeCrate() : base(3, 0xE3D)
++    {
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class EICWooden : BaseItemChest
++{
++    [Constructible]
++    public EICWooden() : base(4, 0xE43)
++    {
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class EICMetal : BaseItemChest
++{
++    [Constructible]
++    public EICMetal() : base(5, 0x9AB)
++    {
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class EICMetalGolden : BaseItemChest
++{
++    [Constructible]
++    public EICMetalGolden() : base(6, 0xE41)
++    {
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class EICMetalGoldenRed : BaseItemChest
++{
++    [Constructible]
++    public EICMetalGoldenRed() : base(7, 0xE41)
++    {
++    }
++}
++
++// [SpawnEIC replaces the locked decorative chests in dungeons with treasure chests of the same look, the
++// chest's art setting its level.
++public static class SpawnEIC
++{
++    private static readonly ILogger logger = LogFactory.GetLogger(typeof(SpawnEIC));
++
++    private static readonly int[][] _chestIds =
++        [[0x9A9, 0xE7E], [0xE3F, 0xE3E], [0xE3D, 0xE3C], [0xE43, 0xE42], [0x9AB, 0xE7C], [0xE41, 0xE40]];
++
++    public static void Configure()
++    {
++        CommandSystem.Register("SpawnEIC", AccessLevel.Administrator, OnCommand);
++    }
++
++    private static BaseItemChest ChestFor(int index) =>
++        index switch
++        {
++            0 => new EICSmallCrate(),
++            1 => new EICMediumCrate(),
++            2 => new EICLargeCrate(),
++            3 => new EICWooden(),
++            4 => new EICMetal(),
++            _ => new EICMetalGolden()
++        };
++
++    [Usage("SpawnEIC")]
++    [Description("Replaces the locked chests in dungeons with DFI's treasure chests.")]
++    private static void OnCommand(CommandEventArgs e)
++    {
++        e.Mobile.SendMessage("Spawning Item Chests...");
++        var count = Spawn();
++        e.Mobile.SendMessage($"Done... {count} Item Chests added.");
++        logger.Information("{User} placed {Count} treasure chests", e.Mobile, count);
++    }
++
++    public static int Spawn()
++    {
++        var found = new List<LockableContainer>();
++
++        foreach (var item in World.Items.Values)
++        {
++            if (item is LockableContainer c and not BaseItemChest and not BaseTreasureChest && !c.Movable &&
++                c.Parent == null && Region.Find(c.Location, c.Map) is DungeonRegion)
++            {
++                found.Add(c);
++            }
++        }
++
++        var count = 0;
++
++        foreach (var cont in found)
++        {
++            for (var a = 0; a < _chestIds.Length; a++)
++            {
++                if (Array.IndexOf(_chestIds[a], cont.ItemID) < 0)
++                {
++                    continue;
++                }
++
++                var chest = ChestFor(a);
++                chest.ItemID = cont.ItemID;
++                chest.Hue = cont.Hue;
++                chest.MoveToWorld(cont.Location, cont.Map);
++                cont.Delete();
++                count++;
++                break;
++            }
++        }
++
++        return count;
++    }
++}
