@@ -184,6 +184,119 @@ exempts private addresses. Run
 old hold and check the patch without opening a socket or touching accounts.
 See [UPSTREAM.md](UPSTREAM.md) for scope and deployment steps.
 
+### `patches/0007-dfi-loot.patch`
+
+The loot tables of the DFI Network shard (a DefianceUO-based RunUO server),
+for the dev shard to match. The SE packs in `LootPack.cs`, the ones an
+Endless Journey shard uses, take DFI's values: less gold from Rich upwards,
+and more, stronger magic items from Average upwards (SuperBoss rolls 10 to 18
+items, several at 33 to 60% minimum intensity). `Custom/DFI/Loot/DfiLoot.cs`
+carries DFI's loot helpers and, through one call at the top of
+`BaseCreature.OnDeath`, its death bonuses: a paragon drops one more loot pack
+by fame and 1.5 times the gold, and a champion spawn monster has a 0.05% chance
+of a +5 power scroll for a random looter in Felucca. DFI's plague and elder
+bonuses are not ported (ModernUO has neither).
+
+### `patches/0008-dfi-monsters.patch`
+
+Requires `0007-dfi-loot.patch`. Custom monsters from DFI and from the
+`kopia 2012` RunUO shard, under `Projects/UOContent/Custom/DFI/`, each added
+with `[add <Name>`:
+
+| Group | Monsters |
+|---|---|
+| Event boss | `QuestMobile` (GM-configured; `GiveRewardBag` gives each looter a "Reward bag for slaying ..." with 6 strong items, maps, SOS and a 5,000 check) |
+| Vampires | `VampireKnight`, `VampireFighter`, `VampireNecro`, `MindlessZombie` |
+| Stealth | `Stalker`, `NightStalker`, `Undying`, `DarkSentinel`, `HorrorDaemon`, `PoisonousRat`, `Doppelganger` |
+| Others | `OrcChopper`, `OrcScout`, `Sphynx` |
+| Donation dungeon | `Harvester`, `RoyaltyDefender` |
+| Opticon/Kale | `ZealotOfMondain` (dies into `AbominationOfMondain`, carrying four extra loot packs), `OpticonWyrm`, `GrimReaper` |
+| kopia 2012 | `ValoriteDragon`, `Chameleon`, `YChameleon` |
+
+DFI's `AI_Stealth` becomes `StealthAI`, chosen through `ForcedAI`, so no AI
+enum changes. `UOContent.Tests/Tests/Custom/DfiContentTests.cs` spawns every
+monster and checks the SuperBoss tier, the reward bag, the Zealot's death,
+the RoyaltyDefender's stages and Undying. Built on its own, the test project
+needs `-p:SolutionDir=<src>\` to copy `Distribution/Data` beside it. Not yet ported: the Sphynx fortune reading and the copper bars
+of DFI's event reward system.
+
+### `patches/0009-dfi-player-items.patch`
+
+Requires `0008-dfi-monsters.patch`. Player items from both shards, new files
+under `Custom/DFI/Items/`, each added with `[add <Name>`:
+
+| Group | Items |
+|---|---|
+| Gear and bags | `DonationShroud` (on kopia's `HoodedRobe`, an anonymity hood), `Emblem` (DFI's cursed Royal Emblem), `EquipBag` (ten 5-property jewels), `PvPBag` (16 stacks of 60,000 reagents, ammo and bandages) |
+| Deeds | `ItemBlessDeed`, `SashLayerDeed`, `SpellChannelingDeed`, `SelfRepairDeed`, `TitleChangeDeed`, `PetResurrectionDeed`, `PetBondingDeed`, `WarHorseBondingDeed`, `SexChangeDeed`, `BeardRestylingDeed`, `ItemIDDeed`, `SpellbookDeed` (and the six `Full*Spellbook`s), `ArtifactDeed`, `ChampionArtifactDeed`, `MinorArtieDeed` |
+| Balls | `SkillBall`, `DonationSkillBall`, `PetSkillBall` (DFI's +N balls), `TemplateSkillBall` (kopia's pick seven skills at 100), `StatBall` |
+| Shrink | `ShrinkPotion`, `EverlastingShrinkPotion`, `Shrinkbag`, `ShrinkStone`, `HitchingPostEastDeed`, `HitchingPostSouthDeed`, the `[Shrink` command |
+| Runic tools | hammers, saws, fletcher and tinker tools in eight metals, three sewing kits, their bags, `BagOfCraft`, `RunicStone`, `CraftingStone` |
+
+Where both shards had a deed, it takes DFI's checks and kopia's blessed look.
+kopia's `SkillBall` is `TemplateSkillBall` here, beside DFI's. ModernUO's own
+`NameChangeDeed` stands in for kopia's. Gumps keep their choices and order but
+are laid out afresh; known quirks of the originals are kept and commented.
+`DfiItemTests.cs` constructs every item and checks the bags, deeds, balls,
+shrinking and the Emblem.
+
+### `patches/0010-dfi-spawns.patch`
+
+Requires `0009-dfi-player-items.patch`. DFI Network's world spawns, as
+ModernUO spawner JSON under `Distribution/Data/Spawns/dfi/`:
+
+| File | Spawners | From |
+|---|---:|---|
+| `felucca.json`, `ilshenar.json`, `malas.json` | 1,398 | DFI's 2008 ESpawner exports (`*-ESS.xml`) |
+| `dfi-boss-arena.json` | 13 | staff-placed spawners in DFI's 2018 save (Green Acres) |
+| `kopia-faction-extras.json` | 13 | staff-placed spawners in kopia's 2018 save |
+| `dfi-custom-monsters.json` | 12 | the custom monsters from `0008`, placed for this shard |
+
+The custom monsters' spots are new: DFI's live placements did not survive,
+and only the Stalker's hideouts are in its code. Each sits one tile from a
+layout spawner in the right area (the importer would replace a same-type
+spawner on the same tile; a test guards it): Stalker at its Ilshenar
+hideouts, a vampire lair in the Yew graveyard, stealth ambushers in Despise
+and Covetous, the Sphynx near Compassion, the Valorite Dragon in Destard,
+the Chameleon in Ice and young ones in the Yew woods, the Zealot of Mondain
+in Wrong, Opticon's Pet in Fire, and the Harvester and Royalty Defender in
+the Green Acres boss arena. Undying (killable only by a hue 2121 weapon
+nothing makes yet) and the GM event QuestMobile are not spawned.
+`[DfiSpawns` reports each custom spawner's spawned count.
+
+kopia's free-items room (27 spawners handing out deeds, ethereals and a bank
+check) was dropped at the owner's request; `[DfiSpawns` deletes any spawner
+still named `kopia-free-items`, and what it spawned.
+
+`[DfiSpawns` (Administrator) deletes the classic monster and wildlife
+spawners those layouts replace, by the guids in ModernUO's own spawn files,
+and imports the DFI files. Vendors, townspeople, reagents, sea life and the
+Mondain's Legacy areas stay. It is safe to run again. Spawn types that wait on
+unported DFI systems (Cursed Cave, PriestOfMondain, tokens) were left out
+of the files; ModernUO's renames (ToxicElemental as AcidElemental, crops as
+Farmable*) were applied. Delays keep DFI's values, up to the month-long
+artifact spawns. `DfiSpawnTests.cs` and ModernUO's `AllSpawnFilesLoadTests`
+load every file.
+
+### `patches/0011-dfi-rares.patch`
+
+DFI's stealable rares: 9 town rares (dried onions, herbs and flowers,
+horseshoes, arrow shafts, four wires) a thief takes from 80 Stealing (sure
+at 100), and 22 Doom rares with an artifact rarity (tarot, skull candle,
+ruined painting, hanging armour, a reversed backpack and more) from 100
+(sure at 150); plus DFI's dungeon decoration (hay, rocks, a closed barrel)
+and an eatable locked fruit basket. A rare is fixed on the ground until
+stolen; the spawner that placed it puts a new one back after DFI's delay.
+DFI never connected its rares to the Stealing skill; one branch in
+`Skills/Stealing.cs` does, at the owner's request.
+
+0010's layouts place the Doom rares where DFI's 2008 export did. DFI kept
+the town rares in shop containers that did not survive, so
+`dfi-town-rares.json` puts them in Britain's blacksmith, bowyer and
+herbalist, with DFI's delays. `[DfiSpawns` reports the rares on the ground
+and how many rare spawners hold one. `DfiRareTests.cs` covers every rare
+and the steal rules.
+
 ### Retired
 
 `0004-multi-tile-enumerator` fixed tile lookups that stopped at a multi with no
