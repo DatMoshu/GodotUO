@@ -1,0 +1,694 @@
+diff --git a/Projects/UOContent.Tests/Tests/Custom/DfiRareTests.cs b/Projects/UOContent.Tests/Tests/Custom/DfiRareTests.cs
+new file mode 100644
+index 000000000..b4f06a7c3
+--- /dev/null
++++ b/Projects/UOContent.Tests/Tests/Custom/DfiRareTests.cs
+@@ -0,0 +1,114 @@
++using System;
++using System.Collections.Generic;
++using Server;
++using Server.Custom.Dfi;
++using Server.Items;
++using Server.Misc;
++using Server.Mobiles;
++using Xunit;
++
++namespace UOContent.Tests.Custom;
++
++[Collection("Sequential UOContent Tests")]
++public class DfiRareTests : IDisposable
++{
++    private readonly List<IEntity> _created = new();
++
++    // The shared test server never runs the skill system's start-up, which installs the skill checks.
++    public DfiRareTests() => SkillCheck.Initialize();
++
++    public static TheoryData<Type> Rares =>
++    [
++        typeof(SRDriedOnions), typeof(SRDriedHerbs), typeof(SRDriedFlowers), typeof(SRHorseShoes), typeof(SRArrowShafts),
++        typeof(SREIronWire), typeof(SRESilverWire), typeof(SREGoldWire), typeof(SRECopperWire), typeof(SRDRBloodyWater),
++        typeof(SRDRCocoon), typeof(SRDRDamagedBooks), typeof(SRDRRuinedBooks), typeof(SRDRBottle), typeof(SRDRBrazier),
++        typeof(SRDRLampPost), typeof(SRDRRuinedPainting), typeof(SRDRSaddle), typeof(SRDRTarot), typeof(SRDREggCase),
++        typeof(SRDRGruesomeStandard), typeof(SRDRHangingLeatherTunic), typeof(SRDRHangingStuddedLeggings),
++        typeof(SRDRHangingStuddedTunic), typeof(SRDRRock), typeof(SRDRSkinnedDeer), typeof(SRDRSkinnedGoat),
++        typeof(SRDRSkullCandle), typeof(SRDRStackedBooks2), typeof(SRDRStackedBooks), typeof(SRDRStretchedHide),
++        typeof(SRDRReversedBackPack)
++    ];
++
++    public void Dispose()
++    {
++        foreach (var e in _created)
++        {
++            e?.Delete();
++        }
++
++        _created.Clear();
++    }
++
++    private T Track<T>(T e) where T : IEntity
++    {
++        _created.Add(e);
++        return e;
++    }
++
++    private PlayerMobile Thief(double stealing)
++    {
++        var m = Track(new PlayerMobile(World.NewMobile));
++        m.DefaultMobileInit();
++        m.MoveToWorld(new Point3D(1500, 1600, 0), Map.Felucca);
++        m.AddItem(new Backpack());
++        m.Skills.Stealing.Base = stealing;
++        return m;
++    }
++
++    [Theory]
++    [MemberData(nameof(Rares))]
++    public void Rare_SpawnsFixedAndStealable(Type type)
++    {
++        var item = Track(type.CreateInstance<Item>());
++
++        Assert.False(item.Movable);
++        Assert.IsAssignableFrom<IStealable>(item);
++        Assert.True(((IStealable)item).GetMin() >= 80.0);
++    }
++
++    [Fact]
++    public void Steal_BelowTheRaresMinimum_IsRefusedAndLeavesItFixed()
++    {
++        var thief = Thief(90.0);
++        var rare = Track(new SRDRTarot());
++        rare.MoveToWorld(new Point3D(1501, 1600, 0), Map.Felucca);
++
++        Assert.Null(DfiRares.Steal(thief, rare, rare));
++        Assert.False(rare.Movable);
++    }
++
++    [Fact]
++    public void Steal_AtTheTopOfTheWindow_AlwaysSucceedsAndFreesTheRare()
++    {
++        var thief = Thief(100.0);
++        var rare = Track(new SRDriedOnions());
++        rare.MoveToWorld(new Point3D(1501, 1600, 0), Map.Felucca);
++
++        Assert.Same(rare, DfiRares.Steal(thief, rare, rare));
++        Assert.True(rare.Movable);
++    }
++
++    [Fact]
++    public void Steal_OutOfReach_IsRefused()
++    {
++        var thief = Thief(100.0);
++        var rare = Track(new SRDriedOnions());
++        rare.MoveToWorld(new Point3D(1510, 1600, 0), Map.Felucca);
++
++        Assert.Null(DfiRares.Steal(thief, rare, rare));
++    }
++
++    [Fact]
++    public void LockedFruitBasket_EatenLeavesAnEmptyBasket()
++    {
++        var m = Thief(0);
++        m.Hunger = 0;
++        var basket = Track(new LockedFruitBasket());
++        basket.MoveToWorld(new Point3D(1501, 1600, 0), Map.Felucca);
++
++        basket.OnDoubleClick(m);
++
++        Assert.True(basket.Deleted);
++        Assert.True(m.Hunger > 0);
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Items/DfiRares.cs b/Projects/UOContent/Custom/DFI/Items/DfiRares.cs
+new file mode 100644
+index 000000000..d1c6eb1cc
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Items/DfiRares.cs
+@@ -0,0 +1,42 @@
++using Server.Items;
++
++namespace Server.Custom.Dfi;
++
++public static class DfiRares
++{
++    // A fixed rare on the ground: the thief needs the rare's minimum skill to try at all, succeeds by
++    // a skill check across its min..max window, and on success the rare becomes an ordinary item.
++    // The spawner that placed it counts it gone once it is in a backpack and puts a new one back.
++    public static Item Steal(Mobile thief, Item item, IStealable rare)
++    {
++        if (!thief.InRange(item.GetWorldLocation(), 1))
++        {
++            thief.SendLocalizedMessage(502703); // You must be standing next to an item to steal it.
++            return null;
++        }
++
++        if (thief.Backpack?.CheckHold(thief, item, false, true) != true)
++        {
++            thief.SendLocalizedMessage(1048147); // Your backpack can't hold anything else.
++            return null;
++        }
++
++        if (thief.Skills.Stealing.Value < rare.GetMin())
++        {
++            // You're not skilled enough to attempt the theft of this item.
++            thief.SendLocalizedMessage(1060025, "", 0x66D);
++            return null;
++        }
++
++        if (!thief.CheckTargetSkill(SkillName.Stealing, item, rare.GetMin(), rare.GetMax()))
++        {
++            thief.SendLocalizedMessage(502723); // You fail to steal the item.
++            return null;
++        }
++
++        thief.SendLocalizedMessage(502724); // You successfully steal the item.
++        item.Movable = true;
++        rare.OnSteal();
++        return item;
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Items/Rares.cs b/Projects/UOContent/Custom/DFI/Items/Rares.cs
+new file mode 100644
+index 000000000..34ab09b61
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Items/Rares.cs
+@@ -0,0 +1,504 @@
++// DFI Network's stealable rares and dungeon decoration, ported from DFI RunUO
++// Scripts/Custom/Engines/StealableRareSystem. Each rare is a fixed item a DFI spawner puts back a day
++// after it is taken: town rares need 80 stealing (fully reliable at 100), Doom rares 100 (150). DFI never
++// connected the rares to the Stealing skill; GUO does, through DfiRares.Steal, at the owner's request.
++
++using ModernUO.Serialization;
++
++namespace Server.Items;
++
++public interface IStealable
++{
++    double GetMin();
++    double GetMax();
++    void OnSteal();
++}
++
++[SerializationGenerator(0)]
++public abstract partial class DfiRare : Item, IStealable
++{
++    public DfiRare(int itemID) : base(itemID) => Movable = false;
++
++    public abstract double GetMin();
++    public abstract double GetMax();
++
++    public virtual void OnSteal()
++    {
++    }
++}
++
++[SerializationGenerator(0)]
++public abstract partial class DfiTownRare : DfiRare
++{
++    public DfiTownRare(int itemID) : base(itemID)
++    {
++    }
++
++    public override double GetMin() => 80.0;
++    public override double GetMax() => 100.0;
++}
++
++// Doom rares show an artifact rarity, as DFI's did.
++[SerializationGenerator(0)]
++public abstract partial class DfiDoomRare : DfiRare
++{
++    public DfiDoomRare(int itemID) : base(itemID) => Weight = 1.0;
++
++    protected abstract int Rarity { get; }
++
++    public override double GetMin() => 100.0;
++    public override double GetMax() => 150.0;
++    public override bool ForceShowProperties => true;
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++        list.Add(1061078, Rarity); // artifact rarity ~1_val~
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class SRDriedOnions : DfiTownRare
++{
++    [Constructible]
++    public SRDriedOnions() : base(0xC40)
++    {
++        Stackable = true;
++    }
++
++    public override string DefaultName => "Dried Onions";
++}
++
++[SerializationGenerator(0)]
++public partial class SRDriedHerbs : DfiTownRare
++{
++    [Constructible]
++    public SRDriedHerbs() : base(0xC41)
++    {
++        Stackable = true;
++    }
++
++    public override string DefaultName => "Dried Herbs";
++}
++
++[SerializationGenerator(0)]
++public partial class SRDriedFlowers : DfiTownRare
++{
++    [Constructible]
++    public SRDriedFlowers() : base(0xC3E)
++    {
++        Stackable = true;
++    }
++
++    public override string DefaultName => "Dried Flowers";
++}
++
++[SerializationGenerator(0)]
++public partial class SRHorseShoes : DfiTownRare
++{
++    [Constructible]
++    public SRHorseShoes() : base(0xFB6)
++    {
++        Weight = 2.0;
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class SRArrowShafts : DfiTownRare
++{
++    [Constructible]
++    public SRArrowShafts() : base(0x1024)
++    {
++        Weight = 2.0;
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class SREIronWire : DfiTownRare
++{
++    [Constructible]
++    public SREIronWire() : base(0x1876)
++    {
++        Stackable = true;
++        Weight = 2.0;
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class SRESilverWire : DfiTownRare
++{
++    [Constructible]
++    public SRESilverWire() : base(0x1877)
++    {
++        Stackable = true;
++        Weight = 2.0;
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class SREGoldWire : DfiTownRare
++{
++    [Constructible]
++    public SREGoldWire() : base(0x1878)
++    {
++        Stackable = true;
++        Weight = 2.0;
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class SRECopperWire : DfiTownRare
++{
++    [Constructible]
++    public SRECopperWire() : base(0x1879)
++    {
++        Stackable = true;
++        Weight = 2.0;
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class SRDRBloodyWater : DfiDoomRare
++{
++    [Constructible]
++    public SRDRBloodyWater() : base(0x0E23)
++    {
++    }
++
++    protected override int Rarity => 5;
++}
++
++[SerializationGenerator(0)]
++public partial class SRDRCocoon : DfiDoomRare
++{
++    [Constructible]
++    public SRDRCocoon() : base(0x10DB)
++    {
++    }
++
++    protected override int Rarity => 7;
++}
++
++[SerializationGenerator(0)]
++public partial class SRDRDamagedBooks : DfiDoomRare
++{
++    [Constructible]
++    public SRDRDamagedBooks() : base(0xC16)
++    {
++    }
++
++    protected override int Rarity => 1;
++}
++
++[SerializationGenerator(0)]
++public partial class SRDRRuinedBooks : DfiDoomRare
++{
++    [Constructible]
++    public SRDRRuinedBooks() : base(0x1E21)
++    {
++    }
++
++    protected override int Rarity => 3;
++}
++
++[SerializationGenerator(0)]
++public partial class SRDRBottle : DfiDoomRare
++{
++    [Constructible]
++    public SRDRBottle() : base(0x0E28)
++    {
++    }
++
++    protected override int Rarity => 1;
++}
++
++[SerializationGenerator(0)]
++public partial class SRDRBrazier : DfiDoomRare
++{
++    [Constructible]
++    public SRDRBrazier() : base(0xE31)
++    {
++        Light = LightType.Circle225;
++    }
++
++    protected override int Rarity => 2;
++}
++
++[SerializationGenerator(0)]
++public partial class SRDRLampPost : DfiDoomRare
++{
++    [Constructible]
++    public SRDRLampPost() : base(0xB24)
++    {
++        Light = LightType.Circle300;
++        Hue = Utility.RandomList(0x47E, 0x482, 0x8AB, 0x963, 0x594, 0x558);
++    }
++
++    protected override int Rarity => 3;
++}
++
++[SerializationGenerator(0)]
++public partial class SRDRRuinedPainting : DfiDoomRare
++{
++    [Constructible]
++    public SRDRRuinedPainting() : base(0xC2C)
++    {
++    }
++
++    protected override int Rarity => 12;
++}
++
++[SerializationGenerator(0)]
++public partial class SRDRSaddle : DfiDoomRare
++{
++    [Constructible]
++    public SRDRSaddle() : base(0xF38)
++    {
++    }
++
++    protected override int Rarity => 9;
++}
++
++[SerializationGenerator(0)]
++public partial class SRDRTarot : DfiDoomRare
++{
++    [Constructible]
++    public SRDRTarot() : base(0x12A6)
++    {
++    }
++
++    protected override int Rarity => 5;
++}
++
++[SerializationGenerator(0)]
++public partial class SRDREggCase : DfiDoomRare
++{
++    [Constructible]
++    public SRDREggCase() : base(0x10D9)
++    {
++    }
++
++    protected override int Rarity => 5;
++}
++
++[SerializationGenerator(0)]
++public partial class SRDRGruesomeStandard : DfiDoomRare
++{
++    [Constructible]
++    public SRDRGruesomeStandard() : base(0x428)
++    {
++    }
++
++    protected override int Rarity => 5;
++}
++
++[SerializationGenerator(0)]
++public partial class SRDRHangingLeatherTunic : DfiDoomRare
++{
++    [Constructible]
++    public SRDRHangingLeatherTunic() : base(0x13CA)
++    {
++    }
++
++    protected override int Rarity => 9;
++}
++
++[SerializationGenerator(0)]
++public partial class SRDRHangingStuddedLeggings : DfiDoomRare
++{
++    [Constructible]
++    public SRDRHangingStuddedLeggings() : base(0x13D8)
++    {
++    }
++
++    protected override int Rarity => 5;
++}
++
++[SerializationGenerator(0)]
++public partial class SRDRHangingStuddedTunic : DfiDoomRare
++{
++    [Constructible]
++    public SRDRHangingStuddedTunic() : base(0x13D9)
++    {
++    }
++
++    protected override int Rarity => 7;
++}
++
++[SerializationGenerator(0)]
++public partial class SRDRRock : DfiDoomRare
++{
++    [Constructible]
++    public SRDRRock() : base(0x1363)
++    {
++    }
++
++    protected override int Rarity => 1;
++}
++
++[SerializationGenerator(0)]
++public partial class SRDRSkinnedDeer : DfiDoomRare
++{
++    [Constructible]
++    public SRDRSkinnedDeer() : base(0x1E91)
++    {
++    }
++
++    protected override int Rarity => 7;
++}
++
++[SerializationGenerator(0)]
++public partial class SRDRSkinnedGoat : DfiDoomRare
++{
++    [Constructible]
++    public SRDRSkinnedGoat() : base(0x1E88)
++    {
++    }
++
++    protected override int Rarity => 5;
++}
++
++[SerializationGenerator(0)]
++public partial class SRDRSkullCandle : DfiDoomRare
++{
++    [Constructible]
++    public SRDRSkullCandle() : base(0x1854)
++    {
++        Light = LightType.Circle150;
++    }
++
++    protected override int Rarity => 1;
++}
++
++[SerializationGenerator(0)]
++public partial class SRDRStackedBooks2 : DfiDoomRare
++{
++    [Constructible]
++    public SRDRStackedBooks2() : base(0x1E24)
++    {
++    }
++
++    protected override int Rarity => 3;
++}
++
++[SerializationGenerator(0)]
++public partial class SRDRStackedBooks : DfiDoomRare
++{
++    [Constructible]
++    public SRDRStackedBooks() : base(0x1E25)
++    {
++    }
++
++    protected override int Rarity => 3;
++}
++
++[SerializationGenerator(0)]
++public partial class SRDRStretchedHide : DfiDoomRare
++{
++    [Constructible]
++    public SRDRStretchedHide() : base(0x106B)
++    {
++    }
++
++    protected override int Rarity => 2;
++}
++
++[SerializationGenerator(0)]
++public partial class SRDRReversedBackPack : BaseContainer, IStealable
++{
++    [Constructible]
++    public SRDRReversedBackPack() : base(0x09B2) => Movable = false;
++
++    public override int DefaultGumpID => 0x3C;
++    public override int DefaultDropSound => 0x48;
++    public override Rectangle2D Bounds => new(44, 65, 142, 94);
++    public override bool ForceShowProperties => true;
++
++    public double GetMin() => 100.0;
++    public double GetMax() => 150.0;
++
++    public void OnSteal()
++    {
++    }
++
++    public override void GetProperties(IPropertyList list)
++    {
++        base.GetProperties(list);
++        list.Add(1061078, 5); // artifact rarity ~1_val~
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class Hay : Item
++{
++    [Constructible]
++    public Hay() : base(0xF34) => Weight = 1.0;
++
++    public override string DefaultName => "hay";
++    public override bool Decays => false;
++}
++
++[SerializationGenerator(0)]
++public partial class Rock : Item
++{
++    [Constructible]
++    public Rock() : base(0x1368) => Weight = 1.0;
++
++    public override string DefaultName => "a rock";
++    public override bool Decays => false;
++}
++
++[SerializationGenerator(0)]
++public partial class Rocks : Item
++{
++    [Constructible]
++    public Rocks() : base(0x1367) => Weight = 1.0;
++
++    public override string DefaultName => "rocks";
++    public override bool Decays => false;
++}
++
++[SerializationGenerator(0)]
++public partial class NClosedBarrel : BaseContainer
++{
++    [Constructible]
++    public NClosedBarrel() : base(0xFAE) => Weight = 25.0;
++
++    public override string DefaultName => "a closed barrel";
++    public override bool Decays => false;
++    public override int DefaultGumpID => 0x3E;
++    public override int DefaultDropSound => 0x42;
++    public override Rectangle2D Bounds => new(33, 36, 109, 112);
++}
++
++// Eaten in place: fills a little hunger and leaves an empty basket behind.
++[SerializationGenerator(0)]
++public partial class LockedFruitBasket : Item
++{
++    [Constructible]
++    public LockedFruitBasket() : base(0x993)
++    {
++        Weight = 2.0;
++        Movable = false;
++    }
++
++    public override bool Decays => false;
++
++    public override void OnDoubleClick(Mobile from)
++    {
++        if (!from.InRange(GetWorldLocation(), 1) || !Food.FillHunger(from, 5))
++        {
++            return;
++        }
++
++        from.PlaySound(Utility.Random(0x3A, 3));
++
++        if (from.Body.IsHuman && !from.Mounted)
++        {
++            from.Animate(34, 5, 1, true, false, 0);
++        }
++
++        new Basket().MoveToWorld(Location, Map);
++        Delete();
++    }
++}
+diff --git a/Projects/UOContent/Skills/Stealing.cs b/Projects/UOContent/Skills/Stealing.cs
+index 01c530c79..ae8b499b6 100644
+--- a/Projects/UOContent/Skills/Stealing.cs
++++ b/Projects/UOContent/Skills/Stealing.cs
+@@ -215,6 +215,11 @@ private Item TryStealItem(Item toSteal, ref bool caught)
+                     return sig;
+                 }
+             }
++            else if (toSteal is IStealable rare && toSteal.Parent == null && !toSteal.Movable)
++            {
++                stolen = Server.Custom.Dfi.DfiRares.Steal(_thief, toSteal, rare);
++                caught = _thief.Skills.Stealing.Value < Utility.Random(150);
++            }
+             else if (_thief.Backpack?.CheckHold(_thief, toSteal, false, true) != true)
+             {
+                 _thief.SendLocalizedMessage(1048147); // Your backpack can't hold anything else.
