@@ -4524,3 +4524,24 @@ across physical discontinuities instead of mixing different floors.
 See `tools/scenarios/client/lighting_physical_world.md` for disconnected Britain
 proofs. Pure tests are distinct from GPU/native acceptance. These contracts do not
 claim full-world coverage, all roof shapes, full GI, or complete point-light rollout.
+
+## 53. Competition benchmark results (Labs CompetitionBench, `tools/competition_bench`)
+
+Debug GuoLabs, forward_plus on vulkan only; written under the explicit external `GUO_BENCH_OUT`, never in the repo.
+`data/<label>/<scene>-<time>-<variant>/bench.json` (timed): `status` (`pass` or `unsupported`), `variant`, `scene`, `time`,
+`startup_s`, `process_wall_s`, `precondition_s`, `precondition_wall_s`, `rewarm_s` (wall-clock windows, each followed by a sim-clock rebase), `warmup_frames`, `sample_frames` (simulation frames of 1/60 s, the measured part),
+`repeats`, `profile_diff` (Profile fields the variant hook changed) and `allowed_fields`, `fixture` (coordinates, pinned clock,
+exact profile flags), `environment` (adapter, driver, method, achieved window, vsync), `simulation`, `repeatResults[]`. Each
+repeat has `frames`, `wall_s`, `warmup_wall_s`, `preceding_rewarm_wall_s` (the precondition wall seconds for repeat 0), `depthWorldFallbackFrames` (must be 0) and `gpu_ms`, `gpu_predraw_ms`, `gpu_viewport_ms`,
+`gpu_whole_frame_ms`, `cpu_ms`, `frame_ms`: `count, mean, median, p95, p99, min, max` in milliseconds (nearest rank).
+`gpu_ms` = pre-draw RD timestamp span + viewport GPU time, both read on the render thread at one resolution, over valid
+frames only. `gpu_coverage` counts resolved, valid and invalid frames (with reasons), per-repeat stamped/unavailable counts and
+the gates (valid fraction >= 99%, pass timestamps inside the span, total-to-whole ratio 0.93..1.07, resolved fraction); a failed gate
+fails the run. `gpu_state_before/after` is nvidia-smi `clocks.gr, clocks.mem, temperature, power.draw, pstate` or
+`unavailable`, with `gpu_clock_drift_flag` (graphics clock moved > 15%). `environment` also carries `adapterApiVersion`. `memoryBefore`/`memoryAfter` hold process, Godot, GC and video counters. `raw_gpu.csv` with `GUO_BENCH_RAW=1`.
+An unsupported variant writes only `status`, `variant: "unsupported"`, `requested_variant`.
+`capture.json` has `still`, `image_sha256` (RGBA8 pixels) and `sim_frame`. The runner's `summary-<label>.json` holds `seed`,
+`frames`, `planned_keys`, `env` per build, `builds` (path, git head, DLL sha256), `run_order` (round, position, build, UTC
+start, wall and startup seconds), `groups`, `failures`, `unsupported` and `scores`: per entry `status` (scored, DQ, PROVISIONAL,
+UNCERTIFIED, INVALID with `invalid_reasons`), added ms, penalty, `worst_key`, and a cross-session sanity delta against the
+frozen baseline summary whose sha256 is recorded.
