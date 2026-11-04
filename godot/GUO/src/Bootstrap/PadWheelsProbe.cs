@@ -113,6 +113,7 @@ internal static class PadWheelsProbe
         await BindingDummies(host, world);
         await MountAndLock(host, world);
         await TargetAndSpeech(host, world);
+        await BandageSelf(host, world);
 
         PadBindings.ResetToDefaults();
         GamepadInput.Forced = null;
@@ -834,6 +835,72 @@ internal static class PadWheelsProbe
         }
 
         return (Direction) ((int) world.Player.Direction & 7);
+    }
+
+    // --- bandage self (S1) -----------------------------------------------------------------------
+
+    private static async System.Threading.Tasks.Task BandageSelf(Node host, World world)
+    {
+        PadScreen.Close();
+        PadRadar.Close();
+        world.TargetManager.CancelTarget();
+
+        if (world.Player.InWarMode)
+        {
+            GameActions.ToggleWarMode(world.Player);
+            await Until(host, () => !world.Player.InWarMode, 60);
+        }
+
+        if (world.Player.FindBandage() == null)
+        {
+            await InputProbe.Say(host, "[addtopack Bandage 20");
+            bool cursor = await Until(host, () => world.TargetManager.IsTargeting, 180);
+
+            if (cursor)
+            {
+                world.TargetManager.Target(world.Player.Serial);
+            }
+
+            await Until(host, () => world.Player.FindBandage() != null, 120);
+        }
+
+        Item bandage = world.Player.FindBandage();
+        Check("the pack has bandages for the pad's Bandage self", bandage != null, bandage != null ? $"x{bandage.Amount}" : "none");
+
+        await InputProbe.Say(host, "[set Hits 30");
+        bool hurtCursor = await Until(host, () => world.TargetManager.IsTargeting, 180);
+
+        if (hurtCursor)
+        {
+            world.TargetManager.Target(world.Player.Serial);
+        }
+
+        await InputProbe.Wait(host, 60);
+
+        PadScreen.Open(WheelWindow.Macros);
+        await InputProbe.Wait(host, 6);
+        Check("the Macros screen opens", PadScreen.IsOpen && PadScreen.Current == WheelWindow.Macros);
+        await Shot(host, "macros_bandage");
+
+        bool found = PadScreen.FocusLabel == PadScreen.BandageSelfLabel;
+
+        for (int i = 0; i < 10 && !found; i++)
+        {
+            await Button(host, JoyButton.DpadDown, 4);
+            found = PadScreen.FocusLabel == PadScreen.BandageSelfLabel;
+        }
+
+        Check("the Macros screen offers Bandage self", found, PadScreen.FocusLabel);
+
+        int before = JournalManager.Entries.Count;
+        await Button(host, JoyButton.A);
+        bool heard = await Until(host, () => JournalManager.Entries.Skip(before)
+            .Any(e => e.Text != null && e.Text.IndexOf("applying", StringComparison.OrdinalIgnoreCase) >= 0), 240);
+        Check("A on Bandage self starts bandaging you (no pack opened, no target cursor left up)",
+            heard && !PadScreen.IsOpen && !world.TargetManager.IsTargeting,
+            $"hits {world.Player.Hits}/{world.Player.HitsMax}");
+
+        world.TargetManager.CancelTarget();
     }
 
     // --- mounting and the attack lock (INPUT-00) -------------------------------------------------
