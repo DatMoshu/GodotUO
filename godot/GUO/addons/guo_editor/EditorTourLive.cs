@@ -47,7 +47,7 @@ public partial class EditorTour
                 + "print('WARNING: scripted stderr captured', file=sys.stderr, flush=True)\n"
                 + "print('password=tour-fixture-value', flush=True)\n"
                 + "time.sleep(120)\n");
-            string python = EditorData.Setting("UO_PYTHON", OperatingSystem.IsWindows() ? "python" : "python3");
+            string python = EditorData.Python();
             string executable = Path.IsPathFullyQualified(python) ? python : (System.Environment.GetEnvironmentVariable("PATH") ?? "")
                 .Split(Path.PathSeparator).Select(p => Path.Combine(p.Trim('"'), python + (OperatingSystem.IsWindows() && !python.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? ".exe" : "")))
                 .FirstOrDefault(File.Exists) ?? python;

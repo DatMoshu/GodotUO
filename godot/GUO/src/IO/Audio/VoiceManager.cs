@@ -168,7 +168,7 @@ namespace GUO.IO.Audio
         private static string Python()
         {
             string py = System.Environment.GetEnvironmentVariable("GUO_PYTHON");
-            return string.IsNullOrWhiteSpace(py) ? "python" : py;
+            return string.IsNullOrWhiteSpace(py) ? (OperatingSystem.IsWindows() ? "python" : "python3") : py;
         }
 
         private static void EnsurePump()

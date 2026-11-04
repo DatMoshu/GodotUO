@@ -196,7 +196,9 @@ internal sealed class ManagedServerProcess
     internal static ProcessStartInfo ConsoleStartInfo(ProcessStartInfo info, string console)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(console));
-        var shell = new ProcessStartInfo(OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh")
+        // macOS's /bin/sh is a shim that execs /bin/bash, so the image recorded at start would no
+        // longer match the running process; bash itself is the wrapper there.
+        var shell = new ProcessStartInfo(OperatingSystem.IsWindows() ? "cmd.exe" : OperatingSystem.IsMacOS() ? "/bin/bash" : "/bin/sh")
             { WorkingDirectory = info.WorkingDirectory, UseShellExecute = false, CreateNoWindow = true };
         shell.Environment.Clear();
         foreach (var pair in info.Environment) shell.Environment[pair.Key] = pair.Value;

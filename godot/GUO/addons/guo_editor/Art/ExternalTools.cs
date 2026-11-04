@@ -137,7 +137,7 @@ public static class ExternalTools
 
         string sidecar = Path.ChangeExtension(png, ".json");
         string run = Path.Combine(EditorData.RepoRoot, "tools", "pixelorama", "run.py");
-        int pid = OS.CreateProcess(EditorData.Setting("UO_PYTHON", "python"), new[] { run, "open", png, "--sidecar", sidecar });
+        int pid = OS.CreateProcess(EditorData.Python(), new[] { run, "open", png, "--sidecar", sidecar });
         return pid > 0 ? null : "could not start python tools/pixelorama/run.py";
     }
 
