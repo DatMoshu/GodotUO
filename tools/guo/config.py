@@ -394,6 +394,11 @@ class Config:
             # Godot_v4.7.2-stable_mono_linux_x86_64/Godot_v4.7.2-stable_mono_linux.x86_64
             arch = self.godot_flavor.removeprefix("mono_linux_")
             return self.godot_dir / f"Godot_v{self.godot_version}_mono_linux.{arch}"
+        if self.godot_flavor.startswith("mono_macos"):
+            # The macOS zip holds only an app bundle, Godot_mono.app (fetch
+            # extracts it into godot_dir); the binary inside the bundle is the
+            # one that takes command-line arguments and writes to stdout.
+            return self.godot_dir / "Godot_mono.app" / "Contents" / "MacOS" / "Godot"
         return self.godot_dir / f"{stem}.exe"
 
     @property
