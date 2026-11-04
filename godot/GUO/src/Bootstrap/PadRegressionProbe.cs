@@ -416,6 +416,8 @@ internal static class PadRegressionProbe
         Check("macros screen: Bandage self runs BandageSelf", FixedMacro(PadScreen.BandageSelfLabel) == MacroType.BandageSelf);
     }
 
+    // Fixed lines come before the user's macros and the first match wins, so a
+    // user macro with the same name cannot shadow the line under test.
     private static MacroType? FixedMacro(string label)
     {
         GUO.Game.World world = Client.Game?.UO?.World;

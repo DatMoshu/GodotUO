@@ -892,15 +892,35 @@ internal static class PadWheelsProbe
 
         Check("the Macros screen offers Bandage self", found, PadScreen.FocusLabel);
 
+        // The pack's gump is shut first, so a pack that is open afterwards was
+        // opened by the pad's Bandage self.
+        uint packSerial = world.Player.FindItemByLayer(Layer.Backpack)?.Serial ?? 0;
+        UIManager.GetGump<ContainerGump>(packSerial)?.Dispose();
+
         int before = JournalManager.Entries.Count;
         await Button(host, JoyButton.A);
+        // ModernUO's dev shard answers "You begin applying the bandages."
+        // (English text; another shard or locale would need its own phrase).
         bool heard = await Until(host, () => JournalManager.Entries.Skip(before)
             .Any(e => e.Text != null && e.Text.IndexOf("applying", StringComparison.OrdinalIgnoreCase) >= 0), 240);
+        bool packOpened = UIManager.GetGump<ContainerGump>(packSerial) != null
+            || (PadScreen.IsOpen && PadScreen.Current == WheelWindow.Backpack);
         Check("A on Bandage self starts bandaging you (no pack opened, no target cursor left up)",
-            heard && !PadScreen.IsOpen && !world.TargetManager.IsTargeting,
-            $"hits {world.Player.Hits}/{world.Player.HitsMax}");
+            heard && !packOpened && !PadScreen.IsOpen && !world.TargetManager.IsTargeting,
+            $"hits {world.Player.Hits}/{world.Player.HitsMax}, pack opened {packOpened}");
 
         world.TargetManager.CancelTarget();
+
+        // Leave the lane as found: full hit points for later sections and shots.
+        await InputProbe.Say(host, $"[set Hits {world.Player.HitsMax}");
+
+        if (await Until(host, () => world.TargetManager.IsTargeting, 180))
+        {
+            world.TargetManager.Target(world.Player.Serial);
+        }
+
+        bool healed = await Until(host, () => world.Player.Hits >= world.Player.HitsMax, 180);
+        Check("the probe gives the hit points back", healed, $"hits {world.Player.Hits}/{world.Player.HitsMax}");
     }
 
     // --- mounting and the attack lock (INPUT-00) -------------------------------------------------

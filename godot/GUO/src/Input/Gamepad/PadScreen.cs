@@ -1037,7 +1037,6 @@ namespace GUO.Input.Gamepad
 
             h ^= JournalManager.Entries.Count << 3;
             h ^= world.Macros.GetAllMacros().Count << 5;
-            h ^= (player.FindBandage()?.Amount ?? 0) << 6;
             h ^= PadBindings.RadarRange << 7;
 
             return h;
