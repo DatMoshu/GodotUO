@@ -5,6 +5,12 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 
 ## Unreleased
 
+### macOS
+- The `.sh` launchers run on Apple Silicon Macs: the bootstrap fetches the
+  macOS .NET engine and the launchers find its binary inside the app bundle.
+  The client builds and loads there, and logs in to a local shard. See the
+  new macOS wiki page for requirements and what is checked.
+
 ### Labs
 - Weather puddle settings no longer enable water impacts on listed Wet tiles.
   Rain rings also reach wet statics above sloped ground; crowded cells are
