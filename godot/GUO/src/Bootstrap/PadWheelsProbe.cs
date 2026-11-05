@@ -114,6 +114,7 @@ internal static class PadWheelsProbe
         await MountAndLock(host, world);
         await TargetAndSpeech(host, world);
         await BandageSelf(host, world);
+        await LastObjectSpell(host, world);
 
         PadBindings.ResetToDefaults();
         GamepadInput.Forced = null;
@@ -921,6 +922,189 @@ internal static class PadWheelsProbe
 
         bool healed = await Until(host, () => world.Player.Hits >= world.Player.HitsMax, 180);
         Check("the probe gives the hit points back", healed, $"hits {world.Player.Hits}/{world.Player.HitsMax}");
+    }
+
+    // --- last object and last spell (S2) ---------------------------------------------------------
+
+    /// <summary>The first item anywhere inside <paramref name="container"/>, bags within bags included.</summary>
+    private static Item FindInside(Item container, Func<Item, bool> match)
+    {
+        for (LinkedObject o = container?.Items; o != null; o = o.Next)
+        {
+            if (o is not Item it)
+            {
+                continue;
+            }
+
+            if (match(it))
+            {
+                return it;
+            }
+
+            Item inner = FindInside(it, match);
+
+            if (inner != null)
+            {
+                return inner;
+            }
+        }
+
+        return null;
+    }
+
+    private static int CountInside(Item container, ushort graphic)
+    {
+        int n = 0;
+
+        for (LinkedObject o = container?.Items; o != null; o = o.Next)
+        {
+            if (o is Item it)
+            {
+                n += (it.Graphic == graphic ? Math.Max(1, (int) it.Amount) : 0) + CountInside(it, graphic);
+            }
+        }
+
+        return n;
+    }
+
+    private static async System.Threading.Tasks.Task LastObjectSpell(Node host, World world)
+    {
+        async System.Threading.Tasks.Task<bool> SeekMacro(string targetLabel)
+        {
+            PadScreen.Open(WheelWindow.Macros);
+            await InputProbe.Wait(host, 6);
+
+            for (int step = 0; step < 12; step++)
+            {
+                if (PadScreen.FocusLabel == targetLabel)
+                {
+                    return true;
+                }
+
+                await Button(host, JoyButton.DpadDown, 4);
+            }
+
+            return PadScreen.FocusLabel == targetLabel;
+        }
+
+        async System.Threading.Tasks.Task AnswerTarget(string command)
+        {
+            await InputProbe.Say(host, command);
+
+            if (await Until(host, () => world.TargetManager.IsTargeting, 180))
+            {
+                world.TargetManager.Target(world.Player.Serial);
+                await InputProbe.Wait(host, 30);
+            }
+        }
+
+        PadScreen.Close();
+        PadRadar.Close();
+        world.TargetManager.CancelTarget();
+
+        if (world.Player.InWarMode)
+        {
+            GameActions.ToggleWarMode(world.Player);
+            await Until(host, () => !world.Player.InWarMode, 60);
+        }
+
+        // The client only knows what is in the pack once the pack has been opened.
+        Item pack = world.Player.FindItemByLayer(Layer.Backpack);
+        GameActions.OpenBackpack(world);
+        await Until(host, () => pack != null && pack.Items != null, 120);
+
+        // Last object: use a bandage by hand, put its cursor away, then A on the
+        // line must bring the bandage's cursor back.
+        Item bandage = world.Player.FindBandage();
+
+        if (bandage == null)
+        {
+            await InputProbe.Say(host, "[addtopack Bandage 20");
+
+            if (await Until(host, () => world.TargetManager.IsTargeting, 180))
+            {
+                world.TargetManager.Target(world.Player.Serial);
+            }
+
+            await Until(host, () => (bandage = world.Player.FindBandage()) != null, 120);
+        }
+
+        bool usedByHand = false;
+
+        if (bandage != null)
+        {
+            GameActions.DoubleClick(world, bandage.Serial);
+            usedByHand = await Until(host, () => world.TargetManager.IsTargeting, 120);
+            world.TargetManager.CancelTarget();
+        }
+
+        bool cursorDown = await Until(host, () => !world.TargetManager.IsTargeting, 60);
+        bool foundObj = await SeekMacro(PadScreen.LastObjectLabel);
+        await Shot(host, "macros_last");
+        Check("the Macros screen offers Last object", foundObj, PadScreen.FocusLabel);
+        await Button(host, JoyButton.A);
+        bool objCursor = await Until(host, () => world.TargetManager.IsTargeting, 180);
+        Check("A on Last object uses the bandage again (its target cursor comes back)",
+            usedByHand && cursorDown && objCursor && !PadScreen.IsOpen && world.LastObject == bandage.Serial,
+            $"used by hand {usedByHand}, cursor down before A {cursorDown}, cursor after A {objCursor}");
+        world.TargetManager.CancelTarget();
+        await Until(host, () => !world.TargetManager.IsTargeting, 60);
+
+        // Last spell: cast Heal (4) by hand, so the last spell is not the default
+        // Clumsy (1); A on the line must cast Heal again. The shard says a
+        // spell's power words over the caster, so "In Mani" in the journal after
+        // A is Heal being cast, not just the client remembering an index.
+        await AnswerTarget("[set Skills.Magery.Base 100");
+        await AnswerTarget("[set Mana 100");
+
+        if (FindInside(pack, i => i.Graphic == 0x0EFA) == null)
+        {
+            await AnswerTarget("[addtopack Spellbook 18446744073709551615");
+        }
+
+        // Heal's reagents, topped up only when low so repeat runs do not pile them up.
+        foreach ((ushort graphic, string name) in new (ushort, string)[] { (0x0F84, "Garlic"), (0x0F85, "Ginseng"), (0x0F8D, "SpidersSilk") })
+        {
+            if (CountInside(pack, graphic) < 5)
+            {
+                await AnswerTarget($"[addtopack {name} 10");
+            }
+        }
+
+        GameActions.CastSpell(4);
+        bool firstCast = await Until(host, () => world.TargetManager.IsTargeting, 240);
+        world.TargetManager.CancelTarget();
+        await Until(host, () => !world.TargetManager.IsTargeting, 60);
+        Check("Heal cast by hand becomes the last spell", firstCast && GameActions.LastSpellIndex == 4,
+            $"cursor {firstCast}, last spell {GameActions.LastSpellIndex}");
+
+        // The shard refuses a cast while the last one is still recovering, so
+        // A gets a few tries over a few seconds rather than one fixed wait.
+        bool foundSpell = false, spellCursor = false, saidHeal = false;
+
+        for (int attempt = 0; attempt < 4 && !spellCursor; attempt++)
+        {
+            await InputProbe.Wait(host, 45);
+            foundSpell = await SeekMacro(PadScreen.LastSpellLabel);
+
+            if (!foundSpell)
+            {
+                break;
+            }
+
+            int journalBefore = JournalManager.Entries.Count;
+            await Button(host, JoyButton.A);
+            spellCursor = await Until(host, () => world.TargetManager.IsTargeting, 180);
+            saidHeal = JournalManager.Entries.Skip(journalBefore)
+                .Any(e => e.Text != null && e.Text.IndexOf("In Mani", StringComparison.OrdinalIgnoreCase) >= 0);
+            world.TargetManager.CancelTarget();
+        }
+
+        Check("the Macros screen offers Last spell", foundSpell, PadScreen.FocusLabel);
+        Check("A on Last spell casts Heal again (power words heard, target cursor up)",
+            spellCursor && saidHeal && !PadScreen.IsOpen,
+            $"cursor {spellCursor}, heard In Mani {saidHeal}");
+        world.TargetManager.CancelTarget();
     }
 
     // --- mounting and the attack lock (INPUT-00) -------------------------------------------------
