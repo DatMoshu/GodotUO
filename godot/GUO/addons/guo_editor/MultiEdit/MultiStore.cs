@@ -293,7 +293,7 @@ internal static class MultiStore
 
     private static (int Code, string Log) RunPython(IEnumerable<string> args)
     {
-        var psi = new ProcessStartInfo(EditorData.Setting("UO_PYTHON", OperatingSystem.IsWindows() ? "python" : "python3"))
+        var psi = new ProcessStartInfo(EditorData.Python())
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,

@@ -211,7 +211,7 @@ public partial class StaticStageDialog : ConfirmationDialog
 
     internal static async Task<JsonNode> Run(string[] args, CancellationToken token, string tool = "replacement.py")
     {
-        var start = new ProcessStartInfo(EditorData.Setting("UO_PYTHON", OperatingSystem.IsWindows() ? "python" : "python3"))
+        var start = new ProcessStartInfo(EditorData.Python())
         {
             UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardOutput = true, RedirectStandardError = true,

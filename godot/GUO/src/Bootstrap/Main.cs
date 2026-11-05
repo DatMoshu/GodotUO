@@ -492,7 +492,10 @@ public partial class Main : Node
     private void StartClient()
     {
         GD.Print("[GUO] world renderer : " + (GUO.Renderer.DepthWorldProbe.Enabled
-            ? "Depth World (RD, per-frame canvas recovery)" : "canvas")
+            ? "Depth World (RD, per-frame canvas recovery)"
+            : OperatingSystem.IsMacOS() && System.Array.IndexOf(OS.GetCmdlineUserArgs(), "--canvas-world") < 0
+                && RenderingServer.GetCurrentRenderingMethod() != "gl_compatibility"
+                ? "canvas (macOS default; --depth-world for Depth World)" : "canvas")
             + "; backend=" + RenderingServer.GetCurrentRenderingMethod());
         if (_options.SafForget)
         {

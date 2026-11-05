@@ -19,7 +19,7 @@ public partial class EditorSmoke
     private bool IndependentWave(string wave, string pcm, bool expectValid = true)
     {
         const string script = "import pathlib,sys,wave; expected=pathlib.Path(sys.argv[2]).read_bytes(); f=wave.open(sys.argv[1],'rb'); assert (f.getnchannels(),f.getsampwidth(),f.getframerate(),f.getnframes(),f.getcomptype())==(1,2,22050,len(expected)//2,'NONE'); assert f.readframes(f.getnframes())==expected; f.close(); print('PCM exact')";
-        var start = new ProcessStartInfo(EditorData.Setting("PYTHON", "python"))
+        var start = new ProcessStartInfo(EditorData.Python())
         { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (string argument in new[] { "-c", script, wave, pcm }) start.ArgumentList.Add(argument);
         using var child = Process.Start(start);
@@ -50,7 +50,7 @@ public partial class EditorSmoke
         SoundWaveCheck("install_export_refused", SoundWaveRefused(() => SoundWave.Export(pcm, Path.Combine(install, "guo-sound-refusal.wav")))
             && !File.Exists(Path.Combine(install, "guo-sound-refusal.wav")));
         string target = Path.Combine(root, "backing.wav"), hardlink = Path.Combine(root, "output.wav"); File.WriteAllBytes(target, prior);
-        var link = new ProcessStartInfo(EditorData.Setting("PYTHON", "python")) { UseShellExecute = false, CreateNoWindow = true };
+        var link = new ProcessStartInfo(EditorData.Python()) { UseShellExecute = false, CreateNoWindow = true };
         foreach (string argument in new[] { "-c", "import os,sys; os.link(sys.argv[1],sys.argv[2])", target, hardlink }) link.ArgumentList.Add(argument);
         using (var child = Process.Start(link)) { if (!child.WaitForExit(10_000) || child.ExitCode != 0) throw new IOException("Could not create isolated WAV hardlink fixture."); }
         SoundWave.Export(new byte[] { 0, 0 }, hardlink);

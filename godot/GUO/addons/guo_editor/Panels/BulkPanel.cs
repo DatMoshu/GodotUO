@@ -190,7 +190,7 @@ public partial class BulkPanel : AssetPanel
     {
         // UO_PYTHON is config.bat's key; most Linux distributions ship only
         // "python3", so that is the default there.
-        var psi = new ProcessStartInfo(EditorData.Setting("UO_PYTHON", OperatingSystem.IsWindows() ? "python" : "python3"))
+        var psi = new ProcessStartInfo(EditorData.Python())
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,

@@ -86,6 +86,7 @@ internal static class PadRegressionProbe
         try
         {
             Inventory();
+            Macros();
             foreach (GamepadLayout layout in new[] { GamepadLayout.Labels, GamepadLayout.Swapped })
             {
                 PadBindings.ResetToDefaults();
@@ -404,5 +405,40 @@ internal static class PadRegressionProbe
         Check("single-page modal shoulder commands preserve screen", PadScreen.IsOpen && PadScreen.Focus == 0);
         Tap(JoyButton.B);
         Check("modal cancel still closes screen", !PadScreen.IsOpen);
+    }
+
+    // The Macros screen's fixed lines, built by the production builder with no
+    // player (the shard-free run): A on a line must hand ClassicUO's macro
+    // manager the matching macro. The pending macro is cleared afterwards so
+    // nothing runs.
+    private static void Macros()
+    {
+        Check("macros screen: Bandage self runs BandageSelf", FixedMacro(PadScreen.BandageSelfLabel) == MacroType.BandageSelf);
+    }
+
+    // Fixed lines come before the user's macros and the first match wins, so a
+    // user macro with the same name cannot shadow the line under test.
+    private static MacroType? FixedMacro(string label)
+    {
+        GUO.Game.World world = Client.Game?.UO?.World;
+        if (world?.Macros == null) return null;
+        Type screen = typeof(PadScreen);
+        var lines = (IList) screen.GetField("_lines", PrivateStatic).GetValue(null);
+        Type lineType = screen.GetNestedType("Line", BindingFlags.NonPublic);
+        FieldInfo pending = typeof(MacroManager).GetField("_lastMacro", BindingFlags.NonPublic | BindingFlags.Instance);
+        lines.Clear();
+        screen.GetMethod("Macros", PrivateStatic).Invoke(null, new object[] { world });
+        MacroType? fired = null;
+        foreach (object line in lines)
+        {
+            if ((string) lineType.GetField("Label").GetValue(line) != label) continue;
+            pending.SetValue(world.Macros, null);
+            ((Action) lineType.GetField("Act").GetValue(line))();
+            fired = (pending.GetValue(world.Macros) as MacroObject)?.Code;
+            break;
+        }
+        pending.SetValue(world.Macros, null);
+        lines.Clear();
+        return fired;
     }
 }

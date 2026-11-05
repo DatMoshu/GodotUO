@@ -18,7 +18,7 @@ public partial class EditorSmoke
     { _assetReport["sound_export_" + name] = ok; if (!ok) AssetFail("Sound export: " + name); }
     private bool IndependentSoundCsv(string path, string encoding, string[][] expected)
     {
-        var start = new ProcessStartInfo(EditorData.Setting("PYTHON", "python")) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true };
+        var start = new ProcessStartInfo(EditorData.Python()) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true };
         foreach (string argument in new[] { "-c", "import csv,json,sys; f=open(sys.argv[1],encoding=sys.argv[2],newline=''); rows=list(csv.reader(f,delimiter=';')); f.close(); assert rows==json.loads(sys.argv[3]),repr(rows)", path, encoding, JsonSerializer.Serialize(expected) }) start.ArgumentList.Add(argument);
         using var child = Process.Start(start);
         if (!child.WaitForExit(10_000)) { child.Kill(entireProcessTree: true); child.WaitForExit(); return false; }

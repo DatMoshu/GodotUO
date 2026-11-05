@@ -601,6 +601,28 @@ public sealed class EditorData : IDisposable
     /// </summary>
     public static string Setting(string key, string fallback) => Setting(key, fallback, null);
 
+    /// <summary>
+    /// The Python the editor's tools run under: UO_PYTHON or PYTHON from the
+    /// environment (a launcher exports UO_PYTHON), else config.bat's
+    /// UO_PYTHON. config.bat's default, "python", is the Windows name; on
+    /// macOS and many Linux installs only "python3" exists, so there the
+    /// default becomes python3.
+    /// </summary>
+    public static string Python()
+    {
+        foreach (string key in new[] { "UO_PYTHON", "PYTHON" })
+        {
+            string env = System.Environment.GetEnvironmentVariable(key);
+            if (!string.IsNullOrEmpty(env))
+            {
+                return env;
+            }
+        }
+
+        string configured = Setting("UO_PYTHON", "python");
+        return !OperatingSystem.IsWindows() && configured == "python" ? "python3" : configured;
+    }
+
     internal static string Setting(string key, string fallback, IReadOnlyDictionary<string, string> config)
     {
         string env = System.Environment.GetEnvironmentVariable(key);

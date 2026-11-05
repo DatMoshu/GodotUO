@@ -19,7 +19,7 @@ public partial class EditorSmoke
     private byte[] IndependentInputWave(string root, byte[] pcm)
     {
         Directory.CreateDirectory(root); string raw = Path.Combine(root, "input.pcm"), wave = Path.Combine(root, "input.wav"); File.WriteAllBytes(raw, pcm);
-        var start = new ProcessStartInfo(EditorData.Setting("PYTHON", "python"))
+        var start = new ProcessStartInfo(EditorData.Python())
         { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true };
         foreach (string argument in new[] { "-c", "import pathlib,sys,wave; f=wave.open(sys.argv[2],'wb'); f.setparams((1,2,22050,0,'NONE','not compressed')); f.writeframes(pathlib.Path(sys.argv[1]).read_bytes()); f.close()", raw, wave }) start.ArgumentList.Add(argument);
         using var child = Process.Start(start);

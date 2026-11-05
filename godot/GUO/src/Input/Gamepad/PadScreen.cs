@@ -82,6 +82,7 @@ namespace GUO.Input.Gamepad
         // The world keeps the left half. The bag is the right half, one fixed
         // screen rectangle. UI scale does not change either share.
         internal const float WorldShare = 0.5f;
+        internal const string BandageSelfLabel = "Bandage self";
 
         private static Control _root;
         private static Panel _frame;
@@ -857,6 +858,18 @@ namespace GUO.Input.Gamepad
                 {
                     Close();
                     Open(WheelWindow.Speech);
+                },
+            });
+
+            Item bandage = world.Player?.FindBandage();
+            _lines.Add(new Line
+            {
+                Label = BandageSelfLabel,
+                Detail = bandage != null ? bandage.Amount.ToString() : "none",
+                Act = () =>
+                {
+                    Close();
+                    PadWheel.RunMacro(world, MacroType.BandageSelf);
                 },
             });
 

@@ -32,7 +32,7 @@ separately. See [Feature Coverage](Feature-Coverage.md) for evidence and gaps.
 | Optional presentation | HD art, regional audio, realtime/spell lighting, styled water and ambient effects require their settings and/or installed content |
 | Godot editor | Assets, World, Gumps, MapGen, Multis, Store, Admin and AI tools; editor code is excluded from exported clients |
 | Labs | Explicit `GuoLabs=true` Debug build; experiments are excluded from all exports |
-| Platforms | [Platform Support](Platform-Support.md): [Platform Support](Platform-Support.md): [Windows](Windows-Build.md), [Linux](Linux.md), [Android](Android-Build.md), [Steam Deck](Steam-Deck.md), [Web](Web-Client.md); evidence differs by target |
+| Platforms | [Platform Support](Platform-Support.md): [Platform Support](Platform-Support.md): [Windows](Windows-Build.md), [Linux](Linux.md), [macOS](macOS.md), [Android](Android-Build.md), [Steam Deck](Steam-Deck.md), [Web](Web-Client.md); evidence differs by target |
 
 For exact boundaries see [Feature Layers](Feature-Layers.md). For every
 documented tool and launcher see the [Tool Reference](Tool-Reference.md)
