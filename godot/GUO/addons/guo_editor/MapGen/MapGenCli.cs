@@ -78,7 +78,7 @@ public static class MapGenCli
     {
         return Task.Run(() =>
         {
-            var psi = new ProcessStartInfo(EditorData.Setting("UO_PYTHON", OperatingSystem.IsWindows() ? "python" : "python3"))
+            var psi = new ProcessStartInfo(EditorData.Python())
             {
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,

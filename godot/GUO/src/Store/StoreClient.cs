@@ -181,9 +181,15 @@ internal sealed class StoreClient : IDisposable
     internal static void NoLinks(string path)
     {
         for (var info = new DirectoryInfo(Path.GetFullPath(path)); info != null; info = info.Parent)
-            if (info.Exists) StorePack.Require((info.Attributes & FileAttributes.ReparsePoint) == 0, "Store path contains a link");
+            if (info.Exists && !IsSystemAlias(info)) StorePack.Require((info.Attributes & FileAttributes.ReparsePoint) == 0, "Store path contains a link");
         if (File.Exists(path)) StorePack.Require((File.GetAttributes(path) & FileAttributes.ReparsePoint) == 0, "Store file is a link");
     }
+
+    // macOS ships /var, /tmp and /etc as root-owned links into /private, so
+    // every temp folder (Path.GetTempPath is under /var/folders) sits below
+    // one. Only those exact top-level aliases are let through.
+    private static bool IsSystemAlias(DirectoryInfo info) =>
+        OperatingSystem.IsMacOS() && info.Parent?.Parent == null && info.LinkTarget == "private/" + info.Name;
 
     private string Destination(string id, string version)
     {

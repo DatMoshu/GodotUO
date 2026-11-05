@@ -436,7 +436,7 @@ public partial class EditorSmoke
                 + "Path(__file__).with_name('fixture.pid').write_text(str(os.getpid()) + '\\n')\n"
                 + "print('fixture stdout ready', flush=True)\nprint('fixture stderr ready', file=sys.stderr, flush=True)\n"
                 + "print('password=fixture-only-value', flush=True)\nprint('argument=' + sys.argv[1], flush=True)\ntime.sleep(0.3 if len(sys.argv) > 2 else 600)\n");
-            string python = EditorData.Setting("UO_PYTHON", OperatingSystem.IsWindows() ? "python" : "python3");
+            string python = EditorData.Python();
             profile.Executable = Path.IsPathFullyQualified(python) ? python : (System.Environment.GetEnvironmentVariable("PATH") ?? "")
                 .Split(Path.PathSeparator).Select(p => Path.Combine(p.Trim('"'), python + (OperatingSystem.IsWindows() && !python.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? ".exe" : "")))
                 .FirstOrDefault(File.Exists) ?? python;

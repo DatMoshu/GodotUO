@@ -36,7 +36,7 @@ Status: `todo` | `doing` | `done` | `blocked`
 
 | ID | Item | Acceptance | Status |
 |---|---|---|---|
-| S1 | Bandage self direct or macro-row default | One pad path bandages self without opening the pack | todo |
+| S1 | Bandage self direct or macro-row default | One pad path bandages self without opening the pack | done — Macros screen (Y with no macro row, or the LT wheel's Macros slice) has a Bandage self line; A runs ClassicUO's BandageSelf macro (`--pad-wheels-probe`) |
 | S2 | Last object / last spell on macro row | Favorites or Y-row entries fire LastObject / LastSpell | todo |
 | S3 | Corpse loot screen actions | From radar-opened corpse, take / dig without mouse | todo |
 | S4 | Talk / speech pad path | Compose speech without a physical keyboard (OSK or fallback) | doing — the Say screen covers the shard's spoken commands; free text still needs a keyboard |

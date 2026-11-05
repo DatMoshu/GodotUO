@@ -177,7 +177,7 @@ public partial class EditorSmoke
     {
         string target = Path.Combine(install, "source.png"), hardlink = Path.Combine(root, "hardlink.png"), symlink = Path.Combine(root, "install-alias");
         byte[] before = { 1, 2, 3, 4 }; File.WriteAllBytes(target, before);
-        var start = new ProcessStartInfo(EditorData.Setting("PYTHON", "python")) { UseShellExecute = false, CreateNoWindow = true };
+        var start = new ProcessStartInfo(EditorData.Python()) { UseShellExecute = false, CreateNoWindow = true };
         foreach (string argument in new[] { "-c", "import os,sys; os.link(sys.argv[1],sys.argv[2]); os.symlink(sys.argv[3],sys.argv[4],target_is_directory=True)", target, hardlink, install, symlink }) start.ArgumentList.Add(argument);
         using var child = Process.Start(start);
         bool ready = child.WaitForExit(10_000) && child.ExitCode == 0;

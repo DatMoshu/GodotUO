@@ -52,7 +52,7 @@ caches and profiles belong outside the checkout.
 
 ## Platforms and feature boundaries
 
-[Windows](docs/wiki/Windows-Build.md) · [Linux](docs/wiki/Linux.md) ·
+[Windows](docs/wiki/Windows-Build.md) · [Linux](docs/wiki/Linux.md) · [macOS](docs/wiki/macOS.md) ·
 [Android ARM64](docs/wiki/Android-Build.md) · [Steam Deck](docs/wiki/Steam-Deck.md) ·
 [Web community-engine target](docs/wiki/Web-Client.md)
 

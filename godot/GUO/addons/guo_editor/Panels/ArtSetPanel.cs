@@ -203,7 +203,7 @@ public partial class ArtSetPanel : AssetPanel
 
     private static (int Code, string Error) Run(List<string> args, Action<string> line, int timeoutMs)
     {
-        var psi = new ProcessStartInfo(EditorData.Setting("UO_PYTHON", OperatingSystem.IsWindows() ? "python" : "python3"))
+        var psi = new ProcessStartInfo(EditorData.Python())
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,

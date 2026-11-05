@@ -16,6 +16,20 @@ what to extend and where to start are in `docs/mapgen_status.md`.
 | `data/` | Shipped data: the dungeon roster and decor table (hand-written by the owner) |
 | `run.py` | Builds the CLI into `build/mapgen/cli` on first use and runs it with the config's paths |
 
+## ImageSharp license
+
+MapGen uses ImageSharp 3.2.0. `MapGen/sixlabors.lic` is the issued
+assembly-scoped Community license for `GUO.MapGen`; the package discovers it
+beside the project file during builds. Contributors and CI can use this file
+without obtaining individual keys. Six Labors permits this scoped key in the
+public repository; unrestricted or commercial keys must remain private.
+
+The license expires **2028-02-03**. Renew through
+[Six Labors licensing](https://licensing.sixlabors.com/) during its final
+90 days, using the same account and exact assembly name `GUO.MapGen`.
+Replace the supplied file intact. Renaming the assembly or adding another
+direct Six Labors dependency requires a key covering that assembly.
+
 ## Use
 
 ```

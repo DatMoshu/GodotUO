@@ -54,10 +54,11 @@ echo "[smoke] UO+ ambient particles contract (synthetic; ADR-0042)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/Particles/AmbientParticlesProbe.tscn || FAIL=1
 echo "[smoke] shared UO+ flags, densities and Touch UI persistence (synthetic; ADR-uoplus-settings, UX-03)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Configuration/UoPlusProbe.tscn || FAIL=1
+# Both probes exercise the Depth World options (speed mode); macOS defaults to canvas, so they ask for it.
 echo "[smoke] GUO effect ownership: spell lights and classic shadow replacement (synthetic; task 1136)"
-"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Configuration/GuoEffectPolicyProbe.tscn || FAIL=1
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Configuration/GuoEffectPolicyProbe.tscn -- --depth-world || FAIL=1
 echo "[smoke] GUO options category: no stale overwrites, section-scoped Apply/Defaults/Cancel, Classic+Modern entry (client data; task 1136)"
-"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Game/UI/Gumps/GuoOptionsFlowProbe.tscn -- --scratch-profile --no-focus --no-splash --silent --pregame-classic --cache-dir "$UO_BUILD_DIR/guo-options-flow/cache" --client-data "$UO_CLIENT_DATA" --client-version "$UO_CLIENT_VERSION" || FAIL=1
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Game/UI/Gumps/GuoOptionsFlowProbe.tscn -- --depth-world --scratch-profile --no-focus --no-splash --silent --pregame-classic --cache-dir "$UO_BUILD_DIR/guo-options-flow/cache" --client-data "$UO_CLIENT_DATA" --client-version "$UO_CLIENT_VERSION" || FAIL=1
 echo "[smoke] Lighting speed weather state and callback contract (headless; ADR-0048)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/SpeedMode/Weather/SpeedModeWeatherProbe.tscn || FAIL=1
 echo "[smoke] Window receiver shaft gates and failure contract (headless; ADR-0048)"

@@ -16,6 +16,7 @@
 **Builds**
 - [Platform Support](Platform-Support.md)
 - [Linux](Linux.md)
+- [macOS](macOS.md)
 - [Windows Build](Windows-Build.md)
 - [Android Build](Android-Build.md)
 - [Steam Deck](Steam-Deck.md)

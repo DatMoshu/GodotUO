@@ -44,7 +44,7 @@ fi
 
 _guo_env_args=()
 if [ "${1:-}" = "--defer-shard-secrets" ]; then _guo_env_args+=(--without-shard-secrets); fi
-_guo_env="$("$UO_PYTHON" "$UO_ROOT/tools/shellenv/run.py" "${_guo_env_args[@]}")" || {
+_guo_env="$("$UO_PYTHON" "$UO_ROOT/tools/shellenv/run.py" ${_guo_env_args[@]+"${_guo_env_args[@]}"})" || {
     echo "[common] FATAL: could not resolve the configuration (tools/shellenv)"
     return 1 2>/dev/null || exit 1
 }

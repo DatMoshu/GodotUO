@@ -97,7 +97,7 @@ public partial class EditorSmoke
         CsvCheck("document_install_destination_refused", ClilocRefused(() => ClilocCsv.Export(doc, new[] { 1 }, Path.Combine(install, "forbidden.csv"), legacy))
             && !File.Exists(Path.Combine(install, "forbidden.csv")));
         string hardlink = Path.Combine(root, "source-alias.csv");
-        var start = new ProcessStartInfo(EditorData.Setting("PYTHON", "python")) { UseShellExecute = false, CreateNoWindow = true };
+        var start = new ProcessStartInfo(EditorData.Python()) { UseShellExecute = false, CreateNoWindow = true };
         foreach (string argument in new[] { "-c", "import os,sys; os.link(sys.argv[1],sys.argv[2])", source, hardlink }) start.ArgumentList.Add(argument);
         using (var child = Process.Start(start))
         {

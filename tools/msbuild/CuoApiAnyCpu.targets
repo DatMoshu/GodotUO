@@ -1,0 +1,102 @@
+<Project>
+  <!--
+    cuoapi.dll on an arm64 host that is not Windows (Apple Silicon macOS,
+    Linux arm64).
+
+    Upstream ships cuoapi.dll as an IL-only assembly stamped PE32+/AMD64, so
+    the .NET loader takes it for x64-only code and an arm64 process refuses
+    it ("The assembly architecture is not compatible with the current process
+    architecture") the first time the client touches CUO_API, at
+    Plugin.Tick on the first frame.
+
+    The assembly holds no native code, so the only thing tying it to x64 is
+    the COFF Machine field. On these hosts the build references a copy of the
+    very same file with Machine set to I386, which the loader reads as MSIL
+    (AnyCPU) because the CLI header says IL-only. Metadata and IL are
+    untouched, so the plugin ABI is still exactly upstream's: nothing is
+    re-declared. The task refuses any input that is not IL-only.
+
+    Windows never runs this: there the reference stays the upstream file, as
+    before. Imported by godot/GUO/GUO.csproj after its cuoapi Reference.
+  -->
+  <PropertyGroup>
+    <GuoCuoApiAnyCpu Condition="'$(GuoCuoApiAnyCpu)' == '' and '$(OS)' != 'Windows_NT' and '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'Arm64'">true</GuoCuoApiAnyCpu>
+    <_GuoCuoApiSource>$(UpstreamDir)\external\cuoapi\cuoapi.dll</_GuoCuoApiSource>
+  </PropertyGroup>
+
+  <UsingTask TaskName="GuoMarkIlOnlyAnyCpu" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Source ParameterType="System.String" Required="true" />
+      <Destination ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        byte[] pe = File.ReadAllBytes(Source);
+        int coff = BitConverter.ToInt32(pe, 0x3C);
+        if (pe[0] != 'M' || pe[1] != 'Z' || BitConverter.ToUInt32(pe, coff) != 0x00004550)
+        {
+            Log.LogError("{0} is not a PE file", Source);
+            return false;
+        }
+        int machineAt = coff + 4;
+        ushort machine = BitConverter.ToUInt16(pe, machineAt);
+        int optional = coff + 24;
+        ushort magic = BitConverter.ToUInt16(pe, optional);
+        int directories = optional + (magic == 0x20B ? 112 : 96);
+        uint cliRva = BitConverter.ToUInt32(pe, directories + 14 * 8);
+        ushort sections = BitConverter.ToUInt16(pe, coff + 6);
+        int sectionTable = optional + BitConverter.ToUInt16(pe, coff + 20);
+        int cliAt = -1;
+        for (int i = 0; i < sections; i++)
+        {
+            int s = sectionTable + i * 40;
+            uint va = BitConverter.ToUInt32(pe, s + 12), size = BitConverter.ToUInt32(pe, s + 8), raw = BitConverter.ToUInt32(pe, s + 20);
+            if (cliRva >= va && cliRva < va + size) cliAt = (int)(raw + cliRva - va);
+        }
+        // COMIMAGE_FLAGS_ILONLY set, COMIMAGE_FLAGS_32BITREQUIRED clear.
+        uint flags = cliAt < 0 ? 0 : BitConverter.ToUInt32(pe, cliAt + 16);
+        if ((flags & 0x1) == 0 || (flags & 0x2) != 0 || (machine != 0x8664 && machine != 0x14C))
+        {
+            Log.LogError("{0} is not an IL-only AMD64/I386 assembly (machine 0x{1:X4}, CLI flags 0x{2:X}); refusing to retarget it", Source, machine, flags);
+            return false;
+        }
+        pe[machineAt] = 0x4C;
+        pe[machineAt + 1] = 0x01;
+        Directory.CreateDirectory(Path.GetDirectoryName(Destination));
+        File.WriteAllBytes(Destination, pe);
+        Log.LogMessage(MessageImportance.Low, "cuoapi: {0} -> {1} (Machine 0x{2:X4} -> 0x014C)", Source, Destination, machine);
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <!-- IntermediateOutputPath is only set after the project body, so the
+       destination is resolved when the build runs. -->
+  <Target Name="_GuoCuoApiAnyCpuPath" Condition="'$(GuoCuoApiAnyCpu)' == 'true'">
+    <PropertyGroup>
+      <_GuoCuoApiAnyCpu>$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'cuoapi-anycpu', 'cuoapi.dll'))</_GuoCuoApiAnyCpu>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="GuoCuoApiAnyCpu"
+          DependsOnTargets="_GuoCuoApiAnyCpuPath"
+          BeforeTargets="ResolveAssemblyReferences"
+          Condition="'$(GuoCuoApiAnyCpu)' == 'true'"
+          Inputs="$(_GuoCuoApiSource);$(MSBuildThisFileFullPath)"
+          Outputs="$(_GuoCuoApiAnyCpu)">
+    <GuoMarkIlOnlyAnyCpu Source="$(_GuoCuoApiSource)" Destination="$(_GuoCuoApiAnyCpu)" />
+  </Target>
+
+  <!-- Separate from the copy, so an up-to-date skip still swaps the reference. -->
+  <Target Name="GuoCuoApiAnyCpuReference"
+          AfterTargets="GuoCuoApiAnyCpu"
+          BeforeTargets="ResolveAssemblyReferences"
+          Condition="'$(GuoCuoApiAnyCpu)' == 'true'">
+    <ItemGroup>
+      <Reference Remove="cuoapi" />
+      <Reference Include="cuoapi">
+        <HintPath>$(_GuoCuoApiAnyCpu)</HintPath>
+      </Reference>
+    </ItemGroup>
+  </Target>
+</Project>

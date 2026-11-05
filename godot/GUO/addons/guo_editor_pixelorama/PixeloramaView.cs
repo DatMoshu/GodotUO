@@ -64,7 +64,7 @@ public partial class PixeloramaView : VBoxContainer
         try
         {
             if (!string.IsNullOrEmpty(png) && !File.Exists(png)) return Report("The exported image no longer exists.");
-            var prepare = new ProcessStartInfo(EditorData.Setting("UO_PYTHON", "python"))
+            var prepare = new ProcessStartInfo(EditorData.Python())
             {
                 UseShellExecute = false, CreateNoWindow = true,
                 RedirectStandardOutput = true, RedirectStandardError = true

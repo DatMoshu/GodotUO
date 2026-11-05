@@ -13,11 +13,15 @@ namespace GUO.Renderer
     {
         // Production selection is explicit on Compatibility and when --canvas-world
         // is requested. Diagnostic probes retain their explicit backend controls.
+        // macOS starts on canvas: on Metal (Apple M5, Retina) the Depth World frame
+        // overran the display interval, so a third to a half of frames took two
+        // (perf probe p95 32-37 ms against 17 ms on canvas, docs/wiki/macOS.md).
+        // --depth-world still selects it there.
         public static readonly bool Enabled =
             Array.IndexOf(Godot.OS.GetCmdlineUserArgs(), "--canvas-world") < 0
             && Godot.RenderingServer.GetCurrentRenderingMethod() != "gl_compatibility"
-            && (Array.IndexOf(Godot.OS.GetCmdlineUserArgs(), "--batcher-probe") < 0
-                || Array.IndexOf(Godot.OS.GetCmdlineUserArgs(), "--depth-world") >= 0);
+            && (Array.IndexOf(Godot.OS.GetCmdlineUserArgs(), "--depth-world") >= 0
+                || (Array.IndexOf(Godot.OS.GetCmdlineUserArgs(), "--batcher-probe") < 0 && !OperatingSystem.IsMacOS()));
 
         // Per-frame capability admission precedes the visibility walk. Resident
         // failures recover from the complete ordered canvas source (ADR-0044).

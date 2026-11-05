@@ -17,6 +17,8 @@ through `tools/guo/config.py`, which reads the same two files on Linux. A
 machine that only has a `config.local.bat` keeps it: it is read when there is
 no `config.local.sh`.
 
+The same launchers run on a Mac; [macOS](macOS.md) lists what differs there.
+
 The [Steam Deck](Steam-Deck.md) page is a different job: it exports a
 standalone build and pushes it to a Deck over ssh.
 

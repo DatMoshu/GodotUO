@@ -63,6 +63,8 @@
       <HintPath>$(UpstreamDir)\external\cuoapi\cuoapi.dll</HintPath>
     </Reference>
   </ItemGroup>
+  <!-- On a non-Windows arm64 host, the same cuoapi.dll marked AnyCPU. -->
+  <Import Project="$(MSBuildThisFileDirectory)../../tools/msbuild/CuoApiAnyCpu.targets" />
 
   <!--
     The managed-plugin host, tools/plugin_host: upstream's ClassicUO.Bootstrap

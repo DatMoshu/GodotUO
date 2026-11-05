@@ -1434,7 +1434,7 @@ public partial class EditorTour : Node
 
     private async Task<(int Code, string Text)> RunTool(params string[] args)
     {
-        var psi = new ProcessStartInfo(EditorData.Setting("UO_PYTHON", "python"))
+        var psi = new ProcessStartInfo(EditorData.Python())
         {
             UseShellExecute = false,
             CreateNoWindow = true,
