@@ -59,6 +59,7 @@ public partial class MultiEditView
             h.Add(p.Hue);
         }
 
+        h.Add(_doc.GenerationJson);
         foreach (var layer in _doc.Layers) h.Add(layer);
         foreach (var p in _doc.Parts) { h.Add(p.LayerId); h.Add(p.TextFlags); h.Add(p.TextExtra); }
         return h.ToHashCode();

@@ -75,6 +75,7 @@ public sealed partial class MultiDocument
     /// <summary>Starts again from these parts with a fresh history.</summary>
     public void Reset(IEnumerable<MultiPart> parts, string what, IEnumerable<MultiLayer> layers = null)
     {
+        LoadGeneration(null);
         Layers = layers?.ToList() ?? new() { new MultiLayer(0, "Components") };
         ActiveLayerId = Layers[0].Id;
         Parts = new List<MultiPart>();

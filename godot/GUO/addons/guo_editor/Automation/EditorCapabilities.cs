@@ -184,7 +184,9 @@ internal static class EditorCapabilities
         {
             MultiDocument d = ctx.MultiEdit?.Doc ?? throw new InvalidOperationException("Multi Editor unavailable");
             int offset = Num(a, "offset", 0, 0, int.MaxValue), limit = Num(a, "limit", 50, 1, 100);
-            return Json(new { d.Name, d.Source, total = d.Parts.Count, d.Revision, layers = d.Layers, d.ActiveLayerId, selection_key = string.Join(",", d.Selection.OrderBy(id => id)), d.CanUndo, d.CanRedo, components = d.Parts.Skip(offset).Take(limit).Select(p => new { p.Uid, p.Id, p.X, p.Y, p.Z, p.Shown, p.Hue, p.LayerId }) });
+            var provenance = d.GenerationJson == null ? null : JsonNode.Parse(d.GenerationJson);
+            var generation = provenance == null ? null : new { source_id = provenance["source_id"], snapshots = provenance["snapshots"], source_rooms = provenance["source_rooms"], note = "Original generation reference; room masks do not follow subsequent edits." };
+            return Json(new { d.Name, d.Source, generation, total = d.Parts.Count, d.Revision, layers = d.Layers, d.ActiveLayerId, selection_key = string.Join(",", d.Selection.OrderBy(id => id)), d.CanUndo, d.CanRedo, components = d.Parts.Skip(offset).Take(limit).Select(p => new { p.Uid, p.Id, p.X, p.Y, p.Z, p.Shown, p.Hue, p.LayerId }) });
         }, true, ("offset", "integer"), ("limit", "integer"));
         foreach (bool preview in new[] { true, false })
         {

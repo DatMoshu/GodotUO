@@ -91,3 +91,48 @@ by stale callbacks and a shutdown access violation. OrderedWorldCapture now
 owns a native object/method signal relay and frees it during disposal, so
 teardown can disconnect the exact connection even as managed delegates reload.
 This does not change draw ordering or the GPU pass.
+
+## Database-driven building generation
+
+Run `python tools/multi_layers/database.py --help`. Supply `--db` with the
+shared building census, `--decor-db` with the separate mined decor database,
+`--source` with the local Project Zomboid install, `--source-id` with an exact
+census ID, `--name` with a safe filename, and `--out` with a new external folder.
+The initial adapter accepts exactly two storeys. It reads current snapshots in
+SQLite read-only mode, checks the room table against building analysis and
+verifies the source header hash before resolving the layout. Missing mappings
+or native movement failures stop generation; nonempty output is refused.
+
+The canonical layout importer, furniture placer, roof/yard builders, validator
+and native writer remain the implementation. Output includes an editable
+`NAME.multi.json`, native components/sidecar, source layout, previews, room
+plans and generation report. The seven layers are Foundation, Yard, Tavern hall,
+Upstairs rooms, Stairs, Roof and Furnishings. There is no model/API request in
+this deterministic compiler. Open the generated document in Multi Edit for
+manual controls or the existing approved AI tool operations.
+
+An optional `generation` object survives document saves and recovery, contributes
+to dirty-state tracking and is cleared for a new document. It records snapshots,
+source room rectangles, verified source provenance, input/geometry hashes and
+explicit theme adaptations. `multi_document` exposes source ID, snapshots and
+source rooms to AI tools. Room masks are immutable original-generation evidence,
+not constraints that follow later edits. Native MUL/UOP exports carry geometry,
+not this metadata; keep the layered JSON as the editable source.
+
+The yard and gable roof are authored adaptations, not claimed reconstructions of
+the source parcel/roof. Modern wash fixtures may use recorded native visual
+substitutes. Generated furniture is limited to existing complete native templates;
+this milestone does not create new artwork or plumbing mechanics.
+
+## Wall-family joins
+
+The layout importer's default stone theme uses the wall-only `rubble_stone`
+set in `tools/layout_import/wall_styles.json`. It binds straight runs, windows
+and corners to one visually checked native family. The west corner uses its
+capped end and the south corner uses the family's two-face piece. Mined neighbour
+frequency alone can misclassify end pieces and mix similarly named stone sets.
+A material override does not inherit the stone set; another explicit matching
+set can be supplied through `wall_style`. These wall-only definitions are kept
+out of the complete-house preset picker. Existing saved multis are unchanged
+until regenerated. Tests cover the four corners, runs, windows, material override
+and height mismatch; visual review remains necessary for new wall sets.

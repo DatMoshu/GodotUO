@@ -13,6 +13,9 @@ public sealed record MultiLayer(int Id, string Name, bool Visible = true, bool L
 public sealed partial class MultiDocument
 {
     public List<MultiLayer> Layers { get; private set; } = new();
+    // Immutable source provenance; these masks are not live constraints after edits.
+    public string GenerationJson { get; private set; }
+    public void LoadGeneration(string json) => GenerationJson = json;
     public int ActiveLayerId { get; private set; }
     public string LastEditError { get; private set; }
     public bool LayerVisible(int id) => Layers.FirstOrDefault(l => l.Id == id)?.Visible ?? true;
@@ -93,6 +96,7 @@ internal static class MultiLayerCodec
     public static string Encode(MultiDocument doc, string componentsJson)
     {
         var root = JsonNode.Parse(componentsJson).AsObject();
+        if (doc.GenerationJson != null) root["generation"] = JsonNode.Parse(doc.GenerationJson);
         root["editor_layers"] = JsonSerializer.SerializeToNode(new
         {
             version = 1,
@@ -100,6 +104,13 @@ internal static class MultiLayerCodec
             membership = doc.Parts.Select(p => p.LayerId).ToArray()
         });
         return root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    public static string ReadGeneration(string json)
+    {
+        var node = JsonNode.Parse(json)["generation"];
+        if (node != null && node is not JsonObject) throw new ArgumentException("Generation provenance must be an object.");
+        return node?.ToJsonString();
     }
 
     public static List<MultiLayer> Decode(string json, List<MultiPart> parts)

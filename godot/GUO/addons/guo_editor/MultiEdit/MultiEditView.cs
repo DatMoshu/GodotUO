@@ -690,7 +690,9 @@ public partial class MultiEditView : VBoxContainer, IMultiComponentSink
             string json = File.ReadAllText(path);
             (string name, int? source, List<MultiPart> parts) = MultiStore.FromJson(json);
             var layers = MultiLayerCodec.Decode(json, parts);
+            string generation = MultiLayerCodec.ReadGeneration(json);
             OpenParts(name, parts, source, layers);
+            _doc.LoadGeneration(generation);
             MarkSaved(path);
             return true;
         }
