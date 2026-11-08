@@ -773,6 +773,51 @@ def compose(place_dir: Path, width: int = 1600) -> Path | None:
 # --------------------------------------------------------------------------
 
 
+def run_one_session(cfg: Config, places: list[Place], root: Path, args: argparse.Namespace) -> int:
+    """One login per client, every place in it, nothing typed (one_session.py)."""
+    import one_session
+
+    character = args.character or last_played(cfg) or "Guoprobe"
+    settle_ms = int(args.settle * 1000)
+    size = tuple(int(n) for n in args.size.split(","))
+    out = root / "_one_session"
+    failed = False
+    started = time.time()
+
+    if args.only in ("cuo", "both"):
+        if args.build or not cfg.upstream_exe.exists():
+            build_cuo(cfg)
+        begun = time.time()
+        one_session.run_cuo(cfg, places, out, character, settle_ms, size, args.session_timeout, args.zoom)
+        missing = one_session.collect(out, root, "cuo", "cuo", places)
+        print(f"[ab] cuo: {len(places) - len(missing)}/{len(places)} shots in {time.time() - begun:.0f}s")
+        if missing:
+            print(f"[ab] cuo: no picture for {', '.join(missing)}; see {out / one_session.SESSION / 'cuo.log'}")
+            failed = True
+
+    if args.only in ("guo", "both"):
+        before = [*(one_session.BEST_LIGHTING if args.guo_best else ()), *args.guo_set]
+        hours = one_session.hours_for(args.guo_day_hour, args.guo_night_hour, NIGHT)
+        if hours is not None:
+            before.append("LocalLightingTestTime=True")
+        begun = time.time()
+        one_session.run_guo(cfg, places, out, character, settle_ms, size, args.session_timeout,
+                            before, hours, args.guo_cache_dir, args.zoom)
+        missing = one_session.collect(out, root, one_session.GUO_VARIANT, "guo", places)
+        print(f"[ab] guo: {len(places) - len(missing)}/{len(places)} shots in {time.time() - begun:.0f}s")
+        if missing:
+            print(f"[ab] guo: no picture for {', '.join(missing)}; "
+                  f"see {out / one_session.SESSION / (one_session.GUO_VARIANT + '.log')}")
+            failed = True
+
+    for place in places:
+        sheet = compose(root / place.name)
+        if sheet:
+            print(f"[ab] {sheet}")
+    print(f"[ab] Output: {root} ({time.time() - started:.0f}s in all)")
+    return 1 if failed else 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -802,6 +847,22 @@ def main() -> int:
         "into it with the desktop's keyboard (off by default: a run from an "
         "agent must not take the keyboard from whoever is working)",
     )
+    parser.add_argument(
+        "--one-session",
+        action="store_true",
+        help="log each client in once and photograph every place in that "
+        "session, with nothing typed and no focus (needs a ClassicUO built "
+        "by this tool, which carries ShotDump)",
+    )
+    parser.add_argument("--size", default="1600,900", help="--one-session: window size of both clients")
+    parser.add_argument("--zoom", type=float, default=1.0, help="--one-session: camera zoom of both clients (0 keeps each profile's)")
+    parser.add_argument("--session-timeout", type=float, default=420.0, help="--one-session: seconds per client")
+    parser.add_argument("--guo-best", action="store_true", help="--one-session: GUO with its enhanced lighting on")
+    parser.add_argument("--guo-set", action="append", default=[], metavar="PROP=VALUE",
+                        help="--one-session: a GUO profile property for this run only; repeatable")
+    parser.add_argument("--guo-day-hour", type=int, help="--one-session: test-clock hour by day (needs a GuoLabs build)")
+    parser.add_argument("--guo-night-hour", type=int, help="--one-session: test-clock hour at night (needs a GuoLabs build)")
+    parser.add_argument("--guo-cache-dir", help="--one-session: run GUO from this home instead of the shared one")
     args = parser.parse_args()
 
     global FOREGROUND_ALLOWED
@@ -809,7 +870,7 @@ def main() -> int:
 
     # Refused before anything starts, not at the first keystroke: a GUO pass
     # that ran for minutes and then stopped would look like a broken tool.
-    if args.only in ("cuo", "both") and not FOREGROUND_ALLOWED:
+    if args.only in ("cuo", "both") and not FOREGROUND_ALLOWED and not args.one_session:
         print(FOREGROUND_REFUSED)
         return 2
 
@@ -825,6 +886,9 @@ def main() -> int:
         if unknown:
             print(f"[ab] no such place: {', '.join(sorted(unknown))}")
             return 1
+
+    if args.one_session:
+        return run_one_session(cfg, places, root, args)
 
     if args.only in ("guo", "both"):
         for place in places:

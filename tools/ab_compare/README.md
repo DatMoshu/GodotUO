@@ -55,6 +55,47 @@ are escaped so `+ ^ % ~` in them are typed rather than read as Shift, Ctrl,
 Alt and Enter. The output folder is only opened in Explorer when the
 foreground was allowed, since an Explorer window takes it too.
 
+## One login per client
+
+`--one-session` is the fast way, and it does not touch the desktop. `ShotDump`
+(`godot/GUO/src/Bootstrap/ShotDump.cs`) is compiled into GUO and into the
+ClassicUO this tool builds; `one_session.py` hands it one list of shard commands
+and shots through `GUO_SHOT_DUMP`, so each client logs in once, walks every
+place, and saves its own screenshots. Gumps are hidden for the run. Windows are
+kept off the monitors as `tools/visual_ab` does.
+
+Logging in is what costs the time: a client relaunched per place spends most of
+each minute starting up. Results land in the same `<place>\cuo.png` and
+`guo.png`, and the sheets are composed the same way.
+
+## Clients nothing can be compiled into
+
+`tour.py` photographs any client binary, such as a build from someone else. The
+dev shard does the driving (patch `0026-dev-photo-tour`): started with
+`GUO_PHOTO_TOUR` set to a manifest path, it waits for the listed characters to be
+online, moves them from stop to stop, sets the light and writes a stamp at each
+one. `tour.py` writes that manifest, launches the clients and copies each window
+with `PrintWindow` on every stamp, so nothing types into a client and no window
+needs focus. Several clients can run at once on different characters and see the
+same world at the same moment. One login kicks another, so each client needs its
+own account.
+
+```
+set GUO_PHOTO_TOUR=<folder>\tour.json        (before launchers\shard\run.bat)
+python tools\ab_compare\tour.py --manifest <folder> --character NAME --out <folder> --client "NAME|WORKING FOLDER|COMMAND LINE"
+```
+
+The client logs itself in, by whatever settings or arguments it takes.
+
+## Tests
+
+```
+python -m pytest -q tools/ab_compare
+```
+
+Covers the step lists, the spec, collecting shots and the tour manifest. The
+clients themselves need a shard and are checked by running the tool.
+
 ## Building ClassicUO
 
 Built on first use, or with `--build`, into `build\cuo\`. Out of tree on
@@ -79,6 +120,12 @@ no plugins here.
 | `--login-wait`, `--settle` | seconds to wait for autologin, and after each `[go` |
 | `--no-open` | do not open the output folder at the end |
 | `--allow-foreground` | let the ClassicUO pass take the foreground and type; off by default |
+| `--one-session` | log each client in once and shoot every place in that session; nothing typed, no focus |
+| `--size W,H`, `--zoom Z`, `--session-timeout` | `--one-session`: window size, the same camera zoom on both (default 1; 0 keeps each profile's), and seconds allowed per client |
+| `--guo-best` | `--one-session`: GUO with `LightingSpeedMode` on and lamp shadows at maximum |
+| `--guo-set PROP=VALUE` | `--one-session`: a GUO profile property for this run only, repeatable |
+| `--guo-day-hour`, `--guo-night-hour` | `--one-session`: the Labs test clock; needs `dotnet build -p:GuoLabs=true` |
+| `--guo-cache-dir` | `--one-session`: run GUO from this home instead of the shared one |
 
 The places are five in `run.py`, the same five `launchers\dev\sweep.bat` uses:
 a town in daylight, a forest with buildings in it, a coastline, a dungeon mouth
