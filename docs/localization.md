@@ -3,7 +3,7 @@
 This guide defines agent workflows and a roadmap for helping shard owners welcome
 players across languages. The first [runtime journal translation milestone](localization-runtime.md)
 adds optional local Italian/English speech translation. Per-language shard content
-packs remain roadmap work. Use the `localize` skill from the fleet's `gamedev-kit@fable-local` plugin (enable it in `.claude/settings.local.json`).
+packs remain roadmap work. Use the `localize` skill from the fleet's `gamedev-kit@moshu-fleet` plugin (enable it in `.claude/settings.local.json`).
 
 ## Existing implementation
 

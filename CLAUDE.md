@@ -11,7 +11,7 @@ only what is specific to Claude Code:
 - The roles in `.claude/agents/` run as subagents: the UO, port and Godot specialists only.
 - The generic game-studio kit (`/sprint-plan`, `/code-review`, `/team-*`, producer/designer roles, coding-standard
   rules) left the repo on 2026-11-08 to keep every session's context small. It is the fleet's
-  `gamedev-kit@fable-local` plugin; enable it in your own `.claude/settings.local.json` when a task needs it.
+  `gamedev-kit@moshu-fleet` plugin; enable it in your own `.claude/settings.local.json` when a task needs it.
 - `.claude/hooks/` and `.claude/settings.json` add session hooks and the
   status line; other tools rely on the git hooks and CI instead.
 
