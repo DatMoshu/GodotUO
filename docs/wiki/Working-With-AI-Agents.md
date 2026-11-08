@@ -91,3 +91,8 @@ off, and each call is checked against your choices. See
 `tools\editor_mcp\README.md`.
 
 For the current gate defaults, client/editor/reference boundaries, permissions and inspect–act–verify loop, see [AI and MCP](AI-and-MCP.md).
+
+A cloud worker's review of the whole tree, the fact database, and the
+list of follow-up tasks that are not implemented yet, are in the
+[cloud worker set](../cloud_worker/README.md). That set does not replace
+this page or `AGENTS.md`.
