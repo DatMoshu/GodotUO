@@ -84,6 +84,9 @@ namespace GUO.Input.Gamepad
         internal const float WorldShare = 0.5f;
         internal const string BandageSelfLabel = "Bandage self";
 
+        internal const string LastObjectLabel = "Last object";
+        internal const string LastSpellLabel = "Last spell";
+
         private static Control _root;
         private static Panel _frame;
         private static Control _stage;
@@ -873,6 +876,36 @@ namespace GUO.Input.Gamepad
                 },
             });
 
+            Entity last = world.LastObject != 0 ? world.Get(world.LastObject) : null;
+            string objectDetail = string.IsNullOrWhiteSpace(last?.Name) ? (last != null ? "?" : "none") : last.Name;
+
+            _lines.Add(new Line
+            {
+                Label = LastObjectLabel,
+                Detail = objectDetail,
+                Act = () =>
+                {
+                    Close();
+                    PadWheel.RunMacro(world, MacroType.LastObject);
+                },
+            });
+
+            SpellDefinition spell = SpellDefinition.FullIndexGetSpell(GameActions.LastSpellIndex);
+            string spellDetail = spell != null && !string.IsNullOrEmpty(spell.Name)
+                ? spell.Name
+                : GameActions.LastSpellIndex.ToString();
+
+            _lines.Add(new Line
+            {
+                Label = LastSpellLabel,
+                Detail = spellDetail,
+                Act = () =>
+                {
+                    Close();
+                    PadWheel.RunMacro(world, MacroType.LastSpell);
+                },
+            });
+
             foreach (Macro macro in world.Macros.GetAllMacros())
             {
                 if (macro?.Items is not MacroObject first)
@@ -1037,6 +1070,7 @@ namespace GUO.Input.Gamepad
 
             h ^= JournalManager.Entries.Count << 3;
             h ^= world.Macros.GetAllMacros().Count << 5;
+            h ^= (int)world.LastObject ^ (GameActions.LastSpellIndex << 16);
             h ^= PadBindings.RadarRange << 7;
 
             return h;

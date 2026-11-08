@@ -131,9 +131,12 @@ The **Say** screen is a list of what players say most: Bank, Balance, Vendor
 buy, Vendor sell, Guards, Hail, and the pet commands All follow me, All come,
 All guard me, All stay, All stop and All kill. Pick one with the D-pad and
 press A to say it. Open it from the Macros screen (**Say...**, the first line),
-or put it on a wheel slice in Set controls. The Macros screen also has a fixed
-**Bandage self** line right after Say... that displays your bandage count and
-uses A to bandage yourself. Anything else still needs a keyboard.
+or put it on a wheel slice in Set controls. The Macros screen also has fixed
+lines right after Say...: **Bandage self** shows your bandage count and A
+bandages you; **Last object** and **Last spell** show the item name and the
+spell name and fire ClassicUO's LastObject / LastSpell macros with A. Before
+you cast anything, Last spell shows Clumsy, ClassicUO's default. Anything else
+still needs a keyboard.
 
 The reach is `radarRange` in `padbindings.json` (1 to 24 tiles, 10 by default).
 
@@ -460,7 +463,7 @@ Baldur's Gate 3 mapping (suggested by the project owner):
 | Action | Placement | Notes |
 |---|---|---|
 | Bandage self | Macros screen | Fixed line on the Macros screen (A bandages yourself; no dedicated face button) |
-| Last object / last spell | Macro row or hold-Y favorites | ClassicUO LastObject / LastSpell |
+| Last object / last spell | Fixed lines on the Macros screen | ClassicUO LastObject / LastSpell |
 | Target cursor: confirm | RT radar A (partially bound) | Ground targets still need a reticle |
 | Target cursor: self | Chord while targeting (planned) | Touch bar already has Self |
 | Target cursor: last | LB while targeting (bound as Target last) | Keep |

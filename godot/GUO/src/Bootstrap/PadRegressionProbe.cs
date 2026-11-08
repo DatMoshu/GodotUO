@@ -87,6 +87,7 @@ internal static class PadRegressionProbe
         {
             Inventory();
             Macros();
+            MacrosRepeat();
             foreach (GamepadLayout layout in new[] { GamepadLayout.Labels, GamepadLayout.Swapped })
             {
                 PadBindings.ResetToDefaults();
@@ -440,5 +441,11 @@ internal static class PadRegressionProbe
         pending.SetValue(world.Macros, null);
         lines.Clear();
         return fired;
+    }
+
+    private static void MacrosRepeat()
+    {
+        Check("macros screen: Last object runs LastObject", FixedMacro(PadScreen.LastObjectLabel) == MacroType.LastObject);
+        Check("macros screen: Last spell runs LastSpell", FixedMacro(PadScreen.LastSpellLabel) == MacroType.LastSpell);
     }
 }
