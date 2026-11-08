@@ -1943,6 +1943,8 @@ Exported clients omit this authoring-only block.
 No shell, script, file or packet tools exist. Synthetic keys and buttons still held when the last controller
 disconnects are released.
 
+**Stock ClassicUO (`tools/cuo_automation`, `CuoMcpHost.cs`).** The out-of-tree ClassicUO build carries a test-only server with the same transport, handshake, environment variables and token rules, compiled in by `tools/render_dump/inject.targets` and never into GUO or an export. It serves `guo_state`, `guo_wait`, `guo_input`, `guo_screenshot`, `guo_ui` and `guo_quit` with the argument schemas above; `guo_overlay` is not served. Differences: `frame` counts game loop frames; `width`/`height` and every `guo_ui` bound are back buffer pixels; `guo_ui` lists `system: "classic"` controls only, without `name`; `guo_state` has no `audio` block; `guo_screenshot` is the back buffer. Input is delivered to ClassicUO's own handlers from the game loop, so the window needs no focus. See `tools/cuo_automation/README.md`.
+
 ## 30. Workspace, server profiles and client profiles (ADR-0032)
 
 The per-user workspace is `UO_WORKSPACE_DIR`, or `%LOCALAPPDATA%\GUO` on Windows, `$XDG_DATA_HOME/guo`

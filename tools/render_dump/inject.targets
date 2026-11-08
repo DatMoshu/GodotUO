@@ -7,6 +7,8 @@
   -->
   <PropertyGroup Condition="'$(MSBuildProjectName)' == 'ClassicUO.Client'">
     <DefineConstants>$(DefineConstants);RENDER_DUMP_CUO;PERF_DUMP_CUO</DefineConstants>
+    <!-- ClassicUO is PublishAot, which turns reflection JSON off; the test-only automation server (tools/cuo_automation) serialises replies. -->
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
   </PropertyGroup>
   <ItemGroup Condition="'$(MSBuildProjectName)' == 'ClassicUO.Client'">
     <Compile Include="$(MSBuildThisFileDirectory)..\..\godot\GUO\src\Bootstrap\RenderDump.cs" Link="RenderDumpInjected\RenderDump.cs" />
@@ -14,5 +16,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)..\..\godot\GUO\src\Bootstrap\PerfDump.cs" Link="PerfDumpInjected\PerfDump.cs" />
     <!-- B7: the same spot photographed by each client's own screenshot code (GUO_SHOT_DUMP). -->
     <Compile Include="$(MSBuildThisFileDirectory)..\..\godot\GUO\src\Bootstrap\ShotDump.cs" Link="PerfDumpInjected\ShotDump.cs" />
+    <!-- Test-only automation server (GUO_MCP_PORT + GUO_MCP_TOKEN), tools/cuo_automation: inert unless both are set. -->
+    <Compile Include="$(MSBuildThisFileDirectory)..\cuo_automation\CuoMcpHost.cs" Link="CuoAutomationInjected\CuoMcpHost.cs" />
   </ItemGroup>
 </Project>
