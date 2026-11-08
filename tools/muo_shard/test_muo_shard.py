@@ -193,7 +193,7 @@ def test_guo_dev_pin_is_the_shared_pin():
 
 # Patches deliberately carried by guo-dev only (owner decision). Anything else must be on both profiles.
 # Dev-only: never carried by the public profile. DFI content stays off guo-vps until the owner turns it on.
-DEV_ONLY_PATCHES = {"0006-loopback-ban-exemption.patch"} | {
+DEV_ONLY_PATCHES = {"0006-loopback-ban-exemption.patch", "0026-dev-photo-tour.patch"} | {
     p.name for p in (REPO / "tools" / "modernuo" / "patches").glob("*-dfi-*.patch")
 }
 
