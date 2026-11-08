@@ -756,6 +756,13 @@ its two later .NET denial of service advisories fail the restore under the pin's
 warnings-as-errors. Remove it when the ModernUO pin moves past that. Carried by both
 profiles.
 
+### `patches/0026-dev-photo-tour.patch`
+
+Adds `GuoPhotoTour`, a dev tool that does nothing unless `GUO_PHOTO_TOUR` names a
+manifest. When every listed character is online it moves them through the stops,
+sets the light, writes a stamp at each one, then puts the light back and deletes
+the manifest. `tools/ab_compare/tour.py` writes the manifest and takes the pictures.
+
 ### Retired
 
 `0004-multi-tile-enumerator` fixed tile lookups that stopped at a multi with no

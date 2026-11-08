@@ -98461,6 +98461,165 @@ index 5789eabc6..1951c8ec6 100644
          <PackageReference Include="Argon2.Bindings" Version="1.20.0" />
 MUO_EOF_0
 chmod 0644 $BASE/patches/0025-pkcs-advisory.patch
+install -d "$(dirname $BASE/patches/0026-dev-photo-tour.patch)"
+cat > $BASE/patches/0026-dev-photo-tour.patch <<'MUO_EOF_0'
+diff --git a/Projects/UOContent/Misc/GuoPhotoTour.cs b/Projects/UOContent/Misc/GuoPhotoTour.cs
+new file mode 100644
+index 000000000..e69f30692
+--- /dev/null
++++ b/Projects/UOContent/Misc/GuoPhotoTour.cs
+@@ -0,0 +1,149 @@
++using System;
++using System.Collections.Generic;
++using System.IO;
++using System.Text.Json;
++using ModernUO.CodeGeneratedEvents;
++using Server.Logging;
++using Server.Mobiles;
++using Server.Network;
++
++namespace Server.Misc;
++
++// GUO dev shard only. Off unless GUO_PHOTO_TOUR names a manifest (tools/ab_compare/tour.py).
++// When every listed character is online the shard moves them from stop to stop and writes
++// a stamp at each one, so a client nothing can be compiled into is photographed with no
++// input at all. The manifest is deleted when a tour ends, so a later login does nothing.
++public static class GuoPhotoTour
++{
++    private sealed class Plan
++    {
++        public List<string> Characters { get; set; } = new();
++        public int StartMs { get; set; }
++        public int SettleMs { get; set; }
++        public int CaptureMs { get; set; }
++        public List<Stop> Stops { get; set; } = new();
++    }
++
++    private sealed class Stop
++    {
++        public string Name { get; set; } = "";
++        public int X { get; set; }
++        public int Y { get; set; }
++        public int? Z { get; set; }
++        public int Light { get; set; }
++    }
++
++    private static readonly ILogger logger = LogFactory.GetLogger(typeof(GuoPhotoTour));
++    private static readonly JsonSerializerOptions Options = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
++    private static readonly string Manifest = Environment.GetEnvironmentVariable("GUO_PHOTO_TOUR");
++    private static bool _running;
++    private static int _lightBefore;
++
++    [OnEvent(nameof(PlayerMobile.PlayerLoginEvent))]
++    public static void OnLogin(PlayerMobile pm)
++    {
++        if (_running || string.IsNullOrEmpty(Manifest) || !File.Exists(Manifest))
++        {
++            return;
++        }
++
++        Plan plan;
++
++        try
++        {
++            plan = JsonSerializer.Deserialize<Plan>(File.ReadAllText(Manifest), Options);
++        }
++        catch (Exception e)
++        {
++            logger.Warning(e, "Photo tour: cannot read {Manifest}", Manifest);
++            return;
++        }
++
++        if (plan?.Stops.Count > 0 && Listed(plan, pm).Count == plan.Characters.Count)
++        {
++            _running = true;
++            _lightBefore = LightCycle.LevelOverride;
++            logger.Information("Photo tour: {Count} stops", plan.Stops.Count);
++            Timer.StartTimer(TimeSpan.FromMilliseconds(plan.StartMs), () => Visit(plan, 0));
++        }
++    }
++
++    private static List<Mobile> Listed(Plan plan, Mobile arriving = null)
++    {
++        var found = new List<Mobile>();
++
++        foreach (var name in plan.Characters)
++        {
++            if (arriving?.Name == name)
++            {
++                found.Add(arriving);
++                continue;
++            }
++
++            foreach (var ns in NetState.Instances)
++            {
++                if (ns.Mobile?.Name == name)
++                {
++                    found.Add(ns.Mobile);
++                    break;
++                }
++            }
++        }
++
++        return found;
++    }
++
++    private static void Visit(Plan plan, int index)
++    {
++        if (index >= plan.Stops.Count)
++        {
++            Finish();
++            return;
++        }
++
++        var stop = plan.Stops[index];
++        LightCycle.LevelOverride = stop.Light;
++
++        foreach (var mobile in Listed(plan))
++        {
++            var map = mobile.Map;
++
++            if (map != null && map != Map.Internal)
++            {
++                mobile.MoveToWorld(new Point3D(stop.X, stop.Y, stop.Z ?? map.GetAverageZ(stop.X, stop.Y)), map);
++            }
++        }
++
++        Timer.StartTimer(
++            TimeSpan.FromMilliseconds(plan.SettleMs),
++            () =>
++            {
++                Write($"{index:D2}_{stop.Name}.ready");
++                Timer.StartTimer(TimeSpan.FromMilliseconds(plan.CaptureMs), () => Visit(plan, index + 1));
++            }
++        );
++    }
++
++    private static void Finish()
++    {
++        LightCycle.LevelOverride = _lightBefore;
++        Write("done");
++        File.Delete(Manifest);
++        _running = false;
++        logger.Information("Photo tour: done");
++    }
++
++    private static void Write(string name)
++    {
++        try
++        {
++            var folder = Path.Combine(Path.GetDirectoryName(Manifest)!, "stamps");
++            Directory.CreateDirectory(folder);
++            File.WriteAllText(Path.Combine(folder, name), "");
++        }
++        catch (Exception e)
++        {
++            logger.Warning(e, "Photo tour: cannot write {Name}", name);
++        }
++    }
++}
+MUO_EOF_0
+chmod 0644 $BASE/patches/0026-dev-photo-tour.patch
 
 # checkout at the pin; the patch stack comes off (last first) on every deploy and goes back on,
 # since a patch under a later one that edits the same lines does not come off alone
@@ -98470,6 +98629,7 @@ as_user git -C "$SRC" cat-file -e "$PIN^{commit}" 2>/dev/null || as_user git -C 
 as_user git -C "$SRC" update-index --no-skip-worktree global.json 2>/dev/null || true
 as_user git -C "$SRC" checkout -q -- global.json 2>/dev/null || true
 head="$(as_user git -C "$SRC" rev-parse -q --verify HEAD 2>/dev/null || true)"
+if as_user git -C "$SRC" apply -R --check "$BASE/patches/0026-dev-photo-tour.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0026-dev-photo-tour.patch"; fi
 if as_user git -C "$SRC" apply -R --check "$BASE/patches/0025-pkcs-advisory.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0025-pkcs-advisory.patch"; fi
 if as_user git -C "$SRC" apply -R --check "$BASE/patches/0024-dfi-conpvp-arena.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0024-dfi-conpvp-arena.patch"; fi
 if as_user git -C "$SRC" apply -R --check "$BASE/patches/0023-dfi-bomberman.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0023-dfi-bomberman.patch"; fi
@@ -98704,6 +98864,14 @@ elif as_user git -C "$SRC" apply -R --check "$BASE/patches/0025-pkcs-advisory.pa
 else
     as_user git -C "$SRC" apply --check "$BASE/patches/0025-pkcs-advisory.patch" || true
     die "0025-pkcs-advisory.patch does not apply to the checkout at $PIN; stopping"
+fi
+if as_user git -C "$SRC" apply --check "$BASE/patches/0026-dev-photo-tour.patch" >/dev/null 2>&1; then
+    as_user git -C "$SRC" apply "$BASE/patches/0026-dev-photo-tour.patch"
+elif as_user git -C "$SRC" apply -R --check "$BASE/patches/0026-dev-photo-tour.patch" >/dev/null 2>&1; then
+    echo "muo_shard: 0026-dev-photo-tour.patch already applied, skipping"
+else
+    as_user git -C "$SRC" apply --check "$BASE/patches/0026-dev-photo-tour.patch" || true
+    die "0026-dev-photo-tour.patch does not apply to the checkout at $PIN; stopping"
 fi
 
 # the archive's SDK can trail the SDK version the pin's global.json names; build with the installed one

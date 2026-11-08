@@ -57,6 +57,7 @@ is retired (as `0004-multi-tile-enumerator` was).
 | 0023 | Bomberman, from the Solaris BoardGames scripts DFI ran, `[DfiBomberman` | **ours**, shard content | none |
 | 0024 | ModernUO's ConPVP duels set up in Luna's Grand Arena in place of DFI's duel and CTF systems, `[DfiArenas` | **ours**, shard content | none |
 | 0025 | Pins `System.Security.Cryptography.Pkcs` to 10.0.14, past two .NET denial of service advisories in the 10.0.0 that MailKit brings in, which fail the restore under the pin's warnings-as-errors | **ours**, build fix until the pin moves | none |
+| 0026 | `GuoPhotoTour`: off unless `GUO_PHOTO_TOUR` names a manifest, moves listed characters through stops and writes stamps, for photographing clients nothing can be compiled into (`tools/ab_compare/tour.py`) | **ours**, dev tooling | none |
 | issue | `MultiData.LoadUOP` and uncompressed entries | **upstream** (issue, no patch) | `upstream/issue-multidata-loaduop-uncompressed.md` |
 
 ### 0006: loopback ban exemption (NET-00c, MUO patch)
@@ -91,6 +92,11 @@ address. Keep this narrow policy separate from public-shard ban policy.
 ### 0025: the Pkcs advisory pin (MUO patch)
 
 GUO patch: `patches/0025-pkcs-advisory.patch`. **Verdict: ours**, until the pin moves.
+
+### 0026: the dev photo tour (MUO patch)
+
+GUO patch: `patches/0026-dev-photo-tour.patch`. **Verdict: ours**: dev tooling with no
+upstream use, inert unless `GUO_PHOTO_TOUR` is set.
 
 ### 0007 to 0024: DFI Network shard content (MUO patch)
 
