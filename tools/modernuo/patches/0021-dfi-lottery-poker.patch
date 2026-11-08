@@ -1,0 +1,1530 @@
+diff --git a/Projects/UOContent.Tests/Tests/Custom/DfiGamesTests.cs b/Projects/UOContent.Tests/Tests/Custom/DfiGamesTests.cs
+new file mode 100644
+index 000000000..fca4fbfea
+--- /dev/null
++++ b/Projects/UOContent.Tests/Tests/Custom/DfiGamesTests.cs
+@@ -0,0 +1,212 @@
++using System;
++using System.Collections.Generic;
++using Server;
++using Server.Custom.Dfi.Lottery;
++using Server.Custom.Dfi.Poker;
++using Server.Items;
++using Server.Misc;
++using Server.Mobiles;
++using Xunit;
++
++namespace UOContent.Tests.Custom;
++
++[Collection("Sequential UOContent Tests")]
++public class DfiGamesTests : IDisposable
++{
++    private readonly List<IEntity> _created = new();
++
++    public DfiGamesTests()
++    {
++        if (NameList.GetNameList("male") == null)
++        {
++            NameList.Configure();
++        }
++    }
++
++    public void Dispose()
++    {
++        foreach (var e in _created)
++        {
++            e?.Delete();
++        }
++
++        _created.Clear();
++        LotterySystem.Register.Clear();
++    }
++
++    private T Track<T>(T e) where T : IEntity
++    {
++        _created.Add(e);
++        return e;
++    }
++
++    private PlayerMobile Player(int bank = 0)
++    {
++        var m = Track(new PlayerMobile());
++        m.Player = true;
++        m.Body = 0x190;
++        m.AddItem(new Backpack());
++        m.AddItem(new BankBox(m));
++        m.MoveToWorld(new Point3D(1434, 1690, 0), Map.Felucca);
++
++        if (bank > 0)
++        {
++            m.BankBox.DropItem(new BankCheck(bank));
++        }
++
++        return m;
++    }
++
++    // Cards: suit * 13 + value - 1, suits hearts 0, diamonds 1, spades 2, clubs 3.
++    private static int C(int value, int suit) => suit * 13 + value - 1;
++
++    public static TheoryData<int[], PokerHand> Hands => new()
++    {
++        { [C(10, 0), C(11, 0), C(12, 0), C(13, 0), C(1, 0)], PokerHand.RoyalFlush },
++        { [C(5, 2), C(6, 2), C(7, 2), C(8, 2), C(9, 2)], PokerHand.StraightFlush },
++        { [C(7, 0), C(7, 1), C(7, 2), C(7, 3), C(2, 0)], PokerHand.FourOfAKind },
++        { [C(3, 0), C(3, 1), C(3, 2), C(9, 3), C(9, 0)], PokerHand.FullHouse },
++        { [C(2, 1), C(5, 1), C(9, 1), C(11, 1), C(13, 1)], PokerHand.Flush },
++        { [C(1, 0), C(2, 1), C(3, 2), C(4, 3), C(5, 0)], PokerHand.Straight },
++        { [C(10, 0), C(11, 1), C(12, 2), C(13, 3), C(1, 0)], PokerHand.Straight },
++        { [C(8, 0), C(8, 1), C(8, 2), C(2, 3), C(5, 0)], PokerHand.ThreeOfAKind },
++        { [C(8, 0), C(8, 1), C(4, 2), C(4, 3), C(5, 0)], PokerHand.TwoPairs },
++        { [C(8, 0), C(8, 1), C(4, 2), C(11, 3), C(5, 0)], PokerHand.Pair },
++        { [C(2, 0), C(4, 1), C(6, 2), C(9, 3), C(11, 0)], PokerHand.None }
++    };
++
++    [Theory]
++    [MemberData(nameof(Hands))]
++    public void Poker_RanksEveryHand(int[] hand, PokerHand expected)
++    {
++        Assert.Equal(expected, PokerCards.Evaluate(hand));
++    }
++
++    [Fact]
++    public void Poker_DealsFiveDifferentCardsAndDrawsOnlyWhatIsNotHeld()
++    {
++        var machine = Track(new PokerMachineLow());
++        var session = new PokerSession(machine);
++
++        session.Deal();
++        Assert.Equal(5, new HashSet<int>(session.Hand).Count);
++
++        session.Held[0] = session.Held[2] = true;
++        var kept = (session.Hand[0], session.Hand[2]);
++        session.Draw();
++
++        Assert.Equal(kept, (session.Hand[0], session.Hand[2]));
++    }
++
++    [Fact]
++    public void Poker_PaysByTheBetAndRoyalFlushTakesAThird()
++    {
++        var player = Player();
++        var machine = Track(new PokerMachineMedium());
++        machine.GoldInMachine = 90000;
++        var session = new PokerSession(machine) { Bet = 300 };
++
++        Assert.Equal(80 * 3, session.Winning(PokerHand.Pair));
++        Assert.Equal(30000, session.Winning(PokerHand.RoyalFlush));
++
++        session.Hand[0] = C(8, 0);
++        session.Hand[1] = C(8, 1);
++        session.Hand[2] = C(4, 2);
++        session.Hand[3] = C(11, 3);
++        session.Hand[4] = C(5, 0);
++        machine.Settle(player, session);
++
++        Assert.Equal(240, Banker.GetBalance(player));
++        Assert.Equal(90000 - 240, machine.GoldInMachine);
++    }
++
++    [Fact]
++    public void Poker_BetsCycleAndChargeTheBackpack()
++    {
++        var player = Player();
++        var machine = Track(new PokerMachineHigh());
++        var session = new PokerSession(machine);
++        var before = machine.GoldInMachine;
++
++        Assert.Equal(1000, session.Bet);
++        for (var i = 0; i < 5; i++)
++        {
++            session.NextBet();
++        }
++
++        Assert.Equal(1000, session.Bet);
++
++        Assert.False(machine.Charge(player, 1000, false));
++        player.Backpack.DropItem(new Gold(1500));
++        Assert.True(machine.Charge(player, 1000, false));
++        Assert.Equal(500, player.Backpack.GetAmount(typeof(Gold)));
++        Assert.Equal(before + 1000, machine.GoldInMachine);
++    }
++
++    [Fact]
++    public void Lottery_BuyingTakesTicketsFromTheBankAndClearingRefunds()
++    {
++        var player = Player(1000);
++        var entry = LotterySystem.GetEntry(player);
++        entry.Tickets.Add([1, 2, 3, 4]);
++        entry.Tickets.Add([5, 6, 7, 8]);
++
++        Assert.Null(LotterySystem.Buy(player));
++        Assert.True(entry.Bought);
++        Assert.Equal(1000 - 2 * LotterySystem.TicketPrice, Banker.GetBalance(player));
++
++        LotterySystem.Clear(player);
++        Assert.False(entry.Bought);
++        Assert.Empty(entry.Tickets);
++        Assert.Equal(1000, Banker.GetBalance(player));
++    }
++
++    [Fact]
++    public void Lottery_DrawingPaysByCorrectNumbersAndSplitsTheJackpot()
++    {
++        LotterySystem.UpdateJackpot();
++        var jackpot = LotterySystem.Jackpot;
++
++        var a = Player(10_000);
++        var b = Player(10_000);
++        var c = Player(10_000);
++        LotterySystem.GetEntry(a).Tickets.Add([1, 2, 3, 4]);
++        LotterySystem.GetEntry(b).Tickets.Add([1, 2, 3, 4]);
++        LotterySystem.GetEntry(c).Tickets.Add([1, 2, 30, 40]);
++        LotterySystem.GetEntry(c).Tickets.Add([1, 2, 3, 40]);
++
++        foreach (var m in (Mobile[])[a, b, c])
++        {
++            LotterySystem.Buy(m);
++        }
++
++        var balanceA = Banker.GetBalance(a);
++        var balanceC = Banker.GetBalance(c);
++
++        LotterySystem.Draw([1, 2, 3, 4]);
++
++        Assert.Equal(balanceA + jackpot / 2, Banker.GetBalance(a));
++        Assert.Equal(balanceC + LotterySystem.Prize2 + LotterySystem.Prize3, Banker.GetBalance(c));
++        Assert.False(LotterySystem.GetEntry(a).Bought);
++        Assert.True(LotterySystem.GetEntry(c).ShowWinnings);
++        Assert.Equal(2, LotterySystem.GetEntry(c).TotalCorrectNumbers[4]);
++    }
++
++    [Fact]
++    public void Lottery_UnboughtTicketsWinNothing()
++    {
++        var player = Player();
++        LotterySystem.GetEntry(player).Tickets.Add([1, 2, 3, 4]);
++
++        LotterySystem.Draw([1, 2, 3, 4]);
++
++        Assert.Equal(0, Banker.GetBalance(player));
++    }
++
++    [Fact]
++    public void Lottery_NpcAndMachinesConstruct()
++    {
++        Assert.False(Track(new LotteryNpc()).Deleted);
++        Assert.Contains(Track(new LotteryNpc()), LotterySystem.Npcs);
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Games/DfiGamesGen.cs b/Projects/UOContent/Custom/DFI/Games/DfiGamesGen.cs
+new file mode 100644
+index 000000000..ad2a5b3f6
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Games/DfiGamesGen.cs
+@@ -0,0 +1,73 @@
++// Places DFI's town games: a lottery master and the three poker machines on Britain's main street, by the Lost
++// Lands gate. DFI's saves kept none of their spots.
++
++using System.Collections.Generic;
++using Server.Commands;
++using Server.Custom.Dfi.Lottery;
++using Server.Items;
++using Server.Logging;
++
++namespace Server.Custom.Dfi;
++
++public static class DfiGamesGen
++{
++    private static readonly ILogger logger = LogFactory.GetLogger(typeof(DfiGamesGen));
++
++    public static readonly Point3D LotterySpot = new(1442, 1700, 0);
++    public static readonly Point3D[] PokerSpots = [new(1439, 1698, 0), new(1440, 1697, 0), new(1441, 1698, 0)];
++
++    public static void Configure()
++    {
++        CommandSystem.Register("DfiGames", AccessLevel.Administrator, OnCommand);
++    }
++
++    [Usage("DfiGames")]
++    [Description("Places DFI's lottery master and poker machines in Britain, replacing any placed before.")]
++    private static void OnCommand(CommandEventArgs e)
++    {
++        var removed = Remove();
++        var placed = Place();
++        e.Mobile.SendMessage($"DfiGames: removed {removed}, placed {placed}.");
++        logger.Information("{User} placed {Placed} DFI game fixtures ({Removed} removed)", e.Mobile, placed, removed);
++    }
++
++    public static int Remove()
++    {
++        var doomed = new List<IEntity>();
++
++        foreach (var m in World.Mobiles.Values)
++        {
++            if (m is LotteryNpc && m.Map == Map.Felucca && m.Location == LotterySpot)
++            {
++                doomed.Add(m);
++            }
++        }
++
++        foreach (var item in World.Items.Values)
++        {
++            if (item is PokerMachine && item.Map == Map.Felucca && System.Array.IndexOf(PokerSpots, item.Location) >= 0)
++            {
++                doomed.Add(item);
++            }
++        }
++
++        foreach (var entity in doomed)
++        {
++            entity.Delete();
++        }
++
++        return doomed.Count;
++    }
++
++    public static int Place()
++    {
++        var npc = new LotteryNpc { Home = LotterySpot, RangeHome = 0, CantWalk = true, Direction = Direction.South };
++        npc.MoveToWorld(LotterySpot, Map.Felucca);
++
++        new PokerMachineLow().MoveToWorld(PokerSpots[0], Map.Felucca);
++        new PokerMachineMedium().MoveToWorld(PokerSpots[1], Map.Felucca);
++        new PokerMachineHigh().MoveToWorld(PokerSpots[2], Map.Felucca);
++
++        return 1 + PokerSpots.Length;
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Games/Lottery.cs b/Projects/UOContent/Custom/DFI/Games/Lottery.cs
+new file mode 100644
+index 000000000..35b1fe4c3
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Games/Lottery.cs
+@@ -0,0 +1,720 @@
++// DFI Network's lottery, ported from DFI RUNUO Scripts/Custom/Engines/LotterySystem. Players pick four numbers
++// from 1 to 49 per ticket, up to five tickets at 100 gp each paid from the bank, at a lottery master. A drawing
++// every day at 17:00 (UTC here) pays 5,000 gp for two correct numbers, 30,000 for three and the jackpot, 80% of
++// the money in the system (never under a million), split between all four-number tickets. Results wait at the
++// lottery master; lottery masters cry the drawing out every minute.
++
++using System;
++using System.Collections.Generic;
++using ModernUO.Serialization;
++using Server.Collections;
++using Server.Commands;
++using Server.ContextMenus;
++using Server.Gumps;
++using Server.Items;
++using Server.Mobiles;
++using Server.Network;
++
++namespace Server.Custom.Dfi.Lottery;
++
++public class LotteryEntry
++{
++    public LotteryEntry(Mobile player) => Player = player;
++
++    public Mobile Player { get; }
++    public List<int[]> Tickets { get; } = [];
++    public bool Bought { get; set; }
++    public bool ShowWinnings { get; set; }
++    public DateTime TicketBought { get; set; }
++    public DateTime LastAccess { get; set; }
++    public int WinMoney { get; set; }
++    public int[] WinningNumbers { get; set; } = new int[LotterySystem.NumbersPerTicket];
++    public int[] CorrectNumbers { get; set; } = [];
++    public int[] TotalCorrectNumbers { get; set; } = new int[LotterySystem.NumbersPerTicket + 1];
++}
++
++public class LotterySystem : GenericPersistence
++{
++    public const int MaxNumbers = 49;
++    public const int NumbersPerTicket = 4;
++    public const int MaxTicketsPerPlayer = 5;
++    public const int SystemHue = 0x38A;
++    public const int MinimumSystemGold = 1_000_000;
++    public const int TicketPrice = 100;
++    public const double JackpotPercent = 0.8;
++    public const int Prize1 = 0;
++    public const int Prize2 = 5000;
++    public const int Prize3 = 30000;
++
++    public static readonly TimeSpan DrawTime = TimeSpan.FromHours(17.0);
++    public static readonly TimeSpan DecayTime = TimeSpan.FromDays(30.0);
++
++    public static int Jackpot { get; private set; }
++    public static long TotalLotteryMoney { get; private set; } = MinimumSystemGold;
++    public static DateTime NextDrawing { get; private set; }
++    public static List<LotteryEntry> Register { get; } = [];
++    public static List<LotteryNpc> Npcs { get; } = [];
++
++    private static Timer _timer;
++
++    public LotterySystem() : base("DfiLottery", 10)
++    {
++    }
++
++    public static void Configure()
++    {
++        _ = new LotterySystem();
++    }
++
++    public static void Initialize()
++    {
++        UpdateTime();
++
++        if (Jackpot == 0)
++        {
++            UpdateJackpot();
++        }
++
++        Register.RemoveAll(e => e.LastAccess + DecayTime < Core.Now || e.Player?.Deleted != false);
++        _timer = Timer.DelayCall(TimeSpan.FromMinutes(1.0), TimeSpan.FromMinutes(1.0), OnTick);
++    }
++
++    private static void OnTick()
++    {
++        foreach (var npc in Npcs)
++        {
++            if (!npc.Deleted)
++            {
++                npc.Advertise();
++            }
++        }
++
++        if (NextDrawing < Core.Now)
++        {
++            UpdateTime();
++            Draw();
++        }
++    }
++
++    public static void UpdateTime()
++    {
++        NextDrawing = Core.Now.Date + DrawTime;
++
++        if (NextDrawing < Core.Now)
++        {
++            NextDrawing += TimeSpan.FromDays(1.0);
++        }
++    }
++
++    public static void UpdateJackpot()
++    {
++        TotalLotteryMoney = Math.Max(TotalLotteryMoney, MinimumSystemGold);
++        Jackpot = (int)Math.Min(int.MaxValue, TotalLotteryMoney * JackpotPercent);
++    }
++
++    public static bool TakeGold(Mobile from, int amount)
++    {
++        if (!Banker.Withdraw(from, amount))
++        {
++            return false;
++        }
++
++        TotalLotteryMoney += amount;
++        return true;
++    }
++
++    public static void GiveGold(Mobile to, int amount)
++    {
++        if (to?.Deleted == false && amount > 0)
++        {
++            Banker.Deposit(to, amount);
++            TotalLotteryMoney -= amount;
++        }
++    }
++
++    public static LotteryEntry GetEntry(Mobile from)
++    {
++        var entry = Register.Find(e => e.Player == from);
++
++        if (entry == null)
++        {
++            entry = new LotteryEntry(from);
++            Register.Add(entry);
++        }
++
++        entry.LastAccess = Core.Now;
++        return entry;
++    }
++
++    // Returns null when bought, or why not.
++    public static string Buy(Mobile from)
++    {
++        var entry = GetEntry(from);
++
++        if (entry.Tickets.Count == 0)
++        {
++            return "No tickets have been added to the list!";
++        }
++
++        var cost = TicketPrice * entry.Tickets.Count;
++
++        if (!TakeGold(from, cost))
++        {
++            return "Not enough gold in your bankbox.";
++        }
++
++        entry.Bought = true;
++        entry.TicketBought = Core.Now;
++        return null;
++    }
++
++    public static string Clear(Mobile from)
++    {
++        var entry = GetEntry(from);
++        var refund = "";
++
++        if (entry.Bought)
++        {
++            var gold = TicketPrice * entry.Tickets.Count;
++            GiveGold(from, gold);
++            refund = $" {gold}gp added to your bankbox.";
++            entry.Bought = false;
++        }
++
++        entry.Tickets.Clear();
++        return $"Number list cleared.{refund}";
++    }
++
++    // Draws four numbers (or uses the ones given), pays out and returns them.
++    public static int[] Draw(int[] winning = null)
++    {
++        if (winning == null)
++        {
++            var drawn = new HashSet<int>();
++
++            while (drawn.Count < NumbersPerTicket)
++            {
++                drawn.Add(Utility.Random(MaxNumbers) + 1);
++            }
++
++            winning = [..drawn];
++        }
++
++        var winSet = new HashSet<int>(winning);
++        var totals = new int[NumbersPerTicket + 1];
++
++        foreach (var entry in Register)
++        {
++            if (!entry.Bought)
++            {
++                continue;
++            }
++
++            entry.CorrectNumbers = new int[entry.Tickets.Count];
++
++            for (var i = 0; i < entry.Tickets.Count; i++)
++            {
++                var correct = 0;
++
++                foreach (var n in entry.Tickets[i])
++                {
++                    if (winSet.Contains(n))
++                    {
++                        correct++;
++                    }
++                }
++
++                entry.CorrectNumbers[i] = correct;
++                totals[correct]++;
++            }
++
++            entry.TotalCorrectNumbers = totals;
++            entry.WinningNumbers = (int[])winning.Clone();
++            entry.ShowWinnings = true;
++        }
++
++        int[] prizes = [0, Prize1, Prize2, Prize3, totals[NumbersPerTicket] == 0 ? Jackpot : Jackpot / totals[NumbersPerTicket]];
++
++        foreach (var entry in Register)
++        {
++            if (!entry.Bought)
++            {
++                continue;
++            }
++
++            entry.WinMoney = 0;
++
++            foreach (var correct in entry.CorrectNumbers)
++            {
++                if (prizes[correct] > 0 && entry.Player?.Deleted == false)
++                {
++                    entry.WinMoney += prizes[correct];
++                    GiveGold(entry.Player, prizes[correct]);
++                }
++            }
++
++            entry.Bought = false;
++        }
++
++        UpdateJackpot();
++        CommandHandlers.BroadcastMessage(AccessLevel.Player, SystemHue, $"Lottery drawing... {string.Join(" ", winning)}");
++        return winning;
++    }
++
++    public static string FormatTickets(LotteryEntry entry, bool showCorrect)
++    {
++        var text = "";
++
++        for (var i = 0; i < entry.Tickets.Count; i++)
++        {
++            text += $"#{i + 1} Numbers: {string.Join(" ", entry.Tickets[i])}";
++            text += showCorrect && i < entry.CorrectNumbers.Length ? $"  Correct Numbers: {entry.CorrectNumbers[i]}<br>" : "<br>";
++        }
++
++        return text;
++    }
++
++    public override void Serialize(IGenericWriter writer)
++    {
++        writer.WriteEncodedInt(0); // version
++        writer.Write(NextDrawing);
++        writer.Write(Jackpot);
++        writer.Write(TotalLotteryMoney);
++
++        writer.WriteEncodedInt(Register.Count);
++
++        foreach (var e in Register)
++        {
++            writer.Write(e.Player);
++            writer.Write(e.Bought);
++            writer.Write(e.ShowWinnings);
++            writer.Write(e.WinMoney);
++            writer.Write(e.LastAccess);
++            writer.Write(e.TicketBought);
++            writer.WriteEncodedInt(e.Tickets.Count);
++
++            foreach (var t in e.Tickets)
++            {
++                WriteInts(writer, t);
++            }
++
++            WriteInts(writer, e.CorrectNumbers);
++            WriteInts(writer, e.TotalCorrectNumbers);
++            WriteInts(writer, e.WinningNumbers);
++        }
++    }
++
++    private static void WriteInts(IGenericWriter writer, int[] values)
++    {
++        writer.WriteEncodedInt(values.Length);
++
++        foreach (var v in values)
++        {
++            writer.WriteEncodedInt(v);
++        }
++    }
++
++    private static int[] ReadInts(IGenericReader reader)
++    {
++        var values = new int[reader.ReadEncodedInt()];
++
++        for (var i = 0; i < values.Length; i++)
++        {
++            values[i] = reader.ReadEncodedInt();
++        }
++
++        return values;
++    }
++
++    public override void Deserialize(IGenericReader reader)
++    {
++        reader.ReadEncodedInt(); // version
++        NextDrawing = reader.ReadDateTime();
++        Jackpot = reader.ReadInt();
++        TotalLotteryMoney = reader.ReadLong();
++
++        var count = reader.ReadEncodedInt();
++
++        for (var i = 0; i < count; i++)
++        {
++            var entry = new LotteryEntry(reader.ReadEntity<Mobile>())
++            {
++                Bought = reader.ReadBool(),
++                ShowWinnings = reader.ReadBool(),
++                WinMoney = reader.ReadInt(),
++                LastAccess = reader.ReadDateTime(),
++                TicketBought = reader.ReadDateTime()
++            };
++
++            var tickets = reader.ReadEncodedInt();
++
++            for (var t = 0; t < tickets; t++)
++            {
++                entry.Tickets.Add(ReadInts(reader));
++            }
++
++            entry.CorrectNumbers = ReadInts(reader);
++            entry.TotalCorrectNumbers = ReadInts(reader);
++            entry.WinningNumbers = ReadInts(reader);
++
++            if (entry.Player != null)
++            {
++                Register.Add(entry);
++            }
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class LotteryNpc : BaseVendor
++{
++    private readonly List<SBInfo> _sbInfos = [];
++
++    [Constructible(AccessLevel.GameMaster)]
++    public LotteryNpc() : base("the lottery master")
++    {
++        SetSkill(SkillName.Inscribe, 90.0, 100.0);
++        LotterySystem.Npcs.Add(this);
++    }
++
++    protected override List<SBInfo> SBInfos => _sbInfos;
++    public override VendorShoeType ShoeType => VendorShoeType.Shoes;
++
++    public override void InitSBInfo()
++    {
++        _sbInfos.Add(new SBLotteryNpc());
++    }
++
++    public override void InitOutfit()
++    {
++        base.InitOutfit();
++        AddItem(new Robe(Utility.RandomNeutralHue()));
++        AddItem(new JesterHat(Utility.RandomNeutralHue()));
++    }
++
++    [AfterDeserialization]
++    private void AfterDeserialization() => LotterySystem.Npcs.Add(this);
++
++    public override void OnDelete()
++    {
++        LotterySystem.Npcs.Remove(this);
++        base.OnDelete();
++    }
++
++    public void Advertise()
++    {
++        switch (Utility.Random(6))
++        {
++            case 0:
++                {
++                    Say("Buy a lottery ticket and try your luck!");
++                    break;
++                }
++            case 1:
++                {
++                    Say($"The next Lottery Drawing is at {LotterySystem.NextDrawing:HH:mm} UTC!");
++                    break;
++                }
++            case 2:
++                {
++                    Say($"If you get {LotterySystem.NumbersPerTicket} correct numbers you will win {LotterySystem.Jackpot}gp!");
++                    break;
++                }
++            case 3:
++                {
++                    Say("Buy a lottery ticket!");
++                    Say($"One ticket only costs {LotterySystem.TicketPrice}gp!");
++                    break;
++                }
++            case 4:
++                {
++                    Say("Anyone here want to buy a lottery ticket?");
++                    break;
++                }
++            default:
++                {
++                    Say("Lottery tickets!");
++                    Say("Come and buy lottery tickets!");
++                    break;
++                }
++        }
++    }
++
++    public override void AddCustomContextEntries(Mobile from, ref PooledRefList<ContextMenuEntry> list)
++    {
++        base.AddCustomContextEntries(from, ref list);
++
++        if (from.Alive && from is PlayerMobile)
++        {
++            list.Add(new TalkEntry());
++        }
++    }
++
++    public static void Open(Mobile from)
++    {
++        var entry = LotterySystem.GetEntry(from);
++
++        if (entry.ShowWinnings)
++        {
++            entry.ShowWinnings = false;
++            from.SendGump(new LotteryReportGump(entry), true);
++        }
++        else
++        {
++            from.SendGump(new LotteryGump(from, ""), true);
++        }
++    }
++
++    private class TalkEntry : ContextMenuEntry
++    {
++        public TalkEntry() : base(6146) // Talk
++        {
++        }
++
++        public override void OnClick(Mobile from, IEntity target) => Open(from);
++    }
++}
++
++public class SBLotteryNpc : SBInfo
++{
++    public override IShopSellInfo SellInfo { get; } = new InternalSellInfo();
++
++    public override List<GenericBuyInfo> BuyInfo { get; } =
++    [
++        new(typeof(ScribesPen), 8, 20, 0xFBF, 0),
++        new(typeof(BrownBook), 15, 10, 0xFEF, 0),
++        new(typeof(TanBook), 15, 10, 0xFF0, 0),
++        new(typeof(BlueBook), 15, 10, 0xFF2, 0),
++        new(typeof(BlankScroll), 5, 999, 0x0E34, 0),
++        new(typeof(Spellbook), 18, 10, 0xEFA, 0),
++        new(typeof(RecallRune), 15, 10, 0x1F14, 0)
++    ];
++
++    public class InternalSellInfo : GenericSellInfo
++    {
++        public InternalSellInfo()
++        {
++            Add(typeof(ScribesPen), 4);
++            Add(typeof(BrownBook), 7);
++            Add(typeof(TanBook), 7);
++            Add(typeof(BlueBook), 7);
++            Add(typeof(BlankScroll), 3);
++            Add(typeof(Spellbook), 9);
++            Add(typeof(RecallRune), 8);
++        }
++    }
++}
++
++public class LotteryGump : DynamicGump
++{
++    private const int Close = 0;
++    private const int AddTicket = 1;
++    private const int BuyTickets = 2;
++    private const int ClearTickets = 3;
++
++    private readonly LotteryEntry _entry;
++    private readonly string _status;
++
++    public LotteryGump(Mobile from, string status) : base(40, 40)
++    {
++        _entry = LotterySystem.GetEntry(from);
++        _status = status;
++    }
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        var entry = _entry;
++
++        builder.AddPage();
++        builder.AddBackground(0, 0, 500, 350, 9200);
++        builder.AddLabel(219, 20, 0, "Lottery Tickets");
++        builder.AddLabel(34, 45, 0, "Information");
++        builder.AddHtml(
++            32, 63, 178, 230,
++            $"Ticket price: {LotterySystem.TicketPrice}<br><br><I>Winning List</I><BR>1 Correct: {LotterySystem.Prize1}gp<br>2 Correct: {LotterySystem.Prize2}gp<br>3 Correct: {LotterySystem.Prize3}gp<br>4 Correct: {LotterySystem.Jackpot}gp<br><BR><I>Next Drawing</I><BR>{LotterySystem.NextDrawing:HH:mm} UTC, {LotterySystem.NextDrawing:d MMMM yyyy}",
++            background: true, scrollbar: true
++        );
++
++        builder.AddHtml(217, 63, 246, 121, LotterySystem.FormatTickets(entry, false), background: true, scrollbar: true);
++
++        if (!entry.Bought)
++        {
++            builder.AddHtml(217, 187, 246, 47, $"Total cost of tickets: {LotterySystem.TicketPrice * entry.Tickets.Count}", background: true);
++            builder.AddButton(432, 236, 4023, 4024, AddTicket);
++            builder.AddLabel(324, 236, 0, "Add a new ticket");
++            builder.AddButton(432, 281, 4023, 4024, BuyTickets);
++            builder.AddLabel(265, 281, 0, "Buy the tickets in the list");
++        }
++        else
++        {
++            builder.AddHtml(217, 187, 246, 47, "Please wait for the number drawing to see if you have won.", background: true);
++        }
++
++        builder.AddButton(432, 258, 4023, 4024, ClearTickets);
++        builder.AddLabel(324, 258, 0, "Clear ticket list");
++        builder.AddHtml(28, 308, 349, 24, _status);
++        builder.AddButton(442, 308, 4017, 4018, Close);
++        builder.AddLabel(403, 308, 0, "Close");
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        var m = sender.Mobile;
++
++        if (m is not PlayerMobile)
++        {
++            return;
++        }
++
++        var entry = LotterySystem.GetEntry(m);
++        string status;
++
++        switch (info.ButtonID)
++        {
++            case BuyTickets when !entry.Bought:
++                {
++                    status = LotterySystem.Buy(m) ?? $"{LotterySystem.TicketPrice * entry.Tickets.Count}gp has been removed from your bankbox.";
++                    break;
++                }
++            case ClearTickets:
++                {
++                    status = LotterySystem.Clear(m);
++                    break;
++                }
++            case AddTicket when !entry.Bought:
++                {
++                    if (entry.Tickets.Count < LotterySystem.MaxTicketsPerPlayer)
++                    {
++                        m.SendGump(new LotteryNumbersGump(""), true);
++                        return;
++                    }
++
++                    status = $"You can not add more than {LotterySystem.MaxTicketsPerPlayer} tickets!";
++                    break;
++                }
++            default:
++                {
++                    return;
++                }
++        }
++
++        m.SendGump(new LotteryGump(m, status), true);
++    }
++}
++
++public class LotteryNumbersGump : DynamicGump
++{
++    private readonly string _status;
++
++    public LotteryNumbersGump(string status) : base(20, 20) => _status = status;
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        builder.AddPage();
++        builder.AddBackground(0, 0, 580, 360, 9200);
++        builder.AddLabel(242, 21, 0, "Lottery Ticket");
++        builder.AddHtml(
++            375, 57, 172, 227,
++            $"Choose {LotterySystem.NumbersPerTicket} numbers to add to the ticket.<br><br>You can buy up to {LotterySystem.MaxTicketsPerPlayer} tickets.",
++            background: true
++        );
++        builder.AddHtml(35, 326, 522, 23, _status);
++
++        for (var n = 1; n <= LotterySystem.MaxNumbers; n++)
++        {
++            var col = (n - 1) % 10 + 1;
++            var row = (n - 1) / 10;
++            builder.AddLabel(20 + col * 30, 55 + row * 50, 0, $"{n}");
++            builder.AddCheckbox(15 + col * 30, 77 + row * 50, 210, 211, false, n);
++        }
++
++        builder.AddButton(414, 297, 247, 248, 2);
++        builder.AddButton(482, 297, 241, 242, 1);
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        var m = sender.Mobile;
++
++        if (m is not PlayerMobile || info.ButtonID == 0)
++        {
++            return;
++        }
++
++        if (info.ButtonID == 1)
++        {
++            m.SendGump(new LotteryGump(m, ""), true);
++            return;
++        }
++
++        var picked = new List<int>();
++
++        for (var n = 1; n <= LotterySystem.MaxNumbers; n++)
++        {
++            if (info.IsSwitched(n))
++            {
++                picked.Add(n);
++            }
++        }
++
++        var entry = LotterySystem.GetEntry(m);
++
++        if (picked.Count != LotterySystem.NumbersPerTicket)
++        {
++            m.SendGump(
++                new LotteryNumbersGump($"Invalid amount of numbers! Choose {LotterySystem.NumbersPerTicket} numbers and click the Okay button."),
++                true
++            );
++            return;
++        }
++
++        if (!entry.Bought && entry.Tickets.Count < LotterySystem.MaxTicketsPerPlayer)
++        {
++            entry.Tickets.Add([..picked]);
++        }
++
++        m.SendGump(new LotteryGump(m, "Ticket added to the list."), true);
++    }
++}
++
++public class LotteryReportGump : DynamicGump
++{
++    private readonly LotteryEntry _entry;
++
++    public LotteryReportGump(LotteryEntry entry) : base(0, 0) => _entry = entry;
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        var totals = "";
++
++        for (var i = 0; i < _entry.TotalCorrectNumbers.Length; i++)
++        {
++            totals += $"{i} correct numbers: {_entry.TotalCorrectNumbers[i]}<br>";
++        }
++
++        builder.AddPage();
++        builder.AddBackground(0, 0, 480, 300, 9200);
++        builder.AddLabel(191, 14, 0, "Lottery Report");
++        builder.AddHtml(
++            33, 47, 417, 208,
++            $"Lottery report from {_entry.TicketBought:d MMMM yyyy}.<br><br>You Won {_entry.WinMoney}gp.<br><br>Winning Numbers: {string.Join(" ", _entry.WinningNumbers)}<br><br>Your Numbers:<br>{LotterySystem.FormatTickets(_entry, true)}<br>Global Correct Numbers:<br>{totals}",
++            background: true, scrollbar: true
++        );
++        builder.AddButton(422, 263, 4017, 4018, 1);
++        builder.AddLabel(382, 263, 0, "Close");
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        if (info.ButtonID == 1)
++        {
++            sender.Mobile.SendGump(new LotteryGump(sender.Mobile, ""), true);
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Games/Poker.cs b/Projects/UOContent/Custom/DFI/Games/Poker.cs
+new file mode 100644
+index 000000000..98312930c
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Games/Poker.cs
+@@ -0,0 +1,501 @@
++// DFI Network's video poker machines, ported from DFI RUNUO Scripts/Custom/Engines/PokerSystem. Five-card draw:
++// the bet is paid from the backpack (or the bank), five cards are dealt, the player holds any and draws once.
++// Winnings come out of the machine's gold into the bank; a royal flush wins a third of the machine. Machines
++// with under 50,000 gold are refilled every two hours. Three machines: low (10-50 gp), medium (100-500 gp) and
++// high (1,000-5,000 gp).
++
++using System;
++using System.Collections.Generic;
++using ModernUO.Serialization;
++using Server.Custom.Dfi.Poker;
++using Server.Gumps;
++using Server.Items;
++using Server.Mobiles;
++using Server.Network;
++
++namespace Server.Custom.Dfi.Poker
++{
++    public enum PokerHand
++    {
++        RoyalFlush,
++        StraightFlush,
++        FourOfAKind,
++        FullHouse,
++        Flush,
++        Straight,
++        ThreeOfAKind,
++        TwoPairs,
++        Pair,
++        None
++    }
++
++    // A card is 0-51: suit = card / 13 (hearts, diamonds, spades, clubs), value = card % 13 + 1 (1 is the ace).
++    public static class PokerCards
++    {
++        public static int Value(int card) => card % 13 + 1;
++        public static int Suit(int card) => card / 13;
++
++        public static string ValueText(int card) =>
++            Value(card) switch
++            {
++                1  => "A",
++                11 => "J",
++                12 => "Q",
++                13 => "K",
++                var v => $"{v}"
++            };
++
++        public static string SuitText(int card) => Suit(card) switch { 0 => "H", 1 => "D", 2 => "S", _ => "C" };
++
++        public static bool IsRed(int card) => Suit(card) < 2;
++
++        public static PokerHand Evaluate(IReadOnlyList<int> hand)
++        {
++            var values = new List<int>(hand.Count);
++            var flush = true;
++
++            for (var i = 0; i < hand.Count; i++)
++            {
++                values.Add(Value(hand[i]));
++                flush &= Suit(hand[i]) == Suit(hand[0]);
++            }
++
++            values.Sort();
++
++            var counts = new Dictionary<int, int>();
++
++            foreach (var v in values)
++            {
++                counts[v] = counts.GetValueOrDefault(v) + 1;
++            }
++
++            var groups = new List<int>(counts.Values);
++            groups.Sort((a, b) => b.CompareTo(a));
++
++            var distinct = counts.Count == 5;
++            var lowStraight = distinct && values[4] - values[0] == 4;
++            var broadway = distinct && values[0] == 1 && values[1] == 10; // 10 J Q K A
++            var straight = lowStraight || broadway;
++
++            return (flush, straight, broadway, groups[0], groups.Count > 1 ? groups[1] : 0) switch
++            {
++                (true, true, true, _, _)  => PokerHand.RoyalFlush,
++                (true, true, _, _, _)     => PokerHand.StraightFlush,
++                (_, _, _, 4, _)           => PokerHand.FourOfAKind,
++                (_, _, _, 3, 2)           => PokerHand.FullHouse,
++                (true, _, _, _, _)        => PokerHand.Flush,
++                (_, true, _, _, _)        => PokerHand.Straight,
++                (_, _, _, 3, _)           => PokerHand.ThreeOfAKind,
++                (_, _, _, 2, 2)           => PokerHand.TwoPairs,
++                (_, _, _, 2, _)           => PokerHand.Pair,
++                _                         => PokerHand.None
++            };
++        }
++    }
++
++    // One player's game at a machine: the deck, the hand, what is held and the bet.
++    public class PokerSession
++    {
++        private readonly List<int> _deck = [];
++
++        public PokerSession(PokerMachine machine)
++        {
++            Machine = machine;
++            Bet = machine.MinBet;
++        }
++
++        public PokerMachine Machine { get; }
++        public int Bet { get; set; }
++        public int[] Hand { get; } = [-1, -1, -1, -1, -1];
++        public bool[] Held { get; } = new bool[5];
++        public bool Drawing { get; set; }
++
++        private int NextCard()
++        {
++            if (_deck.Count == 0)
++            {
++                for (var i = 0; i < 52; i++)
++                {
++                    _deck.Add(i);
++                }
++            }
++
++            var at = Utility.Random(_deck.Count);
++            var card = _deck[at];
++            _deck.RemoveAt(at);
++            return card;
++        }
++
++        public void Deal()
++        {
++            _deck.Clear();
++            Array.Clear(Held);
++
++            for (var i = 0; i < Hand.Length; i++)
++            {
++                Hand[i] = NextCard();
++            }
++        }
++
++        public void Draw()
++        {
++            for (var i = 0; i < Hand.Length; i++)
++            {
++                if (!Held[i])
++                {
++                    Hand[i] = NextCard();
++                }
++            }
++        }
++
++        public void NextBet() => Bet = Bet >= Machine.MaxBet ? Machine.MinBet : Bet + Machine.BetChange;
++
++        public int Winning(PokerHand hand) =>
++            hand == PokerHand.RoyalFlush ? Machine.GoldInMachine / 3 : Machine.WinningsTable[(int)hand] * (Bet / Machine.BetChange);
++    }
++
++    public class PokerGump : DynamicGump
++    {
++        private const int Close = 0;
++        private const int Ok = 1;
++        private const int HoldBase = 2;
++        private const int ChangeBet = 7;
++        private const int UseBankCheck = 8;
++
++        private const int CardWidth = 50;
++        private const int CardHeight = 74;
++        private const int CardX = 25;
++        private const int CardY = 100;
++        private const int CardSpace = 70;
++
++        private readonly PokerSession _session;
++        private readonly string _status;
++        private readonly bool _useBank;
++        private readonly int _balance;
++
++        public PokerGump(Mobile from, PokerSession session, string status, bool useBank) : base(50, 35)
++        {
++            _session = session;
++            _status = status;
++            _useBank = useBank;
++            _balance = Banker.GetBalance(from);
++        }
++
++        public override bool Singleton => true;
++
++        protected override void BuildLayout(ref DynamicGumpBuilder builder)
++        {
++            builder.AddPage();
++            builder.AddBackground(0, 0, 524, 341, 2620);
++            builder.AddAlphaRegion(5, 7, 513, 326);
++
++            for (var i = 0; i < 5; i++)
++            {
++                var x = CardX + CardSpace * i;
++                var card = _session.Hand[i];
++                builder.AddImageTiled(x, CardY, CardWidth, CardHeight, 9354);
++
++                if (card < 0)
++                {
++                    builder.AddImage(x + CardWidth / 2 - 12, CardY + CardHeight / 2 - 12, 11320);
++                }
++                else
++                {
++                    var value = PokerCards.ValueText(card);
++                    builder.AddLabel(x + 4, CardY + 1, 0, value);
++                    builder.AddLabel(x + CardWidth - (8 + value.Length * 4), CardY + CardHeight - 20, 0, value);
++                    builder.AddLabel(x + CardWidth / 2 - 3, CardY + CardHeight / 2 - 10, PokerCards.IsRed(card) ? 1171 : 0, PokerCards.SuitText(card));
++                }
++
++                if (_session.Drawing)
++                {
++                    builder.AddCheckbox(x + CardWidth / 2 - 10, CardY + CardHeight + 10, 210, 211, _session.Held[i], HoldBase + i);
++                }
++            }
++
++            builder.AddButton(476, 275, 4017, 4018, Close);
++            builder.AddLabel(434, 277, 940, "Close");
++            builder.AddButton(175, 218, 4023, 4024, Ok);
++            builder.AddLabel(210, 218, 940, _session.Drawing ? "Draw" : "Deal");
++
++            if (!_session.Drawing)
++            {
++                builder.AddButton(476, 246, 4014, 4015, ChangeBet);
++                builder.AddLabel(398, 248, 940, "Change Bet");
++            }
++
++            builder.AddCheckbox(191, 271, 210, 211, _useBank, UseBankCheck);
++            builder.AddLabel(18, 272, 940, "Withdraw money from bank.");
++            builder.AddLabel(18, 252, 940, $"Bank balance: {_balance}gp.");
++
++            builder.AddBackground(366, 16, 144, 226, 3000);
++
++            for (var i = 0; i < (int)PokerHand.None; i++)
++            {
++                builder.AddLabel(370, 20 + i * 20, 0, $"{(PokerHand)i}");
++                builder.AddLabel(450, 20 + i * 20, 0, $"{_session.Winning((PokerHand)i)}gp");
++            }
++
++            builder.AddLabel(370, 200, 0, $"Current Bet: {_session.Bet}gp");
++            builder.AddHtml(13, 302, 497, 27, _status, background: true);
++        }
++
++        public override void OnResponse(NetState sender, in RelayInfo info)
++        {
++            var m = sender.Mobile;
++            var machine = _session.Machine;
++
++            if (m is not PlayerMobile || info.ButtonID == Close || machine.Deleted)
++            {
++                return;
++            }
++
++            if (!m.InRange(machine.GetWorldLocation(), 2))
++            {
++                m.SendLocalizedMessage(1060178); // You are too far away to perform that action!
++                return;
++            }
++
++            if (machine.GoldInMachine <= 0)
++            {
++                m.SendMessage("This machine is out of gold.");
++                return;
++            }
++
++            var useBank = info.IsSwitched(UseBankCheck);
++            var status = "";
++
++            for (var i = 0; i < 5; i++)
++            {
++                _session.Held[i] = info.IsSwitched(HoldBase + i);
++            }
++
++            switch (info.ButtonID)
++            {
++                case ChangeBet when !_session.Drawing:
++                    {
++                        _session.NextBet();
++                        break;
++                    }
++                case Ok when !_session.Drawing:
++                    {
++                        if (!machine.Charge(m, _session.Bet, useBank))
++                        {
++                            status = useBank ? "You do not have enough gold in your bankbox!" : "You do not have enough gold in your backpack!";
++                            break;
++                        }
++
++                        _session.Deal();
++                        _session.Drawing = true;
++                        status = "Choose the cards to hold, then draw.";
++                        break;
++                    }
++                case Ok:
++                    {
++                        _session.Draw();
++                        _session.Drawing = false;
++                        status = machine.Settle(m, _session);
++                        break;
++                    }
++            }
++
++            m.SendGump(new PokerGump(m, _session, status, useBank), true);
++        }
++    }
++}
++
++namespace Server.Items
++{
++    [SerializationGenerator(0)]
++    public abstract partial class PokerMachine : Item
++    {
++        public static readonly TimeSpan RefillDelay = TimeSpan.FromHours(2.0);
++        private static readonly List<PokerMachine> _machines = [];
++        private static Timer _refill;
++
++        [SerializableField(0)]
++        [InvalidateProperties]
++        [SerializedCommandProperty(AccessLevel.Administrator)]
++        private int _goldInMachine;
++
++        protected PokerMachine() : base(0x1173)
++        {
++            Movable = false;
++            Hue = 0x58;
++            _goldInMachine = 30000 + (Utility.Random(700) + 1) * 100;
++            Register();
++        }
++
++        public override string DefaultName => "a Poker Machine";
++
++        public abstract int MinBet { get; }
++        public abstract int MaxBet { get; }
++        public abstract int BetChange { get; }
++        public abstract int[] WinningsTable { get; }
++
++        private void Register()
++        {
++            _machines.Add(this);
++            _refill ??= Timer.DelayCall(RefillDelay, RefillDelay, RefillAll);
++        }
++
++        [AfterDeserialization]
++        private void AfterDeserialization() => Register();
++
++        public override void OnAfterDelete()
++        {
++            _machines.Remove(this);
++            base.OnAfterDelete();
++        }
++
++        private static void RefillAll()
++        {
++            foreach (var machine in _machines)
++            {
++                Timer.DelayCall(TimeSpan.FromSeconds(Utility.Random(200)), machine.Refill);
++            }
++        }
++
++        public void Refill()
++        {
++            if (Deleted || GoldInMachine >= 50000)
++            {
++                return;
++            }
++
++            GoldInMachine = 100000 + Utility.Random(10000);
++            Visible = true;
++            PublicOverheadMessage(MessageType.Regular, 0x0, true, "Calculating gold in machine");
++
++            for (var i = 0; i <= 6; i += 2)
++            {
++                Timer.DelayCall(TimeSpan.FromSeconds(i), () => Effects.PlaySound(Location, Map, 0x36));
++            }
++        }
++
++        public override void GetProperties(IPropertyList list)
++        {
++            base.GetProperties(list);
++            list.Add(1060658, $"{"Bets"}\t{MinBet}gp - {MaxBet}gp"); // ~1_val~: ~2_val~
++            list.Add(1060659, $"{"Jackpot"}\t{_goldInMachine / 3}gp"); // ~1_val~: ~2_val~
++        }
++
++        public override void OnDoubleClick(Mobile from)
++        {
++            if (!from.InRange(GetWorldLocation(), 2))
++            {
++                from.SendLocalizedMessage(500446); // That is too far away.
++            }
++            else if (_goldInMachine <= 0)
++            {
++                from.SendMessage("This machine is out of gold.");
++            }
++            else
++            {
++                Effects.PlaySound(Location, Map, 533);
++                from.SendGump(new PokerGump(from, new PokerSession(this), "Welcome to Defiance AOS Poker Machine.", false), true);
++            }
++        }
++
++        public bool Charge(Mobile player, int amount, bool useBank)
++        {
++            var paid = useBank ? Banker.Withdraw(player, amount) : player.Backpack?.ConsumeTotal(typeof(Gold), amount) == true;
++
++            if (!paid)
++            {
++                return false;
++            }
++
++            player.SendMessage(useBank ? $"{amount}gp has been removed from your bankbox." : $"{amount}gp has been removed from your backpack.");
++            Effects.PlaySound(Location, Map, 0x36);
++            GoldInMachine += amount;
++            return true;
++        }
++
++        // Pays the hand's winnings out of the machine and returns what to tell the player.
++        public string Settle(Mobile player, PokerSession session)
++        {
++            var hand = PokerCards.Evaluate(session.Hand);
++
++            if (hand == PokerHand.None)
++            {
++                return "You did not win anything.";
++            }
++
++            var amount = Math.Min(session.Winning(hand), GoldInMachine);
++            GoldInMachine -= amount;
++
++            if (GoldInMachine == 0)
++            {
++                Visible = false;
++            }
++
++            Effects.PlaySound(Location, Map, 0x36);
++            PublicOverheadMessage(MessageType.Regular, 0x0, true, "Winner!");
++            PublicOverheadMessage(MessageType.Regular, 0x0, true, $"{hand}");
++
++            if (Banker.Deposit(player, amount))
++            {
++                return $"You won! ( {hand} ) {amount} gp have been placed in your bank box.";
++            }
++
++            for (var left = amount; left > 0; left -= 1_000_000)
++            {
++                player.AddToBackpack(new BankCheck(Math.Min(left, 1_000_000)));
++            }
++
++            return $"You won! ( {hand} ) {amount} gp have been placed in your backpack, because your bank box is full.";
++        }
++    }
++
++    [SerializationGenerator(0)]
++    [Flippable(0x1173, 0x1174)]
++    public partial class PokerMachineLow : PokerMachine
++    {
++        private static readonly int[] _table = [1000, 600, 300, 150, 55, 50, 35, 15, 10, 0];
++
++        [Constructible(AccessLevel.GameMaster)]
++        public PokerMachineLow()
++        {
++        }
++
++        public override int MinBet => 10;
++        public override int MaxBet => 50;
++        public override int BetChange => 10;
++        public override int[] WinningsTable => _table;
++    }
++
++    [SerializationGenerator(0)]
++    [Flippable(0x1173, 0x1174)]
++    public partial class PokerMachineMedium : PokerMachine
++    {
++        private static readonly int[] _table = [10000, 6000, 3000, 1500, 550, 500, 350, 150, 80, 0];
++
++        [Constructible(AccessLevel.GameMaster)]
++        public PokerMachineMedium()
++        {
++        }
++
++        public override int MinBet => 100;
++        public override int MaxBet => 500;
++        public override int BetChange => 100;
++        public override int[] WinningsTable => _table;
++    }
++
++    [SerializationGenerator(0)]
++    [Flippable(0x1173, 0x1174)]
++    public partial class PokerMachineHigh : PokerMachine
++    {
++        private static readonly int[] _table = [100000, 50000, 30000, 10000, 5000, 4500, 2500, 1500, 500, 0];
++
++        [Constructible(AccessLevel.GameMaster)]
++        public PokerMachineHigh()
++        {
++        }
++
++        public override int MinBet => 1000;
++        public override int MaxBet => 5000;
++        public override int BetChange => 1000;
++        public override int[] WinningsTable => _table;
++    }
++}

@@ -5,6 +5,8 @@ REM  Clone ModernUO at the pin (UO_SHARD_REF) and apply the GUO patches.
 REM  Run once on a fresh machine, and again after the pin moves: it takes the
 REM  patches off, checks out the new pin and puts them back. Stop the shard
 REM  first, and rebuild with build.bat afterwards.
+REM  UO_SHARD_DFI=0 leaves the DFI shard content patches off, and takes them off
+REM  a checkout that has them.
 REM
 REM  A full clone, not a shallow one: ModernUO versions itself with
 REM  Nerdbank.GitVersioning, which walks the history and fails the build with
@@ -24,11 +26,16 @@ set "SHARD_HEAD="
 set "SHARD_WANT="
 for /f %%H in ('git -C "%UO_SHARD_SRC%" rev-parse -q --verify HEAD 2^>nul') do set "SHARD_HEAD=%%H"
 for /f %%H in ('git -C "%UO_SHARD_SRC%" rev-parse "%UO_SHARD_REF%^{commit}"') do set "SHARD_WANT=%%H"
+REM  A fresh --no-checkout clone has a HEAD but an empty index: nothing is on it, so
+REM  there are no patches to take off (resetting a file absent from the index fails).
+set "SHARD_TRACKED="
+for /f "delims=" %%F in ('git -C "%UO_SHARD_SRC%" ls-files 2^>nul') do if not defined SHARD_TRACKED set "SHARD_TRACKED=1"
+if not defined SHARD_TRACKED set "SHARD_HEAD="
 if not defined SHARD_WANT (
     echo [shard] The pin %UO_SHARD_REF% is not in %UO_SHARD_REPO%.
     exit /b 1
 )
-if /i "%SHARD_HEAD%"=="%SHARD_WANT%" goto :patch
+if /i "%SHARD_HEAD%"=="%SHARD_WANT%" goto :patch_rewind
 
 if defined SHARD_HEAD (
     echo [shard] Moving from %SHARD_HEAD:~0,9% to the pin %SHARD_WANT:~0,9%: taking the patches off first
@@ -41,6 +48,15 @@ git -C "%UO_SHARD_SRC%" checkout -q --detach "%SHARD_WANT%" || (
     exit /b 1
 )
 echo [shard] At the pin %SHARD_WANT:~0,9%
+goto :patch
+
+REM  Same pin, run again: take the stack off, last patch first, and put it back. A patch
+REM  under a later one that edits the same lines does not come off alone, so patches
+REM  cannot be judged one at a time on a patched tree. This also applies UO_SHARD_DFI.
+:patch_rewind
+for /f "delims=" %%P in ('dir /b /a-d /o-n "%UO_ROOT%\tools\modernuo\patches\*.patch"') do (
+    call :patch_rewind_one "%UO_ROOT%\tools\modernuo\patches\%%P" || exit /b 1
+)
 
 :patch
 for %%P in ("%UO_ROOT%\tools\modernuo\patches\*.patch") do (
@@ -52,6 +68,11 @@ exit /b 0
 
 REM --- one patch on: applies -> apply; comes off in reverse -> already on; else fatal
 :patch_on
+set "SHARD_PATCH=%~n1"
+if "%UO_SHARD_DFI%"=="0" if not "%SHARD_PATCH:-dfi-=%"=="%SHARD_PATCH%" (
+    echo [shard] Leaving %~nx1 off: UO_SHARD_DFI=0
+    exit /b 0
+)
 echo [shard] Applying %~nx1
 git -C "%UO_SHARD_SRC%" apply --check "%~1" >nul 2>&1
 if not errorlevel 1 (
@@ -68,6 +89,13 @@ REM  copy of this patch, local edits). Show git's reason and stop; never build o
 git -C "%UO_SHARD_SRC%" apply --check "%~1"
 echo [shard] FATAL: %~nx1 does not apply to the checkout at %SHARD_WANT:~0,9%, and is not already applied; stopping
 exit /b 1
+
+REM --- one patch off a tree at the pin; a patch that is not on stays as it is
+:patch_rewind_one
+git -C "%UO_SHARD_SRC%" apply -R --check "%~1" >nul 2>&1
+if errorlevel 1 exit /b 0
+git -C "%UO_SHARD_SRC%" apply -R "%~1" || exit /b 1
+exit /b 0
 
 REM --- one patch off before the pin moves; if it will not reverse, reset its files
 :patch_off

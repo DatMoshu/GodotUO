@@ -15,6 +15,9 @@ fi
 git -C "$src" cat-file -e "$UO_SHARD_REF^{commit}" 2>/dev/null || git -C "$src" fetch origin || exit 1
 head="$(git -C "$src" rev-parse -q --verify HEAD 2>/dev/null || true)"
 want="$(git -C "$src" rev-parse -q --verify "$UO_SHARD_REF^{commit}" || true)"
+# A fresh --no-checkout clone has a HEAD but an empty index: nothing is on it, so
+# there are no patches to take off (resetting a file absent from the index fails).
+if [ -z "$(git -C "$src" ls-files 2>/dev/null | head -n 1)" ]; then head=""; fi
 if [ -z "$want" ]; then
     echo "[shard] The pin $UO_SHARD_REF is not in $UO_SHARD_REPO."
     exit 1
@@ -46,9 +49,26 @@ if [ "$head" != "$want" ]; then
         exit 1
     }
     echo "[shard] At the pin ${want:0:9}"
+else
+    # Same pin, run again: take the stack off, last patch first, and put it back. A patch
+    # under a later one that edits the same lines does not come off alone, so patches
+    # cannot be judged one at a time on a patched tree. This also applies UO_SHARD_DFI.
+    for ((i = ${#patches[@]} - 1; i >= 0; i--)); do
+        p="${patches[i]}"
+        if git -C "$src" apply -R --check "$p" >/dev/null 2>&1; then
+            git -C "$src" apply -R "$p" || exit 1
+        fi
+    done
 fi
 
+# UO_SHARD_DFI=0: the DFI shard content patches stay off.
+is_dfi() { case "$(basename "$1")" in *-dfi-*) return 0 ;; *) return 1 ;; esac; }
+
 for p in "${patches[@]}"; do
+    if [ "${UO_SHARD_DFI:-1}" = "0" ] && is_dfi "$p"; then
+        echo "[shard] Leaving $(basename "$p") off: UO_SHARD_DFI=0"
+        continue
+    fi
     echo "[shard] Applying $(basename "$p")"
     if git -C "$src" apply --check "$p" >/dev/null 2>&1; then
         git -C "$src" apply "$p" || exit 1

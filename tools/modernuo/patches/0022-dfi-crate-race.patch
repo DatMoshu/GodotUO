@@ -1,0 +1,2851 @@
+diff --git a/Projects/UOContent.Tests/Tests/Custom/DfiCrateRaceTests.cs b/Projects/UOContent.Tests/Tests/Custom/DfiCrateRaceTests.cs
+new file mode 100644
+index 000000000..63f6bbf3a
+--- /dev/null
++++ b/Projects/UOContent.Tests/Tests/Custom/DfiCrateRaceTests.cs
+@@ -0,0 +1,253 @@
++using System;
++using System.Collections.Generic;
++using Server;
++using Server.Custom.Dfi.CrateRace;
++using Server.Custom.Dfi.Events;
++using Server.Items;
++using Server.Misc;
++using Server.Mobiles;
++using Xunit;
++
++namespace UOContent.Tests.Custom;
++
++[Collection("Sequential UOContent Tests")]
++public class DfiCrateRaceTests : IDisposable
++{
++    private static readonly Point3D StoneAt = new(5300, 1300, 0);
++
++    private readonly List<IEntity> _created = new();
++
++    public DfiCrateRaceTests()
++    {
++        if (NameList.GetNameList("male") == null)
++        {
++            NameList.Configure();
++        }
++    }
++
++    public void Dispose()
++    {
++        EventSystem.Stop();
++
++        foreach (var e in _created)
++        {
++            e?.Delete();
++        }
++
++        _created.Clear();
++        CrateRace.PartData.Clear();
++        CrateRace.PartList.Clear();
++        CrateRace.FinData.Clear();
++    }
++
++    private T Track<T>(T e) where T : IEntity
++    {
++        _created.Add(e);
++        return e;
++    }
++
++    private PlayerMobile Player(int bank = 0)
++    {
++        var m = Track(new PlayerMobile());
++        m.Player = true;
++        m.Body = 0x190;
++        m.RawStr = 100;
++        m.AddItem(new Backpack());
++        m.AddItem(new BankBox(m));
++        m.MoveToWorld(new Point3D(1434, 1690, 0), Map.Felucca);
++
++        if (bank > 0)
++        {
++            m.BankBox.DropItem(new BankCheck(bank));
++        }
++
++        return m;
++    }
++
++    private CrateStone Stone()
++    {
++        var stone = Track(new CrateStone { Price = 1000, MinutesOpen = 2 });
++        stone.MoveToWorld(StoneAt, Map.Felucca);
++        return stone;
++    }
++
++    [Fact]
++    public void Track_BuildsDfisTrackAroundTheStone()
++    {
++        var stone = Stone();
++
++        stone.BuildTrack();
++        var track = Assert.IsType<RaceTrackAddon>(stone.Track);
++        Track(track);
++
++        Assert.Equal(RaceTrackData.Tiles.Length / 4, track.Components.Count);
++        Assert.Equal(new Rectangle2D(StoneAt.X - 22, StoneAt.Y - 32, 45, 65), stone.RegionRect);
++
++        // The default layout: four lanes clockwise from the top straight, and a finish line across it.
++        var lines = CrateRace.FinishLines.FindAll(l => l.Map == Map.Felucca && l.X == StoneAt.X);
++        lines.ForEach(l => Track(l));
++        Assert.Equal(4, stone.Rectangles.Count);
++        Assert.Equal(Direction.East, stone.Rectangles[0].FirstDirection);
++        Assert.Equal(9, lines.Count);
++        Assert.All(lines, l => Assert.True(stone.Rectangles[0].Contains(l.X, l.Y)));
++
++        stone.DemolishTrack();
++        Assert.True(track.Deleted);
++    }
++
++    [Fact]
++    public void Stone_KeepsRectanglesWithTheirDirections()
++    {
++        var stone = Stone();
++
++        stone.Rectangles =
++        [
++            new CrateRectangle(new Rectangle2D(10, 10, 5, 20), Direction.North, Direction.East),
++            new CrateRectangle(new Rectangle2D(20, 10, 20, 5), Direction.East, Direction.South)
++        ];
++
++        var back = stone.Rectangles;
++        Assert.Equal(2, back.Count);
++        Assert.Equal(Direction.East, back[0].SecondDirection);
++        Assert.Equal(Direction.South, back[1].SecondDirection);
++        Assert.Equal(new Rectangle2D(20, 10, 20, 5), back[1].Rectangle);
++    }
++
++    [Fact]
++    public void Joining_ChargesUndressesAndBringsTheRacerToTheTrack()
++    {
++        var stone = Stone();
++        var player = Player(5000);
++        var shirt = new FancyShirt { Layer = Layer.Shirt };
++        player.EquipItem(shirt);
++        player.Backpack.DropItem(new Gold(50));
++
++        CrateRace.Start(stone);
++        Assert.True(EventSystem.Open);
++
++        Assert.Null(CrateRace.Join(player));
++
++        Assert.True(CrateRace.Participant(player));
++        // The fee left the bank; the backpack's 50 gold went into the wardrobe bag in the bank.
++        Assert.Equal(4050, Banker.GetBalance(player));
++        Assert.Equal(1000, CrateRace.BankedMoney);
++        Assert.Empty(player.Backpack.Items);
++        Assert.Null(player.FindItemOnLayer(Layer.Shirt));
++        Assert.Equal(StoneAt, player.Location);
++
++        Assert.NotNull(CrateRace.Join(player));
++    }
++
++    [Fact]
++    public void Wardrobe_GivesEverythingBack()
++    {
++        var player = Player();
++        var shirt = new FancyShirt { Layer = Layer.Shirt };
++        player.EquipItem(shirt);
++        var gold = new Gold(50);
++        player.Backpack.DropItem(gold);
++
++        Assert.True(EventWardrobe.Undress(player));
++        Assert.False(EventWardrobe.Undress(player));
++        Assert.True(EventWardrobe.Redress(player));
++
++        Assert.Same(shirt, player.FindItemOnLayer(Layer.Shirt));
++        Assert.True(gold.IsChildOf(player.Backpack));
++        Assert.False(EventWardrobe.IsUndressed(player));
++    }
++
++    [Fact]
++    public void Crates_StackThreeAndPushTheOldestOut()
++    {
++        var rd = new RaceData(Player());
++        var freeze = new FreezeCrateType();
++        var quake = new EarthQuakeCrateType();
++
++        rd.Store(freeze);
++        rd.Store(quake);
++        rd.Store(freeze);
++        rd.Store(quake);
++
++        Assert.Same(quake, rd.Crate1);
++        Assert.Same(freeze, rd.Crate2);
++        Assert.Same(quake, rd.Crate3);
++    }
++
++    [Fact]
++    public void Damage_IsTakenByShieldsFirst()
++    {
++        var player = Player();
++        player.Hits = player.HitsMax;
++        var rd = new RaceData(player) { Mirror = true, TempMirror = true };
++
++        CrateRace.HandleDamage(rd, .5);
++        Assert.False(rd.TempMirror);
++        Assert.Equal(player.HitsMax, player.Hits);
++
++        CrateRace.HandleDamage(rd, .5);
++        Assert.False(rd.Mirror);
++        Assert.Equal(player.HitsMax, player.Hits);
++
++        CrateRace.HandleDamage(rd, .5);
++        Assert.True(player.Hits < player.HitsMax);
++    }
++
++    [Fact]
++    public void Finishing_TheLastLapPlacesTheRacer()
++    {
++        var player = Player();
++        var rd = new RaceData(player) { Lap = 0 };
++        CrateRace.Laps = 2;
++        CrateRace.PartData[player] = rd;
++        CrateRace.PartList.Add(rd);
++        CrateRace.Map = Map.Felucca;
++
++        Assert.True(CrateRace.MobFinish(player));
++        Assert.True(CrateRace.MobFinish(player));
++        Assert.False(CrateRace.MobFinish(player));
++
++        Assert.Single(CrateRace.FinData);
++        Assert.Equal(1, CrateRace.FinData[0].Place);
++        Assert.False(CrateRace.Participant(player));
++    }
++
++    [Fact]
++    public void Placing_RanksByLapThenByRectangle()
++    {
++        var a = Player();
++        var b = Player();
++        var stone = Stone();
++        stone.Rectangles =
++        [
++            new CrateRectangle(new Rectangle2D(1400, 1680, 20, 20)),
++            new CrateRectangle(new Rectangle2D(1420, 1680, 20, 20))
++        ];
++        CrateRace.Map = Map.Felucca;
++        typeof(CrateRace).GetProperty(nameof(CrateRace.Rectangles))!.SetValue(null, stone.Rectangles);
++
++        a.Location = new Point3D(1405, 1690, 0);
++        b.Location = new Point3D(1425, 1690, 0);
++        var ra = new RaceData(a) { Lap = 1 };
++        var rb = new RaceData(b) { Lap = 1 };
++        CrateRace.PartList.Add(ra);
++        CrateRace.PartList.Add(rb);
++
++        CrateRace.CheckPlace();
++        Assert.Equal(1, rb.Place);
++        Assert.Same(b, CrateRace.FirstPlace);
++
++        ra.Lap = 2;
++        CrateRace.CheckPlace();
++        Assert.Equal(1, ra.Place);
++        Assert.Equal(2, rb.Place);
++    }
++
++    [Fact]
++    public void EventMaster_AndRaceItemsConstruct()
++    {
++        Assert.Contains(Track(new EventNpc()), EventSystem.Npcs);
++        Assert.False(Track(new RaceCrate()).Deleted);
++        Assert.False(Track(new CrateApple()).Deleted);
++        Assert.Contains(Track(new RaceFinishLine()), CrateRace.FinishLines);
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Games/CrateRace.cs b/Projects/UOContent/Custom/DFI/Games/CrateRace.cs
+new file mode 100644
+index 000000000..a6739b40f
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Games/CrateRace.cs
+@@ -0,0 +1,1517 @@
++// DFI Network's crate race ("a Sunny Production, 2005"), ported from DFI RUNUO Scripts/Custom/Engines/Crate Race.
++// Players pay to join through the event masters, are undressed, and race laps of a walled track. Crates drop on
++// the track: running into one either takes effect (healing, a shield, damage) or stores it for later use by
++// saying "use first/second/third crate" or clicking it on the race gump (explosive drop, slick patch, freeze,
++// earthquake, energy bolt on the leader, chain lightning, flying bomb). Apples restore stamina or health. A
++// racer who dies is set twenty tiles back along the track. The first three take a third, a sixth and a ninth of
++// the entry fees, and copper bars if rewards are on.
++//
++// Staff set it up at the crate stone: build DFI's track around it, draw the track's rectangles in racing order
++// (each with the two directions a racer leaves it by), lay a finish line, set the region, then start it.
++
++using System;
++using System.Collections.Generic;
++using ModernUO.Serialization;
++using Server.Custom.Dfi.Events;
++using Server.Gumps;
++using Server.Items;
++using Server.Mobiles;
++using Server.Network;
++using Server.Regions;
++using Server.Spells;
++
++namespace Server.Custom.Dfi.CrateRace
++{
++    public class CrateRectangle
++    {
++        public CrateRectangle(Rectangle2D rect, Direction first = Direction.North, Direction second = Direction.North)
++        {
++            Rectangle = rect;
++            FirstDirection = first;
++            SecondDirection = second;
++        }
++
++        public Rectangle2D Rectangle { get; set; }
++        public Direction FirstDirection { get; set; }
++        public Direction SecondDirection { get; set; }
++
++        public bool Contains(int x, int y) =>
++            Rectangle.Start.X <= x && Rectangle.Start.Y <= y && Rectangle.End.X >= x && Rectangle.End.Y >= y;
++    }
++
++    public class RaceData : IComparable<RaceData>
++    {
++        public RaceData(Mobile m) => Part = m;
++
++        public Mobile Part { get; }
++        public bool Mirror, TempMirror, SwitchGump, Frozen;
++        public CrateType Crate1, Crate2, Crate3;
++        public int Place, Lap;
++
++        public bool UsedMirror()
++        {
++            if (TempMirror)
++            {
++                TempMirror = false;
++                return true;
++            }
++
++            if (Mirror)
++            {
++                Mirror = false;
++                return true;
++            }
++
++            return false;
++        }
++
++        // Ahead first: more laps, then further along the track's rectangles.
++        public int CompareTo(RaceData other) =>
++            Lap != other.Lap
++                ? other.Lap - Lap
++                : CrateRace.GetRectangleID(other.Part.X, other.Part.Y) - CrateRace.GetRectangleID(Part.X, Part.Y);
++
++        public void Store(CrateType type)
++        {
++            if (Crate1 == null)
++            {
++                Crate1 = type;
++            }
++            else if (Crate2 == null)
++            {
++                Crate2 = type;
++            }
++            else if (Crate3 == null)
++            {
++                Crate3 = type;
++            }
++            else
++            {
++                Crate3 = Crate2;
++                Crate2 = Crate1;
++                Crate1 = type;
++                CrateRace.OpenCrates--;
++            }
++
++            CrateRace.OpenCrates++;
++        }
++
++        public void Use(int slot)
++        {
++            var type = slot switch { 1 => Crate1, 2 => Crate2, _ => Crate3 };
++
++            if (type == null)
++            {
++                return;
++            }
++
++            switch (slot)
++            {
++                case 1:
++                    {
++                        Crate1 = null;
++                        break;
++                    }
++                case 2:
++                    {
++                        Crate2 = null;
++                        break;
++                    }
++                default:
++                    {
++                        Crate3 = null;
++                        break;
++                    }
++            }
++
++            type.OnUsage(Part);
++        }
++    }
++
++    public record FinishedData(Mobile Racer, int Place, TimeSpan Time);
++
++    public static class CrateRace
++    {
++        public const string Name = "Crate Race Event";
++        public const int DeathMoves = 20;
++
++        private static readonly Point3D _evictTo = new(1434, 1707, 18);
++
++        public static Dictionary<Mobile, RaceData> PartData { get; } = [];
++        public static List<RaceData> PartList { get; } = [];
++        public static List<RaceCrate> CrateList { get; } = [];
++        public static List<CrateApple> AppleList { get; } = [];
++        public static List<FinishedData> FinData { get; } = [];
++        public static List<RaceFinishLine> FinishLines { get; } = [];
++        public static List<CrateRectangle> Rectangles { get; private set; } = [];
++
++        public static int OpenCrates, BankedMoney, MaxCrates, Price, Laps, X, Y, Z;
++        public static bool Running, Animalised, QuickSpeed, Rewards;
++        public static Point3D StoneLocation;
++        public static Map Map;
++        public static Mobile FirstPlace;
++        public static Timer FreezeTimer;
++
++        private static CrateRegion _region;
++        private static double[] _rectangleChance = [];
++        private static DateTime _started;
++        private static int _countdown;
++        private static int _tick;
++        private static Timer _startTimer, _raceTimer, _stopTimer;
++
++        public static int Crates => CrateList.Count;
++        public static int Participants => PartData.Count;
++        public static bool Participant(Mobile m) => PartData.ContainsKey(m);
++
++        public static int GetRectangleID(int x, int y) => Rectangles.FindIndex(r => r.Contains(x, y));
++        public static CrateRectangle GetRectangle(int x, int y) => Rectangles.Find(r => r.Contains(x, y));
++
++        public static int GetHighestZ(int x, int y)
++        {
++            var z = Map.Tiles.GetLandTile(x, y).Z;
++
++            foreach (var item in Map.GetItemsInBounds(new Rectangle2D(x, y, 1, 1)))
++            {
++                z = Math.Max(z, item.GetSurfaceTop().Z);
++            }
++
++            return z;
++        }
++
++        public static void SetPlayerSpeed(RaceData rd)
++        {
++            // With quick speed racers run as if mounted and freezes bring them to normal; otherwise freezes walk.
++            var setting = QuickSpeed
++                ? rd.Frozen ? SpeedControlSetting.Disable : SpeedControlSetting.Mount
++                : rd.Frozen ? SpeedControlSetting.Walk : SpeedControlSetting.Disable;
++
++            rd.Part.NetState.SendSpeedControl(setting);
++        }
++
++        public static void SetPlayerSpeed(Mobile m)
++        {
++            if (PartData.TryGetValue(m, out var rd))
++            {
++                SetPlayerSpeed(rd);
++            }
++        }
++
++        public static void RequestJoin(Mobile m)
++        {
++            if (m.Player)
++            {
++                m.SendGump(new CrateJoinGump(), true);
++            }
++        }
++
++        public static string Join(PlayerMobile pm)
++        {
++            if (!EventSystem.Open || Participant(pm))
++            {
++                return "The race has already started.";
++            }
++
++            if (Price > 0 && !Banker.Withdraw(pm, Price))
++            {
++                return "You do not have enough money to participate.";
++            }
++
++            if (!EventWardrobe.Undress(pm))
++            {
++                if (Price > 0)
++                {
++                    Banker.Deposit(pm, Price);
++                }
++
++                return "You could not be undressed for the race.";
++            }
++
++            BankedMoney += Math.Max(Price, 0);
++            var data = new RaceData(pm);
++            PartData[pm] = data;
++            PartList.Add(data);
++            SetPlayerSpeed(data);
++            pm.MoveToWorld(StoneLocation, Map);
++
++            if (Animalised)
++            {
++                pm.SendGump(new CrateRaceCharGump(), true);
++            }
++
++            return null;
++        }
++
++        public static void Start(CrateStone stone)
++        {
++            Map = stone.Map;
++            X = stone.X;
++            Y = stone.Y;
++            Z = stone.Z;
++            StoneLocation = stone.Location;
++            Rewards = stone.Rewards;
++            Animalised = stone.Animalised;
++            QuickSpeed = stone.QuickSpeed;
++            MaxCrates = stone.MaxCrates;
++            Price = stone.Price;
++            Laps = stone.Laps;
++            Rectangles = stone.Rectangles;
++
++            if (stone.RegionRect.Width > 0)
++            {
++                _region = new CrateRegion(stone.RegionRect, Map);
++                _region.Register();
++            }
++
++            Running = true;
++            EventSystem.Start(stone.MinutesOpen, Name, StartNewRace, StopRace, RequestJoin);
++        }
++
++        private static void StartNewRace()
++        {
++            if (Rectangles.Count < 4 || PartData.Count == 0)
++            {
++                EventSystem.Stop();
++                return;
++            }
++
++            SetRectangleChances();
++            _started = Core.Now;
++
++            var row = 0;
++            var column = 1;
++
++            foreach (var m in PartData.Keys)
++            {
++                m.CloseGump<CrateRaceCharGump>();
++
++                if (Animalised && (int)m.BodyMod is 0 or 400 or 401)
++                {
++                    m.BodyMod = 0xD0;
++                }
++
++                m.Frozen = true;
++                m.Location = new Point3D(X - column, Y - 22 - row, Z);
++
++                if (++row % 8 == 0)
++                {
++                    row = 0;
++                    column++;
++                }
++            }
++
++            _countdown = 3;
++            _startTimer = Timer.DelayCall(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1), CountDown);
++        }
++
++        private static void SetRectangleChances()
++        {
++            var total = 0;
++
++            foreach (var r in Rectangles)
++            {
++                total += r.Rectangle.Width * r.Rectangle.Height;
++            }
++
++            _rectangleChance = new double[Rectangles.Count];
++            var cumulative = 0.0;
++
++            for (var i = 0; i < Rectangles.Count; i++)
++            {
++                cumulative += (double)Rectangles[i].Rectangle.Width * Rectangles[i].Rectangle.Height / Math.Max(1, total);
++                _rectangleChance[i] = cumulative;
++            }
++        }
++
++        private static void CountDown()
++        {
++            _countdown--;
++
++            foreach (var m in PartData.Keys)
++            {
++                if (_countdown == 0)
++                {
++                    m.Frozen = false;
++                    m.SendMessage("The race has started!");
++                }
++                else
++                {
++                    m.SendMessage($"{_countdown} seconds untill the race begins!");
++                }
++            }
++
++            if (_countdown == 0)
++            {
++                _startTimer.Stop();
++                FinData.Clear();
++                _raceTimer = Timer.DelayCall(TimeSpan.Zero, TimeSpan.FromMilliseconds(500), OnRaceTimer);
++            }
++        }
++
++        private static void OnRaceTimer()
++        {
++            _tick++;
++            DropCrate();
++            DropApple();
++
++            if (_tick % 2 == 0)
++            {
++                foreach (var rd in PartList)
++                {
++                    rd.Part.SendGump(new CrateRaceGump(rd), true);
++                }
++            }
++
++            if (_tick == 4)
++            {
++                _tick = 0;
++                CheckPlace();
++            }
++        }
++
++        private static Point3D RandomDropLocation()
++        {
++            var roll = Utility.RandomDouble();
++            var rect = Rectangles[^1].Rectangle;
++
++            for (var i = 0; i < _rectangleChance.Length; i++)
++            {
++                if (roll <= _rectangleChance[i])
++                {
++                    rect = Rectangles[i].Rectangle;
++                    break;
++                }
++            }
++
++            var x = Utility.RandomMinMax(rect.Start.X, rect.End.X);
++            var y = Utility.RandomMinMax(rect.Start.Y, rect.End.Y);
++            return new Point3D(x, y, GetHighestZ(x, y));
++        }
++
++        private static void DropCrate()
++        {
++            if (Crates >= MaxCrates)
++            {
++                return;
++            }
++
++            var crate = new RaceCrate();
++            var loc = RandomDropLocation();
++            crate.MoveToWorld(loc, Map);
++            Effects.PlaySound(loc, Map, 0x202);
++            Effects.SendLocationEffect(loc, Map, 0x376A, 30, crate.Hue, 3);
++            Effects.SendLocationEffect(loc, Map, 0x3779, 30, crate.Hue, 3);
++            CrateList.Add(crate);
++        }
++
++        private static void DropApple()
++        {
++            if (AppleList.Count < 15)
++            {
++                var apple = new CrateApple();
++                apple.MoveToWorld(RandomDropLocation(), Map);
++                AppleList.Add(apple);
++            }
++        }
++
++        public static void CheckPlace()
++        {
++            PartList.Sort();
++            var place = FinData.Count + 1;
++
++            foreach (var rd in PartList)
++            {
++                if (place == FinData.Count + 1)
++                {
++                    FirstPlace = rd.Part;
++                }
++
++                rd.Place = place++;
++            }
++        }
++
++        // A racer who dies is set back DeathMoves tiles along the track's directions.
++        public static void OnDeath(Mobile m)
++        {
++            var x = m.X;
++            var y = m.Y;
++            var moves = DeathMoves;
++            var rect = GetRectangle(x, y);
++            var first = true;
++            var crossedStart = false;
++
++            while (rect != null && !NewLocation(rect, first, ref x, ref y, ref moves))
++            {
++                if (rect == Rectangles[0])
++                {
++                    crossedStart = true;
++                }
++
++                first = !first;
++
++                if (first)
++                {
++                    rect = GetRectangle(x, y);
++                }
++            }
++
++            if (rect == null)
++            {
++                return;
++            }
++
++            if (rect == Rectangles[0])
++            {
++                foreach (var line in FinishLines)
++                {
++                    if (line.X == x && line.Y == y)
++                    {
++                        switch (rect.FirstDirection)
++                        {
++                            case Direction.North:
++                                {
++                                    y++;
++                                    break;
++                                }
++                            case Direction.East:
++                                {
++                                    x--;
++                                    break;
++                                }
++                            case Direction.South:
++                                {
++                                    y--;
++                                    break;
++                                }
++                            case Direction.West:
++                                {
++                                    x++;
++                                    break;
++                                }
++                        }
++
++                        break;
++                    }
++                }
++            }
++            else if (crossedStart && PartData.TryGetValue(m, out var rd))
++            {
++                rd.Lap--;
++            }
++
++            m.MoveToWorld(new Point3D(x, y, GetHighestZ(x, y)), Map);
++        }
++
++        private static bool NewLocation(CrateRectangle rect, bool first, ref int x, ref int y, ref int moves)
++        {
++            var (edge, vertical, positive) = (first ? rect.FirstDirection : rect.SecondDirection) switch
++            {
++                Direction.North => (rect.Rectangle.Start.Y, true, false),
++                Direction.East  => (rect.Rectangle.End.X, false, true),
++                Direction.South => (rect.Rectangle.End.Y, true, true),
++                _               => (rect.Rectangle.Start.X, false, false)
++            };
++
++            var coord = vertical ? y : x;
++            var completed = false;
++            var difference = 0;
++
++            if (positive && coord + moves <= edge)
++            {
++                coord += moves;
++                completed = true;
++            }
++            else if (!positive && coord - moves >= edge)
++            {
++                coord -= moves;
++                completed = true;
++            }
++            else
++            {
++                difference = edge - coord + (first ? 0 : positive ? 1 : -1);
++                coord += difference;
++            }
++
++            if (vertical)
++            {
++                y = coord;
++            }
++            else
++            {
++                x = coord;
++            }
++
++            moves -= Math.Abs(difference);
++            return completed;
++        }
++
++        // Shields absorb a hit; otherwise the damage is a share of the racer's hits, softened as the track fills.
++        public static void HandleDamage(RaceData rd, double amount)
++        {
++            if (rd.TempMirror)
++            {
++                rd.Part.SendMessage("But your temporary shield has saved you from any harm done.");
++                rd.TempMirror = false;
++            }
++            else if (rd.Mirror)
++            {
++                rd.Part.SendMessage("But your shield has saved you from any harm done.");
++                rd.Mirror = false;
++            }
++            else
++            {
++                var damage = (int)(rd.Part.HitsMax * amount);
++                damage -= damage * (OpenCrates + Crates / 2) / 100;
++                rd.Part.Damage(Math.Max(0, damage));
++            }
++        }
++
++        public static void StopFreeze()
++        {
++            foreach (var rd in PartList)
++            {
++                if (rd.Frozen)
++                {
++                    rd.Frozen = false;
++                    SetPlayerSpeed(rd);
++                    rd.Part.SendMessage("The effect of a freezecrate has worn off!");
++                }
++            }
++        }
++
++        // Returns true while the racer still has laps to go.
++        public static bool MobFinish(Mobile m)
++        {
++            if (!PartData.TryGetValue(m, out var rd))
++            {
++                return false;
++            }
++
++            rd.Lap++;
++
++            if (rd.Lap != Laps + 1)
++            {
++                return true;
++            }
++
++            var place = FinData.Count + 1;
++            FinData.Add(new FinishedData(m, place, Core.Now - _started));
++
++            m.Location = place switch
++            {
++                1 => new Point3D(X, Y - 15, Z + 23),
++                2 => new Point3D(X, Y - 17, Z + 20),
++                3 => new Point3D(X, Y - 13, Z + 20),
++                _ => new Point3D(X + 3, Y - 17, Z)
++            };
++
++            if (place == 1)
++            {
++                _stopTimer = Timer.DelayCall(TimeSpan.FromMinutes(3), EventSystem.Stop);
++            }
++
++            PartData.Remove(m);
++            PartList.Remove(rd);
++
++            if (PartData.Count == 0)
++            {
++                EventSystem.Stop();
++            }
++
++            return false;
++        }
++
++        private static void StopRace()
++        {
++            foreach (var m in PartData.Keys)
++            {
++                m.SendMessage("The race has stopped!");
++            }
++
++            _stopTimer?.Stop();
++            _raceTimer?.Stop();
++            _startTimer?.Stop();
++            _region?.Unregister();
++            _region = null;
++
++            foreach (var crate in CrateList.ToArray())
++            {
++                crate.Delete();
++            }
++
++            foreach (var apple in AppleList.ToArray())
++            {
++                apple.Delete();
++            }
++
++            foreach (var rd in PartList.ToArray())
++            {
++                RemovePlayer(rd.Part);
++            }
++
++            PartList.Clear();
++            PartData.Clear();
++
++            foreach (var fd in FinData)
++            {
++                var (money, text, bars) = fd.Place switch
++                {
++                    1 => (BankedMoney / 3, "You have won this Crate Race, Congratulations!", 3),
++                    2 => (BankedMoney / 6, "You have managed to become second in this Crate Race, Congratulations!", 2),
++                    3 => (BankedMoney / 9, "You have managed to become third in this Crate Race, Congratulations!", 1),
++                    _ => (0, "Thank you for participating in this Crate Race, unfortunately you have not won anything. Good luck next time!", 0)
++                };
++
++                if (Rewards && bars > 0)
++                {
++                    EventRewardSystem.CreateCopperBar(fd.Racer, bars, "Crate Race Event");
++                }
++
++                fd.Racer.SendMessage(text);
++
++                if (money > 0)
++                {
++                    fd.Racer.AddToBackpack(new BankCheck(money));
++                }
++
++                RemovePlayer(fd.Racer);
++                fd.Racer.SendGump(new RaceRankGump(new List<FinishedData>(FinData), 0), true);
++            }
++
++            OpenCrates = 0;
++            BankedMoney = 0;
++            Running = false;
++        }
++
++        private static void RemovePlayer(Mobile m)
++        {
++            m.CloseGump<CrateRaceGump>();
++            m.NetState.SendSpeedControl(SpeedControlSetting.Disable);
++            m.BodyMod = 0;
++            m.Frozen = false;
++            EventWardrobe.Redress(m);
++            EventSystem.RemoveToRandomLoc(m);
++        }
++
++        public static void Evict(Mobile m) => Timer.DelayCall(() => m.MoveToWorld(_evictTo, Map.Felucca));
++    }
++
++    public class CrateRegion : BaseRegion
++    {
++        public CrateRegion(Rectangle2D rect, Map map) : base("A Crate Race Track", map, 150, rect)
++        {
++        }
++
++        public override bool AllowHousing(Mobile from, Point3D p) => false;
++        public override bool AllowSpawn() => false;
++        public override bool AllowBeneficial(Mobile from, Mobile target) => false;
++        public override bool AllowHarmful(Mobile from, Mobile target) => false;
++        public override bool CanUseStuckMenu(Mobile m) => false;
++
++        public override bool OnBeginSpellCast(Mobile from, ISpell s)
++        {
++            if (from.AccessLevel == AccessLevel.Player)
++            {
++                from.SendMessage("You cannot cast spells on a race track.");
++                return false;
++            }
++
++            return base.OnBeginSpellCast(from, s);
++        }
++
++        public override bool OnSkillUse(Mobile m, int skill)
++        {
++            if (m.AccessLevel == AccessLevel.Player)
++            {
++                m.SendMessage("You cannot use that skill here.");
++                return false;
++            }
++
++            return base.OnSkillUse(m, skill);
++        }
++
++        public override void OnSpeech(SpeechEventArgs e)
++        {
++            if (CrateRace.Running && CrateRace.PartData.TryGetValue(e.Mobile, out var rd))
++            {
++                var speech = e.Speech.ToLowerInvariant();
++                var slot = speech.Contains("use first crate") ? 1 :
++                    speech.Contains("use second crate") ? 2 :
++                    speech.Contains("use third crate") ? 3 : 0;
++
++                if (slot > 0)
++                {
++                    rd.Use(slot);
++                    e.Blocked = true;
++                    return;
++                }
++            }
++
++            base.OnSpeech(e);
++        }
++
++        public override void OnEnter(Mobile m)
++        {
++            if (CrateRace.Participant(m) || m.AccessLevel > AccessLevel.Player)
++            {
++                CrateRace.SetPlayerSpeed(m);
++
++                if (CrateRace.Animalised && CrateRace.Participant(m) && m.BodyMod == 0)
++                {
++                    m.BodyMod = 208;
++                }
++
++                base.OnEnter(m);
++            }
++            else if (m.Player)
++            {
++                CrateRace.Evict(m);
++            }
++        }
++
++        public override void OnExit(Mobile m)
++        {
++            if (!CrateRace.Participant(m) && m.Player)
++            {
++                m.BodyMod = 0;
++                m.NetState.SendSpeedControl(SpeedControlSetting.Disable);
++            }
++
++            base.OnExit(m);
++        }
++
++        public override bool OnBeforeDeath(Mobile m)
++        {
++            if (!CrateRace.Participant(m))
++            {
++                return base.OnBeforeDeath(m);
++            }
++
++            // Racers do not die: they are healed and set back along the track.
++            m.Hits = m.HitsMax;
++            m.Stam = m.StamMax;
++            CrateRace.OnDeath(m);
++            return false;
++        }
++
++        public override TimeSpan GetLogoutDelay(Mobile m) =>
++            m.AccessLevel == AccessLevel.Player ? TimeSpan.FromMinutes(60) : base.GetLogoutDelay(m);
++    }
++
++    public abstract class CrateType
++    {
++        public abstract int Hue { get; }
++        public virtual int GumpID => 0;
++
++        public virtual void OnMoveOver(Mobile m)
++        {
++        }
++
++        public virtual void OnUsage(Mobile m)
++        {
++        }
++    }
++
++    // Takes effect when run into, instead of being stored.
++    public abstract class SingleUseCrateType : CrateType
++    {
++    }
++
++    public class ExplosionCrateType : CrateType
++    {
++        public override int Hue => 1161;
++        public override int GumpID => 2282;
++
++        public override void OnUsage(Mobile m)
++        {
++            var crate = new RaceCrate();
++            crate.Type = new DropBombType(m, crate);
++            crate.Hue = crate.Type.Hue;
++            crate.MoveToWorld(m.Location, m.Map);
++            CrateRace.CrateList.Add(crate);
++            CrateRace.OpenCrates--;
++        }
++    }
++
++    public class SlickCrateType : CrateType
++    {
++        public override int Hue => 1736;
++        public override int GumpID => 2240;
++
++        public override void OnUsage(Mobile m)
++        {
++            new SlickPatch().MoveToWorld(m.Location, m.Map);
++            CrateRace.OpenCrates--;
++        }
++    }
++
++    // A crate dropped behind a racer that blows up when anyone else comes near, or after three seconds.
++    public class DropBombType : SingleUseCrateType
++    {
++        private readonly RaceCrate _crate;
++
++        public DropBombType(Mobile owner, RaceCrate crate)
++        {
++            Owner = owner;
++            _crate = crate;
++            Timer.DelayCall(TimeSpan.FromSeconds(3), Explode);
++        }
++
++        public Mobile Owner { get; }
++        public override int Hue => 33;
++
++        public override void OnMoveOver(Mobile m)
++        {
++            if (m != Owner)
++            {
++                Explode();
++            }
++        }
++
++        private void Explode()
++        {
++            if (_crate.Deleted)
++            {
++                return;
++            }
++
++            var hit = new List<RaceData>();
++
++            foreach (var m in _crate.Map.GetMobilesInRange(_crate.Location, 3))
++            {
++                if (CrateRace.PartData.TryGetValue(m, out var rd))
++                {
++                    hit.Add(rd);
++                }
++            }
++
++            foreach (var rd in hit)
++            {
++                rd.Part.SendMessage("You have been hit by a dropbomb!");
++                rd.Part.FixedParticles(0x36BD, 20, 10, 5044, EffectLayer.Head);
++                rd.Part.PlaySound(0x307);
++                CrateRace.HandleDamage(rd, .30);
++            }
++
++            _crate.Delete();
++        }
++    }
++
++    public class HealingCrateType : SingleUseCrateType
++    {
++        public override int Hue => 53;
++
++        public override void OnMoveOver(Mobile m)
++        {
++            m.Hits = m.HitsMax;
++            m.FixedParticles(0x376A, 9, 32, 5030, EffectLayer.Waist);
++            m.PlaySound(0x202);
++            m.SendMessage("The crate has healed all of your wounds!");
++        }
++    }
++
++    public class TempMirrorCrateType : SingleUseCrateType
++    {
++        public override int Hue => 1154;
++
++        public override void OnMoveOver(Mobile m)
++        {
++            if (CrateRace.PartData.TryGetValue(m, out var rd))
++            {
++                rd.TempMirror = true;
++                m.PlaySound(0x1E9);
++                m.FixedParticles(0x375A, 9, 20, 5016, EffectLayer.Waist);
++                Timer.DelayCall(TimeSpan.FromSeconds(20), () => rd.TempMirror = false);
++            }
++        }
++    }
++
++    public class MirrorCrateType : SingleUseCrateType
++    {
++        public override int Hue => 1150;
++
++        public override void OnMoveOver(Mobile m)
++        {
++            if (CrateRace.PartData.TryGetValue(m, out var rd))
++            {
++                rd.Mirror = true;
++                m.PlaySound(0x1E9);
++                m.FixedParticles(0x375A, 9, 20, 5016, EffectLayer.Waist);
++            }
++        }
++    }
++
++    public class DamagedCrateType : SingleUseCrateType
++    {
++        public override int Hue => 0;
++
++        public override void OnMoveOver(Mobile m)
++        {
++            if (CrateRace.PartData.TryGetValue(m, out var rd))
++            {
++                m.FixedParticles(0x36BD, 20, 10, 5044, EffectLayer.Head);
++                m.PlaySound(0x307);
++                CrateRace.HandleDamage(rd, .15);
++                m.SendMessage("The crate blew up when you came too close!");
++            }
++        }
++    }
++
++    public class FreezeCrateType : CrateType
++    {
++        public override int Hue => 1312;
++        public override int GumpID => 2277;
++
++        public override void OnUsage(Mobile m)
++        {
++            foreach (var rd in CrateRace.PartList)
++            {
++                if (rd.Part == m)
++                {
++                    m.SendMessage("You have crippled your opponents!");
++                }
++                else if (rd.UsedMirror())
++                {
++                    rd.Part.SendMessage("Your shield has blocked a paralyze crate.");
++                }
++                else
++                {
++                    rd.Frozen = true;
++                    CrateRace.SetPlayerSpeed(rd);
++                    rd.Part.SendMessage($"You have been frozen by {m.Name}");
++                }
++            }
++
++            CrateRace.OpenCrates--;
++            CrateRace.FreezeTimer?.Stop();
++            CrateRace.FreezeTimer = Timer.DelayCall(TimeSpan.FromSeconds(3), CrateRace.StopFreeze);
++        }
++    }
++
++    public class EarthQuakeCrateType : CrateType
++    {
++        public override int Hue => 2430;
++        public override int GumpID => 2296;
++
++        public override void OnUsage(Mobile m)
++        {
++            var hit = new List<RaceData>();
++
++            foreach (var mob in m.GetMobilesInRange(5))
++            {
++                if (mob != m && CrateRace.PartData.TryGetValue(mob, out var rd))
++                {
++                    hit.Add(rd);
++                }
++            }
++
++            foreach (var rd in hit)
++            {
++                rd.Part.SendMessage("You feel the earth below you tremble!");
++                CrateRace.HandleDamage(rd, .50);
++            }
++
++            m.SendMessage("You make the earth swing from one side to another!");
++            m.PlaySound(0x2F3);
++            CrateRace.OpenCrates--;
++        }
++    }
++
++    public class EnergyBoltCrateType : CrateType
++    {
++        public override int Hue => 1266;
++        public override int GumpID => 2281;
++
++        public override void OnUsage(Mobile m)
++        {
++            if (CrateRace.PartList.Count > 0)
++            {
++                var leader = CrateRace.PartList[0];
++                m.MovingParticles(leader.Part, 0x379F, 7, 0, false, true, 3043, 4043, 0x211);
++                m.PlaySound(0x20A);
++                leader.Part.SendMessage("You have been hit by an enormous energy blast!");
++                CrateRace.HandleDamage(leader, .50);
++                m.SendMessage("The first in place has been hit by an enormous energy blast!");
++            }
++
++            CrateRace.OpenCrates--;
++        }
++    }
++
++    public class ChainLightningCrateType : CrateType
++    {
++        public override int Hue => 2124;
++        public override int GumpID => 2288;
++
++        public override void OnUsage(Mobile m)
++        {
++            foreach (var rd in CrateRace.PartList)
++            {
++                if (rd.Part == m)
++                {
++                    m.SendMessage("You have crippled your opponents!");
++                    continue;
++                }
++
++                rd.Part.SendMessage($"You have been lightened up by {m.Name}");
++                rd.Part.BoltEffect(0);
++                CrateRace.HandleDamage(rd, .25);
++            }
++
++            CrateRace.OpenCrates--;
++        }
++    }
++
++    public class MovingBombCrateType : CrateType
++    {
++        public override int Hue => 2129;
++        public override int GumpID => 2266;
++
++        public override void OnUsage(Mobile m)
++        {
++            FlyingBomb.Launch(m);
++            CrateRace.OpenCrates--;
++        }
++    }
++
++    // A bomb thrown ahead of the racer; it travels up to thirty tiles and hurts the first racer in its path.
++    public static class FlyingBomb
++    {
++        public static void Launch(Mobile from)
++        {
++            var (dx, dy) = (from.Direction & Direction.Mask) switch
++            {
++                Direction.North => (0, -1),
++                Direction.Right => (1, -1),
++                Direction.East  => (1, 0),
++                Direction.Down  => (1, 1),
++                Direction.South => (0, 1),
++                Direction.Left  => (-1, 1),
++                Direction.West  => (-1, 0),
++                _               => (-1, -1)
++            };
++
++            var map = from.Map;
++            var point = from.Location;
++            var target = new Entity(Serial.Zero, new Point3D(point.X + dx * 30, point.Y + dy * 30, point.Z), map);
++            Effects.SendMovingEffect(from, target, 10249, 7, 10, true, false);
++
++            var steps = 0;
++            Timer timer = null;
++            timer = Timer.DelayCall(TimeSpan.FromSeconds(0.1), TimeSpan.FromSeconds(0.1), 30, () =>
++            {
++                steps++;
++                var at = new Point3D(point.X + dx * steps, point.Y + dy * steps, point.Z);
++
++                foreach (var m in map.GetMobilesInRange(at, 0))
++                {
++                    if (m != from && CrateRace.PartData.TryGetValue(m, out var rd))
++                    {
++                        m.FixedParticles(0x36BD, 20, 10, 5044, EffectLayer.Head);
++                        m.PlaySound(0x307);
++                        Timer.DelayCall(() => CrateRace.HandleDamage(rd, .20));
++                        timer?.Stop();
++                        return;
++                    }
++                }
++            });
++        }
++    }
++
++    [SerializationGenerator(0)]
++    public partial class RaceCrate : Item
++    {
++        // Must add up to 1.
++        private static readonly (double Chance, CrateType Type)[] _types =
++        [
++            (0.125, new TempMirrorCrateType()), (0.075, new MirrorCrateType()), (0.20, new ExplosionCrateType()),
++            (0.05, new FreezeCrateType()), (0.10, new EarthQuakeCrateType()), (0.075, new EnergyBoltCrateType()),
++            (0.05, new ChainLightningCrateType()), (0.075, new HealingCrateType()), (0.15, new MovingBombCrateType()),
++            (0.10, new SlickCrateType())
++        ];
++
++        private static readonly CrateType _damaged = new DamagedCrateType();
++
++        public RaceCrate() : base(3645)
++        {
++            Movable = false;
++
++            var roll = Utility.RandomDouble();
++            var cumulative = 0.0;
++
++            foreach (var (chance, type) in _types)
++            {
++                cumulative += chance;
++
++                if (roll <= cumulative)
++                {
++                    Type = type;
++                    break;
++                }
++            }
++
++            Type ??= _types[^1].Type;
++            Hue = Type.Hue;
++
++            // One crate in twenty is a trap that looks like any other.
++            if (Utility.RandomDouble() < 0.05 && Type is not HealingCrateType)
++            {
++                Type = _damaged;
++            }
++        }
++
++        public CrateType Type { get; set; }
++
++        public override string DefaultName => "Special Race Crate";
++        public override bool HandlesOnMovement => true;
++
++        public override void OnMovement(Mobile m, Point3D oldLocation)
++        {
++            if (Utility.InRange(m.Location, Location, 1) && CrateRace.PartData.TryGetValue(m, out var rd))
++            {
++                Type.OnMoveOver(m);
++
++                if (Type is not SingleUseCrateType)
++                {
++                    rd.Store(Type);
++                }
++
++                if (Type is not DropBombType bomb || m != bomb.Owner)
++                {
++                    Delete();
++                }
++            }
++
++            base.OnMovement(m, oldLocation);
++        }
++
++        public override void OnDelete()
++        {
++            CrateRace.CrateList.Remove(this);
++            base.OnDelete();
++        }
++
++        [AfterDeserialization]
++        private void AfterDeserialization() => Timer.DelayCall(Delete);
++    }
++
++    [SerializationGenerator(0)]
++    public partial class CrateApple : Item
++    {
++        private readonly bool _health;
++
++        public CrateApple() : base(2512)
++        {
++            Movable = false;
++            Hue = 68;
++
++            if (Utility.RandomDouble() < .20)
++            {
++                Hue = 53;
++                _health = true;
++            }
++        }
++
++        public override string DefaultName => "Stamina apple";
++
++        public override bool OnMoveOver(Mobile m)
++        {
++            if (_health)
++            {
++                m.Hits += m.HitsMax / 10;
++            }
++            else
++            {
++                m.Stam += m.StamMax / 10;
++            }
++
++            Delete();
++            return true;
++        }
++
++        public override void OnDelete()
++        {
++            CrateRace.AppleList.Remove(this);
++            base.OnDelete();
++        }
++
++        [AfterDeserialization]
++        private void AfterDeserialization() => Timer.DelayCall(Delete);
++    }
++
++    [SerializationGenerator(0)]
++    public partial class SlickPatch : Item
++    {
++        public SlickPatch() : base(0x914)
++        {
++            Movable = false;
++            Hue = 1736;
++            Timer.DelayCall(TimeSpan.FromSeconds(10.0), Delete);
++        }
++
++        public override bool OnMoveOver(Mobile m)
++        {
++            if (CrateRace.PartData.TryGetValue(m, out var rd))
++            {
++                rd.Frozen = true;
++                CrateRace.SetPlayerSpeed(rd);
++                m.SendMessage("Your movement has slowed down as you have stepped into a slick patch");
++                Timer.DelayCall(TimeSpan.FromSeconds(6), () =>
++                {
++                    if (CrateRace.Running)
++                    {
++                        rd.Frozen = false;
++                        CrateRace.SetPlayerSpeed(rd);
++                    }
++                });
++                Delete();
++            }
++
++            return true;
++        }
++
++        [AfterDeserialization]
++        private void AfterDeserialization() => Timer.DelayCall(Delete);
++    }
++
++    // A chequered tile racers cross eastwards to finish a lap.
++    [SerializationGenerator(0)]
++    public partial class RaceFinishLine : Item
++    {
++        private static bool _white;
++
++        [SerializableField(0)]
++        private Static _companion;
++
++        [Constructible(AccessLevel.GameMaster)]
++        public RaceFinishLine() : base(0x709)
++        {
++            _white = !_white;
++            Hue = _white ? 1153 : 2333;
++            Movable = false;
++            CrateRace.FinishLines.Add(this);
++            Timer.DelayCall(AddCompanion);
++        }
++
++        public override bool HandlesOnMovement => true;
++
++        private void AddCompanion()
++        {
++            if (Deleted || Map == null || Map == Map.Internal)
++            {
++                return;
++            }
++
++            Companion = new Static(0x70D) { Hue = Hue == 1153 ? 2333 : 1153 };
++            _companion.MoveToWorld(new Point3D(X - 1, Y, Z), Map);
++        }
++
++        public override void OnMovement(Mobile m, Point3D oldLocation)
++        {
++            if (CrateRace.Running && oldLocation.X == X && oldLocation.Y == Y && m.X == X + 1)
++            {
++                CrateRace.MobFinish(m);
++            }
++        }
++
++        [AfterDeserialization]
++        private void AfterDeserialization() => CrateRace.FinishLines.Add(this);
++
++        public override void OnAfterDelete()
++        {
++            CrateRace.FinishLines.Remove(this);
++            _companion?.Delete();
++            base.OnAfterDelete();
++        }
++    }
++
++    // DFI's race track, built from the data DFI kept for it.
++    [SerializationGenerator(0)]
++    public partial class RaceTrackAddon : BaseAddon
++    {
++        [Constructible(AccessLevel.GameMaster)]
++        public RaceTrackAddon()
++        {
++            var t = RaceTrackData.Tiles;
++
++            for (var i = 0; i + 3 < t.Length; i += 4)
++            {
++                AddComponent(new AddonComponent(t[i]), t[i + 1], t[i + 2], t[i + 3]);
++            }
++        }
++    }
++
++    // The race's control stone, hidden from players.
++    [SerializationGenerator(0)]
++    public partial class CrateStone : Item
++    {
++        [SerializableField(0)]
++        [SerializedCommandProperty(AccessLevel.GameMaster)]
++        private bool _quickSpeed;
++
++        [SerializableField(1)]
++        [SerializedCommandProperty(AccessLevel.GameMaster)]
++        private int _laps = 3;
++
++        [SerializableField(2)]
++        [SerializedCommandProperty(AccessLevel.GameMaster)]
++        private int _price = 5000;
++
++        [SerializableField(3, setter: "private")]
++        private int _maxCrates = 50;
++
++        [SerializableField(4)]
++        [SerializedCommandProperty(AccessLevel.GameMaster)]
++        private int _minutesOpen = 5;
++
++        [SerializableField(5)]
++        [SerializedCommandProperty(AccessLevel.GameMaster)]
++        private bool _animalised;
++
++        [SerializableField(6)]
++        [SerializedCommandProperty(AccessLevel.GameMaster)]
++        private bool _rewards = true;
++
++        [SerializableField(7)]
++        [SerializedCommandProperty(AccessLevel.GameMaster)]
++        private Rectangle2D _regionRect;
++
++        [SerializableField(8, getter: "private", setter: "private")]
++        private List<Rectangle2D> _rects = [];
++
++        [SerializableField(9, getter: "private", setter: "private")]
++        private List<int> _directions = [];
++
++        [SerializableField(10)]
++        [SerializedCommandProperty(AccessLevel.GameMaster)]
++        private Item _track;
++
++        [Constructible(AccessLevel.Administrator)]
++        public CrateStone() : base(3796)
++        {
++            Hue = 1122;
++            Movable = false;
++            Visible = false;
++        }
++
++        public override string DefaultName => "Crate Race Stone";
++
++        [CommandProperty(AccessLevel.GameMaster)]
++        public int MaxCratesOnTrack
++        {
++            get => _maxCrates;
++            set => MaxCrates = Math.Clamp(value, 0, 200);
++        }
++
++        [CommandProperty(AccessLevel.GameMaster)]
++        public bool Running
++        {
++            get => EventSystem.Running;
++            set
++            {
++                if (value == EventSystem.Running)
++                {
++                    return;
++                }
++
++                if (value)
++                {
++                    CrateRace.Start(this);
++                }
++                else
++                {
++                    EventSystem.Stop();
++                }
++            }
++        }
++
++        // The track's rectangles in racing order; each keeps the two directions a racer leaves it by.
++        public List<CrateRectangle> Rectangles
++        {
++            get
++            {
++                var list = new List<CrateRectangle>();
++
++                for (var i = 0; i < _rects.Count; i++)
++                {
++                    var dirs = i < _directions.Count ? _directions[i] : 0;
++                    list.Add(new CrateRectangle(_rects[i], (Direction)(dirs & 0xFF), (Direction)(dirs >> 8)));
++                }
++
++                return list;
++            }
++            set
++            {
++                Rects = value.ConvertAll(r => r.Rectangle);
++                Directions = value.ConvertAll(r => (int)r.FirstDirection | (int)r.SecondDirection << 8);
++            }
++        }
++
++        public void BuildTrack()
++        {
++            if (_track?.Deleted == false)
++            {
++                return;
++            }
++
++            var track = new RaceTrackAddon();
++            track.MoveToWorld(Location, Map);
++            Track = track;
++
++            if (_regionRect.Width == 0)
++            {
++                RegionRect = new Rectangle2D(X - 22, Y - 32, 45, 65);
++            }
++
++            if (_rects.Count == 0)
++            {
++                SetDefaultLayout();
++            }
++        }
++
++        // DFI's track: a ten-wide lane between walls at 21/31 and 11/21 tiles from the stone, raced clockwise
++        // from the top straight, where the start grid and the finish line are.
++        public void SetDefaultLayout()
++        {
++            Rectangles =
++            [
++                new CrateRectangle(new Rectangle2D(X - 20, Y - 30, 41, 9), Direction.East, Direction.South),
++                new CrateRectangle(new Rectangle2D(X + 12, Y - 21, 9, 52), Direction.South, Direction.West),
++                new CrateRectangle(new Rectangle2D(X - 20, Y + 22, 32, 9), Direction.West, Direction.North),
++                new CrateRectangle(new Rectangle2D(X - 20, Y - 21, 9, 43), Direction.North, Direction.East)
++            ];
++
++            foreach (var line in CrateRace.FinishLines.ToArray())
++            {
++                if (line.Map == Map && Utility.InRange(line.Location, Location, 40))
++                {
++                    line.Delete();
++                }
++            }
++
++            for (var y = Y - 30; y <= Y - 22; y++)
++            {
++                new RaceFinishLine().MoveToWorld(new Point3D(X, y, Z), Map);
++            }
++        }
++
++        public void DemolishTrack()
++        {
++            _track?.Delete();
++            Track = null;
++        }
++
++        public override void OnDoubleClick(Mobile from)
++        {
++            if (from.AccessLevel > AccessLevel.Counselor)
++            {
++                from.SendGump(new CrateStoneGump(this), true);
++            }
++        }
++
++        public override void OnAfterDelete()
++        {
++            _track?.Delete();
++            base.OnAfterDelete();
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Games/CrateRaceGumps.cs b/Projects/UOContent/Custom/DFI/Games/CrateRaceGumps.cs
+new file mode 100644
+index 000000000..b99a63542
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Games/CrateRaceGumps.cs
+@@ -0,0 +1,523 @@
++// The crate race's gumps, ported from DFI RUNUO Scripts/Custom/Engines/Crate Race (CrateRaceGumps.cs, ModGumps.cs):
++// joining, the racer's status, the rankings, and the stone's control centre with its track-rectangle editor.
++// DFI let each racer place their status gump anywhere on screen; here it sits at DFI's default spot.
++
++using System;
++using System.Collections.Generic;
++using Server.Commands;
++using Server.Gumps;
++using Server.Items;
++using Server.Mobiles;
++using Server.Network;
++
++namespace Server.Custom.Dfi.CrateRace
++{
++    public class CrateJoinGump : DynamicGump
++    {
++        public CrateJoinGump() : base(30, 30)
++        {
++        }
++
++        public override bool Singleton => true;
++
++        protected override void BuildLayout(ref DynamicGumpBuilder builder)
++        {
++            builder.AddPage();
++            builder.AddBackground(0, 0, 500, 280, 9200);
++            builder.AddLabel(196, 15, 0, "Crate Race Gump");
++            builder.AddHtml(
++                30, 50, 440, 170,
++                $"Welcome,<br><br>You are about to join a crate race event. It will cost you {Math.Max(0, CrateRace.Price)}gp to join. Your belongings will be kept safe in your bank while you race and returned to you afterwards.<br><br>Run over crates to collect them, and say \"use first crate\", \"use second crate\" or \"use third crate\" to use them. Apples restore your stamina. The first three across the finish line share the entry money.",
++                background: true, scrollbar: true
++            );
++            builder.AddButton(290, 230, 247, 248, 1);
++            builder.AddButton(150, 230, 242, 241, 0);
++        }
++
++        public override void OnResponse(NetState sender, in RelayInfo info)
++        {
++            if (info.ButtonID == 1 && sender.Mobile is PlayerMobile pm)
++            {
++                pm.SendMessage(CrateRace.Join(pm) ?? "You have entered the race!");
++            }
++        }
++    }
++
++    public class CrateRaceCharGump : DynamicGump
++    {
++        private static readonly (int GumpItem, int Body)[] _characters =
++        [
++            (8401, 0xD0), (8423, 50), (8426, 0xE1), (8473, 0xD6), (8437, 0x1D), (8416, 0x11), (8424, 0x33), (8417, 0xD5)
++        ];
++
++        public CrateRaceCharGump() : base(0, 0)
++        {
++        }
++
++        public override bool Singleton => true;
++
++        protected override void BuildLayout(ref DynamicGumpBuilder builder)
++        {
++            builder.AddPage();
++            builder.AddBackground(130, 130, 300, 300, 9200);
++            builder.AddLabel(166, 146, 0, "Choose your character");
++
++            for (var i = 0; i < _characters.Length; i++)
++            {
++                var x = i < 4 ? 160 : 300;
++                var y = 200 + i % 4 * 50;
++                builder.AddRadio(x, y, 210, 211, false, i);
++                builder.AddItem(x + 30, y, _characters[i].GumpItem);
++            }
++
++            builder.AddButton(190, 385, 241, 242, 0);
++            builder.AddButton(320, 385, 247, 248, 1);
++        }
++
++        public override void OnResponse(NetState sender, in RelayInfo info)
++        {
++            if (info.ButtonID != 1)
++            {
++                return;
++            }
++
++            for (var i = 0; i < _characters.Length; i++)
++            {
++                if (info.IsSwitched(i))
++                {
++                    sender.Mobile.BodyMod = _characters[i].Body;
++                    return;
++                }
++            }
++        }
++    }
++
++    public class CrateRaceGump : DynamicGump
++    {
++        private readonly RaceData _rd;
++
++        public CrateRaceGump(RaceData rd) : base(100, 450) => _rd = rd;
++
++        public override bool Singleton => true;
++
++        protected override void BuildLayout(ref DynamicGumpBuilder builder)
++        {
++            builder.SetNoClose();
++            builder.SetNoMove();
++            builder.AddPage();
++            builder.AddBackground(50, 15, 500, 260, 5054);
++            builder.AddImage(143, 22, 2440, 2105);
++            builder.AddLabel(173, 23, 1152, "Crate Race Gump");
++
++            AddCrate(ref builder, _rd.Crate1, 1, 55);
++            AddCrate(ref builder, _rd.Crate2, 2, 125);
++            AddCrate(ref builder, _rd.Crate3, 3, 195);
++
++            if (_rd.TempMirror)
++            {
++                builder.AddImage(355, 55, 2275);
++            }
++
++            if (_rd.Mirror)
++            {
++                builder.AddImage(425, 55, 2265);
++            }
++
++            var hits = 100 * _rd.Part.Hits / Math.Max(1, _rd.Part.HitsMax);
++            var hitsHue = hits < 30 ? 38 : hits < 50 ? 55 : 73;
++
++            builder.AddLabel(155, 130, hitsHue, "Health:");
++            builder.AddLabel(235, 130, hitsHue, $"{hits}%");
++            builder.AddLabel(155, 150, 1152, "Lap:");
++            builder.AddLabel(235, 150, 1152, $"{_rd.Lap}");
++            builder.AddLabel(155, 170, 1152, "Laps to go:");
++            builder.AddLabel(235, 170, 1152, $"{CrateRace.Laps - _rd.Lap}");
++            builder.AddLabel(155, 190, 1152, "Rank:");
++            builder.AddLabel(235, 190, 1152, $"{_rd.Place}");
++            builder.AddLabel(295, 150, 1152, "Crates:");
++            builder.AddLabel(375, 150, 1152, $"{CrateRace.Crates}");
++            builder.AddLabel(295, 170, 1152, "Opponents:");
++            builder.AddLabel(375, 170, 1152, $"{CrateRace.Participants - 1}");
++            builder.AddLabel(295, 190, 1152, "First Place:");
++            builder.AddLabel(375, 190, 1152, CrateRace.FirstPlace?.Name ?? "Noone");
++        }
++
++        private static void AddCrate(ref DynamicGumpBuilder builder, CrateType crate, int slot, int y)
++        {
++            if (crate != null)
++            {
++                builder.AddButton(85, y, crate.GumpID, crate.GumpID, slot);
++            }
++        }
++
++        public override void OnResponse(NetState sender, in RelayInfo info)
++        {
++            if (info.ButtonID is >= 1 and <= 3 && CrateRace.Running && CrateRace.PartData.TryGetValue(sender.Mobile, out var rd))
++            {
++                rd.Use(info.ButtonID);
++            }
++        }
++    }
++
++    public class RaceRankGump : DynamicGump
++    {
++        private readonly List<FinishedData> _list;
++        private readonly int _page;
++
++        public RaceRankGump(List<FinishedData> list, int page) : base(50, 50)
++        {
++            _list = list;
++            _page = Math.Clamp(page, 0, Math.Max(0, (list.Count - 1) / 10));
++        }
++
++        public override bool Singleton => true;
++
++        protected override void BuildLayout(ref DynamicGumpBuilder builder)
++        {
++            var pages = Math.Max(1, (_list.Count + 9) / 10);
++
++            builder.AddPage();
++            builder.AddBackground(130, 100, 340, 340, 9200);
++            builder.AddHtml(130, 118, 340, 23, "Crate Race Rankings", align: TextAlignment.Center);
++            builder.AddLabel(170, 150, 0, "Place:");
++            builder.AddLabel(210, 150, 0, "Name:");
++            builder.AddLabel(360, 150, 0, "Time:");
++
++            for (var i = _page * 10; i < Math.Min(_list.Count, _page * 10 + 10); i++)
++            {
++                var fd = _list[i];
++                var y = 170 + (i - _page * 10) * 20;
++                builder.AddLabel(170, y, 0, $"{fd.Place}");
++                builder.AddLabel(210, y, 0, fd.Racer?.Name ?? "Anonymous");
++                builder.AddLabel(360, y, 0, $"{(int)fd.Time.TotalMinutes}:{fd.Time.Seconds:00}");
++            }
++
++            builder.AddHtml(130, 400, 340, 20, $"{_page + 1}/{pages}", align: TextAlignment.Center);
++            builder.AddButton(169, 400, 9772, 9770, 1);
++            builder.AddButton(408, 400, 9773, 9771, 2);
++        }
++
++        public override void OnResponse(NetState sender, in RelayInfo info)
++        {
++            if (info.ButtonID is 1 or 2)
++            {
++                sender.Mobile.SendGump(new RaceRankGump(_list, _page + (info.ButtonID == 1 ? -1 : 1)), true);
++            }
++        }
++    }
++
++    public class CrateStoneGump : DynamicGump
++    {
++        private const int Build = 1;
++        private const int Demolish = 2;
++        private const int Settings = 3;
++        private const int NewRects = 4;
++        private const int EditRects = 5;
++        private const int Start = 6;
++        private const int Stop = 7;
++        private const int SetRegion = 8;
++
++        private readonly CrateStone _stone;
++
++        public CrateStoneGump(CrateStone stone) : base(100, 100) => _stone = stone;
++
++        public override bool Singleton => true;
++
++        protected override void BuildLayout(ref DynamicGumpBuilder builder)
++        {
++            builder.AddPage();
++            builder.AddBackground(0, 0, 420, 330, 9270);
++            builder.AddAlphaRegion(10, 10, 400, 310);
++            builder.AddLabel(130, 20, 0x480, "Crate Race Control Center");
++
++            builder.AddLabel(30, 55, 0x34, $"Running: {_stone.Running}   Racers: {CrateRace.Participants}   Crates: {CrateRace.Crates}");
++            builder.AddLabel(30, 75, 0x34, $"Rectangles: {_stone.Rectangles.Count}   Finish lines: {CrateRace.FinishLines.Count}   Track: {(_stone.Track?.Deleted == false ? "built" : "none")}");
++
++            AddRow(ref builder, 0, Build, "Build RaceTrack");
++            AddRow(ref builder, 1, Demolish, "Demolish RaceTrack");
++            AddRow(ref builder, 2, Settings, "Change Settings (laps, price, crates...)");
++            AddRow(ref builder, 3, NewRects, "Set New Track Rectangles");
++            AddRow(ref builder, 4, EditRects, "Edit Track Rectangles");
++            AddRow(ref builder, 5, SetRegion, "Set the race region");
++            AddRow(ref builder, 6, _stone.Running ? Stop : Start, _stone.Running ? "Stop the race" : "Start the race");
++        }
++
++        private static void AddRow(ref DynamicGumpBuilder builder, int row, int button, string text)
++        {
++            builder.AddButton(30, 110 + row * 28, 4005, 4006, button);
++            builder.AddLabel(65, 110 + row * 28, 0x480, text);
++        }
++
++        public override void OnResponse(NetState sender, in RelayInfo info)
++        {
++            var from = sender.Mobile;
++
++            if (from.AccessLevel < AccessLevel.GameMaster || _stone.Deleted)
++            {
++                return;
++            }
++
++            switch (info.ButtonID)
++            {
++                case Build:
++                    {
++                        _stone.BuildTrack();
++                        break;
++                    }
++                case Demolish:
++                    {
++                        _stone.DemolishTrack();
++                        break;
++                    }
++                case Settings:
++                    {
++                        from.SendGump(new PropertiesGump(from, _stone));
++                        return;
++                    }
++                case NewRects:
++                    {
++                        new RectangleSetup(from, _stone, []).Pick(0);
++                        return;
++                    }
++                case EditRects:
++                    {
++                        new RectangleSetup(from, _stone, _stone.Rectangles).Show(0);
++                        return;
++                    }
++                case SetRegion:
++                    {
++                        from.SendMessage("Target the corners of the race region.");
++                        BoundingBoxPicker.Begin(from, (map, start, end) =>
++                        {
++                            _stone.RegionRect = new Rectangle2D(new Point2D(start.X, start.Y), new Point2D(end.X + 1, end.Y + 1));
++                            from.SendGump(new CrateStoneGump(_stone), true);
++                        });
++                        return;
++                    }
++                case Start:
++                    {
++                        _stone.Running = true;
++                        break;
++                    }
++                case Stop:
++                    {
++                        _stone.Running = false;
++                        break;
++                    }
++                default:
++                    {
++                        return;
++                    }
++            }
++
++            from.SendGump(new CrateStoneGump(_stone), true);
++        }
++    }
++
++    // Draws the track's rectangles one at a time, in racing order, with the two directions a racer leaves each by.
++    public class RectangleSetup
++    {
++        private readonly Mobile _from;
++        private readonly CrateStone _stone;
++        private readonly List<Item> _markers = [];
++
++        public RectangleSetup(Mobile from, CrateStone stone, List<CrateRectangle> list)
++        {
++            _from = from;
++            _stone = stone;
++            List = list;
++        }
++
++        public List<CrateRectangle> List { get; }
++
++        public void Pick(int index)
++        {
++            _from.SendMessage("Target the corners of the track rectangle.");
++            BoundingBoxPicker.Begin(_from, (map, start, end) =>
++            {
++                var rect = new CrateRectangle(new Rectangle2D(new Point2D(start.X, start.Y), new Point2D(end.X + 1, end.Y + 1)));
++
++                if (index < List.Count)
++                {
++                    List[index] = rect;
++                }
++                else
++                {
++                    List.Add(rect);
++                    index = List.Count - 1;
++                }
++
++                Show(index);
++            });
++        }
++
++        public void Show(int index)
++        {
++            ClearMarkers();
++
++            if (List.Count > 0)
++            {
++                Mark(List[0].Rectangle, 1150);
++
++                if (index < List.Count && index > 0)
++                {
++                    Mark(List[index].Rectangle, 1151);
++                }
++            }
++
++            _from.SendGump(new TrackRectangleGump(this, index), true);
++        }
++
++        public void Save()
++        {
++            ClearMarkers();
++            _stone.Rectangles = List;
++            _from.SendMessage($"The track now has {List.Count} rectangles.");
++        }
++
++        public void ClearMarkers()
++        {
++            foreach (var item in _markers)
++            {
++                item.Delete();
++            }
++
++            _markers.Clear();
++        }
++
++        private void Mark(Rectangle2D rect, int hue)
++        {
++            var map = _stone.Map;
++
++            for (var x = rect.Start.X; x < rect.End.X; x++)
++            {
++                for (var y = rect.Start.Y; y < rect.End.Y; y++)
++                {
++                    var marker = new Static(0x1822) { Hue = hue, Name = "track marker" };
++                    marker.MoveToWorld(new Point3D(x, y, map.Tiles.GetLandTile(x, y).Z), map);
++                    _markers.Add(marker);
++                }
++            }
++        }
++    }
++
++    public class TrackRectangleGump : DynamicGump
++    {
++        private const int AddRect = 1;
++        private const int Finish = 2;
++        private const int Remove = 3;
++        private const int Redo = 4;
++        private const int Previous = 5;
++        private const int Next = 6;
++        private const int FirstBase = 10;
++        private const int SecondBase = 20;
++
++        private static readonly Direction[] _dirs = [Direction.North, Direction.East, Direction.South, Direction.West];
++
++        private readonly RectangleSetup _setup;
++        private readonly int _index;
++
++        public TrackRectangleGump(RectangleSetup setup, int index) : base(50, 50)
++        {
++            _setup = setup;
++            _index = index;
++        }
++
++        public override bool Singleton => true;
++
++        protected override void BuildLayout(ref DynamicGumpBuilder builder)
++        {
++            builder.AddPage();
++            builder.AddBackground(0, 0, 420, 330, 9270);
++            builder.AddAlphaRegion(10, 10, 400, 310);
++            builder.AddLabel(150, 20, 1152, "Track Rectangles");
++            builder.AddLabel(30, 50, 1152, $"Rectangle {_index + 1} of {_setup.List.Count} (the first is blue-white)");
++
++            if (_index < _setup.List.Count)
++            {
++                var r = _setup.List[_index];
++                builder.AddLabel(30, 75, 1152, $"{r.Rectangle}");
++                builder.AddLabel(30, 105, 1152, "First direction:");
++                builder.AddLabel(30, 165, 1152, "Second direction:");
++
++                for (var i = 0; i < _dirs.Length; i++)
++                {
++                    builder.AddButton(30 + i * 90, 130, r.FirstDirection == _dirs[i] ? 4006 : 4005, 4006, FirstBase + i);
++                    builder.AddLabel(65 + i * 90, 130, 1152, $"{_dirs[i]}");
++                    builder.AddButton(30 + i * 90, 190, r.SecondDirection == _dirs[i] ? 4006 : 4005, 4006, SecondBase + i);
++                    builder.AddLabel(65 + i * 90, 190, 1152, $"{_dirs[i]}");
++                }
++
++                builder.AddButton(30, 225, 4017, 4018, Remove);
++                builder.AddLabel(65, 225, 1152, "Remove this rectangle");
++                builder.AddButton(230, 225, 4011, 4012, Redo);
++                builder.AddLabel(265, 225, 1152, "Retarget it");
++            }
++
++            builder.AddButton(30, 260, 4014, 4015, Previous);
++            builder.AddButton(70, 260, 4005, 4006, Next);
++            builder.AddLabel(110, 260, 1152, "Previous / next");
++            builder.AddButton(30, 290, 4005, 4006, AddRect);
++            builder.AddLabel(65, 290, 1152, "Add Rectangle");
++            builder.AddButton(230, 290, 4023, 4024, Finish);
++            builder.AddLabel(265, 290, 1152, "Finish");
++        }
++
++        public override void OnResponse(NetState sender, in RelayInfo info)
++        {
++            var id = info.ButtonID;
++
++            switch (id)
++            {
++                case 0:
++                    {
++                        _setup.ClearMarkers();
++                        return;
++                    }
++                case AddRect:
++                    {
++                        _setup.Pick(_setup.List.Count);
++                        return;
++                    }
++                case Finish:
++                    {
++                        _setup.Save();
++                        return;
++                    }
++                case Remove when _index < _setup.List.Count:
++                    {
++                        _setup.List.RemoveAt(_index);
++                        _setup.Show(Math.Max(0, _index - 1));
++                        return;
++                    }
++                case Redo:
++                    {
++                        _setup.Pick(_index);
++                        return;
++                    }
++                case Previous:
++                    {
++                        _setup.Show(Math.Max(0, _index - 1));
++                        return;
++                    }
++                case Next:
++                    {
++                        _setup.Show(Math.Min(_setup.List.Count, _index + 1));
++                        return;
++                    }
++                case >= SecondBase and < SecondBase + 4 when _index < _setup.List.Count:
++                    {
++                        _setup.List[_index].SecondDirection = _dirs[id - SecondBase];
++                        break;
++                    }
++                case >= FirstBase and < FirstBase + 4 when _index < _setup.List.Count:
++                    {
++                        _setup.List[_index].FirstDirection = _dirs[id - FirstBase];
++                        break;
++                    }
++            }
++
++            _setup.Show(_index);
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Games/DfiCrateRaceGen.cs b/Projects/UOContent/Custom/DFI/Games/DfiCrateRaceGen.cs
+new file mode 100644
+index 000000000..81104fdf1
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Games/DfiCrateRaceGen.cs
+@@ -0,0 +1,64 @@
++// Places the crate race's event masters by the banks of Britain and Buccaneer's Den, where DFI's announcements
++// sent players. With "here", also a crate stone at the caller's feet with DFI's track built round it and its
++// default layout: the track needs a flat, empty 45 by 65 tiles.
++
++using System.Collections.Generic;
++using Server.Commands;
++using Server.Custom.Dfi.CrateRace;
++using Server.Custom.Dfi.Events;
++using Server.Logging;
++
++namespace Server.Custom.Dfi;
++
++public static class DfiCrateRaceGen
++{
++    private static readonly ILogger logger = LogFactory.GetLogger(typeof(DfiCrateRaceGen));
++
++    public static readonly Point3D[] EventMasterSpots = [new(1427, 1695, 0), new(2731, 2187, 0)];
++
++    public static void Configure()
++    {
++        CommandSystem.Register("DfiCrateRace", AccessLevel.Administrator, OnCommand);
++    }
++
++    [Usage("DfiCrateRace [here]")]
++    [Description("Places the event masters; with \"here\", also a crate stone and DFI's race track at your feet.")]
++    private static void OnCommand(CommandEventArgs e)
++    {
++        var removed = 0;
++        var doomed = new List<Mobile>();
++
++        foreach (var m in World.Mobiles.Values)
++        {
++            if (m is EventNpc && m.Map == Map.Felucca && System.Array.IndexOf(EventMasterSpots, m.Location) >= 0)
++            {
++                doomed.Add(m);
++            }
++        }
++
++        foreach (var m in doomed)
++        {
++            m.Delete();
++            removed++;
++        }
++
++        foreach (var spot in EventMasterSpots)
++        {
++            var npc = new EventNpc { Home = spot, RangeHome = 0, CantWalk = true, Direction = Direction.South };
++            npc.MoveToWorld(spot, Map.Felucca);
++        }
++
++        var placed = EventMasterSpots.Length;
++
++        if (e.Length > 0 && e.GetString(0).Equals("here", System.StringComparison.OrdinalIgnoreCase))
++        {
++            var stone = new CrateStone();
++            stone.MoveToWorld(e.Mobile.Location, e.Mobile.Map);
++            stone.BuildTrack();
++            placed++;
++        }
++
++        e.Mobile.SendMessage($"DfiCrateRace: removed {removed}, placed {placed}.");
++        logger.Information("{User} placed {Placed} crate race fixtures ({Removed} removed)", e.Mobile, placed, removed);
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Games/EventSystem.cs b/Projects/UOContent/Custom/DFI/Games/EventSystem.cs
+new file mode 100644
+index 000000000..32f33c8af
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Games/EventSystem.cs
+@@ -0,0 +1,385 @@
++// DFI Network's event signup, ported from DFI RUNUO Scripts/Custom/Sunny/EventSystem and the undress code in
++// Custom/Sunny/SunnySystem.cs. One staff event at a time: once started it is announced every minute for its
++// join time, while event masters take players in; then it begins. Players are undressed into a bag in their
++// bank when they join and dressed again afterwards, their pets stabled meanwhile. When an event ends its
++// players are set down at one of Britain's edges, blessed for twenty seconds.
++
++using System;
++using System.Collections.Generic;
++using ModernUO.Serialization;
++using Server.Collections;
++using Server.Commands;
++using Server.ContextMenus;
++using Server.Items;
++using Server.Mobiles;
++
++namespace Server.Custom.Dfi.Events;
++
++public static class EventSystem
++{
++    public const int SystemHue = 0x38A;
++
++    private static readonly Point3D[] _exitLocations =
++        [new(1522, 1757, 28), new(1519, 1619, 10), new(1457, 1538, 30), new(1607, 1568, 20), new(1643, 1680, 18)];
++
++    private static Timer _joinTimer;
++    private static Action _start;
++    private static Action _stop;
++
++    public static bool Open { get; private set; }
++    public static bool Running { get; private set; }
++    public static string EventName { get; private set; }
++    public static Action<Mobile> JoinMethod { get; private set; }
++    public static List<EventNpc> Npcs { get; } = [];
++
++    public static void Start(int joinMinutes, string name, Action start, Action stop, Action<Mobile> join)
++    {
++        Open = true;
++        Running = true;
++        EventName = name;
++        _start = start;
++        _stop = stop;
++        JoinMethod = join;
++
++        var broadcasts = Math.Max(2, joinMinutes);
++        _joinTimer?.Stop();
++        _joinTimer = Timer.DelayCall(TimeSpan.Zero, TimeSpan.FromMinutes(1.0), () => Announce(ref broadcasts));
++    }
++
++    private static void Announce(ref int broadcasts)
++    {
++        var name = EventName;
++
++        if (broadcasts == 0)
++        {
++            CommandHandlers.BroadcastMessage(AccessLevel.Player, SystemHue, $"---- {name} ----");
++            CommandHandlers.BroadcastMessage(AccessLevel.Player, SystemHue, $"The {name} is starting... Event Masters do not accept new players.");
++            StartGame();
++            return;
++        }
++
++        foreach (var npc in Npcs)
++        {
++            npc.Say("Hear Ye! Hear Ye!");
++            npc.Say(broadcasts == 1 ? $"Last call for the {name}!" : $"Hurry up and join the {name}!");
++        }
++
++        CommandHandlers.BroadcastMessage(AccessLevel.Player, SystemHue, $"---- {name} ----");
++        CommandHandlers.BroadcastMessage(AccessLevel.Player, SystemHue, $"A {name} will start in {broadcasts} minutes!");
++        CommandHandlers.BroadcastMessage(
++            AccessLevel.Player, SystemHue,
++            broadcasts == 1 ? "Event Masters will not accept new players soon..." : "Event Masters at Britain Bank will now accept new players."
++        );
++
++        broadcasts--;
++    }
++
++    public static void StartGame()
++    {
++        Open = false;
++        _joinTimer?.Stop();
++        _joinTimer = null;
++        _start?.Invoke();
++    }
++
++    public static void Stop()
++    {
++        if (!Open && !Running)
++        {
++            return;
++        }
++
++        Open = false;
++        Running = false;
++        _joinTimer?.Stop();
++        _joinTimer = null;
++        _stop?.Invoke();
++    }
++
++    public static void RemoveToRandomLoc(Mobile m)
++    {
++        m.Blessed = true;
++        Timer.DelayCall(TimeSpan.FromSeconds(20.0), () => m.Blessed = false);
++        m.MoveToWorld(_exitLocations.RandomElement(), Map.Felucca);
++    }
++}
++
++// What a player wore and carried when an event undressed them, held in a bag in their bank.
++public class UndressedPlayer
++{
++    public Bag Bag { get; init; }
++    public List<Item> Worn { get; } = [];
++    public List<Item> Pack { get; } = [];
++    public List<BaseCreature> Pets { get; } = [];
++}
++
++public class EventWardrobe : GenericPersistence
++{
++    private static readonly Dictionary<Mobile, UndressedPlayer> _undressed = [];
++
++    public EventWardrobe() : base("DfiEventWardrobe", 10)
++    {
++    }
++
++    public static void Configure()
++    {
++        _ = new EventWardrobe();
++    }
++
++    public static bool IsUndressed(Mobile m) => _undressed.ContainsKey(m);
++
++    public static bool Undress(Mobile m)
++    {
++        if (!m.Alive)
++        {
++            m.Resurrect();
++            m.Hits = m.HitsMax;
++        }
++
++        if (m.Backpack == null)
++        {
++            m.SendMessage("Unfortunately we could not undress you, as you have no backpack, please contact the staff.");
++            return false;
++        }
++
++        if (_undressed.ContainsKey(m))
++        {
++            return false;
++        }
++
++        var bag = new Bag();
++        m.BankBox.DropItem(bag);
++        var ud = new UndressedPlayer { Bag = bag };
++        _undressed[m] = ud;
++
++        if (m.Holding != null)
++        {
++            m.Backpack.DropItem(m.Holding);
++        }
++
++        StablePets(m, ud);
++
++        foreach (var item in new List<Item>(m.Items))
++        {
++            if (item.Layer is not (Layer.Backpack or Layer.Bank or Layer.FacialHair or Layer.Hair))
++            {
++                ud.Worn.Add(item);
++                bag.DropItem(item);
++            }
++        }
++
++        foreach (var item in new List<Item>(m.Backpack.Items))
++        {
++            ud.Pack.Add(item);
++            bag.DropItem(item);
++        }
++
++        return true;
++    }
++
++    public static bool Redress(Mobile m)
++    {
++        if (!_undressed.Remove(m, out var ud))
++        {
++            m.SendMessage("Unfortunately we could not find your belongings, please contact the staff.");
++            return false;
++        }
++
++        if (!m.Alive)
++        {
++            m.Resurrect();
++        }
++
++        foreach (var item in ud.Worn)
++        {
++            if (item.Deleted)
++            {
++                continue;
++            }
++
++            if (!item.CanEquip(m) || !m.EquipItem(item))
++            {
++                m.AddToBackpack(item);
++            }
++        }
++
++        foreach (var item in ud.Pack)
++        {
++            if (!item.Deleted)
++            {
++                m.AddToBackpack(item);
++            }
++        }
++
++        if (ud.Bag.Items.Count == 0)
++        {
++            ud.Bag.Delete();
++        }
++
++        foreach (var pet in ud.Pets)
++        {
++            if (pet.Deleted)
++            {
++                continue;
++            }
++
++            if (m is PlayerMobile pm)
++            {
++                pm.Stabled.Remove(pet);
++            }
++
++            pet.SetControlMaster(m);
++            pet.ControlTarget = m;
++            pet.ControlOrder = OrderType.Follow;
++            pet.MoveToWorld(m.Location, m.Map);
++            pet.IsStabled = false;
++        }
++
++        m.SendMessage("Your belongings have been returned to you.");
++        return true;
++    }
++
++    private static void StablePets(Mobile m, UndressedPlayer ud)
++    {
++        if (m.Mount != null)
++        {
++            m.Mount.Rider = null;
++        }
++
++        if (m.Followers == 0 || m is not PlayerMobile pm)
++        {
++            return;
++        }
++
++        var pets = new List<BaseCreature>();
++
++        foreach (var near in m.GetMobilesInRange(20))
++        {
++            if (near is BaseCreature bc && (bc.Summoned && bc.SummonMaster == m || bc.Controlled && bc.ControlMaster == m))
++            {
++                pets.Add(bc);
++            }
++        }
++
++        foreach (var pet in pets)
++        {
++            if (pet.Summoned)
++            {
++                pet.Delete();
++                continue;
++            }
++
++            ud.Pets.Add(pet);
++            pet.ControlTarget = null;
++            pet.ControlOrder = OrderType.Stay;
++            pet.Internalize();
++            pet.SetControlMaster(null);
++            pet.SummonMaster = null;
++            pet.IsStabled = true;
++            pm.Stabled.Add(pet);
++        }
++
++        if (pets.Count > 0)
++        {
++            m.SendMessage("Your pets have been stabled.");
++        }
++    }
++
++    public override void Serialize(IGenericWriter writer)
++    {
++        writer.WriteEncodedInt(0); // version
++        writer.WriteEncodedInt(_undressed.Count);
++
++        foreach (var (m, ud) in _undressed)
++        {
++            writer.Write(m);
++            writer.Write(ud.Bag);
++            writer.Write(ud.Worn);
++            writer.Write(ud.Pack);
++            writer.Write(ud.Pets);
++        }
++    }
++
++    public override void Deserialize(IGenericReader reader)
++    {
++        reader.ReadEncodedInt(); // version
++        var count = reader.ReadEncodedInt();
++
++        for (var i = 0; i < count; i++)
++        {
++            var m = reader.ReadEntity<Mobile>();
++            var ud = new UndressedPlayer { Bag = reader.ReadEntity<Bag>() };
++            ud.Worn.AddRange(reader.ReadEntityList<Item>());
++            ud.Pack.AddRange(reader.ReadEntityList<Item>());
++            ud.Pets.AddRange(reader.ReadEntityList<BaseCreature>());
++
++            if (m != null && ud.Bag != null)
++            {
++                _undressed[m] = ud;
++            }
++        }
++    }
++}
++
++// The event master: the way into whichever event is taking players.
++[SerializationGenerator(0)]
++public partial class EventNpc : BaseVendor
++{
++    private readonly List<SBInfo> _sbInfos = [];
++
++    [Constructible(AccessLevel.GameMaster)]
++    public EventNpc() : base("the event master") => EventSystem.Npcs.Add(this);
++
++    protected override List<SBInfo> SBInfos => _sbInfos;
++    public override VendorShoeType ShoeType => VendorShoeType.Sandals;
++
++    public override void InitSBInfo()
++    {
++    }
++
++    public override void InitOutfit()
++    {
++        base.InitOutfit();
++        AddItem(new Robe(Utility.RandomNeutralHue()));
++        AddItem(new WizardsHat(Utility.RandomNeutralHue()));
++        AddItem(new GnarledStaff());
++    }
++
++    [AfterDeserialization]
++    private void AfterDeserialization() => EventSystem.Npcs.Add(this);
++
++    public override void OnDelete()
++    {
++        EventSystem.Npcs.Remove(this);
++        base.OnDelete();
++    }
++
++    public override void AddCustomContextEntries(Mobile from, ref PooledRefList<ContextMenuEntry> list)
++    {
++        base.AddCustomContextEntries(from, ref list);
++
++        if (from.Alive && from is PlayerMobile)
++        {
++            list.Add(new TalkEntry());
++        }
++    }
++
++    private class TalkEntry : ContextMenuEntry
++    {
++        public TalkEntry() : base(6146) // Talk
++        {
++        }
++
++        public override void OnClick(Mobile from, IEntity target)
++        {
++            if (EventSystem.Open && EventSystem.JoinMethod != null)
++            {
++                EventSystem.JoinMethod(from);
++            }
++            else
++            {
++                (target as Mobile)?.SayTo(from, "Currently there is no game open.");
++            }
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Games/RaceTrackData.cs b/Projects/UOContent/Custom/DFI/Games/RaceTrackData.cs
+new file mode 100644
+index 000000000..4d2fbafb9
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Games/RaceTrackData.cs
+@@ -0,0 +1,73 @@
++// Generated from DFI RUNUO Data/Custom Building/Output/RaceTrack.bin: item, x, y, z per tile, relative to the
++// crate stone.
++
++namespace Server.Custom.Dfi.CrateRace;
++
++public static class RaceTrackData
++{
++    public static readonly int[] Tiles =
++    [
++        222, -3, -31, 0, 222, -2, -31, 0, 222, -1, -31, 0, 222, 0, -31, 0, 222, 1, -31, 0, 222, 2, -31, 0,
++        222, 3, -31, 0, 222, 4, -31, 0, 222, 5, -31, 0, 222, 6, -31, 0, 222, 7, -31, 0, 222, 8, -31, 0,
++        222, 9, -31, 0, 222, 10, -31, 0, 222, 11, -31, 0, 222, 12, -31, 0, 222, 13, -31, 0, 222, 14, -31, 0,
++        222, 15, -31, 0, 222, 16, -31, 0, 222, 17, -31, 0, 222, 18, -31, 0, 222, 19, -31, 0, 222, 20, -31, 0,
++        222, 21, -31, 0, 221, 21, -30, 0, 221, 21, -29, 0, 221, 21, -28, 0, 221, 21, -27, 0, 221, 21, -26, 0,
++        221, 21, -25, 0, 221, 21, -24, 0, 221, 21, -23, 0, 221, 21, -22, 0, 222, -3, -21, 0, 222, -2, -21, 0,
++        222, -1, -21, 0, 222, 0, -21, 0, 222, 1, -21, 0, 222, 2, -21, 0, 222, 3, -21, 0, 222, 4, -21, 0,
++        222, 5, -21, 0, 222, 6, -21, 0, 222, 7, -21, 0, 222, 8, -21, 0, 222, 9, -21, 0, 222, 10, -21, 0,
++        222, 11, -21, 0, 221, 21, -21, 0, 221, 11, -20, 0, 221, 21, -20, 0, 221, 11, -19, 0, 221, 21, -19, 0,
++        204, -1, -18, 0, 200, 0, -18, 0, 200, 1, -18, 0, 200, 2, -18, 0, 222, 3, -18, 0, 222, 4, -18, 0,
++        222, 5, -18, 0, 222, 6, -18, 0, 222, 7, -18, 0, 222, 8, -18, 0, 222, 9, -18, 0, 222, 10, -18, 0,
++        220, 11, -18, 0, 221, 21, -18, 0, 201, -1, -17, 0, 208, 2, -17, 0, 221, 11, -17, 0, 221, 21, -17, 0,
++        201, -1, -16, 0, 206, 2, -16, 0, 221, 11, -16, 0, 221, 21, -16, 0, 201, -1, -15, 0, 208, 2, -15, 0,
++        221, 11, -15, 0, 221, 21, -15, 0, 201, -1, -14, 0, 206, 2, -14, 0, 221, 11, -14, 0, 221, 21, -14, 0,
++        201, -1, -13, 0, 208, 2, -13, 0, 221, 11, -13, 0, 221, 21, -13, 0, 221, -21, -12, 0, 221, -11, -12, 0,
++        201, -1, -12, 0, 200, 0, -12, 0, 200, 1, -12, 0, 200, 2, -12, 0, 222, 3, -12, 0, 222, 4, -12, 0,
++        222, 5, -12, 0, 222, 6, -12, 0, 222, 7, -12, 0, 222, 8, -12, 0, 222, 9, -12, 0, 222, 10, -12, 0,
++        220, 11, -12, 0, 221, 21, -12, 0, 221, -21, -11, 0, 221, -11, -11, 0, 221, 11, -11, 0, 221, 21, -11, 0,
++        221, -21, -10, 0, 221, -11, -10, 0, 221, 11, -10, 0, 221, 21, -10, 0, 221, -21, -9, 0, 221, -11, -9, 0,
++        221, 11, -9, 0, 221, 21, -9, 0, 221, -21, -8, 0, 221, -11, -8, 0, 221, 11, -8, 0, 221, 21, -8, 0,
++        221, -21, -7, 0, 221, -11, -7, 0, 221, 11, -7, 0, 221, 21, -7, 0, 221, -21, -6, 0, 221, -11, -6, 0,
++        221, 11, -6, 0, 221, 21, -6, 0, 221, -21, -5, 0, 221, -11, -5, 0, 221, 11, -5, 0, 221, 21, -5, 0,
++        221, -21, -4, 0, 221, -11, -4, 0, 221, 11, -4, 0, 221, 21, -4, 0, 221, -21, -3, 0, 221, -11, -3, 0,
++        221, 11, -3, 0, 221, 21, -3, 0, 221, -21, -2, 0, 221, -11, -2, 0, 221, 11, -2, 0, 221, 21, -2, 0,
++        221, -21, -1, 0, 221, -11, -1, 0, 221, 11, -1, 0, 221, 21, -1, 0, 221, -21, 0, 0, 221, -11, 0, 0,
++        221, 11, 0, 0, 221, 21, 0, 0, 221, -21, 1, 0, 221, -11, 1, 0, 221, 11, 1, 0, 221, 21, 1, 0,
++        221, -21, 2, 0, 221, -11, 2, 0, 221, 11, 2, 0, 221, 21, 2, 0, 221, -21, 3, 0, 221, -11, 3, 0,
++        221, 11, 3, 0, 221, 21, 3, 0, 221, -21, 4, 0, 221, -11, 4, 0, 221, 11, 4, 0, 221, 21, 4, 0,
++        221, -21, 5, 0, 221, -11, 5, 0, 221, 11, 5, 0, 221, 21, 5, 0, 221, -21, 6, 0, 221, -11, 6, 0,
++        221, 11, 6, 0, 221, 21, 6, 0, 221, -21, 7, 0, 221, -11, 7, 0, 221, 11, 7, 0, 221, 21, 7, 0,
++        221, -21, 8, 0, 221, -11, 8, 0, 221, 11, 8, 0, 221, 21, 8, 0, 221, -21, 9, 0, 221, -11, 9, 0,
++        221, 11, 9, 0, 221, 21, 9, 0, 221, -21, 10, 0, 221, -11, 10, 0, 221, 11, 10, 0, 221, 21, 10, 0,
++        221, -21, 11, 0, 221, -11, 11, 0, 221, 11, 11, 0, 221, 21, 11, 0, 221, -21, 12, 0, 221, -11, 12, 0,
++        221, 11, 12, 0, 221, 21, 12, 0, 221, -21, 13, 0, 221, -11, 13, 0, 221, 11, 13, 0, 221, 21, 13, 0,
++        221, -21, 14, 0, 221, -11, 14, 0, 221, 11, 14, 0, 221, 21, 14, 0, 221, -21, 15, 0, 221, -11, 15, 0,
++        221, 11, 15, 0, 221, 21, 15, 0, 221, -21, 16, 0, 221, -11, 16, 0, 221, 11, 16, 0, 221, 21, 16, 0,
++        221, -21, 17, 0, 221, -11, 17, 0, 221, 11, 17, 0, 221, 21, 17, 0, 221, -21, 18, 0, 221, -11, 18, 0,
++        221, 11, 18, 0, 221, 21, 18, 0, 221, -21, 19, 0, 221, -11, 19, 0, 221, 11, 19, 0, 221, 21, 19, 0,
++        221, -21, 20, 0, 221, -11, 20, 0, 221, 11, 20, 0, 221, 21, 20, 0, 221, -21, 21, 0, 221, -11, 21, 0,
++        222, -10, 21, 0, 222, -9, 21, 0, 222, -8, 21, 0, 222, -7, 21, 0, 222, -6, 21, 0, 222, -5, 21, 0,
++        222, -4, 21, 0, 222, -3, 21, 0, 222, -2, 21, 0, 222, -1, 21, 0, 222, 0, 21, 0, 222, 1, 21, 0,
++        222, 2, 21, 0, 222, 3, 21, 0, 222, 4, 21, 0, 222, 5, 21, 0, 222, 6, 21, 0, 222, 7, 21, 0,
++        222, 8, 21, 0, 222, 9, 21, 0, 222, 10, 21, 0, 220, 11, 21, 0, 221, 21, 21, 0, 221, -21, 22, 0,
++        221, 21, 22, 0, 221, -21, 23, 0, 221, 21, 23, 0, 221, -21, 24, 0, 221, 21, 24, 0, 221, -21, 25, 0,
++        221, 21, 25, 0, 221, -21, 26, 0, 221, 21, 26, 0, 221, -21, 27, 0, 221, 21, 27, 0, 221, -21, 28, 0,
++        221, 21, 28, 0, 221, -21, 29, 0, 221, 21, 29, 0, 221, -21, 30, 0, 221, 21, 30, 0, 221, -21, 31, 0,
++        222, -20, 31, 0, 222, -19, 31, 0, 222, -18, 31, 0, 222, -17, 31, 0, 222, -16, 31, 0, 222, -15, 31, 0,
++        222, -14, 31, 0, 222, -13, 31, 0, 222, -12, 31, 0, 222, -11, 31, 0, 222, -10, 31, 0, 222, -9, 31, 0,
++        222, -8, 31, 0, 222, -7, 31, 0, 222, -6, 31, 0, 222, -5, 31, 0, 222, -4, 31, 0, 222, -3, 31, 0,
++        222, -2, 31, 0, 222, -1, 31, 0, 222, 0, 31, 0, 222, 1, 31, 0, 222, 2, 31, 0, 222, 3, 31, 0,
++        222, 4, 31, 0, 222, 5, 31, 0, 222, 6, 31, 0, 222, 7, 31, 0, 222, 8, 31, 0, 222, 9, 31, 0,
++        222, 10, 31, 0, 222, 11, 31, 0, 222, 12, 31, 0, 222, 13, 31, 0, 222, 14, 31, 0, 222, 15, 31, 0,
++        222, 16, 31, 0, 222, 17, 31, 0, 222, 18, 31, 0, 222, 19, 31, 0, 222, 20, 31, 0, 220, 21, 31, 0,
++        223, -1, -18, 20, 222, 0, -18, 20, 222, 1, -18, 20, 222, 2, -18, 20, 221, -1, -17, 20, 1310, 0, -17, 20,
++        1310, 1, -17, 20, 221, 2, -17, 20, 1310, 2, -17, 20, 221, -1, -16, 20, 222, 0, -16, 20, 1310, 0, -16, 20,
++        1310, 1, -16, 20, 222, 1, -16, 20, 221, 2, -16, 20, 1310, 2, -16, 20, 221, -1, -15, 20, 1310, 0, -15, 20,
++        1310, 1, -15, 20, 221, 2, -15, 20, 1310, 2, -15, 20, 221, -1, -14, 20, 222, 0, -14, 20, 1310, 0, -14, 20,
++        222, 1, -14, 20, 1310, 1, -14, 20, 220, 2, -14, 20, 1310, 2, -14, 20, 221, -1, -13, 20, 1310, 0, -13, 20,
++        1310, 1, -13, 20, 221, 2, -13, 20, 1310, 2, -13, 20, 221, -1, -12, 20, 222, 0, -12, 20, 1310, 0, -12, 20,
++        222, 1, -12, 20, 1310, 1, -12, 20, 220, 2, -12, 20, 1310, 2, -12, 20, 223, -1, -16, 23, 222, 0, -16, 23,
++        222, 1, -16, 23, 222, 2, -16, 23, 221, -1, -15, 23, 221, 2, -15, 23, 221, -1, -14, 23, 222, 0, -14, 23,
++        222, 1, -14, 23, 220, 2, -14, 23,
++    ];
++}

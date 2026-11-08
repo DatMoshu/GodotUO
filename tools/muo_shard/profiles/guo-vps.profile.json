@@ -14,7 +14,8 @@
       "tools/modernuo/patches/0003-felucca-spring.patch",
       "tools/modernuo/patches/0004-guo-pad-dummies.patch",
       "tools/modernuo/patches/0005-guo-pad-attack-record.patch",
-      "tools/modernuo/patches/0005-system-message-hook.patch"
+      "tools/modernuo/patches/0005-system-message-hook.patch",
+      "tools/modernuo/patches/0025-pkcs-advisory.patch"
     ]
   },
   "config_overlay": "tools/modernuo/config-vps",

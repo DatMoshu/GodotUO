@@ -1,0 +1,3977 @@
+diff --git a/Projects/UOContent.Tests/Tests/Custom/DfiContentTests.cs b/Projects/UOContent.Tests/Tests/Custom/DfiContentTests.cs
+new file mode 100644
+index 000000000..752b2a11c
+--- /dev/null
++++ b/Projects/UOContent.Tests/Tests/Custom/DfiContentTests.cs
+@@ -0,0 +1,175 @@
++using System;
++using System.Collections.Generic;
++using Server;
++using Server.Custom.Dfi;
++using Server.Items;
++using Server.Mobiles;
++using Xunit;
++
++namespace UOContent.Tests.Custom;
++
++[Collection("Sequential UOContent Tests")]
++public class DfiContentTests : IDisposable
++{
++    private readonly List<IEntity> _created = new();
++
++    // The shared test server does not load Data/names.xml; vampires and sentinels take random names.
++    public DfiContentTests()
++    {
++        if (NameList.GetNameList("female") == null)
++        {
++            NameList.Configure();
++        }
++    }
++
++    public static TheoryData<Type> Monsters =>
++    [
++        typeof(QuestMobile), typeof(VampireKnight), typeof(VampireFighter), typeof(VampireNecro),
++        typeof(MindlessZombie), typeof(Stalker), typeof(NightStalker), typeof(Undying), typeof(DarkSentinel),
++        typeof(HorrorDaemon), typeof(PoisonousRat), typeof(Doppelganger), typeof(OrcChopper), typeof(OrcScout),
++        typeof(Sphynx), typeof(Harvester), typeof(RoyaltyDefender), typeof(ZealotOfMondain),
++        typeof(AbominationOfMondain), typeof(OpticonWyrm), typeof(GrimReaper), typeof(ValoriteDragon),
++        typeof(Chameleon), typeof(YChameleon)
++    ];
++
++    public void Dispose()
++    {
++        foreach (var e in _created)
++        {
++            e?.Delete();
++        }
++
++        _created.Clear();
++    }
++
++    private T Place<T>(T bc, int x = 1500) where T : BaseCreature
++    {
++        var map = Map.Felucca;
++        map.GetAverageZ(x, 1600, out _, out var z, out _);
++        bc.MoveToWorld(new Point3D(x, 1600, (sbyte)z), map);
++        bc.AIObject?.AITimer?.Stop();
++        _created.Add(bc);
++        return bc;
++    }
++
++    [Theory]
++    [MemberData(nameof(Monsters))]
++    public void Monster_Spawns_WithNameBodyAndHits(Type type)
++    {
++        var bc = Place((BaseCreature)Activator.CreateInstance(type));
++
++        Assert.False(bc.Deleted);
++        Assert.False(string.IsNullOrWhiteSpace(bc.Name));
++        Assert.True(bc.Body.BodyID > 0);
++        Assert.True(bc.HitsMax > 0);
++        Assert.Equal(Map.Felucca, bc.Map);
++    }
++
++    [Fact]
++    public void SuperBoss_GeneratesDfiGoldAndAtLeastNineMagicItems()
++    {
++        var bc = Place(new Doppelganger());
++        var pack = new Backpack();
++        _created.Add(pack);
++
++        // Gold rolls when the creature spawns; magic items roll at death.
++        LootPack.SuperBoss.Generate(bc, pack, true, 0);
++        LootPack.SuperBoss.Generate(bc, pack, false, 0);
++
++        var gold = 0;
++        var items = 0;
++
++        foreach (var item in pack.Items)
++        {
++            if (item is Gold g)
++            {
++                gold += g.Amount;
++            }
++            else
++            {
++                items++;
++            }
++        }
++
++        Assert.InRange(gold, 604, 800); // 4d50+600
++        Assert.True(items >= 9, $"expected at least 9 magic items, got {items}");
++    }
++
++    [Fact]
++    public void QuestMobile_RewardBag_IsNamedForTheBossAndHoldsSixItems()
++    {
++        var boss = Place(new QuestMobile { Name = "Lord Test" });
++
++        var bag = boss.GetNewContainer();
++        _created.Add(bag);
++        DfiLoot.AddRandomLoot(bag, 5, 360, 4, 5, 50, 100);
++        DfiLoot.AddRandomLoot(bag, 1, 360, 5, 5, 70, 100);
++
++        Assert.Equal("Reward bag for slaying Lord Test", bag.Name);
++        Assert.Equal(6, bag.Items.Count);
++    }
++
++    [Fact]
++    public void ZealotOfMondain_Death_SpawnsAbominationCarryingLoot()
++    {
++        var zealot = Place(new ZealotOfMondain());
++        var location = zealot.Location;
++
++        zealot.Kill();
++
++        AbominationOfMondain abomination = null;
++
++        foreach (var m in Map.Felucca.GetMobilesInRange(location, 0))
++        {
++            if (m is AbominationOfMondain a)
++            {
++                abomination = a;
++            }
++        }
++
++        Assert.True(zealot.Deleted);
++        Assert.NotNull(abomination);
++        _created.Add(abomination);
++        Assert.True(abomination.Backpack.Items.Count > 0);
++    }
++
++    [Fact]
++    public void RoyaltyDefender_SurvivesFourDeaths_AsSuccessiveForms()
++    {
++        var defender = Place(new RoyaltyDefender());
++
++        string[] forms = ["The Defender Prince", "The Defender Queen", "The Defender King", "The Defended One"];
++
++        foreach (var form in forms)
++        {
++            defender.Kill();
++
++            Assert.True(defender.Alive);
++            Assert.Equal(form, defender.Name);
++        }
++
++        Assert.Equal(5, defender.Level);
++        Assert.True(defender.AutoDispel);
++    }
++
++    [Fact]
++    public void Undying_CannotDie_UntilHitByHue2121Weapon()
++    {
++        var undying = Place(new Undying());
++
++        undying.Kill();
++
++        Assert.True(undying.Alive);
++        Assert.Equal(50, undying.Hits);
++    }
++
++    [Fact]
++    public void FameLootPack_MatchesDfiTiers()
++    {
++        Assert.Same(LootPack.Average, DfiLoot.GetLootPackFromFame(0));
++        Assert.Same(LootPack.Rich, DfiLoot.GetLootPackFromFame(15000));
++        Assert.Same(LootPack.FilthyRich, DfiLoot.GetLootPackFromFame(20000));
++        Assert.Same(LootPack.UltraRich, DfiLoot.GetLootPackFromFame(25000));
++        Assert.Same(LootPack.SuperBoss, DfiLoot.GetLootPackFromFame(90000));
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/AI/StealthAI.cs b/Projects/UOContent/Custom/DFI/AI/StealthAI.cs
+new file mode 100644
+index 000000000..6820f38fe
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/AI/StealthAI.cs
+@@ -0,0 +1,130 @@
++// DFI Network stealth AI, ported from DFI RunUO Scripts/Custom/Engines/AI/AI/StealthAI.cs.
++// Out of combat the creature hides and stealths about, heals with spirit speak or bandages, and backs
++// off from what it detects while it is low on hits and still stealthed. Creatures opt in with
++// "public override BaseAI ForcedAI => new StealthAI(this);" since ModernUO has no AI_Stealth type.
++
++using Server.Items;
++
++namespace Server.Mobiles;
++
++public class StealthAI : MeleeAI
++{
++    public StealthAI(BaseCreature m) : base(m)
++    {
++    }
++
++    public override bool DoActionWander()
++    {
++        if (AcquireFocusMob(Mobile.RangePerception, Mobile.FightMode, false, false, true))
++        {
++            EngageOrSlipAway();
++            return true;
++        }
++
++        if (Mobile.Hits < Mobile.HitsMax)
++        {
++            HealOurself();
++            base.DoActionWander();
++        }
++        else if (Mobile.Skills.Hiding.Value >= 60.0)
++        {
++            if (!Mobile.Hidden && Mobile.AllowedStealthSteps == 0)
++            {
++                Mobile.UseSkill(SkillName.Hiding);
++            }
++            else if (Mobile.Skills.Stealth.Value >= 70.0 && Mobile.AllowedStealthSteps <= 2)
++            {
++                Mobile.UseSkill(SkillName.Stealth);
++            }
++
++            if (Mobile.AllowedStealthSteps > 0)
++            {
++                base.DoActionWander();
++            }
++        }
++        else
++        {
++            base.DoActionWander();
++        }
++
++        return true;
++    }
++
++    public override bool DoActionCombat()
++    {
++        var result = base.DoActionCombat();
++
++        if (Mobile.Hits < Mobile.HitsMax)
++        {
++            HealOurself();
++        }
++
++        return result;
++    }
++
++    public override bool DoActionGuard()
++    {
++        if (AcquireFocusMob(Mobile.RangePerception, Mobile.FightMode, false, false, true))
++        {
++            EngageOrSlipAway();
++            return true;
++        }
++
++        if (Mobile.Hits < Mobile.HitsMax)
++        {
++            HealOurself();
++        }
++
++        return base.DoActionGuard();
++    }
++
++    public override bool DoActionFlee()
++    {
++        if (Mobile.Hits < Mobile.HitsMax)
++        {
++            HealOurself();
++        }
++
++        return base.DoActionFlee();
++    }
++
++    private void EngageOrSlipAway()
++    {
++        if (Mobile.Hits <= 30 && Mobile.AllowedStealthSteps > 0)
++        {
++            RunFrom(Mobile.FocusMob);
++            return;
++        }
++
++        Mobile.Combatant = Mobile.FocusMob;
++        Action = ActionType.Combat;
++    }
++
++    private void HealOurself()
++    {
++        if (Mobile.Skills.SpiritSpeak.Value >= 60.0 && Mobile.Mana >= 10 && Core.TickCount - Mobile.NextSkillTime >= 0)
++        {
++            Mobile.UseSkill(SkillName.SpiritSpeak);
++        }
++
++        if ((Mobile.Skills.Veterinary.Value >= 60.0 || Mobile.Skills.Healing.Value >= 60.0) &&
++            BandageContext.GetContext(Mobile) == null)
++        {
++            BandageContext.BeginHeal(Mobile, Mobile);
++        }
++    }
++
++    private void RunFrom(Mobile m)
++    {
++        if (Mobile.Spell?.IsCasting == true || Mobile.Paralyzed || Mobile.Frozen || Mobile.DisallowAllMoves)
++        {
++            return;
++        }
++
++        var d = (Mobile.GetDirectionTo(m) - 4) & Direction.Mask;
++
++        // Running breaks stealth, so only run once the stealth steps are spent.
++        Mobile.Direction = Mobile.AllowedStealthSteps == 0 ? d | Direction.Running : d;
++        DoMove(Mobile.Direction, true);
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Items/DonationRares.cs b/Projects/UOContent/Custom/DFI/Items/DonationRares.cs
+new file mode 100644
+index 000000000..97c35d869
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Items/DonationRares.cs
+@@ -0,0 +1,69 @@
++// DFI Network donation dungeon rares, ported from DFI RunUO
++// Scripts/Custom/Mobiles/Monsters/Donation Dungeon (PlantLoot.cs, RoyalLoot.cs).
++
++using ModernUO.Serialization;
++
++namespace Server.Items;
++
++[SerializationGenerator(0)]
++public partial class PlantRare : Item
++{
++    [Constructible]
++    public PlantRare() : base(RandomPlant())
++    {
++        Weight = 20;
++    }
++
++    public override string DefaultName => "A Tiny Plant";
++
++    private static int RandomPlant()
++    {
++        var roll = Utility.RandomDouble();
++
++        return roll switch
++        {
++            > 0.80  => 10460,
++            > 0.60  => 10461,
++            > 0.40  => 10462,
++            > 0.25  => 10463,
++            > 0.10  => 10464,
++            > 0.06  => 10465,
++            > 0.005 => 10467,
++            _       => 10466
++        };
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class RoyalLoot : Item
++{
++    [Constructible]
++    public RoyalLoot() : base(10296)
++    {
++        Weight = 20;
++
++        var roll = Utility.RandomDouble();
++
++        if (roll > 0.60)
++        {
++            ItemID = 10296;
++            Name = "A Royal Butterfly";
++        }
++        else if (roll > 0.25)
++        {
++            ItemID = 10297;
++            Name = "A Royal Swan";
++        }
++        else if (roll > 0.08)
++        {
++            ItemID = 10298;
++            Name = "A Squashed Frog";
++        }
++        else
++        {
++            ItemID = 10299;
++            Hue = 1151;
++            Name = "A Royal Star";
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Items/OrcishBow.cs b/Projects/UOContent/Custom/DFI/Items/OrcishBow.cs
+new file mode 100644
+index 000000000..91d92cdea
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Items/OrcishBow.cs
+@@ -0,0 +1,20 @@
++// DFI Network orcish bow, ported from DFI RunUO Scripts/Custom/Items/Misc/OrcishBow.cs.
++
++using ModernUO.Serialization;
++
++namespace Server.Items;
++
++[Flippable(0x13B2, 0x13B1)]
++[SerializationGenerator(0)]
++public partial class OrcishBow : Bow
++{
++    [Constructible]
++    public OrcishBow()
++    {
++        Hue = 0x497;
++        Attributes.WeaponDamage = 25;
++        Slayer = SlayerName.Repond;
++    }
++
++    public override string DefaultName => "Orcish Bow";
++}
+diff --git a/Projects/UOContent/Custom/DFI/Mobiles/DfiMonsterHelpers.cs b/Projects/UOContent/Custom/DFI/Mobiles/DfiMonsterHelpers.cs
+new file mode 100644
+index 000000000..00051a982
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Mobiles/DfiMonsterHelpers.cs
+@@ -0,0 +1,44 @@
++using System;
++using Server.Collections;
++using Server.Mobiles;
++
++namespace Server.Custom.Dfi;
++
++public static class DfiMonsterHelpers
++{
++    // DFI's shared life drain: hits players, pets, summons and creatures of another team within range,
++    // and heals the drainer by what it takes.
++    public static void DrainLife(
++        BaseCreature drainer, int range, Func<int> amount, string message = "You feel the life drain out of you!"
++    )
++    {
++        using var list = PooledRefList<Mobile>.Create();
++
++        foreach (var m in drainer.GetMobilesInRange(range))
++        {
++            if (m == drainer || !drainer.CanBeHarmful(m))
++            {
++                continue;
++            }
++
++            if (m is BaseCreature bc && (bc.Controlled || bc.Summoned || bc.Team != drainer.Team) || m.Player)
++            {
++                list.Add(m);
++            }
++        }
++
++        for (var i = 0; i < list.Count; i++)
++        {
++            var m = list[i];
++            drainer.DoHarmful(m);
++
++            m.FixedParticles(0x374A, 10, 15, 5013, 0x496, 0, EffectLayer.Waist);
++            m.PlaySound(0x231);
++            m.SendMessage(message);
++
++            var toDrain = amount();
++            drainer.Hits += toDrain;
++            m.Damage(toDrain, drainer);
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Mobiles/DonationDungeon.cs b/Projects/UOContent/Custom/DFI/Mobiles/DonationDungeon.cs
+new file mode 100644
+index 000000000..4ad2e8442
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Mobiles/DonationDungeon.cs
+@@ -0,0 +1,500 @@
++// DFI Network donation dungeon bosses, ported from DFI RunUO
++// Scripts/Custom/Mobiles/Monsters/Donation Dungeon (Harvester.cs, RoyaltySpawn.cs).
++// Each player with looting rights has a 3% chance at a decorative rare.
++
++using System;
++using System.Collections.Generic;
++using ModernUO.Serialization;
++using Server.Custom.Dfi;
++using Server.Items;
++using Server.Spells;
++
++namespace Server.Mobiles;
++
++[SerializationGenerator(0)]
++public partial class Harvester : BaseCreature
++{
++    [Constructible]
++    public Harvester() : base(AIType.AI_Mage)
++    {
++        Body = 792;
++        Hue = 30000;
++        SetSpeed(0.2, 0.4);
++
++        SetStr(450, 500);
++        SetDex(350, 390);
++        SetInt(950, 1000);
++
++        SetHits(24000);
++
++        SetSkill(SkillName.Wrestling, 100, 120);
++        SetSkill(SkillName.Tactics, 100);
++        SetSkill(SkillName.MagicResist, 150);
++        SetSkill(SkillName.Meditation, 120);
++        SetSkill(SkillName.Necromancy, 100);
++        SetSkill(SkillName.SpiritSpeak, 120, 140);
++
++        SetDamageType(ResistanceType.Physical, 100);
++        SetDamage(15, 20);
++
++        SetResistance(ResistanceType.Physical, 40, 55);
++        SetResistance(ResistanceType.Fire, 48, 65);
++        SetResistance(ResistanceType.Cold, 55, 60);
++        SetResistance(ResistanceType.Poison, 60, 62);
++        SetResistance(ResistanceType.Energy, 30, 35);
++
++        VirtualArmor = 45;
++
++        Fame = 22500;
++        Karma = -25000;
++    }
++
++    public override string CorpseName => "The Harvester's corpse";
++    public override string DefaultName => "The Harvester";
++    public override bool AutoDispel => true;
++    public override bool AlwaysMurderer => true;
++    public override bool Unprovokable => true;
++    public override Poison PoisonImmune => Poison.Regular;
++
++    public override WeaponAbility GetWeaponAbility() =>
++        Utility.Random(5) switch
++        {
++            0 => WeaponAbility.DoubleStrike,
++            1 => WeaponAbility.WhirlwindAttack,
++            2 => WeaponAbility.CrushingBlow,
++            3 => WeaponAbility.MortalStrike,
++            _ => WeaponAbility.BleedAttack
++        };
++
++    public override int GetDeathSound() => 0x108;
++
++    public override void GenerateLoot()
++    {
++        AddLoot(LootPack.SuperBoss, 2);
++        AddLoot(LootPack.AosFilthyRich, 2);
++
++        if (!m_Spawning)
++        {
++            DonationRares.Give(this, "For your valour in defeating The Harvester you have received a reward", () => new PlantRare());
++        }
++    }
++
++    public override void OnGaveMeleeAttack(Mobile defender, int damage)
++    {
++        base.OnGaveMeleeAttack(defender, damage);
++
++        if (Utility.RandomDouble() <= 0.25)
++        {
++            DfiMonsterHelpers.DrainLife(this, 2, () => Utility.RandomMinMax(10, 40));
++        }
++    }
++
++    public override void AlterMeleeDamageTo(Mobile to, ref int damage)
++    {
++        if (to is BaseCreature { Controlled: true, Summoned: false })
++        {
++            damage *= 3;
++        }
++    }
++
++    public override void OnGotMeleeAttack(Mobile attacker, int damage)
++    {
++        base.OnGotMeleeAttack(attacker, damage);
++
++        if (Hits < HitsMax / 5 && Utility.RandomDouble() <= 0.05)
++        {
++            SpawnLesser(attacker);
++        }
++    }
++
++    private void SpawnLesser(Mobile target)
++    {
++        var map = Map;
++
++        if (map == null)
++        {
++            return;
++        }
++
++        var lesser = new Bogling { Hue = 30000, Name = "Lesser Harvester", HitsMaxSeed = 200, Team = Team };
++        lesser.Hits = 200;
++
++        var loc = Location;
++
++        for (var j = 0; j < 10; ++j)
++        {
++            var x = X + Utility.Random(3) - 1;
++            var y = Y + Utility.Random(3) - 1;
++            var z = map.GetAverageZ(x, y);
++
++            if (map.CanFit(x, y, Z, 16, false, false))
++            {
++                loc = new Point3D(x, y, Z);
++                break;
++            }
++
++            if (map.CanFit(x, y, z, 16, false, false))
++            {
++                loc = new Point3D(x, y, z);
++                break;
++            }
++        }
++
++        lesser.MoveToWorld(loc, map);
++        lesser.Combatant = target;
++    }
++
++    public override void OnDeath(Container c)
++    {
++        base.OnDeath(c);
++
++        if (Utility.RandomDouble() < 0.5 && !Summoned && !NoKillAwards && DemonKnight.CheckArtifactChance(this))
++        {
++            DemonKnight.DistributeArtifact(this);
++        }
++    }
++}
++
++// Five-stage boss: each "death" turns it into the next defender (Defender, Prince, Queen, King) until
++// the Defended One, who pulls players to its side every few seconds and drops the loot.
++[SerializationGenerator(0)]
++public partial class RoyaltyDefender : BaseCreature
++{
++    private static readonly int[] _offsets = [-1, -1, -1, 0, -1, 1, 0, -1, 0, 1, 1, -1, 1, 0, 1, 1];
++
++    [SerializableField(0)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private int _level = 1;
++
++    private TimerExecutionToken _teleportToken;
++
++    [Constructible]
++    public RoyaltyDefender() : base(AIType.AI_Mage)
++    {
++        Body = 400;
++        Name = "The Defender of Royalty";
++        SetSpeed(0.2, 0.4);
++
++        SetStr(180, 220);
++        SetDex(120, 140);
++        SetInt(600, 700);
++
++        SetHits(1200);
++
++        SetCasterSkills();
++
++        SetDamage(10, 12);
++
++        SetResistance(ResistanceType.Physical, 24, 25);
++        SetResistance(ResistanceType.Fire, 24, 25);
++        SetResistance(ResistanceType.Cold, 24, 25);
++        SetResistance(ResistanceType.Poison, 24, 25);
++        SetResistance(ResistanceType.Energy, 24, 25);
++
++        SetDamageType(ResistanceType.Physical, 100);
++
++        SetClothes(0);
++    }
++
++    public override string CorpseName => "The Remains of the Defended One";
++    public override bool ShowFameTitle => true;
++    public override bool AutoDispel => _level >= 5;
++    public override bool AlwaysMurderer => true;
++    public override bool Unprovokable => true;
++
++    public override int GetAngerSound() => 0x175;
++    public override int GetHurtSound() => 0x28B;
++
++    private void SetCasterSkills()
++    {
++        SetSkill(SkillName.Macing, 100);
++        SetSkill(SkillName.Tactics, 100);
++        SetSkill(SkillName.MagicResist, 120);
++        SetSkill(SkillName.Magery, 100);
++        SetSkill(SkillName.EvalInt, 100);
++        SetSkill(SkillName.Meditation, 100);
++    }
++
++    private void SetUniformResist(int min, int max)
++    {
++        SetResistance(ResistanceType.Physical, min, max);
++        SetResistance(ResistanceType.Fire, min, max);
++        SetResistance(ResistanceType.Cold, min, max);
++        SetResistance(ResistanceType.Poison, min, max);
++        SetResistance(ResistanceType.Energy, min, max);
++    }
++
++    private void BecomePrince()
++    {
++        Body = 400;
++        Name = "The Defender Prince";
++        SetStr(240, 260);
++        SetDex(270, 300);
++        SetInt(450, 470);
++        SetHits(2000);
++        SetCasterSkills();
++        SetDamageType(ResistanceType.Fire, 100);
++        SetDamageType(ResistanceType.Physical, 0);
++        SetDamage(10, 12);
++        SetUniformResist(30, 31);
++        SetClothes(1161);
++    }
++
++    private void BecomeQueen()
++    {
++        Body = 184;
++        Name = "The Defender Queen";
++        SetStr(260, 280);
++        SetDex(320, 340);
++        SetInt(500, 520);
++        SetHits(4000);
++        SetCasterSkills();
++        SetDamageType(ResistanceType.Cold, 100);
++        SetDamageType(ResistanceType.Physical, 0);
++        SetDamage(11, 13);
++        SetUniformResist(35, 36);
++        SetClothes(1194);
++    }
++
++    private void BecomeKing()
++    {
++        Body = 183;
++        Name = "The Defender King";
++        SetStr(280, 300);
++        SetDex(340, 360);
++        SetInt(550, 570);
++        SetHits(7000);
++        SetCasterSkills();
++        SetDamageType(ResistanceType.Energy, 100);
++        SetDamageType(ResistanceType.Physical, 0);
++        SetDamage(11, 13);
++        SetUniformResist(37, 43);
++        SetClothes(0x4001);
++    }
++
++    private void BecomeDefendedOne()
++    {
++        Body = 174;
++        Name = "The Defended One";
++        Hue = 2002;
++        SetStr(280, 300);
++        SetDex(380, 400);
++        SetInt(600, 620);
++        SetHits(20000);
++        SetSkill(SkillName.Magery, 120);
++        SetSkill(SkillName.EvalInt, 150);
++        SetSkill(SkillName.Meditation, 120.0);
++        SetSkill(SkillName.Tactics, 100.0);
++        SetSkill(SkillName.Wrestling, 120.0);
++        SetDamageType(ResistanceType.Poison, 100);
++        SetDamageType(ResistanceType.Physical, 0);
++        SetDamage(12, 15);
++        SetResistance(ResistanceType.Physical, 40, 55);
++        SetResistance(ResistanceType.Fire, 25, 35);
++        SetResistance(ResistanceType.Cold, 40, 45);
++        SetResistance(ResistanceType.Poison, 70, 70);
++        SetResistance(ResistanceType.Energy, 50, 50);
++        VirtualArmor = 50;
++        SetFameLevel(4);
++        SetKarmaLevel(4);
++        StartTeleporting();
++    }
++
++    private void SetClothes(int hue)
++    {
++        Hue = hue;
++
++        // Each form adds a fresh outfit over the last, as DFI did; the newest piece per layer shows.
++        AddItem(new LeatherGloves { Hue = hue, Movable = false });
++        AddItem(new FancyShirt { Hue = hue, Movable = false });
++        AddItem(new BoneHelm { Hue = hue, Movable = false });
++
++        var blackStaff = new BlackStaff { Hue = hue, Movable = false };
++        blackStaff.Attributes.SpellChanneling = 1;
++        AddItem(blackStaff);
++
++        AddItem(new Cloak { Hue = hue, Movable = false });
++        AddItem(new Kilt { Hue = hue, Movable = false });
++        AddItem(new Sandals { Hue = hue, Movable = false });
++    }
++
++    public override void AlterMeleeDamageTo(Mobile to, ref int damage)
++    {
++        if (to is BaseCreature { Controlled: true, Summoned: false })
++        {
++            damage *= 3;
++        }
++    }
++
++    public override bool OnBeforeDeath()
++    {
++        PlaySound(0x1FC);
++        Effects.SendLocationEffect(Location, Map, 0x3709, 13, 0x3B2);
++
++        switch (_level)
++        {
++            case 1:
++                {
++                    BecomePrince();
++                    break;
++                }
++            case 2:
++                {
++                    BecomeQueen();
++                    break;
++                }
++            case 3:
++                {
++                    BecomeKing();
++                    break;
++                }
++            case 4:
++                {
++                    BecomeDefendedOne();
++                    break;
++                }
++            default:
++                {
++                    return base.OnBeforeDeath();
++                }
++        }
++
++        Level = _level + 1;
++        return false;
++    }
++
++    public override void GenerateLoot()
++    {
++        AddLoot(LootPack.SuperBoss, 2);
++        AddLoot(LootPack.AosFilthyRich, 2);
++
++        if (!m_Spawning)
++        {
++            DonationRares.Give(
++                this,
++                "For your valour in defeating the Defended One you have received a reward",
++                () => new RoyalLoot()
++            );
++        }
++    }
++
++    public override void OnDeath(Container c)
++    {
++        base.OnDeath(c);
++
++        if (Utility.RandomDouble() < 0.5 && !Summoned && !NoKillAwards && DemonKnight.CheckArtifactChance(this))
++        {
++            DemonKnight.DistributeArtifact(this);
++        }
++    }
++
++    private void StartTeleporting()
++    {
++        _teleportToken.Cancel();
++        Timer.StartTimer(TimeSpan.FromSeconds(5.0), TimeSpan.FromSeconds(5.0), TeleportTick, out _teleportToken);
++    }
++
++    [AfterDeserialization]
++    private void AfterDeserialization()
++    {
++        if (_level >= 5)
++        {
++            StartTeleporting();
++        }
++    }
++
++    private void TeleportTick()
++    {
++        var map = Map;
++
++        if (map == null || Utility.RandomDouble() > 0.33)
++        {
++            return;
++        }
++
++        Mobile toTeleport = null;
++
++        foreach (var m in GetMobilesInRange(16))
++        {
++            if (m != this && m.Player && CanBeHarmful(m) && CanSee(m))
++            {
++                toTeleport = m;
++                break;
++            }
++        }
++
++        if (toTeleport == null)
++        {
++            return;
++        }
++
++        var offset = Utility.Random(8) * 2;
++        var to = Location;
++
++        for (var i = 0; i < _offsets.Length; i += 2)
++        {
++            var x = X + _offsets[(offset + i) % _offsets.Length];
++            var y = Y + _offsets[(offset + i + 1) % _offsets.Length];
++
++            if (map.CanSpawnMobile(x, y, Z))
++            {
++                to = new Point3D(x, y, Z);
++                break;
++            }
++
++            var z = map.GetAverageZ(x, y);
++
++            if (map.CanSpawnMobile(x, y, z))
++            {
++                to = new Point3D(x, y, z);
++                break;
++            }
++        }
++
++        var from = toTeleport.Location;
++        toTeleport.Location = to;
++
++        SpellHelper.Turn(this, toTeleport);
++        SpellHelper.Turn(toTeleport, this);
++
++        toTeleport.ProcessDelta();
++
++        Effects.SendLocationParticles(EffectItem.Create(from, toTeleport.Map, EffectItem.DefaultDuration), 0x3728, 10, 10, 2023);
++        Effects.SendLocationParticles(EffectItem.Create(to, toTeleport.Map, EffectItem.DefaultDuration), 0x3728, 10, 10, 5023);
++
++        toTeleport.PlaySound(0x1FE);
++        Combatant = toTeleport;
++    }
++
++    public override void OnAfterDelete()
++    {
++        _teleportToken.Cancel();
++        base.OnAfterDelete();
++    }
++}
++
++internal static class DonationRares
++{
++    public static void Give(BaseCreature boss, string message, Func<Item> rare)
++    {
++        var rights = BaseCreature.GetLootingRights(boss.DamageEntries, boss.HitsMax);
++        var eligible = new List<Mobile>();
++
++        for (var i = 0; i < rights.Count; ++i)
++        {
++            if (rights[i].m_HasRight)
++            {
++                eligible.Add(rights[i].m_Mobile);
++            }
++        }
++
++        for (var i = 0; i < eligible.Count; ++i)
++        {
++            if (Utility.RandomDouble() < 0.03)
++            {
++                eligible[i].SendMessage(message);
++                eligible[i].AddToBackpack(rare());
++            }
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Mobiles/KopiaMonsters.cs b/Projects/UOContent/Custom/DFI/Mobiles/KopiaMonsters.cs
+new file mode 100644
+index 000000000..ee2b7654b
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Mobiles/KopiaMonsters.cs
+@@ -0,0 +1,525 @@
++// kopia 2012 shard monsters, ported from kopia 2012 RunUO Scripts/Custom/Pozostale
++// (ValoriteDragon.cs, Chameleon.cs, YChameleon.cs).
++
++using System.Collections.Generic;
++using ModernUO.Serialization;
++using Server.Items;
++
++namespace Server.Mobiles;
++
++[SerializationGenerator(0)]
++public partial class ValoriteDragon : BaseCreature
++{
++    private static readonly MonsterAbility[] _abilities = [MonsterAbilities.FireBreath];
++
++    [Constructible]
++    public ValoriteDragon() : base(AIType.AI_Mage)
++    {
++        IsParagon = true;
++        Body = 46;
++        BaseSoundID = 362;
++        Hue = 2219;
++        SetSpeed(0.2, 0.4);
++
++        SetStr(1096, 1185);
++        SetDex(86, 175);
++        SetInt(686, 775);
++
++        SetHits(5500, 6000);
++
++        SetDamage(29, 35);
++
++        SetDamageType(ResistanceType.Poison, 100);
++        SetDamageType(ResistanceType.Energy, 55);
++
++        SetResistance(ResistanceType.Physical, 65, 75);
++        SetResistance(ResistanceType.Fire, 80, 90);
++        SetResistance(ResistanceType.Cold, 70, 80);
++        SetResistance(ResistanceType.Poison, 60, 70);
++        SetResistance(ResistanceType.Energy, 60, 70);
++
++        SetSkill(SkillName.EvalInt, 115.1, 130.0);
++        SetSkill(SkillName.Magery, 120.1, 125.0);
++        SetSkill(SkillName.Meditation, 100.5, 110.0);
++        SetSkill(SkillName.MagicResist, 120.5, 150.0);
++        SetSkill(SkillName.Tactics, 125.6, 175.0);
++        SetSkill(SkillName.Wrestling, 150.6, 150.0);
++
++        Fame = 22500;
++        Karma = -22500;
++
++        PackItem(new ValoriteOre(200) { ItemID = 0x19B9 });
++
++        VirtualArmor = 70;
++    }
++
++    public override string CorpseName => "a Valorite corpse";
++    public override string DefaultName => "a Valorite Dragon";
++    public override bool ReacquireOnMovement => true;
++    public override bool AutoDispel => true;
++    public override HideType HideType => HideType.Barbed;
++    public override int Hides => 40;
++    public override int Meat => 19;
++    public override int Scales => 12;
++    public override ScaleType ScaleType => (ScaleType)Utility.Random(4);
++    public override Poison PoisonImmune => Poison.Regular;
++    public override Poison HitPoison => Utility.RandomBool() ? Poison.Lesser : Poison.Regular;
++    public override int TreasureMapLevel => 5;
++
++    public override MonsterAbility[] GetMonsterAbilities() => _abilities;
++
++    public override int GetIdleSound() => 0x2D3;
++    public override int GetHurtSound() => 0x2D1;
++
++    public override WeaponAbility GetWeaponAbility() =>
++        Utility.RandomBool() ? WeaponAbility.ParalyzingBlow : WeaponAbility.BleedAttack;
++
++    public override void GenerateLoot()
++    {
++        AddLoot(LootPack.FilthyRich, 3);
++        AddLoot(LootPack.Gems, 5);
++    }
++}
++
++// A tamable shapeshifter. Hit it and it takes its attacker's body and hue; its master can say
++// "change help", "change color", "change color normal" or "change <form>" to reshape it.
++[SerializationGenerator(0)]
++public abstract partial class BaseChameleon : BaseCreature
++{
++    // Exact phrases as kopia 2012 matched them, including the few it accepted without "change ".
++    private static readonly Dictionary<string, int> _forms = new()
++    {
++        ["change antlion"] = 787,
++        ["change solenqueen"] = 807,
++        ["change solenwarrior"] = 806,
++        ["change solenworker"] = 805,
++        ["change abyssmalhorror"] = 312,
++        ["change bonedemon"] = 308,
++        ["change crystalelemental"] = 300,
++        ["change darknightcreeper"] = 313,
++        ["change demonknight"] = 318,
++        ["change devourer"] = 303,
++        ["change fleshgolem"] = 304,
++        ["change fleshrenderer"] = 315,
++        ["change gibberling"] = 307,
++        ["change gorefiend"] = 305,
++        ["change impaler"] = 306,
++        ["change moundofmaggots"] = 319,
++        ["change patchskeleton"] = 309,
++        ["change ravager"] = 314,
++        ["change shadowknight"] = 311,
++        ["change skitteringhopper"] = 302,
++        ["change treefellow"] = 301,
++        ["change vampirebat"] = 317,
++        ["change banshee"] = 310,
++        ["change wandererofthevoid"] = 316,
++        ["change dreadspider"] = 11,
++        ["change terathranavenger"] = 152,
++        ["change terathranmatriarch"] = 72,
++        ["giantspider"] = 28,
++        ["change terathrandrone"] = 71,
++        ["change terathranwarrior"] = 70,
++        ["change lich"] = 24,
++        ["change balron"] = 40,
++        ["change betrayer"] = 767,
++        ["change bonemagi"] = 148,
++        ["change daemon"] = 9,
++        ["change evilmagelord"] = 126,
++        ["change firegargoyle"] = 130,
++        ["change gargoyle"] = 4,
++        ["change gazer"] = 22,
++        ["change icefiend"] = 43,
++        ["change imp"] = 74,
++        ["change ratmanmage"] = 143,
++        ["change shade"] = 26,
++        ["change succubus"] = 149,
++        ["change fourarm"] = 746,
++        ["change titan"] = 76,
++        ["change boneknight"] = 57,
++        ["change chaosdemon"] = 792,
++        ["change cyclops"] = 75,
++        ["change ettin"] = 18,
++        ["change gazerlarva"] = 778,
++        ["change headlessone"] = 31,
++        ["change hordeminion"] = 776,
++        ["change mongbat"] = 39,
++        ["change mummy"] = 154,
++        ["change ogre"] = 1,
++        ["change orc"] = 17,
++        ["change orcbrute"] = 189,
++        ["change orcishlord"] = 138,
++        ["change rottingcorpse"] = 155,
++        ["change skeleton"] = 56,
++        ["spectralarmor"] = 637,
++        ["change troll"] = 53,
++        ["change zombie"] = 3,
++        ["change jukalord"] = 766,
++        ["change jukamage"] = 765,
++        ["change jukawarrior"] = 764,
++        ["change meercaptain"] = 773,
++        ["change meereternal"] = 772,
++        ["change meermage"] = 770,
++        ["change meerwarrior"] = 771,
++        ["change etherealwarrior"] = 123,
++        ["change pixie"] = 128,
++        ["change shadowwisp"] = 165,
++        ["wisp"] = 58,
++        ["change bladespirits"] = 574,
++        ["change centaur"] = 101,
++        ["change energyvortex"] = 164,
++        ["change golem"] = 752,
++        ["change plaguebeast"] = 775,
++        ["change bogling"] = 779,
++        ["change bogthing"] = 780,
++        ["change whippingvine"] = 8,
++        ["change ancientwyrm"] = 46,
++        ["change dragon"] = 12,
++        ["change ophidianmage"] = 85,
++        ["change ophidianmatriarch"] = 87,
++        ["serpentinedragon"] = 103,
++        ["change skeletaldragon"] = 104,
++        ["change harrower"] = 146,
++        ["change mephitis"] = 173,
++        ["change semidar"] = 174,
++        ["change silvani"] = 176,
++        ["change kappa"] = 240,
++        ["change oni"] = 241,
++        ["change bimbobushi"] = 242,
++        ["change hiryu"] = 243,
++        ["change runebeetle"] = 244,
++        ["change yomotsuwarrior"] = 245,
++        ["change bakekitsune"] = 246,
++        ["change fandancer"] = 247,
++        ["change gaman"] = 248,
++        ["change yamandon"] = 249,
++        ["change triwolf"] = 250,
++        ["change undeadbeast"] = 251,
++        ["change snowlady"] = 252,
++        ["change yomotsupriest"] = 253,
++        ["change crane"] = 254,
++        ["change yomotsuelder"] = 255,
++        ["change Bimbobushi"] = 242,
++        ["change circlet"] = 262,
++        ["change changling"] = 264,
++        ["change dreadhorn"] = 257,
++        ["change dryad"] = 266,
++        ["change hydra"] = 265,
++        ["change melisande"] = 258,
++        ["change minotaurarmored"] = 280,
++        ["change minotaurleather"] = 281,
++        ["change minotaur"] = 263,
++        ["change grizzle"] = 272,
++        ["change paroxysmus"] = 256,
++        ["change satyr"] = 271,
++        ["change troglodyte"] = 267,
++        ["change shimmering"] = 261,
++        ["change fetid"] = 273,
++        ["change raptalon"] = 276,
++        ["change cushide"] = 277,
++        ["change squirrel"] = 278,
++        ["change ferret"] = 279,
++        ["change parrot"] = 282,
++        ["change reaper"] = 285,
++        ["change packhorse"] = 291,
++        ["change kraken"] = 77,
++        ["change lizardman"] = 33,
++        ["change ratman"] = 42,
++        ["change scorpion"] = 48,
++        ["change seaserpent"] = 150,
++        ["change sphinx"] = 788,
++        ["change quagmire"] = 789,
++        ["change orchead"] = 416,
++        ["change tribalmask1"] = 417,
++        ["change tribalmask2"] = 418,
++        ["change paladin"] = 141,
++        ["change ostardforest"] = 218,
++        ["change ostardfrenvied"] = 219,
++        ["change bear"] = 212,
++        ["change skull"] = 562,
++        ["change polarbear"] = 213,
++        ["change chicken"] = 208,
++        ["change eagle"] = 5,
++        ["change direwolf"] = 23,
++        ["change bull"] = 232,
++        ["change cow"] = 216,
++        ["change panther"] = 214,
++        ["change boar"] = 209,
++        ["change gianttoad"] = 80,
++        ["change goat"] = 209,
++        ["change gorilla"] = 29,
++        ["change greathart"] = 234,
++        ["change hind"] = 237,
++        ["change llama"] = 220,
++        ["change sheep"] = 207,
++        ["change walrus"] = 221,
++        ["change beetle"] = 791,
++        ["change ostarddesert"] = 210,
++        ["change hellsteed"] = 793,
++        ["change horse"] = 200,
++        ["change kirin"] = 132,
++        ["change ridgeback"] = 839,
++        ["change swampdragon"] = 794,
++        ["change armoreddragon"] = 799,
++        ["change unicorn"] = 122,
++        ["change alligator"] = 202,
++        ["change giantserpent"] = 21,
++        ["change snake"] = 52,
++        ["change giantrat"] = 215,
++        ["change rabbit"] = 205,
++        ["change rat"] = 238,
++        ["change bird"] = 6,
++        ["change cat"] = 201,
++        ["change dog"] = 217,
++        ["change normal"] = 51
++    };
++
++    private static readonly string[] _help =
++    [
++        "I change by saying change xxxx, i.e change orcbrute...",
++        "I can change into antlion, solenqueen, solenwarrior,",
++        "solenworker, abyssmalhorror, bonedemon,",
++        "crystalelemental, darknightcreeper, demonknight,",
++        "devourer, fleshgolem, fleshrenderer,",
++        "gibberling, gorefiend, impaler,",
++        "moundofmaggots, patchworkskeleton, ravager,",
++        "shadowknight, skitteringhopper, treefellow,",
++        "vampirebat, wailingbanshee, wandererofthevoid,",
++        "dreadspider, terathranavenger, terathranmatriarch,",
++        "giantspider, terathrandrone, terathranwarrior,",
++        "lich, balron, betrayer,",
++        "bonemagi, daemon, evilmagelord,",
++        "firegargoyle, gargoyle, gazer,",
++        "icefiend, imp, ratmanmage,",
++        "shade, succubus, titan,",
++        "boneknight, chaosdemon, cyclops,",
++        "ettin, gazerlarva, headlessone,",
++        "hordeminion, mongbat, mummy,",
++        "ogre, orc, orcbrute,",
++        "orcishlord, rottingcorpse, skeleton,",
++        "spectralarmor, troll, zombie,",
++        "jukalord, jukamage, jukawarrior,",
++        "meercaptain, meereternal, meermage,",
++        "meerwarrior, etherealwarrior, pixie,",
++        "shadowwisp, bladespirits, centuar,",
++        "energyvortex, golem, plaguebeast,",
++        "bogling, bogthing, whippingvine,",
++        "ancientwyrm, dragon, ophidianmage,",
++        "ophidianmatriarch, serpentinedragon, skeletaldragon,",
++        "harrower, mephitis, semidar,",
++        "silvani, bear, polarbear,",
++        "chicken, eagle, direwolf,",
++        "bull, cow, panther,",
++        "boar, gianttoad, goat,",
++        "gorilla, greathart,",
++        "hind, llama, sheep,",
++        "walrus, beetle, ostard,",
++        "hellsteed, horse, kirin,",
++        "ridgeback, swampdragon, unicorn,",
++        "alligator, giantserpent, snake,",
++        "giantrat, rabbit, rat,",
++        "bird, cat, dog, normal.",
++        "Check your journal for everything I just said!"
++    ];
++
++    private static readonly string[] _taunts =
++    [
++        "Your existance shall be mine!!",
++        "Your attacks have no effect on me!",
++        "Your end is near weakling!",
++        "Admit defeat and I will make your end quick!",
++        "You are no match for me!"
++    ];
++
++    public BaseChameleon(FightMode mode) : base(AIType.AI_Mage, mode)
++    {
++        Body = 51;
++        BaseSoundID = 362;
++        SetSpeed(0.2, 0.4);
++        Tamable = true;
++    }
++
++    protected abstract string LastHelpLine { get; }
++
++    public override string CorpseName => "a chameleon corpse";
++    public override bool ReacquireOnMovement => true;
++    public override bool AutoDispel => false;
++    public override int Meat => 2;
++    public override Poison PoisonImmune => Poison.Lethal;
++    public override int TreasureMapLevel => 5;
++
++    public override int GetIdleSound() => 0x2D3;
++    public override int GetHurtSound() => 0x2D1;
++
++    public override void OnDamage(int amount, Mobile from, bool willKill)
++    {
++        base.OnDamage(amount, from, willKill);
++
++        if (Hits < 15000 && from != null)
++        {
++            TurnIntoAttacker(from);
++        }
++    }
++
++    private void TurnIntoAttacker(Mobile from)
++    {
++        if (Map == null || from.Combatant is not { } m)
++        {
++            return;
++        }
++
++        if (m.Body == 51)
++        {
++            m.Say("Your soul is now mine!");
++        }
++
++        if (m.Body == from.Body)
++        {
++            return;
++        }
++
++        if (m.Mounted)
++        {
++            m.FindItemOnLayer(Layer.Mount)?.Delete();
++        }
++
++        m.BoltEffect(0);
++        m.Body = from.Body;
++        m.Hue = from.Hue;
++        Warmode = true;
++        m.BoltEffect(0);
++        m.Say(_taunts.RandomElement());
++    }
++
++    public override void OnSpeech(SpeechEventArgs e)
++    {
++        if (!e.Handled && e.Mobile == ControlMaster && e.Mobile.InRange(Location, 5))
++        {
++            var speech = e.Speech;
++
++            if (speech == "change help")
++            {
++                foreach (var line in _help)
++                {
++                    Say(line);
++                }
++
++                Say(LastHelpLine);
++                Say("Check your journal for everything I just said!");
++            }
++            else if (speech == "change color")
++            {
++                Say("As you wish!");
++                Hue = Utility.Random(2, 1200);
++            }
++            else if (speech == "change color normal")
++            {
++                Say("As you wish!");
++                Hue = 0;
++            }
++            else if (_forms.TryGetValue(speech, out var body))
++            {
++                Say("As you wish!");
++                Body = body;
++            }
++        }
++
++        base.OnSpeech(e);
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class Chameleon : BaseChameleon
++{
++    [Constructible]
++    public Chameleon() : base(FightMode.Closest)
++    {
++        SetStr(1211, 1385);
++        SetDex(195, 205);
++        SetInt(906, 1175);
++
++        SetHits(15000);
++
++        SetDamage(90, 100);
++
++        SetDamageType(ResistanceType.Physical, 75);
++        SetDamageType(ResistanceType.Fire, 25);
++
++        SetResistance(ResistanceType.Physical, 65, 75);
++        SetResistance(ResistanceType.Fire, 80, 90);
++        SetResistance(ResistanceType.Cold, 70, 80);
++        SetResistance(ResistanceType.Poison, 60, 70);
++        SetResistance(ResistanceType.Energy, 60, 70);
++
++        SetSkill(SkillName.EvalInt, 120.0, 130.0);
++        SetSkill(SkillName.Magery, 120.1, 130.0);
++        SetSkill(SkillName.Meditation, 122.5, 130.0);
++        SetSkill(SkillName.MagicResist, 120.5, 150.0);
++        SetSkill(SkillName.Tactics, 117.6, 130.0);
++        SetSkill(SkillName.Wrestling, 119.6, 130.0);
++
++        Fame = 22500;
++        Karma = -22500;
++
++        ControlSlots = 4;
++        MinTameSkill = 115.0;
++
++        VirtualArmor = 70;
++    }
++
++    public override string DefaultName => "Chameleon";
++    protected override string LastHelpLine => "These are not all my forms however. I'll let you figure out the rest";
++
++    public override void GenerateLoot()
++    {
++        AddLoot(LootPack.FilthyRich, 3);
++        AddLoot(LootPack.Gems, 5);
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class YChameleon : BaseChameleon
++{
++    [Constructible]
++    public YChameleon() : base(FightMode.Aggressor)
++    {
++        SetStr(96, 120);
++        SetDex(81, 105);
++        SetInt(36, 60);
++
++        SetHits(58, 72);
++
++        SetDamage(11, 17);
++
++        SetDamageType(ResistanceType.Physical, 75);
++        SetDamageType(ResistanceType.Fire, 25);
++
++        SetResistance(ResistanceType.Physical, 20, 25);
++        SetResistance(ResistanceType.Fire, 10, 20);
++        SetResistance(ResistanceType.Cold, 5, 10);
++        SetResistance(ResistanceType.Poison, 5, 10);
++        SetResistance(ResistanceType.Energy, 10, 15);
++
++        SetSkill(SkillName.EvalInt, 120.0, 130.0);
++        SetSkill(SkillName.Magery, 120.1, 130.0);
++        SetSkill(SkillName.Meditation, 122.5, 130.0);
++        SetSkill(SkillName.MagicResist, 120.5, 150.0);
++        SetSkill(SkillName.Tactics, 117.6, 130.0);
++        SetSkill(SkillName.Wrestling, 119.6, 130.0);
++
++        Fame = 2500;
++        Karma = -2500;
++
++        VirtualArmor = 22;
++
++        ControlSlots = 2;
++        MinTameSkill = 50;
++    }
++
++    public override string DefaultName => "Young Chameleon";
++    protected override string LastHelpLine => "These are not all my forms however. I shall let you figure out the rest";
++
++    public override void GenerateLoot()
++    {
++        AddLoot(LootPack.Average, 2);
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Mobiles/OpticonBosses.cs b/Projects/UOContent/Custom/DFI/Mobiles/OpticonBosses.cs
+new file mode 100644
+index 000000000..b140fcb6a
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Mobiles/OpticonBosses.cs
+@@ -0,0 +1,406 @@
++// DFI Network Opticon/Kale bosses, ported from DFI RunUO Scripts/Custom/Opticon/Misc
++// (Opticon/ZealotOfMondain.cs, AbominationOfMondain.cs, OpticonWyrm.cs, Kale/GrimReaper.cs).
++
++using System;
++using System.Collections.Generic;
++using ModernUO.Serialization;
++using Server.Custom.Dfi;
++using Server.Items;
++
++namespace Server.Mobiles;
++
++// On death the zealot does not drop a corpse: it bursts into an Abomination of Mondain that carries
++// four extra Filthy Rich loot packs in its backpack.
++[SerializationGenerator(0)]
++public partial class ZealotOfMondain : BaseCreature
++{
++    [Constructible]
++    public ZealotOfMondain() : base(AIType.AI_Mage)
++    {
++        Body = 400;
++        BaseSoundID = 0x133;
++        SetSpeed(0.2, 0.4);
++
++        SetStr(1340, 1390);
++        SetDex(180, 230);
++        SetInt(1360, 1600);
++
++        SetHits(1246, 1360);
++
++        SetDamage(20, 35);
++
++        SetResistance(ResistanceType.Physical, 55, 65);
++        SetResistance(ResistanceType.Fire, 25, 30);
++        SetResistance(ResistanceType.Cold, 50, 60);
++        SetResistance(ResistanceType.Poison, 50, 60);
++        SetResistance(ResistanceType.Energy, 25, 30);
++
++        SetSkill(SkillName.EvalInt, 140, 140.0);
++        SetSkill(SkillName.Magery, 120, 120.0);
++        SetSkill(SkillName.MagicResist, 180.0, 180.0);
++        SetSkill(SkillName.Tactics, 100.0, 100.0);
++        SetSkill(SkillName.Wrestling, 100.0, 100.0);
++
++        Fame = 24000;
++        Karma = -24000;
++
++        VirtualArmor = 70;
++
++        AddItem(new HoodedShroudOfShadows { Hue = 0x672, Movable = false });
++    }
++
++    public override string CorpseName => "freak of nature hekate";
++    public override string DefaultName => "Zealot of Mondain";
++    public override bool AlwaysMurderer => true;
++    public override bool AutoDispel => true;
++    public override double AutoDispelChance => 1.0;
++    public override bool Uncalmable => Core.SE;
++    public override bool Unprovokable => true;
++    public override Poison PoisonImmune => Poison.Lethal;
++
++    public override void GenerateLoot()
++    {
++        AddLoot(LootPack.UltraRich, 4);
++    }
++
++    public override bool OnBeforeDeath()
++    {
++        var abomination = new AbominationOfMondain
++        {
++            Team = Team,
++            Combatant = Combatant,
++            NoKillAwards = false
++        };
++
++        if (abomination.Backpack == null)
++        {
++            abomination.AddItem(new Backpack { Movable = false });
++        }
++
++        var luck = LootPack.GetLuckChanceForKiller(this);
++
++        for (var i = 0; i < 2; i++)
++        {
++            LootPack.FilthyRich.Generate(this, abomination.Backpack, true, luck);
++            LootPack.FilthyRich.Generate(this, abomination.Backpack, false, luck);
++        }
++
++        Effects.PlaySound(this, GetDeathSound());
++        Effects.SendLocationEffect(Location, Map, 0x3709, 30, 0x835);
++        abomination.MoveToWorld(Location, Map);
++
++        Delete();
++        return false;
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class AbominationOfMondain : BaseCreature
++{
++    private static readonly Dictionary<Mobile, ColdWind> _coldWinds = new();
++
++    [Constructible]
++    public AbominationOfMondain() : base(AIType.AI_Mage)
++    {
++        Body = 252;
++        BaseSoundID = 0x482;
++        Kills = 10;
++        SetSpeed(0.2, 0.4);
++
++        SetStr(1340, 1390);
++        SetDex(180, 230);
++        SetInt(1360, 1600);
++
++        SetHits(1800, 2500);
++
++        SetDamage(20, 35);
++
++        SetResistance(ResistanceType.Physical, 55, 65);
++        SetResistance(ResistanceType.Fire, 25, 30);
++        SetResistance(ResistanceType.Cold, 50, 60);
++        SetResistance(ResistanceType.Poison, 50, 60);
++        SetResistance(ResistanceType.Energy, 25, 30);
++
++        SetSkill(SkillName.EvalInt, 140, 140.0);
++        SetSkill(SkillName.Magery, 120, 120.0);
++        SetSkill(SkillName.MagicResist, 180.0, 180.0);
++        SetSkill(SkillName.Tactics, 100.0, 100.0);
++        SetSkill(SkillName.Wrestling, 100.0, 100.0);
++
++        Fame = 24000;
++        Karma = -24000;
++
++        PackReg(3);
++        PackItem(new Necklace());
++
++        if (Utility.RandomDouble() < 0.20)
++        {
++            PackItem(new PowderOfTemperament());
++        }
++    }
++
++    public override string CorpseName => "weird looking corpse";
++    public override string DefaultName => "Abomination of Mondain";
++    public override bool BleedImmune => true;
++    public override bool CanRummageCorpses => true;
++    public override int TreasureMapLevel => 4;
++
++    public override int GetDeathSound() => 0x288;
++
++    public override void GenerateLoot()
++    {
++        AddLoot(LootPack.FilthyRich);
++        AddLoot(LootPack.SuperBoss, 6);
++    }
++
++    // Cold wind: 2 damage a second for 5 seconds; a fresh hit restarts it.
++    public override void OnGaveMeleeAttack(Mobile defender, int damage)
++    {
++        base.OnGaveMeleeAttack(defender, damage);
++
++        if (Utility.RandomDouble() >= 0.1)
++        {
++            return;
++        }
++
++        if (_coldWinds.Remove(defender, out var running))
++        {
++            running.Stop();
++            defender.SendLocalizedMessage(1070831); // The freezing wind continues to blow!
++        }
++        else
++        {
++            defender.SendLocalizedMessage(1070832); // An icy wind surrounds you, freezing your lungs as you breathe!
++        }
++
++        var wind = new ColdWind(defender, this);
++        _coldWinds[defender] = wind;
++        wind.Start();
++    }
++
++    private class ColdWind : Timer
++    {
++        private readonly Mobile _mobile;
++        private readonly Mobile _from;
++
++        public ColdWind(Mobile m, Mobile from) : base(TimeSpan.FromSeconds(1.0), TimeSpan.FromSeconds(1.0), 5)
++        {
++            _mobile = m;
++            _from = from;
++        }
++
++        protected override void OnTick()
++        {
++            if (!_mobile.Alive)
++            {
++                Expire();
++                return;
++            }
++
++            _mobile.Damage(2, _from);
++
++            if (Index + 1 >= Count)
++            {
++                Expire();
++                _mobile.SendLocalizedMessage(1070830); // The icy wind dissipates.
++            }
++        }
++
++        private void Expire()
++        {
++            Stop();
++
++            if (_coldWinds.TryGetValue(_mobile, out var current) && current == this)
++            {
++                _coldWinds.Remove(_mobile);
++            }
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class OpticonWyrm : BaseCreature
++{
++    private static readonly MonsterAbility[] _abilities = [MonsterAbilities.FireBreath];
++
++    [Constructible]
++    public OpticonWyrm() : base(AIType.AI_Mage)
++    {
++        Body = 46;
++        BaseSoundID = 362;
++        Hue = 1194;
++        SetSpeed(0.2, 0.4);
++
++        SetStr(1200, 1500);
++        SetDex(100, 200);
++        SetInt(800, 1000);
++
++        SetHits(2500, 3500);
++
++        SetDamage(35, 45);
++
++        SetDamageType(ResistanceType.Physical, 75);
++        SetDamageType(ResistanceType.Fire, 25);
++
++        SetResistance(ResistanceType.Physical, 65, 75);
++        SetResistance(ResistanceType.Fire, 80, 90);
++        SetResistance(ResistanceType.Cold, 70, 80);
++        SetResistance(ResistanceType.Poison, 60, 70);
++        SetResistance(ResistanceType.Energy, 60, 70);
++
++        SetSkill(SkillName.EvalInt, 80.1, 100.0);
++        SetSkill(SkillName.Magery, 80.1, 100.0);
++        SetSkill(SkillName.Meditation, 52.5, 75.0);
++        SetSkill(SkillName.MagicResist, 100.5, 150.0);
++        SetSkill(SkillName.Tactics, 97.6, 100.0);
++        SetSkill(SkillName.Wrestling, 97.6, 100.0);
++
++        Fame = 22500;
++        Karma = -22500;
++
++        VirtualArmor = 70;
++
++        if (Utility.RandomDouble() < 0.40)
++        {
++            PackItem(new BallOfSummoning());
++        }
++    }
++
++    public override string CorpseName => "a weird looking corpse";
++    public override string DefaultName => "Opticon's Pet";
++    public override bool ReacquireOnMovement => true;
++    public override bool AutoDispel => true;
++    public override HideType HideType => HideType.Barbed;
++    public override int Hides => 40;
++    public override int Meat => 19;
++    public override int Scales => 12;
++    public override ScaleType ScaleType => (ScaleType)Utility.Random(4);
++    public override Poison PoisonImmune => Poison.Regular;
++    public override Poison HitPoison => Utility.RandomBool() ? Poison.Lesser : Poison.Regular;
++    public override int TreasureMapLevel => 5;
++
++    public override MonsterAbility[] GetMonsterAbilities() => _abilities;
++
++    public override int GetIdleSound() => 0x2D3;
++    public override int GetHurtSound() => 0x2D1;
++
++    public override void GenerateLoot()
++    {
++        AddLoot(LootPack.SuperBoss, 6);
++        AddLoot(LootPack.Gems, 5);
++    }
++}
++
++// Each player with looting rights has a 10% chance at a barbed runic sewing kit (1-4 uses).
++[SerializationGenerator(0)]
++public partial class GrimReaper : BaseCreature
++{
++    [Constructible]
++    public GrimReaper() : base(AIType.AI_Mage)
++    {
++        Body = 400;
++        BaseSoundID = 0x133;
++        SetSpeed(0.2, 0.4);
++
++        SetStr(1340, 1390);
++        SetDex(180, 230);
++        SetInt(1360, 1600);
++
++        SetHits(10000, 12000);
++
++        SetDamage(20, 35);
++
++        SetResistance(ResistanceType.Physical, 55, 65);
++        SetResistance(ResistanceType.Fire, 25, 30);
++        SetResistance(ResistanceType.Cold, 50, 60);
++        SetResistance(ResistanceType.Poison, 50, 60);
++        SetResistance(ResistanceType.Energy, 25, 30);
++
++        Fame = 24000;
++        Karma = -24000;
++
++        VirtualArmor = 70;
++
++        var scythe = new Scythe { Movable = false };
++        scythe.Attributes.SpellChanneling = 1;
++        AddItem(scythe);
++
++        AddItem(new HoodedShroudOfShadows { Hue = 0x1, Movable = false });
++
++        SetSkill(SkillName.DetectHidden, 80.0);
++        SetSkill(SkillName.EvalInt, 120.0);
++        SetSkill(SkillName.Magery, 120.0);
++        SetSkill(SkillName.Meditation, 120.0);
++        SetSkill(SkillName.MagicResist, 150.0);
++        SetSkill(SkillName.Tactics, 100.0);
++        SetSkill(SkillName.Swords, 120.0);
++
++        FollowersMax = 10;
++    }
++
++    public override string CorpseName => "a slumbering Grim reaper";
++    public override string DefaultName => "Grim Reaper";
++    public override bool AlwaysMurderer => true;
++    public override bool AutoDispel => true;
++    public override double AutoDispelChance => 1.0;
++    public override bool Uncalmable => Core.SE;
++    public override bool Unprovokable => true;
++    public override bool BleedImmune => true;
++    public override Poison PoisonImmune => Poison.Lethal;
++
++    public override int GetIdleSound() => 0x184;
++    public override int GetAngerSound() => 0x286;
++    public override int GetDeathSound() => 0x288;
++    public override int GetHurtSound() => 0x19F;
++
++    public override WeaponAbility GetWeaponAbility() =>
++        Utility.RandomBool() ? WeaponAbility.ParalyzingBlow : WeaponAbility.BleedAttack;
++
++    public override void GenerateLoot()
++    {
++        AddLoot(LootPack.SuperBoss, 2);
++        AddLoot(LootPack.AosFilthyRich, 2);
++
++        if (m_Spawning)
++        {
++            return;
++        }
++
++        var rights = GetLootingRights(DamageEntries, HitsMax);
++
++        for (var i = 0; i < rights.Count; ++i)
++        {
++            if (rights[i].m_HasRight && Utility.RandomDouble() < 0.1)
++            {
++                var m = rights[i].m_Mobile;
++                m.SendMessage("For your courage you have received a barbed runic sewing kit");
++                m.AddToBackpack(new RunicSewingKit(CraftResource.BarbedLeather, Utility.RandomMinMax(1, 4)));
++            }
++        }
++    }
++
++    public override void OnGaveMeleeAttack(Mobile defender, int damage)
++    {
++        base.OnGaveMeleeAttack(defender, damage);
++        TryReap();
++    }
++
++    public override void OnGotMeleeAttack(Mobile attacker, int damage)
++    {
++        base.OnGotMeleeAttack(attacker, damage);
++        TryReap();
++    }
++
++    private void TryReap()
++    {
++        if (Utility.RandomDouble() <= 0.1)
++        {
++            DfiMonsterHelpers.DrainLife(
++                this,
++                1,
++                () => Utility.RandomMinMax(10, 40),
++                "Grim Reaper almost drained the life from you!"
++            );
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Mobiles/Orcs.cs b/Projects/UOContent/Custom/DFI/Mobiles/Orcs.cs
+new file mode 100644
+index 000000000..8a7dfea4c
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Mobiles/Orcs.cs
+@@ -0,0 +1,312 @@
++// DFI Network orcs, ported from DFI RunUO Scripts/Custom/Mobiles/Monsters/Humanoid/Melee/OrcChopper.cs
++// and OrcScout.cs. Both spare players wearing an orcish kin mask and burn the mask off whoever attacks
++// them in one.
++
++using System;
++using ModernUO.Serialization;
++using Server.Items;
++using Server.Misc;
++
++namespace Server.Mobiles;
++
++[SerializationGenerator(0)]
++public partial class OrcChopper : BaseCreature
++{
++    [Constructible]
++    public OrcChopper() : base(AIType.AI_Melee)
++    {
++        Body = 0x8B;
++        BaseSoundID = 0x45A;
++        Hue = 0x96E;
++        SetSpeed(0.2, 0.4);
++
++        SetStr(147, 245);
++        SetDex(91, 115);
++        SetInt(61, 85);
++
++        SetHits(97, 139);
++
++        SetDamage(32, 37);
++
++        SetDamageType(ResistanceType.Physical, 100);
++
++        SetResistance(ResistanceType.Physical, 25, 35);
++        SetResistance(ResistanceType.Fire, 30, 40);
++        SetResistance(ResistanceType.Cold, 15, 25);
++        SetResistance(ResistanceType.Poison, 15, 20);
++        SetResistance(ResistanceType.Energy, 25, 30);
++
++        SetSkill(SkillName.MagicResist, 60.1, 85.0);
++        SetSkill(SkillName.Tactics, 75.1, 90.0);
++        SetSkill(SkillName.Wrestling, 60.1, 85.0);
++
++        SetFameLevel(2);
++        SetKarmaLevel(2);
++
++        VirtualArmor = 40;
++
++        AddItem(new ExecutionersAxe());
++    }
++
++    public override string CorpseName => "an orcish corpse";
++    public override string DefaultName => "an orc chopper";
++    public override InhumanSpeech SpeechType => InhumanSpeech.Orc;
++    public override bool CanRummageCorpses => true;
++    public override int Meat => 1;
++    public override OppositionGroup OppositionGroup => OppositionGroup.SavagesAndOrcs;
++
++    public override WeaponAbility GetWeaponAbility() => WeaponAbility.WhirlwindAttack;
++
++    public override void GenerateLoot()
++    {
++        AddLoot(LootPack.Average);
++    }
++
++    public override void OnDeath(Container c)
++    {
++        c.DropItem(new LambLeg(3));
++        c.DropItem(Utility.RandomBool() ? new Log(10) : new Board(25));
++
++        base.OnDeath(c);
++    }
++
++    public override bool IsEnemy(Mobile m) =>
++        !(m.Player && m.FindItemOnLayer(Layer.Helm) is OrcishKinMask) && base.IsEnemy(m);
++
++    public override void AggressiveAction(Mobile aggressor, bool criminal)
++    {
++        base.AggressiveAction(aggressor, criminal);
++        OrcMask.Punish(aggressor);
++    }
++}
++
++// Archer that reveals hidden players nearby, bandages itself, and at half hits teleports away, hides and
++// stalks off, clicking a tracking sound until it is found. A hidden, healed scout ambushes the first
++// enemy player to step within 4 tiles.
++[SerializationGenerator(0)]
++public partial class OrcScout : BaseCreature
++{
++    private bool _bandaging;
++    private bool _hasTeleportedAway;
++    private TimerExecutionToken _soundTimerToken;
++
++    [Constructible]
++    public OrcScout() : base(AIType.AI_Archer)
++    {
++        Body = 0xB5;
++        BaseSoundID = 0x45A;
++        SetSpeed(0.2, 0.4);
++
++        SetStr(96, 120);
++        SetDex(101, 130);
++        SetInt(36, 60);
++
++        SetHits(101, 130);
++
++        SetDamage(28, 31);
++
++        SetDamageType(ResistanceType.Physical, 100);
++
++        SetResistance(ResistanceType.Physical, 25, 30);
++        SetResistance(ResistanceType.Fire, 20, 30);
++        SetResistance(ResistanceType.Cold, 10, 20);
++        SetResistance(ResistanceType.Poison, 10, 20);
++        SetResistance(ResistanceType.Energy, 20, 30);
++
++        SetSkill(SkillName.MagicResist, 50.1, 75.0);
++        SetSkill(SkillName.Tactics, 55.1, 80.0);
++        SetSkill(SkillName.Veterinary, 50.1, 70.0);
++        SetSkill(SkillName.Hiding, 500.0);
++        SetSkill(SkillName.Stealth, 500.0);
++
++        SetFameLevel(2);
++        SetKarmaLevel(2);
++
++        VirtualArmor = 98;
++
++        AddItem(Utility.RandomDouble() < 0.2 ? new OrcishBow() : new Bow());
++
++        PackItem(new Arrow(Utility.RandomMinMax(60, 70)));
++    }
++
++    public override string CorpseName => "an orc scout corpse";
++    public override string DefaultName => "an orc scout";
++    public override InhumanSpeech SpeechType => InhumanSpeech.Orc;
++    public override bool CanRummageCorpses => true;
++    public override int Meat => 1;
++    public override OppositionGroup OppositionGroup => OppositionGroup.SavagesAndOrcs;
++
++    public override WeaponAbility GetWeaponAbility() => WeaponAbility.MortalStrike;
++
++    public override void GenerateLoot()
++    {
++        AddLoot(LootPack.Average);
++    }
++
++    public override void OnDeath(Container c)
++    {
++        c.DropItem(new Bandage(Utility.RandomMinMax(1, 15)));
++        c.DropItem(new Apple(Utility.RandomMinMax(3, 5)));
++
++        base.OnDeath(c);
++    }
++
++    public override bool IsEnemy(Mobile m) =>
++        !(m.Player && m.FindItemOnLayer(Layer.Helm) is OrcishKinMask) && base.IsEnemy(m);
++
++    public override void AggressiveAction(Mobile aggressor, bool criminal)
++    {
++        base.AggressiveAction(aggressor, criminal);
++        OrcMask.Punish(aggressor);
++    }
++
++    public override void OnCombatantChange()
++    {
++        base.OnCombatantChange();
++
++        if (Hidden && Combatant != null)
++        {
++            Combatant = null;
++        }
++    }
++
++    private void SendTrackingSound()
++    {
++        if (Hidden)
++        {
++            Effects.PlaySound(Location, Map, 0x12C);
++            Combatant = null;
++        }
++        else
++        {
++            Frozen = false;
++            _soundTimerToken.Cancel();
++        }
++    }
++
++    public override void OnThink()
++    {
++        foreach (var mob in GetMobilesInRange(5))
++        {
++            if (mob is PlayerMobile && mob.AccessLevel == AccessLevel.Player)
++            {
++                mob.Hidden = false;
++            }
++        }
++
++        if (!_hasTeleportedAway && Hits < HitsMax / 2 && !Poisoned)
++        {
++            TeleportAway();
++        }
++
++        if (Hits < HitsMax - 10 && !_bandaging)
++        {
++            TryToHeal();
++        }
++
++        base.OnThink();
++    }
++
++    private void TeleportAway()
++    {
++        var map = Map;
++
++        if (map == null)
++        {
++            return;
++        }
++
++        for (var i = 0; i < 10; ++i)
++        {
++            var x = X + Utility.RandomMinMax(5, 10) * (Utility.RandomBool() ? 1 : -1);
++            var y = Y + Utility.RandomMinMax(5, 10) * (Utility.RandomBool() ? 1 : -1);
++
++            if (!map.CanFit(x, y, Z, 16, false, false))
++            {
++                continue;
++            }
++
++            var from = Location;
++            var to = new Point3D(x, y, Z);
++
++            Location = to;
++            ProcessDelta();
++            Hidden = true;
++            Combatant = null;
++
++            Effects.SendLocationParticles(EffectItem.Create(from, map, EffectItem.DefaultDuration), 0x3728, 10, 10, 2023);
++            Effects.SendLocationParticles(EffectItem.Create(to, map, EffectItem.DefaultDuration), 0x3728, 10, 10, 5023);
++            Effects.PlaySound(to, map, 0x1FE);
++
++            _hasTeleportedAway = true;
++            _soundTimerToken.Cancel();
++            Timer.StartTimer(TimeSpan.FromSeconds(5.0), TimeSpan.FromSeconds(2.5), SendTrackingSound, out _soundTimerToken);
++
++            UseSkill(SkillName.Stealth);
++
++            if (AIObject != null)
++            {
++                AIObject.Action = ActionType.Flee;
++            }
++
++            break;
++        }
++    }
++
++    public override void OnMovement(Mobile m, Point3D oldLocation)
++    {
++        base.OnMovement(m, oldLocation);
++
++        if (m.Alive && m is PlayerMobile && InRange(m, 4) && !InRange(oldLocation, 4) && Hits == HitsMax &&
++            Hidden && IsEnemy(m))
++        {
++            Frozen = false;
++            Hidden = false;
++            Combatant = m;
++        }
++    }
++
++    public override void OnDamage(int amount, Mobile from, bool willKill)
++    {
++        if (Hits < HitsMax - 10 && !_bandaging && Hidden)
++        {
++            TryToHeal();
++        }
++
++        base.OnDamage(amount, from, willKill);
++    }
++
++    private void TryToHeal()
++    {
++        _bandaging = true;
++
++        if (Backpack?.FindItemByType<Bandage>() is { } bandage && BandageContext.BeginHeal(this, this) != null)
++        {
++            bandage.Consume();
++        }
++
++        Timer.StartTimer(TimeSpan.FromSeconds(15), () => _bandaging = false);
++    }
++
++    public override void OnAfterDelete()
++    {
++        _soundTimerToken.Cancel();
++        base.OnAfterDelete();
++    }
++}
++
++internal static class OrcMask
++{
++    public static void Punish(Mobile aggressor)
++    {
++        if (aggressor.FindItemOnLayer(Layer.Helm) is not OrcishKinMask mask)
++        {
++            return;
++        }
++
++        AOS.Damage(aggressor, 50, 0, 100, 0, 0, 0);
++        mask.Delete();
++        aggressor.FixedParticles(0x36BD, 20, 10, 5044, EffectLayer.Head);
++        aggressor.PlaySound(0x307);
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Mobiles/QuestMobile.cs b/Projects/UOContent/Custom/DFI/Mobiles/QuestMobile.cs
+new file mode 100644
+index 000000000..430269685
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Mobiles/QuestMobile.cs
+@@ -0,0 +1,500 @@
++// DFI Network event boss, ported from DFI RunUO Scripts/Custom/Engines/Quest System/QuestMobile.cs.
++// A GM spawns it, names and dresses it, and sets its abilities in [props. With GiveRewardBag on, every
++// player with looting rights receives a "Reward bag for slaying <name>" when it dies.
++
++using System;
++using ModernUO.Serialization;
++using Server.Collections;
++using Server.Custom.Dfi;
++using Server.Items;
++
++namespace Server.Mobiles;
++
++[SerializationGenerator(0)]
++public partial class QuestMobile : BaseCreature
++{
++    [SerializableField(0)]
++    [SerializedCommandProperty(AccessLevel.Seer)]
++    private bool _useGoldSpawn;
++
++    [SerializableField(1)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private bool _giveRewardBag;
++
++    [SerializableField(2)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private int _lifeDrainChance;
++
++    // Pull, fireball and lightning are off below 10 seconds; dispel never fires faster than every 5.
++    [SerializableField(3)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private TimeSpan _delayPull;
++
++    [SerializableField(4)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private TimeSpan _delayDispel;
++
++    [SerializableField(5)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private TimeSpan _delayFireBall;
++
++    [SerializableField(6)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private TimeSpan _delayLightning;
++
++    [SerializableField(7)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private bool _spawnsCreatures;
++
++    [SerializableField(8)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private string _spawnTypeOne;
++
++    [SerializableField(9)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private string _spawnTypeTwo;
++
++    [SerializableField(10)]
++    [SerializedCommandProperty(AccessLevel.GameMaster)]
++    private string _spawnTypeThree;
++
++    private DateTime _lastPull;
++    private DateTime _lastFireBall;
++    private DateTime _lastLightning;
++    private DateTime _lastDispel;
++
++    [Constructible]
++    public QuestMobile() : base(AIType.AI_Mage)
++    {
++        Body = 0x190;
++        SetSpeed(0.05, 0.1);
++
++        SetStr(500);
++        SetDex(500);
++        SetInt(500);
++
++        SetHits(40000);
++
++        SetDamage(20, 30);
++        SetDamageType(ResistanceType.Physical, 100);
++
++        SetResistance(ResistanceType.Physical, 65);
++        SetResistance(ResistanceType.Fire, 65);
++        SetResistance(ResistanceType.Cold, 65);
++        SetResistance(ResistanceType.Poison, 65);
++        SetResistance(ResistanceType.Energy, 65);
++
++        for (var i = 0; i < Skills.Length; ++i)
++        {
++            Skills[i].Base = 140.0;
++        }
++
++        Fame = 24000;
++        Karma = -24000;
++    }
++
++    public override string DefaultName => "blank quest creature";
++    public override bool AlwaysMurderer => true;
++    public override bool BardImmune => true;
++    public override Poison PoisonImmune => Poison.Deadly;
++    public override bool ShowFameTitle => false;
++    public override bool ClickTitle => false;
++
++    public override void AlterMeleeDamageTo(Mobile to, ref int damage)
++    {
++        if (to is BaseCreature { Controlled: true } or BaseCreature { Summoned: true })
++        {
++            damage *= 3;
++        }
++    }
++
++    public override void GenerateLoot()
++    {
++        AddLoot(LootPack.SuperBoss, 2);
++        AddLoot(LootPack.HighScrolls, Utility.RandomMinMax(5, 10));
++    }
++
++    public Container GetNewContainer() => new Bag { Hue = 3, Name = $"Reward bag for slaying {Name}" };
++
++    public override void OnDamage(int amount, Mobile from, bool willKill)
++    {
++        if (_lifeDrainChance != 0 && _lifeDrainChance * 0.01 > Utility.RandomDouble())
++        {
++            DrainLife();
++        }
++
++        if (_spawnsCreatures && Map != null && from != null)
++        {
++            TrySpawnFollower(_spawnTypeOne, 0.10, from);
++            TrySpawnFollower(_spawnTypeTwo, 0.30, from);
++            TrySpawnFollower(_spawnTypeThree, 0.50, from);
++        }
++
++        base.OnDamage(amount, from, willKill);
++    }
++
++    private void TrySpawnFollower(string typeName, double chance, Mobile from)
++    {
++        if (typeName == null || Utility.RandomDouble() >= chance)
++        {
++            return;
++        }
++
++        var type = AssemblyHandler.FindTypeByName(typeName);
++
++        if (type?.IsSubclassOf(typeof(BaseCreature)) != true || type.CreateInstance<BaseCreature>() is not { } bc)
++        {
++            return;
++        }
++
++        bc.MoveToWorld(GetSpawnLocation(from), Map);
++        bc.RangeHome = 5;
++        bc.Home = Location;
++        bc.Combatant = from;
++    }
++
++    public Point3D GetSpawnLocation(Mobile m)
++    {
++        if (m != null && Utility.RandomDouble() < 0.3 && m.Location != Point3D.Zero && m.Map != Map.Internal)
++        {
++            return m.Location;
++        }
++
++        for (var i = 0; i < 10; i++)
++        {
++            var x = X + Utility.RandomMinMax(-5, 5);
++            var y = Y + Utility.RandomMinMax(-5, 5);
++            var z = Map.GetAverageZ(x, y);
++
++            if (Map.CanSpawnMobile(new Point2D(x, y), Z))
++            {
++                return new Point3D(x, y, Z);
++            }
++
++            if (Map.CanSpawnMobile(new Point2D(x, y), z))
++            {
++                return new Point3D(x, y, z);
++            }
++        }
++
++        return Location;
++    }
++
++    public void GiveReward()
++    {
++        var rights = GetLootingRights(DamageEntries, HitsMax);
++
++        for (var i = 0; i < rights.Count; ++i)
++        {
++            if (!rights[i].m_HasRight)
++            {
++                continue;
++            }
++
++            var m = rights[i].m_Mobile;
++
++            m.SendMessage($"You have been rewarded for your help in the battle against {Name}.");
++
++            var cont = GetNewContainer();
++            DfiLoot.AddRandomLoot(cont, 5, 360, 4, 5, 50, 100);
++            DfiLoot.AddRandomLoot(cont, 1, 360, 5, 5, 70, 100);
++
++            if (Utility.RandomDouble() < 0.50)
++            {
++                cont.DropItem(new MessageInABottle(Map.Felucca));
++            }
++
++            if (Utility.RandomDouble() < 0.20)
++            {
++                cont.DropItem(new MessageInABottle(Map.Felucca, 4));
++            }
++
++            if (Utility.RandomDouble() < 0.50)
++            {
++                cont.DropItem(new TreasureMap(5, Map.Felucca));
++            }
++
++            if (Utility.RandomDouble() < 0.25)
++            {
++                cont.DropItem(new TreasureMap(6, Map.Felucca));
++            }
++
++            cont.DropItem(new BankCheck(5000));
++            m.PlaceInBackpack(cont);
++        }
++    }
++
++    public override bool OnBeforeDeath()
++    {
++        if (_giveRewardBag)
++        {
++            GiveReward();
++        }
++
++        if (_useGoldSpawn && Map != null)
++        {
++            for (var x = -12; x <= 12; ++x)
++            {
++                for (var y = -12; y <= 12; ++y)
++                {
++                    if (Math.Sqrt(x * x + y * y) <= 12)
++                    {
++                        var map = Map;
++                        var px = X + x;
++                        var py = Y + y;
++                        Timer.StartTimer(TimeSpan.FromSeconds(Utility.RandomDouble() * 10.0), () => DropGold(map, px, py));
++                    }
++                }
++            }
++        }
++
++        return base.OnBeforeDeath();
++    }
++
++    public override void OnThink()
++    {
++        base.OnThink();
++
++        var now = Core.Now;
++        var dispel = _delayDispel < TimeSpan.FromSeconds(5.0) ? TimeSpan.FromSeconds(5.0) : _delayDispel;
++
++        if (_delayDispel != TimeSpan.Zero && now > _lastDispel + dispel)
++        {
++            Dispel();
++            _lastDispel = now;
++        }
++
++        if (IsActive(_delayFireBall) && Utility.RandomBool() && now > _lastFireBall + _delayFireBall)
++        {
++            FireBall();
++            _lastFireBall = now;
++        }
++
++        if (IsActive(_delayLightning) && Utility.RandomBool() && now > _lastLightning + _delayLightning)
++        {
++            Lightning();
++            _lastLightning = now;
++        }
++
++        if (IsActive(_delayPull) && Utility.RandomBool() && now > _lastPull + _delayPull)
++        {
++            Pull();
++            _lastPull = now;
++        }
++    }
++
++    private static bool IsActive(TimeSpan delay) => delay >= TimeSpan.FromSeconds(10.0);
++
++    private bool IsHostileTarget(Mobile m) =>
++        m != this && CanBeHarmful(m) && CanSee(m) && (m.Player || m is BaseCreature { Controlled: true });
++
++    public void DrainLife()
++    {
++        using var list = PooledRefList<Mobile>.Create();
++
++        foreach (var m in GetMobilesInRange(2))
++        {
++            if (m == this || !CanBeHarmful(m) || !m.Alive || m.Hidden)
++            {
++                continue;
++            }
++
++            if (m is BaseCreature bc && (bc.Controlled || bc.Summoned || bc.Team != Team) || m.Player)
++            {
++                list.Add(m);
++            }
++        }
++
++        for (var i = 0; i < list.Count; i++)
++        {
++            var m = list[i];
++            DoHarmful(m);
++
++            m.FixedParticles(0x374A, 10, 15, 5013, 0x496, 0, EffectLayer.Waist);
++            m.PlaySound(0x231);
++            m.SendMessage("You feel the life drain out of you!");
++
++            var toDrain = Utility.RandomMinMax((int)(m.HitsMax * 0.1), (int)(m.HitsMax * 0.5));
++
++            Hits += toDrain;
++            m.Damage(toDrain, this);
++        }
++    }
++
++    private void FireBall()
++    {
++        using var targets = PooledRefList<Mobile>.Create();
++
++        foreach (var m in GetMobilesInRange(16))
++        {
++            if (IsHostileTarget(m))
++            {
++                targets.Add(m);
++            }
++        }
++
++        for (var i = 0; i < targets.Count; i++)
++        {
++            var m = targets[i];
++            AOS.Damage(m, this, 80, 0, 100, 0, 0, 0);
++            MovingParticles(m, 0x36D4, 7, 0, false, true, 9502, 4019, 0x160);
++            PlaySound(0x15E);
++            m.SendMessage("Your body is scorched by a massive fireball.");
++        }
++    }
++
++    private void Dispel()
++    {
++        using var targets = PooledRefList<Mobile>.Create();
++
++        foreach (var m in GetMobilesInRange(8))
++        {
++            if (m != this && m is BaseCreature { Summoned: true })
++            {
++                targets.Add(m);
++            }
++        }
++
++        if (targets.Count == 0)
++        {
++            return;
++        }
++
++        PlaySound(0x299);
++        FixedParticles(0x37C4, 1, 25, 9922, 14, 3, EffectLayer.Head);
++
++        for (var i = 0; i < targets.Count; i++)
++        {
++            var m = targets[i];
++            Effects.SendLocationParticles(
++                EffectItem.Create(m.Location, m.Map, EffectItem.DefaultDuration),
++                0x3728,
++                8,
++                20,
++                5042
++            );
++            Effects.PlaySound(m, 0x201);
++            m.Delete();
++        }
++    }
++
++    private void Lightning()
++    {
++        using var targets = PooledRefList<Mobile>.Create();
++
++        foreach (var m in GetMobilesInRange(16))
++        {
++            if (IsHostileTarget(m))
++            {
++                targets.Add(m);
++            }
++        }
++
++        for (var i = 0; i < targets.Count; i++)
++        {
++            var m = targets[i];
++            m.BoltEffect(0);
++            AOS.Damage(m, this, 100, 0, 0, 0, 100, 0);
++            m.SendMessage("A huge lightning bolt strikes your body.");
++        }
++    }
++
++    private void Pull()
++    {
++        Mobile toPull = null;
++
++        foreach (var m in GetMobilesInRange(16))
++        {
++            if (m != this && m.Player && CanBeHarmful(m) && m.Alive && !m.Hidden)
++            {
++                toPull = m;
++                break;
++            }
++        }
++
++        if (toPull == null)
++        {
++            return;
++        }
++
++        Effects.SendLocationParticles(EffectItem.Create(Location, Map, EffectItem.DefaultDuration), 0x3728, 10, 10, 2023);
++        Effects.SendLocationParticles(
++            EffectItem.Create(toPull.Location, Map, EffectItem.DefaultDuration),
++            0x3728,
++            10,
++            10,
++            5023
++        );
++        toPull.PlaySound(0x1FE);
++        toPull.MoveToWorld(Location, Map);
++        Combatant = toPull;
++    }
++
++    private static void DropGold(Map map, int x, int y)
++    {
++        var z = map.GetAverageZ(x, y);
++        var canFit = map.CanFit(x, y, z, 6, false, false);
++
++        for (var i = -3; !canFit && i <= 3; ++i)
++        {
++            canFit = map.CanFit(x, y, z + i, 6, false, false);
++
++            if (canFit)
++            {
++                z += i;
++            }
++        }
++
++        if (!canFit)
++        {
++            return;
++        }
++
++        var g = new Gold(300, 500);
++        g.MoveToWorld(new Point3D(x, y, z), map);
++
++        if (Utility.RandomDouble() > 0.5)
++        {
++            return;
++        }
++
++        switch (Utility.Random(3))
++        {
++            case 0: // Fire column
++                {
++                    Effects.SendLocationParticles(
++                        EffectItem.Create(g.Location, g.Map, EffectItem.DefaultDuration),
++                        0x3709,
++                        10,
++                        30,
++                        5052
++                    );
++                    Effects.PlaySound(g, 0x208);
++                    break;
++                }
++            case 1: // Explosion
++                {
++                    Effects.SendLocationParticles(
++                        EffectItem.Create(g.Location, g.Map, EffectItem.DefaultDuration),
++                        0x36BD,
++                        20,
++                        10,
++                        5044
++                    );
++                    Effects.PlaySound(g, 0x307);
++                    break;
++                }
++            case 2: // Ball of fire
++                {
++                    Effects.SendLocationParticles(
++                        EffectItem.Create(g.Location, g.Map, EffectItem.DefaultDuration),
++                        0x36FE,
++                        10,
++                        10,
++                        5052
++                    );
++                    break;
++                }
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Mobiles/Sphynx.cs b/Projects/UOContent/Custom/DFI/Mobiles/Sphynx.cs
+new file mode 100644
+index 000000000..1fce78665
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Mobiles/Sphynx.cs
+@@ -0,0 +1,60 @@
++// DFI Network sphynx, ported from DFI RunUO Scripts/Custom/Mobiles/Monsters/Sphynx.cs.
++// TODO: the paid fortune reading (context menu and gump) needs DFI's PlayerMobile fortune buffs, and
++// the Felucca copper bar drop needs the event reward system; both are still to be ported.
++
++using ModernUO.Serialization;
++
++namespace Server.Mobiles;
++
++[SerializationGenerator(0)]
++public partial class Sphynx : BaseCreature
++{
++    [Constructible]
++    public Sphynx() : base(AIType.AI_Mage, FightMode.Aggressor)
++    {
++        Body = 788;
++        SetSpeed(0.2, 0.4);
++
++        SetStr(1001, 1200);
++        SetDex(176, 195);
++        SetInt(301, 400);
++
++        SetHits(1001, 1200);
++
++        SetDamage(10, 16);
++
++        SetDamageType(ResistanceType.Physical, 85);
++        SetDamageType(ResistanceType.Energy, 15);
++
++        SetResistance(ResistanceType.Physical, 60, 80);
++        SetResistance(ResistanceType.Fire, 30, 50);
++        SetResistance(ResistanceType.Cold, 40, 60);
++        SetResistance(ResistanceType.Poison, 40, 50);
++        SetResistance(ResistanceType.Energy, 40, 50);
++
++        SetSkill(SkillName.Wrestling, 90.1, 100);
++        SetSkill(SkillName.Tactics, 90.1, 100);
++        SetSkill(SkillName.MagicResist, 100.5, 150);
++        SetSkill(SkillName.Anatomy, 55.1, 100);
++        SetSkill(SkillName.Magery, 95.5, 110);
++        SetSkill(SkillName.EvalInt, 90.1, 110);
++        SetSkill(SkillName.Meditation, 95.1, 120);
++
++        VirtualArmor = 78;
++
++        Fame = 15000;
++        Karma = 0;
++    }
++
++    public override string CorpseName => "a sphynx corpse";
++    public override string DefaultName => "a sphynx";
++    public override Poison PoisonImmune => Poison.Regular;
++    public override bool AutoDispel => true;
++
++    public override void GenerateLoot()
++    {
++        AddLoot(LootPack.FilthyRich, 3);
++        AddLoot(LootPack.Rich);
++        AddLoot(LootPack.MedScrolls, 2);
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Mobiles/StealthMonsters.cs b/Projects/UOContent/Custom/DFI/Mobiles/StealthMonsters.cs
+new file mode 100644
+index 000000000..edef08747
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Mobiles/StealthMonsters.cs
+@@ -0,0 +1,611 @@
++// DFI Network stealth and ambush monsters, ported from DFI RunUO
++// Scripts/Custom/Mobiles/Monsters/Humanoid/Stealth, Mammal/Stealth and Humanoid/Melee/Doppelganger.cs.
++
++using ModernUO.Serialization;
++using Server.Collections;
++using Server.Custom.Dfi;
++using Server.Items;
++
++namespace Server.Mobiles;
++
++// Ilshenar hunter: ignores anyone above 200 hits, drains life on every hit, and after each kill
++// grows stronger and vanishes to a random point of its hunting ground.
++// TODO: DFI also dropped 3 event copper bars on death; port with the event reward system.
++[SerializationGenerator(0)]
++public partial class Stalker : BaseCreature
++{
++    private static readonly Point3D[] _hideouts =
++    [
++        new(2051, 837, -28), new(2082, 867, -28), new(2114, 840, -28), new(2114, 888, -28),
++        new(2058, 950, -28), new(2114, 954, -28), new(2174, 936, -28), new(2169, 887, -28),
++        new(2140, 912, -28), new(2083, 915, -28), new(2144, 867, -28), new(2114, 995, -28)
++    ];
++
++    [Constructible]
++    public Stalker() : base(AIType.AI_Melee)
++    {
++        Body = 401;
++        Female = true;
++        Hue = 900;
++        SetSpeed(0.1, 0.2);
++
++        SetStr(81, 105);
++        SetDex(140, 150);
++        SetInt(900, 1000);
++
++        SetHits(450, 500);
++
++        SetDamage(14, 17);
++
++        SetDamageType(ResistanceType.Physical, 100);
++
++        SetResistance(ResistanceType.Physical, 65, 70);
++        SetResistance(ResistanceType.Fire, 80, 85);
++        SetResistance(ResistanceType.Cold, 60, 65);
++        SetResistance(ResistanceType.Poison, 60, 65);
++        SetResistance(ResistanceType.Energy, 60, 65);
++
++        SetSkill(SkillName.Healing, 110.1, 120.0);
++        SetSkill(SkillName.EvalInt, 100.1, 110.0);
++        SetSkill(SkillName.Meditation, 90.1, 100.0);
++        SetSkill(SkillName.MagicResist, 95.0, 107.5);
++        SetSkill(SkillName.Anatomy, 110.2, 120.0);
++        SetSkill(SkillName.Tactics, 100.0, 110.5);
++        SetSkill(SkillName.Parry, 100.0, 110.5);
++        SetSkill(SkillName.Wrestling, 100.0, 110.5);
++        SetSkill(SkillName.Fencing, 180.2, 200.0);
++        SetSkill(SkillName.Hiding, 100.0, 100.0);
++        SetSkill(SkillName.Stealth, 120.0, 120.0);
++
++        Fame = 15000;
++        Karma = -15000;
++
++        VirtualArmor = -30;
++
++        AddItem(new Bandana(50));
++        AddItem(new Sandals());
++        AddItem(new LeatherBustierArms { Hue = 800 });
++        AddItem(new LeatherGloves { Hue = 800 });
++        AddItem(new LeatherLegs { Hue = 800 });
++
++        var weapon = new Spear { Movable = false, Hue = 16500 };
++        weapon.Attributes.WeaponDamage = 150;
++        weapon.Attributes.WeaponSpeed = 15;
++        weapon.Attributes.AttackChance = 30;
++        weapon.WeaponAttributes.HitLightning = 100;
++        AddItem(weapon);
++
++        HairItemID = Utility.RandomList(0x203B, 0x2049, 0x2048, 0x204A);
++        HairHue = 700;
++    }
++
++    public override string DefaultName => "Selene the Stalker";
++    public override bool AlwaysMurderer => true;
++    public override bool ShowFameTitle => false;
++    public override double WeaponAbilityChance => 0.5;
++
++    protected override BaseAI ForcedAI => new StealthAI(this);
++
++    public override WeaponAbility GetWeaponAbility() => WeaponAbility.ParalyzingBlow;
++
++    public override void GenerateLoot()
++    {
++        AddLoot(LootPack.FilthyRich);
++        AddLoot(LootPack.UltraRich);
++    }
++
++    public override bool IsEnemy(Mobile m) => m.Hits <= 200 && base.IsEnemy(m);
++
++    public override void OnGaveMeleeAttack(Mobile defender, int damage)
++    {
++        base.OnGaveMeleeAttack(defender, damage);
++
++        DfiMonsterHelpers.DrainLife(this, 2, () => Utility.RandomMinMax(Kills + 1, Kills + 10));
++
++        if (defender.Alive)
++        {
++            return;
++        }
++
++        BoltEffect(0);
++        BoltEffect(0);
++        BoltEffect(0);
++        Kills++;
++
++        var hideout = _hideouts.RandomElement();
++        Hidden = true;
++        MoveToWorld(hideout, Map.Ilshenar);
++        Home = hideout;
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class NightStalker : BaseCreature
++{
++    [Constructible]
++    public NightStalker() : base(AIType.AI_Melee)
++    {
++        Body = 51;
++        Hue = 32500;
++        Hidden = true;
++        BaseSoundID = 219;
++        AllowedStealthSteps = 24;
++        SetSpeed(0.2, 0.4);
++
++        SetStr(161, 320);
++        SetDex(60, 100);
++        SetInt(21, 40);
++
++        SetHits(101, 180);
++
++        SetDamage(8, 15);
++
++        SetDamageType(ResistanceType.Physical, 30);
++        SetDamageType(ResistanceType.Poison, 70);
++
++        SetResistance(ResistanceType.Physical, 50, 60);
++        SetResistance(ResistanceType.Fire, 35, 45);
++        SetResistance(ResistanceType.Cold, 50, 60);
++        SetResistance(ResistanceType.Poison, 100);
++        SetResistance(ResistanceType.Energy, 35, 45);
++
++        SetSkill(SkillName.Poisoning, 90.1, 100.0);
++        SetSkill(SkillName.MagicResist, 95.1, 100.0);
++        SetSkill(SkillName.AnimalLore, 40.1, 50.0);
++        SetSkill(SkillName.Wrestling, 110.1, 120.0);
++        SetSkill(SkillName.Hiding, 100.0, 100.0);
++        SetSkill(SkillName.Stealth, 120.0, 120.0);
++        SetSkill(SkillName.Veterinary, 100.1, 110.0);
++        SetSkill(SkillName.Tactics, 50.1, 60.0);
++
++        Fame = 12000;
++        Karma = -12000;
++
++        PackItem(new Bandage(Utility.RandomMinMax(15, 25)));
++
++        VirtualArmor = 40;
++    }
++
++    public override string CorpseName => "a night stalker corpse";
++    public override string DefaultName => "a night stalker";
++    public override int Meat => 1;
++    public override Poison PoisonImmune => Poison.Lethal;
++    public override Poison HitPoison => Poison.Lethal;
++
++    protected override BaseAI ForcedAI => new StealthAI(this);
++
++    public override WeaponAbility GetWeaponAbility() => WeaponAbility.ParalyzingBlow;
++
++    public override void GenerateLoot()
++    {
++        AddLoot(LootPack.Rich);
++        AddLoot(LootPack.Gems, 10);
++    }
++}
++
++// Cannot die until struck by a weapon of hue 2121; until then it heals to 50 hits, drains everyone
++// close by and taunts them.
++[SerializationGenerator(0)]
++public partial class Undying : BaseCreature
++{
++    private const int VulnerableHue = 900;
++
++    [Constructible]
++    public Undying() : base(AIType.AI_Mage)
++    {
++        Body = 401;
++        Female = true;
++        Kills = Utility.RandomMinMax(450, 900);
++        Hue = 16800;
++        SetSpeed(0.1, 0.2);
++
++        SetStr(81, 105);
++        SetDex(91, 115);
++        SetInt(300, 400);
++
++        SetHits(500, 550);
++
++        SetDamage(9, 15);
++
++        SetDamageType(ResistanceType.Physical, 100);
++
++        SetResistance(ResistanceType.Physical, 45, 50);
++        SetResistance(ResistanceType.Fire, 45, 50);
++        SetResistance(ResistanceType.Cold, 45, 50);
++        SetResistance(ResistanceType.Poison, 45, 50);
++        SetResistance(ResistanceType.Energy, 45, 50);
++
++        SetSkill(SkillName.SpiritSpeak, 110.1, 125.0);
++        SetSkill(SkillName.Necromancy, 115.1, 120.0);
++        SetSkill(SkillName.EvalInt, 100.1, 110.0);
++        SetSkill(SkillName.Meditation, 90.1, 100.0);
++        SetSkill(SkillName.MagicResist, 95.0, 107.5);
++        SetSkill(SkillName.Anatomy, 110.2, 120.0);
++        SetSkill(SkillName.Tactics, 100.0, 110.5);
++        SetSkill(SkillName.Parry, 100.0, 110.5);
++        SetSkill(SkillName.Wrestling, 100.0, 110.5);
++        SetSkill(SkillName.Fencing, 110.2, 120.0);
++
++        Fame = 15000;
++        Karma = -15000;
++
++        VirtualArmor = 16;
++
++        PackNecroReg(8, 15);
++
++        AddItem(new HoodedShroudOfShadows(Utility.RandomNeutralHue()));
++        AddItem(new Sandals());
++        AddItem(new Shirt(Utility.RandomNeutralHue()));
++        AddItem(new Skirt(Utility.RandomNeutralHue()));
++
++        var weapon = new Kryss { Movable = false, Hue = 163 };
++        weapon.Attributes.WeaponDamage = 35;
++        weapon.Attributes.WeaponSpeed = 15;
++        weapon.Attributes.AttackChance = 10;
++        weapon.WeaponAttributes.HitPoisonArea = 50;
++        weapon.WeaponAttributes.HitEnergyArea = 50;
++        weapon.WeaponAttributes.HitFireArea = 50;
++        weapon.WeaponAttributes.HitColdArea = 50;
++        AddItem(weapon);
++
++        var shield = new ChaosShield { Movable = false, Hue = 163 };
++        shield.Attributes.SpellChanneling = 1;
++        shield.Attributes.DefendChance = 10;
++        AddItem(shield);
++
++        new Horse { Hue = 16800, Tamable = false }.Rider = this;
++    }
++
++    public override string DefaultName => "Dark knight";
++    public override bool CanRummageCorpses => true;
++    public override bool AlwaysMurderer => true;
++    public override int Meat => 1;
++
++    public override void GenerateLoot()
++    {
++        AddLoot(LootPack.Average);
++        AddLoot(LootPack.MedScrolls);
++    }
++
++    public override void OnGotMeleeAttack(Mobile attacker, int damage)
++    {
++        base.OnGotMeleeAttack(attacker, damage);
++
++        if (attacker.Weapon is BaseWeapon { Hue: 2121 })
++        {
++            Hue = VulnerableHue;
++        }
++    }
++
++    public override bool OnBeforeDeath()
++    {
++        if (Hue == VulnerableHue)
++        {
++            return base.OnBeforeDeath();
++        }
++
++        Hits = 50;
++        DfiMonsterHelpers.DrainLife(this, 2, () => Utility.RandomMinMax(60, 100));
++        Say("Dieeeee mortals!! Hahahahahaaaa!!!!!!");
++        return false;
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class DarkSentinel : BaseCreature
++{
++    [Constructible]
++    public DarkSentinel() : base(AIType.AI_Melee)
++    {
++        Body = 0x191;
++        Female = true;
++        Name = NameList.RandomName("female");
++        RangePerception = 10;
++        SetSpeed(0.2, 0.4);
++
++        SetStr(125, 130);
++        SetDex(100, 125);
++        SetInt(80, 90);
++
++        SetHits(120, 145);
++        SetMana(150, 160);
++
++        SetDamage(10, 23);
++
++        SetDamageType(ResistanceType.Physical, 60);
++        SetDamageType(ResistanceType.Poison, 40);
++
++        SetResistance(ResistanceType.Physical, 35, 40);
++        SetResistance(ResistanceType.Fire, 35, 40);
++        SetResistance(ResistanceType.Cold, 35, 40);
++        SetResistance(ResistanceType.Poison, 35, 40);
++        SetResistance(ResistanceType.Energy, 35, 40);
++
++        SetSkill(SkillName.MagicResist, 80.1, 95.0);
++        SetSkill(SkillName.Tactics, 100.1, 105.0);
++        SetSkill(SkillName.Anatomy, 100.1, 105.0);
++        SetSkill(SkillName.Archery, 100.1, 110.0);
++        SetSkill(SkillName.Meditation, 95.1, 100.0);
++        SetSkill(SkillName.Focus, 90.1, 100.0);
++        SetSkill(SkillName.SpiritSpeak, 90.1, 100.0);
++        SetSkill(SkillName.Hiding, 95.1, 100.0);
++
++        Fame = 9000;
++        Karma = -9000;
++
++        VirtualArmor = 18;
++
++        AddItem(new Sandals());
++        AddItem(new FemaleLeatherChest());
++        AddItem(new LeatherShorts());
++        AddItem(new LeatherGloves());
++        AddItem(new LeatherGorget());
++        AddItem(new LeatherCap());
++        AddItem(new LeatherArms());
++
++        var weapon = new CompositeBow { Movable = false, Hue = 15 };
++        weapon.Attributes.WeaponDamage = 40;
++        weapon.Attributes.WeaponSpeed = 15;
++        weapon.Attributes.AttackChance = 10;
++        weapon.WeaponAttributes.HitLightning = 50;
++        weapon.WeaponAttributes.HitFireball = 50;
++        weapon.WeaponAttributes.HitMagicArrow = 50;
++        weapon.WeaponAttributes.HitDispel = 100;
++        AddItem(weapon);
++    }
++
++    public override string CorpseName => "a dark sentinel corpse";
++    public override Poison PoisonImmune => Poison.Lesser;
++    public override bool DisallowAllMoves => true;
++    public override bool AlwaysMurderer => true;
++    public override bool ShowFameTitle => false;
++
++    protected override BaseAI ForcedAI => new StealthAI(this);
++
++    public override WeaponAbility GetWeaponAbility() => WeaponAbility.ArmorIgnore;
++
++    public override void GenerateLoot()
++    {
++        AddLoot(LootPack.Rich);
++    }
++}
++
++// Lies hidden and blows itself up on its first hit, burning everything within 4 tiles.
++[SerializationGenerator(0)]
++public partial class HorrorDaemon : BaseCreature
++{
++    [Constructible]
++    public HorrorDaemon() : base(AIType.AI_Melee)
++    {
++        Body = 400;
++        Hue = 777;
++        Hidden = true;
++        SetSpeed(0.1, 0.2);
++
++        SetStr(150);
++        SetDex(100);
++        SetInt(1, 2);
++
++        SetHits(80);
++        SetMana(0);
++
++        SetDamage(15, 20);
++
++        SetDamageType(ResistanceType.Fire, 100);
++
++        SetResistance(ResistanceType.Physical, 30, 35);
++        SetResistance(ResistanceType.Fire, 100);
++        SetResistance(ResistanceType.Cold, 30, 35);
++        SetResistance(ResistanceType.Poison, 30, 35);
++        SetResistance(ResistanceType.Energy, 30, 35);
++
++        SetSkill(SkillName.MagicResist, 100.0);
++        SetSkill(SkillName.Wrestling, 100.0);
++        SetSkill(SkillName.Hiding, 100.0);
++
++        Fame = 3500;
++        Karma = -3500;
++
++        VirtualArmor = 6;
++
++        AddItem(new Lantern { Name = "Fire bomb", Hue = 1281, Movable = false });
++        AddItem(new BoneGloves { Movable = false, Hue = 32500 });
++        AddItem(new BoneLegs { Movable = false, Hue = 32500 });
++        AddItem(new BoneChest { Movable = false, Hue = 32500 });
++        AddItem(new BoneHelm { Movable = false, Hue = 32500 });
++
++        PackItem(new Bloodmoss(Utility.RandomMinMax(7, 10)));
++        PackItem(new MandrakeRoot(Utility.RandomMinMax(7, 10)));
++        PackItem(new Head());
++        PackItem(new ExplosionScroll());
++    }
++
++    public override string CorpseName => "a burnt corpse";
++    public override string DefaultName => "a horror servant";
++    public override bool AlwaysMurderer => true;
++    public override bool ShowFameTitle => false;
++
++    protected override BaseAI ForcedAI => new StealthAI(this);
++
++    public override void OnGaveMeleeAttack(Mobile defender, int damage)
++    {
++        base.OnGaveMeleeAttack(defender, damage);
++        Explode();
++    }
++
++    public void Explode()
++    {
++        if (Map == null)
++        {
++            return;
++        }
++
++        using var targets = PooledRefList<Mobile>.Create();
++
++        foreach (var m in GetMobilesInRange(4))
++        {
++            if (m != this && m is not HorrorDaemon && m.CanBeDamaged() && InLOS(m) && (m is BaseCreature || m.Player))
++            {
++                targets.Add(m);
++            }
++        }
++
++        Effects.SendLocationParticles(EffectItem.Create(Location, Map, EffectItem.DefaultDuration), 0x36BD, 20, 10, 5044);
++        Effects.PlaySound(Location, Map, 0x307);
++
++        for (var i = 0; i < targets.Count; ++i)
++        {
++            var m = targets[i];
++            var dmg = m.InRange(Location, 1) ? 80 : m.InRange(Location, 2) ? 60 : 40;
++
++            DoHarmful(m);
++            AOS.Damage(m, this, dmg, 0, 100, 0, 0, 0);
++        }
++
++        Delete();
++    }
++}
++
++// Lies hidden and bursts on its first bite, poisoning everything within 3 tiles; the nearer, the worse.
++[SerializationGenerator(0)]
++public partial class PoisonousRat : BaseCreature
++{
++    [Constructible]
++    public PoisonousRat() : base(AIType.AI_Melee)
++    {
++        Body = 238;
++        BaseSoundID = 0xCC;
++        Hue = 165;
++        Hidden = true;
++        AllowedStealthSteps = 24;
++        SetSpeed(0.1, 0.2);
++
++        SetStr(9);
++        SetDex(25);
++        SetInt(6, 10);
++
++        SetHits(40);
++        SetMana(0);
++
++        SetDamage(1, 2);
++
++        SetDamageType(ResistanceType.Physical, 100);
++
++        SetResistance(ResistanceType.Physical, 5, 10);
++        SetResistance(ResistanceType.Poison, 100);
++        SetResistance(ResistanceType.Energy, 5, 10);
++
++        SetSkill(SkillName.MagicResist, 5.0);
++        SetSkill(SkillName.Tactics, 5.0);
++        SetSkill(SkillName.Wrestling, 100.0);
++        SetSkill(SkillName.Hiding, 100.0);
++        SetSkill(SkillName.Stealth, 100.0, 110.0);
++
++        Fame = 300;
++        Karma = -300;
++
++        VirtualArmor = 6;
++
++        PackItem(new GreaterCurePotion());
++    }
++
++    public override string CorpseName => "a poisonous rat corpse";
++    public override string DefaultName => "a poisonous rat";
++    public override int Meat => 1;
++    public override Poison PoisonImmune => Poison.Lethal;
++    public override FoodType FavoriteFood => FoodType.Meat | FoodType.Eggs | FoodType.FruitsAndVeggies;
++
++    protected override BaseAI ForcedAI => new StealthAI(this);
++
++    public override void OnGaveMeleeAttack(Mobile defender, int damage)
++    {
++        base.OnGaveMeleeAttack(defender, damage);
++        PoisonAll();
++    }
++
++    public void PoisonAll()
++    {
++        if (Map == null)
++        {
++            return;
++        }
++
++        using var targets = PooledRefList<Mobile>.Create();
++
++        foreach (var m in GetMobilesInRange(3))
++        {
++            if (m != this && m is not PoisonousRat && m.CanBeDamaged() && InLOS(m) && (m is BaseCreature || m.Player))
++            {
++                targets.Add(m);
++            }
++        }
++
++        Effects.SendLocationParticles(
++            EffectItem.Create(Location, Map, EffectItem.DefaultDuration),
++            0x36B0,
++            1,
++            14,
++            63,
++            7,
++            9915,
++            0
++        );
++        Effects.PlaySound(Location, Map, 0x229);
++
++        for (var i = 0; i < targets.Count; ++i)
++        {
++            var m = targets[i];
++            var level = m.InRange(Location, 1) ? 4 : m.InRange(Location, 2) ? 3 : 2;
++
++            DoHarmful(m);
++            AOS.Damage(m, this, 10, 0, 0, 0, 100, 0);
++
++            if (m.Alive)
++            {
++                m.PlaySound(0xDD);
++                m.FixedParticles(0x3728, 244, 25, 9941, 1266, 0, EffectLayer.Waist);
++                m.ApplyPoison(this, Poison.GetPoison(level));
++            }
++        }
++
++        Kill();
++        Corpse?.Delete();
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class Doppelganger : BaseCreature
++{
++    [Constructible]
++    public Doppelganger() : base(AIType.AI_Melee)
++    {
++        Body = 777;
++        SetSpeed(0.2, 0.4);
++
++        SetStr(339, 382);
++        SetDex(100, 115);
++        SetInt(32, 52);
++
++        SetResistance(ResistanceType.Physical, 50, 60);
++        SetResistance(ResistanceType.Fire, 10, 20);
++        SetResistance(ResistanceType.Cold, 40, 50);
++        SetResistance(ResistanceType.Poison, 50, 60);
++        SetResistance(ResistanceType.Energy, 30, 40);
++
++        SetSkill(SkillName.Wrestling, 83, 91);
++        SetSkill(SkillName.Tactics, 81, 97);
++        SetSkill(SkillName.MagicResist, 77, 102);
++
++        VirtualArmor = 48;
++
++        SetFameLevel(3);
++        SetKarmaLevel(3);
++
++        PackGold(60, 90);
++    }
++
++    public override string CorpseName => "a doppelgangers corpse";
++    public override string DefaultName => "a doppelganger";
++    public override bool AlwaysMurderer => true;
++    public override int TreasureMapLevel => 3;
++}
+diff --git a/Projects/UOContent/Custom/DFI/Mobiles/Vampires.cs b/Projects/UOContent/Custom/DFI/Mobiles/Vampires.cs
+new file mode 100644
+index 000000000..7cefcded9
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Mobiles/Vampires.cs
+@@ -0,0 +1,547 @@
++// DFI Network vampires, ported from DFI RunUO Scripts/Custom/Mobiles/Monsters/Humanoid/Vampires and
++// Stealth/MindlessZombie.cs. A vampire shows its true form (body 317) in combat, turns into a wisp
++// (body 165) and stealths away when nearly dead, curses its weapon when hit, and raises a player it
++// kills as a mindless zombie with that player's skills.
++
++using System;
++using ModernUO.Serialization;
++using Server.Items;
++using Server.Spells.Necromancy;
++
++namespace Server.Mobiles;
++
++[SerializationGenerator(0)]
++public abstract partial class BaseVampire : BaseCreature
++{
++    private const int WispBody = 165;
++    private const int TrueFormBody = 317;
++
++    public BaseVampire(AIType ai) : base(ai)
++    {
++        SetSpeed(0.2, 0.4);
++    }
++
++    public override bool AlwaysMurderer => true;
++    public override bool ShowFameTitle => false;
++    public override bool ClickTitle => false;
++    public override double WeaponAbilityChance => 0.5;
++
++    // DFI's vampires used its AI_Stealth; ModernUO's mage AI already casts necromancy for the necro.
++    protected override BaseAI ForcedAI => AI == AIType.AI_Mage ? null : new StealthAI(this);
++
++    protected void DressAsVampire()
++    {
++        if (Female = Utility.RandomBool())
++        {
++            Body = 0x191;
++            Name = NameList.RandomName("female");
++        }
++        else
++        {
++            Body = 0x190;
++            Name = NameList.RandomName("male");
++        }
++
++        Hue = 1150;
++        BaseSoundID = 0x4B0;
++
++        AddItem(new LeatherChest());
++        AddItem(new LeatherLegs());
++        AddItem(new LeatherArms());
++        AddItem(new LeatherCap());
++        AddItem(new LeatherGloves());
++        AddItem(new LeatherGorget());
++
++        HairItemID = Utility.RandomList(0x203B, 0x2049, 0x2048, 0x204A);
++        HairHue = Utility.RandomNondyedHue();
++    }
++
++    protected void ArmLeeching(BaseWeapon weapon, bool shield, Poison poison = null)
++    {
++        weapon.Movable = false;
++        weapon.WeaponAttributes.HitLeechHits = 100;
++
++        if (poison != null)
++        {
++            weapon.Poison = poison;
++            weapon.PoisonCharges = 200;
++        }
++
++        AddItem(weapon);
++
++        if (shield)
++        {
++            AddItem(new WoodenKiteShield());
++        }
++    }
++
++    public void ConvertFromWisp()
++    {
++        SetSkill(SkillName.Hiding, 0);
++        SetSkill(SkillName.Stealth, 0);
++        SetSkill(SkillName.SpiritSpeak, 100);
++    }
++
++    public override WeaponAbility GetWeaponAbility()
++    {
++        if (Weapon is BaseWeapon wep)
++        {
++            return Utility.RandomBool() ? wep.PrimaryAbility : wep.SecondaryAbility;
++        }
++
++        return base.GetWeaponAbility();
++    }
++
++    public override void OnGaveMeleeAttack(Mobile defender, int damage)
++    {
++        base.OnGaveMeleeAttack(defender, damage);
++
++        if (defender.Alive || defender is not PlayerMobile || defender.Corpse is not Corpse corpse)
++        {
++            return;
++        }
++
++        var p = corpse.GetWorldLocation();
++        var map = corpse.Map;
++
++        if (map == null)
++        {
++            return;
++        }
++
++        Say("Rise! Rise my servant!");
++        Effects.PlaySound(p, map, 0x1FB);
++        Effects.SendLocationParticles(
++            EffectItem.Create(p, map, EffectItem.DefaultDuration),
++            0x3789,
++            1,
++            40,
++            0x3F,
++            3,
++            9907,
++            0
++        );
++        Timer.StartTimer(TimeSpan.FromSeconds(2.0), () => SpawnZombie(defender));
++    }
++
++    private void SpawnZombie(Mobile target)
++    {
++        var map = Map;
++
++        if (map == null || Deleted || target.Corpse is not Corpse corpse || corpse.Deleted)
++        {
++            return;
++        }
++
++        var zombie = new MindlessZombie
++        {
++            Name = target.Name,
++            Body = target.Body
++        };
++
++        var targMage = target.Skills.Magery.Value;
++        var targNecro = target.Skills.Necromancy.Value;
++
++        if (targMage > 40 || targNecro > 40)
++        {
++            zombie.AI = AIType.AI_Mage;
++        }
++
++        zombie.SetSkill(SkillName.Anatomy, target.Skills.Anatomy.Value);
++        zombie.SetSkill(SkillName.Stealth, target.Skills.Stealth.Value);
++        zombie.SetSkill(SkillName.Hiding, target.Skills.Hiding.Value);
++        zombie.SetSkill(SkillName.Meditation, target.Skills.Meditation.Value);
++        zombie.SetSkill(SkillName.Magery, targMage);
++        zombie.SetSkill(SkillName.EvalInt, target.Skills.EvalInt.Value);
++        zombie.SetSkill(SkillName.Necromancy, targNecro);
++        zombie.SetSkill(SkillName.SpiritSpeak, target.Skills.SpiritSpeak.Value);
++
++        zombie.RawStr = target.RawStr;
++        zombie.RawDex = target.RawDex;
++        zombie.RawInt = target.RawInt;
++        zombie.SetHits(target.HitsMax);
++        zombie.Team = Team;
++
++        corpse.SendRemovePacket();
++        corpse.ItemID = Utility.Random(0xECA, 9); // bone graphic
++        corpse.Hue = 0;
++
++        var loc = corpse.GetWorldLocation();
++        zombie.MoveToWorld(loc, map);
++        zombie.Home = loc;
++    }
++
++    public override void OnCombatantChange()
++    {
++        base.OnCombatantChange();
++
++        if (Combatant != null && !Mounted)
++        {
++            if (Body == WispBody)
++            {
++                ConvertFromWisp();
++            }
++
++            Body = TrueFormBody;
++            ActiveSpeed = 0.1;
++        }
++        else
++        {
++            Body = Female ? 401 : 400;
++            ActiveSpeed = 0.2;
++        }
++    }
++
++    public override void OnDamage(int amount, Mobile from, bool willKill)
++    {
++        if (Hits - amount < 30 && !willKill && !Mounted)
++        {
++            if (AIObject != null)
++            {
++                AIObject.Action = ActionType.Flee;
++            }
++
++            Combatant = null;
++            Effects.SendLocationParticles(
++                EffectItem.Create(Location, Map, EffectItem.DefaultDuration),
++                0x3728,
++                10,
++                10,
++                2023
++            );
++            Body = WispBody;
++            Hidden = true;
++            SetSkill(SkillName.Hiding, 100);
++            SetSkill(SkillName.Stealth, 100);
++            SetSkill(SkillName.SpiritSpeak, 0);
++            AllowedStealthSteps = 24;
++        }
++        else if (Combatant != null &&
++                 (FindItemOnLayer(Layer.OneHanded) ?? FindItemOnLayer(Layer.TwoHanded)) is BaseWeapon { Cursed: false })
++        {
++            new CurseWeaponSpell(this).Cast();
++        }
++
++        base.OnDamage(amount, from, willKill);
++    }
++
++    public override void OnThink()
++    {
++        base.OnThink();
++
++        if (Hidden && Hits > 100)
++        {
++            Body = TrueFormBody;
++            ConvertFromWisp();
++        }
++        else if (!Hidden && Body == WispBody)
++        {
++            UseSkill(SkillName.Hiding);
++            AllowedStealthSteps = 24;
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class VampireKnight : BaseVampire
++{
++    [Constructible]
++    public VampireKnight() : base(AIType.AI_Melee)
++    {
++        DressAsVampire();
++
++        SetStr(100, 105);
++        SetDex(128, 131);
++        SetInt(60, 62);
++
++        SetHits(220, 230);
++
++        SetDamage(15, 22);
++
++        SetDamageType(ResistanceType.Physical, 50);
++        SetDamageType(ResistanceType.Cold, 50);
++
++        SetResistance(ResistanceType.Physical, 44);
++        SetResistance(ResistanceType.Fire, -10);
++        SetResistance(ResistanceType.Cold, 35);
++        SetResistance(ResistanceType.Poison, 35);
++        SetResistance(ResistanceType.Energy, 35);
++
++        SetSkill(SkillName.SpiritSpeak, 100.0);
++        SetSkill(SkillName.Necromancy, 50.0);
++        SetSkill(SkillName.Focus, 90.1, 100.0);
++        SetSkill(SkillName.MagicResist, 100.0);
++        SetSkill(SkillName.Tactics, 105.0);
++        SetSkill(SkillName.Anatomy, 105.0);
++        SetSkill(SkillName.Macing, 100.1, 120.0);
++        SetSkill(SkillName.Fencing, 100.1, 120.0);
++        SetSkill(SkillName.Parry, 100.0);
++
++        Fame = 9000;
++        Karma = -14000;
++
++        VirtualArmor = 5;
++
++        switch (Utility.Random(6))
++        {
++            case 0:
++                {
++                    ArmLeeching(new Maul(), true);
++                    break;
++                }
++            case 1:
++                {
++                    ArmLeeching(new Mace(), true);
++                    break;
++                }
++            case 2:
++                {
++                    ArmLeeching(new BladedStaff(), false);
++                    break;
++                }
++            case 3:
++                {
++                    ArmLeeching(new Spear(), false);
++                    break;
++                }
++            case 4:
++                {
++                    ArmLeeching(new Pike(), false);
++                    break;
++                }
++            default:
++                {
++                    ArmLeeching(new Longsword(), true);
++                    break;
++                }
++        }
++
++        new SkeletalMount { Hue = 1, Team = Team }.Rider = this;
++    }
++
++    public override string CorpseName => "a Vampire corpse";
++    public override int TreasureMapLevel => 3;
++
++    public override void GenerateLoot()
++    {
++        AddLoot(LootPack.Rich);
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class VampireFighter : BaseVampire
++{
++    [Constructible]
++    public VampireFighter() : base(AIType.AI_Melee)
++    {
++        DressAsVampire();
++
++        SetStr(100, 105);
++        SetDex(128, 131);
++        SetInt(60, 62);
++
++        SetHits(218, 225);
++
++        SetDamage(15, 22);
++
++        SetDamageType(ResistanceType.Physical, 50);
++        SetDamageType(ResistanceType.Cold, 50);
++
++        SetResistance(ResistanceType.Physical, 40);
++        SetResistance(ResistanceType.Fire, -10);
++        SetResistance(ResistanceType.Cold, 35);
++        SetResistance(ResistanceType.Poison, 35);
++        SetResistance(ResistanceType.Energy, 35);
++
++        SetSkill(SkillName.SpiritSpeak, 100.0);
++        SetSkill(SkillName.Necromancy, 50.0);
++        SetSkill(SkillName.Focus, 90.1, 100.0);
++        SetSkill(SkillName.MagicResist, 100.1, 102.0);
++        SetSkill(SkillName.Tactics, 100.0);
++        SetSkill(SkillName.Anatomy, 100.0);
++        SetSkill(SkillName.Swords, 100.1, 120.0);
++        SetSkill(SkillName.Fencing, 100.1, 120.0);
++        SetSkill(SkillName.Parry, 100.0);
++
++        Fame = 9000;
++        Karma = -14000;
++
++        VirtualArmor = 5;
++
++        switch (Utility.Random(5))
++        {
++            case 0:
++                {
++                    ArmLeeching(new WarFork(), true);
++                    break;
++                }
++            case 1:
++                {
++                    ArmLeeching(new Scythe(), false);
++                    break;
++                }
++            case 2:
++                {
++                    ArmLeeching(new BoneHarvester(), true);
++                    break;
++                }
++            case 3:
++                {
++                    ArmLeeching(new Spear(), false);
++                    break;
++                }
++            default:
++                {
++                    ArmLeeching(new Pike(), false);
++                    break;
++                }
++        }
++    }
++
++    public override string CorpseName => "a Vampire corpse";
++    public override int TreasureMapLevel => 3;
++
++    public override void GenerateLoot()
++    {
++        AddLoot(LootPack.Rich);
++    }
++
++    public override bool IsEnemy(Mobile m) => (Hits >= 100 || !Hidden) && base.IsEnemy(m);
++
++    public override void OnGaveMeleeAttack(Mobile defender, int damage)
++    {
++        base.OnGaveMeleeAttack(defender, damage);
++
++        if (Body == 317)
++        {
++            Body = Female ? 401 : 400;
++            ActiveSpeed = 0.2;
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class VampireNecro : BaseVampire
++{
++    [Constructible]
++    public VampireNecro() : base(AIType.AI_Mage)
++    {
++        DressAsVampire();
++
++        SetStr(100, 105);
++        SetDex(128, 131);
++        SetInt(60, 62);
++
++        SetHits(218, 225);
++
++        SetDamage(15, 22);
++
++        SetDamageType(ResistanceType.Physical, 50);
++        SetDamageType(ResistanceType.Cold, 50);
++
++        SetResistance(ResistanceType.Physical, 40);
++        SetResistance(ResistanceType.Fire, -10);
++        SetResistance(ResistanceType.Cold, 35);
++        SetResistance(ResistanceType.Poison, 35);
++        SetResistance(ResistanceType.Energy, 35);
++
++        SetSkill(SkillName.SpiritSpeak, 100.0, 110.0);
++        SetSkill(SkillName.Necromancy, 110.0, 120.0);
++        SetSkill(SkillName.Focus, 90.1, 100.0);
++        SetSkill(SkillName.Meditation, 100.0);
++        SetSkill(SkillName.MagicResist, 100.0);
++        SetSkill(SkillName.Tactics, 100.0);
++        SetSkill(SkillName.Swords, 100.0);
++        SetSkill(SkillName.Poisoning, 100.0);
++        SetSkill(SkillName.Fencing, 100.0);
++        SetSkill(SkillName.Parry, 100.0);
++
++        Fame = 9000;
++        Karma = -14000;
++
++        VirtualArmor = -5;
++
++        switch (Utility.Random(3))
++        {
++            case 0:
++                {
++                    ArmLeeching(new Dagger(), false, Poison.Deadly);
++                    break;
++                }
++            case 1:
++                {
++                    ArmLeeching(new Cleaver(), false, Poison.Deadly);
++                    break;
++                }
++            default:
++                {
++                    ArmLeeching(new Kryss(), false, Poison.Deadly);
++                    break;
++                }
++        }
++    }
++
++    public override string CorpseName => "a Vampire corpse";
++    public override int TreasureMapLevel => 3;
++
++    public override void GenerateLoot()
++    {
++        AddLoot(LootPack.Rich);
++    }
++
++    public override bool IsEnemy(Mobile m) => (Hits >= 100 || !Hidden) && base.IsEnemy(m);
++
++    public override void OnGaveMeleeAttack(Mobile defender, int damage)
++    {
++        base.OnGaveMeleeAttack(defender, damage);
++
++        if (Body == 317)
++        {
++            Body = Female ? 401 : 400;
++            ActiveSpeed = 0.2;
++        }
++    }
++}
++
++[SerializationGenerator(0)]
++public partial class MindlessZombie : BaseCreature
++{
++    [Constructible]
++    public MindlessZombie() : base(AIType.AI_Melee)
++    {
++        Body = 400;
++        Hue = 1150;
++        SetSpeed(0.2, 0.4);
++
++        SetStr(100);
++        SetDex(100);
++        SetInt(100);
++
++        SetHits(90, 100);
++
++        SetDamage(13, 15);
++
++        SetDamageType(ResistanceType.Physical, 100);
++
++        SetResistance(ResistanceType.Physical, 45, 50);
++        SetResistance(ResistanceType.Fire, 10, 15);
++        SetResistance(ResistanceType.Cold, 45, 50);
++        SetResistance(ResistanceType.Poison, 45, 50);
++        SetResistance(ResistanceType.Energy, 45, 50);
++
++        SetSkill(SkillName.Wrestling, 100.0);
++        SetSkill(SkillName.Focus, 100.0);
++
++        Fame = 5000;
++        Karma = -6000;
++
++        VirtualArmor = 5;
++    }
++
++    public override string DefaultName => "Zombie";
++    public override bool AlwaysMurderer => true;
++    public override bool ShowFameTitle => false;
++
++    // A zombie raised from a mage or necromancer casts; the rest skulk with the stealth AI.
++    protected override BaseAI ForcedAI => AI == AIType.AI_Mage ? null : new StealthAI(this);
++}

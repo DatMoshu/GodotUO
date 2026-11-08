@@ -1,0 +1,2078 @@
+diff --git a/Projects/UOContent.Tests/Tests/Custom/DfiBombermanTests.cs b/Projects/UOContent.Tests/Tests/Custom/DfiBombermanTests.cs
+new file mode 100644
+index 000000000..16918db2b
+--- /dev/null
++++ b/Projects/UOContent.Tests/Tests/Custom/DfiBombermanTests.cs
+@@ -0,0 +1,230 @@
++using System;
++using System.Collections.Generic;
++using Server;
++using Server.Custom.Dfi.Bomberman;
++using Server.Items;
++using Server.Misc;
++using Server.Mobiles;
++using Server.Network;
++using Server.Tests.Network;
++using Xunit;
++
++namespace UOContent.Tests.Custom;
++
++[Collection("Sequential UOContent Tests")]
++public class DfiBombermanTests : IDisposable
++{
++    private static readonly Point3D StoneAt = new(5300, 1400, 0);
++
++    private readonly List<IEntity> _created = new();
++    private readonly List<NetState> _connections = new();
++
++    public DfiBombermanTests()
++    {
++        if (NameList.GetNameList("male") == null)
++        {
++            NameList.Configure();
++        }
++    }
++
++    public void Dispose()
++    {
++        foreach (var e in _created)
++        {
++            e?.Delete();
++        }
++
++        _created.Clear();
++
++        foreach (var ns in _connections)
++        {
++            ns.Dispose();
++        }
++
++        _connections.Clear();
++        BoardGameData.ResetScores(BombermanSettings.GameName);
++    }
++
++    private T Track<T>(T e) where T : IEntity
++    {
++        _created.Add(e);
++        return e;
++    }
++
++    private PlayerMobile Player()
++    {
++        var m = Track(new PlayerMobile());
++        m.Player = true;
++        m.Body = 0x190;
++        m.AddItem(new Backpack());
++        m.AddItem(new BankBox(m));
++        m.MoveToWorld(new Point3D(StoneAt.X - 1, StoneAt.Y - 1, StoneAt.Z), Map.Felucca);
++        // Players without a connection count as logged out and are dropped when the game starts. It is attached
++        // once the player is on the map, since a map change would want an account behind it.
++        var ns = PacketTestUtilities.CreateTestNetState();
++        _connections.Add(ns);
++        m.NetState = ns;
++        return m;
++    }
++
++    private BombermanControlItem Stone()
++    {
++        var stone = Track(new BombermanControlItem());
++        stone.MoveToWorld(StoneAt, Map.Felucca);
++        stone.ResetBoard();
++        return stone;
++    }
++
++    private static int Count<T>(BombermanControlItem stone) => stone.BackgroundItems.FindAll(p => p is T).Count;
++
++    [Fact]
++    public void Board_HasFloorEverywhereAndAGridOfWalls()
++    {
++        var stone = Stone();
++        var w = stone.Width;
++        var h = stone.Height;
++
++        Assert.Equal(BombermanSettings.DefaultBoardSize, w);
++        Assert.Equal(w * h, Count<BombermanFloorTile>(stone));
++        // The border, and a pillar on every even-even cell inside it.
++        Assert.Equal(2 * w + 2 * (h - 2) + (w - 3) / 2 * ((h - 3) / 2), Count<IndestructibleWall>(stone));
++        Assert.Equal(0, Count<DestructibleWall>(stone));
++    }
++
++    [Theory]
++    [InlineData(4, 11)]
++    [InlineData(30, 31)]
++    [InlineData(100, 65)]
++    public void Board_SizesAreOddAndBounded(int asked, int expected)
++    {
++        var stone = Stone();
++
++        stone.Width = asked;
++
++        Assert.Equal(expected, stone.Width);
++    }
++
++    [Fact]
++    public void Game_StartsWhenEnoughPlayersJoinAndTheLeaderIsReady()
++    {
++        var stone = Stone();
++        var a = Player();
++        var b = Player();
++        stone.CurrentMaxPlayers = 2;
++
++        stone.AddPlayer(a);
++        Assert.Equal(BoardGameState.Recruiting, stone.State);
++
++        stone.AddPlayer(b);
++        Assert.Equal(BoardGameState.Recruiting, stone.State);
++
++        stone.SetReady(true);
++        Assert.Equal(BoardGameState.Active, stone.State);
++
++        Assert.Equal(stone.StartPoint(0), a.Location);
++        Assert.Equal(stone.StartPoint(1), b.Location);
++        Assert.NotNull(a.Backpack.FindItemByType<BombBag>());
++        Assert.True(Count<DestructibleWall>(stone) > 0);
++
++        foreach (var wall in stone.BackgroundItems.FindAll(p => p is DestructibleWall))
++        {
++            var cell = ((DestructibleWall)wall).Cell;
++            Assert.False(stone.IsStartArea(cell.X, cell.Y));
++        }
++    }
++
++    [Fact]
++    public void Bombs_AreLimitedAndOnePerTile()
++    {
++        var stone = Stone();
++        var player = Player();
++        var bag = Track(new BombBag(stone, 1, 1) { Owner = player });
++        player.Backpack.DropItem(bag);
++
++        Assert.True(bag.Plant(player));
++        Assert.False(bag.Plant(player));
++
++        player.Location = new Point3D(player.X + 1, player.Y, player.Z);
++        Assert.False(bag.Plant(player));
++
++        bag.Apply(UpgradeKind.BombCount);
++        Assert.True(bag.Plant(player));
++        Assert.Equal(2, bag.Bombs.Count);
++    }
++
++    [Fact]
++    public void Upgrades_ImproveTheBag()
++    {
++        var stone = Stone();
++        var player = Player();
++        var bag = Track(new BombBag(stone, 1, 1) { Owner = player });
++        player.Backpack.DropItem(bag);
++
++        bag.Apply(UpgradeKind.BlastStrength);
++        bag.Apply(UpgradeKind.BaddaBoom);
++        bag.Apply(UpgradeKind.Detonator);
++        bag.Apply(UpgradeKind.Detonator);
++
++        Assert.Equal(2, bag.BombStrength);
++        Assert.True(bag.BaddaBoom);
++        Assert.NotNull(bag.Detonator);
++        Assert.Single(player.Backpack.Items, i => i is BombDetonator);
++    }
++
++    [Fact]
++    public void Blast_PutsOutTheOtherPlayerAndTheLastOneStandingWins()
++    {
++        var stone = Stone();
++        var a = Player();
++        var b = Player();
++        stone.CurrentMaxPlayers = 2;
++        stone.AddPlayer(a);
++        stone.AddPlayer(b);
++        stone.SetReady(true);
++
++        var bag = a.Backpack.FindItemByType<BombBag>();
++        b.Location = a.Location;
++
++        stone.CheckForVictims(a.Location, a.Map, bag);
++
++        Assert.DoesNotContain(b, stone.Players);
++        Assert.Null(b.Backpack.FindItemByType<BombBag>());
++        Assert.Equal(new Point3D(StoneAt.X - 1, StoneAt.Y - 1, StoneAt.Z), b.Location);
++
++        var scores = BoardGameData.GetScores(BombermanSettings.GameName);
++        Assert.Equal(BombermanSettings.KillScore, scores.Find(s => s.Player == a).Score);
++        Assert.Equal(1, scores.Find(s => s.Player == b).Losses);
++    }
++
++    [Fact]
++    public void Ending_ClearsTheBoardAndReturnsToInactive()
++    {
++        var stone = Stone();
++        var a = Player();
++        var b = Player();
++        stone.CurrentMaxPlayers = 2;
++        stone.AddPlayer(a);
++        stone.AddPlayer(b);
++        stone.SetReady(true);
++
++        stone.EndGame();
++
++        Assert.Equal(BoardGameState.Inactive, stone.State);
++        Assert.Empty(stone.Players);
++        Assert.Null(a.Backpack.FindItemByType<BombBag>());
++        Assert.Equal(0, Count<DestructibleWall>(stone));
++    }
++
++    [Fact]
++    public void Leaving_EmptiesTheGame()
++    {
++        var stone = Stone();
++        var a = Player();
++        stone.CurrentMaxPlayers = 3;
++
++        stone.AddPlayer(a);
++        stone.RemovePlayer(a);
++
++        Assert.Equal(BoardGameState.Inactive, stone.State);
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Games/Bomberman.cs b/Projects/UOContent/Custom/DFI/Games/Bomberman.cs
+new file mode 100644
+index 000000000..30ce4d3ab
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Games/Bomberman.cs
+@@ -0,0 +1,1475 @@
++// Bomberman, from the "Solaris BoardGames" scripts DFI Network ran (DFI RUNUO Scripts/Custom/Opticon/BoardGames).
++// Two to eight players start at the corners and edges of a walled board, each with a bomb bag that plants a bomb
++// at their feet. Bombs go off after three seconds (or on a detonator), their blasts running along the rows and
++// chaining into other bombs; they break the destructible walls, which sometimes leave an upgrade (more bombs,
++// a stronger blast, speed, a detonator, or blasts that tear through walls). A player caught in a blast is out;
++// the last one standing wins. Scores are kept per player.
++//
++// The board is built beside the join stone from its settings; its pieces are not saved, the stone builds them
++// again after a restart.
++
++using System;
++using System.Collections.Generic;
++using ModernUO.Serialization;
++using Server.Collections;
++using Server.ContextMenus;
++using Server.Custom.Dfi.Bomberman;
++using Server.Gumps;
++using Server.Items;
++using Server.Mobiles;
++using Server.Network;
++using Server.Regions;
++
++namespace Server.Custom.Dfi.Bomberman
++{
++    public enum BoardGameState
++    {
++        Disabled,
++        Inactive,
++        Pending,
++        Recruiting,
++        Active,
++        GameOver
++    }
++
++    public enum BombermanStyle
++    {
++        Default,
++        Rocky,
++        Woodland,
++        Warehouse,
++        Ruins,
++        Graveyard,
++        Crystal
++    }
++
++    [Flags]
++    public enum BlastDirection
++    {
++        None = 0x0,
++        West = 0x1,
++        North = 0x2,
++        East = 0x4,
++        South = 0x8
++    }
++
++    public static class BombermanSettings
++    {
++        public const string GameName = "Bomberman";
++        public const int MaxBoardSize = 65;
++        public const int MinBoardSize = 11;
++        public const int DefaultBoardSize = 21;
++        public const double ObstacleChance = 0.7;
++        public const double UpgradeSpawnChance = .2;
++        public static readonly TimeSpan ExplodeDelay = TimeSpan.FromSeconds(3);
++        public static readonly TimeSpan BlastDelay = TimeSpan.FromMilliseconds(50);
++        public static readonly TimeSpan UpgradeDecay = TimeSpan.FromSeconds(20);
++        public const int KillScore = 1;
++        public const int DeathScore = -1;
++        public const int WinScore = 2;
++        public const int SuicideScore = -2;
++
++        public static int DestructibleWallID(BombermanStyle style) =>
++            style switch
++            {
++                BombermanStyle.Rocky     => Utility.RandomMinMax(0x1363, 0x136D),
++                BombermanStyle.Woodland  => Utility.RandomMinMax(0xCC8, 0xCC9),
++                BombermanStyle.Warehouse => Utility.RandomMinMax(0xE3C, 0xE3F),
++                BombermanStyle.Ruins     => Utility.RandomMinMax(0x3B7, 0x3BD),
++                BombermanStyle.Graveyard => Utility.RandomMinMax(0x1AD8, 0x1ADC),
++                BombermanStyle.Crystal   => Utility.RandomMinMax(0x2224, 0x222C),
++                _                        => 1900
++            };
++
++        public static int IndestructibleWallID(BombermanStyle style) =>
++            style switch
++            {
++                BombermanStyle.Rocky     => 0x177A,
++                BombermanStyle.Woodland  => Utility.RandomList(0xE57, 0xE59),
++                BombermanStyle.Warehouse => Utility.RandomList(0x720, 0x721),
++                BombermanStyle.Ruins     => Utility.RandomMinMax(0x3BE, 0x3C1),
++                BombermanStyle.Graveyard => Utility.RandomMinMax(0x1165, 0x1184),
++                BombermanStyle.Crystal   => Utility.RandomList(0x35EB, 0x35EC, 0x35EF, 0x35F6, 0x35F7),
++                _                        => 1801
++            };
++
++        public static int FloorTileID(BombermanStyle style) =>
++            style switch
++            {
++                BombermanStyle.Rocky     => Utility.RandomMinMax(0x53B, 0x53F),
++                BombermanStyle.Woodland  => Utility.RandomMinMax(0x177D, 0x1781),
++                BombermanStyle.Warehouse => Utility.RandomMinMax(0x4A9, 0x4AC),
++                BombermanStyle.Ruins     => Utility.RandomMinMax(0x525, 0x528),
++                BombermanStyle.Graveyard => Utility.RandomMinMax(0x515, 0x518),
++                BombermanStyle.Crystal   => Utility.RandomMinMax(0x579, 0x57E),
++                _                        => 0x496
++            };
++    }
++
++    public class BoardGamePlayerScore
++    {
++        public BoardGamePlayerScore(Mobile player) => Player = player;
++
++        public Mobile Player { get; }
++        public int Score;
++        public int Wins;
++        public int Losses;
++    }
++
++    // Scores per game, kept across restarts.
++    public class BoardGameData : GenericPersistence
++    {
++        private static readonly Dictionary<string, List<BoardGamePlayerScore>> _games = [];
++
++        public BoardGameData() : base("DfiBoardGames", 10)
++        {
++        }
++
++        public static void Configure()
++        {
++            _ = new BoardGameData();
++        }
++
++        public static List<BoardGamePlayerScore> GetScores(string game)
++        {
++            if (!_games.TryGetValue(game, out var list))
++            {
++                _games[game] = list = [];
++            }
++
++            return list;
++        }
++
++        public static BoardGamePlayerScore Get(string game, Mobile player)
++        {
++            var list = GetScores(game);
++            var score = list.Find(s => s.Player == player);
++
++            if (score == null)
++            {
++                list.Add(score = new BoardGamePlayerScore(player));
++            }
++
++            return score;
++        }
++
++        public static void ChangeScore(string game, Mobile player, int delta)
++        {
++            var score = Get(game, player);
++            score.Score = Math.Max(0, score.Score + delta);
++        }
++
++        public static void AddWin(string game, Mobile player) => Get(game, player).Wins++;
++        public static void AddLoss(string game, Mobile player) => Get(game, player).Losses++;
++        public static void ResetScores(string game) => _games.Remove(game);
++
++        public override void Serialize(IGenericWriter writer)
++        {
++            writer.WriteEncodedInt(0); // version
++            writer.WriteEncodedInt(_games.Count);
++
++            foreach (var (game, list) in _games)
++            {
++                writer.Write(game);
++                writer.WriteEncodedInt(list.Count);
++
++                foreach (var s in list)
++                {
++                    writer.Write(s.Player);
++                    writer.WriteEncodedInt(s.Score);
++                    writer.WriteEncodedInt(s.Wins);
++                    writer.WriteEncodedInt(s.Losses);
++                }
++            }
++        }
++
++        public override void Deserialize(IGenericReader reader)
++        {
++            reader.ReadEncodedInt(); // version
++            var games = reader.ReadEncodedInt();
++
++            for (var g = 0; g < games; g++)
++            {
++                var list = GetScores(reader.ReadString());
++                var count = reader.ReadEncodedInt();
++
++                for (var i = 0; i < count; i++)
++                {
++                    var player = reader.ReadEntity<Mobile>();
++                    var score = new BoardGamePlayerScore(player)
++                    {
++                        Score = reader.ReadEncodedInt(), Wins = reader.ReadEncodedInt(), Losses = reader.ReadEncodedInt()
++                    };
++
++                    if (player?.Deleted == false)
++                    {
++                        list.Add(score);
++                    }
++                }
++            }
++        }
++    }
++
++    public class BombermanRegion : BaseRegion
++    {
++        private static int _index;
++        private readonly BombermanControlItem _control;
++
++        public BombermanRegion(BombermanControlItem control, Rectangle2D area)
++            : base($"{BombermanSettings.GameName} {_index++}", control.Map, 255, area) =>
++            _control = control;
++
++        public override bool AllowHousing(Mobile from, Point3D p) => false;
++        public override bool AllowSpawn() => false;
++        public override bool CanUseStuckMenu(Mobile m) => false;
++        public override bool AllowHarmful(Mobile from, Mobile target) => from.AccessLevel > AccessLevel.Player;
++        public override bool OnSkillUse(Mobile m, int skill) => m.AccessLevel > AccessLevel.Player;
++        public override bool OnBeginSpellCast(Mobile from, ISpell s) => from.AccessLevel > AccessLevel.Player;
++
++        public override bool OnDamage(Mobile m, ref int damage) => false;
++
++        public override bool OnMoveInto(Mobile m, Direction d, Point3D newLocation, Point3D oldLocation) =>
++            m.AccessLevel > AccessLevel.Player || _control.Players.Contains(m) || m is not (PlayerMobile or BaseCreature);
++
++        public override void OnEnter(Mobile m)
++        {
++            if (m.AccessLevel == AccessLevel.Player && !_control.Players.Contains(m))
++            {
++                m.SendMessage("You are not allowed in there.");
++                Timer.DelayCall(() => m.MoveToWorld(_control.Location, _control.Map));
++            }
++        }
++    }
++
++    // A piece of the board: not saved, the stone rebuilds the board after a restart.
++    [SerializationGenerator(0)]
++    public partial class GamePiece : Item
++    {
++        private LOSBlocker _blocker;
++
++        public GamePiece(int itemID, string name, bool blockLos = false) : base(itemID)
++        {
++            Movable = false;
++            Name = name;
++
++            if (blockLos)
++            {
++                _blocker = new LOSBlocker();
++            }
++        }
++
++        public BombermanControlItem Control { get; set; }
++
++        public void Place(BombermanControlItem control, int x, int y, int z = 0)
++        {
++            Control = control;
++            MoveToWorld(new Point3D(control.BoardLocation.X + x, control.BoardLocation.Y + y, control.BoardLocation.Z + z), control.Map);
++            _blocker?.MoveToWorld(Location, Map);
++        }
++
++        public override void OnAfterDelete()
++        {
++            _blocker?.Delete();
++            _blocker = null;
++            base.OnAfterDelete();
++        }
++
++        [AfterDeserialization]
++        private void AfterDeserialization() => Timer.DelayCall(Delete);
++    }
++
++    [SerializationGenerator(0)]
++    public partial class BombermanObstacle : GamePiece
++    {
++        public BombermanObstacle(int itemID, string name, bool blockLos = false) : base(itemID, name, blockLos)
++        {
++        }
++
++        public virtual bool Destructible => false;
++
++        public virtual void Destroy()
++        {
++            Control?.BackgroundItems.Remove(this);
++            Control = null;
++            Delete();
++        }
++    }
++
++    [SerializationGenerator(0)]
++    public partial class BombermanFloorTile : BombermanObstacle
++    {
++        public BombermanFloorTile(BombermanStyle style) : base(BombermanSettings.FloorTileID(style), "Floor")
++        {
++            if (style == BombermanStyle.Default)
++            {
++                Hue = 0x237;
++            }
++        }
++    }
++
++    [SerializationGenerator(0)]
++    public partial class IndestructibleWall : BombermanObstacle
++    {
++        public IndestructibleWall(BombermanStyle style) : base(BombermanSettings.IndestructibleWallID(style), "Wall", true)
++        {
++            if (style == BombermanStyle.Default)
++            {
++                Hue = 0x3E4;
++            }
++        }
++    }
++
++    [SerializationGenerator(0)]
++    public partial class DestructibleWall : BombermanObstacle
++    {
++        public DestructibleWall(BombermanStyle style) : base(BombermanSettings.DestructibleWallID(style), "Bombable Wall")
++        {
++            if (style == BombermanStyle.Default)
++            {
++                Hue = 0x3BB;
++            }
++        }
++
++        public Point2D Cell { get; set; }
++
++        public override bool Destructible => true;
++
++        public override void Destroy()
++        {
++            var control = Control;
++
++            if (control?.State == BoardGameState.Active && Utility.RandomDouble() < BombermanSettings.UpgradeSpawnChance)
++            {
++                control.SpawnUpgrade(Cell);
++            }
++
++            base.Destroy();
++        }
++    }
++
++    public enum UpgradeKind
++    {
++        BombCount,
++        BlastStrength,
++        Speed,
++        Detonator,
++        BaddaBoom
++    }
++
++    // An upgrade lying on the board; a player who walks onto it picks it up, and it decays after twenty seconds.
++    [SerializationGenerator(0)]
++    public partial class BombermanUpgrade : BombermanObstacle
++    {
++        private Timer _decay;
++
++        public BombermanUpgrade(UpgradeKind kind) : base(ItemIDFor(kind), NameFor(kind))
++        {
++            Kind = kind;
++            Hue = kind == UpgradeKind.Speed ? 1152 : 1161;
++            _decay = Timer.DelayCall(BombermanSettings.UpgradeDecay, Destroy);
++        }
++
++        public UpgradeKind Kind { get; }
++        public override bool Destructible => true;
++        public override bool HandlesOnMovement => true;
++
++        private static int ItemIDFor(UpgradeKind kind) =>
++            kind switch
++            {
++                UpgradeKind.BombCount     => 0x2256,
++                UpgradeKind.BlastStrength => 0x1F15,
++                UpgradeKind.Speed         => 0x2308,
++                UpgradeKind.Detonator     => 0xFC1,
++                _                         => 0x1858
++            };
++
++        private static string NameFor(UpgradeKind kind) =>
++            kind switch
++            {
++                UpgradeKind.BombCount     => "Bomb Count Upgrade",
++                UpgradeKind.BlastStrength => "Blast Strength Upgrade",
++                UpgradeKind.Speed         => "Speed Upgrade",
++                UpgradeKind.Detonator     => "Detonator",
++                _                         => "Big BaddaBoom Upgrade"
++            };
++
++        public static UpgradeKind Roll(BombermanControlItem control)
++        {
++            var roll = Utility.RandomDouble();
++
++            return roll switch
++            {
++                < .1 when control.AllowSpeedUpgrade          => UpgradeKind.Speed,
++                < .15 when control.AllowDetonatorUpgrade     => UpgradeKind.Detonator,
++                < .2 when control.AllowBaddaBoomUpgrade      => UpgradeKind.BaddaBoom,
++                < .6 when control.AllowBlastStrengthUpgrade  => UpgradeKind.BlastStrength,
++                _                                            => UpgradeKind.BombCount
++            };
++        }
++
++        public override void OnMovement(Mobile m, Point3D oldLocation)
++        {
++            base.OnMovement(m, oldLocation);
++
++            if (Control?.Players.Contains(m) == true && m.Location != oldLocation && m.X == X && m.Y == Y)
++            {
++                PickUp(m);
++            }
++        }
++
++        public void PickUp(Mobile m)
++        {
++            var bag = m.Backpack?.FindItemByType<BombBag>();
++
++            if (bag != null)
++            {
++                bag.Apply(Kind);
++                m.SendMessage("You picked up an upgrade: ");
++                m.SendMessage(Name);
++                m.PlaySound(m.Female ? 0x337 : 0x44A);
++            }
++
++            Destroy();
++        }
++
++        public override void OnAfterDelete()
++        {
++            _decay?.Stop();
++            _decay = null;
++            base.OnAfterDelete();
++        }
++    }
++
++    [SerializationGenerator(0)]
++    public partial class Bomb : GamePiece
++    {
++        private Item _topper;
++        private Timer _fuse;
++
++        public Bomb(BombBag bag) : base(0x2256, $"{bag.Owner?.Name}'s Bomb")
++        {
++            Hue = 1;
++            Bag = bag;
++            Planter = bag.Owner;
++            Strength = bag.BombStrength;
++            BaddaBoom = bag.BaddaBoom;
++
++            _topper = BaddaBoom
++                ? new Static(0x1858) { Hue = 1161, Name = "If you can read this, you are probably going to die..." }
++                : bag.Detonator != null
++                    ? new Static(0xF13) { Name = Name }
++                    : new Static(0x1430) { Hue = 1, Name = Name };
++
++            if (bag.Detonator == null)
++            {
++                _fuse = Timer.DelayCall(BombermanSettings.ExplodeDelay, () => Explode());
++            }
++        }
++
++        public BombBag Bag { get; }
++        public Mobile Planter { get; set; }
++        public int Strength { get; }
++        public bool BaddaBoom { get; }
++
++        public override void OnLocationChange(Point3D oldLocation)
++        {
++            base.OnLocationChange(oldLocation);
++            _topper?.MoveToWorld(new Point3D(X, Y, Z + 3), Map);
++        }
++
++        public void Explode(BlastDirection inhibit = BlastDirection.None)
++        {
++            if (Deleted || Map == null || Map == Map.Internal)
++            {
++                return;
++            }
++
++            _fuse?.Stop();
++            Bag?.Bombs.Remove(this);
++
++            var map = Map;
++            var location = Location;
++            Delete();
++
++            Effects.PlaySound(location, map, Utility.RandomList(0x11B, 0x305, 0x306, 0x307, 0x11C, 0x308, 0x11D, 0x309, 0x4CF, 0x11E, 0x207));
++            Effects.SendLocationEffect(new Point3D(location.X + 1, location.Y + 1, location.Z), map, 0x36CB, 10);
++
++            foreach (var dir in (BlastDirection[])[BlastDirection.West, BlastDirection.North, BlastDirection.East, BlastDirection.South])
++            {
++                if (dir != inhibit)
++                {
++                    BombBlast.Start(location, map, dir, Bag, Strength - 1, BaddaBoom);
++                }
++            }
++
++            Bag?.Control?.CheckForVictims(location, map, Bag);
++        }
++
++        public void Detonate() => Explode();
++
++        public override void OnAfterDelete()
++        {
++            _fuse?.Stop();
++            _topper?.Delete();
++            base.OnAfterDelete();
++        }
++    }
++
++    // A blast front: one tile at a time, every fifty milliseconds, until it runs out of strength or hits something.
++    public static class BombBlast
++    {
++        public static void Start(Point3D origin, Map map, BlastDirection dir, BombBag bag, int strength, bool baddaBoom)
++        {
++            var (dx, dy) = dir switch
++            {
++                BlastDirection.West  => (-1, 0),
++                BlastDirection.East  => (1, 0),
++                BlastDirection.North => (0, -1),
++                _                    => (0, 1)
++            };
++
++            var at = new Point3D(origin.X + dx, origin.Y + dy, origin.Z);
++            bag?.Control?.CheckForVictims(at, map, bag);
++            Timer.DelayCall(BombermanSettings.BlastDelay, () => Burn(at, map, dir, bag, strength, baddaBoom));
++        }
++
++        private static void Burn(Point3D at, Map map, BlastDirection dir, BombBag bag, int strength, bool baddaBoom)
++        {
++            if (map == null)
++            {
++                return;
++            }
++
++            var hitWall = false;
++            BombermanObstacle obstacle = null;
++            Bomb bomb = null;
++
++            foreach (var item in map.GetItemsAt(at))
++            {
++                if (item is BombermanObstacle o and not BombermanFloorTile)
++                {
++                    obstacle = o;
++                    break;
++                }
++
++                if (item is Bomb b && !b.Deleted)
++                {
++                    bomb = b;
++                    break;
++                }
++            }
++
++            if (obstacle != null)
++            {
++                if (obstacle.Destructible)
++                {
++                    obstacle.Destroy();
++                }
++                else
++                {
++                    hitWall = true;
++                    strength = 0;
++                }
++
++                if (!baddaBoom)
++                {
++                    strength = 0;
++                }
++            }
++            else if (bomb != null)
++            {
++                // The bomb this blast set off is credited to the bag that set it off.
++                bomb.Planter = bag?.Owner;
++                bomb.Explode(Reverse(dir));
++                strength = 0;
++            }
++
++            if (!hitWall)
++            {
++                Effects.SendLocationEffect(new Point3D(at.X + 1, at.Y + 1, at.Z), map, Utility.RandomList(0x36CB, 0x36BD, 0x36B0), 10);
++            }
++
++            bag?.Control?.CheckForVictims(at, map, bag);
++
++            if (!hitWall && strength > 0)
++            {
++                Start(at, map, dir, bag, strength - 1, baddaBoom);
++            }
++        }
++
++        public static BlastDirection Reverse(BlastDirection dir) =>
++            dir switch
++            {
++                BlastDirection.West  => BlastDirection.East,
++                BlastDirection.East  => BlastDirection.West,
++                BlastDirection.North => BlastDirection.South,
++                BlastDirection.South => BlastDirection.North,
++                _                    => BlastDirection.None
++            };
++    }
++
++    [SerializationGenerator(0)]
++    public partial class BombBag : Item
++    {
++        private Mobile _owner;
++
++        public BombBag(BombermanControlItem control, int maxBombs, int strength) : base(0xE76)
++        {
++            Control = control;
++            Hue = 1161;
++            Movable = false;
++            MaxBombs = maxBombs;
++            BombStrength = strength;
++            Active = true;
++        }
++
++        public override string DefaultName => "Bomb Bag";
++
++        public BombermanControlItem Control { get; }
++        public List<Bomb> Bombs { get; } = [];
++        public int MaxBombs { get; set; }
++        public int BombStrength { get; set; }
++        public bool BaddaBoom { get; set; }
++        public bool SpeedUpgraded { get; private set; }
++        public BombDetonator Detonator { get; set; }
++        public bool Active { get; set; }
++
++        public Mobile Owner
++        {
++            get => _owner;
++            set
++            {
++                _owner = value;
++                // No speed from other sources, so every player starts even.
++                _owner?.NetState.SendSpeedControl(SpeedControlSetting.Disable);
++            }
++        }
++
++        public override void OnDoubleClick(Mobile from) => Plant(from);
++
++        public bool Plant(Mobile from)
++        {
++            if (from != Owner || !IsChildOf(from.Backpack) || !Active)
++            {
++                from.SendMessage("You cannot use that");
++                return false;
++            }
++
++            if (from.Followers > 0)
++            {
++                from.SendMessage("You can't use this with pets!");
++                return false;
++            }
++
++            foreach (var item in from.Map.GetItemsAt(from.Location))
++            {
++                if (item is Bomb)
++                {
++                    from.SendMessage("There is a bomb at your feet already!");
++                    return false;
++                }
++            }
++
++            if (Bombs.Count >= MaxBombs)
++            {
++                from.SendMessage("You have too many bombs on the field.");
++                return false;
++            }
++
++            var bomb = new Bomb(this);
++            from.PlaySound(0x42);
++            bomb.MoveToWorld(from.Location, from.Map);
++            Bombs.Add(bomb);
++            from.SendMessage("Planting bomb!");
++            return true;
++        }
++
++        public void Apply(UpgradeKind kind)
++        {
++            switch (kind)
++            {
++                case UpgradeKind.BombCount:
++                    {
++                        MaxBombs++;
++                        break;
++                    }
++                case UpgradeKind.BlastStrength:
++                    {
++                        BombStrength++;
++                        break;
++                    }
++                case UpgradeKind.Speed:
++                    {
++                        SpeedUpgraded = true;
++                        Owner?.NetState.SendSpeedControl(SpeedControlSetting.Mount);
++                        break;
++                    }
++                case UpgradeKind.Detonator when Detonator == null:
++                    {
++                        Detonator = new BombDetonator(this);
++                        Owner?.Backpack?.DropItem(Detonator);
++                        break;
++                    }
++                case UpgradeKind.BaddaBoom:
++                    {
++                        BaddaBoom = true;
++                        break;
++                    }
++            }
++        }
++
++        public void DetonateFirstBomb()
++        {
++            if (Bombs.Count > 0)
++            {
++                Bombs[0].Detonate();
++            }
++        }
++
++        public override void OnAfterDelete()
++        {
++            foreach (var bomb in Bombs.ToArray())
++            {
++                bomb.Delete();
++            }
++
++            Detonator?.Delete();
++
++            if (SpeedUpgraded)
++            {
++                Owner?.NetState.SendSpeedControl(SpeedControlSetting.Disable);
++            }
++
++            base.OnAfterDelete();
++        }
++
++        [AfterDeserialization]
++        private void AfterDeserialization() => Timer.DelayCall(Delete);
++    }
++
++    [SerializationGenerator(0)]
++    public partial class BombDetonator : Item
++    {
++        public BombDetonator(BombBag bag) : base(0xFC1)
++        {
++            Bag = bag;
++            Hue = 1161;
++            Movable = false;
++        }
++
++        public override string DefaultName => "Detonator";
++
++        public BombBag Bag { get; }
++
++        public override void OnDoubleClick(Mobile from)
++        {
++            if (Bag?.Deleted != false || from != Bag.Owner || !IsChildOf(from.Backpack) || !Bag.Active)
++            {
++                from.SendMessage("You cannot use that");
++                return;
++            }
++
++            Bag.DetonateFirstBomb();
++        }
++
++        public override void OnAfterDelete()
++        {
++            if (Bag?.Deleted == false)
++            {
++                Bag.Detonator = null;
++            }
++
++            base.OnAfterDelete();
++        }
++
++        [AfterDeserialization]
++        private void AfterDeserialization() => Timer.DelayCall(Delete);
++    }
++}
++
++namespace Server.Items
++{
++    // The Bomberman join stone. Its board lies two tiles south-east of it.
++    [SerializationGenerator(0)]
++    public partial class BombermanControlItem : Item
++    {
++        public const int MinPlayers = 2;
++        public const int MaxPlayers = 8;
++        private static readonly TimeSpan WinDelay = TimeSpan.FromSeconds(5);
++
++        [SerializableField(0, setter: "private")]
++        private int _boardWidth = BombermanSettings.DefaultBoardSize;
++
++        [SerializableField(1, setter: "private")]
++        private int _boardHeight = BombermanSettings.DefaultBoardSize;
++
++        [SerializableField(2, setter: "private")]
++        private BombermanStyle _style;
++
++        [SerializableField(3)]
++        [InvalidateProperties]
++        [SerializedCommandProperty(AccessLevel.GameMaster)]
++        private int _costToPlay;
++
++        [SerializableField(4)]
++        [SerializedCommandProperty(AccessLevel.GameMaster)]
++        private int _defaultMaxBombs = 1;
++
++        [SerializableField(5)]
++        [SerializedCommandProperty(AccessLevel.GameMaster)]
++        private int _defaultBombStrength = 1;
++
++        [SerializableField(6)]
++        [SerializedCommandProperty(AccessLevel.GameMaster)]
++        private bool _defaultDetonatorMode;
++
++        [SerializableField(7)]
++        [SerializedCommandProperty(AccessLevel.GameMaster)]
++        private bool _defaultBaddaBoom;
++
++        [SerializableField(8)]
++        [SerializedCommandProperty(AccessLevel.GameMaster)]
++        private bool _saveScore = true;
++
++        [SerializableField(9)]
++        [SerializedCommandProperty(AccessLevel.GameMaster)]
++        private bool _allowSpeedUpgrade = true;
++
++        [SerializableField(10)]
++        [SerializedCommandProperty(AccessLevel.GameMaster)]
++        private bool _allowDetonatorUpgrade = true;
++
++        [SerializableField(11)]
++        [SerializedCommandProperty(AccessLevel.GameMaster)]
++        private bool _allowBaddaBoomUpgrade = true;
++
++        [SerializableField(12)]
++        [SerializedCommandProperty(AccessLevel.GameMaster)]
++        private bool _allowBlastStrengthUpgrade = true;
++
++        [SerializableField(13)]
++        [SerializedCommandProperty(AccessLevel.GameMaster)]
++        private bool _allowPlayerConfiguration = true;
++
++        [SerializableField(14, getter: "private", setter: "private")]
++        private bool _isDisabled;
++
++        private BombermanRegion _region;
++        private Timer _endCheck;
++        private Timer _winner;
++
++        [Constructible(AccessLevel.GameMaster)]
++        public BombermanControlItem() : base(0xED4)
++        {
++            Movable = false;
++            Timer.DelayCall(ResetBoard);
++        }
++
++        public override string DefaultName => "Bomberman Join Stone";
++
++        public BoardGameState State { get; set; } = BoardGameState.Inactive;
++        public int CurrentMaxPlayers { get; set; } = MinPlayers;
++        public bool SettingsReady { get; private set; }
++        public List<Mobile> Players { get; } = [];
++        public List<Mobile> PendingPlayers { get; } = [];
++        public List<BombermanObstacle> BackgroundItems { get; } = [];
++        public List<BombBag> BombBags { get; } = [];
++
++        public Point3D BoardLocation => new(X + 2, Y + 2, Z);
++
++        public Rectangle2D GameZone => new(BoardLocation.X, BoardLocation.Y, _boardWidth, _boardHeight);
++
++        [CommandProperty(AccessLevel.GameMaster)]
++        public BoardGameState GameState => State;
++
++        [CommandProperty(AccessLevel.GameMaster)]
++        public bool Disabled
++        {
++            get => _isDisabled;
++            set
++            {
++                if (value && State == BoardGameState.Active)
++                {
++                    EndGame();
++                }
++
++                IsDisabled = value;
++                State = value ? BoardGameState.Disabled : BoardGameState.Inactive;
++            }
++        }
++
++        [CommandProperty(AccessLevel.GameMaster)]
++        public BombermanStyle BoardStyle
++        {
++            get => _style;
++            set
++            {
++                if (State <= BoardGameState.Recruiting)
++                {
++                    Style = value;
++                    ResetBoard();
++                }
++            }
++        }
++
++        [CommandProperty(AccessLevel.GameMaster)]
++        public int Width
++        {
++            get => _boardWidth;
++            set
++            {
++                if (State <= BoardGameState.Recruiting)
++                {
++                    BoardWidth = OddBoardSize(value);
++                    ResetBoard();
++                }
++            }
++        }
++
++        [CommandProperty(AccessLevel.GameMaster)]
++        public int Height
++        {
++            get => _boardHeight;
++            set
++            {
++                if (State <= BoardGameState.Recruiting)
++                {
++                    BoardHeight = OddBoardSize(value);
++                    ResetBoard();
++                }
++            }
++        }
++
++        [CommandProperty(AccessLevel.GameMaster)]
++        public bool ForceGameOver
++        {
++            get => false;
++            set
++            {
++                if (value)
++                {
++                    EndGame();
++                }
++            }
++        }
++
++        // Boards are odd-sized so the grid of pillars meets the walls.
++        private static int OddBoardSize(int size)
++        {
++            size = Math.Clamp(size, BombermanSettings.MinBoardSize, BombermanSettings.MaxBoardSize);
++            return (size & 1) == 0 ? size + 1 : size;
++        }
++
++        public void SetBoardSize(int width, int height)
++        {
++            BoardWidth = OddBoardSize(width);
++            BoardHeight = OddBoardSize(height);
++            ResetBoard();
++        }
++
++        public void ResetBoard()
++        {
++            WipeBoard();
++            BuildBoard();
++        }
++
++        public void WipeBoard()
++        {
++            foreach (var piece in BackgroundItems.ToArray())
++            {
++                piece.Control = null;
++                piece.Delete();
++            }
++
++            BackgroundItems.Clear();
++            _region?.Unregister();
++            _region = null;
++        }
++
++        public void BuildBoard()
++        {
++            if (Deleted || Map == null || Map == Map.Internal)
++            {
++                return;
++            }
++
++            _region = new BombermanRegion(this, GameZone);
++            _region.Register();
++
++            var w = _boardWidth;
++            var h = _boardHeight;
++
++            for (var i = 0; i < w; i++)
++            {
++                for (var j = 0; j < h; j++)
++                {
++                    Add(new BombermanFloorTile(_style), i, j);
++
++                    if (i == 0 || i == w - 1 || j == 0 || j == h - 1 || i % 2 == 0 && j % 2 == 0)
++                    {
++                        Add(new IndestructibleWall(_style), i, j);
++                    }
++                    else if (State == BoardGameState.Active && !IsStartArea(i, j) && Utility.RandomDouble() < BombermanSettings.ObstacleChance)
++                    {
++                        Add(new DestructibleWall(_style) { Cell = new Point2D(i, j) }, i, j);
++                    }
++                }
++            }
++        }
++
++        // The corners and edge midpoints where players start are kept clear.
++        public bool IsStartArea(int i, int j)
++        {
++            var w = _boardWidth;
++            var h = _boardHeight;
++
++            return i < 3 && j < 3 || i > w - 4 && j < 3 || i < 3 && j > h - 4 || i > w - 4 && j > h - 4 ||
++                   j > h / 2 - 2 && j < h / 2 + 2 && (i < 3 || i > w - 4) ||
++                   i > w / 2 - 2 && i < w / 2 + 2 && (j < 3 || j > h - 4);
++        }
++
++        private void Add(BombermanObstacle piece, int x, int y)
++        {
++            piece.Place(this, x, y);
++            BackgroundItems.Add(piece);
++        }
++
++        public void SpawnUpgrade(Point2D cell)
++        {
++            var upgrade = new BombermanUpgrade(BombermanUpgrade.Roll(this));
++            upgrade.Place(this, cell.X, cell.Y, 3);
++            BackgroundItems.Add(upgrade);
++        }
++
++        public Point3D StartPoint(int index)
++        {
++            var w = _boardWidth;
++            var h = _boardHeight;
++
++            var (x, y) = index switch
++            {
++                0 => (1, 1),
++                1 => (w - 2, 1),
++                2 => (1, h - 2),
++                3 => (w - 2, h - 2),
++                4 => (w / 2, 1),
++                5 => (w - 2, h / 2),
++                6 => (w / 2, h - 2),
++                _ => (1, h / 2)
++            };
++
++            return new Point3D(BoardLocation.X + x, BoardLocation.Y + y, BoardLocation.Z);
++        }
++
++        public override void GetProperties(IPropertyList list)
++        {
++            base.GetProperties(list);
++            list.Add(1070722, $"Status: {State}"); // ~1_NOTHING~
++            list.Add(1060658, $"{"Cost to play"}\t{_costToPlay}"); // ~1_val~: ~2_val~
++        }
++
++        public override void GetContextMenuEntries(Mobile from, ref PooledRefList<ContextMenuEntry> list)
++        {
++            base.GetContextMenuEntries(from, ref list);
++            list.Add(new ScoresEntry());
++
++            if (from.AccessLevel >= AccessLevel.GameMaster)
++            {
++                list.Add(new ResetScoresEntry());
++            }
++        }
++
++        public bool CanUse(Mobile from)
++        {
++            if (from.NetState == null)
++            {
++                return false;
++            }
++
++            if (!from.InRange(this, 10))
++            {
++                from.SendMessage("You are out of range.");
++                return false;
++            }
++
++            if (from.Followers > 0)
++            {
++                from.SendMessage("You are not allowed to have pets in this game.");
++                return false;
++            }
++
++            if (!PayCost(from, false))
++            {
++                from.SendMessage("You lack the gold to play this game.");
++                return false;
++            }
++
++            return true;
++        }
++
++        // The fee comes from the backpack, or failing that the bank.
++        public bool PayCost(Mobile from, bool withdraw)
++        {
++            if (_costToPlay <= 0)
++            {
++                return true;
++            }
++
++            if (from.Backpack?.GetAmount(typeof(Gold)) >= _costToPlay)
++            {
++                return !withdraw || from.Backpack.ConsumeTotal(typeof(Gold), _costToPlay);
++            }
++
++            return withdraw ? Banker.Withdraw(from, _costToPlay) : Banker.GetBalance(from) >= _costToPlay;
++        }
++
++        public override void OnDoubleClick(Mobile from)
++        {
++            if (!CanUse(from))
++            {
++                return;
++            }
++
++            switch (State)
++            {
++                case BoardGameState.Disabled:
++                    {
++                        from.SendMessage("That game has been disabled by staff.");
++                        break;
++                    }
++                case BoardGameState.Inactive:
++                    {
++                        PendingPlayers.Add(from);
++                        State = BoardGameState.Pending;
++                        from.SendGump(new BombermanOfferGump(this, true), true);
++                        break;
++                    }
++                case BoardGameState.Pending:
++                    {
++                        from.SendMessage("This game is pending use from another player.  Please try again later.");
++                        break;
++                    }
++                case BoardGameState.Recruiting when Players.Contains(from):
++                    {
++                        from.SendGump(new BombermanAwaitGump(this), true);
++                        break;
++                    }
++                case BoardGameState.Recruiting when PendingPlayers.Count < CurrentMaxPlayers:
++                    {
++                        PendingPlayers.Add(from);
++                        from.SendGump(new BombermanOfferGump(this, false), true);
++                        break;
++                    }
++                case BoardGameState.Recruiting:
++                    {
++                        from.SendMessage("This game has enough players attempting to start a game.  Please try again later.");
++                        break;
++                    }
++                case BoardGameState.Active when !Players.Contains(from):
++                    {
++                        from.SendMessage("A game is already in progess.  Please try again later.");
++                        break;
++                    }
++                case BoardGameState.GameOver:
++                    {
++                        from.SendMessage("The last game has just ended.  Please try again later.");
++                        break;
++                    }
++            }
++        }
++
++        public void AddPlayer(Mobile m)
++        {
++            if (Players.Contains(m))
++            {
++                return;
++            }
++
++            Players.Add(m);
++            PublicOverheadMessage(MessageType.Regular, 1153, false, $"Adding {m.Name} to the game!");
++            State = BoardGameState.Recruiting;
++
++            if (Players.Count == 1)
++            {
++                SettingsReady = !_allowPlayerConfiguration;
++
++                if (_allowPlayerConfiguration)
++                {
++                    PublicOverheadMessage(MessageType.Regular, 1153, false, $"{m.Name} is now in charge of this game!");
++                    m.SendGump(new BombermanStyleGump(this), true);
++                }
++            }
++
++            if (Players.Count < CurrentMaxPlayers)
++            {
++                m.SendGump(new BombermanAwaitGump(this), true);
++                PublicOverheadMessage(MessageType.Regular, 1153, false, $"{CurrentMaxPlayers - Players.Count} more needed!");
++            }
++            else if (SettingsReady)
++            {
++                InitializeGame();
++            }
++            else
++            {
++                PublicOverheadMessage(MessageType.Regular, 1153, false, $"{Players[0].Name} needs to confirm style!");
++            }
++        }
++
++        public void RemovePlayer(Mobile m)
++        {
++            if (Players.Remove(m))
++            {
++                PublicOverheadMessage(MessageType.Regular, 1153, false, $"Removing {m.Name} from the game!");
++            }
++
++            PendingPlayers.Remove(m);
++            m.CloseGump<BombermanAwaitGump>();
++            m.CloseGump<BombermanStyleGump>();
++
++            if (Players.Count > 0)
++            {
++                PublicOverheadMessage(MessageType.Regular, 1153, false, $"{CurrentMaxPlayers - Players.Count} more needed!");
++            }
++            else if (State is BoardGameState.Pending or BoardGameState.Recruiting)
++            {
++                State = BoardGameState.Inactive;
++                PublicOverheadMessage(MessageType.Regular, 1153, false, "No more players... resetting.");
++            }
++        }
++
++        public void SetReady(bool ready)
++        {
++            SettingsReady = ready;
++
++            if (ready && Players.Count == CurrentMaxPlayers && State < BoardGameState.Active)
++            {
++                InitializeGame();
++            }
++        }
++
++        public void InitializeGame()
++        {
++            foreach (var player in Players.ToArray())
++            {
++                if (!CanUse(player))
++                {
++                    player.SendMessage("You can no longer enter the game, and have been removed from the list.");
++                    RemovePlayer(player);
++                    return;
++                }
++            }
++
++            PendingPlayers.Clear();
++            State = BoardGameState.Active;
++
++            foreach (var player in Players)
++            {
++                PayCost(player, true);
++                player.SendMessage("Game on!");
++                player.CloseGump<BombermanAwaitGump>();
++                player.CloseGump<BombermanStyleGump>();
++            }
++
++            ResetBoard();
++
++            for (var i = 0; i < Players.Count; i++)
++            {
++                var player = Players[i];
++                player.MoveToWorld(StartPoint(i), Map);
++
++                var bag = new BombBag(this, _defaultMaxBombs, _defaultBombStrength) { Owner = player, BaddaBoom = _defaultBaddaBoom };
++                BombBags.Add(bag);
++                player.Backpack.DropItem(bag);
++
++                if (_defaultDetonatorMode)
++                {
++                    bag.Apply(UpgradeKind.Detonator);
++                }
++            }
++        }
++
++        // Puts out every player standing on the spot, crediting the bag's owner.
++        public void CheckForVictims(Point3D location, Map map, BombBag source)
++        {
++            if (State != BoardGameState.Active || source == null)
++            {
++                return;
++            }
++
++            var victims = new List<Mobile>();
++
++            foreach (var m in map.GetMobilesInRange(location, 0))
++            {
++                if (Players.Contains(m))
++                {
++                    victims.Add(m);
++                }
++            }
++
++            foreach (var m in victims)
++            {
++                var killer = source.Owner;
++
++                if (m != killer)
++                {
++                    m.SendMessage($"You've been blown up by {killer?.Name}'s blast!");
++                    killer?.SendMessage($"You've blown {m.Name}!");
++
++                    if (_saveScore)
++                    {
++                        BoardGameData.ChangeScore(BombermanSettings.GameName, killer, BombermanSettings.KillScore);
++                        BoardGameData.ChangeScore(BombermanSettings.GameName, m, BombermanSettings.DeathScore);
++                    }
++
++                    PublicOverheadMessage(MessageType.Regular, 1153, false, $"{killer?.Name} has blown up {m.Name}!");
++                }
++                else
++                {
++                    m.SendMessage("You just blew yourself up!!");
++                    PublicOverheadMessage(MessageType.Regular, 1153, false, $"{m.Name} has just blown themself up!");
++
++                    if (_saveScore)
++                    {
++                        BoardGameData.ChangeScore(BombermanSettings.GameName, m, BombermanSettings.SuicideScore);
++                    }
++                }
++
++                if (_saveScore)
++                {
++                    BoardGameData.AddLoss(BombermanSettings.GameName, m);
++                }
++
++                m.PlaySound(m.Female ? 0x32E : 0x549);
++                Players.Remove(m);
++                m.Backpack?.FindItemByType<BombBag>()?.Delete();
++                m.MoveToWorld(new Point3D(X - 1, Y - 1, Z), Map);
++                m.SendGump(new BombermanResultGump(false), true);
++            }
++
++            if (victims.Count > 0)
++            {
++                _endCheck?.Stop();
++                _endCheck = Timer.DelayCall(TimeSpan.FromSeconds(1), CheckForWinner);
++            }
++        }
++
++        private void CheckForWinner()
++        {
++            if (State != BoardGameState.Active || Players.Count >= 2)
++            {
++                return;
++            }
++
++            State = BoardGameState.GameOver;
++
++            if (Players.Count == 1)
++            {
++                var winner = Players[0];
++                winner.SendGump(new BombermanResultGump(true), true);
++
++                if (_saveScore)
++                {
++                    BoardGameData.ChangeScore(BombermanSettings.GameName, winner, BombermanSettings.WinScore);
++                    BoardGameData.AddWin(BombermanSettings.GameName, winner);
++                }
++
++                var bag = winner.Backpack?.FindItemByType<BombBag>();
++
++                if (bag != null)
++                {
++                    bag.Active = false;
++                }
++
++                PublicOverheadMessage(MessageType.Regular, 1153, false, $"{winner.Name} wins the game!");
++            }
++            else
++            {
++                PublicOverheadMessage(MessageType.Regular, 1153, false, "It's a draw!");
++            }
++
++            _winner?.Stop();
++            _winner = Timer.DelayCall(WinDelay, EndGame);
++        }
++
++        public void EndGame()
++        {
++            _endCheck?.Stop();
++            _winner?.Stop();
++
++            foreach (var player in Players)
++            {
++                player.MoveToWorld(new Point3D(X - 1, Y - 1, Z), Map);
++                player.SendMessage("You've won the game!");
++            }
++
++            foreach (var bag in BombBags.ToArray())
++            {
++                bag.Delete();
++            }
++
++            BombBags.Clear();
++            Players.Clear();
++            PendingPlayers.Clear();
++            State = _isDisabled ? BoardGameState.Disabled : BoardGameState.Inactive;
++            ResetBoard();
++            InvalidateProperties();
++        }
++
++        public override void OnLocationChange(Point3D oldLocation)
++        {
++            base.OnLocationChange(oldLocation);
++            ResetBoard();
++        }
++
++        public override void OnMapChange()
++        {
++            base.OnMapChange();
++            ResetBoard();
++        }
++
++        [AfterDeserialization]
++        private void AfterDeserialization()
++        {
++            State = _isDisabled ? BoardGameState.Disabled : BoardGameState.Inactive;
++            Timer.DelayCall(ResetBoard);
++        }
++
++        public override void OnAfterDelete()
++        {
++            _endCheck?.Stop();
++            _winner?.Stop();
++
++            foreach (var bag in BombBags.ToArray())
++            {
++                bag.Delete();
++            }
++
++            WipeBoard();
++            base.OnAfterDelete();
++        }
++
++        private class ScoresEntry : ContextMenuEntry
++        {
++            public ScoresEntry() : base(6239, 10) // View scores
++            {
++            }
++
++            public override void OnClick(Mobile from, IEntity target) => from.SendGump(new BombermanScoresGump(0), true);
++        }
++
++        private class ResetScoresEntry : ContextMenuEntry
++        {
++            public ResetScoresEntry() : base(6162, 10) // Reset
++            {
++            }
++
++            public override void OnClick(Mobile from, IEntity target)
++            {
++                if (from.AccessLevel >= AccessLevel.GameMaster)
++                {
++                    from.SendGump(new BombermanResetScoresGump(), true);
++                }
++            }
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Games/BombermanGumps.cs b/Projects/UOContent/Custom/DFI/Games/BombermanGumps.cs
+new file mode 100644
+index 000000000..3f0a029af
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Games/BombermanGumps.cs
+@@ -0,0 +1,321 @@
++// Bomberman's gumps, from the Solaris BoardGames scripts DFI Network ran (Base/Gumps, Bomberman/Gumps): the offer
++// to play, waiting for players, the leader's board settings, the result, the scores and the staff score reset.
++
++using System;
++using System.Collections.Generic;
++using Server.Gumps;
++using Server.Items;
++using Server.Network;
++
++namespace Server.Custom.Dfi.Bomberman;
++
++public abstract class BombermanGump : DynamicGump
++{
++    protected BombermanGump() : base(100, 100)
++    {
++    }
++
++    protected static void AddFrame(ref DynamicGumpBuilder builder, int width, int height)
++    {
++        builder.AddPage();
++        builder.AddBackground(0, 0, width, height, 9270);
++        builder.AddAlphaRegion(10, 10, width - 20, height - 20);
++        builder.AddLabel(40, 20, 1152, "Game:");
++        builder.AddLabel(140, 20, 1172, BombermanSettings.GameName);
++    }
++
++    public const string Description =
++        "Blow up walls and players with bombs.  Collect upgrades to improve your number of bombs, blast size, etc.";
++
++    public const string Rules =
++        "Each game can have up to eight players, and everyone starts in a corner or edge of the arena.  A bomb bag is placed in the players' backpacks.  Players use this bag to place bombs at their feet.  A bomb will detonate after some time, and has a limited blast size.  The number of bombs any player can place at any time is limited.<BR><BR>Players must blast at the breakable walls to navigate the arena.  While blasting, upgrades can be found which improve the blast size or number of bombs a player can place at once.  There is also a detonator upgrade that lets a player choose when they want their bombs to blow up.  Watch out for other players' blasts!  A bomb can trigger another bomb to go off, creating interesting chain reactions!<BR><BR>The game ends when there is only one player left standing.";
++}
++
++public class BombermanOfferGump : BombermanGump
++{
++    private readonly BombermanControlItem _control;
++    private readonly bool _choosePlayers;
++
++    public BombermanOfferGump(BombermanControlItem control, bool choosePlayers)
++    {
++        _control = control;
++        _choosePlayers = choosePlayers;
++    }
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        AddFrame(ref builder, 400, 500);
++        builder.AddLabel(40, 50, 1152, "Description:");
++        builder.AddHtml(40, 70, 300, 100, Description, background: true, scrollbar: true);
++        builder.AddLabel(40, 180, 1152, "Rules:");
++        builder.AddHtml(40, 200, 300, 150, Rules, background: true, scrollbar: true);
++
++        if (_control.CostToPlay > 0)
++        {
++            builder.AddLabel(40, 370, 1152, "Cost to play:");
++            builder.AddLabel(240, 370, 1172, $"{_control.CostToPlay} gold");
++        }
++
++        builder.AddLabel(40, 430, 1152, $"# of players ({BombermanControlItem.MinPlayers}-{BombermanControlItem.MaxPlayers}):");
++
++        if (_choosePlayers)
++        {
++            builder.AddLabel(60, 410, 1172, "Pick the number of players");
++            builder.AddImageTiled(240, 430, 30, 20, 0xBBC);
++            builder.AddTextEntry(242, 430, 26, 20, 0, 0, $"{_control.CurrentMaxPlayers}");
++        }
++        else
++        {
++            builder.AddLabel(240, 430, 1152, $"{_control.CurrentMaxPlayers}");
++        }
++
++        builder.AddLabel(40, 470, 1152, "Play this game?");
++        builder.AddButton(200, 460, 0xF7, 0xF8, 1);
++        builder.AddButton(300, 460, 0xF1, 0xF2, 0);
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        var m = sender.Mobile;
++
++        if (info.ButtonID == 0)
++        {
++            _control.RemovePlayer(m);
++            m.SendMessage("You decide not to play this game");
++            return;
++        }
++
++        if (_choosePlayers)
++        {
++            if (!int.TryParse(info.GetTextEntry(0)?.Trim(), out var count) ||
++                count is < BombermanControlItem.MinPlayers or > BombermanControlItem.MaxPlayers)
++            {
++                m.SendMessage("Invalid number of players selected.  Please try again.");
++                m.SendGump(new BombermanOfferGump(_control, true), true);
++                return;
++            }
++
++            _control.CurrentMaxPlayers = count;
++        }
++
++        m.SendMessage("You have signed up for this game.");
++        _control.AddPlayer(m);
++    }
++}
++
++public class BombermanAwaitGump : BombermanGump
++{
++    private readonly BombermanControlItem _control;
++
++    public BombermanAwaitGump(BombermanControlItem control) => _control = control;
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        builder.SetNoClose();
++        AddFrame(ref builder, 400, 200);
++        builder.AddHtml(
++            40, 50, 320, 80,
++            "You are waiting for more players to join this game.  When there are enough, this window will automatically close and the game will start.",
++            background: true
++        );
++        builder.AddButton(160, 160, 0xF1, 0xF2, 1);
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        if (info.ButtonID == 1)
++        {
++            _control.RemovePlayer(sender.Mobile);
++            sender.Mobile.SendMessage("You are no longer waiting to play this game.");
++        }
++    }
++}
++
++// The first player chooses the board's style and size, and says when to start.
++public class BombermanStyleGump : BombermanGump
++{
++    private const int Ready = 1000;
++
++    private readonly BombermanControlItem _control;
++
++    public BombermanStyleGump(BombermanControlItem control) => _control = control;
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        var styles = Enum.GetValues<BombermanStyle>();
++        var height = 220 + styles.Length * 20;
++
++        builder.AddPage();
++        builder.AddBackground(0, 0, 260, height, 9270);
++        builder.AddAlphaRegion(10, 10, 240, height - 20);
++        builder.AddLabel(20, 14, 1152, "Bomberman Board Style");
++
++        var y = 50;
++
++        foreach (var style in styles)
++        {
++            var button = _control.BoardStyle == style ? 0x2C92 : 0x2C88;
++            builder.AddButton(20, y += 20, button, button, (int)style + 1);
++            builder.AddLabel(40, y - 2, 1152, $"{style}");
++        }
++
++        builder.AddLabel(20, y += 30, 1152, "Width:");
++        builder.AddLabel(110, y, 1152, "Height:");
++
++        if (!_control.SettingsReady)
++        {
++            builder.AddImageTiled(70, y, 30, 20, 0xBBC);
++            builder.AddTextEntry(72, y, 26, 20, 0, 1, $"{_control.Width}");
++            builder.AddImageTiled(160, y, 30, 20, 0xBBC);
++            builder.AddTextEntry(162, y, 26, 20, 0, 2, $"{_control.Height}");
++        }
++        else
++        {
++            builder.AddLabel(70, y, 1152, $"{_control.Width}");
++            builder.AddLabel(160, y, 1152, $"{_control.Height}");
++        }
++
++        builder.AddLabel(20, y += 40, 1152, "Ready to start:");
++        var readyButton = _control.SettingsReady ? 0xD3 : 0xD2;
++        builder.AddButton(140, y, readyButton, readyButton, Ready);
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        var m = sender.Mobile;
++
++        if (_control.Players.Count == 0 || _control.Players[0] != m || _control.State >= BoardGameState.Active)
++        {
++            return;
++        }
++
++        if (!_control.SettingsReady &&
++            int.TryParse(info.GetTextEntry(1)?.Trim(), out var w) && int.TryParse(info.GetTextEntry(2)?.Trim(), out var h) &&
++            (w != _control.Width || h != _control.Height))
++        {
++            _control.SetBoardSize(w, h);
++        }
++
++        if (info.ButtonID is > 0 and < Ready && !_control.SettingsReady)
++        {
++            _control.BoardStyle = (BombermanStyle)(info.ButtonID - 1);
++        }
++
++        if (info.ButtonID == Ready)
++        {
++            _control.SetReady(!_control.SettingsReady);
++        }
++
++        if (info.ButtonID != 0 && _control.State < BoardGameState.Active)
++        {
++            m.SendGump(new BombermanStyleGump(_control), true);
++        }
++    }
++}
++
++public class BombermanResultGump : BombermanGump
++{
++    private readonly bool _won;
++
++    public BombermanResultGump(bool won) => _won = won;
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        AddFrame(ref builder, 400, 120);
++        builder.AddLabel(40, 50, 1152, _won ? "Congratulations, you won the game!!" : "You've lost the game!");
++        builder.AddButton(160, 80, 0xF7, 0xF8, 0);
++    }
++}
++
++public class BombermanScoresGump : BombermanGump
++{
++    private const int PerPage = 15;
++    private readonly int _page;
++
++    public BombermanScoresGump(int page) => _page = Math.Max(0, page);
++
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        var scores = new List<BoardGamePlayerScore>(BoardGameData.GetScores(BombermanSettings.GameName));
++        scores.Sort((a, b) => b.Score.CompareTo(a.Score));
++
++        AddFrame(ref builder, 400, 140 + PerPage * 20);
++        builder.AddLabel(40, 50, 1152, "Scores");
++
++        if (scores.Count == 0)
++        {
++            builder.AddLabel(40, 80, 1152, "- NO SCORES SET YET -");
++            return;
++        }
++
++        builder.AddLabel(40, 80, 1152, "Name");
++        builder.AddLabel(190, 80, 1152, "Score");
++        builder.AddLabel(240, 80, 1152, "Wins");
++        builder.AddLabel(290, 80, 1152, "Losses");
++
++        var start = Math.Min(_page * PerPage, Math.Max(0, scores.Count - 1) / PerPage * PerPage);
++
++        for (var i = start; i < Math.Min(scores.Count, start + PerPage); i++)
++        {
++            var y = 100 + (i - start) * 20;
++            builder.AddLabel(40, y, 1152, scores[i].Player.Name);
++            builder.AddLabel(190, y, 1152, $"{scores[i].Score}");
++            builder.AddLabel(240, y, 1152, $"{scores[i].Wins}");
++            builder.AddLabel(290, y, 1152, $"{scores[i].Losses}");
++        }
++
++        if (start > 0)
++        {
++            builder.AddButton(40, 110 + PerPage * 20, 4014, 4015, 1);
++        }
++
++        if (start + PerPage < scores.Count)
++        {
++            builder.AddButton(320, 110 + PerPage * 20, 4005, 4006, 2);
++        }
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        if (info.ButtonID is 1 or 2)
++        {
++            sender.Mobile.SendGump(new BombermanScoresGump(_page + (info.ButtonID == 1 ? -1 : 1)), true);
++        }
++    }
++}
++
++public class BombermanResetScoresGump : BombermanGump
++{
++    public override bool Singleton => true;
++
++    protected override void BuildLayout(ref DynamicGumpBuilder builder)
++    {
++        AddFrame(ref builder, 400, 200);
++        builder.AddHtml(
++            40, 50, 320, 80,
++            $"You are about to reset all the score data for {BombermanSettings.GameName}.  Once you do this, it cannot be undone.  Are you sure you wish to do this?",
++            background: true
++        );
++        builder.AddButton(100, 160, 0xF7, 0xF8, 1);
++        builder.AddButton(240, 160, 0xF1, 0xF2, 0);
++    }
++
++    public override void OnResponse(NetState sender, in RelayInfo info)
++    {
++        if (info.ButtonID == 1 && sender.Mobile.AccessLevel >= AccessLevel.GameMaster)
++        {
++            BoardGameData.ResetScores(BombermanSettings.GameName);
++            sender.Mobile.SendMessage("Score data has been reset.");
++        }
++    }
++}
+diff --git a/Projects/UOContent/Custom/DFI/Games/DfiBombermanGen.cs b/Projects/UOContent/Custom/DFI/Games/DfiBombermanGen.cs
+new file mode 100644
+index 000000000..fbeacd480
+--- /dev/null
++++ b/Projects/UOContent/Custom/DFI/Games/DfiBombermanGen.cs
+@@ -0,0 +1,28 @@
++// Places a Bomberman join stone at the caller's feet; its board (21 by 21 tiles by default) is built two tiles
++// south-east of it, so the ground there should be flat and empty.
++
++using Server.Commands;
++using Server.Items;
++using Server.Logging;
++
++namespace Server.Custom.Dfi;
++
++public static class DfiBombermanGen
++{
++    private static readonly ILogger logger = LogFactory.GetLogger(typeof(DfiBombermanGen));
++
++    public static void Configure()
++    {
++        CommandSystem.Register("DfiBomberman", AccessLevel.Administrator, OnCommand);
++    }
++
++    [Usage("DfiBomberman")]
++    [Description("Places a Bomberman join stone at your feet, with its board two tiles south-east of it.")]
++    private static void OnCommand(CommandEventArgs e)
++    {
++        var stone = new BombermanControlItem();
++        stone.MoveToWorld(e.Mobile.Location, e.Mobile.Map);
++        e.Mobile.SendMessage("DfiBomberman: placed a join stone and its board.");
++        logger.Information("{User} placed a Bomberman stone at {Location}", e.Mobile, stone.Location);
++    }
++}
