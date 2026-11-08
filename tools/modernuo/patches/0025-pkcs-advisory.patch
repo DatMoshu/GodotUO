@@ -1,0 +1,12 @@
+diff --git a/Projects/UOContent/UOContent.csproj b/Projects/UOContent/UOContent.csproj
+index 5789eabc6..1951c8ec6 100644
+--- a/Projects/UOContent/UOContent.csproj
++++ b/Projects/UOContent/UOContent.csproj
+@@ -43,6 +43,7 @@
+         <PackageReference Include="LibDeflate.Bindings" Version="1.0.4" />
+         <PackageReference Include="System.IO.Hashing" Version="10.0.12" />
+         <PackageReference Include="MailKit" Version="4.18.0" />
++        <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
+         <PackageReference Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.12" />
+         <PackageReference Include="CommunityToolkit.HighPerformance" Version="8.4.2" />
+         <PackageReference Include="Argon2.Bindings" Version="1.20.0" />

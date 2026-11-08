@@ -49,9 +49,26 @@ if [ "$head" != "$want" ]; then
         exit 1
     }
     echo "[shard] At the pin ${want:0:9}"
+else
+    # Same pin, run again: take the stack off, last patch first, and put it back. A patch
+    # under a later one that edits the same lines does not come off alone, so patches
+    # cannot be judged one at a time on a patched tree. This also applies UO_SHARD_DFI.
+    for ((i = ${#patches[@]} - 1; i >= 0; i--)); do
+        p="${patches[i]}"
+        if git -C "$src" apply -R --check "$p" >/dev/null 2>&1; then
+            git -C "$src" apply -R "$p" || exit 1
+        fi
+    done
 fi
 
+# UO_SHARD_DFI=0: the DFI shard content patches stay off.
+is_dfi() { case "$(basename "$1")" in *-dfi-*) return 0 ;; *) return 1 ;; esac; }
+
 for p in "${patches[@]}"; do
+    if [ "${UO_SHARD_DFI:-1}" = "0" ] && is_dfi "$p"; then
+        echo "[shard] Leaving $(basename "$p") off: UO_SHARD_DFI=0"
+        continue
+    fi
     echo "[shard] Applying $(basename "$p")"
     if git -C "$src" apply --check "$p" >/dev/null 2>&1; then
         git -C "$src" apply "$p" || exit 1

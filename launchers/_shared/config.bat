@@ -130,6 +130,10 @@ REM  The ModernUO commit the dev shard is pinned to (fetch.bat checks it out).
 if not defined UO_SHARD_REF         set "UO_SHARD_REF=d4531cd94b739613155225c234900de9f47d2c88"
 if not defined UO_SHARD_SRC         set "UO_SHARD_SRC=%UO_ROOT%\tools\modernuo\src"
 if not defined UO_SHARD_DIST        set "UO_SHARD_DIST=%UO_SHARD_SRC%\Distribution"
+REM  DFI shard content (patches *-dfi-*): 1 = on (the dev shard's default), 0 = fetch.bat
+REM  leaves them off and takes them off. Server content, not a client asset pack.
+REM  See tools\modernuo\README.md, "DFI Network shard content", before changing it on a saved world.
+if not defined UO_SHARD_DFI         set "UO_SHARD_DFI=1"
 
 REM  Optional PlayerBots shard: separate checkout, saves and loopback port.
 if not defined UO_PLAYERBOTS_DIR    set "UO_PLAYERBOTS_DIR=%UO_BUILD_DIR%\playerbots"

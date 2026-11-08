@@ -29,7 +29,8 @@
                 "tools/modernuo/patches/0021-dfi-lottery-poker.patch",
                 "tools/modernuo/patches/0022-dfi-crate-race.patch",
                 "tools/modernuo/patches/0023-dfi-bomberman.patch",
-                "tools/modernuo/patches/0024-dfi-conpvp-arena.patch"]
+                "tools/modernuo/patches/0024-dfi-conpvp-arena.patch",
+                "tools/modernuo/patches/0025-pkcs-advisory.patch"]
   },
   "config_overlay": "tools/modernuo/config",
   "listen": {"port": 2593},

@@ -103,8 +103,22 @@ class Scratch:
     def head(self) -> str:
         return git("rev-parse", "HEAD", cwd=self.src)
 
-    def run(self, kind: str) -> subprocess.CompletedProcess:
+    def add_patch_over_the_first(self) -> None:
+        """A second patch that edits the line the first one edits."""
+        (self.root / "tools" / "modernuo" / "patches" / "0002-y.patch").write_bytes(
+            b"--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,2 @@\n one\n-TWO\n+TWO, twice\n"
+        )
+
+    def as_dfi(self) -> "Scratch":
+        """Rename the toy patch so it counts as DFI shard content."""
+        patches = self.root / "tools" / "modernuo" / "patches"
+        (patches / "0001-x.patch").rename(patches / "0007-dfi-x.patch")
+        return self
+
+    def run(self, kind: str, **extra: str) -> subprocess.CompletedProcess:
         env = dict(os.environ)
+        env.pop("UO_SHARD_DFI", None)
+        env.update(extra)
         env.update(
             UO_SHARD_REPO=self.upstream.as_posix(),
             UO_SHARD_REF=self.pin,
@@ -146,8 +160,18 @@ class FetchCases:
         s.write("b.txt", NEW_B)
         r = s.run(self.kind)
         self.assertEqual(r.returncode, 0, self.out(r))
-        self.assertIn("already applied, skipping", r.stdout)
         self.assertEqual((s.read("a.txt"), s.read("b.txt")), (PATCHED_A, NEW_B))
+        self.assertIn("[shard] Done.", r.stdout)
+
+    def test_stacked_patches_can_be_fetched_again(self):
+        # the first patch does not come off alone once the second has edited its lines
+        s = self.s.at(self.s.pin)
+        s.add_patch_over_the_first()
+        self.assertEqual(s.run(self.kind).returncode, 0)
+        self.assertEqual(s.read("a.txt"), "one\nTWO, twice\n")
+        r = s.run(self.kind)
+        self.assertEqual(r.returncode, 0, self.out(r))
+        self.assertEqual(s.read("a.txt"), "one\nTWO, twice\n")
 
     def test_patch_that_neither_applies_nor_reverses_is_fatal(self):
         # an older copy of the patch is on: before SF3b this said "already applied" and went on
@@ -161,6 +185,34 @@ class FetchCases:
         self.assertIn("FATAL: 0001-x.patch does not apply to the checkout at " + s.pin[:9], r.stdout)
         self.assertRegex(r.stderr, r"patch failed|already exists in working directory")  # git's own reason
         self.assertEqual((s.read("a.txt"), s.read("b.txt")), ("one\nTwo, the old way\n", "old new\n"))
+
+    def test_dfi_patch_is_applied_by_default(self):
+        s = self.s.at(self.s.pin).as_dfi()
+        r = s.run(self.kind)
+        self.assertEqual(r.returncode, 0, self.out(r))
+        self.assertEqual((s.read("a.txt"), s.read("b.txt")), (PATCHED_A, NEW_B))
+
+    def test_dfi_off_leaves_the_patch_off(self):
+        s = self.s.at(self.s.pin).as_dfi()
+        r = s.run(self.kind, UO_SHARD_DFI="0")
+        self.assertEqual(r.returncode, 0, self.out(r))
+        self.assertIn("Leaving 0007-dfi-x.patch off", r.stdout)
+        self.assertEqual((s.read("a.txt"), s.read("b.txt")), ("one\ntwo\n", None))
+        self.assertIn("[shard] Done.", r.stdout)
+
+    def test_dfi_off_takes_the_patch_off_a_checkout_that_has_it(self):
+        s = self.s.at(self.s.pin).as_dfi()
+        self.assertEqual(s.run(self.kind).returncode, 0)
+        r = s.run(self.kind, UO_SHARD_DFI="0")
+        self.assertEqual(r.returncode, 0, self.out(r))
+        self.assertIn("Leaving 0007-dfi-x.patch off", r.stdout)
+        self.assertEqual((s.read("a.txt"), s.read("b.txt")), ("one\ntwo\n", None))
+
+    def test_dfi_off_keeps_other_patches(self):
+        s = self.s.at(self.s.pin)
+        r = s.run(self.kind, UO_SHARD_DFI="0")
+        self.assertEqual(r.returncode, 0, self.out(r))
+        self.assertEqual((s.read("a.txt"), s.read("b.txt")), (PATCHED_A, NEW_B))
 
     def test_fresh_no_checkout_clone_goes_to_the_pin_and_applies(self):
         # git clone --no-checkout leaves a HEAD but an empty index: nothing is on it,

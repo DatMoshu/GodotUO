@@ -56,6 +56,7 @@ is retired (as `0004-multi-tile-enumerator` was).
 | 0022 | DFI Network's event signup (event masters, undress and redress) and the crate race with DFI's track, `[DfiCrateRace` | **ours**, shard content, depends on 0016 | none |
 | 0023 | Bomberman, from the Solaris BoardGames scripts DFI ran, `[DfiBomberman` | **ours**, shard content | none |
 | 0024 | ModernUO's ConPVP duels set up in Luna's Grand Arena in place of DFI's duel and CTF systems, `[DfiArenas` | **ours**, shard content | none |
+| 0025 | Pins `System.Security.Cryptography.Pkcs` to 10.0.14, past two .NET denial of service advisories in the 10.0.0 that MailKit brings in, which fail the restore under the pin's warnings-as-errors | **ours**, build fix until the pin moves | none |
 | issue | `MultiData.LoadUOP` and uncompressed entries | **upstream** (issue, no patch) | `upstream/issue-multidata-loaduop-uncompressed.md` |
 
 ### 0006: loopback ban exemption (NET-00c, MUO patch)
@@ -87,7 +88,14 @@ still requires the shard console's detection/filter messages.
 **Verdict: ours.** Local readiness checks and development clients share one
 address. Keep this narrow policy separate from public-shard ban policy.
 
+### 0025: the Pkcs advisory pin (MUO patch)
+
+GUO patch: `patches/0025-pkcs-advisory.patch`. **Verdict: ours**, until the pin moves.
+
 ### 0007 to 0024: DFI Network shard content (MUO patch)
+
+Provenance, licence and takedown: [`patches/DFI-PROVENANCE.md`](patches/DFI-PROVENANCE.md).
+On for `guo-dev`, off for `guo-vps`; `UO_SHARD_DFI` in `config.bat` turns it off locally.
 
 GUO patches: `patches/0007-dfi-loot.patch`, `patches/0008-dfi-monsters.patch`,
 `patches/0009-dfi-player-items.patch` (player items, deeds, balls, the shrink

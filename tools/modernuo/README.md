@@ -184,6 +184,36 @@ exempts private addresses. Run
 old hold and check the patch without opening a socket or touching accounts.
 See [UPSTREAM.md](UPSTREAM.md) for scope and deployment steps.
 
+### DFI Network shard content (patches 0007 to 0024)
+
+> **Provenance.** These are server-side ModernUO patches, licensed GPL-3 like
+> ModernUO. They are ported from the published custom scripts of two defunct
+> RunUO shards, DFI Network (DefianceUO-based) and kopia 2012. Ported files
+> cite their origin in the file header or in their patch's section below. The
+> patches hold no retail client data and no artwork. We believe this use is
+> permitted under the open-source terms those scripts were distributed under.
+> **Takedown:** if an original author objects, the patches are removed on
+> request; open a GitHub issue. Details: [`patches/DFI-PROVENANCE.md`](patches/DFI-PROVENANCE.md).
+
+This is a shard **content profile**, not an asset pack: asset packs are client
+art, and this is server content that compiles into the shard. Nothing in the
+Godot client changes.
+
+| Where | State | How to change it |
+|---|---|---|
+| The dev shard (`launchers\shard\fetch.bat`, the `guo-dev` profile) | **on** | `UO_SHARD_DFI=0` in `launchers\_shared\config.local.bat`, then `fetch` and `build` |
+| The public shard (the `guo-vps` profile) | **off** | Add the 18 patches to its `server.patches`, an owner decision; `test_muo_shard.py` pins this |
+
+`UO_SHARD_DFI=0` makes `fetch` leave these patches off, and takes them off a
+checkout that has them. A world saved with DFI objects needs those types to
+load, so turn the flag off only with a fresh `Saves/`.
+
+Applying the patches adds content without placing any of it. The world changes
+when an Administrator runs the commands in the sections below (`[DfiSpawns`,
+`[CursedCave`, `[DfiQuests`, `[DfiEvents`, `[DfiTown`, `[DfiGames`, and so on).
+`[DfiSpawns` is idempotent: it finds what it replaces by guid and re-imports
+its own spawners onto their own guids, so running it again changes nothing.
+
 ### `patches/0007-dfi-loot.patch`
 
 The loot tables of the DFI Network shard (a DefianceUO-based RunUO server),
@@ -718,6 +748,13 @@ brings the duellists to the arena. Capture the flag runs through ConPVP's
 tournament controller with a CTF controller, which staff set up when they
 hold one. `DfiArenasTests.cs` checks the arena is active, on Malas, with its
 ladder, points and zones in place.
+
+### `patches/0025-pkcs-advisory.patch`
+
+Pins `System.Security.Cryptography.Pkcs` to 10.0.14. MailKit brings in 10.0.0, and
+its two later .NET denial of service advisories fail the restore under the pin's
+warnings-as-errors. Remove it when the ModernUO pin moves past that. Carried by both
+profiles.
 
 ### Retired
 

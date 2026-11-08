@@ -77,6 +77,10 @@ unset _guo_shared_dir
 : "${UO_SHARD_REF:=d4531cd94b739613155225c234900de9f47d2c88}"
 : "${UO_SHARD_SRC:=$UO_ROOT/tools/modernuo/src}"
 : "${UO_SHARD_DIST:=$UO_SHARD_SRC/Distribution}"
+# DFI shard content (patches *-dfi-*): 1 = on (the dev shard's default), 0 = fetch.sh
+# leaves them off and takes them off. Server content, not a client asset pack.
+# See tools/modernuo/README.md, "DFI Network shard content", before changing it on a saved world.
+: "${UO_SHARD_DFI:=1}"
 : "${UO_PLAYERBOTS_DIR:=$UO_BUILD_DIR/playerbots}"
 : "${UO_PLAYERBOTS_PORT:=2640}"
 : "${UO_SHARD_BIND:=127.0.0.1}"

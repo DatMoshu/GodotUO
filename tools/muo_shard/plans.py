@@ -397,18 +397,18 @@ def deploy(p: Profile, pin: str | None = None) -> str:
         out += _embed(f"$BASE/patches/{name}", p.path(rel).read_text(encoding="utf-8"))
     out += [
         "",
-        "# checkout at the pin; patches off before the pin moves, on after",
+        "# checkout at the pin; the patch stack comes off (last first) on every deploy and goes back on,",
+        "# since a patch under a later one that edits the same lines does not come off alone",
         'if [ ! -d "$SRC/.git" ]; then as_user git clone --no-checkout "$CLONE_URL" "$SRC"; fi',
         'as_user git -C "$SRC" cat-file -e "$PIN^{commit}" 2>/dev/null || as_user git -C "$SRC" fetch origin',
         '# global.json is rewritten below for the installed SDK; put it back before anything else looks at the tree',
         'as_user git -C "$SRC" update-index --no-skip-worktree global.json 2>/dev/null || true',
         'as_user git -C "$SRC" checkout -q -- global.json 2>/dev/null || true',
         'head="$(as_user git -C "$SRC" rev-parse -q --verify HEAD 2>/dev/null || true)"',
-        'if [ "$head" != "$PIN" ]; then',
     ]
     for name in reversed(names):
-        out.append(f'    if as_user git -C "$SRC" apply -R --check "$BASE/patches/{name}" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/{name}"; fi')
-    out += ['    as_user git -C "$SRC" checkout -q --detach "$PIN"', "fi"]
+        out.append(f'if as_user git -C "$SRC" apply -R --check "$BASE/patches/{name}" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/{name}"; fi')
+    out += ['if [ "$head" != "$PIN" ]; then as_user git -C "$SRC" checkout -q --detach "$PIN"; fi']
     for name in names:
         out += _apply_patch(name)
 
