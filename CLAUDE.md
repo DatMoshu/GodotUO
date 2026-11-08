@@ -6,8 +6,12 @@
 GitHub Copilot and Cursor. Change rules there, not here. This section holds
 only what is specific to Claude Code:
 
-- Skills in `.claude/skills/` are slash commands here (`/port-status`, ...).
-- The roles in `.claude/agents/` run as subagents.
+- Skills in `.claude/skills/` are slash commands here (`/port-status`, `/parity-check`, `/uo-data`, ...): only the
+  GUO-specific ones live in the repo.
+- The roles in `.claude/agents/` run as subagents: the UO, port and Godot specialists only.
+- The generic game-studio kit (`/sprint-plan`, `/code-review`, `/team-*`, producer/designer roles, coding-standard
+  rules) left the repo on 2026-11-08 to keep every session's context small. It is the fleet's
+  `gamedev-kit@fable-local` plugin; enable it in your own `.claude/settings.local.json` when a task needs it.
 - `.claude/hooks/` and `.claude/settings.json` add session hooks and the
   status line; other tools rely on the git hooks and CI instead.
 
