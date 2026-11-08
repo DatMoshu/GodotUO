@@ -5,6 +5,15 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 
 ## Unreleased
 
+### macOS
+- The `.sh` launchers run on Apple Silicon Macs: the bootstrap fetches the
+  macOS .NET engine and the launchers find its binary inside the app bundle.
+  The client builds and loads there, and logs in to a local shard. See the
+  new macOS wiki page for requirements and what is checked.
+- On macOS the world starts on the canvas renderer: on Metal, Depth World
+  dropped to half rate on a third to a half of frames (perf probe p95 32-37 ms
+  against 17 ms on canvas). `--depth-world` still selects it.
+
 ### Labs
 - Weather puddle settings no longer enable water impacts on listed Wet tiles.
   Rain rings also reach wet statics above sloped ground; crowded cells are

@@ -8,9 +8,14 @@ namespace GUO.Renderer;
 public sealed partial class UltimaBatcher2D
 {
     private OrderedWorldCapture _orderedWorld;
+    internal SpeedMode.SurfaceRow OrderedSurface;
+    internal Vector2I OrderedSurfaceOrigin;
     private Rid _orderedCanvas, _orderedPresenter;
     private int _orderedStackDepth;
     private ShaderMaterial _orderedPresentMaterial;
+    private bool _orderedSurfaceDebugShown;
+    private static readonly StringName ParamSurfaceDebug = "surface_debug";
+    private static readonly StringName ParamSurfaceBuffer = "surface_buffer";
     internal static long OrderedCanvasItemsCleared;
     internal bool HasOrderedRecovery => OrderedWorldRecording && _orderedWorld.RecoverCanvas != null;
     internal void RejectOrderedWorld(string reason) => _orderedWorld?.Reject(reason);
@@ -83,6 +88,7 @@ public sealed partial class UltimaBatcher2D
     internal void BeginOrderedWorld(bool supported, Vector2I probeSize = default)
     {
         OrderedWorldCapture.LastFrameOnPass = false;
+        _orderedWorld?.ClearSurfaceBinding();
         if (!OrderedWorldCapture.Enabled) return;
         if (_retainCanvasFrame)
         {
@@ -121,6 +127,7 @@ public sealed partial class UltimaBatcher2D
             _material.GetShaderParameter(ParamBrightlight).AsSingle(),
             _material.GetShaderParameter(ParamCircleOfTransparencyCenter).AsVector2(),
             _material.GetShaderParameter(ParamCircleOfTransparencyRadius).AsSingle())) return;
+        _orderedWorld.SurfaceOrigin=OrderedSurfaceOrigin;
         FlushRun();
         _orderedCanvas = NewItem(CurrentParent, Transform2D.Identity);
         _orderedWorld.SetCanvas(_orderedCanvas);
@@ -141,8 +148,16 @@ public sealed partial class UltimaBatcher2D
         while (_clipStack.Count > _orderedStackDepth) _clipStack.RemoveAt(_clipStack.Count - 1);
         _orderedPresentMaterial ??= new ShaderMaterial
         {
-            Shader = new Shader { Code = "shader_type canvas_item; render_mode unshaded, blend_disabled; void fragment() { COLOR = texture(TEXTURE, UV); }" }
+            Shader = new Shader { Code = "shader_type canvas_item; render_mode unshaded, blend_disabled; uniform bool surface_debug = false; uniform sampler2D surface_buffer : filter_nearest; void fragment() {             COLOR = texture(TEXTURE, UV);             if (surface_debug) { int data = int(texture(surface_buffer, UV).w); int k = data & 15;                 vec3 c = k == 1 ? vec3(1,0,0) : k == 2 ? vec3(0,1,0) : k == 3 ? vec3(0,0,1) :                     k == 4 ? vec3(1) : k == 5 ? vec3(1,0,1) : k == 6 ? vec3(0,1,1) : vec3(0);                 if ((data & 16) != 0 && (int((FRAGCOORD.x + FRAGCOORD.y)/4.0) % 2) == 0) c = vec3(0.2);                 COLOR = vec4(c,1); } }" }
         };
+        bool surfaceDebug = SpeedMode.SpeedModeDebug.Active && SpeedMode.SpeedModeDebug.GBuffer;
+        if (surfaceDebug != _orderedSurfaceDebugShown)
+        {
+            _orderedPresentMaterial.SetShaderParameter(ParamSurfaceDebug, surfaceDebug);
+            if (surfaceDebug) _orderedPresentMaterial.SetShaderParameter(ParamSurfaceBuffer, _orderedWorld.SurfaceTexture);
+            else _orderedPresentMaterial.SetShaderParameter(ParamSurfaceBuffer, default);
+            _orderedSurfaceDebugShown = surfaceDebug;
+        }
         _orderedPresenter = NewItem(CurrentParent, _viewTransform.AffineInverse());
         ItemSetMaterial(_orderedPresenter, _orderedPresentMaterial);
         RenderingServer.CanvasItemSetVisible(_orderedPresenter, false);
@@ -154,8 +169,25 @@ public sealed partial class UltimaBatcher2D
     }
 
     private Vector2I _orderedProbeSize;
+    private void AbortOrderedWorldFrame()
+    {
+        // The pool clear that follows empties and hides these items.
+        _orderedCanvas = _orderedPresenter = default;
+        _orderedRawGroup = false;
+        _orderedStackDepth = 0;
+        _orderedWorld?.AbortFrame();
+    }
+
+    internal OrderedWorldCapture OrderedWorldProbe => _orderedWorld; // Probe only.
+
+    // PORT DEVIATION (GUO): retire the departed scene before its next frame callback.
+    internal void RetireSpeedScene() => _orderedWorld?.RetireScene();
+
     private void ResetOrderedWorldItems()
     {
+        RetireSpeedWeatherLines(); // PORT DEVIATION (GUO): retire before pooled item reuse.
+        ResetSpeedComposeItems();
+        _orderedWorld?.ClearSurfaceBinding(true);
         _orderedWorld?.CancelUnsubmittedFrame();
         _orderedWorld?.ClearCanvas();
         // Pool roles can change next frame: undo the previous late visibility election.
@@ -190,6 +222,7 @@ public sealed partial class UltimaBatcher2D
         if (!OrderedWorldRecording) return false;
         MeshQuad q = OrderedScratchQuad(hue);
         _orderedWorld.Depth = OrderedDepth;
+        _orderedWorld.Surface = OrderedSurface;
         return _orderedWorld.Quad(texture, q, _worldOffset, false, rectangle, destination: destination, source: source);
     }
 
@@ -232,6 +265,7 @@ public sealed partial class UltimaBatcher2D
             record = _orderedWorld.Records.Store(layer, index, true, q, offsetX, offsetY, width, height, destination, source);
         }
         _orderedWorld.Depth = OrderedDepth;
+        _orderedWorld.Surface = OrderedSurface;
         return _orderedWorld.Quad(texture, q, _worldOffset, false, true, destination: destination, source: source, record: record);
     }
 
@@ -248,6 +282,7 @@ public sealed partial class UltimaBatcher2D
             Normal0=new Vector3(0,0,1),Normal1=new Vector3(0,0,1),Normal2=new Vector3(0,0,1),Normal3=new Vector3(0,0,1)
         };
         _orderedWorld.Depth = OrderedDepth;
+        _orderedWorld.Surface = OrderedSurface;
         return _orderedWorld.Quad(texture,q,_worldOffset,false,true,local,rect,rect);
     }
 }

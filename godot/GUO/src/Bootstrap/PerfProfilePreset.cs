@@ -34,7 +34,7 @@ namespace GUO.Host;
 /// </remarks>
 internal static class PerfProfilePreset
 {
-    public static readonly string[] Names = { "plain", "lean", "defaults", "uoplus-max" };
+    public static readonly string[] Names = { "plain", "lean", "defaults", "uoplus-max", "lighting-speed" };
 
     /// <summary>Applies the named preset to the current profile; returns what was set, for the report.</summary>
     public static string Apply(string name, GUO.Game.World world)
@@ -49,7 +49,10 @@ internal static class PerfProfilePreset
         {
             case "lean":
             case "plain":
+            case "lighting-speed": // PORT DEVIATION (GUO): ADR-0048 matched Debug off/on fixture.
                 UoPlusOptions.DisableAll(p);
+                p.LightingSpeedMode=name=="lighting-speed";
+                p.SpeedModeNightFloor=3; p.SpeedModeSoften=3;
                 p.RealtimeLights = false;
                 p.AmbientParticleDensity = 0;
                 p.WaterStyle = GUO.Renderer.Water.WaterRender.Classic;
@@ -109,7 +112,7 @@ internal static class PerfProfilePreset
             }
         }
 
-        return $"lights {(p.RealtimeLights ? "realtime" : "classic")}, water {p.WaterStyle}, hd {p.HdFilter}, enhanced HD {p.EnhancedHD}, "
+        return $"lights {(p.LightingSpeedMode ? "speed" : p.RealtimeLights ? "realtime" : "classic")}, water {p.WaterStyle}, hd {p.HdFilter}, enhanced HD {p.EnhancedHD}, "
                + $"shadows {(p.ShadowsEnabled ? "on" : "off")}, static shadows {p.ShadowsStatics}, terrain shadows {p.TerrainShadowsLevel}, "
                + $"animated water {p.AnimatedWaterEffect}, ambient density {p.AmbientParticleDensity}, particle cap {p.AmbientParticleCap}, "
                + $"uo+ [{(on.Count == 0 ? "none" : string.Join("; ", on))}]";

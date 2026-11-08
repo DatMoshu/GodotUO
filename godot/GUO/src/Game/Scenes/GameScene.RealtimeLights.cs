@@ -47,6 +47,7 @@ namespace GUO.Game.Scenes
         public bool UseRealtimeLights =>
             ProfileManager.CurrentProfile != null
             && ProfileManager.CurrentProfile.RealtimeLights
+            && !Renderer.SpeedMode.SpeedModeDebug.Active // PORT DEVIATION (GUO): ADR-0048 replaces the CPU field.
             && _world.InGame
             && !(_world.Player.IsDead && ProfileManager.CurrentProfile.EnableBlackWhiteEffect);
 
@@ -60,9 +61,22 @@ namespace GUO.Game.Scenes
         /// </summary>
         private void RecordRealtimeLight(GameObject obj, ushort graphic, ref LightData light)
         {
-            if (!UseRealtimeLights || obj == null) return;
+#if DEBUG
+            ObserveAttributionLight(obj,"record-source-entry");
+#endif
+            if ((!UseRealtimeLights && !UseSpeedLights) || obj == null) {
+#if DEBUG
+                ObserveAttributionLight(obj,"record-source-mode-null-reject");
+#endif
+                return;
+            } // PORT DEVIATION (GUO): ADR-0048 same offers.
             _rtSources ??= new RealtimeLightField.Source[RtSourceCapacity];
-            if (_rtSourceCount >= LightsLoader.MAX_LIGHTS_DATA_INDEX_COUNT) return;
+            if (_rtSourceCount >= LightsLoader.MAX_LIGHTS_DATA_INDEX_COUNT) {
+#if DEBUG
+                ObserveAttributionLight(obj,"record-source-capacity-reject");
+#endif
+                return;
+            }
 
             ref readonly var info = ref Client.Game.UO.Lights.GetLight(light.ID);
             // Width is a diameter, not a radius. Widening it washed together
@@ -85,6 +99,9 @@ namespace GUO.Game.Scenes
             float oy = (obj.Offset.Y - obj.Offset.X) / 44f;
             _rtSources[_rtSourceCount++] = new RealtimeLightField.Source(
                 obj.X, obj.Y, obj.Z, radius, color, ox, oy, curve, energy, custom);
+#if DEBUG
+            ObserveAttributionLight(obj,"record-source-added",lightId:light.ID);
+#endif
         }
 
         /// <summary>Classic clears its target; the mode's texture is the override.</summary>
@@ -169,6 +186,7 @@ namespace GUO.Game.Scenes
 
                 RealtimeLightTexture = _rtTarget.Texture;
                 renderTargets.LightOverride = RealtimeLightTexture;
+                renderTargets.LightOverrideAmbient = new Godot.Vector3(_rtField.Ambient.R, _rtField.Ambient.G, _rtField.Ambient.B);
 
                 if (Time.Ticks - _rtLogAt > 5000)
                 {
@@ -255,6 +273,10 @@ namespace GUO.Game.Scenes
         private float RealtimeAmbientLevel()
         {
             var profile = ProfileManager.CurrentProfile;
+#if GUO_LABS
+            // PORT DEVIATION (GUO): local lighting test clock never edits shard state.
+            if (GUO.Labs.LightingClock.LightingTestClock.TryBrightness(profile, out float localBrightness)) return localBrightness;
+#endif
             int overall = _world.Light.Overall;
             int personal = _world.Light.Personal;
             if (profile != null && profile.UseCustomLightLevel)

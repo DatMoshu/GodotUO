@@ -6,6 +6,7 @@ using System.Linq;
 using Godot;
 using GUO.Configuration;
 using GUO.Game;
+using GUO.Game.Data;
 using GUO.Game.GameObjects;
 using GUO.Game.Managers;
 using GUO.Game.UI.Gumps;
@@ -112,6 +113,8 @@ internal static class PadWheelsProbe
         await BindingDummies(host, world);
         await MountAndLock(host, world);
         await TargetAndSpeech(host, world);
+        await BandageSelf(host, world);
+        await LastObjectSpell(host, world);
 
         PadBindings.ResetToDefaults();
         GamepadInput.Forced = null;
@@ -444,6 +447,18 @@ internal static class PadWheelsProbe
         await InputProbe.Wait(host, 6);
         Check("letting RT go with nothing chosen does nothing", PadRadar.LastAction == last, PadRadar.LastAction);
 
+        // Use on a horse within a tile is a double click, and rides it: the horse
+        // leaves the world as a mount, the radar lists only the rider, and the
+        // checks below have nothing to pick. Get off, and take the horse the
+        // shard puts back (a new object with the same serial).
+        if (world.Player.IsMounted)
+        {
+            GameActions.DoubleClick(world, world.Player.Serial);
+            await Until(host, () => !world.Player.IsMounted && world.Mobiles.ContainsKey(near.Serial), 240);
+        }
+
+        near = world.Mobiles.TryGetValue(near.Serial, out Mobile back) ? back : near;
+
         // A target cursor: the radar picks the target; A sends it, B cancels.
         GameObject taken = null;
         world.TargetManager.SetTargeting(o => taken = o, 0, TargetType.Neutral);
@@ -731,8 +746,24 @@ internal static class PadWheelsProbe
         await Button(host, JoyButton.DpadUp, 20);
         await InputProbe.Wait(host, 10);
         Godot.Input.ParseInputEvent(new InputEventJoypadMotion { Axis = JoyAxis.LeftX, AxisValue = 0f });
-        taken = null;
-        world.TargetManager.SetTargeting(o => taken = o, 0, TargetType.Neutral);
+
+        // Face a tile nothing stands over: a mobile or an item drawn in front of
+        // it (the dummies and horses beside the character) is what a pointer
+        // there picks, with the mouse as with the pad.
+        Direction clear = ClearFacing(world);
+
+        if (((int) world.Player.Direction & 7) != (int) clear)
+        {
+            world.Player.Walk(clear, false);
+            await Until(host, () => ((int) world.Player.Direction & 7) == (int) clear, 60);
+            await InputProbe.Wait(host, 10);
+        }
+
+        // A ground target is a shard's Position cursor: the click answers it
+        // with the tile (LastTargetInfo). A callback cursor never hears of
+        // land, as the click names land with graphic 0 (ClassicUO).
+        world.TargetManager.LastTargetInfo.SetEntity(0);
+        world.TargetManager.SetTargeting(CursorTarget.Position, 0, TargetType.Neutral);
         await InputProbe.Wait(host, 6);
         await Shot(host, "ground_aim");
         int fx = world.Player.X, fy = world.Player.Y;
@@ -752,11 +783,11 @@ internal static class PadWheelsProbe
             under != null && under.X == fx && under.Y == fy,
             $"pointer over {under?.GetType().Name} at {under?.X},{under?.Y}, front {fx},{fy}");
         await Button(host, JoyButton.A);
-        await Until(host, () => taken != null, 30);
-        var ground = taken as GameObject;
+        var answered = world.TargetManager.LastTargetInfo;
+        await Until(host, () => !world.TargetManager.IsTargeting, 30);
         Check("A there answers the target cursor with that tile",
-            ground != null && ground.X == fx && ground.Y == fy && ground is not Mobile,
-            $"taken {taken?.GetType().Name} at {ground?.X},{ground?.Y}");
+            !world.TargetManager.IsTargeting && !answered.IsEntity && answered.X == fx && answered.Y == fy,
+            $"answered {(answered.IsEntity ? "entity" : "tile")} at {answered.X},{answered.Y}, targeting {world.TargetManager.IsTargeting}");
         world.TargetManager.CancelTarget();
 
         // Speech from the pad: the Say screen, a phrase said with A.
@@ -776,6 +807,304 @@ internal static class PadWheelsProbe
         bool heard = await Until(host, () => JournalManager.Entries.Skip(before)
             .Any(e => e.Text != null && e.Text.IndexOf("hail", StringComparison.OrdinalIgnoreCase) >= 0), 180);
         Check("A on a phrase says it (the shard sends it back)", heard && !PadScreen.IsOpen);
+    }
+
+    /// <summary>
+    /// A way to face whose front tile has nothing drawn over it: no mobile or
+    /// ground item on it or on the tiles just below it on
+    /// screen. Only the ways that keep the player behind the tile are tried.
+    /// </summary>
+    private static Direction ClearFacing(World world)
+    {
+        (Direction d, int dx, int dy)[] ways =
+        {
+            (Direction.Down, 1, 1), (Direction.South, 0, 1), (Direction.East, 1, 0),
+            (Direction.Left, -1, 1), (Direction.Right, 1, -1),
+        };
+
+        bool Over(GameObject o, int fx, int fy) => o.X - fx >= 0 && o.X - fx <= 2 && o.Y - fy >= 0 && o.Y - fy <= 2;
+
+        foreach ((Direction d, int dx, int dy) in ways)
+        {
+            int fx = world.Player.X + dx, fy = world.Player.Y + dy;
+
+            if (!world.Mobiles.Values.Any(m => !m.IsDestroyed && Over(m, fx, fy))
+                && !world.Items.Values.Any(i => i != null && !i.IsDestroyed && i.OnGround && Over(i, fx, fy)))
+            {
+                return d;
+            }
+        }
+
+        return (Direction) ((int) world.Player.Direction & 7);
+    }
+
+    // --- bandage self (S1) -----------------------------------------------------------------------
+
+    private static async System.Threading.Tasks.Task BandageSelf(Node host, World world)
+    {
+        PadScreen.Close();
+        PadRadar.Close();
+        world.TargetManager.CancelTarget();
+
+        if (world.Player.InWarMode)
+        {
+            GameActions.ToggleWarMode(world.Player);
+            await Until(host, () => !world.Player.InWarMode, 60);
+        }
+
+        if (world.Player.FindBandage() == null)
+        {
+            await InputProbe.Say(host, "[addtopack Bandage 20");
+            bool cursor = await Until(host, () => world.TargetManager.IsTargeting, 180);
+
+            if (cursor)
+            {
+                world.TargetManager.Target(world.Player.Serial);
+            }
+
+            await Until(host, () => world.Player.FindBandage() != null, 120);
+        }
+
+        Item bandage = world.Player.FindBandage();
+        Check("the pack has bandages for the pad's Bandage self", bandage != null, bandage != null ? $"x{bandage.Amount}" : "none");
+
+        await InputProbe.Say(host, "[set Hits 30");
+        bool hurtCursor = await Until(host, () => world.TargetManager.IsTargeting, 180);
+
+        if (hurtCursor)
+        {
+            world.TargetManager.Target(world.Player.Serial);
+        }
+
+        await InputProbe.Wait(host, 60);
+
+        PadScreen.Open(WheelWindow.Macros);
+        await InputProbe.Wait(host, 6);
+        Check("the Macros screen opens", PadScreen.IsOpen && PadScreen.Current == WheelWindow.Macros);
+        await Shot(host, "macros_bandage");
+
+        bool found = PadScreen.FocusLabel == PadScreen.BandageSelfLabel;
+
+        for (int i = 0; i < 10 && !found; i++)
+        {
+            await Button(host, JoyButton.DpadDown, 4);
+            found = PadScreen.FocusLabel == PadScreen.BandageSelfLabel;
+        }
+
+        Check("the Macros screen offers Bandage self", found, PadScreen.FocusLabel);
+
+        // The pack's gump is shut first, so a pack that is open afterwards was
+        // opened by the pad's Bandage self.
+        uint packSerial = world.Player.FindItemByLayer(Layer.Backpack)?.Serial ?? 0;
+        UIManager.GetGump<ContainerGump>(packSerial)?.Dispose();
+
+        int before = JournalManager.Entries.Count;
+        await Button(host, JoyButton.A);
+        // ModernUO's dev shard answers "You begin applying the bandages."
+        // (English text; another shard or locale would need its own phrase).
+        bool heard = await Until(host, () => JournalManager.Entries.Skip(before)
+            .Any(e => e.Text != null && e.Text.IndexOf("applying", StringComparison.OrdinalIgnoreCase) >= 0), 240);
+        bool packOpened = UIManager.GetGump<ContainerGump>(packSerial) != null
+            || (PadScreen.IsOpen && PadScreen.Current == WheelWindow.Backpack);
+        Check("A on Bandage self starts bandaging you (no pack opened, no target cursor left up)",
+            heard && !packOpened && !PadScreen.IsOpen && !world.TargetManager.IsTargeting,
+            $"hits {world.Player.Hits}/{world.Player.HitsMax}, pack opened {packOpened}");
+
+        world.TargetManager.CancelTarget();
+
+        // Leave the lane as found: full hit points for later sections and shots.
+        await InputProbe.Say(host, $"[set Hits {world.Player.HitsMax}");
+
+        if (await Until(host, () => world.TargetManager.IsTargeting, 180))
+        {
+            world.TargetManager.Target(world.Player.Serial);
+        }
+
+        bool healed = await Until(host, () => world.Player.Hits >= world.Player.HitsMax, 180);
+        Check("the probe gives the hit points back", healed, $"hits {world.Player.Hits}/{world.Player.HitsMax}");
+    }
+
+    // --- last object and last spell (S2) ---------------------------------------------------------
+
+    /// <summary>The first item anywhere inside <paramref name="container"/>, bags within bags included.</summary>
+    private static Item FindInside(Item container, Func<Item, bool> match)
+    {
+        for (LinkedObject o = container?.Items; o != null; o = o.Next)
+        {
+            if (o is not Item it)
+            {
+                continue;
+            }
+
+            if (match(it))
+            {
+                return it;
+            }
+
+            Item inner = FindInside(it, match);
+
+            if (inner != null)
+            {
+                return inner;
+            }
+        }
+
+        return null;
+    }
+
+    private static int CountInside(Item container, ushort graphic)
+    {
+        int n = 0;
+
+        for (LinkedObject o = container?.Items; o != null; o = o.Next)
+        {
+            if (o is Item it)
+            {
+                n += (it.Graphic == graphic ? Math.Max(1, (int) it.Amount) : 0) + CountInside(it, graphic);
+            }
+        }
+
+        return n;
+    }
+
+    private static async System.Threading.Tasks.Task LastObjectSpell(Node host, World world)
+    {
+        async System.Threading.Tasks.Task<bool> SeekMacro(string targetLabel)
+        {
+            PadScreen.Open(WheelWindow.Macros);
+            await InputProbe.Wait(host, 6);
+
+            for (int step = 0; step < 12; step++)
+            {
+                if (PadScreen.FocusLabel == targetLabel)
+                {
+                    return true;
+                }
+
+                await Button(host, JoyButton.DpadDown, 4);
+            }
+
+            return PadScreen.FocusLabel == targetLabel;
+        }
+
+        async System.Threading.Tasks.Task AnswerTarget(string command)
+        {
+            await InputProbe.Say(host, command);
+
+            if (await Until(host, () => world.TargetManager.IsTargeting, 180))
+            {
+                world.TargetManager.Target(world.Player.Serial);
+                await InputProbe.Wait(host, 30);
+            }
+        }
+
+        PadScreen.Close();
+        PadRadar.Close();
+        world.TargetManager.CancelTarget();
+
+        if (world.Player.InWarMode)
+        {
+            GameActions.ToggleWarMode(world.Player);
+            await Until(host, () => !world.Player.InWarMode, 60);
+        }
+
+        // The client only knows what is in the pack once the pack has been opened.
+        Item pack = world.Player.FindItemByLayer(Layer.Backpack);
+        GameActions.OpenBackpack(world);
+        await Until(host, () => pack != null && pack.Items != null, 120);
+
+        // Last object: use a bandage by hand, put its cursor away, then A on the
+        // line must bring the bandage's cursor back.
+        Item bandage = world.Player.FindBandage();
+
+        if (bandage == null)
+        {
+            await InputProbe.Say(host, "[addtopack Bandage 20");
+
+            if (await Until(host, () => world.TargetManager.IsTargeting, 180))
+            {
+                world.TargetManager.Target(world.Player.Serial);
+            }
+
+            await Until(host, () => (bandage = world.Player.FindBandage()) != null, 120);
+        }
+
+        bool usedByHand = false;
+
+        if (bandage != null)
+        {
+            GameActions.DoubleClick(world, bandage.Serial);
+            usedByHand = await Until(host, () => world.TargetManager.IsTargeting, 120);
+            world.TargetManager.CancelTarget();
+        }
+
+        bool cursorDown = await Until(host, () => !world.TargetManager.IsTargeting, 60);
+        bool foundObj = await SeekMacro(PadScreen.LastObjectLabel);
+        await Shot(host, "macros_last");
+        Check("the Macros screen offers Last object", foundObj, PadScreen.FocusLabel);
+        await Button(host, JoyButton.A);
+        bool objCursor = await Until(host, () => world.TargetManager.IsTargeting, 180);
+        Check("A on Last object uses the bandage again (its target cursor comes back)",
+            usedByHand && cursorDown && objCursor && !PadScreen.IsOpen && world.LastObject == bandage.Serial,
+            $"used by hand {usedByHand}, cursor down before A {cursorDown}, cursor after A {objCursor}");
+        world.TargetManager.CancelTarget();
+        await Until(host, () => !world.TargetManager.IsTargeting, 60);
+
+        // Last spell: cast Heal (4) by hand, so the last spell is not the default
+        // Clumsy (1); A on the line must cast Heal again. The shard says a
+        // spell's power words over the caster, so "In Mani" in the journal after
+        // A is Heal being cast, not just the client remembering an index.
+        await AnswerTarget("[set Skills.Magery.Base 100");
+        await AnswerTarget("[set Mana 100");
+
+        if (FindInside(pack, i => i.Graphic == 0x0EFA) == null)
+        {
+            await AnswerTarget("[addtopack Spellbook 18446744073709551615");
+        }
+
+        // Heal's reagents, topped up only when low so repeat runs do not pile them up.
+        foreach ((ushort graphic, string name) in new (ushort, string)[] { (0x0F84, "Garlic"), (0x0F85, "Ginseng"), (0x0F8D, "SpidersSilk") })
+        {
+            if (CountInside(pack, graphic) < 5)
+            {
+                await AnswerTarget($"[addtopack {name} 10");
+            }
+        }
+
+        GameActions.CastSpell(4);
+        bool firstCast = await Until(host, () => world.TargetManager.IsTargeting, 240);
+        world.TargetManager.CancelTarget();
+        await Until(host, () => !world.TargetManager.IsTargeting, 60);
+        Check("Heal cast by hand becomes the last spell", firstCast && GameActions.LastSpellIndex == 4,
+            $"cursor {firstCast}, last spell {GameActions.LastSpellIndex}");
+
+        // The shard refuses a cast while the last one is still recovering, so
+        // A gets a few tries over a few seconds rather than one fixed wait.
+        bool foundSpell = false, spellCursor = false, saidHeal = false;
+
+        for (int attempt = 0; attempt < 4 && !spellCursor; attempt++)
+        {
+            await InputProbe.Wait(host, 45);
+            foundSpell = await SeekMacro(PadScreen.LastSpellLabel);
+
+            if (!foundSpell)
+            {
+                break;
+            }
+
+            int journalBefore = JournalManager.Entries.Count;
+            await Button(host, JoyButton.A);
+            spellCursor = await Until(host, () => world.TargetManager.IsTargeting, 180);
+            saidHeal = JournalManager.Entries.Skip(journalBefore)
+                .Any(e => e.Text != null && e.Text.IndexOf("In Mani", StringComparison.OrdinalIgnoreCase) >= 0);
+            world.TargetManager.CancelTarget();
+        }
+
+        Check("the Macros screen offers Last spell", foundSpell, PadScreen.FocusLabel);
+        Check("A on Last spell casts Heal again (power words heard, target cursor up)",
+            spellCursor && saidHeal && !PadScreen.IsOpen,
+            $"cursor {spellCursor}, heard In Mani {saidHeal}");
+        world.TargetManager.CancelTarget();
     }
 
     // --- mounting and the attack lock (INPUT-00) -------------------------------------------------

@@ -11,16 +11,16 @@ using Godot;
 /// <remarks>
 /// The timeline, in seconds from the first frame:
 /// <list type="bullet">
-/// <item>0 to 0.7: the sigil fades in from nothing while it settles from
-/// 96% to full size (ease-out, done at 1.3).</item>
-/// <item>0.55 to 1.35: one soft band of light crosses the gold
+/// <item>0 to 0.8: the stationary sigil fades in.</item>
+/// <item>1.0 to 2.2: one soft band of light crosses the gold
 /// (SplashIntro.gdshader).</item>
-/// <item>1.75: the hold ends and the client boots underneath. Its first frames
+/// <item>1.1 to 2.4: GODOT settles below, one letter every 0.15 seconds.</item>
+/// <item>5.15: the hold ends and the client boots underneath. Its first frames
 /// load the login scene; the splash covers them.</item>
 /// <item>Two frames after the boot returns: the whole splash fades out over
-/// 0.5 s, revealing the login screen.</item>
+/// 0.82 s, revealing the login screen.</item>
 /// </list>
-/// About 2.3 s in all. With reduced motion (the OS setting, or
+/// About 6 s plus login loading. With reduced motion (the OS setting, or
 /// GUO_REDUCED_MOTION=1) it is a plain fade: no scale and no sweep, 1.7 s.
 /// A key, click, tap or gamepad button skips to the boot and a 0.2 s fade;
 /// that input is consumed and never reaches the client.
@@ -37,17 +37,14 @@ public partial class SplashIntro : CanvasLayer
     private const string ConfigPath = "user://guo_splash.cfg";
     private const string SigilPath = "res://assets/brand/splash_sigil.png";
     private const string ShaderPath = "res://src/Bootstrap/SplashIntro.gdshader";
+    private const string LettersPath = "res://assets/brand/godot_letters.png";
 
     private static readonly Color Field = new(0x14 / 255f, 0x10 / 255f, 0x0C / 255f);
 
-    /// <summary>The sigil's height as a fraction of the window's: the boot splash's own (tools/brand SPLASH_HEIGHT).</summary>
-    private const float SigilHeight = 0.62f;
-
-    private const float FadeIn = 0.7f;
-    private const float Settle = 1.3f;
-    private const float SweepFrom = 0.55f, SweepTo = 1.35f;
-    private const float Hold = 1.75f;
-    private const float FadeOut = 0.5f;
+    private const float FadeIn = 0.8f;
+    private const float SweepFrom = 1f, SweepTo = 2.2f;
+    private const float Hold = 5.15f;
+    private const float FadeOut = 0.82f;
     private const float ReducedFadeIn = 0.5f, ReducedHold = 1.2f;
     private const float SkipFadeOut = 0.2f;
 
@@ -55,6 +52,7 @@ public partial class SplashIntro : CanvasLayer
     private bool _reduced;
     private Control _root;
     private TextureRect _sigil;
+    private readonly TextureRect[] _letters = new TextureRect[5];
     private ShaderMaterial _material;
     private double _t;
     private bool _booted;
@@ -133,13 +131,14 @@ public partial class SplashIntro : CanvasLayer
             return false;
         }
 
-        // Mipmapped, so the 1254 px master shrinks cleanly to a phone's window.
+        // Crop transparent padding and preserve the master aspect ratio.
         Image image = source.GetImage();
         if (image.IsCompressed())
         {
             image.Decompress();
         }
 
+        image = image.GetRegion(image.GetUsedRect());
         image.GenerateMipmaps();
         var texture = ImageTexture.CreateFromImage(image);
 
@@ -167,6 +166,22 @@ public partial class SplashIntro : CanvasLayer
             TextureFilter = CanvasItem.TextureFilterEnum.LinearWithMipmaps,
         };
         _root.AddChild(_sigil);
+        if (GD.Load<Texture2D>(LettersPath) is Texture2D letters)
+        {
+            for (int i = 0; i < _letters.Length; i++)
+            {
+                _letters[i] = new TextureRect
+                {
+                    Texture = new AtlasTexture { Atlas = letters, Region = new Rect2(i * 82, 0, 82, 100) },
+                    ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                    StretchMode = TextureRect.StretchModeEnum.Scale,
+                    TextureFilter = CanvasItem.TextureFilterEnum.Linear,
+                    MouseFilter = Control.MouseFilterEnum.Ignore,
+                    Modulate = new Color(1, 1, 1, 0),
+                };
+                _root.AddChild(_letters[i]);
+            }
+        }
         return true;
     }
 
@@ -179,18 +194,15 @@ public partial class SplashIntro : CanvasLayer
         double t = _t;
         Vector2 view = GetViewport().GetVisibleRect().Size;
 
-        float alpha, scale, sweep;
+        float alpha, sweep;
         if (_reduced)
         {
             alpha = Smooth(0, ReducedFadeIn, t);
-            scale = 1f;
             sweep = -1f;
         }
         else
         {
-            alpha = Smooth(0, FadeIn, t);
-            float u = Mathf.Clamp((float)(t / Settle), 0f, 1f);
-            scale = 0.96f + 0.04f * (1f - Mathf.Pow(1f - u, 3f));
+            alpha = EaseOut((float)(t / FadeIn));
             sweep = t < SweepFrom || t > SweepTo ? -1f : Mathf.Lerp(-0.3f, 1.3f, (float)((t - SweepFrom) / (SweepTo - SweepFrom)));
         }
 
@@ -203,9 +215,21 @@ public partial class SplashIntro : CanvasLayer
             fade = 1f - k * k * (3f - 2f * k);
         }
 
-        float side = view.Y * SigilHeight * scale;
-        _sigil.Size = new Vector2(side, side);
-        _sigil.Position = (view - _sigil.Size) / 2f;
+        // Owner-selected letter-settle composition, designed at 1920 x 1080.
+        float unit = Mathf.Min(view.X / 1920f, view.Y / 1080f);
+        Vector2 origin = (view - new Vector2(1920, 1080) * unit) / 2f;
+        float height = 490f * unit;
+        _sigil.Size = new Vector2(height * _sigil.Texture.GetWidth() / _sigil.Texture.GetHeight(), height);
+        _sigil.Position = origin + new Vector2((1920f * unit - _sigil.Size.X) / 2f, 235f * unit);
+        for (int i = 0; i < _letters.Length; i++)
+        {
+            if (_letters[i] == null) continue;
+            float settle = _reduced ? 1f : EaseOut((float)((t - 1.1 - i * 0.15) / 0.7));
+            _letters[i].Size = new Vector2(82, 100) * unit;
+            _letters[i].Position = origin + new Vector2(755 + i * 82, 755 + 42 * (1 - settle)) * unit;
+            // Root modulation applies the final crossfade once.
+            _letters[i].Modulate = new Color(1, 1, 1, _reduced ? alpha : settle);
+        }
         _material.SetShaderParameter("alpha", alpha * fade);
         _material.SetShaderParameter("sweep", sweep);
 
@@ -269,5 +293,11 @@ public partial class SplashIntro : CanvasLayer
     {
         float k = Mathf.Clamp((float)((x - a) / (b - a)), 0f, 1f);
         return k * k * (3f - 2f * k);
+    }
+
+    private static float EaseOut(float value)
+    {
+        float u = Mathf.Clamp(value, 0f, 1f);
+        return 1f - Mathf.Pow(1f - u, 3f);
     }
 }

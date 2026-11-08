@@ -1,0 +1,47 @@
+// SPDX-License-Identifier: BSD-2-Clause
+using Godot;
+using GUO.Renderer.Lights;
+using GUO.Renderer.SpeedMode.PhysicalWorld;
+
+namespace GUO.Renderer.SpeedMode;
+
+// Reused only after the Depth World ticket retires (same-thread admission).
+internal sealed class SpeedLightFrame
+{
+    internal struct Entry
+    {
+        internal RealtimeLightField.Source Source;
+        internal RealtimeLightField.SpeedReach Reach;
+        internal Vector2 PixelCentre;
+        internal float PixelRadius, Flicker;
+        internal int ShadowRow;
+        internal Rid MobileShadow;
+    }
+    internal readonly Entry[] Lights=new Entry[RealtimeLightEffects.FrameLightCap];
+    internal int Count, Soften;
+    internal Vector3 Ambient;
+    internal float RoofShare;
+    // Once-resolved artistic shadow strength; it is not solar irradiance.
+    internal float SunShadowStrength;
+#if DEBUG
+    internal int AmbientProbeTerm;
+#endif
+    internal Vector2I Origin,TargetSize;
+    // Borrowed RD views; default means no contribution from that optional pass.
+    internal Rid LampShadowAtlas,SunMask;
+    internal Rid StructuralSunDepth,StructuralSunParameters;
+    internal Rid StructuralLampDepth,StructuralLampParameters;
+    internal Rid ReceiverSurface;
+    internal PhysicalWorldSnapshot PhysicalWorld;
+    internal Texture2D PhysicalShelter;
+    internal bool WeatherShelterEnabled;
+    internal float ShadowSoftnessTenths=3;
+    internal System.Action<RenderingDevice,SpeedLightFrame> RenderInputs;
+    internal System.Action ReleaseInputs;
+    // Additive window patches run after the lamp list and before soften.
+    internal System.Action<RenderingDevice,Rid,Rid,Vector2I,Vector2I> RenderPatches;
+    internal UltimaBatcher2D Batcher;
+    internal System.Action<UltimaBatcher2D,Texture2D,Vector4,Vector3> BindLightTarget;
+    internal System.Action<UltimaBatcher2D> ClearLightTarget;
+    internal static long GridTicks,ReachTicks;
+}

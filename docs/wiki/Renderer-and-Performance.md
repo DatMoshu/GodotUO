@@ -10,6 +10,7 @@ results must be kept separate.
 |---|---|
 | Normal play with a supported rendering method | Depth World is selected by default; each frame still needs capability admission |
 | `--canvas-world` | Requests the ordered canvas world path from the start |
+| macOS | Canvas by default, measured on Metal ([macOS](macOS.md#performance)); `--depth-world` selects Depth World |
 | Godot Compatibility (`gl_compatibility`) | Selects canvas; Depth World is disabled |
 | Batcher probe | Keeps explicit backend selection; `--depth-world` opts the probe into Depth World |
 | Failure during admitted Depth World rendering | The capture retains a complete ordered canvas source for fallback |

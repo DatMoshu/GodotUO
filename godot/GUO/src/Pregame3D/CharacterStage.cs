@@ -18,6 +18,11 @@ internal sealed class CharacterStage : Stage
     private string[] _shown;
     private int _selected = -1;
 
+    // Probe readiness only: no selection/focus mutation, reject rows from an obsolete server list.
+    internal bool ProbeCharactersCurrent => ProbeListCurrent(_shown, Login?.Characters);
+    internal static bool ProbeListCurrent(string[] built, string[] current) =>
+        built != null && ReferenceEquals(built, current);
+
     public static bool ProbeCharacterFocused => PregameScreen.Instance?.Stage is CharacterStage s && (s.D.Focus.Current as UiFocus)?.Tag is string t && t.StartsWith("char:");
 
     public override IEnumerable<IOverlayFocusable> OverlayItems => _items;

@@ -54,6 +54,8 @@ WHAT IT TOUCHES
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import io
 import os
 import re
@@ -114,10 +116,11 @@ SESSION_ENV = (
 
 
 class Paths:
-    def __init__(self, cfg: Config):
+    def __init__(self, cfg: Config, release: bool = False):
         self.cfg = cfg
+        self.release = release
         self.project = cfg.godot_project
-        self.out_dir = cfg.build / "steamdeck"
+        self.out_dir = cfg.build / ("steamdeck-release" if release else "steamdeck")
         self.exe = self.out_dir / EXE_NAME
         self.pck = self.out_dir / "GUO.pck"
         self.preset_file = self.project / "export_presets.cfg"
@@ -127,7 +130,7 @@ class Paths:
         # "4.7.2-stable" + mono -> "4.7.2.stable.mono", Godot's folder name.
         self.templates_version = cfg.godot_version.replace("-", ".") + ".mono"
         self.templates_dir = godot_data_dir() / "export_templates" / self.templates_version
-        self.template_bin = self.templates_dir / f"linux_debug.{ARCH}"
+        self.template_bin = self.templates_dir / f"linux_{'release' if release else 'debug'}.{ARCH}"
         self.templates_tpz = (
             cfg.godot_home / "templates" / f"Godot_v{cfg.godot_version}_mono_export_templates.tpz"
         )
@@ -486,6 +489,48 @@ def ensure_solution(p: Paths) -> None:
         sys.exit("[steamdeck] could not produce GUO.sln")
 
 
+def artifact_manifest(p: Paths) -> dict:
+    """Presence/header/hash gate, not a login or world-readiness claim."""
+    def require(path: Path, magic: bytes | None = None) -> None:
+        if path.is_symlink() or not path.is_file() or path.stat().st_size == 0:
+            raise ValueError(f"missing, empty or linked export artifact: {path.name}")
+        if magic is not None:
+            with path.open("rb") as stream:
+                if stream.read(len(magic)) != magic:
+                    raise ValueError(f"invalid export artifact header: {path.name}")
+    require(p.exe, b"\x7fELF")
+    require(p.pck, b"GDPC")
+    folders = sorted(p.out_dir.glob("data_*"))
+    if len(folders) != 1 or not folders[0].is_dir() or folders[0].is_symlink():
+        raise ValueError("expected exactly one non-linked managed data_* directory")
+    data = folders[0]
+    for name in ("GUO.dll", "GodotSharp.dll"):
+        require(data / name, b"MZ")
+    for name, key in (("GUO.deps.json", "targets"), ("GUO.runtimeconfig.json", "runtimeOptions")):
+        path = data / name
+        require(path)
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (ValueError, UnicodeError) as error:
+            raise ValueError(f"invalid managed metadata: {name}") from error
+        if not isinstance(value, dict) or not isinstance(value.get(key), dict) or not value[key]:
+            raise ValueError(f"missing managed metadata {key}: {name}")
+    files = [p.exe, p.pck]
+    for path in sorted(data.rglob("*")):
+        if path.is_symlink():
+            raise ValueError("linked managed payload is not admitted")
+        if path.is_file():
+            files.append(path)
+    def digest(path: Path) -> str:
+        with path.open("rb") as stream:
+            return hashlib.file_digest(stream, "sha256").hexdigest()
+    return {"qualified": True, "configuration": "Release" if p.release else "Debug",
+            "scope": "artifact presence/header/hash only; runtime/world unqualified",
+            "files": {path.relative_to(p.out_dir).as_posix(): {
+                "bytes": path.stat().st_size, "sha256": digest(path)
+            } for path in files}}
+
+
 def export(p: Paths) -> int:
     console = p.godot_console()
     if DRY_RUN:
@@ -494,7 +539,12 @@ def export(p: Paths) -> int:
         sys.exit(f"[steamdeck] Godot console not found at {console}; run doctor")
     if not p.template_bin.exists():
         sys.exit(f"[steamdeck] no Linux export template at {p.template_bin}; run doctor")
+    if p.release and p.out_dir.exists():
+        say(f"Release output already exists; choose a fresh UO_BUILD_DIR: {p.out_dir}")
+        return 1
     p.out_dir.mkdir(parents=True, exist_ok=True)
+    (p.out_dir / "artifact-manifest.json").write_text(
+        json.dumps({"qualified": False, "reason": "export preparation incomplete"}), encoding="utf-8")
     ensure_solution(p)
     render_preset(p, p.exe)
     # A stale data folder from an earlier export would be pushed along with
@@ -509,7 +559,7 @@ def export(p: Paths) -> int:
     log = p.out_dir / "export.log"
     with open(log, "w", encoding="utf-8") as f:
         result = run(
-            [console, "--headless", "--path", p.project, "--export-debug", PRESET_NAME, p.exe],
+            [console, "--headless", "--path", p.project, "--export-release" if p.release else "--export-debug", PRESET_NAME, p.exe],
             stdout=f, stderr=subprocess.STDOUT, text=True,
         )
     text = log.read_text(encoding="utf-8", errors="replace")
@@ -520,10 +570,17 @@ def export(p: Paths) -> int:
             continue
         if re.search(r"\berror\b|failed|not found|required|not support", line, re.IGNORECASE):
             print("  " + line.strip()[:200])
-    data = p.data_dir()
-    if result.returncode != 0 or not p.exe.exists() or not p.pck.exists() or not data:
-        say(f"export FAILED (exit {result.returncode}); full log: {log}")
+    try:
+        if result.returncode != 0:
+            raise ValueError(f"exporter exited {result.returncode}")
+        manifest = artifact_manifest(p)
+    except ValueError as error:
+        manifest = {"qualified": False, "reason": str(error), "exporter_exit": result.returncode}
+        (p.out_dir / "artifact-manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        say(f"export FAILED: {error}; full log: {log}")
         return 1
+    (p.out_dir / "artifact-manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    data = p.data_dir()
     size = sum(f.stat().st_size for f in data.rglob("*") if f.is_file())
     say(f"exported {p.exe.name} ({p.exe.stat().st_size // 1024 // 1024} MB), "
         f"{p.pck.name} ({p.pck.stat().st_size // 1024 // 1024} MB), "
@@ -533,6 +590,9 @@ def export(p: Paths) -> int:
 
 def export_dry(p: Paths, console: Path) -> int:
     """export(), step by step, with nothing run, deleted or written."""
+    if p.release and p.out_dir.exists():
+        say(f"Release output already exists; a real export refuses it: {p.out_dir}")
+        return 1
     if not console.exists():
         say(f"no Godot console at {console}; a real export stops here (run doctor)")
     if not p.template_bin.exists():
@@ -544,7 +604,7 @@ def export_dry(p: Paths, console: Path) -> int:
     old = p.data_dir()
     for f in ([old] if old else []) + [f for f in (p.exe, p.pck) if f.exists()]:
         would(f"delete the earlier {f}")
-    show([console, "--headless", "--path", p.project, "--export-debug", PRESET_NAME, p.exe])
+    show([console, "--headless", "--path", p.project, "--export-release" if p.release else "--export-debug", PRESET_NAME, p.exe])
     would(f"write its output to {p.out_dir / 'export.log'}")
     return 0
 
@@ -901,7 +961,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("doctor", help="check the toolchain here and the Deck over ssh; say what is missing")
     sub.add_parser("templates", help="unpack the mono export templates for the pinned Godot")
     sub.add_parser("preset", help="render export_presets.cfg from the template")
-    sub.add_parser("export", help="export the Linux x86_64 build, headless, into build\\steamdeck")
+    ex = sub.add_parser("export", help="export Linux x86_64 with managed payload verification")
+    ex.add_argument("--release", action="store_true", help="Release template/build in fresh build/steamdeck-release; refuses existing output")
     pu = sub.add_parser("push", help="copy the export onto the Deck and write guo.sh")
     pu.add_argument("--host", default=None, help="shard address guo.sh connects to (default UO_SHARD_HOST)")
     pu.add_argument("--port", type=int, default=None, help="shard port (default UO_SHARD_PORT)")
@@ -935,7 +996,7 @@ def main(argv: list[str] | None = None) -> int:
     global DRY_RUN
     DRY_RUN = args.dry_run
     cfg = load_config()
-    p = Paths(cfg)
+    p = Paths(cfg, release=args.command == "export" and args.release)
     deck = Deck(cfg)
 
     if DRY_RUN:

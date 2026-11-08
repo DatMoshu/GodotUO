@@ -3758,6 +3758,17 @@ default) are compared as given, in either flag order, and a strict run with
 whose `[go` did not arrive within three tiles in x and y, and two in z when
 the `[go` names one, has no row. A parity row whose test captures did not
 all come from the pass fails the run.
+The explicit `--perf-scene current-location` case measures the existing allocated
+player position without sending a chat command or changing position. It is not
+included in the default scene suite. Require an actual GameScene, in-game player
+and explicit matching `--perf-expect-map`; the result carries
+`existing_location_witness` with map, x/y/z and `command_sent=false`. It is not a
+substitute for feature-positive render witnesses or a same-machine baseline.
+Pregame3D existing-character probes resolve the exact named actual row through
+the guarded global-rectangle/hit-test/raw-pointer path, reject replaced list
+identities and ambiguous names, and never fall back to classic coordinates or
+creation. Classic character selection is unchanged. Disconnected geometry
+qualification alone does not establish Linux login or world arrival.
 Since PERF-MM-01 each scene also carries `p50_ms`, `multimesh_sprites`
 (whether `--multimesh-sprites` was on), `mm_instances` (sprites drawn as
 MultiMesh instances), `mm_runs` (MultiMeshes drawn), `mm_calls`
@@ -4123,3 +4134,393 @@ The effective performance cohort requires boolean `atlas_page_1024` and
 comparison without replacing its baseline; intentionally varied flags require
 explicit experiment arms. Older incomplete receipts need a fresh baseline.
 This metadata change does not authorize benchmarking.
+
+
+## 49. Lighting speed surface buffer and GPU lights (ADR-0048)
+
+L1 option `LightingSpeedMode` is off by default, exposed in Classic Options and
+UO+. Compatibility and explicit canvas world disable its control with a reason.
+On an admitted frame the surface producer feeds bounded additive HDR lights,
+an approximate edge-aware soften, and the existing darkness blend through
+`RenderTargets.LightOverride`. A failed light transaction elects the same
+frame's classic target; a failed world transaction retains canvas recovery.
+The classic/off path creates no speed GPU resources or extra compose branch.
+
+A successful Depth World frame may draw the same resident and ordered quad
+streams again into a world-target-sized RGBA16F attachment with its own D32
+attachment, LessEqual and depth writes. It preserves category/run order,
+nearest art alpha, hue-alpha cutouts and the circle of transparency. The colour
+pipelines, geometry/state strides and 64-byte push block remain unchanged.
+Off creates no surface texture, framebuffer, pipeline or GPU row buffer.
+Canvas recovery, disable and resize retire the surface resources.
+
+Surface pixels contain tile position X/Y relative to an integer camera-centre
+origin, world UO Z, and `class + 16 * flags`. The surface-only descriptor set 2,
+binding 0 is a 16-byte `ivec4` storage buffer containing origin X/Y and two zeros.
+It is created only on mode activation and uploaded only when the origin changes.
+The colour pipeline's push layout remains 64 bytes. The origin is captured once
+with the world ticket, including existing walking and camera-peek offsets.
+`SpeedModeBindings.Current` is the shared surface/light hook: its value snapshot
+contains Surface, LightTarget, Origin, TargetPixelBounds, Ambient and Sequence.
+Consumers take one snapshot after production and add Origin to sampled XY before
+world lookups. PublishLight preserves that surface ticket's origin. Off/fallback,
+resize and disposal clear surface, light and origin together. It is borrowed on
+the admitted shared main/render thread; never retain it across frame boundaries.
+Weather keeps `WaterRender.BindLightTarget(batcher, Texture2D, Vector4, Vector3)`
+and reads the same snapshot origin; ClearLightTarget is required on off/fallback.
+The light producer publishes after rendering and soften, before compose.
+Classes: 0 none, 1 floor, 2 south wall, 3 east wall, 4 upright card, 5 roof,
+6 water. Flags: 1 covered, 2 wet candidate, 4 window, 8 translucent. Resident
+`aux.w` transports a bit-preserved uint: low 8 bits class/flags, bits 8..11 roof X gradient plus 8, bits 12..19
+base Z plus 128, bits 20..27 height, bits 28..31 roof Y gradient plus 8. Roof gradients clamp to -6..6; missing loaded neighbours fall back to the opposite neighbour or zero.
+For upright cards those two four-bit slots instead store the foot's sub-tile
+X/Y fractions in sixteenths; tile identity incorporates integer carries. The
+walking offset uses the existing light-offer inverse isometric projection. Resident corners and upstream depth
+reconstruct tile identity. Dynamic occurrences use a separate eight-byte row:
+uint packed X/Y (unsigned 16 bits each), then the same uint surface metadata.
+These rows never enter the colour shader's records or storage descriptor set.
+CPU metadata follows the mesh's existing content lifetime; tiledata and the
+existing wall silhouette classifier supply classes, and higher roof/floor
+objects on the tile supply cover. No client artwork is serialized.
+
+`speedmode gbuf` toggles the diagnostic display while the option is enabled:
+floor red, south wall green, east wall blue, upright white, roof magenta,
+water cyan; covered pixels are hatched. Picking and UI remain on their
+existing paths. The surface texture wrapper is borrowed by the presenter;
+its RD image belongs to the depth device and must not be retained across
+resize, fallback or disposal.
+
+`--lighting-speed-probe --lighting-speed-out=ABSOLUTE_FOLDER --no-focus`
+checks default-off persistence and every signed-Z/class/flag transport value.
+On a rendered RD launch it also draws a synthetic six-class scene, saves
+`surface-classes.png`, raw `surface.rgba16f` and `surface-counts.json`, checks
+all classes occur, validates bank-coordinate relative precision and origin-shift
+world-position invariance, confirms the light binding retains its origin and
+that off clears the complete binding, and verifies the colour target is byte-identical before
+and after the surface draw. The scenario takes `--var surface_out=<external-evidence-folder>`.
+Headless uses Godot's dummy renderer: the probe
+explicitly prints `GPU NOT RUN` after the CPU contract; this is never GPU
+acceptance. Rendered validation requires the project's Godot lease.
+
+Lights reuse the accepted classic AddLight offers, including walking offsets,
+wall-lamp standoff and projectile positions, plus enabled spell bursts within
+the existing cap. The lamp is ten UO Z units above its offer; distance uses
+eleven UO Z units per tile. A..E/custom curves, source colour/energy and a small
+deterministic temporal flicker feed the fragment. B uses `(1-d*d/r/r)^2`.
+Facing dims back-facing walls/cards with a 0.2 floor. Ambient uses AmbientFor,
+the profile's Night floor (%), and the existing RoofDaylight ramp under cover.
+
+The loaded blocker grid retains the original fill rules. A speed-only cache
+depends on grid bounds, facet, loaded chunk identity, ObjectsVersion and both
+mesh content stamps. A change rebuilds it and hashes blockers; stable frames
+perform dependency checks only. Per-light reach reuses ComputeReach's exact
+rays at four samples per tile, at lamp height. R8G8 stores exact visibility and
+one-tile dilation (summed-area-table construction). A linear reach sampler
+feathers the exact edge by 1/8 tile; native art and surface lookups stay nearest.
+Maps upload only on revision changes. No full-grid light field is computed.
+
+The two-pass soften uses a triangular kernel of 0..10 steps (default3), stopping
+at the first class/cover boundary in each direction. Zero keeps the original
+HDR target byte-for-byte. Both Options surfaces label it Soften (approximate).
+
+Consumer adapters implement GameScene partials PrepareSpeedLightInputs,
+BindSpeedLightTarget(batcher, Texture2D, Vector4, Vector3) and ClearSpeedLightTarget.
+SpeedLightFrame.RenderInputs runs on RD before the light draw; it supplies a
+borrowed RG16F polar atlas, per-offer ShadowRow (negative means unselected),
+softness in tenths of a tile, and a screen-space sun mask. Polar rows follow
+the shadow slice's 256-angle/64-row distance/top-Z contract, retaining15% in
+shadow. Sun masks affect floor ambient only. RenderPatches receives the RD,
+HDR framebuffer, raw surface RID, origin and size after lamp draws and before
+soften, matching WindowLightPassRd.Draw. The actual partner adapters are not
+included in this core head; their standalone passes must be merged and bound.
+
+The rendered probe also checks shadow multiplier inputs, ambient/cover,
+additive bounds, cached uploads, soften0/1/3/10, actual batcher composition,
+injected-light-failure fallback and exact synthetic off image/count parity.
+`--perf-profile lighting-speed` is plain plus this option at defaults; plain
+and lean explicitly disable it. The bank cohort performs an untimed native-art
+off/on/off proof and saves images/JSON, native class debug and a client-only
+night override, restoring the light settings afterwards. The Zoom2 Debug table
+must retain host other-process CPU; above10% is shared, not quiet acceptance.
+Native-art neighbour slopes, ambiguous wall planes, and combined shadow/window/
+weather/water passes remain independent visual/integration review items.
+
+## 50. Lighting speed shadows, shard clock and window openings (ADR-0048)
+
+`SpeedModeLampShadows` clamps to0..10 (default6); `SpeedModeSunShadows` and
+`SpeedModeWindowLight` default true. They apply only within the existing
+off-by-default `LightingSpeedMode`. UO+ Options stages these values with Apply,
+Cancel and Defaults; all children disable with the parent off or unavailable.
+The existing Night floor and Soften controls are preserved. No protocol,
+movement, picking or native texture filtering changes follow from these options.
+
+The existing four-byte packet0x5B carries hour, minute and second. The visual-only
+`World.ShardClock` retains validated hour0..23, minute/second0..59, monotonic
+`ReceivedTicks` and `Valid`. Invalid/truncated handler input clears the stamp;
+the normal packet framer waits for all four bytes before dispatch. `World.Clear`
+invalidates it on logout. `MinuteAt(now)` advances by unsigned elapsed ticks and
+wraps at midnight. It never reads the PC wall clock. Without a valid stamp the
+sun model is explicitly labelled `shard-brightness-approximation`; its simple
+day/moon arc is a lighting approximation, not astronomical simulation.
+
+`WallShadowGrid` freezes source-filtered solids and exact `WallFaces` edges.
+Roof/surface/bridge/door/window/light-source/background/translucent pieces are
+excluded. Foliage flags, tree/trunk names and foliage sharing the source tile
+exclude trees before aggregation. Wall edges retain their fractional offsets;
+they do not become solid tiles. The compute pass selects the nearest requested
+lamp offers, with256 angular samples and64 atlas rows. RG16F stores horizontal
+distance in tiles and wall-top Z in UO units. Unselected or failed rows remain
+disabled. Sampling interpolates angular visibility only and retains15% of a
+shadowed lamp. This is a nearest-wall approximation, not multilayer occlusion.
+
+The scene adapter snapshots native alpha for sun silhouettes and at most two
+affecting lamps per mobile. Per-lamp masks attenuate only their corresponding
+lamp terms; the MAX-combined sun mask affects floor ambient only. Mobile masks
+copy the completed native body-pass quads, including equipment, mount frames,
+mirroring, integer offsets and sitting deformation, before the capture is reused.
+Render callbacks retain immutable stamps and borrowed textures, not mobile or
+mutable command-list references. Empty/non-finite native slices are ignored only
+by the optional snapshot. The disconnected native-art fixture covers a human
+body, robe/sword, horse and chair; other races/equipment/animations and live
+bank/shop acceptance remain separate checks. Props use their lowest opaque row
+and excluded flat/bridge/roof/wall pieces never cast floor slabs.
+
+Window metadata is `src/Render/SpeedMode/WindowLight/window_light.json`, with
+logical resource name `lighting/window_light.json` supplied by lead-owned
+project wiring. Loading is lazy and Classic/off never reads it. The60 built-in
+entries describe the owner's reference graphics; no client art pixels are
+included. The root has exactly `schema: "guo/window-light@1"` and `windows`, an
+array of1..65536 records. Each record has exactly these fields:
+
+| Field | Contract |
+|---|---|
+| `graphic` | Unique integer UO graphic ID0..65535. |
+| `shape` | `rect`, `round_arch`, `pointed_arch`, `oval`, or `none`. |
+| `rows` | Top-to-bottom pane counts:1..16 rows,1..16 panes each. |
+| `aspect` | Finite opening width/height0.01..8. |
+| `patchTiles` | Floor width/depth, each finite0.01..16 tiles. |
+
+`none` requires `[1]` panes, zero aspect and `[0,0]` patch size, and emits no
+light. Unknown graphics emit nothing. Unknown fields, duplicate graphics,
+invalid dimensions or malformed records reject the entire component. Metadata
+parsing does not install or activate a Store pack; no code executes on install.
+
+For tangent `T`, inward normal `N` and incoming horizontal ray `D`, an inward
+ray (`dot(D,N)>0`) projects width `T*width` and depth
+`(N+T*dot(D,T)/dot(D,N))*depth`. Outward/grazing rays emit nothing. Analytic
+pane bars and arch/oval boundaries remove light; these are approximate opening
+shapes, not alpha masks decoded from window art. Runtime emission additionally
+requires ambient above0.5, covered inside and open outside, and a classified
+wall face. The additive pass accepts at most4096 patches and lights only covered
+floor at base Z or covered upright surfaces within4 UO Z units above it.
+
+Window receiver shafts use the same lighting/window/sun gates and require a valid
+current sun mask. This screen-space approximation adds at most16 records with8
+visible-path samples to covered floors and the lowest4 UO Z units of upright
+cards. Wall, cover, height and sun-mask rejection are conservative; hidden
+geometry and curved apertures are not reconstructed. Pane spacing uses the first
+metadata row. Each record adds at most0.04 per RGB channel. The pass owns at most6
+GPU resources and a4KiB buffer, adds no texture or history, and samples nearest.
+Generation, camera origin and target size must match once; off, stale or missing
+inputs contribute nothing. Callback failure selects the existing whole-frame
+classic fallback. These are receiver streaks, not volumetric scattering or GI.
+
+`SpeedShadowInputs` snapshots game-thread data for the core's retired-ticket
+boundary. Its RD callback publishes actual masks; window patches add after
+lamps and before soften. `SpeedLightFrame.ReleaseInputs` releases optional GPU
+resources on off, failure, resize and shutdown. Surface/alpha lookups remain
+nearest. Shared scene invocation and resource wiring are lead-owned; native
+bank/shop captures and off/failure parity remain integration acceptance.
+Standalone contracts and the live checklist are in
+`tools/scenarios/client/lighting_speed_shadows.md`.
+
+## 51. Lighting speed weather and cloud consumer (ADR-0048)
+
+This optional consumer requires `LightingSpeedMode` (default false) and the
+Depth World. Saved sub-options `SpeedModeWeather`, `SpeedModeReflections` and
+`SpeedModeFog` default true; `SpeedModeMorningHaze` clamps to 0..100, default0.
+`WindStrength` clamps finite values to0..1, default0. UO+ stages these controls
+until Apply; Defaults restores the parent off. Existing weather packets and
+classic simulation are unchanged.
+
+`SpeedModeWeather` observes weather count/70 and integrates wetness once per
+client tick, rising over60 seconds and draining over180 seconds. Rain0 gives
+quarter-strength fog; storm-brewing3 gives full count-derived fog. Snow2,
+storm-approach1 and absent/invalid weather add no fog. Morning haze adds a
+constant preference. Wind follows the existing weather direction.
+
+The runtime arms a world snapshot and consumes `SpeedModeBindings.LightReady`
+only with matching surface identity, client tick, sequence, dimensions and
+full-target bounds. Surface-only publication leaves classic lines visible.
+Wet/rain/fog native canvas commands sit on the world target before UI.
+Classic rain lines are grouped behind a generation ticket and hidden only
+after valid overlay binding; simulation always executes.
+Scene unload cancels its unsubmitted ordered ticket and immediately clears the
+published binding. New captures wait while render-thread retirement follows any
+submitted callback, releases optional surface/light targets and clears retained
+scene consumers. A departed queued frame cannot publish into the next scene. Clear/off/failure
+retires overlays, borrowed water targets and classic-line visibility. The lead
+wires scene draw/reset/unload and batcher pool retirement; those integration
+hooks are not implied by the consumer's presence.
+
+Water class6 can receive sparse reflections using four nearest-art-pixel taps
+16/32/48/64 above it. Candidates are upright/wall classes2/3/4 with positive
+height matching separation/4 within1/8 UO Z, and screen-column agreement within
+one native pixel. Separation/4 is the surface buffer's 4 native pixels per UO Z.
+The earlier separation/8 gate could not admit a vertical donor, so the bounded
+native water witness recorded no eligible controlled pixels. Puddles require wetCandidate flag2 and exposed floor class1;
+`SpeedModePuddleSurfaces` holds a curated paving/cobblestone metadata allowlist.
+The core must apply that predicate when producing flags. Reflections are a
+screen-space approximation with visible tap bands, not complete silhouettes.
+Native wet-paving output has a rendered witness. The classic-water donor
+fixture now uses the same separation/4 gate as the shader and the published
+surface. A passing native witness still needs a Windows run with client art;
+this checkout did not execute that scene. Standalone shader fixtures establish
+their geometric sampling cases. Styled-water fallback remains unchanged.
+The separate Lighting water style remains subject to the ordered backend's
+existing styled-water canvas fallback. No compatibility with simultaneous
+speed-mode lighting is claimed for that style.
+
+`SpeedModeCloudView(Enabled, Zoom, Height)` supplies an explicit cloud view.
+Default disables all cloud work. `GameScene.SpeedModeClouds` implements lead
+hooks `DrawSpeedClouds(batcher, overview)` and `ResetSpeedClouds()`, requiring
+existing ExperimentalWorldOverview plus LightingSpeedMode, Zoom>4 and a positive
+height. Height is smoothstep4..5 times300 UO units above the player. Native and
+overview clouds work independently of weather surface/light publication, so
+the cloud plane remains visible beyond5. The lead owns both draw call sites
+and unload cleanup. Entry fades continuously4..5. Overview opacity is capped
+at32% to preserve labels; a20-pixel clear area protects the visible player pin
+head, centered32pixels above its mapped ground anchor.
+The cloud pass is procedural colour on an approximate plane, not volumetric GI.
+Its colour and the fog tint follow `CloudLighting`: a valid shard minute uses
+0.1+0.9*max(0,sin((minute-360)*pi/720)), matching 06:00 dawn and 18:00 dusk.
+A missing clock uses the named ambient-brightness approximation for clouds and
+leaves fog at the previous day colour unless the scene passes a resolved value.
+Daylight 1 reproduces the previous day colours. Neither path runs unless
+lighting speed mode is on.
+The standalone `SpeedModeCloudPass.Bind(size,camera,view,wind,seconds)` and
+`HideForFallback()` support lead-owned overview placement without native surface
+sampling. Native artwork keeps nearest sampling.
+
+Scenario: `tools/scenarios/client/lighting_speed_weather.scenario.json`.
+Headless state tests do not establish rendered behavior. Rendered runtime,
+reflection and cloud fixtures exercise current callbacks, geometry and exact
+fallback. Live native/overview camera and bank on/off acceptance remain separate
+integration checks; no timing or whole-client parity follows from fixtures.
+
+### Local lighting testing clock (L4)
+
+Live extension: local_lighting_test_minute (0..59, default0), local_lighting_test_auto (defaultfalse), local_lighting_test_speed (1..1440 simulated seconds per real second, default60). The separate **Open live clock** panel updates local lighting immediately, displays HH:MM:SS, supports minute scrubbing, pause/run and speed changes without phase jumps. It uses monotonic elapsed time and wraps midnight. Closing keeps the cycle/settings and saves locally in-game; no server clock or packets change. Existing main UO+ staged Apply/Cancel remains.
+
+
+Debug `GuoLabs=true` only: profile `local_lighting_test_time` (default false) and `local_lighting_test_hour` (default 12, clamped to 0–23). UO+ stages edits until Apply; Defaults stages off/12; Cancel discards edits. Lighting speed mode must be enabled. The fixed local hour controls ambient brightness, window eligibility and sun/moon direction without changing the received shard clock. Off restores the original resolver. Standard and export builds exclude the feature. See [ADR](architecture/ADR-local-lighting-clock.md) and [scenario](../tools/scenarios/client/local_lighting_clock.md).
+
+### Offline art-capacity contract lab (Proposed ADR-0047)
+
+The L4 art-capacity harness uses synthetic GAC1 files and GAF1 complete-buffer
+frames described in docs/architecture/ADR-0047-bounded-art-capacity.md. These
+are not installed UO data formats or assigned game packet opcodes. No live
+loader, packet table, command or option consumes them. Default and exported
+clients exclude src/Labs/ArtCapacity/. Static art is bounded to 0x40000 slots;
+land remains 0x4000. The 9-byte static layout preserves signed-byte Z; 14/18-byte
+multi layouts preserve signed-short Z. No wider-Z support is implied.
+
+Run launchers/dev/art_capacity.bat doctor, then the launcher without arguments;
+see tools/scenarios/art-capacity/README.md and docs/art_capacity_audit.md.
+Promotion requires an Accepted ADR and matched client/server/tool qualification.
+
+## 52. Native physical lighting snapshots (ADR-0049)
+
+The existing optional Lighting speed mode can consume a bounded physical snapshot
+alongside the native surface buffer. Classic presentation, draw ordering, picking
+and nearest art sampling remain unchanged. No GLB or generated art is installed.
+
+Sky/direct compatibility bookkeeping carries the once-resolved active sun
+shadow strength `S` on `SpeedLightFrame`. The legacy R8 mask already includes
+strength, so the direct budget is `Q=ceil(255*S)/255` (float arithmetic), zero
+with sun shadows disabled. For existing ambient RGB `A`, roof factor `R` and
+combined sun visibility `V`, the diagnostic terms are `A*(R*(1-Q))` and
+`A*(R*max(0,V-(1-Q)))`. Upward byte quantization admits the .32-strength moon
+mask stored as 82/255 without double-applying attenuation. These are artistic
+compatibility terms; night floor and roof policy remain embedded in them.
+
+Normal output retains the original literal `A*(R*V)` operation order. Debug-only
+fixtures can select a term in the ambient draw; lamp draws, HDR storage and
+final presentation remain on their existing paths. Release compiles the
+original output expression. The ambient draw uses spare push-constant W
+components for budget and Debug selection without changing its 128-byte layout.
+No AO cache, brightness change or new profile setting follows from this split.
+
+The enhanced light composite records a whole-texture canvas draw using the
+stable texture wrapper. It does not freeze a source rectangle from dimensions
+that may still be zero before the render-thread backing is recreated. The
+existing blend subtree, nearest sampler and Classic/failure election remain
+unchanged; the first successful draw after disable or failure uses that frame's
+published light texture.
+
+`PhysicalWorldSnapshot` owns native tile-X/tile-Y/UO-Z triangles, stable source
+owners (land, effective map static ordinal, item serial, multi component), material
+bits, provenance, per-cell unknown reasons and an immutable world/generation key.
+The first domain is at most 64 by 64 tiles and 131,072 triangles. Native data comes
+through the active patched loaders; live Items and house components are included
+independently of roof cutaway. Missing live coverage, unsupported openings,
+animation, motion and ambiguous geometry remain explicit unknowns.
+
+The cache compares loader revisions, exact bounded live records, facet/world,
+art/theme/season and loaded-cell coverage. Stable snapshots reuse GPU geometry.
+Art recipes retain bounded derived metadata rather than copies of native images.
+Map, art, door and structural edits invalidate the next admitted snapshot.
+Live/source enumeration has a shared 131,072-record work limit; a truncated
+snapshot admits no inferred geometry and marks its domain unknown. Live coverage
+checks only inspect the existing chunk table, without loading or retaining chunks.
+Unrecognized NoShoot/Bridge structures remain unknown rather than decorative.
+
+Native surface metadata remains eight bytes per occurrence. Output class/flags
+gain bit256 for a qualified physical receiver. Full native floors and terrain,
+fitted planar roofs, and single opaque wall faces can qualify; cutouts and
+unsupported recipes do not. Roof apparent lift is per graphic/slope, separate
+from native physical Z. Internal kinds8/9/10 encode roof and wall recipes and are
+decoded back to ordinary roof/wall classes in the surface target.
+Moving, PNG-themed and numerically replaced map-art receivers do not qualify.
+Physical art analysis is dormant with speed lighting off; the first active frame
+upgrades cached native mesh metadata in place. Subsequent roof-neighbour and
+motion changes refresh that metadata before GPU admission. Native colour meshes
+are not rebuilt by this refresh.
+
+Structural sunlight uses a 2048-square D32 map with nearest depth lookup. Its
+128-byte header stores origin-relative projection rows, domain, bias and source
+direction, followed by per-cell complete-ray flags. The native metric is
+`4/(22*sqrt(2))` tiles per UO Z. Qualified opaque hits prove blockage; incomplete
+misses preserve the existing lighting fallback and never certify clear sky.
+
+The local-light pilot uses the first offer selected by the existing lamp budget,
+with six 256-square D32 faces in one 3-by-2 atlas and an 80-byte header. A qualified
+complete segment replaces the old reach/polar result so a raised beam can permit
+light beneath it. Unknown segments keep the existing result. Other selected
+lamps retain their existing route; expanding the pilot requires measured evidence.
+The old `Z/11` attenuation metric is preserved, so this does not migrate presets.
+
+Weather shelter uses a cached 1024-square D32 overhead map of `BlocksWeather`
+triangles. A per-frame compute pass classifies the actual physical receiver into
+an R8 target: 0 unknown, 128 exposed, 255 protected. An overhead hit proves
+protection; a miss proves exposure only in a complete source cell. Roof cutaway
+does not remove physical shelter. Rain and wetness consume this target on the
+same surface/light publication; unknown pixels retain the previous cover rule.
+This models overhead precipitation, not wind-driven rain through openings.
+
+Final light presentation restores the older realtime renderer's max-channel
+normalization: when accumulated RGB exceeds one, divide RGB by its largest
+channel. Dim light and alpha remain unchanged. This happens after optional
+softening, in a separate nearest RGBA16F target, before native-art multiplication.
+The raw HDR target remains intact for diagnostics. Overlapping lamps therefore
+preserve pale-art detail rather than clipping the displayed result to white.
+
+Frame callbacks bind only matching surface/snapshot resources. Optional RD
+failures discard the whole enhanced-light transaction and restore Classic.
+Disable, resize and scene teardown retire resources through the render thread.
+Sprite masks are restricted to their supporting receiver plane; soften stops
+across physical discontinuities instead of mixing different floors.
+
+See `tools/scenarios/client/lighting_physical_world.md` for disconnected Britain
+proofs. Pure tests are distinct from GPU/native acceptance. These contracts do not
+claim full-world coverage, all roof shapes, full GI, or complete point-light rollout.

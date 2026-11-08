@@ -42,6 +42,7 @@ namespace GUO.Assets
 
         public override void Load()
         {
+            NotifyDataChanged(); // PORT DEVIATION (GUO): native recipe source epoch.
             string filePath = FileManager.GetUOFilePath("artLegacyMUL.uop");
 
             if (FileManager.IsUOPInstallation && System.IO.File.Exists(filePath))
@@ -93,8 +94,14 @@ namespace GUO.Assets
         /// <summary>Re-reads the override folders (after the repaint gump writes).</summary>
         public void RescanOverrides()
         {
+            NotifyDataChanged();
             LoadOurs();
         }
+
+        // PORT DEVIATION (GUO): physical lighting recipes must retire when native
+        // art coverage changes, even when this loader instance remains alive.
+        internal ulong DataRevision { get; private set; }
+        internal void NotifyDataChanged() => DataRevision++;
 
         private void LoadOurs()
         {

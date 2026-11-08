@@ -59,7 +59,7 @@ public partial class SpriteMotionDock : EditorDock
         {
             try
             {
-                var info = new ProcessStartInfo(EditorData.Setting("UO_PYTHON", "python"))
+                var info = new ProcessStartInfo(EditorData.Python())
                 {
                     WorkingDirectory = EditorData.RepoRoot,
                     UseShellExecute = false, CreateNoWindow = true,

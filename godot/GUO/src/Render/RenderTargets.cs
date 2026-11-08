@@ -10,7 +10,7 @@ using GUO.Compat;
 
 namespace GUO.Renderer
 {
-    public class RenderTargets
+    public partial class RenderTargets
     {
         private RenderTarget2D _uiRenderTarget;
         private RenderTarget2D _lightRenderTarget;
@@ -39,6 +39,14 @@ namespace GUO.Renderer
         // PORT DEVIATION (GUO): Realtime lights (ADR-0039) draw their own
         // light texture; set, it is blended in place of the classic target.
         public Texture2D LightOverride { get; set; }
+        // PORT DEVIATION (GUO): the realtime field's ambient, set with LightOverride.
+        // Only the Glow preset reads it, to bloom local light, not the daylight floor.
+        internal Vector3 LightOverrideAmbient;
+        // PORT DEVIATION (GUO): ADR-0048 defers the light branch election until
+        // this frame's surface/light transaction succeeds; fallback stays classic.
+        internal Func<BlendState> SpeedLightBlend;
+        // PORT DEVIATION (GUO) task 1150 (ADR-0023): the enhanced frame's ambient, for light-consuming PostFx passes.
+        internal Vector3 SpeedLightAmbient;
 
         /// <summary>The world target's size in its own pixels; see GameScene.DrawWorld.</summary>
         public Rectangle GameWorldSceneAfterDPI => _gameWorldSceneAfterDPI;
@@ -58,6 +66,7 @@ namespace GUO.Renderer
         /// </remarks>
         public void EnsureSizes(Node host, Rectangle gameWindowOnScreen, Rectangle gameWorldSceneAfterDPI, float dpiScale)
         {
+            ClearCloudFrame(); // PORT DEVIATION (GUO): revoke before target resize.
             _gameWindowOnScreen = gameWindowOnScreen;
             _gameWindowAfterDPI = ScaleRectangle(gameWindowOnScreen, dpiScale);
             _gameWorldSceneOnScreen = ScaleRectangle(gameWorldSceneAfterDPI, 1/dpiScale);
@@ -116,6 +125,7 @@ namespace GUO.Renderer
         /// </remarks>
         public void Dispose()
         {
+            ClearCloudFrame(); // PORT DEVIATION (GUO): retire borrowed target references first.
             _uiRenderTarget?.Dispose();
             _uiRenderTarget = null;
             _lightRenderTarget?.Dispose();
@@ -175,11 +185,20 @@ namespace GUO.Renderer
 
             batcher.SetSampler(_defaultSamplerState);
 
+            // PORT DEVIATION (GUO) task 1150: Process re-baselines Glow to the classic input; this publishes
+            // the pass materials so the frame's render-thread transaction can elect the enhanced light.
+            var glowOutput = PostFx.PostFxStack.Instance.Process(WorldRenderTarget, LightRenderTarget,
+                SpeedLightBlend == null ? LightOverride : null, LightOverrideAmbient);
+            if (SpeedLightBlend != null && PostFx.PostFxStack.Instance.TryGetLightElection(out var glowMaterials))
+                batcher.PublishGlowLight(glowMaterials, SpeedLightAmbient);
+
             batcher.Draw(
                 // PORT DEVIATION (GUO): the world goes through the post-processing
                 // stack (ADR-0023). With Classic, the default, this is the world
                 // target's own texture, drawn exactly as upstream draws it.
-                PostFx.PostFxStack.Instance.Process(WorldRenderTarget, LightRenderTarget),
+                // Realtime lights (not the deferred enhanced path, whose success is only
+                // known at presentation) hand Glow their own field minus its ambient.
+                glowOutput,
                 _gameWorldSceneOnScreen,
                 fullAlphaNoColor,
                 0f
@@ -188,14 +207,14 @@ namespace GUO.Renderer
             // draw lights
             batcher.SetBlendState(_lightsBlendState?.Invoke());
 
-            batcher.Draw(
-                LightOverride ?? (Texture2D)LightRenderTarget, // PORT DEVIATION (GUO): ADR-0039
-                _gameWorldSceneOnScreen,
-                _lightsHue?.Invoke() ?? Vector3.Up,
-                0f
-            );
+            var lightHue=_lightsHue?.Invoke() ?? Vector3.Up;
+            if(SpeedLightBlend==null || !batcher.TryDrawSpeedLight(LightRenderTarget,LightOverride,
+                _gameWorldSceneOnScreen,lightHue,SpeedLightBlend()))
+                batcher.Draw(LightOverride ?? (Texture2D)LightRenderTarget,_gameWorldSceneOnScreen,lightHue,0f);
 
             batcher.SetBlendState(null);
+
+            DrawCloud(batcher); // PORT DEVIATION (GUO): lit weather world -> foreground -> UI.
 
             // Draw UI at original window size (render target is DPI-scaled but destination is not)
             batcher.Draw(

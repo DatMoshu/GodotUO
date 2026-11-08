@@ -12,7 +12,8 @@ exporting; installed SDKs, signing and data paths are separate prerequisites.
 | Android ARM64 | [Android Build](Android-Build.md) | Android SDK/JDK/export template and own data needed; debug-signing differs from a release key; device-specific controls/displays need hardware proof |
 | Steam Deck / SteamOS | [Steam Deck](Steam-Deck.md) | Linux export pushed by SSH; historical login-screen smoke; Game Mode and all handheld variants are not implied |
 | Web browser | [Web Client](Web-Client.md) | Separate community Godot C# web build and WebSocket-to-TCP bridge; historical Chrome local play and Firefox login proof differ |
-| macOS / other architectures | [Launcher Reference](Launcher-Reference.md) | A `.sh` file is not evidence of a tested native export; no certification asserted here |
+| macOS (Apple Silicon) | [macOS](macOS.md) | Development run with the `.sh` launchers: bootstrap, smoke and a local-shard login to character creation; no export checked |
+| Other architectures | [Launcher Reference](Launcher-Reference.md) | A `.sh` file is not evidence of a tested native export; no certification asserted here |
 
 ## Build versus run
 

@@ -19,7 +19,7 @@ namespace GUO.Renderer.Lights
     /// roof covers it. A light's reach is a small map of its radius, computed
     /// once and cached until the light moves or the blockers around it change.
     /// </remarks>
-    internal sealed class RealtimeLightField
+    internal sealed partial class RealtimeLightField
     {
         /// <summary>No blocker on the cell.</summary>
         public const short NoBlock = short.MinValue;

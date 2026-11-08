@@ -241,6 +241,15 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.godot_exe, folder / "Godot_v4.7.2-stable_mono_linux.x86_64")
         self.assertEqual(config.godot_console_exe, config.godot_exe)
 
+    def test_macos_godot_build_names(self):
+        with patch("guo.config.sys.platform", "darwin"):
+            self.defaults.write_text('set "GODOT_VERSION=4.7.2-stable"\nset "GODOT_FLAVOR=mono_win64"', encoding="utf-8")
+            config = load_config(self.root)
+        self.assertEqual(config.godot_flavor, "mono_macos.universal")
+        folder = self.root / "tools/godot/Godot_v4.7.2-stable_mono_macos.universal"
+        self.assertEqual(config.godot_exe, folder / "Godot_mono.app/Contents/MacOS/Godot")
+        self.assertEqual(config.godot_console_exe, config.godot_exe)
+
     def test_backslash_paths_are_native(self):
         self.defaults.write_text('set "UO_WORLD_PROJECT=%UO_ROOT%\\build\\world\\default"', encoding="utf-8")
         self.assertEqual(load_config(self.root).world_project, self.root / "build" / "world" / "default")

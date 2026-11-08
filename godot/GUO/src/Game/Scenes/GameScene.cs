@@ -302,8 +302,12 @@ namespace GUO.Game.Scenes
 
         public override void Unload()
         {
+            Client.Game.RetireSpeedScene(); // PORT DEVIATION (GUO): cancel departed frame publication first.
+            ReleaseSpeedWeather(); // PORT DEVIATION (GUO): ADR-0048 lifetime.
             _overview?.Dispose(); _overview = null; _wasOverview = false; // PORT DEVIATION (GUO): ADR-0045
             ResetAmbientParticles(); // PORT DEVIATION (GUO): ADR-0042 resource lifetime
+            ReleaseSpeedClouds(); // PORT DEVIATION (GUO): free above-cloud material and canvas item
+            DisposeSpeedShadows(); // PORT DEVIATION (GUO): adapter queues idempotent render-thread release
             GpuWorld.Destroy(); // PORT DEVIATION (GUO): --gpu-world's pass goes with the scene (ADR-0007)
             IO.Audio.ZoneAudio.Music.Reset();
             IO.Audio.ZoneAudio.Sfx.Reset();
@@ -453,12 +457,18 @@ namespace GUO.Game.Scenes
 
         public void AddLight(GameObject obj, GameObject lightObject, int x, int y)
         {
+#if DEBUG
+            ObserveAttributionLight(obj,"addlight-entry");
+#endif
             if (
                 _lightCount >= LightsLoader.MAX_LIGHTS_DATA_INDEX_COUNT
-                || !UseLights && !UseAltLights && !UseRealtimeLights // PORT DEVIATION (GUO): ADR-0039 lights by day too
+                || !UseLights && !UseAltLights && !UseRealtimeLights && !UseSpeedLights // PORT DEVIATION (GUO): ADR-0039/0048 lights by day too
                 || obj == null
             )
             {
+#if DEBUG
+                ObserveAttributionLight(obj,"addlight-capacity-mode-null-reject");
+#endif
                 return;
             }
 
@@ -486,6 +496,9 @@ namespace GUO.Game.Scenes
 
                     if (o.Z < _maxZ && o.Z >= z5)
                     {
+#if DEBUG
+                        ObserveAttributionLight(obj,"addlight-neighbour-reject",o);
+#endif
                         canBeAdded = false;
 
                         break;
@@ -583,6 +596,9 @@ namespace GUO.Game.Scenes
 
                 if (light.ID >= LightsLoader.MAX_LIGHTS_DATA_INDEX_COUNT)
                 {
+#if DEBUG
+                    ObserveAttributionLight(obj,"addlight-id-reject",lightId:light.ID);
+#endif
                     return;
                 }
 
@@ -595,6 +611,9 @@ namespace GUO.Game.Scenes
                 light.DrawY = y;
                 RecordRealtimeLight(obj, graphic, ref light); // PORT DEVIATION (GUO): ADR-0039 keeps the tile
                 _lightCount++;
+#if DEBUG
+                ObserveAttributionLight(obj,"addlight-accepted",lightId:light.ID);
+#endif
             }
         }
 
@@ -722,6 +741,14 @@ namespace GUO.Game.Scenes
                         stageAt = PerfStages.Add(PerfStages.Stage.MeshBuild, stageAt);
                     }
 
+                    // PORT DEVIATION (GUO): ADR-0049. Neighbouring live roof
+                    // edits can change a resident receiver without changing its
+                    // native colour mesh. Refresh before resident admission.
+                    if (UseSpeedLights)
+                    {
+                        chunk.Mesh.RefreshPhysicalRoofReceivers();
+                    }
+
                     if (chunk.Mesh.Instanced)
                     {
                         chunk.Mesh.Instances.Show(); // PORT DEVIATION (GUO): --gpu-world
@@ -734,12 +761,18 @@ namespace GUO.Game.Scenes
                     // unchanged has nothing to clear, so it skips that too.
                     if (SkipClearedOffScreen(chunk, built))
                     {
+#if DEBUG
+                        ObserveAttributionChunk(chunk,null,built,"offscreen-retained-skip");
+#endif
                         _visibleChunks.Add(chunk);
                         continue;
                     }
 
                     // Only the tiles in walkMask are walked; null walks the chunk whole.
                     ulong? walkMask = ReusableTiles(chunk, gatherInputs, built);
+#if DEBUG
+                    ObserveAttributionChunk(chunk,walkMask,built);
+#endif
                     if (walkMask == 0 && !VerifyChunkReuse)
                     {
                         _visibleChunks.Add(chunk);
@@ -795,6 +828,9 @@ namespace GUO.Game.Scenes
                     bool chunkForce = _forcePositions; // PORT DEVIATION (GUO): ChunkReuse verify
                     chunk.ScreenPositionsStale = false;
                     // PORT DEVIATION (GUO): ChunkReuse; WalkChunkTiles is upstream's tile loop.
+#if DEBUG
+                    ObserveAttributionChunk(chunk,walkMask,built,"walk-begin");
+#endif
                     BeginChunkWalk(chunk, walkMask);
                     WalkChunkTiles(chunk, use_handles, gatherInputs, walkMask);
                     EndChunkWalk(chunk, gatherInputs, landStamp, staticStamp, built, walkMask);
@@ -1093,6 +1129,10 @@ namespace GUO.Game.Scenes
 
         public override bool Draw(UltimaBatcher2D batcher, RenderTargets renderTargets)
         {
+            ResetSpeedWeatherFrame(); // PORT DEVIATION (GUO): retire before early return.
+            ResetSpeedClouds(); // PORT DEVIATION (GUO): no stale clouds on early return.
+            _speedCloudPublication = renderTargets;
+            _speedCloudFrame = renderTargets.CloudFrame;
             if (!_world.InGame)
             {
                 return false;
@@ -1132,11 +1172,18 @@ namespace GUO.Game.Scenes
 
             can_draw_lights = PrepareLightsRendering(batcher, ref matrix, renderTargets);
 
+            // PORT DEVIATION (GUO): start this world draw's offer collection.
+            // Classic preparation above must consume the preceding draw first.
+            // Also discard sources left by a failed draw before its consumers.
+            _lightCount = 0;
+            _rtSourceCount = 0;
             DrawWorld(batcher, ref matrix, renderTargets);
 
             // PORT DEVIATION (GUO): Realtime lights (ADR-0039) consume this
             // frame's offers after the world draw; nothing when the option is off.
             DrawRealtimeLights(renderTargets, ref matrix);
+            // PORT DEVIATION (GUO): ADR-0048 queues this frame's bounded GPU lights.
+            DrawSpeedLights(batcher,renderTargets,ref matrix);
 
             return base.Draw(batcher, renderTargets);
         }
@@ -1277,6 +1324,9 @@ namespace GUO.Game.Scenes
             DrawUnderlays(batcher);
 
             // PORT DEVIATION (GUO): ADR-0044 production depth backend; complete canvas replay.
+            // PORT DEVIATION (GUO): ADR-0048 origin belongs to the captured frame.
+            if (Renderer.SpeedMode.SpeedModeDebug.Active)
+                batcher.OrderedSurfaceOrigin=SpeedModeCameraOrigin();
             batcher.BeginOrderedWorld((!DepthWorldProbe.Enabled || DepthWorldProbe.FrameAdmitted)
                 && _splatObjects.Count == 0 && (_terrainLayers == null || _terrainLayers.Count == 0));
             _renderLists.FinishDepthWorldAdmission(batcher, _meshChunks, _maxGroundZ);
@@ -1307,7 +1357,8 @@ namespace GUO.Game.Scenes
 
             // draw weather
             DrawAmbientParticles(batcher); // PORT DEVIATION (GUO): UO+ opt-in, ADR-0042
-            _world.Weather.Draw(batcher, 0, 0, MAX_LAYER_DEPTH - 1);
+            DrawSpeedClouds(batcher, false); // PORT DEVIATION (GUO): experimental above-cloud view
+            DrawSpeedWeather(batcher, renderTargets, matrix, MAX_LAYER_DEPTH - 1); // PORT DEVIATION (GUO): ADR-0048
 
             DrawSelection(batcher, MAX_LAYER_DEPTH);
 

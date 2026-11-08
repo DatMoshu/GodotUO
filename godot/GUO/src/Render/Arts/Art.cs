@@ -88,6 +88,8 @@ namespace GUO.Renderer.Arts
         /// </summary>
         public void Refresh(uint idx)
         {
+            // PORT DEVIATION (GUO): invalidate native physical coverage recipes.
+            _artLoader.NotifyDataChanged();
             // PORT DEVIATION (GUO): wall-plane classification follows native
             // art edits along with the sprite cache (ADR-0039).
             if (idx >= 0x4000 && idx - 0x4000 <= ushort.MaxValue)

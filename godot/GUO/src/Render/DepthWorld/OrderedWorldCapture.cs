@@ -9,7 +9,7 @@ using GUO.Renderer;
 namespace GUO.Renderer.DepthWorld;
 
 /// <summary>Capture once; construct canvas commands only when the GPU transaction cannot be used.</summary>
-internal sealed class OrderedWorldCapture : IDisposable
+internal sealed partial class OrderedWorldCapture : IDisposable
 {
     internal static bool Enabled = DepthWorldProbe.Enabled
 #if GUO_LABS
@@ -22,10 +22,23 @@ internal sealed class OrderedWorldCapture : IDisposable
     internal static long ReferencedQuads, DynamicCaptureBytes, ReplayedQuads;
     internal static string LastFallback;
     internal static bool LastFrameOnPass;
+    // GUO task 1136: written by the render thread (and Fallback/Retire/Dispose), read by the
+    // game thread while it records the next frame's views. Volatile int; see GuoEffectPolicy.
+    private static int _lastFrameEnhancedLit;
+    internal static bool LastFrameEnhancedLit => Volatile.Read(ref _lastFrameEnhancedLit) != 0;
+    internal static void SetEnhancedLit(bool lit) => Volatile.Write(ref _lastFrameEnhancedLit, lit ? 1 : 0);
+    // PORT DEVIATION (GUO) task 1150: materials of light-consuming PostFx passes (light_tex + light_ambient)
+    // elected, in this frame's success transaction, to the light that lit the frame. Frame scoped.
+    internal Rid[] GlowMaterials; internal Vector3 GlowAmbient;
+    private static int _lastGlowElected;
+    /// <summary>Materials switched to the enhanced light in the last transaction (0 = classic stood). Read-out.</summary>
+    internal static int LastGlowElected => Volatile.Read(ref _lastGlowElected);
     internal static int InjectFailure; // Probe only: 1 before upload, 2 after recording, 3/4 geometry/order, 5/6 before/after state upload.
     internal static int InjectResidentFailureAfter = -1; // Diagnostic admission failure, no runtime option.
     internal static bool InjectStateIndexFault; // Probe-only oracle negative control; no runtime option.
     internal static bool InjectTextureSlotFault; // Probe-only wrong-slot oracle.
+    internal static bool InjectAbortFailure; // Probe only: AbortFrame's canvas cleanup throws once.
+    internal static bool InjectSpeedLightFailure; // Probe only: classic light branch must survive.
     internal static bool InjectInvalidTextureSlot; // Probe-only fail-closed range control.
     private readonly OrderedWorldDevice _device = new();
     private readonly OrderedWorldCanvas _fallback;
@@ -52,11 +65,52 @@ internal sealed class OrderedWorldCapture : IDisposable
     private Rid _canvas, _presenter;
     private string _unsupported;
     private bool _queued, _disposed;
-    private int _pending;
+    private int _pending, _sceneRetiring;
     private readonly string _vertexSource, _fragmentSource, _residentVertexSource;
     // ADR-0044 Depth World: upstream's depth for the next captured quad, and
     // the chunk land/statics drawn from resident buffers this frame.
     internal float Depth;
+    internal SpeedMode.SurfaceRow Surface;
+    internal Vector2I SurfaceOrigin;
+    internal void ClearSurfaceBinding(bool clearConsumer=false)
+    {
+        SpeedMode.SpeedModeBindings.Clear(_device);
+        if(clearConsumer) ClearSpeedLightConsumer();
+    }
+    // PORT DEVIATION (GUO): ADR-0048, a departed scene cannot publish a later ticket.
+    internal void RetireScene()
+    {
+        if (_disposed || Interlocked.CompareExchange(ref _sceneRetiring, 1, 0) != 0) return;
+        CancelUnsubmittedFrame();
+        Recording = false;
+        SetEnhancedLit(false);
+        ClearSurfaceBinding(true);
+        // Submitted callbacks retain their immutable inputs until this serialized
+        // retirement runs. New captures are refused until retirement completes.
+        RenderingServer.CallOnRenderThread(Callable.From(() =>
+        {
+            try
+            {
+                _device.DisableSurfaceRT(); // Also releases light inputs and optional GPU targets.
+                ClearSpeedLightConsumer();
+                SpeedLights = null;
+                SpeedClassicCompose = SpeedCompose = default; GlowMaterials = null;
+            }
+            finally { Volatile.Write(ref _sceneRetiring, 0); }
+        }));
+    }
+
+    private void ClearSpeedLightConsumer()
+    {
+        try { SpeedLights?.ClearLightTarget?.Invoke(SpeedLights.Batcher); }
+        catch(Exception error) { GD.PrintErr("[lighting-speed] light consumer clear failed: "+error.Message); }
+    }
+    internal SpeedMode.SpeedLightFrame SpeedLights;
+    internal Rid SpeedClassicCompose,SpeedCompose;
+    internal Texture2D SpeedLightTexture=>_device.SpeedLightTexture;
+    internal bool CanAttachSpeedLight=>_queued && _speedMode && _unsupported==null && RecoverCanvas!=null;
+    private bool _speedMode;
+    private List<SpeedMode.SurfaceRow> _surfaceRows;
     internal int Group;
     private int _landEnd = -1;
     internal void EndLand() => _landEnd = _occurrences.Count;
@@ -128,10 +182,12 @@ internal sealed class OrderedWorldCapture : IDisposable
     }
     internal readonly DepthWorldResident Resident = DepthWorldProbe.Enabled ? new DepthWorldResident() : null;
     private int _cameraX, _cameraY, _maxGroundZ = 127;
-    internal bool CanBegin => !_disposed && Volatile.Read(ref _pending) == 0 && !_queued && !Recording;
+    internal bool CanBegin => !_disposed && Volatile.Read(ref _sceneRetiring) == 0
+        && Volatile.Read(ref _pending) == 0 && !_queued && !Recording;
     internal bool Recording { get; private set; }
     internal bool Deferring => Recording && _unsupported == null;
     internal Texture2Drd Texture => _device.Presenter;
+    internal Texture2Drd SurfaceTexture => _device.SurfaceTexture;
 
     // Embedded in GUO.dll: Release exports do not depend on Labs resource filters.
     internal static string ShaderSource(string name)
@@ -158,7 +214,7 @@ internal sealed class OrderedWorldCapture : IDisposable
     {
         LastFrameOnPass = false;
         if (InjectFailure == 7) { Fallback("injected early admission"); return false; }
-        if (_disposed || Volatile.Read(ref _pending) != 0 || _queued || Recording)
+        if (_disposed || Volatile.Read(ref _sceneRetiring) != 0 || Volatile.Read(ref _pending) != 0 || _queued || Recording)
         {
             Fallback("previous frame ticket still pending or capture disposed");
             return false;
@@ -171,6 +227,9 @@ internal sealed class OrderedWorldCapture : IDisposable
         if (hue == null) { Fallback("missing hue table"); return false; }
         _occurrences.Clear(); _dynamic.Clear(); _states.Clear(); _segments.Clear(); _textures.Clear(); _commands.Clear();
         Records.Begin();
+        _speedMode = SpeedMode.SpeedModeDebug.Active;
+        SpeedLights=null; SpeedClassicCompose=SpeedCompose=default; GlowMaterials=null;
+        if (_speedMode) { _surfaceRows ??= new(8192); _surfaceRows.Clear(); }
         _batchArtCount = _textureRuns = 0;
         _canvas = default;
         Depth = 0f; Group = 0; _landEnd = -1; RecoverCanvas = null;
@@ -206,6 +265,7 @@ internal sealed class OrderedWorldCapture : IDisposable
     {
         if (!Deferring) return false;
         if (DepthWorldProbe.Enabled) Depth = layer.Depths[index];
+        if (_speedMode) Surface = SpeedMode.SurfaceRow.FromMesh(layer, index);
         if (!OrderedWorldRecords.Enabled) return Quad(layer.Textures[index], layer.Vertices[index], offset, true);
         var record = Records.Find(layer, index, false)
             ?? Records.Store(layer, index, false, layer.Vertices[index]);
@@ -296,6 +356,7 @@ internal sealed class OrderedWorldCapture : IDisposable
             });
             DynamicCaptureBytes += 192;
         }
+        if (_speedMode) _surfaceRows.Add(Surface);
         _states.Add(new OrderedWorldDevice.State
         {
             Xx = transform.X.X, Yx = transform.Y.X, OriginX = transform.Origin.X,
@@ -418,9 +479,29 @@ internal sealed class OrderedWorldCapture : IDisposable
         _queued = false;
     }
 
+    /// <summary>Abandons a frame whose draw threw: an open recording or an
+    /// unsubmitted ticket is dropped, never rendered. A submitted ticket is
+    /// left to finish with its canvas fallback intact.</summary>
+    internal void AbortFrame()
+    {
+        if (Recording || _queued) Fallback("frame aborted");
+        Recording = false;
+        _queued = false;
+        // A submitted ticket's render-thread failure replays into _fallback.
+        // Begin refuses a frame while one is pending, so the aborted frame
+        // recorded nothing there; leave it to the ticket.
+        if (Volatile.Read(ref _pending) != 0) return;
+        if (InjectAbortFailure) { InjectAbortFailure = false; throw new InvalidOperationException("injected abort cleanup failure"); }
+        _fallback.Clear();
+    }
+
+    // Probe only: hold or release the pending mark of a submitted ticket.
+    internal void ProbeHoldTicket(bool held) => Volatile.Write(ref _pending, held ? 1 : 0);
+    internal int FallbackItems => _fallback.ActiveItems; // Probe only.
+
     private void BeforeDraw()
     {
-        if (!_queued || _disposed) return;
+        if (!_queued || _disposed || Volatile.Read(ref _sceneRetiring) != 0) return;
         _queued = false;
         Volatile.Write(ref _pending, 1);
         RenderingServer.CallOnRenderThread(_render);
@@ -432,6 +513,7 @@ internal sealed class OrderedWorldCapture : IDisposable
         bool success = false;
         try
         {
+            if (Volatile.Read(ref _sceneRetiring) != 0) return;
             if (_unsupported != null) throw new NotSupportedException(_unsupported);
             var size = new Vector2I((int)_push.Screen.X, (int)_push.Screen.Y);
             if (_device.Size != size)
@@ -443,6 +525,25 @@ internal sealed class OrderedWorldCapture : IDisposable
             _device.RenderRT(CollectionsMarshal.AsSpan(_occurrences), CollectionsMarshal.AsSpan(_dynamic),
                 CollectionsMarshal.AsSpan(_states), CollectionsMarshal.AsSpan(_segments), _textureRuns, _push, true,
                 RecoverCanvas != null ? Resident : null, _cameraX, _cameraY, _maxGroundZ, Math.Max(0, _landEnd));
+            if (_speedMode && RecoverCanvas != null)
+                _device.RenderSurfaceRT(CollectionsMarshal.AsSpan(_surfaceRows), CollectionsMarshal.AsSpan(_segments),
+                    _push, Resident, _cameraX, _cameraY, _maxGroundZ, Math.Max(0, _landEnd), SurfaceOrigin);
+            else _device.DisableSurfaceRT();
+            if(SpeedLights!=null && _device.SurfaceReady)
+            {
+                try {
+                    if(InjectSpeedLightFailure) throw new InvalidOperationException("injected speed light failure");
+                    _device.RenderLightsRT(SpeedLights); _device.RenderSoftenRT(SpeedLights);
+                    SpeedLights.BindLightTarget?.Invoke(SpeedLights.Batcher,_device.SpeedLightTexture,
+                        new Vector4(0,0,_device.Size.X,_device.Size.Y),SpeedLights.Ambient);
+                }
+                catch(Exception error) {
+                    if(error is NotSupportedException) SpeedMode.SpeedModeDebug.RuntimeUnavailableReason=error.Message;
+                    _device.DisableLightRT();
+                    ClearSpeedLightConsumer();
+                    GD.PrintErr("[lighting-speed] classic lighting this frame: "+error.Message);
+                }
+            }
             if (InjectFailure == 2) throw new InvalidOperationException("injected after recording");
             FramesDrawn++;
             if (RecoverCanvas != null) ResidentFrames++;
@@ -450,23 +551,61 @@ internal sealed class OrderedWorldCapture : IDisposable
         }
         catch (Exception e)
         {
+            _device.DisableSurfaceRT();
+            ClearSpeedLightConsumer();
             Fallback(e.Message);
             ReplayCanvas();
         }
         finally
         {
+            if (Volatile.Read(ref _sceneRetiring) != 0) ClearSurfaceBinding(true);
             // These branches contain this frame only. GameObject.Draw is never replayed.
             RenderingServer.CanvasItemSetVisible(_canvas, !success);
             RenderingServer.CanvasItemSetVisible(_presenter, success);
+            bool lit=success && SpeedLights!=null && _device.SpeedLightReady;
+            if(SpeedClassicCompose.IsValid) RenderingServer.CanvasItemSetVisible(SpeedClassicCompose,!lit);
+            if(SpeedCompose.IsValid) RenderingServer.CanvasItemSetVisible(SpeedCompose,lit);
             LastFrameOnPass = success;
+            SetEnhancedLit(lit);
+            ElectGlowLight(lit);
             RecordTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started;
             Volatile.Write(ref _pending, 0);
         }
     }
 
+    // PORT DEVIATION (GUO) task 1150 (ADR-0023): same transaction, same `lit`, as the compose flip above.
+    // Fails closed: anything missing leaves the classic baseline PostFxStack.Process wrote this frame.
+    private void ElectGlowLight(bool lit)
+    {
+        var mats = GlowMaterials; GlowMaterials = null;
+        int elected = 0;
+        try
+        {
+            var tex = lit ? _device.SpeedLightTexture : null;
+            if (mats != null && tex != null && Volatile.Read(ref _sceneRetiring) == 0 && RenderingServer.IsOnRenderThread())
+            {
+                var rid = tex.GetRid();
+                if (rid.IsValid)
+                    foreach (var m in mats)
+                        if (m.IsValid)
+                        {
+                            // Ambient first: if the texture write failed, the classic texture with this
+                            // ambient can only under-bloom, never wash out (review 1150).
+                            RenderingServer.MaterialSetParam(m, "light_ambient", GlowAmbient);
+                            RenderingServer.MaterialSetParam(m, "light_tex", rid);
+                            elected++;
+                        }
+            }
+        }
+        catch (Exception e) { GD.PrintErr("[postfx] glow light election failed; classic input: " + e.Message); }
+        Volatile.Write(ref _lastGlowElected, elected);
+    }
+
     internal static void Fallback(string reason)
     {
         LastFrameOnPass = false;
+        SetEnhancedLit(false);
+        Volatile.Write(ref _lastGlowElected, 0);
         FramesFallback++;
         if (LastFallback != reason) GD.Print("[rd-world] canvas fallback: " + reason);
         LastFallback = reason;
@@ -476,12 +615,15 @@ internal sealed class OrderedWorldCapture : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        SetEnhancedLit(false);
         RenderingServer.FramePreDraw -= BeforeDraw;
         // Queued after outstanding callbacks; their immutable lists remain alive until then.
         RenderingServer.CallOnRenderThread(Callable.From(() =>
         {
             _device.DisposeRT();
             _device.Presenter.Dispose();
+            _device.SurfaceTexture.Dispose();
+            _device.SpeedLightTexture.Dispose();
             _fallback.Dispose();
             Records.Clear();
         }));

@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: BSD-2-Clause
+#version 450
+// Forward+/Mobile; six procedural vertices per bounded light, no art sampling.
+layout(push_constant,std430) uniform Light {
+    vec4 rect; vec4 world_radius; vec4 colour_energy; vec4 reach_bounds;
+    vec4 screen_mode; vec4 origin_curve; vec4 ambient_roof; vec4 unused;
+} pc;
+void main() {
+    const vec2 corner[6]=vec2[6](vec2(0,0),vec2(1,0),vec2(0,1),vec2(0,1),vec2(1,0),vec2(1,1));
+    vec2 pixel=pc.rect.xy+corner[gl_VertexIndex]*pc.rect.zw;
+    gl_Position=vec4(pixel/pc.screen_mode.xy*2.0-1.0,0,1);
+}
