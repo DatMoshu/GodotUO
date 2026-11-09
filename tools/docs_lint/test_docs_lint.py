@@ -1,7 +1,7 @@
 import tempfile
 from pathlib import Path
 import unittest
-from run import anchors, check, missing_readmes
+from run import anchors, check, missing_adr_rows, missing_readmes
 
 
 class DocsTests(unittest.TestCase):
@@ -62,6 +62,40 @@ class DocsTests(unittest.TestCase):
 
     def test_no_tools_folder_is_not_an_issue(self):
         self.assertEqual(missing_readmes(self.root), [])
+
+    def test_numbered_adr_files_need_an_index_row(self):
+        folder = self.root / "docs" / "architecture"
+        folder.mkdir(parents=True)
+        (folder / "ADR-0039-realtime-lights.md").write_text("# ADR-0039: Realtime Lights\n", encoding="utf-8")
+        (folder / "ADR-local-lighting-clock.md").write_text("# note\n", encoding="utf-8")
+        index = folder / "README.md"
+        index.write_text("| 0007 | Sorted world in batched meshes | proposed; B2 measured 2026-09-27, recommend reject |\n", encoding="utf-8")
+        issues = missing_adr_rows(self.root)
+        self.assertEqual(len(issues), 1)
+        self.assertIn("ADR 0039", issues[0].message)
+        index.write_text(index.read_text(encoding="utf-8") + "| 0039 | Realtime Lights | Proposed, 2026-10-19 |\n", encoding="utf-8")
+        self.assertEqual(missing_adr_rows(self.root), [])
+
+    def test_real_index_keeps_0007_and_lists_the_added_rows(self):
+        index = Path(__file__).resolve().parents[2] / "docs" / "architecture" / "README.md"
+        text = index.read_text(encoding="utf-8")
+        self.assertIn("| 0007 | Sorted world in batched meshes | proposed; B2 measured 2026-09-27, recommend reject |", text)
+        self.assertIn("| 0039 | Realtime Lights, a tile-grid light field for the 2D world | Proposed, 2026-10-19 |", text)
+        self.assertIn("| 0042 | UO+ ambient biome particles | Proposed for owner review, 2026-10-20 |", text)
+        self.assertIn("| 0043 | ordered RenderingDevice world prototype | owner-authorized L4 experiment, off by default (2026-10-23) |", text)
+        self.assertIn("| 0045 | Bounded local overview and whole-facet zoom | Accepted by Moshu, 2026-10-27 |", text)
+        root = Path(__file__).resolve().parents[2]
+        self.assertEqual(missing_adr_rows(root), [])
+        headings = {
+            "ADR-0039-realtime-lights.md": "Realtime Lights, a tile-grid light field for the 2D world",
+            "ADR-0042-ambient-particles.md": "UO+ ambient biome particles",
+            "ADR-0043-ordered-rendering-device-lab.md": "ordered RenderingDevice world prototype",
+            "ADR-0045-wide-zoom-overview.md": "Bounded local overview and whole-facet zoom",
+        }
+        for name, title in headings.items():
+            path = root / "docs" / "architecture" / name
+            self.assertTrue(path.is_file(), name)
+            self.assertIn(title, path.read_text(encoding="utf-8").splitlines()[0])
 
 
 if __name__ == "__main__":
