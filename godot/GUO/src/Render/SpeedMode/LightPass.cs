@@ -90,6 +90,9 @@ internal sealed partial class OrderedWorldDevice
 #if DEBUG
         if(!ProbeLegacyAmbientOutput) ambientOutput=SkyLightTerms.OutputGlsl;
 #endif
+#if GUO_LABS
+        ambientOutput=GUO.Labs.LightingStudy.LightingStudy.AmbientGlsl+ambientOutput;
+#endif
         using var source=new RDShaderSource { Language=RD.ShaderLanguage.Glsl,
             SourceVertex=SpeedShader(vertex),SourceFragment=SpeedShader(fragment)
                 .Replace("// STRUCTURAL_LAMP_SAMPLING",StructuralLampDepthRd.SamplingGlsl)
@@ -215,6 +218,10 @@ internal sealed partial class OrderedWorldDevice
                         Unused=new Vector4(-1,frame.ShadowSoftnessTenths,0,frame.SunMask.IsValid ? 1 : 0) };
 #if DEBUG
                     push[0].ScreenMode.W=frame.AmbientProbeTerm;
+#endif
+#if GUO_LABS
+                    // Ambient draw has no point-light position or radius.
+                    push[0].WorldRadius=frame.LightingStudy;
 #endif
                     _rd.DrawListSetPushConstant(list,MemoryMarshal.AsBytes(push),128);
                     _rd.DrawListDraw(list,false,1,6); SpeedLightDrawCalls++;

@@ -77,6 +77,10 @@ internal partial class GameScene
 #endif
         SpeedSunSource=sky.Source;
         frame.SunShadowStrength=sun ? sky.Strength : 0;
+#if GUO_LABS
+        frame.LightingStudy=new Vector4(-sky.Direction.X,-sky.Direction.Y,
+            RealtimeAmbientLevel(),GUO.Labs.LightingStudy.LightingStudy.Enabled ? 1 : 0);
+#endif
         if(sun && sky.Strength>0 || inputs.Requested>0 && frame.Count>0 || inputs.ShelterEnabled) {
             // Physical source is independent of visible chunks and roof cutaways.
             // Keep a bounded, chunk-aligned region around the current viewer.
