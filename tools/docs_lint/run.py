@@ -115,6 +115,25 @@ def check(root, paths):
     return issues
 
 
+def missing_adr_rows(root):
+    """Every numbered ADR file is a row in docs/architecture/README.md.
+
+    Unnumbered notes (ADR-local-*.md and the like) are not required.
+    The checker does not read or rewrite status words.
+    """
+    folder = Path(root) / "docs" / "architecture"
+    index = folder / "README.md"
+    if not folder.is_dir() or not index.is_file():
+        return []
+    text = index.read_text(encoding="utf-8")
+    issues = []
+    for path in sorted(folder.glob("ADR-[0-9][0-9][0-9][0-9]-*.md")):
+        number = path.name[4:8]
+        if f"| {number} |" not in text:
+            issues.append(Issue(index, 0, f"ADR {number} ({path.name}) has no index row"))
+    return issues
+
+
 def missing_readmes(root):
     """Every tools/<job>/ folder carries a README.md: what it is, how to run it, its tests."""
     tools = Path(root) / "tools"
@@ -146,6 +165,7 @@ def main():
     issues = check(root, sorted(paths))
     if not args.paths:
         issues += missing_readmes(root)
+        issues += missing_adr_rows(root)
     for issue in issues:
         line = f":{issue.line}" if issue.line else ""
         print(f"{issue.path.relative_to(root)}{line}: {issue.message}")

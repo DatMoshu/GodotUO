@@ -47,10 +47,14 @@ it is taken even if its file has not landed yet.
 | 0036 | Recorded audio packs | main |
 | 0037 | Water render modes | work/water-20261018 (proposed) |
 | 0038 | Packet mods and the mod ABI | work/modding-mod02-20261018 (proposed) |
+| 0039 | Realtime Lights, a tile-grid light field for the 2D world | Proposed, 2026-10-19 |
 | 0040 | One Input page for keyboard and mouse, controller and touch | work/input-05-20261018 (proposed) |
+| 0042 | UO+ ambient biome particles | Proposed for owner review, 2026-10-20 |
+| 0043 | ordered RenderingDevice world prototype | owner-authorized L4 experiment, off by default (2026-10-23) |
 | 0044 | Depth World: the world drawn with ClassicUO's depth rules on RenderingDevice | docs/adr-0044-cuo-depth-world-20261026 (accepted 2026-10-26) |
+| 0045 | Bounded local overview and whole-facet zoom | Accepted by Moshu, 2026-10-27 |
 | 0047 | Bounded item-art capacity with explicit content profiles | work/art-capacity-20261028 (proposed; offline contract only) |
 | 0048 | Lighting speed mode with a native surface buffer | work/guo-lighting-next-20261031 (opt-in; qualification ongoing) |
 | 0049 | Physical structure and native receivers for enhanced lighting | work/guo-lighting-next-20261031 (Britain implementation authorized 2026-10-31) |
 
-Next free: 0050 (0045 is the wide-zoom overview ADR; 0046 is reserved by the map paging lab branch).
+Next free: 0050 (0046 is reserved by the map paging lab branch).
