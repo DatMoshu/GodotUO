@@ -54,6 +54,14 @@ launchers/dev/smoke.sh                   # the seven-step health check
 launchers/game/play.sh                   # run it
 ```
 
+`smoke.sh` runs the same checks as `smoke.bat`, including the engine-free
+network, world-sort and server-lab programs. A step that fails is recorded
+and the rest still run; the script exits non-zero after the last one.
+Resolving the engine (`common.sh`) is the exception: if that fails, nothing
+else starts. Login preflight and the keyboard probe are separate steps.
+The effect-policy and options-flow probes pass `--depth-world` on both
+scripts, because macOS starts on the canvas ([macOS](macOS.md)).
+
 A UO install in a Wine prefix is typically at
 `~/.wine/drive_c/Program Files (x86)/Electronic Arts/Ultima Online Classic`.
 Set `UO_CLIENT_VERSION` to that client's version: the dev shard reads it from
