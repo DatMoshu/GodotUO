@@ -74,10 +74,14 @@ A phone's browser runs the game only from a secure (https) page, so the first
    host by itself.
 
 The certificate names this PC's address, its name and `<name>.local`, and is
-renewed on its own when the address changes or it nears expiry; the CA stays
-the same, so the phone installs it only once. Delete `build\web\lan_certs`
-to start over (the phone must then install the new CA, and should remove the
-old one: Encryption and credentials, User credentials).
+renewed on its own when the address changes or it nears expiry. The CA stays
+the same, so the phone installs it only once, as long as that CA already has
+a subject key identifier and an authority key identifier. A CA written before
+those extensions is reissued inside `build\web\lan_certs` only: the private
+key is kept when it still matches the certificate, and no other certificate
+store is touched. Install `guo-ca.crt` on the phone again after that reissue
+(and remove the old one: Encryption and credentials, User credentials).
+Delete `build\web\lan_certs` to start over, which also means a new CA.
 
 ## Settings
 

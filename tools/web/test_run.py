@@ -146,6 +146,11 @@ def lan_mode(tmp: Path) -> None:
     threading.Thread(target=server.serve_forever, daemon=True).start()
     port = server.server_address[1]
     trust = ssl.create_default_context(cafile=str(ca))
+    # The same strict X.509 checks that rejected the old CA on Python 3.14
+    # (Missing Authority Key Identifier). Hostname checks stay on.
+    trust.verify_flags |= ssl.VERIFY_X509_STRICT
+    check(trust.check_hostname and trust.verify_mode == ssl.CERT_REQUIRED,
+          "LAN: hostname and certificate checks stay on")
     try:
         c = http.client.HTTPSConnection("127.0.0.1", port, timeout=10, context=trust)
         c.request("GET", "/GUO.html")

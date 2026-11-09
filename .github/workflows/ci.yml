@@ -34,12 +34,20 @@ jobs:
           echo 'Synthetic reports verify: draw calls over +5% fail; any batcher-item growth fails; frame times are advisory. This job does not measure FPS.' >> "$GITHUB_STEP_SUMMARY"
           echo 'Run launchers/dev/perf_gate locally for real measurements. Baselines stay per machine under UO_BUILD_DIR and are never committed.' >> "$GITHUB_STEP_SUMMARY"
 
-  # Cheap checks that need no toolchain: nothing proprietary and nothing
-  # machine-specific may ever be committed.
+  # Cheap checks that need no game toolchain: nothing proprietary and nothing
+  # machine-specific may ever be committed. Python is pinned to the project's
+  # 3.12. ubuntu-latest's python3 is not that (it was 3.14 when the LAN CA
+  # test started failing). The pin is the supported interpreter; it does not
+  # make a certificate without key identifiers valid. tools/web/test_run.py
+  # turns on ssl.VERIFY_X509_STRICT, which is the check that failed.
   guard:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
 
       - name: No UO client data
         run: |
@@ -82,7 +90,9 @@ jobs:
         run: python3 tools/agent_queue/test_agent_queue.py
 
       - name: Web export guard (never the official Godot, never wipes the last build)
-        run: python3 tools/web/test_run.py
+        run: |
+          python3 -m pip install --quiet cryptography
+          python3 tools/web/test_run.py
 
       - name: No local config committed
         run: |
