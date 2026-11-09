@@ -9,7 +9,14 @@ python tools/launcher_lint/run.py            check; exit 1 on any problem
 python tools/launcher_lint/run.py --list     every pair with its description
 python tools/launcher_lint/run.py --json     the same as JSON
 python tools/launcher_lint/test_launcher_lint.py
+python tools/launcher_lint/test_smoke_parity.py
 ```
+
+`test_smoke_parity.py` checks that `launchers/dev/smoke.sh` names the same
+engine-free steps as `smoke.bat`, labels login preflight separately from the
+keyboard probe, and keeps going after a failed step. It stubs Godot, Python
+and `dotnet`. It does not run those programs and does not prove they pass.
+
 
 Launcher: `launchers/dev/launcher_lint.bat` / `.sh`. The smoke runs it as its
 last step, the pre-push hook (`tools/git_hooks`) runs it on every pushed tip,

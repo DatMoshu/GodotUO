@@ -41,6 +41,12 @@ dotnet run --project "$UO_ROOT/tools/world_depth_tests/WorldDepthTests.csproj" -
 echo "[smoke] art-capacity offline Labs contract (synthetic; no live protocol)"
 "$UO_PYTHON" "$UO_TOOLS/art_capacity/run.py" test || FAIL=1
 
+echo "[smoke] network checks: packet length guard, server identity (tools/network_tests; no shard)"
+dotnet run --project "$UO_ROOT/tools/network_tests/NetworkTests.csproj" --nologo || FAIL=1
+
+echo "[smoke] world sort order: key sort equals the depth-then-sequence comparison (tools/render_sort_tests)"
+dotnet run --project "$UO_ROOT/tools/render_sort_tests/RenderSortTests.csproj" --nologo || FAIL=1
+
 echo "[smoke] diagnostics correctness (fragmented loopback, plugins, compression; no FPS sampling)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://addons/guo_editor/Tests/DiagnosticsFunctionalProbe.tscn || FAIL=1
 
@@ -59,6 +65,8 @@ echo "[smoke] GUO effect ownership: spell lights and classic shadow replacement 
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Configuration/GuoEffectPolicyProbe.tscn -- --depth-world || FAIL=1
 echo "[smoke] GUO options category: no stale overwrites, section-scoped Apply/Defaults/Cancel, Classic+Modern entry (client data; task 1136)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Game/UI/Gumps/GuoOptionsFlowProbe.tscn -- --depth-world --scratch-profile --no-focus --no-splash --silent --pregame-classic --cache-dir "$UO_BUILD_DIR/guo-options-flow/cache" --client-data "$UO_CLIENT_DATA" --client-version "$UO_CLIENT_VERSION" || FAIL=1
+echo "[smoke] Lighting speed surface transport and default-off persistence (headless contract; ADR-0048)"
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" -- --lighting-speed-probe "--lighting-speed-out=$UO_BUILD_DIR/lighting-speed-probe" --no-focus || FAIL=1
 echo "[smoke] Lighting speed weather state and callback contract (headless; ADR-0048)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/SpeedMode/Weather/SpeedModeWeatherProbe.tscn || FAIL=1
 echo "[smoke] Window receiver shaft gates and failure contract (headless; ADR-0048)"
@@ -72,13 +80,13 @@ echo "[smoke] Lighting shard clock framing and logout contract (offline; ADR-004
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/SpeedMode/Shadows/ShardClockProbe.tscn || FAIL=1
 
 echo "[smoke] Realtime lights contract (synthetic; ADR-0039)"
-echo "[smoke] Lighting speed surface transport and default-off persistence (headless contract; ADR-0048)"
-"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" -- --lighting-speed-probe "--lighting-speed-out=$UO_BUILD_DIR/lighting-speed-probe" --no-focus || FAIL=1
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/Lights/RealtimeLightsProbe.tscn || FAIL=1
 echo "[smoke] UO+ spell lighting contract (synthetic; no shard or install)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/Lights/SpellLightingProbe.tscn || FAIL=1
 echo "[smoke] water render modes contract (synthetic; ADR-0037)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/Water/WaterProbe.tscn || FAIL=1
+echo "[smoke] server lab tables and server rows (synthetic; nothing fetched or started)"
+"$UO_PYTHON" "$UO_TOOLS/server_lab/test_server_lab.py" || FAIL=1
 echo "[smoke] perf lab report: fields kept, privacy refusal, size (synthetic; tools/perf_lab)"
 "$UO_PYTHON" -m pytest "$UO_TOOLS/perf_lab" -q -p no:cacheprovider || FAIL=1
 
@@ -96,9 +104,10 @@ echo "[smoke] packet mods (synthetic; builds the sample mod, ADR-0038)"
 dotnet build "$UO_ROOT/docs/modding/samples/announce/Announce.csproj" -nologo -v q || FAIL=1
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Network/Mods/ModsProbe.tscn || FAIL=1
 
-echo "[smoke] keyboard: key-ups on focus loss, AltGr text (synthetic; no shard)"
+echo "[smoke] login preflight: allocated account, no typing, no creation, arrival with z (synthetic; no shard)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" -- --login-preflight-probe --pregame-classic --silent || FAIL=1
 dotnet run --project "$UO_ROOT/tools/probe_rules_tests/ProbeRulesTests.csproj" --artifacts-path "$UO_BUILD_DIR/probe-rules-tests" --nologo || FAIL=1
+echo "[smoke] keyboard: key-ups on focus loss, AltGr text (synthetic; no shard)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" -- --keyboard-probe --pregame-classic --silent || FAIL=1
 echo "[smoke] controller regressions and Set controls (synthetic pad; no shard)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" -- --pad-regression-probe --pregame-classic --silent || FAIL=1
