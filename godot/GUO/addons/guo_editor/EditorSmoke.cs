@@ -461,6 +461,14 @@ public partial class EditorSmoke : Node
                 if (_frames >= 5)
                 {
                     CheckRestored();
+                    if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-editor-overlay-only") >= 0)
+                    {
+                        _report["panels"] = _panels;
+                        _report["world"] = _worldReport;
+                        Finish();
+                        break;
+                    }
+
                     BuildEditScript();
                     _stage = 14;
                     _frames = 0;
@@ -1491,6 +1499,36 @@ public partial class EditorSmoke : Node
 
         if (restoredOnClose)
         {
+            // Leave two facets applied at once without going through GoTo:
+            // CloseProject must restore both before either scratch reader closes.
+            var baseB = maps.GetIndex(1, OverlayBx, OverlayBy);
+            object baseBFile = baseB.MapFile;
+            ulong baseBAddress = baseB.MapAddress;
+            string multiRoot = Path.Combine(_out, $"world_project_multi{Suffix}");
+            WorldProject multi = host.OpenProject(multiRoot);
+            multi.WriteBlock(WorldProject.Capture(maps, 0, OverlayBx, OverlayBy));
+            multi.WriteBlock(WorldProject.Capture(maps, 1, OverlayBx, OverlayBy));
+            multi.Apply(maps, 0);
+            multi.Apply(maps, 1);
+            bool bothApplied = !ReferenceEquals(maps.GetIndex(0, OverlayBx, OverlayBy).MapFile, _overlayBaseMapFile)
+                && !ReferenceEquals(maps.GetIndex(1, OverlayBx, OverlayBy).MapFile, baseBFile);
+            _overlayReport["multi_facet_applied"] = bothApplied;
+            if (!bothApplied) OverlayFail("two-facet fixture did not apply both overlay readers");
+
+            host.CloseProject();
+            var restoredA = maps.GetIndex(0, OverlayBx, OverlayBy);
+            var restoredB = maps.GetIndex(1, OverlayBx, OverlayBy);
+            bool bothRestored = ReferenceEquals(restoredA.MapFile, _overlayBaseMapFile)
+                && restoredA.MapAddress == _overlayBaseMapAddress
+                && ReferenceEquals(restoredB.MapFile, baseBFile)
+                && restoredB.MapAddress == baseBAddress;
+            _overlayReport["multi_facet_restored"] = bothRestored;
+            if (!bothRestored)
+            {
+                OverlayFail("closing a two-facet overlay left an index pointing at a disposed reader");
+                return;
+            }
+
             host.GoTo(0, OverlayBx * 8, OverlayBy * 8);
             ushort land = WorldProject.Capture(maps, 0, OverlayBx, OverlayBy).LandId[0];
             _overlayReport["base_land_on_revisit"] = land == _overlayBaseLand;
