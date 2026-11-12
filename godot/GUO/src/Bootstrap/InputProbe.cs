@@ -2168,14 +2168,18 @@ internal static partial class InputProbe
             DirAccess.RemoveAbsolute(ProjectSettings.GlobalizePath(TradePartner.WhereIAm));
         }
 
-        string[] arguments =
-        {
-            "--path",
-            ProjectSettings.GlobalizePath("res://"),
-            "--",
-            "--play",
-            "--trade-partner"
-        };
+        // Export templates reject --path; the PCK beside the executable is
+        // already the project the second client should run.
+        string[] arguments = OS.HasFeature("template")
+            ? new[] { "--", "--play", "--trade-partner" }
+            : new[]
+            {
+                "--path",
+                ProjectSettings.GlobalizePath("res://"),
+                "--",
+                "--play",
+                "--trade-partner"
+            };
 
         int partnerProcess = OS.CreateProcess(OS.GetExecutablePath(), arguments);
 
