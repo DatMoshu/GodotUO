@@ -440,6 +440,17 @@ public sealed class WorldProject : IDisposable
         _overlayFiles.Clear();
     }
 
+    /// <summary>Restores every facet before any scratch reader is disposed.</summary>
+    public Dictionary<int, List<int>> RestoreAll(MapLoader maps)
+    {
+        var restored = new Dictionary<int, List<int>>();
+        foreach (int facet in _originals.Keys.Select(key => key.facet).Distinct().ToList())
+        {
+            restored[facet] = Restore(maps, facet);
+        }
+
+        return restored;
+    }
     /// <summary>
     /// Restores every overridden entry on a loaded map (before the scratch
     /// readers close) and returns the block numbers restored.
