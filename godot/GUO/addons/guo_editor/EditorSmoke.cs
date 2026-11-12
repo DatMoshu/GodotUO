@@ -1340,6 +1340,9 @@ public partial class EditorSmoke : Node
     private const ushort OverlayTree = 0x0CCA, OverlayWater = 0x00A8;
     private readonly Dictionary<string, object> _overlayReport = new();
     private Dictionary<string, DateTime> _installStamp;
+    private object _overlayBaseMapFile;
+    private ulong _overlayBaseMapAddress;
+    private ushort _overlayBaseLand;
 
     private Dictionary<string, DateTime> InstallStamp()
     {
@@ -1372,6 +1375,11 @@ public partial class EditorSmoke : Node
 
         try
         {
+            var maps = Client.Game.UO.FileManager.Maps;
+            var baseline = maps.GetIndex(0, OverlayBx, OverlayBy);
+            _overlayBaseMapFile = baseline.MapFile;
+            _overlayBaseMapAddress = baseline.MapAddress;
+            _overlayBaseLand = WorldProject.Capture(maps, 0, OverlayBx, OverlayBy).LandId[0];
             WorldProject project = _world.OpenProject(root);
             WorldBlock b = WorldProject.Capture(Client.Game.UO.FileManager.Maps, 0, OverlayBx, OverlayBy);
             _overlayReport["base_statics"] = b.Statics.Count;
@@ -1456,9 +1464,37 @@ public partial class EditorSmoke : Node
 
     private void CloseOverlay()
     {
-        if (_world.IsBooted)
+        if (!_world.IsBooted)
         {
-            _world.Host.CloseProject();
+            return;
+        }
+
+        WorldHost host = _world.Host;
+        var maps = Client.Game.UO.FileManager.Maps;
+        if (!host.GoTo(1, OverlayBx * 8, OverlayBy * 8))
+        {
+            OverlayFail("switch to facet 1 failed");
+        }
+
+        var afterSwitch = maps.GetIndex(0, OverlayBx, OverlayBy);
+        bool restoredOnSwitch = ReferenceEquals(afterSwitch.MapFile, _overlayBaseMapFile)
+            && afterSwitch.MapAddress == _overlayBaseMapAddress;
+        _overlayReport["restored_on_switch"] = restoredOnSwitch;
+        if (!restoredOnSwitch) OverlayFail("facet 0 still points at its overlay after switching to facet 1");
+
+        host.CloseProject();
+        var afterClose = maps.GetIndex(0, OverlayBx, OverlayBy);
+        bool restoredOnClose = ReferenceEquals(afterClose.MapFile, _overlayBaseMapFile)
+            && afterClose.MapAddress == _overlayBaseMapAddress;
+        _overlayReport["restored_after_close"] = restoredOnClose;
+        if (!restoredOnClose) OverlayFail("facet 0 points at a closed overlay reader");
+
+        if (restoredOnClose)
+        {
+            host.GoTo(0, OverlayBx * 8, OverlayBy * 8);
+            ushort land = WorldProject.Capture(maps, 0, OverlayBx, OverlayBy).LandId[0];
+            _overlayReport["base_land_on_revisit"] = land == _overlayBaseLand;
+            if (land != _overlayBaseLand) OverlayFail("facet 0 land changed after revisiting");
         }
     }
 

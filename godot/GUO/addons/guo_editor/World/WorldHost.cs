@@ -254,6 +254,14 @@ internal sealed class WorldHost : IDisposable
 
         if (facet != world.MapIndex)
         {
+            if (_project != null && world.Map != null)
+            {
+                int previous = world.MapIndex;
+                List<int> restored = _project.Restore(_game.UO.FileManager.Maps, previous);
+                ReloadBlocks(previous, restored);
+                OverlayChanged?.Invoke(previous, restored);
+            }
+
             world.MapIndex = facet;
             ApplyOverlay();
         }
@@ -490,12 +498,17 @@ internal sealed class WorldHost : IDisposable
             return;
         }
 
-        if (World?.Map != null)
+        if (_game?.UO.FileManager.Maps != null)
         {
-            int facet = World.MapIndex;
-            List<int> restored = _project.Restore(_game.UO.FileManager.Maps, facet);
-            ReloadBlocks(facet, restored);
-            OverlayChanged?.Invoke(facet, restored);
+            int activeFacet = World?.MapIndex ?? -1;
+            foreach (var (facet, restored) in _project.RestoreAll(_game.UO.FileManager.Maps))
+            {
+                if (facet == activeFacet)
+                {
+                    ReloadBlocks(facet, restored);
+                    OverlayChanged?.Invoke(facet, restored);
+                }
+            }
         }
 
         _project.Dispose();
