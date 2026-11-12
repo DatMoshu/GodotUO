@@ -15,7 +15,7 @@ launchers\dev\brand_icons.bat  rebuild every icon from design\brand\guo-sigil.pn
 Everything is `python tools\windows\run.py <doctor|preset|export|icon>`
 underneath.
 
-The shared preset excludes seven reviewed editor addon families and five exact
+The Windows preset excludes ten editor addon families and five exact
 Accounts C# source placeholders. These are resource-package exclusions, not
 MSBuild compile removals; account CLR behavior remains compiled. The normal
 launcher renders this template before each export. Icon/export success is
