@@ -256,7 +256,14 @@ public sealed partial class GeneratePanel : VBoxContainer
 
     private async void LoadStyles()
     {
-        _styles = await _client.StylesAsync();
+        var styles = await _client.StylesAsync();
+        if (!GodotObject.IsInstanceValid(this) || !IsInsideTree())
+        {
+            _stylesLoaded.TrySetCanceled();
+            return;
+        }
+
+        _styles = styles;
         _style.Clear();
         foreach (GenStyle s in _styles)
         {
@@ -363,6 +370,11 @@ public sealed partial class GeneratePanel : VBoxContainer
     /// <summary>Generates now, skipping the debounce, and returns the answer (the Apply buttons wait for this).</summary>
     public async Task<GenResult> NowAsync()
     {
+        if (!GodotObject.IsInstanceValid(this) || !IsInsideTree())
+        {
+            return Last;
+        }
+
         _debounce?.Stop();
         if (_styles.Count == 0)
         {
@@ -372,7 +384,7 @@ public sealed partial class GeneratePanel : VBoxContainer
         long mine = ++_ticket;
         string op = Generator;
         GenResult res = await _client.GenerateAsync(op, Request());
-        if (mine != _ticket || !IsInsideTree())
+        if (mine != _ticket || !GodotObject.IsInstanceValid(this) || !IsInsideTree())
         {
             return Last;
         }
@@ -389,6 +401,8 @@ public sealed partial class GeneratePanel : VBoxContainer
 
     public override void _ExitTree()
     {
+        ++_ticket;
+        _stylesLoaded.TrySetCanceled();
         if (_owns)
         {
             _client.Dispose();

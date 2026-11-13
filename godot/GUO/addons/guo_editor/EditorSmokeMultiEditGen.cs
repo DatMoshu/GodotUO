@@ -31,6 +31,53 @@ public partial class EditorSmoke
     private string Describe(ValidationResult r) =>
         string.Join("; ", r.Findings.Where(f => f.Severity == FindingSeverity.Error).Take(4).Select(f => $"{f.Kind} {f.Message}"));
 
+    private async Task CheckGeneratorLifetimeAsync(MultiEditView view)
+    {
+        var closingPanel = new GeneratePanel(view.GenClient) { Visible = false };
+        AddChild(closingPanel);
+        bool loaded = await WaitFor(() => closingPanel.StylesLoaded.IsCompleted, 30);
+        MeCheck("generate_disposed_panel_styles", loaded && closingPanel.StyleCount > 0);
+        if (loaded && closingPanel.StyleCount > 0)
+        {
+            await closingPanel.NowAsync();
+            int published = 0;
+            closingPanel.Generated += (_, _) => published++;
+            Task<GenResult> pending = closingPanel.NowAsync();
+            MeCheck("generate_disposed_panel_request_in_flight", !pending.IsCompleted);
+            closingPanel.Free();
+            bool completed = await WaitFor(() => pending.IsCompleted, 30);
+            MeCheck("generate_disposed_panel_completed", completed);
+            MeCheck("generate_disposed_panel_no_fault", completed && !pending.IsFaulted && !pending.IsCanceled,
+                pending.Exception?.GetBaseException().GetType().Name);
+            MeCheck("generate_disposed_panel_no_publish", published == 0);
+            try
+            {
+                await closingPanel.NowAsync();
+                MeCheck("generate_disposed_panel_noop", true);
+            }
+            catch (Exception e)
+            {
+                MeCheck("generate_disposed_panel_noop", false, e.GetType().Name);
+            }
+        }
+        else
+        {
+            closingPanel.Free();
+        }
+
+        using var closingClient = new MultiGenerateClient();
+        Task<GenResult> request = closingClient.GenerateAsync("house", view.GeneratePanel.Request());
+        MeCheck("generate_disposed_client_request_in_flight", !request.IsCompleted);
+        closingClient.Dispose();
+        bool stopped = await WaitFor(() => request.IsCompleted, 30);
+        MeCheck("generate_disposed_client_completed", stopped);
+        MeCheck("generate_disposed_client_no_fault", stopped && !request.IsFaulted && !request.IsCanceled,
+            request.Exception?.GetBaseException().GetType().Name);
+        MeCheck("generate_disposed_client_stopped", closingClient.ProcessId == null);
+        GenResult rejected = await closingClient.GenerateAsync("house", view.GeneratePanel.Request());
+        MeCheck("generate_disposed_client_rejects_work", !rejected.Ok && closingClient.ProcessId == null);
+    }
+
     private async Task RunMultiEditPhase2Async(MultiEditView view, string root, ushort floorId)
     {
         MultiCanvas canvas = view.Canvas;
@@ -60,6 +107,7 @@ public partial class EditorSmoke
         MeCheck("generate_one_process", pid != null && view.GenClient.ProcessId == pid && again.Ok);
         _meReport["generate_house_components"] = house.Components.Count;
         _meReport["generate_ms"] = Math.Round(house.Ms, 1);
+        await CheckGeneratorLifetimeAsync(view);
 
         // Apply replaces in one undo step; undo takes it back; redo again.
         bool applied = await view.ApplyGeneratedAsync(true);
