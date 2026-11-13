@@ -41,6 +41,12 @@ dotnet run --project "$UO_ROOT/tools/world_depth_tests/WorldDepthTests.csproj" -
 echo "[smoke] art-capacity offline Labs contract (synthetic; no live protocol)"
 "$UO_PYTHON" "$UO_TOOLS/art_capacity/run.py" test || FAIL=1
 
+echo "[smoke] network checks: packet length guard, server identity (tools/network_tests; no shard)"
+dotnet run --project "$UO_ROOT/tools/network_tests/NetworkTests.csproj" --artifacts-path "$UO_BUILD_DIR/network-tests" --nologo || FAIL=1
+
+echo "[smoke] world sort order: key sort equals the depth-then-sequence comparison (tools/render_sort_tests)"
+dotnet run --project "$UO_ROOT/tools/render_sort_tests/RenderSortTests.csproj" --artifacts-path "$UO_BUILD_DIR/render-sort-tests" --nologo || FAIL=1
+
 echo "[smoke] diagnostics correctness (fragmented loopback, plugins, compression; no FPS sampling)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://addons/guo_editor/Tests/DiagnosticsFunctionalProbe.tscn || FAIL=1
 
