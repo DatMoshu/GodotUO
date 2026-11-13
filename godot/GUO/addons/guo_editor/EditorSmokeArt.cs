@@ -677,6 +677,37 @@ public partial class EditorSmoke
         {
             System.Environment.SetEnvironmentVariable("GUO_MUSIC_DIR", oldMusic);
         }
+
+        // ADR-0051: retained manual mappings round-trip without a synthesis
+        // transport. Use only an isolated profile directory, never user voices.
+        string oldVoices = System.Environment.GetEnvironmentVariable("GUO_VOICES");
+        string oldDefault = System.Environment.GetEnvironmentVariable("GUO_DEFAULT_VOICE");
+        string voiceTmp = Path.Combine(_out, "legacy_voice_metadata");
+        try
+        {
+            Directory.CreateDirectory(voiceTmp);
+            System.Environment.SetEnvironmentVariable("GUO_VOICES", voiceTmp);
+            System.Environment.SetEnvironmentVariable("GUO_DEFAULT_VOICE", null);
+            File.WriteAllText(Path.Combine(voiceTmp, "manual_fixture.json"), "{}");
+            var voices = GUO.IO.Audio.VoiceManager.EnrolledVoices();
+            ArtCheck("legacy_voice_profile_listed", voices.Contains("manual_fixture"));
+            ArtCheck("legacy_voice_mapping_saved", GUO.IO.Audio.VoiceManager.AssignVoice(1234, "manual_fixture"));
+            ArtCheck("legacy_voice_default_saved", GUO.IO.Audio.VoiceManager.SetDefaultVoice("manual_fixture"));
+            string path = Path.Combine(voiceTmp, "voices.json");
+            using var saved = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+            ArtCheck("legacy_voice_default_reopened", saved.RootElement.GetProperty("default").GetString() == "manual_fixture"
+                && GUO.IO.Audio.VoiceManager.DefaultVoice() == "manual_fixture");
+            ArtCheck("legacy_voice_mapping_reopened", saved.RootElement.GetProperty("rules").GetArrayLength() == 1
+                && GUO.IO.Audio.VoiceManager.ResolveRule(1234, "fixture", 0) == "manual_fixture");
+            ArtCheck("legacy_voice_mapping_cleared", GUO.IO.Audio.VoiceManager.AssignVoice(1234, null)
+                && GUO.IO.Audio.VoiceManager.ResolveRule(1234, "fixture", 0) == null
+                && GUO.IO.Audio.VoiceManager.DefaultVoice() == "manual_fixture");
+        }
+        finally
+        {
+            System.Environment.SetEnvironmentVariable("GUO_VOICES", oldVoices);
+            System.Environment.SetEnvironmentVariable("GUO_DEFAULT_VOICE", oldDefault);
+        }
     }
 
     private static byte[] WavFixture(int channels = 1, int rate = 22050)

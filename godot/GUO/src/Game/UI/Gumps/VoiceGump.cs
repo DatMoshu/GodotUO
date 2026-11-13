@@ -9,17 +9,16 @@ using GUO.IO.Audio;
 namespace GUO.Game.UI.Gumps
 {
     /// <summary>
-    /// In-game voice casting: target a mobile, hear which voice it has,
+    /// In-game voice casting: target a mobile, inspect its legacy voice mapping,
     /// cycle the enrolled voices, assign one (saved to voices.json rules),
-    /// design a new one for it (slow: Qwen voice design, fire-and-forget),
     /// or make the pick the fallback for every unmapped mobile. Opened with
-    /// the "-voice" client command. Spoken lines themselves already flow
-    /// through VoiceManager whenever a mapped mobile talks.
+    /// the "-voice" client command. These loose-file mappings are retained
+    /// for migration; recorded pack playback uses its separate typed reader.
     /// </summary>
     internal sealed class VoiceGump : Gump
     {
         private const int W = 320;
-        private const int H = 400;
+        private const int H = 280;
 
         private readonly Label _mobLabel;
         private readonly Label _currentLabel;
@@ -31,7 +30,6 @@ namespace GUO.Game.UI.Gumps
         private ushort _mobBody;
         private readonly List<string> _voices = new();
         private int _voiceIdx = -1;
-        private uint _designSerial;
 
         private enum Buttons
         {
@@ -39,8 +37,6 @@ namespace GUO.Game.UI.Gumps
             VoicePrev,
             VoiceNext,
             Assign,
-            Design,
-            Test,
             SetDefault,
             Close
         }
@@ -101,18 +97,6 @@ namespace GUO.Game.UI.Gumps
                 ButtonParameter = (int)Buttons.Assign,
                 IsSelectable = false
             });
-            Add(new NiceButton(158, y, 130, 24, ButtonAction.Activate, "Design")
-            {
-                ButtonParameter = (int)Buttons.Design,
-                IsSelectable = false
-            });
-
-            y += 32;
-            Add(new NiceButton(12, y, 130, 24, ButtonAction.Activate, "Test")
-            {
-                ButtonParameter = (int)Buttons.Test,
-                IsSelectable = false
-            });
             Add(new NiceButton(158, y, 130, 24, ButtonAction.Activate, "Set Default")
             {
                 ButtonParameter = (int)Buttons.SetDefault,
@@ -130,7 +114,7 @@ namespace GUO.Game.UI.Gumps
             SetInScreen();
             if (_voices.Count == 0)
             {
-                Say("No enrolled voices (voice.py enroll).");
+                Say("No voice profiles.");
             }
         }
 
@@ -155,41 +139,6 @@ namespace GUO.Game.UI.Gumps
         private void Say(string s)
         {
             _statusLabel.Text = s;
-        }
-
-        public override void Update()
-        {
-            base.Update();
-            if (IsDisposed || _designSerial == 0)
-            {
-                return;
-            }
-
-            // The design worker reports through the shared driver status;
-            // pick up completion (or failure) so the gump stops showing the
-            // click-time message after the voice lands.
-            string st = VoiceManager.Status ?? "";
-            if (st.StartsWith("designed"))
-            {
-                _designSerial = 0;
-                RefreshVoices();
-                string resolved = _serial == 0 ? null
-                    : VoiceManager.ResolveVoice(_serial, _mobName, _mobBody);
-                int at = resolved == null ? -1 : _voices.FindIndex(v =>
-                    string.Equals(v, resolved, System.StringComparison.OrdinalIgnoreCase));
-                if (at >= 0)
-                {
-                    _voiceIdx = at;
-                }
-
-                UpdateLabels();
-                Say(st + ".");
-            }
-            else if (st.StartsWith("error"))
-            {
-                _designSerial = 0;
-                Say(st);
-            }
         }
 
         public override void OnButtonClick(int buttonID)
@@ -260,31 +209,6 @@ namespace GUO.Game.UI.Gumps
                     }
                     break;
 
-                case (int)Buttons.Design:
-                    if (_serial == 0)
-                    {
-                        Say("Target a mobile first.");
-                    }
-                    else
-                    {
-                        VoiceManager.DesignVoice((int)_serial, _mobName, _mobBody, "mobile");
-                        _designSerial = _serial;
-                        Say($"Designing a voice for {_mobName} (slow)...");
-                    }
-                    break;
-
-                case (int)Buttons.Test:
-                    if (_serial == 0 || string.IsNullOrEmpty(CurrentVoice))
-                    {
-                        Say("Target a mobile and pick a voice first.");
-                    }
-                    else
-                    {
-                        VoiceManager.Speak("Greetings, traveler.", 0, CurrentVoice);
-                        Say($"Speaking as '{CurrentVoice}'.");
-                    }
-                    break;
-
                 case (int)Buttons.SetDefault:
                     if (string.IsNullOrEmpty(CurrentVoice))
                     {
@@ -292,7 +216,7 @@ namespace GUO.Game.UI.Gumps
                     }
                     else if (VoiceManager.SetDefaultVoice(CurrentVoice))
                     {
-                        Say($"'{CurrentVoice}' voices every unmapped mobile.");
+                        Say($"'{CurrentVoice}' is the default voice mapping.");
                         UpdateLabels();
                     }
                     else

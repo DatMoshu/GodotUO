@@ -1513,8 +1513,10 @@ playlist in round-robin while the player stands inside (music replaces the
 base music, sfx beds over the base sounds), fading out on exit.
 NPC voices resolve per mobile from `voices.json` rules (serials, names or
 bodies, first match wins), else an automatic stable pick from the enrolled
-bank (serial hash, so relogs keep voices) with a per-NPC clone seed, else
-the `default` voice. The `-voice` gump targets, tests, assigns and designs;
+bank (serial hash, so relogs keep mappings), else
+the `default` voice. The `-voice` gump retains manual legacy profile targeting, assignment and defaults;
+these mappings are separate from typed recorded-pack playback. Runtime synthesis,
+Design/Test actions and the Python launcher were retired under ADR-0051;
 `-audiozones` (`-musiczone` still works, `-sfxzone` starts on SFX) places
 rects with prepared track playlists the scene cycles, and shows the zone
 outline in the world on demand.

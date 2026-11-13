@@ -43,8 +43,8 @@ namespace GUO.Game.Managers
             // In-game splat placer (staged splats, live
             // preview + manifest save). Upstream has no generated content.
             Register("splat", s => UIManager.Add(new UI.Gumps.SplatPlacerGump(_world)));
-            // PORT DEVIATION (GUO): NPC voice casting (enrolled voices,
-            // rules, design). Upstream mobiles are silent data.
+            // PORT DEVIATION (GUO): ADR-0051 retains manual voice mappings; no synthesis.
+            // Upstream mobiles are silent data.
             Register("voice", s => UIManager.Add(new UI.Gumps.VoiceGump(_world)));
             // PORT DEVIATION (GUO): ambient music zones (generated tracks,
             // tile rects, round-robin). Upstream music is data indices.
