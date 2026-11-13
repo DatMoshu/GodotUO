@@ -94,7 +94,10 @@ namespace GUO.Renderer
             var layers = new List<TerrainLayer>();
             try
             {
-                string manifest = Path.Combine(LayerDir(), "layers.json");
+                if (!TerrainLayerPaths.TryResolve(LayerDir(), "layers.json", out string manifest, out _, out _))
+                {
+                    return layers;
+                }
                 if (!File.Exists(manifest))
                 {
                     return layers;
@@ -165,14 +168,26 @@ namespace GUO.Renderer
             if (d.TryGetProperty("opacity", out JsonElement o) && o.TryGetSingle(out float op)) into.Opacity = op;
         }
 
+        // Preflight every fixed descendant before creating either directory.
+        public static bool CanSave(string dir, out string reason)
+        {
+            return TerrainLayerPaths.TryResolve(dir, "layers.json", out _, out _, out reason)
+                && TerrainLayerPaths.TryResolve(dir, "underlays", out _, out _, out reason)
+                && TerrainLayerPaths.TryResolve(dir, "overlays", out _, out _, out reason);
+        }
+
         public static bool Save(List<TerrainLayer> layers, LayerDefaults defaults)
         {
             try
             {
                 string dir = LayerDir();
+                if (!CanSave(dir, out _))
+                {
+                    return false;
+                }
                 Directory.CreateDirectory(dir);
-                Directory.CreateDirectory(Path.Combine(dir, "underlays"));
-                Directory.CreateDirectory(Path.Combine(dir, "overlays"));
+                TerrainLayerPaths.CreateDirectory(dir, "underlays");
+                TerrainLayerPaths.CreateDirectory(dir, "overlays");
                 using var stream = new MemoryStream();
                 using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
                 {
@@ -215,7 +230,8 @@ namespace GUO.Renderer
                     writer.WriteEndObject();
                 }
 
-                File.WriteAllText(Path.Combine(dir, "layers.json"),
+                string manifest = TerrainLayerPaths.Resolve(dir, "layers.json", out _);
+                File.WriteAllText(manifest,
                     System.Text.Encoding.UTF8.GetString(stream.ToArray()) + "\n");
                 return true;
             }
@@ -236,8 +252,8 @@ namespace GUO.Renderer
         {
             try
             {
-                string path = Path.Combine(dir, layer.Image);
-                if (!File.Exists(path))
+                if (!TerrainLayerPaths.TryResolve(dir, layer.Image, out string path, out _, out _)
+                    || !File.Exists(path))
                 {
                     return null;
                 }

@@ -329,47 +329,71 @@ public partial class LayersDock : EditorDock
 
     private void BrowseImage()
     {
-        string dir = TerrainLayers.LayerDir();
-        string sub = _kind.Selected == 1 ? "underlays" : "overlays";
-        Directory.CreateDirectory(Path.Combine(dir, sub));
-        var dialog = new FileDialog
+        FileDialog dialog = null;
+        try
         {
-            Access = FileDialog.AccessEnum.Filesystem,
-            FileMode = FileDialog.FileModeEnum.OpenFile,
-            CurrentDir = Path.Combine(dir, sub),
-        };
-        dialog.AddFilter("*.png", "PNG images");
-        AddChild(dialog);
-        dialog.FileSelected += path =>
+            string dir = TerrainLayers.LayerDir();
+            string sub = _kind.Selected == 1 ? "underlays" : "overlays";
+            string browseDir = TerrainLayerPaths.CreateDirectory(dir, sub);
+            dialog = new FileDialog
+            {
+                Access = FileDialog.AccessEnum.Filesystem,
+                FileMode = FileDialog.FileModeEnum.OpenFile,
+                CurrentDir = browseDir,
+            };
+            dialog.AddFilter("*.png", "PNG images");
+            AddChild(dialog);
+            FileDialog picker = dialog;
+            dialog.FileSelected += path =>
+            {
+                try
+                {
+                    _image.Text = StageImage(path, _kind.Selected == 1);
+                }
+                catch (Exception ex)
+                {
+                    Report($"Could not import image: {ex.Message}");
+                }
+                finally
+                {
+                    picker.QueueFree();
+                }
+            };
+            dialog.Canceled += dialog.QueueFree;
+            dialog.PopupCentered(new Vector2I(700, 450));
+        }
+        catch (Exception ex)
         {
-            _image.Text = StageImage(path, _kind.Selected == 1);
-            dialog.QueueFree();
-        };
-        dialog.Canceled += dialog.QueueFree;
-        dialog.PopupCentered(new Vector2I(700, 450));
+            dialog?.QueueFree();
+            Report($"Could not browse images: {ex.Message}");
+        }
     }
 
     /// <summary>
-    /// Makes a picked PNG addressable from the manifest: already under the
-    /// layer folder it is relativized in place, else it is copied into
-    /// overlays/ (or underlays/). Returns the manifest-relative path.
+    /// Safe inside files stay in place; an explicitly picked outside source
+    /// (including a redirected/network selection) is copied byte-for-byte.
+    /// Only its destination is an untrusted layer-relative reference.
     /// </summary>
     public static string StageImage(string path, bool underlay)
     {
         string dir = TerrainLayers.LayerDir();
         string full = Path.GetFullPath(path);
-        string root = Path.GetFullPath(dir) + Path.DirectorySeparatorChar;
-        if (full.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+        if (TerrainLayerPaths.IsInside(dir, full, out string relative))
         {
-            return full.Substring(root.Length).Replace(Path.DirectorySeparatorChar, '/');
+            // A rejected inside descendant must never fall back to outside import.
+            string inside = TerrainLayerPaths.Resolve(dir, relative, out relative);
+            if (!File.Exists(inside))
+                throw new FileNotFoundException("Selected layer image was not found.");
+            return relative;
         }
 
         string sub = underlay ? "underlays" : "overlays";
-        Directory.CreateDirectory(Path.Combine(dir, sub));
-        string dest = Path.Combine(dir, sub, Path.GetFileName(full));
+        string dest = TerrainLayerPaths.Resolve(dir, $"{sub}/{Path.GetFileName(full)}", out relative);
+        TerrainLayerPaths.CreateDirectory(dir, sub);
+        dest = TerrainLayerPaths.Resolve(dir, relative, out relative);
         File.Copy(full, dest, true);
         GD.Print($"[GUO editor] layers: copied {full} to {dest}");
-        return $"{sub}/{Path.GetFileName(full)}";
+        return relative;
     }
 
     private TerrainLayer ReadUi(string id)
@@ -384,7 +408,7 @@ public partial class LayersDock : EditorDock
             Y0 = (int)_y0.Value,
             X1 = (int)_x1.Value,
             Y1 = (int)_y1.Value,
-            Image = (_image.Text ?? "").Trim(),
+            Image = _image.Text ?? "",
             Prompt = _prompt.Text ?? "",
             Opacity = (float)_opacity.Value,
         };
@@ -392,8 +416,11 @@ public partial class LayersDock : EditorDock
 
     private bool ImageResolves(TerrainLayer l)
     {
-        return !string.IsNullOrEmpty(l.Image)
-            && File.Exists(Path.Combine(TerrainLayers.LayerDir(), l.Image));
+        if (!TerrainLayerPaths.TryResolve(TerrainLayers.LayerDir(), l.Image,
+            out string path, out string relative, out _) || !File.Exists(path))
+            return false;
+        l.Image = relative;
+        return true;
     }
 
     /// <summary>Adds the form as a new layer and saves. Empty id becomes layer_N.</summary>
@@ -422,8 +449,8 @@ public partial class LayersDock : EditorDock
             return $"Image not found under {TerrainLayers.LayerDir()}: {l.Image}.";
         }
 
-        _layers.Add(l);
-        bool ok = Persist();
+        var proposed = new List<TerrainLayer>(_layers) { l };
+        bool ok = Persist(proposed);
         if (ok)
         {
             Select(id);
@@ -447,17 +474,9 @@ public partial class LayersDock : EditorDock
             return $"Image not found under {TerrainLayers.LayerDir()}: {next.Image}.";
         }
 
-        l.Name = next.Name;
-        l.Kind = next.Kind;
-        l.Facet = next.Facet;
-        l.X0 = next.X0;
-        l.Y0 = next.Y0;
-        l.X1 = next.X1;
-        l.Y1 = next.Y1;
-        l.Image = next.Image;
-        l.Prompt = next.Prompt;
-        l.Opacity = next.Opacity;
-        return Persist() ? $"Updated {l.Id}. -relayers in the client to see it." : "Could not write layers.json.";
+        var proposed = new List<TerrainLayer>(_layers);
+        proposed[proposed.IndexOf(l)] = next;
+        return Persist(proposed) ? $"Updated {l.Id}. -relayers in the client to see it." : "Could not write layers.json.";
     }
 
     /// <summary>Removes the selected layer (the PNG stays) and saves.</summary>
@@ -469,15 +488,18 @@ public partial class LayersDock : EditorDock
             return "Select a layer first.";
         }
 
-        _layers.Remove(l);
-        return Persist() ? $"Removed {l.Id}." : "Could not write layers.json.";
+        var proposed = new List<TerrainLayer>(_layers);
+        proposed.Remove(l);
+        return Persist(proposed) ? $"Removed {l.Id}." : "Could not write layers.json.";
     }
 
-    private bool Persist()
+    private bool Persist(List<TerrainLayer> proposed)
     {
-        bool ok = TerrainLayers.Save(_layers, _defaults);
+        if (!TerrainLayers.Save(proposed, _defaults))
+            return false;
+        _layers = proposed;
         Refresh();
-        return ok;
+        return true;
     }
 
     /// <summary>

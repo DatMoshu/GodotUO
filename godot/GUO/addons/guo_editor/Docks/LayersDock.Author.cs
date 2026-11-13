@@ -2,6 +2,7 @@
 namespace GUO.Editor;
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -528,15 +529,13 @@ public partial class LayersDock
             return id;
         }
 
-        Refresh();
         int n = _layers.Count + 1;
         while (_layers.Any(l => string.Equals(l.Id, $"layer_{n}", StringComparison.OrdinalIgnoreCase)))
         {
             n++;
         }
 
-        _id.Text = $"layer_{n}";
-        return _id.Text;
+        return $"layer_{n}";
     }
 
     /// <summary>Writes the decal PNG and files it as the layer's image (add or update).</summary>
@@ -550,16 +549,40 @@ public partial class LayersDock
         string id = ResolveId();
         string sub = _kind.Selected == 1 ? "underlays" : "overlays";
         string dir = TerrainLayers.LayerDir();
-        Directory.CreateDirectory(Path.Combine(dir, sub));
-        string path = Path.Combine(dir, sub, $"{id}.png");
-        if (_decal.SavePng(path) != Error.Ok)
+        try
         {
-            return $"Could not write {path}.";
-        }
+            // Preflight the constructed output and every fixed save destination
+            // before PNG, form or model mutation (including a proposed empty ID).
+            string path = TerrainLayerPaths.Resolve(dir, $"{sub}/{id}.png", out string relative);
+            if (!TerrainLayers.CanSave(dir, out string reason))
+                return $"Could not save layer: {reason}";
+            TerrainLayer next = ReadUi(id);
+            next.Image = relative;
+            var proposed = new List<TerrainLayer>(_layers);
+            int index = proposed.FindIndex(l => string.Equals(l.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (index < 0)
+                proposed.Add(next);
+            else
+                proposed[index] = next;
 
-        _image.Text = $"{sub}/{id}.png";
-        TerrainLayer existing = _layers.FirstOrDefault(l => string.Equals(l.Id, id, StringComparison.OrdinalIgnoreCase));
-        return existing == null ? AddFromUi() : UpdateSelected();
+            // Nested safe IDs remain valid. Recheck after parent creation and
+            // immediately before SavePng; no transaction across PNG/JSON implied.
+            string parent = relative.Substring(0, relative.LastIndexOf('/'));
+            TerrainLayerPaths.CreateDirectory(dir, parent);
+            path = TerrainLayerPaths.Resolve(dir, relative, out _);
+            if (!TerrainLayers.CanSave(dir, out reason))
+                return $"Could not save layer: {reason}";
+            if (_decal.SavePng(path) != Error.Ok)
+                return $"Could not write {path}.";
+            if (!Persist(proposed))
+                return "Could not write layers.json.";
+            Select(id);
+            return $"Saved {id}. -relayers in the client to see it.";
+        }
+        catch (Exception ex)
+        {
+            return $"Could not save layer: {ex.Message}";
+        }
     }
 }
 #endif

@@ -4524,3 +4524,37 @@ across physical discontinuities instead of mixing different floors.
 See `tools/scenarios/client/lighting_physical_world.md` for disconnected Britain
 proofs. Pure tests are distinct from GPU/native acceptance. These contracts do not
 claim full-world coverage, all roof shapes, full GI, or complete point-light rollout.
+
+## 53. Terrain layer file references
+
+The existing `TerrainLayers` reader loads `layers.json` beneath `GUO_LAYER_DIR`,
+or the OS ApplicationData `GUO/layers` default. That selected root and its
+ancestors are trusted configuration, including redirected or network roots.
+This correction does not change the JSON schema, logical layer IDs, rendering,
+opacity, mipmaps, filtering, AI policy or Store installation rules.
+
+Image references must be relative descendants of that root. Safe legacy relative
+backslashes normalize to forward slashes when accepted by the editor. Ordinary
+spaces, Unicode, nested paths and safe dot-prefixed names remain valid. Rooted,
+drive-relative, UNC/device, URI/ADS, traversal/dot/empty components, control
+characters, invalid Windows filename syntax, trailing dots/spaces and reserved
+device aliases are rejected before candidate filesystem inspection. Invalid or
+missing textures fail gracefully without purging their retained layer metadata.
+
+`TerrainLayerPaths` checks descendant entries parent first and rejects reparse
+points/links, including final and dangling leaves, or inspection errors. Fixed
+`layers.json` reads/writes and both image directories use the same boundary.
+The editor preflights a constructed decal destination before writing PNG or
+changing the form/model; rejected metadata saves preserve form and selection.
+
+An explicitly picked outside image remains an allowed import, including a
+redirected/network selection. Its destination is confined and copied byte for
+byte with the existing overwrite behavior. A safe inside file is normalized in
+place; an inside descendant link is rejected rather than retried as an outside
+import. Browse failures show status and free the dialog.
+
+These are check-before-open guards. Concurrent replacement, hard-link aliases
+and hostile mount changes are outside the guarantee; there is no hostile local
+process sandbox or transactional PNG-plus-JSON save claim. Tests use synthetic
+local files/links only; network spellings are lexical cases. See
+`tools/editor_smoke/terrain_paths/README.md` for focused checks.

@@ -110,7 +110,13 @@ internal static class LayerShot
         {
             // Mid-session manifest swap: proves -relayers re-reads layers.json
             // without a restart (boot-load alone would prove nothing).
-            System.IO.File.Copy(SwapManifest, System.IO.Path.Combine(GUO.Renderer.TerrainLayers.LayerDir(), "layers.json"), true);
+            if (!GUO.Renderer.TerrainLayerPaths.TryResolve(GUO.Renderer.TerrainLayers.LayerDir(), "layers.json",
+                out string manifest, out _, out string reason))
+            {
+                GD.PrintErr($"[GUO] layer shot: manifest swap rejected: {reason}");
+                return;
+            }
+            System.IO.File.Copy(SwapManifest, manifest, true);
             GD.Print("[GUO] layer shot: manifest swapped; saying -relayers");
             await InputProbe.Say(host, "-relayers");
             await InputProbe.Wait(host, 180);
