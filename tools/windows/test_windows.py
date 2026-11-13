@@ -35,7 +35,7 @@ class WindowsTests(unittest.TestCase):
         run=importlib.util.module_from_spec(spec); spec.loader.exec_module(run)
         expected=['addons/'+name+'/*' for name in ('guo_editor','guo_editor_admin','guo_editor_pixelorama','godot_cef','guo_editor_assets','guo_editor_gumps','guo_editor_mapgen','guo_editor_multiedit','guo_editor_store','guo_posture')]
         expected+=['src/Input/Touch/Pregame/Accounts/'+name+'.cs' for name in ('AccountBook','AndroidKeystoreStore','DevLogin','LibsecretStore','SecretStore')]
-        expected+=['src/Labs/*']
+        expected+=['src/Labs/*', 'assets/comfy/*']
         with tempfile.TemporaryDirectory() as directory:
             p=SimpleNamespace(preset_file=Path(directory)/'preset.cfg')
             run.render_preset(p,Path(directory)/'GUO.exe')
@@ -52,6 +52,7 @@ class WindowsTests(unittest.TestCase):
                 text = (tools / platform / 'export_presets.template.cfg').read_text()
                 line = next(line for line in text.splitlines() if line.startswith('exclude_filter='))
                 self.assertIn('src/Labs/*', line.split('"')[1].split(','))
+                self.assertIn('assets/comfy/*', line.split('"')[1].split(','))
 
 
 if __name__ == '__main__':

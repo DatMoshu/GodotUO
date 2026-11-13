@@ -17,7 +17,9 @@ underneath.
 
 The Windows preset excludes ten editor addon families and five exact
 Accounts C# source placeholders. These are resource-package exclusions, not
-MSBuild compile removals; account CLR behavior remains compiled. The normal
+MSBuild compile removals; account CLR behavior remains compiled. Comfy workflow
+resources are also excluded on all targets (ADR-0050); the Comfy transport is
+editor-only. Retained manual splat/audio tools consume prepared content. The normal
 launcher renders this template before each export. Icon/export success is
 separate from privacy, semantic, license and distribution approval.
 

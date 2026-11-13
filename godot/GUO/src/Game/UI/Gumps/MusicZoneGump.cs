@@ -4,10 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using GUO.Assets;
-using GUO.Comfy;
 using GUO.Game.GameObjects;
 using GUO.Game.Managers;
 using GUO.Game.UI.Controls;
@@ -16,11 +13,10 @@ using GUO.IO.Audio;
 namespace GUO.Game.UI.Gumps
 {
     /// <summary>
-    /// Ambient audio zones: rectangular areas with a playlist of generated
+    /// Ambient audio zones: rectangular areas with a playlist of prepared
     /// tracks, on a Music/SFX layer switch (own zones, player and manifest
     /// each; neither cancels the other). Corner A/B capture the player tile,
-    /// the playlist is filenames under the music dir, Generate grows a new
-    /// track from a prompt straight into the draft playlist. Save writes
+    /// the playlist is filenames under the music dir. Save writes
     /// music.json/sfx.json; the scene players cycle tracks while the player
     /// stands inside. Opened with "-audiozones" ("-musiczone" still works,
     /// "-sfxzone" starts on the SFX layer).
@@ -28,15 +24,13 @@ namespace GUO.Game.UI.Gumps
     internal sealed class MusicZoneGump : Gump
     {
         private const int W = 340;
-        private const int H = 650;
+        private const int H = 510;
 
         private readonly Label _zoneLabel;
         private readonly Label _rectLabel;
         private readonly StbTextBox _nameBox;
         private readonly StbTextBox _playlistBox;
         private readonly Label _filesLabel;
-        private readonly StbTextBox _promptBox;
-        private readonly StbTextBox _secsBox;
         private readonly Label _hereLabel;
         private readonly Label _statusLabel;
         private readonly ZoneOutline _outline;
@@ -46,11 +40,6 @@ namespace GUO.Game.UI.Gumps
         private int _zoneIdx = -1;
         private int _ax, _ay;
         private bool _hasA;
-        private Task<ComfyClient.AudioResult> _genTask;
-        private string _genStatus = "";
-        private string _shownStatus = "";
-        private CancellationTokenSource _genCts;
-
         private enum Buttons
         {
             ZonePrev,
@@ -59,7 +48,6 @@ namespace GUO.Game.UI.Gumps
             CornerB,
             New,
             Delete,
-            Generate,
             Save,
             ClearTracks,
             ShowZone,
@@ -149,30 +137,6 @@ namespace GUO.Game.UI.Gumps
             y += 52;
             _filesLabel = new Label("", true, 0x0386, W - 24) { X = 12, Y = y };
             Add(_filesLabel);
-
-            y += 26;
-            Add(new Label("Prompt:", true, 0x0386) { X = 12, Y = y });
-            y += 22;
-            _promptBox = new StbTextBox(1, 500, W - 24, true, FontStyle.None, 0x0021)
-            {
-                X = 12, Y = y, Width = W - 24, Height = 48, Multiline = true
-            };
-            _promptBox.SetText("dark dungeon ambient, dripping water, distant choir");
-            Add(_promptBox);
-
-            y += 56;
-            Add(new Label("Secs:", true, 0x0386) { X = 12, Y = y });
-            _secsBox = new StbTextBox(1, 8, 60, true, FontStyle.None, 0x0021)
-            {
-                X = 70, Y = y, Width = 60, Height = 22
-            };
-            _secsBox.SetText("60");
-            Add(_secsBox);
-            Add(new NiceButton(168, y - 2, 130, 24, ButtonAction.Activate, "Generate")
-            {
-                ButtonParameter = (int)Buttons.Generate,
-                IsSelectable = false
-            });
 
             y += 32;
             Add(new NiceButton(12, y, 130, 24, ButtonAction.Activate, "New Zone")
@@ -348,28 +312,6 @@ namespace GUO.Game.UI.Gumps
                 _hereLabel.Text = here;
             }
 
-            if (_genTask != null && _genTask.IsCompleted)
-            {
-                Task<ComfyClient.AudioResult> done = _genTask;
-                _genTask = null;
-                if (done.IsFaulted)
-                {
-                    Say($"Generate failed: {done.Exception?.GetBaseException().Message}");
-                }
-                else if (done.IsCanceled)
-                {
-                    Say("Generate cancelled.");
-                }
-                else
-                {
-                    OnGenerated(done.Result);
-                }
-            }
-            else if (_genTask != null && _genStatus != _shownStatus)
-            {
-                _shownStatus = _genStatus;
-                Say(_genStatus);
-            }
         }
 
         public override void OnButtonClick(int buttonID)
@@ -445,13 +387,8 @@ namespace GUO.Game.UI.Gumps
                     }
                     break;
 
-                case (int)Buttons.Generate:
-                    StartGenerate();
-                    break;
-
                 case (int)Buttons.Save:
-                    // Forgiving order: generating first then saving (without
-                    // pressing New Zone) still keeps the draft rect.
+                    // Saving without pressing New Zone still keeps the draft rect.
                     if (Current == null)
                     {
                         CreateZoneFromDraft();
@@ -481,14 +418,6 @@ namespace GUO.Game.UI.Gumps
                     break;
 
                 case (int)Buttons.Close:
-                    try
-                    {
-                        _genCts?.Cancel();
-                    }
-                    catch
-                    {
-                    }
-
                     Dispose();
                     break;
             }
@@ -585,80 +514,5 @@ namespace GUO.Game.UI.Gumps
             return true;
         }
 
-        private void StartGenerate()
-        {
-            if (_genTask != null && !_genTask.IsCompleted)
-            {
-                Say("Already generating...");
-                return;
-            }
-
-            string prompt = _promptBox.Text?.Trim();
-            if (string.IsNullOrEmpty(prompt))
-            {
-                Say("Type a prompt first.");
-                return;
-            }
-
-            if (!float.TryParse((_secsBox.Text ?? "").Trim(),
-                System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out float secs)
-                || secs < 1f || secs > 300f)
-            {
-                Say("Secs must be 1-300.");
-                return;
-            }
-
-            string url = ComfyClient.ResolveUrl();
-            int seed = Random.Shared.Next(1, int.MaxValue);
-            _genCts = new CancellationTokenSource();
-            CancellationToken ct = _genCts.Token;
-            _genStatus = $"Contacting ComfyUI at {url}...";
-            _shownStatus = "";
-            Say(_genStatus);
-            _genTask = Task.Run(async () =>
-                await ComfyClient.GenerateAudioAsync(url, prompt, secs, seed, s => _genStatus = s, ct), ct);
-        }
-
-        private void OnGenerated(ComfyClient.AudioResult result)
-        {
-            if (IsDisposed || result?.Audio == null || result.Audio.Length == 0)
-            {
-                Say("Empty result.");
-                return;
-            }
-
-            string ext = ZoneAudio.AudioExtensionFor(result.FileName);
-            if (ext == null)
-            {
-                if (string.IsNullOrWhiteSpace(result.FileName))
-                {
-                    ext = ".mp3";
-                }
-                else
-                {
-                    Say($"Unsupported audio format '{result.FileName}' (mp3/wav only).");
-                    return;
-                }
-            }
-
-            try
-            {
-                string dir = ZoneAudio.TracksDir();
-                Directory.CreateDirectory(dir);
-                ZoneAudio.Zone z = Current;
-                string stem = Layer.StemFor(z?.Name);
-                string file = $"{stem}_{Directory.EnumerateFiles(dir).Count() + 1:D2}{ext}";
-                File.WriteAllBytes(Path.Combine(dir, file), result.Audio);
-                string playlist = _playlistBox.Text?.Trim() ?? "";
-                _playlistBox.SetText(string.IsNullOrEmpty(playlist) ? file : playlist + "," + file);
-                RefreshFiles();
-                Say($"Track {file} saved and queued in the playlist.");
-            }
-            catch (Exception ex)
-            {
-                Say($"Save failed: {ex.Message}");
-            }
-        }
     }
 }

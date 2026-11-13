@@ -2,10 +2,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using GUO.Assets;
-using GUO.Comfy;
 using GUO.Game.GameObjects;
 using GUO.Game.Managers;
 using GUO.Game.Scenes;
@@ -25,7 +22,7 @@ namespace GUO.Game.UI.Gumps
     internal sealed class SplatPlacerGump : Gump
     {
         private const int W = 300;
-        private const int H = 720;
+        private const int H = 600;
         private const string PreviewKey = "gump:preview";
 
         private readonly Label _modelLabel;
@@ -36,9 +33,7 @@ namespace GUO.Game.UI.Gumps
         private readonly Label _scaleLabel;
         private readonly Label _yawLabel;
         private readonly Label _graphicLabel;
-        private readonly StbTextBox _promptBox;
         private readonly PreviewPic _beforePic;
-        private readonly PreviewPic _afterPic;
         private readonly Label _statusLabel;
 
         private List<string> _models = new List<string>();
@@ -50,18 +45,10 @@ namespace GUO.Game.UI.Gumps
         private ushort _targetGraphic;
         private GameObject _targetObj;
         private readonly List<PlacedEntry> _placed = new List<PlacedEntry>();
-        private Task<ComfyClient.PlyResult> _genTask;
-        private string _genStatus = "";
-        private string _shownStatus = "";
-        private int _genCount;
-        private string _lastGenName;
-        private CancellationTokenSource _genCts;
-
         private sealed class PlacedEntry
         {
             public string Name;
             public SplatPlacement At;
-            public List<byte[]> Lods;
         }
 
         private enum Buttons
@@ -84,7 +71,6 @@ namespace GUO.Game.UI.Gumps
             Save,
             Rescan,
             ReplaceAll,
-            Generate,
             Restore,
             Close
         }
@@ -147,31 +133,12 @@ namespace GUO.Game.UI.Gumps
             Add(_graphicLabel);
 
             y += 26;
-            Add(new Label("Before:", true, 0x0386) { X = 12, Y = y });
-            Add(new Label("After:", true, 0x0386) { X = 156, Y = y });
+            Add(new Label("Native art:", true, 0x0386) { X = 12, Y = y });
             y += 18;
             _beforePic = new PreviewPic { X = 12, Y = y, Width = 132, Height = 132 };
             Add(_beforePic);
-            _afterPic = new PreviewPic { X = 156, Y = y, Width = 132, Height = 132 };
-            Add(_afterPic);
             y += 140;
 
-            y += 26;
-            Add(new Label("Prompt:", true, 0x0386) { X = 12, Y = y });
-            y += 22;
-            _promptBox = new StbTextBox(1, 500, W - 24, true, FontStyle.None, 0x0021)
-            {
-                X = 12, Y = y, Width = W - 24, Height = 64, Multiline = true
-            };
-            _promptBox.SetText("mossy ancient version, same shape");
-            Add(_promptBox);
-
-            y += 72;
-            Add(new NiceButton(12, y, 130, 24, ButtonAction.Activate, "Generate")
-            {
-                ButtonParameter = (int)Buttons.Generate,
-                IsSelectable = false
-            });
             Add(new NiceButton(158, y, 130, 24, ButtonAction.Activate, "Restore")
             {
                 ButtonParameter = (int)Buttons.Restore,
@@ -305,38 +272,6 @@ namespace GUO.Game.UI.Gumps
                 : $"0x{_targetGraphic:X4} ({_targetGraphic})";
         }
 
-        public override void Update()
-        {
-            base.Update();
-            if (IsDisposed)
-            {
-                return;
-            }
-
-            if (_genTask != null && _genTask.IsCompleted)
-            {
-                Task<ComfyClient.PlyResult> done = _genTask;
-                _genTask = null;
-                if (done.IsFaulted)
-                {
-                    Say($"Generate failed: {done.Exception?.GetBaseException().Message}");
-                }
-                else if (done.IsCanceled)
-                {
-                    Say("Generate cancelled.");
-                }
-                else
-                {
-                    OnGenerated(done.Result);
-                }
-            }
-            else if (_genTask != null && _genStatus != _shownStatus)
-            {
-                _shownStatus = _genStatus;
-                Say(_genStatus);
-            }
-        }
-
         private void Say(string s)
         {
             _statusLabel.Text = s;
@@ -344,19 +279,16 @@ namespace GUO.Game.UI.Gumps
 
         /// <summary>
         /// The Before cell follows the selection: the victim's own artwork,
-        /// pulled the same way Generate reads it. A new victim retires the
-        /// previous run's After cell.
+        /// read locally without a generation service.
         /// </summary>
         private void RefreshBeforePic()
         {
-            _afterPic?.SetPng(null);
             byte[] png = null;
             if (_targetGraphic != 0 && _targetObj != null && !_targetObj.IsDestroyed)
             {
                 try
                 {
-                    png = ComfyClient.ExtractArtShot(
-                        _targetGraphic, _targetObj is Land)?.Png;
+                    png = ArtPreview.ExtractPng(_targetGraphic, _targetObj is Land);
                 }
                 catch
                 {
@@ -574,12 +506,6 @@ namespace GUO.Game.UI.Gumps
                         {
                             foreach (PlacedEntry e in _placed)
                             {
-                                if (e.Lods != null && !SplatStage.StagedNames().Contains(e.Name))
-                                {
-                                    SplatStage.SaveNewSplat(dir, e.Name, e.Lods, e.At, _promptBox.Text);
-                                    RefreshModels();
-                                }
-
                                 if (SplatStage.SavePlacement(dir, e.Name, e.At))
                                 {
                                     saved++;
@@ -589,11 +515,6 @@ namespace GUO.Game.UI.Gumps
 
                         Say(saved > 0 ? $"Saved {saved} placement(s)." : "Nothing saved.");
                     }
-                    preview = false;
-                    break;
-
-                case (int)Buttons.Generate:
-                    StartGenerate();
                     preview = false;
                     break;
 
@@ -622,14 +543,14 @@ namespace GUO.Game.UI.Gumps
 
                 case (int)Buttons.ReplaceAll:
                     {
-                        string splat = _lastGenName ?? CurrentModel;
+                        string splat = CurrentModel;
                         if (_targetGraphic == 0)
                         {
                             Say("Select an object first.");
                         }
                         else if (string.IsNullOrEmpty(splat))
                         {
-                            Say("Generate or pick a model first.");
+                            Say("Pick a staged model first.");
                         }
                         else
                         {
@@ -653,14 +574,6 @@ namespace GUO.Game.UI.Gumps
 
                 case (int)Buttons.Close:
                     preview = false;
-                    try
-                    {
-                        _genCts?.Cancel();
-                    }
-                    catch
-                    {
-                    }
-
                     Dispose();
                     break;
             }
@@ -670,167 +583,5 @@ namespace GUO.Game.UI.Gumps
             }
         }
 
-        private void StartGenerate()
-        {
-            if (_genTask != null && !_genTask.IsCompleted)
-            {
-                Say("Already generating...");
-                return;
-            }
-
-            if (!_hasTile || _targetGraphic == 0 || _targetObj == null || _targetObj.IsDestroyed)
-            {
-                Say("Target a static object first.");
-                return;
-            }
-
-            // Any world object with artwork goes: statics, land, items and
-            // multis all resolve through the art archive; mobiles and empty
-            // slots come back pixel-less and are refused below, not here.
-            bool isLand = _targetObj is Land;
-            ComfyClient.ArtShot shot;
-            try
-            {
-                shot = ComfyClient.ExtractArtShot(_targetGraphic, isLand);
-            }
-            catch (Exception ex)
-            {
-                Say($"Artwork unreadable: {ex.Message}");
-                return;
-            }
-
-            if (shot == null)
-            {
-                Say("No artwork pixels for that graphic.");
-                return;
-            }
-
-            _artWidth = shot.TightWidth;
-            byte[] png = shot.Png;
-
-            string prompt = _promptBox.Text?.Trim();
-            if (string.IsNullOrEmpty(prompt))
-            {
-                Say("Type a prompt first.");
-                return;
-            }
-
-            string url = ComfyClient.ResolveUrl();
-            _genCts = new CancellationTokenSource();
-            CancellationToken ct = _genCts.Token;
-            _genStatus = $"Contacting ComfyUI at {url}...";
-            _shownStatus = "";
-            Say(_genStatus);
-            _beforePic?.SetPng(shot.Png);
-            _genTask = Task.Run(
-                () => ComfyClient.ImageToSplatAsync(url, png, prompt, s => _genStatus = s, ct), ct);
-        }
-
-        private int _artWidth;
-
-        private void OnGenerated(ComfyClient.PlyResult result)
-        {
-            if (IsDisposed || result?.Ply == null || result.Ply.Length == 0)
-            {
-                Say("Empty result.");
-                return;
-            }
-
-            // The After cell shows what came back even when the PLY itself
-            // will not parse; an empty render simply clears it.
-            _afterPic?.SetPng(result.PreviewPng);
-
-            Assets.SplatSet set;
-            try
-            {
-                set = Assets.SplatPlyParser.Parse(result.Ply, "generated");
-            }
-            catch (Exception ex)
-            {
-                Say($"Unparsable PLY: {ex.Message}");
-                return;
-            }
-
-            if (set.Gaussians.Length == 0)
-            {
-                Say("No gaussians in result.");
-                return;
-            }
-
-            _genCount++;
-            string name = $"gen_{_targetGraphic:X4}_{_genCount:D2}";
-            _lastGenName = name;
-            // Auto-fit: frame the replacement like the original's own
-            // artwork instead of inheriting whatever scale was dialled in.
-            // Projected model width at scale 1, over the lod0 bounds.
-            double yw = _yaw * Math.PI / 180.0;
-            float cyw = (float)Math.Cos(yw), syw = (float)Math.Sin(yw);
-            Godot.Vector3 lo = set.BoundsMin, hi = set.BoundsMax;
-            float x0 = float.MaxValue, x1 = float.MinValue;
-            for (int c = 0; c < 8; c++)
-            {
-                Renderer.SplatBatcher.IsoPointW(1f, cyw, syw,
-                    (c & 1) == 0 ? lo.X : hi.X,
-                    (c & 2) == 0 ? lo.Y : hi.Y,
-                    (c & 4) == 0 ? lo.Z : hi.Z,
-                    out float px, out _);
-                if (px < x0)
-                {
-                    x0 = px;
-                }
-
-                if (px > x1)
-                {
-                    x1 = px;
-                }
-            }
-
-            if (_artWidth > 0 && x1 - x0 > 0.001f)
-            {
-                _scale = Math.Max(2f, Math.Min(160f, (float)Math.Round(_artWidth / (x1 - x0))));
-                UpdateLabels();
-            }
-            var chain = new SplatLodChain
-            {
-                Levels = new[] { set },
-                BoundsMin = set.BoundsMin,
-                BoundsMax = set.BoundsMax,
-            };
-            SplatStage.Register(name, chain, _scale);
-            GameScene scene = Scene;
-            string key = $"gen:{name}";
-            if (scene == null || !scene.PlaceSplat(key, name, _tx, _ty, _tz, _scale, _yaw))
-            {
-                Say("Place failed.");
-                return;
-            }
-
-            if (_targetObj != null && !_targetObj.IsDestroyed)
-            {
-                _targetObj.AllowedToDraw = false;
-            }
-
-            _placed.Add(new PlacedEntry
-            {
-                Name = name,
-                At = new SplatPlacement
-                {
-                    Name = name,
-                    Facet = World.MapIndex,
-                    X = _tx,
-                    Y = _ty,
-                    Z = _tz,
-                    Scale = _scale,
-                    Yaw = _yaw,
-                    LockZ = true,
-                },
-                Lods = new List<byte[]> { result.Ply },
-            });
-            RefreshModels();
-            string msg = $"{name} replaced 0x{_targetGraphic:X4} ({set.Gaussians.Length} gaussians)";
-            Say(msg + ". Save to keep.");
-            GameActions.Print(World, "SplatPlacer: " + msg);
-            UpdateLabels();
-        }
     }
 }

@@ -1,3 +1,4 @@
+#if TOOLS
 // SPDX-License-Identifier: BSD-2-Clause
 
 using System;
@@ -876,3 +877,4 @@ namespace GUO.Comfy
         }
     }
 }
+#endif

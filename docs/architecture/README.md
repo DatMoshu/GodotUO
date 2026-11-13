@@ -53,4 +53,6 @@ it is taken even if its file has not landed yet.
 | 0048 | Lighting speed mode with a native surface buffer | work/guo-lighting-next-20261031 (opt-in; qualification ongoing) |
 | 0049 | Physical structure and native receivers for enhanced lighting | work/guo-lighting-next-20261031 (Britain implementation authorized 2026-10-31) |
 
-Next free: 0050 (0045 is the wide-zoom overview ADR; 0046 is reserved by the map paging lab branch).
+| 0050 | Legacy Comfy generation export containment | work/release-review-20261112 (release qualification; validation pending) |
+
+Next free: 0051 (0045 is the wide-zoom overview ADR; 0046 is reserved by the map paging lab branch).

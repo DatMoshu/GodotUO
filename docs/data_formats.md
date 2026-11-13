@@ -1516,7 +1516,7 @@ bodies, first match wins), else an automatic stable pick from the enrolled
 bank (serial hash, so relogs keep voices) with a per-NPC clone seed, else
 the `default` voice. The `-voice` gump targets, tests, assigns and designs;
 `-audiozones` (`-musiczone` still works, `-sfxzone` starts on SFX) places
-rects with generated track playlists the scene cycles, and shows the zone
+rects with prepared track playlists the scene cycles, and shows the zone
 outline in the world on demand.
 Each entry's `scale` is screen px per model unit (footprint tiles × 11;
 reference default 22 covers one 44px tile for a 2-unit model), `yaw`
@@ -1524,14 +1524,10 @@ defaults to 180°; the batcher projects with the reference oblique map
 (`SplatBatcher`, numeric parity vs `JarJar.Render` checked per gaussian).
 In game, `-splat` opens the placer gump: pick a staged model, target a
 tile, tune scale/yaw live, Place it, Save writes the manifest back. The
-same gump grows replacements: target a static, type a prompt, Generate
-sends its artwork through the frozen MultisMaker1 template on the local
-ComfyUI and swaps the result into the world (Restore brings the original
-back). `-repaint` (the JarJarGM clone) denoises artwork instead: prompt,
-seed, denoise slider and a silhouette mask toggle, applied live as .art
-files under the override folder (GUO_ART_OVERRIDE, else
-%APPDATA%/GUO/overrides), rescanned and re-atlased without touching the
-install; Revert deletes the file. Replace All writes a graphic-to-splat skin rule (theme entries carry
+manual tools consume prepared models. Generation controls and the generation-only
+`-repaint` command were removed from the client under ADR-0050; ComfyUI
+transport is compiled only for the editor and workflow resources are excluded
+from exports. Existing override art remains readable. Replace All writes a graphic-to-splat skin rule (theme entries carry
 `splat`, read by `ThemeManager.StaticSplat`) into `splat-skins.theme.json`
 beside the stage, reloaded on boot; the scene hides every matching static
 and skins it per tile, restoring each when its rule lifts.
