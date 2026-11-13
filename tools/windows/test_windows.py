@@ -53,6 +53,8 @@ class WindowsTests(unittest.TestCase):
                 line = next(line for line in text.splitlines() if line.startswith('exclude_filter='))
                 self.assertIn('src/Labs/*', line.split('"')[1].split(','))
                 self.assertIn('assets/comfy/*', line.split('"')[1].split(','))
+                self.assertIn('addons/guo_editor_admin/*', line.split('"')[1].split(','))
+                self.assertIn('addons/guo_editor_pixelorama/*', line.split('"')[1].split(','))
 
 
 if __name__ == '__main__':

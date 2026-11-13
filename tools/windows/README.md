@@ -15,11 +15,17 @@ launchers\dev\brand_icons.bat  rebuild every icon from design\brand\guo-sigil.pn
 Everything is `python tools\windows\run.py <doctor|preset|export|icon>`
 underneath.
 
-The Windows preset excludes ten editor addon families and five exact
+The Windows preset excludes ten addon directories and five exact
 Accounts C# source placeholders. These are resource-package exclusions, not
 MSBuild compile removals; account CLR behavior remains compiled. Comfy workflow
 resources are also excluded on all targets (ADR-0050); the Comfy transport is
-editor-only. Retained manual splat/audio tools consume prepared content. The normal
+editor-only. The admin and Pixelorama sibling addon directories are explicitly
+excluded on all four export targets: `addons/guo_editor/*` does not match
+these sibling names. `dotnet/include_scripts_content=false` alone can leave
+newline-only C# placeholders in a PCK; those still fail the strict no-editor-
+resource packaging gate. Actual Windows Release PCK inspection is required;
+template checks alone do not establish other-platform runtime behavior.
+Retained manual splat/audio tools consume prepared content. The normal
 launcher renders this template before each export. Icon/export success is
 separate from privacy, semantic, license and distribution approval.
 
