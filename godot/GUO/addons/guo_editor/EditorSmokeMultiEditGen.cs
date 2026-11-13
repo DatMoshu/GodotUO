@@ -78,6 +78,55 @@ public partial class EditorSmoke
         MeCheck("generate_disposed_client_rejects_work", !rejected.Ok && closingClient.ProcessId == null);
     }
 
+    private async Task CheckApplyLifetimeAsync()
+    {
+        var closingView = new MultiEditView(_data) { Visible = false };
+        AddChild(closingView);
+        try
+        {
+            GeneratePanel panel = closingView.GeneratePanel;
+            bool loaded = await WaitFor(() => panel.StylesLoaded.IsCompleted, 30);
+            MeCheck("generate_apply_closing_styles", loaded && panel.StyleCount > 0);
+            if (!loaded || panel.StyleCount == 0)
+            {
+                return;
+            }
+
+            GenResult warm = await panel.NowAsync();
+            MeCheck("generate_apply_closing_warm", warm is { Ok: true } && warm.Components.Count > 0);
+            MultiDocument document = closingView.Doc;
+            int parts = document.Parts.Count;
+            int history = document.HistoryCount;
+            Task<bool> pending = closingView.ApplyGeneratedAsync(true);
+            MeCheck("generate_apply_closing_in_flight", !pending.IsCompleted);
+            closingView.Shutdown();
+            closingView.Free();
+            bool completed = await WaitFor(() => pending.IsCompleted, 30);
+            MeCheck("generate_apply_closing_completed", completed);
+            MeCheck("generate_apply_closing_no_fault", completed && !pending.IsFaulted && !pending.IsCanceled,
+                pending.Exception?.GetBaseException().GetType().Name);
+            MeCheck("generate_apply_closing_rejected", pending.Status == TaskStatus.RanToCompletion && !pending.Result);
+            MeCheck("generate_apply_closing_document_unchanged", document.Parts.Count == parts && document.HistoryCount == history);
+            try
+            {
+                bool applied = await closingView.ApplyGeneratedAsync(true);
+                MeCheck("generate_apply_closed_reentry", !applied);
+            }
+            catch (Exception e)
+            {
+                MeCheck("generate_apply_closed_reentry", false, e.GetType().Name);
+            }
+        }
+        finally
+        {
+            if (GodotObject.IsInstanceValid(closingView))
+            {
+                closingView.Shutdown();
+                closingView.Free();
+            }
+        }
+    }
+
     private async Task RunMultiEditPhase2Async(MultiEditView view, string root, ushort floorId)
     {
         MultiCanvas canvas = view.Canvas;
@@ -108,6 +157,7 @@ public partial class EditorSmoke
         _meReport["generate_house_components"] = house.Components.Count;
         _meReport["generate_ms"] = Math.Round(house.Ms, 1);
         await CheckGeneratorLifetimeAsync(view);
+        await CheckApplyLifetimeAsync();
 
         // Apply replaces in one undo step; undo takes it back; redo again.
         bool applied = await view.ApplyGeneratedAsync(true);
