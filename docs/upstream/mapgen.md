@@ -151,5 +151,6 @@ exactly as before (seed 42 at 256: `a862a102`; seed 1234567 at 1024: `5c9a4ed5`)
   live in `UO_MAPGEN_DATA`);
 - the analysis tools under the handoff copy.
 
-**NuGet:** SixLabors.ImageSharp 3.1.11, used by MapGen's paint import. Six Labors Split License:
-Apache 2.0 terms for open-source projects.
+**NuGet:** MapGen's project declares SixLabors.ImageSharp 3.2.0 for its paint import.
+See the [MapGen README's ImageSharp license section](../../tools/mapgen/README.md#imagesharp-license)
+for the current documented setup.

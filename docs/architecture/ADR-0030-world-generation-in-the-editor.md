@@ -89,6 +89,11 @@ user's client files.
 - **New dependency: SixLabors.ImageSharp 3.1** (Six Labors Split License: Apache 2.0 terms for open-source
   use). Only MapGen's paint import uses it.
 
+**Dependency declaration follow-up (2026-11-13):** The current MapGen project
+declares SixLabors.ImageSharp 3.2.0. See the
+[MapGen README license section](../../tools/mapgen/README.md#imagesharp-license)
+for the documented setup.
+
 ## Validation
 
 - `dotnet test tools/mapgen/MapGen.Tests`: 221 tests pass on net8.0.
