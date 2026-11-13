@@ -39,6 +39,7 @@ public sealed partial class GeneratePanel : VBoxContainer
     private Godot.Timer _debounce;
     private List<GenStyle> _styles = new();
     private long _ticket;
+    private bool _leaving;
     private TaskCompletionSource _stylesLoaded = new();
 
     private static readonly string[] Generators = { "house", "autowall", "roof", "stairs" };
@@ -256,7 +257,24 @@ public sealed partial class GeneratePanel : VBoxContainer
 
     private async void LoadStyles()
     {
-        _styles = await _client.StylesAsync();
+        List<GenStyle> styles;
+        try
+        {
+            styles = await _client.StylesAsync();
+        }
+        catch (Exception) when (_leaving || !GodotObject.IsInstanceValid(this))
+        {
+            _stylesLoaded.TrySetResult();
+            return;
+        }
+
+        if (_leaving || !GodotObject.IsInstanceValid(this) || !IsInsideTree())
+        {
+            _stylesLoaded.TrySetResult();
+            return;
+        }
+
+        _styles = styles;
         _style.Clear();
         foreach (GenStyle s in _styles)
         {
@@ -371,8 +389,17 @@ public sealed partial class GeneratePanel : VBoxContainer
 
         long mine = ++_ticket;
         string op = Generator;
-        GenResult res = await _client.GenerateAsync(op, Request());
-        if (mine != _ticket || !IsInsideTree())
+        GenResult res;
+        try
+        {
+            res = await _client.GenerateAsync(op, Request());
+        }
+        catch (Exception) when (_leaving || !GodotObject.IsInstanceValid(this))
+        {
+            return Last;
+        }
+
+        if (mine != _ticket || _leaving || !GodotObject.IsInstanceValid(this) || !IsInsideTree())
         {
             return Last;
         }
@@ -387,8 +414,13 @@ public sealed partial class GeneratePanel : VBoxContainer
         return res;
     }
 
+    public override void _EnterTree() => _leaving = false;
+
     public override void _ExitTree()
     {
+        _leaving = true;
+        ++_ticket;
+        _debounce?.Stop();
         if (_owns)
         {
             _client.Dispose();

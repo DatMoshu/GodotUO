@@ -34,6 +34,7 @@ public sealed class MultiGenerateClient : IDisposable
     private readonly string _python;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private Process _proc;
+    private volatile bool _disposed;
 
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(20);
 
@@ -55,6 +56,11 @@ public sealed class MultiGenerateClient : IDisposable
 
     private void Start()
     {
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(MultiGenerateClient));
+        }
+
         if (_proc is { HasExited: false })
         {
             return;
@@ -83,9 +89,16 @@ public sealed class MultiGenerateClient : IDisposable
 
         psi.Environment["PYTHONIOENCODING"] = "utf-8";
         psi.Environment["PYTHONUTF8"] = "1";
-        _proc = Process.Start(psi);
-        _proc.ErrorDataReceived += (_, _) => { };
-        _proc.BeginErrorReadLine();
+        Process proc = Process.Start(psi);
+        _proc = proc;
+        if (_disposed)
+        {
+            Kill();
+            throw new ObjectDisposedException(nameof(MultiGenerateClient));
+        }
+
+        proc.ErrorDataReceived += (_, _) => { };
+        proc.BeginErrorReadLine();
     }
 
     /// <summary>One request: op is house, autowall, roof, stairs, rotate, mirror, import, export or styles.</summary>
@@ -99,11 +112,21 @@ public sealed class MultiGenerateClient : IDisposable
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
+            if (_disposed)
+            {
+                return new JsonObject { ["error"] = "the generator was closed" };
+            }
+
             using var cts = new CancellationTokenSource(Timeout);
             for (int attempt = 0; attempt < 2; attempt++)
             {
                 try
                 {
+                    if (_disposed)
+                    {
+                        return new JsonObject { ["error"] = "the generator was closed" };
+                    }
+
                     Start();
                     JsonObject req = args != null ? (JsonObject)args.DeepClone() : new JsonObject();
                     req["op"] = op;
@@ -120,7 +143,7 @@ public sealed class MultiGenerateClient : IDisposable
                     Kill();
                     return new JsonObject { ["error"] = $"tools/multi did not answer within {Timeout.TotalSeconds:0} s" };
                 }
-                catch (Exception e) when (e is IOException or InvalidOperationException)
+                catch (Exception e) when (e is IOException or InvalidOperationException or ObjectDisposedException)
                 {
                 }
 
@@ -195,6 +218,10 @@ public sealed class MultiGenerateClient : IDisposable
         _proc = null;
     }
 
-    public void Dispose() => Kill();
+    public void Dispose()
+    {
+        _disposed = true;
+        Kill();
+    }
 }
 #endif

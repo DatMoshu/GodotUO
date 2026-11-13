@@ -189,7 +189,13 @@ public partial class MultiEditView
     /// <summary>Applies the generator's answer to the document as one undo step; false when there was nothing to apply.</summary>
     public async Task<bool> ApplyGeneratedAsync(bool replace)
     {
+        var lifetime = _writeLifetime.Token;
         GenResult r = await _genPanel.NowAsync();
+        if (lifetime.IsCancellationRequested || !GodotObject.IsInstanceValid(this) || !IsInsideTree() || !GodotObject.IsInstanceValid(_genPanel))
+        {
+            return false;
+        }
+
         if (r is not { Ok: true } || r.Components.Count == 0)
         {
             _status.Text = r?.Error ?? "nothing generated yet";
