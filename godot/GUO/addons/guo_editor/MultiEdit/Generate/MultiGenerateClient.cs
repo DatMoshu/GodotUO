@@ -34,6 +34,8 @@ public sealed class MultiGenerateClient : IDisposable
     private readonly string _python;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private Process _proc;
+    private readonly object _processLock = new();
+    private volatile bool _disposed;
 
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(20);
 
@@ -53,44 +55,54 @@ public sealed class MultiGenerateClient : IDisposable
 
     public string Why => _python == null ? "python was not found on PATH" : !File.Exists(_script) ? $"{_script} is missing" : null;
 
-    private void Start()
+    private Process Start()
     {
-        if (_proc is { HasExited: false })
+        lock (_processLock)
         {
-            return;
-        }
-
-        var psi = new ProcessStartInfo(_python)
-        {
-            UseShellExecute = false,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-            StandardInputEncoding = new UTF8Encoding(false),
-            StandardOutputEncoding = new UTF8Encoding(false),
-        };
-        psi.ArgumentList.Add(_script);
-        psi.ArgumentList.Add("serve");
-        if (StyleFiles.Count > 0)
-        {
-            psi.ArgumentList.Add("--styles");
-            foreach (string f in StyleFiles)
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_proc is { HasExited: false })
             {
-                psi.ArgumentList.Add(f);
+                return _proc;
             }
-        }
 
-        psi.Environment["PYTHONIOENCODING"] = "utf-8";
-        psi.Environment["PYTHONUTF8"] = "1";
-        _proc = Process.Start(psi);
-        _proc.ErrorDataReceived += (_, _) => { };
-        _proc.BeginErrorReadLine();
+            var psi = new ProcessStartInfo(_python)
+            {
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                StandardInputEncoding = new UTF8Encoding(false),
+                StandardOutputEncoding = new UTF8Encoding(false),
+            };
+            psi.ArgumentList.Add(_script);
+            psi.ArgumentList.Add("serve");
+            if (StyleFiles.Count > 0)
+            {
+                psi.ArgumentList.Add("--styles");
+                foreach (string f in StyleFiles)
+                {
+                    psi.ArgumentList.Add(f);
+                }
+            }
+
+            psi.Environment["PYTHONIOENCODING"] = "utf-8";
+            psi.Environment["PYTHONUTF8"] = "1";
+            _proc = Process.Start(psi);
+            _proc.ErrorDataReceived += (_, _) => { };
+            _proc.BeginErrorReadLine();
+            return _proc;
+        }
     }
 
     /// <summary>One request: op is house, autowall, roof, stairs, rotate, mirror, import, export or styles.</summary>
     public async Task<JsonObject> RequestAsync(string op, JsonObject args = null)
     {
+        if (_disposed)
+        {
+            return new JsonObject { ["error"] = "the generator client is disposed" };
+        }
+
         if (!Available)
         {
             return new JsonObject { ["error"] = Why };
@@ -104,12 +116,12 @@ public sealed class MultiGenerateClient : IDisposable
             {
                 try
                 {
-                    Start();
+                    Process process = Start();
                     JsonObject req = args != null ? (JsonObject)args.DeepClone() : new JsonObject();
                     req["op"] = op;
-                    await _proc.StandardInput.WriteLineAsync(req.ToJsonString()).ConfigureAwait(false);
-                    await _proc.StandardInput.FlushAsync(cts.Token).ConfigureAwait(false);
-                    string line = await _proc.StandardOutput.ReadLineAsync(cts.Token).ConfigureAwait(false);
+                    await process.StandardInput.WriteLineAsync(req.ToJsonString()).ConfigureAwait(false);
+                    await process.StandardInput.FlushAsync(cts.Token).ConfigureAwait(false);
+                    string line = await process.StandardOutput.ReadLineAsync(cts.Token).ConfigureAwait(false);
                     if (line != null)
                     {
                         return JsonNode.Parse(line) as JsonObject ?? new JsonObject { ["error"] = "the generator answered something that is not JSON" };
@@ -122,6 +134,11 @@ public sealed class MultiGenerateClient : IDisposable
                 }
                 catch (Exception e) when (e is IOException or InvalidOperationException)
                 {
+                }
+
+                if (_disposed)
+                {
+                    return new JsonObject { ["error"] = "the generator client is disposed" };
                 }
 
                 Kill();                                    // the process died: start a fresh one once
@@ -184,17 +201,27 @@ public sealed class MultiGenerateClient : IDisposable
 
     private void Kill()
     {
-        try
+        lock (_processLock)
         {
-            _proc?.Kill(entireProcessTree: true);
-        }
-        catch (Exception)
-        {
-        }
+            try
+            {
+                _proc?.Kill(entireProcessTree: true);
+            }
+            catch (Exception)
+            {
+            }
 
-        _proc = null;
+            _proc = null;
+        }
     }
 
-    public void Dispose() => Kill();
+    public void Dispose()
+    {
+        lock (_processLock)
+        {
+            _disposed = true;
+            Kill();
+        }
+    }
 }
 #endif
