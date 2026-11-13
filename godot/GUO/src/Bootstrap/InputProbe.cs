@@ -2822,6 +2822,8 @@ internal static partial class InputProbe
     )
     {
         Game.GameObjects.PlayerMobile player = Client.Game.UO.World.Player;
+        var camera = Client.Game.Scene.Camera;
+        GD.Print($"[GUO] input probe: mobile aim 0x{mobile.Serial:X}, zoom {camera.Zoom}, basis {camera.ViewTransform.X}/{camera.ViewTransform.Y}");
 
         // Sideways as well as up. A mobile standing next to this one is
         // drawn a tile's width away and overlapping it, and the pixel directly
@@ -2834,9 +2836,17 @@ internal static partial class InputProbe
         {
             foreach (int dx in across)
             {
+                // Relative world pixels need the current camera basis; the
+                // sweep offsets remain screen pixels like the cursor itself.
+                var delta = new Vector2(
+                    mobile.RealScreenPosition.X - player.RealScreenPosition.X,
+                    mobile.RealScreenPosition.Y - player.RealScreenPosition.Y
+                );
+                var view = camera.ViewTransform;
+                var projected = view.X * delta.X + view.Y * delta.Y;
                 var at = new Vector2(
-                    self.X + (mobile.RealScreenPosition.X - player.RealScreenPosition.X) + dx,
-                    self.Y + (mobile.RealScreenPosition.Y - player.RealScreenPosition.Y) + dy
+                    self.X + projected.X + dx,
+                    self.Y + projected.Y + dy
                 );
 
                 Send(new InputEventMouseMotion
