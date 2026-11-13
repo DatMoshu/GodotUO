@@ -39,12 +39,10 @@ namespace GUO.Game.Managers
             // PORT DEVIATION (GUO): native scripting panel; no external assistant.
             Register("scripts", s => Input.Touch.Modern.ModernScripts.Show(_world));
             Register("stopscript", s => _world.StopScripts());
-            // PORT DEVIATION (GUO): in-game splat placer (staged splats, live
+            // PORT DEVIATION (GUO): ADR-0050 retains manual tools; generation is editor-only.
+            // In-game splat placer (staged splats, live
             // preview + manifest save). Upstream has no generated content.
             Register("splat", s => UIManager.Add(new UI.Gumps.SplatPlacerGump(_world)));
-            // PORT DEVIATION (GUO): in-game image repaint (ComfyUI img2img
-            // into the override art folder, never the install).
-            Register("repaint", s => UIManager.Add(new UI.Gumps.RepaintGump(_world)));
             // PORT DEVIATION (GUO): NPC voice casting (enrolled voices,
             // rules, design). Upstream mobiles are silent data.
             Register("voice", s => UIManager.Add(new UI.Gumps.VoiceGump(_world)));
