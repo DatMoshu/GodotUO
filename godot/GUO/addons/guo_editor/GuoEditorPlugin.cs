@@ -294,7 +294,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         Callable.From(InstallBottomPanelCollapse).CallDeferred();
 
         // The Layers dock: the terrain underlays/overlays registry the game
-        // reads at boot. Stateless; nothing to tear down.
+        // reads at boot. Its capture and generation lifetimes are dock-owned.
         _layers = new LayersDock();
         AddDock(_layers);
         _layers.Attach(_world);
@@ -453,6 +453,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
         _art?.ApplyAiFeatures();
         _studio?.ApplyAiFeatures();
         _zones?.ApplyAiFeatures();
+        _layers?.ApplyAiFeatures();
         _searchContext.Ai = _ai;
         SearchPopup.Remove(_search);
         _search = SearchPopup.Install(_searchContext);
@@ -691,6 +692,7 @@ public partial class GuoEditorPlugin : EditorPlugin, ISerializationListener
 
         if (_layers != null)
         {
+            _layers.Shutdown();
             RemoveDock(_layers);
             _layers.QueueFree();
             _layers = null;

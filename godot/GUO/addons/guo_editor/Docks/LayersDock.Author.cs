@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Godot;
 using GUO.Renderer;
 
@@ -22,11 +23,78 @@ public partial class LayersDock
     private CheckBox _erase;
     private TextureRect _extractView, _genView, _maskView;
     private Image _capture, _generated, _decalRaw, _decal, _mask;
-    private bool _busy, _brushing;
+    private bool _busy, _brushing, _stopped;
+    private Control _workflowRow, _generationRow, _generatedGroup;
+    private Label _maskHelp;
+    private Button _generate;
+    private readonly CancellationTokenSource _dockLife = new();
+    private CancellationTokenSource _generation;
+    private int _jobVersion, _captureVersion;
+    private const string DoctorHelp = "Run launchers/comfy/doctor.bat to check ComfyUI and its API-format workflows.";
+
+    // Internal component seams: production defaults are evaluated only after the gate.
+    internal Func<List<string>> DiscoverWorkflows { get; set; } = () => ComfyUiProvider.Workflows(ArtDock.WorkflowFolder);
+    internal Func<IImageProvider> CreateProvider { get; set; } = () => new ComfyUiProvider(EditorData.Setting("UO_COMFY_URL", "http://127.0.0.1:8188"));
+
+    internal void ApplyAiFeatures()
+    {
+        if (!_ready || _stopped) return;
+        bool enabled = AiFeatures.Enabled;
+        _workflowRow.Visible = enabled;
+        _generationRow.Visible = enabled;
+        _generatedGroup.Visible = enabled;
+        _promptLabel.Text = enabled ? "Prompt" : "Layer note";
+        _maskHelp.Text = enabled ? "Paint where the decal shows, then Generate." : "Paint where the staged decal shows.";
+        if (!enabled)
+        {
+            CancelGeneration();
+            _wfPick.Clear();
+            _wfPick.Disabled = true;
+            Report(AiFeatures.DisabledMessage);
+        }
+        else RefreshAuthorWorkflows();
+        UpdateGenerateButton();
+    }
+
+    private void UpdateGenerateButton()
+    {
+        if (_generate != null) _generate.Disabled = _stopped || !AiFeatures.Enabled || _busy || _wfPick.Disabled;
+    }
+
+    private void CancelGeneration()
+    {
+        ++_jobVersion;
+        _generation?.Cancel();
+        _generation = null; // The owning runner disposes its source after completion.
+        _busy = false;
+        UpdateGenerateButton();
+    }
+
+    public void Shutdown()
+    {
+        if (_stopped) return;
+        _stopped = true;
+        ++_captureVersion;
+        _dockLife.Cancel();
+        CancelGeneration();
+        _dockLife.Dispose();
+        foreach (TextureRect view in new[] { _preview, _extractView, _genView, _maskView })
+            if (GodotObject.IsInstanceValid(view)) view.Texture = null;
+        _capture?.Dispose(); _capture = null;
+        _generated?.Dispose(); _generated = null;
+        _decalRaw?.Dispose(); _decalRaw = null;
+        _decal?.Dispose(); _decal = null;
+        _mask?.Dispose(); _mask = null;
+        _brushing = false;
+        _world = null;
+    }
+
+    public override void _ExitTree() => Shutdown();
 
     private void BuildAuthorUi(VBoxContainer left, VBoxContainer right)
     {
         var wf = new HBoxContainer();
+        _workflowRow = wf;
         left.AddChild(wf);
         wf.AddChild(new Label { Text = "Workflow" });
         _wfPick = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill };
@@ -34,7 +102,6 @@ public partial class LayersDock
         var refresh = new Button { Text = "Refresh" };
         refresh.Pressed += RefreshAuthorWorkflows;
         wf.AddChild(refresh);
-        RefreshAuthorWorkflows();
 
         var go = new HBoxContainer();
         left.AddChild(go);
@@ -44,15 +111,19 @@ public partial class LayersDock
         var capture = new Button { Text = "Capture area" };
         capture.Pressed += CaptureFromUi;
         go.AddChild(capture);
+        var generation = new HBoxContainer();
+        _generationRow = generation;
+        left.AddChild(generation);
         var generate = new Button { Text = "Generate" };
+        _generate = generate;
         generate.Pressed += GenerateFromUi;
-        go.AddChild(generate);
-        go.AddChild(new Label { Text = "Cfg", TooltipText = "Guidance: how hard the prompt pulls. Lower stays closer to the capture." });
+        generation.AddChild(generate);
+        generation.AddChild(new Label { Text = "Cfg", TooltipText = "Guidance: how hard the prompt pulls. Lower stays closer to the capture." });
         _cfg = new SpinBox { MinValue = 0.5, MaxValue = 20, Step = 0.5, Value = 5 };
-        go.AddChild(_cfg);
-        go.AddChild(new Label { Text = "Steps", TooltipText = "Sampler steps: more refines further (and slower)." });
+        generation.AddChild(_cfg);
+        generation.AddChild(new Label { Text = "Steps", TooltipText = "Sampler steps: more refines further (and slower)." });
         _steps = new SpinBox { MinValue = 1, MaxValue = 50, Step = 1, Value = 4 };
-        go.AddChild(_steps);
+        generation.AddChild(_steps);
 
         var ex = new HBoxContainer();
         left.AddChild(ex);
@@ -86,10 +157,14 @@ public partial class LayersDock
         var clear = new Button { Text = "Clear" };
         clear.Pressed += () => { FillMask(false); };
         maskRow.AddChild(clear);
-        maskRow.AddChild(new Label { Text = "Paint where the decal shows, then Generate." });
+        _maskHelp = new Label();
+        maskRow.AddChild(_maskHelp);
 
         _extractView = WorkPreview(right, "Extracted");
-        _genView = WorkPreview(right, "Generated");
+        var generated = new VBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
+        _generatedGroup = generated;
+        right.AddChild(generated);
+        _genView = WorkPreview(generated, "Generated");
         _maskView = WorkPreview(right, "Mask");
         _maskView.GuiInput += OnBrushInput;
     }
@@ -117,8 +192,25 @@ public partial class LayersDock
         }
 
         _wfPick.Clear();
+        _wfPick.Disabled = true;
+        if (_stopped || !AiFeatures.Enabled)
+        {
+            UpdateGenerateButton();
+            return;
+        }
+        List<string> workflows;
+        try
+        {
+            workflows = DiscoverWorkflows();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Report("Could not read workflow files. " + DoctorHelp);
+            UpdateGenerateButton();
+            return;
+        }
         int flux = -1, studio = -1;
-        foreach (string f in ComfyUiProvider.Workflows(ArtDock.WorkflowFolder))
+        foreach (string f in workflows)
         {
             _wfPick.AddItem(Path.GetFileName(f));
             _wfPick.SetItemMetadata(_wfPick.ItemCount - 1, f);
@@ -146,6 +238,7 @@ public partial class LayersDock
         {
             _wfPick.Disabled = false;
         }
+        UpdateGenerateButton();
     }
 
     private void CurrentRect(out int x0, out int y0, out int x1, out int y1)
@@ -202,6 +295,7 @@ public partial class LayersDock
     /// </summary>
     private async void CaptureFromUi()
     {
+        if (_stopped) return;
         if (_world == null || !_world.IsBooted)
         {
             Report("World tab has not booted: show it once first.");
@@ -227,9 +321,14 @@ public partial class LayersDock
             return;
         }
 
+        int captureVersion = ++_captureVersion;
+        CancellationToken captureLife = _dockLife.Token;
+        CancelGeneration();
         for (int i = 0; i < 3; i++)
         {
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            if (captureLife.IsCancellationRequested || _stopped || captureVersion != _captureVersion ||
+                !IsInsideTree() || !GodotObject.IsInstanceValid(_world) || !_world.IsBooted) return;
         }
 
         int w = Math.Clamp((x1 - x0 + 1) * 64, 256, 1024);
@@ -263,6 +362,18 @@ public partial class LayersDock
             return (s.X, s.Y);
         }, x0, y0, x1, y1, ztop, w, h);
 
+        ReplaceCapture(img);
+        ShowWorkViews();
+        string next = AiFeatures.Enabled ? "Paint the mask, then Generate." : "Paint the mask for a staged decal.";
+        Report($"Captured {w}x{h} over ({x0},{y0})-({x1},{y1}); shot {shot.GetWidth()}x{shot.GetHeight()}, samples {minX:0}-{maxX:0},{minY:0}-{maxY:0}. {next}");
+    }
+
+    // Ownership transfers on the editor thread; replacing capture invalidates old jobs.
+    internal void ReplaceCapture(Image img)
+    {
+        if (_stopped) { img?.Dispose(); return; }
+        ++_captureVersion;
+        CancelGeneration();
         _capture?.Dispose();
         _capture = img;
         _generated?.Dispose();
@@ -271,9 +382,7 @@ public partial class LayersDock
         _decalRaw = null;
         _decal?.Dispose();
         _decal = null;
-        ResetMask(w, h);
-        ShowWorkViews();
-        Report($"Captured {w}x{h} over ({x0},{y0})-({x1},{y1}); shot {shot.GetWidth()}x{shot.GetHeight()}, samples {minX:0}-{maxX:0},{minY:0}-{maxY:0}. Paint the mask, then Generate.");
+        ResetMask(img.GetWidth(), img.GetHeight());
     }
 
     /// <summary>Blank mask at capture size (white = decal shows).</summary>
@@ -297,78 +406,76 @@ public partial class LayersDock
         ShowWorkViews();
     }
 
-    private async void GenerateFromUi()
+    private async void GenerateFromUi() => await RunGenerationAsync();
+
+    // Called by both the UI and synthetic component proof on the editor thread.
+    internal async Task RunGenerationAsync()
     {
-        if (_busy)
-        {
-            return;
-        }
-
-        if (_capture == null)
-        {
-            Report("Capture the area first.");
-            return;
-        }
-
+        if (_stopped) return;
+        if (!AiFeatures.Enabled) { Report(AiFeatures.DisabledMessage); return; }
+        if (_busy) return;
+        if (_capture == null) { Report("Capture the area first."); return; }
         string wf = _wfPick.ItemCount > 0 && !_wfPick.Disabled ? (string)_wfPick.GetItemMetadata(_wfPick.Selected) : "";
-        if (string.IsNullOrEmpty(wf))
-        {
-            Report("Pick an img2img workflow first.");
-            return;
-        }
+        if (string.IsNullOrEmpty(wf)) { Report("Pick an img2img workflow first. " + DoctorHelp); return; }
 
+        using var job = CancellationTokenSource.CreateLinkedTokenSource(_dockLife.Token);
+        using var life = AiFeatures.Link(job.Token);
+        CancellationToken token = life.Token;
+        int version = ++_jobVersion;
+        bool Current() => !_stopped && !token.IsCancellationRequested && version == _jobVersion && AiFeatures.Enabled;
+        _generation = job;
         _busy = true;
+        UpdateGenerateButton();
         try
         {
-            string url = EditorData.Setting("UO_COMFY_URL", "http://127.0.0.1:8188");
-            Report($"Generating on {url}...");
-            using var provider = new ComfyUiProvider(url);
+            // Snapshot all Godot inputs before the provider runs; await resumes on the
+            // editor synchronization context. Providers never receive Godot objects.
             var req = new ImageRequest
             {
                 Prompt = _prompt.Text ?? "",
                 WorkflowPath = wf,
                 InputPng = _capture.SavePngToBuffer(),
                 InputName = $"layer:{(_id.Text ?? "").Trim()}",
-                Width = _capture.GetWidth(),
-                Height = _capture.GetHeight(),
-                Cfg = (float)_cfg.Value,
-                Steps = (int)_steps.Value,
+                Width = _capture.GetWidth(), Height = _capture.GetHeight(),
+                Cfg = (float)_cfg.Value, Steps = (int)_steps.Value,
             };
-            ImageResult r = await provider.RunAsync(req, null, CancellationToken.None);
-            if (r.Error != null)
-            {
-                Report(r.Error);
-                return;
-            }
-
-            if (r.Pngs.Count == 0)
-            {
-                Report("ComfyUI returned no images.");
-                return;
-            }
-
+            Report("Generating image...");
+            IImageProvider provider = CreateProvider();
+            using var ownedProvider = provider as IDisposable;
+            ImageResult r = await Task.Run(() => provider.RunAsync(req, null, token), token);
+            if (!Current()) return;
+            if (r == null || r.Error != null) { Report("ComfyUI could not complete the image job. " + DoctorHelp); return; }
+            if (r.Pngs.Count == 0) { Report("ComfyUI returned no images. " + DoctorHelp); return; }
             var gen = new Image();
             if (gen.LoadPngFromBuffer(r.Pngs[0]) != Error.Ok || gen.IsEmpty())
             {
                 gen.Dispose();
-                Report("ComfyUI returned an undecodable image.");
+                Report("ComfyUI returned an undecodable image. " + DoctorHelp);
                 return;
             }
-
-            if (gen.GetWidth() != _capture.GetWidth() || gen.GetHeight() != _capture.GetHeight())
-            {
-                gen.Resize(_capture.GetWidth(), _capture.GetHeight());
-            }
-
+            if (gen.GetWidth() != req.Width || gen.GetHeight() != req.Height) gen.Resize(req.Width, req.Height);
             _generated?.Dispose();
             _generated = gen;
             Reextract();
             ShowWorkViews();
             Report($"{r.Pngs.Count} image(s), seed {r.Seed}; decal extracted under the mask. Save to layer.");
         }
+        catch (OperationCanceledException)
+        {
+            if (Current()) Report("Image generation cancelled. Try Generate again.");
+        }
+        catch (Exception)
+        {
+            if (Current()) Report("ComfyUI could not complete the image job. " + DoctorHelp);
+        }
         finally
         {
-            _busy = false;
+            if (!_stopped && version == _jobVersion)
+            {
+                _generation = null;
+                _busy = false;
+                UpdateGenerateButton();
+            }
         }
     }
 

@@ -112,8 +112,11 @@ public sealed class ComfyUiProvider : IImageProvider, IDisposable
     public void Dispose() => _http.Dispose();
 
     /// <summary>The API-format workflow files in a folder: what the picker lists.</summary>
-    public static List<string> Workflows(string folder) =>
-        Directory.Exists(folder) ? Directory.GetFiles(folder, "*.json").OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToList() : new List<string>();
+    public static List<string> Workflows(string folder)
+    {
+        if (!AiFeatures.Enabled) return new List<string>();
+        return Directory.Exists(folder) ? Directory.GetFiles(folder, "*.json").OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToList() : new List<string>();
+    }
 
     /// <summary>
     /// Binds a request into an API-format workflow. Three ways, in order: <c>{{prompt}}</c>, <c>{{input}}</c> and
