@@ -1,6 +1,6 @@
 # ADR-0039: Realtime Lights, a tile-grid light field for the 2D world
 
-Status: Proposed, 2026-10-19 (the owner chose the direction in the lighting
+Status: Drawing path retired 2026-11-14 (owner decision; see the amendment at the end). Originally Proposed, 2026-10-19 (the owner chose the direction in the lighting
 seat's window; the HD lighting draft, PR 57, stays a draft and is not built on).
 
 ## Context
@@ -154,6 +154,33 @@ and a door not blocking it, falloff to zero at the radius, the cache hit and
 its invalidation, and the roof dim. The smoke carries the same line. Rendered
 proof (a torch-lit room by night, a tavern by day, the classic frame with the
 option off) is evidence with the PR, not inferred from the probe.
+
+## Retired drawing path, 2026-11-14 (owner decision)
+
+The owner removed the old realtime lights **drawing path**. Reason: on a Steam
+Deck at far zoom it cost 10-21 ms per frame (65 ms in the owner's recordings),
+and lighting speed mode (ADR-0048/0049) replaces it.
+
+Removed: the per-frame field and geometry rebuild (`GameScene.RealtimeLights`
+draw code, `RealtimeLightTarget`), the field summation, `Cell`/`FineAt`/texture
+encode and ASCII dump in `RealtimeLightField`, `RealtimeLightsDebug`
+(`GUO_LIGHTS_BUDGET`, `GUO_LIGHTS_DUMP`), the **Classic realtime lights (CPU)**
+Options checkbox, and the old probe's field assertions. Compatibility and canvas
+players get classic lighting (speed mode already reports itself unavailable
+there).
+
+Kept, because speed mode uses it: light offers (`RealtimeLightField.Source`,
+`GameScene.RecordRealtimeLight`), profiles and falloff curves
+(`RealtimeLightProfiles`), the tile grid and reach rays (`ComputeReach`,
+`SpeedReach`, `LightOrigin`), `RealtimeWallFaces`, `AmbientFor`, `RoofDaylight`,
+`UpperFloorZ`, `NoBlock`, `RealtimeLightEffects` (spell bursts), `SpellLighting`,
+`ProjectedShadowMaskRd` (speed mode's shadow masks) and `RealtimeAmbientLevel`.
+
+`Profile.RealtimeLights` stays as a retired field so old saved profiles load;
+nothing reads it (docs/data_formats.md section 45). `uoplus-max` now enables
+lighting speed mode instead. `RealtimeLightsProbe` remains in the smoke and now
+tests only the shared core. The sections above describe the retired design and
+are kept as history.
 
 ## ADR Dependencies
 

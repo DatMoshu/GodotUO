@@ -51,7 +51,7 @@ editing JSON while a client is running.
 
 `EnhancedHD`, `ContentAudioEnabled`, `RealtimeLights`, `SpellLighting`,
 `AmbientFog`, `AmbientLeaves` and `AmbientDust` start off in the profile.
-`WaterStyle` starts as `classic`. Spell lighting requires realtime lights.
+`WaterStyle` starts as `classic`. Spell lighting requires lighting speed mode (the old CPU realtime lights option was retired).
 HD needs matching verified art; regional audio needs installed content.
 Enabling a setting does not generate or download missing content.
 The original-art path uses nearest sampling. See the

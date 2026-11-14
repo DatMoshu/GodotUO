@@ -28,7 +28,7 @@ checkbox. Unknown flags are ignored. Missing/null dictionaries are safe.
 Unavailable entries cannot activate, including hand-edited profile flags.
 
 L1 consumers are ambient particles, temporary spell-light collection and
-water ripples. The spell-light hook additionally requires Realtime lights;
+water ripples. The spell-light hook additionally requires lighting speed mode (the Realtime lights option is retired, ADR-0039);
 the existing spell-light producer consumes the same gate. Density scales its
 spell-only admission budget from 0 to 16 (ceiling of 16 × density / 100), with
 immediate trimming of older spell bursts when lowered. Generic temporary lights

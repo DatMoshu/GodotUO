@@ -30,7 +30,7 @@ need an isolated target and explicit review. Run commands through
 | `client.ui.options_touch` | Options: classic mouse spacing, touch rows, scrolling and Modern settings / `client` | [JSON](../../tools/scenarios/client/options_touch.scenario.json) |
 | `client.perf.gate` | Performance gate input: probe all six scenes on the GM dev shard / `client` | [JSON](../../tools/scenarios/client/perf_gate.scenario.json) |
 | `client.perf_lab.scenes` | Visit the places the perf lab times and photograph each / `client` | [JSON](../../tools/scenarios/client/perf_lab_scenes.scenario.json) |
-| `client.realtime.lights` | Realtime lights: default off, ambient ramp, walls block, reach cache, roof dim / `client` | [JSON](../../tools/scenarios/client/realtime_lights.scenario.json) |
+| `client.realtime.lights` | Shared light core (CPU realtime lights retired): ambient ramp, wall classification, profiles, spell-light table / `client` | [JSON](../../tools/scenarios/client/realtime_lights.scenario.json) |
 | `client.render.water` | Realtime water: same draw list as ClassicUO, animated water and ripples at the docks and the bay / `client` | [JSON](../../tools/scenarios/client/render_water.scenario.json) |
 | `client.render.water_pack` | A Store water pack's style at the docks, the bay and around a wading player / `client` | [JSON](../../tools/scenarios/client/render_water_pack.scenario.json) |
 | `client.selection.seam` | Selection seam: replacement picks forward to the original object / `client` | [JSON](../../tools/scenarios/client/selection_seam.scenario.json) |

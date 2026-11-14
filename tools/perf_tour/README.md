@@ -10,7 +10,7 @@ renderer change and after, on the same machine, and read `tour.md`.
   - `plain`: what ClassicUO draws and nothing more (`--perf-profile plain`,
     `--merged-land=off --merged-cover=off`, post-processing off);
   - `defaults`: GUO as shipped;
-  - `uoplus-max`: realtime lights with spell lights, every available UO+
+  - `uoplus-max`: lighting speed mode with spell lights, every available UO+
     feature at 100%, the realistic water style with ripples, HD filter
     Smooth, the particle cap at 512 and the `glow` post-processing look.
 - **ClassicUO** runs through `tools/perf_dump`'s mechanism (`PerfDump.cs`,

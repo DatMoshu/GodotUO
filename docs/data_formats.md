@@ -2974,47 +2974,44 @@ thread with distance attenuation (full to 2 tiles, silent past 20).
 `VoiceManager.Status` reports the pipeline state for probes;
 `--voice`/`--say`/`--voice-fake`/`--hear-secs` drive it in walk-to runs.
 
-## 45. Realtime lights (`Profile.RealtimeLights`, ADR-0039)
+## 45. Realtime lights (`Profile.RealtimeLights`, ADR-0039; drawing path retired)
 
-An L1 client option, default off, in Options > Video on both interfaces.
-Profile field `RealtimeLights` (bool). The only other input is the optional
-light profile file below; the existing **Light level** override
-(`UseCustomLightLevel`, `LightLevel`, `LightLevelType`) is the override slider
-for the shard's light level.
+**Retired 2026-11-14 (owner decision, ADR-0039 amendment).** The old CPU
+tile-grid light field renderer is gone: the per-frame field and geometry
+rebuild, the software shadow mask, the soften and bounce passes, the light
+target it drew into, its Options entry (**Classic realtime lights (CPU)**),
+the `GUO_LIGHTS_BUDGET` / `GUO_LIGHTS_DUMP` debug output and the
+`[realtime-lights]` log line. Lighting speed mode (ADR-0048) is the realtime
+lighting; the Compatibility renderer and the canvas path use classic lighting.
 
-On, each frame the scene builds a tile grid over the visible chunks plus an
-8-tile margin (side capped at 192): per cell the ground Z (`Land.AverageZ`),
-the light blockers on it, and whether a `Roof` static covers it. A blocker is
-tiledata `Wall`, or `Impassable` with `Height >= 8`; never `Door` or `Window`.
-A wall whose art reads as a wall plane (`WallFaces`, below) is a **line** on
-its tile: along X at world `y + offset`, or along Y at `x + offset` (a corner
-piece is both); any other blocker fills its tile. Each keeps the top Z of the
-tallest on the tile.
-Ambient is `RealtimeLightField.AmbientFor(IsometricLight.IsometricLevel)`:
-white at level 0, warm through the middle, blue-grey at night. The ramp's
-luminance is normalized to the classic grey (weights 0.2126, 0.7152, 0.0722),
-so equal night levels retain equal ambient brightness. Roofed cells take 55 % of daylight ambient, scaling to
-100 % at night. Each accepted light offer (`AddLight`) adds a source at its
-tile with radius `round(light.mul width / 44)` tiles (2..8) and the
-classic light tint (the light-shader palette, or the hue's table entry 16;
-an untinted light is warm RGB (1, 0.72, 0.38)), at an energy of 2.2. The field is sampled
-`F` times per tile side (`F = 4`; 2 when the grid has more than 192 x 192
-cells). A source's reach is a visibility map of `((2(r+1)+1) F)^2` samples:
-a ray from the source point to each sample's centre is blocked by a wall line
-it crosses, or by a whole-tile blocker on a tile that is neither the source's
-nor the sample's (only blockers above source Z + 3 count). The source point is
-its tile's centre, or, when the tile has a wall line, 0.3 tiles in front of
-that line on the +Y / +X side (a lamp hangs on the face the camera sees). Then
-a 3x3 box blur over the samples, never above the sample's own hard value (the
-soft edge falls on the lit side; nothing leaks through a wall), times the
-falloff at the sample's distance, times 0.35 where the ground is more than
-20 Z from the source. Reaches are cached by (x, y, z, r) while the blocker
-grid's FNV-1a hash is unchanged. Distance falloff is evaluated each frame at
-the sprite's interpolated position: tile offsets are `(Offset.X + Offset.Y)/44`
-and `(Offset.Y - Offset.X)/44`. Moving pools therefore advance between tile
-completions without recomputing cached visibility. The sum has no ceiling: a sample brighter
-than white is scaled by its brightest channel when read, keeping its hue. A
-tile's value (the dump, `Cell`) is the mean of its samples.
+Profile field `RealtimeLights` (bool, JSON `RealtimeLights`) is **retired**: it
+stays in the profile class only so old saved profiles load and re-save
+unchanged. Nothing reads it; the Options panels no longer show it; it never
+enables spell lights (`GuoEffectPolicy.SpellLightsEligible` is speed mode
+only). The `uoplus-max` perf preset now turns lighting speed mode on in its
+place.
+
+Still live and shared with speed mode (ADR-0048), described below: the tile
+grid of ground, blockers, wall lines and cover that the visibility rays walk
+(`RealtimeLightField`, built by `GameScene.SpeedModeGrid`); the light offers
+(`RealtimeLightField.Source`) collected by `AddLight`; the reach rays; wall
+faces; the ambient ramp; the light profile file; and spell-effect lights. The
+grid is built over the visible chunks plus an 8-tile margin (side capped at
+192): per cell the ground Z (`Land.AverageZ`), the light blockers on it, and
+whether a `Roof` static covers it. A blocker is tiledata `Wall`, or
+`Impassable` with `Height >= 8`; never `Door` or `Window`. A wall whose art
+reads as a wall plane (`WallFaces`, below) is a **line** on its tile: along X
+at world `y + offset`, or along Y at `x + offset`; any other blocker fills its
+tile. Ambient is `RealtimeLightField.AmbientFor(IsometricLight.IsometricLevel)`:
+white at level 0, warm through the middle, blue-grey at night, luminance
+normalized to the classic grey (weights 0.2126, 0.7152, 0.0722). A source's
+tile radius is `round(light.mul width / 44)` (2..8), its tint the classic
+light-shader palette or the hue's table entry 16 (an untinted light is warm
+RGB (1, 0.72, 0.38)). A source's visibility rays run from its point to each
+sample centre, blocked by a wall line they cross or by a whole-tile blocker on
+a tile that is neither the source's nor the sample's (only blockers above
+source Z + 3 count). The source point is its tile's centre, or, when the tile
+has a wall line, 0.3 tiles in front of that line on the +Y / +X side.
 
 **Wall faces** (`WallFaces`, cached per graphic). The art's silhouette bottom,
 per column, in tile-box pixels (diamond top (22, 0), right (44, 22), bottom
@@ -3026,29 +3023,11 @@ better; a fit with mean residual over 2.5 px, or under 6 columns, is no wall.
 The line is `offset = (k + 22) / 44` (along X) or `(k - 22) / 44` (along Y),
 clamped to 0..1.
 
-The field is drawn into a GUO-owned target the size of the classic light
-target: every visible land tile as its iso quad (stretched corners from
-`YOffsets`), then every visible standing static (`Height >= 4`, wall, roof or
-foliage; not above `_maxZ`, not a hidden roof) as its own art sprite masked by
-its alpha. Each pixel reads the field per pixel from a texture of the samples
-(RGBA8, `F` texels per tile, each channel `sqrt(v / 8)`, linear filtering):
-a vertex colour carries its world point (R, G: texture coordinate; B: height
-above its base, `(px + 256) / 1024`; A = 1). Land corners are their world
-corners. A wall, window or door with faces is one quad per face, each column
-reading the field 0.3 tiles in front of the face's line at that point, so the
-face takes its own side's light with the ground's falloff; other statics read
-across their tile's middle. Height counts from the face's base plus 4 px per
-Z the static stands above the ground; the light fades to the roof ambient by
-`smoothstep(0, 120, h)`. Roofs, cover pieces (at or above the tile's cover Z)
-and statics above every light on their tile are flat roof ambient (A = 0, RGB
-the light). `RenderTargets.LightOverride` carries the texture; `RenderTargets.Draw`
-blends it with the classic darkness blend in place of the light target. The
-option off never builds the target.
-
-Log line every 5 s at trace level: `[realtime-lights] grid=WxH lights=N
-computed=N cached=N quads=N sprites=N roofs=N above=N darkQuads=N faces=N fine=F`. Scenario `client.realtime.lights`
-(`--realtime-lights-probe`, `RealtimeLightsProbe.tscn`) checks the contract
-headless and prints `[Realtime lights] PASS`.
+Scenario `client.realtime.lights` (`--realtime-lights-probe`,
+`RealtimeLightsProbe.tscn`) now checks only that shared core headless (retired
+field still loads, ambient ramp, blocker rule, falloff, wall classification,
+wall-lamp standoff, profile file and curves, spell-effect light table) and
+prints `[Realtime lights] PASS`.
 
 **Light profile file** (`RealtimeLightProfiles`). Read once, on the first
 light offer, from the path in `GUO_LIGHT_PROFILES`, else
@@ -3056,7 +3035,7 @@ light offer, from the path in `GUO_LIGHT_PROFILES`, else
 default, which overrides nothing (the behaviour above). A file that does not
 parse is logged once as a warning (`light profiles not used (...)`) and the
 built-in default is used; one bad entry rejects the whole file. Only the
-Realtime lights path reads it; the classic light path never does.
+speed-mode light offers read it; the classic light path never does.
 
 ```json
 {
@@ -3096,13 +3075,13 @@ returns a handle (0 for a zero duration); `Remove(handle)`, `Clear()`. Each
 live light joins the frame's sources after the light offers, through the same
 blockers and roofs. Duration is capped at 60 s; with `fadeOut` the energy falls
 linearly to 0 over the last 30 % of it. At most 64 live; a full table drops the
-oldest. Time is `Time.Ticks`. With the option off nothing reads them and they
+oldest. Time is `Time.Ticks`. With speed mode off nothing reads them and they
 expire on their own.
 
 **UO+ spell lighting** (non-parity, `Profile.SpellLighting`, JSON `spell_lighting`,
 default `false`). Both Video Options interfaces open the shared UO+ panel
-(section 47); its spell checkbox is independent of Realtime lights, which must
-also be enabled. Density controls the spell-only budget up to 16 bursts.
+(section 47); its spell checkbox needs lighting speed mode (the retired Realtime
+lights option no longer counts). Density controls the spell-only budget up to 16 bursts.
 No change to classic effect
 sprites, packets, hue lookup or sampling. Cast bursts are stationary at the
 resolved source tile when the effect is created; projectile impacts use the
@@ -3139,29 +3118,7 @@ arrival seam is invoked synthetically; this is headless field evidence, not an
 in-world visual review. The smoke launchers include this probe. No external
 dependency or separate doctor is required beyond the normal Godot .NET setup.
 
-**Debug output**, off unless its environment variable is set:
-
-- `GUO_LIGHTS_BUDGET=1`: per frame, at trace level and on stdout,
-  `[realtime-lights-budget] frame=N lights=N temp=N computed=N grid=Xms
-  field=Xms draw=Xms total=Xms` (grid: blocker grid build; field: temporary
-  light collection and the field sum; draw: geometry into the light target),
-  and every 60 frames `[realtime-lights-budget] summary frames=60 lights avg=..
-  max=.. total avg=..ms max=..ms`.
-- `GUO_LIGHTS_DUMP=DIR[;FRAMES[;EVERY]]`: every EVERY-th frame (default 30)
-  until FRAMES files (default 10), `DIR/lights_NNNNNN.txt` (N = the lit frame
-  count). Header lines start `#`: the ambient level, scene offset and `_maxZ`;
-  the readout under the mouse (`pixel=X,Y tile=X,Y,Z light=R,G,B block=Z|-
-  cover=Z|- roofed=bool`, the pixel in `TranslatedMousePositionByViewport`
-  space, read at the tile's ground Z); the player's tile and light; the
-  profile source. Beside it `DIR/lights_NNNNNN.png` is the light target as
-  drawn the frame before. Then the grid, one text row per tile row, north at the top:
-  `*` a light source, `@` the player, `#` a blocker or wall line above ground + 3, `^`
-  covered, `0`-`9` the brightest channel in tenths, `X` white; outside the
-  visible chunks `+` a blocker, `.` anything else. Then one `# light X,Y,Z r=R
-  curve=C energy=E color=#RRGGBB` per source. The pixel-to-tile inverse is
-  `RealtimeLightField.ScreenToTile`: with `u = px + offset.X`,
-  `v = py + offset.Y + 4z`, the tile is `(floor((u+v)/44 + 0.5),
-  floor((v-u)/44 + 0.5))`.
+The `GUO_LIGHTS_BUDGET` and `GUO_LIGHTS_DUMP` debug outputs were removed with the drawing path.
 
 The editor's lights demo (`tools/editor_smoke/README.md`) takes `,spell` to
 cast a spell-effect light beside its first walker every second.

@@ -1,13 +1,13 @@
 {
   "id": "client.realtime.lights",
-  "title": "Realtime lights: default off, ambient ramp, walls block, reach cache, roof dim",
+  "title": "Shared light core: retired field loads, ambient ramp, wall classification, profiles, spell-light table",
   "surface": "client",
   "requires": {"build": "debug"},
   "timeouts": {"step_s": 60, "run_s": 180},
   "steps": [
     {"id": "launch", "do": {"kind": "launch", "args": ["--realtime-lights-probe"], "settings": {"autologin": false, "username": "", "password": ""}},
-     "say": "Check the tile-grid light field without game data (ADR-0039).",
+     "say": "Check the light core shared with speed mode without game data (ADR-0039, drawing path retired).",
      "expect": {"log.contains": "[Realtime lights] PASS", "within_s": 45}},
-    {"id": "summary", "do": {"kind": "note", "text": "Default-off persistence, day/dusk/night ambient, the tiledata blocking rule, a wall blocking and a gap passing light, falloff to zero at the radius, cache hit and invalidation, roof dim by day only. A lit room by night and the classic frame with the option off are rendered evidence runs."}}
+    {"id": "summary", "do": {"kind": "note", "text": "Retired RealtimeLights field still round-trips, day/dusk/night ambient, the tiledata blocking rule, falloff to zero at the radius, wall art classification, wall-lamp standoff, light profile file and curves, spell-effect light table. The CPU field renderer is gone; speed mode is covered by its own probes."}}
   ]
 }
