@@ -57,7 +57,8 @@ def main() -> int:
         parser.error('Plugin mode requires --persisted-preference to isolate editor settings')
     out.mkdir(parents=True)
     scratch = Path(tempfile.mkdtemp(prefix='guo-layers-ai-'))
-    project = scratch / 'project'
+    # Match the real checkout depth: WorldHost and EditorData resolve ../.. from res://.
+    project = scratch / 'godot' / 'GUO'
     plugin = project / 'addons/proof'
     plugin.mkdir(parents=True)
     probe = 'LayersAiPluginProof' if args.mode == 'plugin' else 'LayersAiProof'
@@ -83,6 +84,11 @@ enabled=PackedStringArray("res://addons/proof/plugin.cfg")
                UO_CLIENT_DATA=str(cfg.client_data), UO_CLIENT_VERSION=str(cfg.client_version))
     for name in ['GUO_EDITOR_MCP_PORT', 'GUO_EDITOR_MCP_TOKEN']:
         env.pop(name, None)
+    layout = {'scratch': str(scratch), 'project': str(project), 'child_cwd': str(project),
+              'world_host_scratch': str((project / '../../build/editor_world').resolve()),
+              'build': str(scratch / 'build'), 'workspace': str(scratch / 'workspace'),
+              'engine_home': str(scratch / 'engine'), 'evidence': str(out)}
+    (out / 'layout.json').write_text(json.dumps(layout, indent=2), encoding='utf-8')
     quiet = {'creationflags': subprocess.CREATE_NO_WINDOW} if os.name == 'nt' else {}
 
     def sha(path: Path) -> str:
@@ -90,7 +96,7 @@ enabled=PackedStringArray("res://addons/proof/plugin.cfg")
 
     def run(name: str, command: list[str], timeout: int = 180) -> int:
         with (out / (name + '.log')).open('w', encoding='utf-8') as log:
-            child = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, env=env, **quiet)
+            child = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, env=env, cwd=project, **quiet)
             (out / (name + '-pid.json')).write_text(json.dumps({'pid': child.pid, 'args': command}), encoding='utf-8')
             try:
                 code = child.wait(timeout=timeout)
@@ -109,7 +115,7 @@ enabled=PackedStringArray("res://addons/proof/plugin.cfg")
     if sha(copied) != sha(assembly):
         raise RuntimeError('Probe reference copy differs from requested production assembly')
     sources = {str(p.relative_to(repo)): sha(p) for p in (repo / 'godot/GUO/addons/guo_editor').rglob('*.cs')}
-    identity = {'mode': args.mode, 'project': str(project), 'production_assembly': str(assembly),
+    identity = {'mode': args.mode, 'layout': layout, 'project': str(project), 'production_assembly': str(assembly),
                 'production_sha256': sha(assembly), 'probe_source_sha256': sha(plugin / (probe + '.cs')),
                 'probe_assembly_sha256': sha(project / '.godot/mono/temp/bin/Debug/LayersAiProof.dll'),
                 'engine_files': {p.name: sha(p) for p in cfg.godot_console_exe.parent.glob('*.exe')}, 'sources': sources}
