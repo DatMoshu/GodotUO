@@ -207,7 +207,9 @@ class ServUOTests(unittest.TestCase):
 @unittest.skipUnless(sys.platform == "win32", "the process record is Windows only")
 class ProcessRecordTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(prefix="guo-lab-test-")
+        # The stopped process's child can hold the console log for a moment
+        # after the stop; a leftover temp folder is not a test failure.
+        self.tmp = tempfile.TemporaryDirectory(prefix="guo-lab-test-", ignore_cleanup_errors=True)
         self.addCleanup(self.tmp.cleanup)
         self.home = Path(self.tmp.name)
         self.state = self.home / "process.json"
@@ -223,8 +225,17 @@ class ProcessRecordTests(unittest.TestCase):
         self.assertEqual(process.owned(self.state), saved["Pid"])
         with self.assertRaises(process.ProcessError):
             process.start(self.exe, self.home, [], self.console, self.state, dict(process.os.environ))
-        time.sleep(1.5)
-        self.assertIn("127.0.0.1", self.console.read_text(errors="replace"))
+        # cmd.exe creates and fills the console log on its own schedule; a busy
+        # machine can take longer than a fixed sleep, so wait for the line.
+        deadline = time.monotonic() + 10
+        text = ""
+        while time.monotonic() < deadline:
+            if self.console.exists():
+                text = self.console.read_text(errors="replace")
+                if "127.0.0.1" in text:
+                    break
+            time.sleep(0.2)
+        self.assertIn("127.0.0.1", text)
         self.assertTrue(process.stop(self.state))
         self.assertFalse(self.state.exists())
         self.assertIsNone(process.identity(saved["Pid"]))
