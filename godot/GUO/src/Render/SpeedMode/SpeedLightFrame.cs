@@ -47,4 +47,8 @@ internal sealed class SpeedLightFrame
     internal System.Action<UltimaBatcher2D,Texture2D,Vector4,Vector3> BindLightTarget;
     internal System.Action<UltimaBatcher2D> ClearLightTarget;
     internal static long GridTicks,ReachTicks;
+    // Perf probe only: the reach stage split into its three parts (per-light reach, light inputs, shadow inputs).
+    internal static long ReachLoopTicks,LightInputTicks,ShadowInputTicks;
+    // Shadow inputs split again: wall grid, physical world capture, window scan, static shadows, mobile shadows.
+    internal static long ShadowGridTicks,ShadowPhysicalTicks,ShadowWindowTicks,ShadowStaticTicks,ShadowMobileTicks;
 }

@@ -4071,6 +4071,20 @@ also supplies `rd_frames_drawn_in_counter_window`,
 `rd_frames_fallback_in_counter_window` and `rd_last_frame_on_pass` to verify that
 timed observations actually used the pass.
 
+With lighting speed mode on, `speed_grid_cpu_ms` and `speed_reach_cpu_ms` are the
+CPU time per frame for the tile grid and for the light-reach stage. The reach stage
+is also split into `speed_reach_loop_cpu_ms` (collecting lights and each light's
+reach), `speed_light_inputs_cpu_ms` and `speed_shadow_inputs_cpu_ms`; the three
+sum to `speed_reach_cpu_ms`. The shadow inputs are split again into
+`speed_shadow_grid_cpu_ms`, `speed_shadow_physical_cpu_ms`,
+`speed_shadow_windows_cpu_ms`, `speed_shadow_statics_cpu_ms` and
+`speed_shadow_mobiles_cpu_ms`. All are 0 with classic lighting. With
+`GUO_SPEED_WINDOW_VERIFY=1` the client also rescans the tiles each frame and
+counts frames whose cached window-light candidates differ from the scan:
+`speed_window_verify` (the check is on), and the running totals
+`speed_window_verify_frames_total`, `speed_window_verify_objects_total` and
+`speed_window_verify_mismatches_total` (which must stay 0).
+
 Labs PerfProbe rows add `rd_frames_drawn`, `rd_frames_fallback`,
 `rd_upload_bytes_per_frame`, `rd_draw_calls_per_frame`, `rd_record_cpu_ms`,
 `rd_last_fallback`, and parity field `rd_test_on_pass`. These supplement the

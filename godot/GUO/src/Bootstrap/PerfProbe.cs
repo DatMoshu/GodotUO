@@ -628,6 +628,8 @@ internal static partial class PerfProbe
         long rdTicksBefore = GUO.Renderer.DepthWorld.OrderedWorldCapture.RecordTicks;
         long speedGridBefore=GUO.Renderer.SpeedMode.SpeedLightFrame.GridTicks;
         long speedReachBefore=GUO.Renderer.SpeedMode.SpeedLightFrame.ReachTicks;
+        long speedLoopBefore=GUO.Renderer.SpeedMode.SpeedLightFrame.ReachLoopTicks,speedLightInBefore=GUO.Renderer.SpeedMode.SpeedLightFrame.LightInputTicks,speedShadowInBefore=GUO.Renderer.SpeedMode.SpeedLightFrame.ShadowInputTicks;
+        long speedShGridBefore=GUO.Renderer.SpeedMode.SpeedLightFrame.ShadowGridTicks,speedShPhysicalBefore=GUO.Renderer.SpeedMode.SpeedLightFrame.ShadowPhysicalTicks,speedShWindowsBefore=GUO.Renderer.SpeedMode.SpeedLightFrame.ShadowWindowTicks,speedShStaticsBefore=GUO.Renderer.SpeedMode.SpeedLightFrame.ShadowStaticTicks,speedShMobilesBefore=GUO.Renderer.SpeedMode.SpeedLightFrame.ShadowMobileTicks;
         long rdSuppressedBefore = GUO.Renderer.DepthWorld.OrderedWorldCapture.SuppressedCommands;
         long rdReplayBefore = GUO.Renderer.DepthWorld.OrderedWorldCanvas.CommandsDrawn;
         long rdCanvasClearsBefore = UltimaBatcher2D.OrderedCanvasItemsCleared;
@@ -849,6 +851,18 @@ internal static partial class PerfProbe
             ["rd_record_cpu_ms"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldCapture.RecordTicks - rdTicksBefore) * 1000 / System.Diagnostics.Stopwatch.Frequency / n, 3),
             ["speed_grid_cpu_ms"] = System.Math.Round((double)(GUO.Renderer.SpeedMode.SpeedLightFrame.GridTicks-speedGridBefore)*1000/System.Diagnostics.Stopwatch.Frequency/n,3),
             ["speed_reach_cpu_ms"] = System.Math.Round((double)(GUO.Renderer.SpeedMode.SpeedLightFrame.ReachTicks-speedReachBefore)*1000/System.Diagnostics.Stopwatch.Frequency/n,3),
+            ["speed_reach_loop_cpu_ms"] = System.Math.Round((double)(GUO.Renderer.SpeedMode.SpeedLightFrame.ReachLoopTicks-speedLoopBefore)*1000/System.Diagnostics.Stopwatch.Frequency/n,3),
+            ["speed_light_inputs_cpu_ms"] = System.Math.Round((double)(GUO.Renderer.SpeedMode.SpeedLightFrame.LightInputTicks-speedLightInBefore)*1000/System.Diagnostics.Stopwatch.Frequency/n,3),
+            ["speed_shadow_inputs_cpu_ms"] = System.Math.Round((double)(GUO.Renderer.SpeedMode.SpeedLightFrame.ShadowInputTicks-speedShadowInBefore)*1000/System.Diagnostics.Stopwatch.Frequency/n,3),
+            ["speed_shadow_grid_cpu_ms"] = System.Math.Round((double)(GUO.Renderer.SpeedMode.SpeedLightFrame.ShadowGridTicks-speedShGridBefore)*1000/System.Diagnostics.Stopwatch.Frequency/n,3),
+            ["speed_shadow_physical_cpu_ms"] = System.Math.Round((double)(GUO.Renderer.SpeedMode.SpeedLightFrame.ShadowPhysicalTicks-speedShPhysicalBefore)*1000/System.Diagnostics.Stopwatch.Frequency/n,3),
+            ["speed_shadow_windows_cpu_ms"] = System.Math.Round((double)(GUO.Renderer.SpeedMode.SpeedLightFrame.ShadowWindowTicks-speedShWindowsBefore)*1000/System.Diagnostics.Stopwatch.Frequency/n,3),
+            ["speed_shadow_statics_cpu_ms"] = System.Math.Round((double)(GUO.Renderer.SpeedMode.SpeedLightFrame.ShadowStaticTicks-speedShStaticsBefore)*1000/System.Diagnostics.Stopwatch.Frequency/n,3),
+            ["speed_shadow_mobiles_cpu_ms"] = System.Math.Round((double)(GUO.Renderer.SpeedMode.SpeedLightFrame.ShadowMobileTicks-speedShMobilesBefore)*1000/System.Diagnostics.Stopwatch.Frequency/n,3),
+            ["speed_window_verify"] = GUO.Game.Scenes.GameScene.SpeedWindowVerify,
+            ["speed_window_verify_frames_total"] = GUO.Game.Scenes.GameScene.SpeedWindowVerifyFrames,
+            ["speed_window_verify_objects_total"] = GUO.Game.Scenes.GameScene.SpeedWindowVerifyObjects,
+            ["speed_window_verify_mismatches_total"] = GUO.Game.Scenes.GameScene.SpeedWindowVerifyMismatches,
             ["rd_last_fallback"] = GUO.Renderer.DepthWorld.OrderedWorldCapture.LastFallback ?? "",
             ["rd_deferred_quads_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldCapture.SuppressedCommands - rdSuppressedBefore) / n, 1),
             ["rd_canvas_replay_quads_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldCanvas.CommandsDrawn - rdReplayBefore) / n, 1),

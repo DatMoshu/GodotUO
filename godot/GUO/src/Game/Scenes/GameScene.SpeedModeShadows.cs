@@ -21,6 +21,8 @@ namespace GUO.Game.Scenes;
 internal partial class GameScene
 {
     private SpeedShadowInputs _speedShadows;
+    private sealed class SpeedWindowCandidates { internal int Version=-1; internal readonly List<GameObject> Objects=new(); }
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<GUO.Game.Map.Chunk,SpeedWindowCandidates> _speedWindowCandidates=new();
     private ulong _shadowGridHash;
     private static long _physicalWorldIdentityCounter;
     private readonly ulong _physicalWorldIdentity=(ulong)System.Threading.Interlocked.Increment(ref _physicalWorldIdentityCounter);
@@ -46,6 +48,7 @@ internal partial class GameScene
             inputs.Lamps[i]=new ShadowLamp(new N3(s.X+s.OffsetX+.5f,s.Y+s.OffsetY+.5f,s.Z+10),s.Radius,(uint)i);
         }
         ref var tiles=ref Client.Game.UO.FileManager.TileData.StaticData;
+        long t0=System.Diagnostics.Stopwatch.GetTimestamp();
         // The reach snapshot already has stable chunk membership/content stamps.
         // Rebuild from source, never aggregate BlockTop (which includes trees).
         if(_shadowGridHash!=_speedGridHash || inputs.Grid.Width==0) {
@@ -68,6 +71,7 @@ internal partial class GameScene
             }
             _shadowGridHash=_speedGridHash;
         }
+        long t1=System.Diagnostics.Stopwatch.GetTimestamp(); SpeedLightFrame.ShadowGridTicks+=t1-t0;
         // Validated packet0x5B wins; otherwise use the named brightness
         // approximation. Never derive server time from the PC clock.
 #if GUO_LABS
@@ -90,6 +94,7 @@ internal partial class GameScene
             if(sun && sky.Strength>0) inputs.PhysicalSun=PhysicalSunProjection.Create(inputs.PhysicalWorld,
                 new N2(frame.Origin.X,frame.Origin.Y),sky.Direction,sky.Length,sky.Strength);
         }
+        long t2=System.Diagnostics.Stopwatch.GetTimestamp(); SpeedLightFrame.ShadowPhysicalTicks+=t2-t1;
         N2 ray=sky.Direction;
         Vector2 direction=new(ray.X-ray.Y,ray.X+ray.Y);
         direction=direction.Normalized();
@@ -101,25 +106,65 @@ internal partial class GameScene
             inputs.PhysicalLamp=PhysicalLampProjection.Create(inputs.PhysicalWorld,inputs.Lamps[selected[0]],
                 new N2(frame.Origin.X,frame.Origin.Y),selected[0]);
         }
-        foreach(var chunk in _visibleChunks) {
+        // Window light. The objects that can be windows change only when a chunk's contents do
+        // (Chunk.ObjectsVersion), so each chunk keeps its short list in tile order and the frame
+        // walks that instead of every object on every visible tile. What changes per frame (roof
+        // cut-away, visibility, the view) is still checked per frame.
+        if(windows) foreach(var chunk in _visibleChunks) {
             if(chunk==null || chunk.IsDestroyed) continue;
-            for(int y=0;y<8;y++) for(int x=0;x<8;x++) for(var obj=chunk.Tiles[x,y];obj!=null;obj=obj.TNext) {
+            var cached=_speedWindowCandidates.GetOrCreateValue(chunk);
+            if(cached.Version!=chunk.ObjectsVersion) {
+                cached.Objects.Clear();
+                for(int y=0;y<8;y++) for(int x=0;x<8;x++) for(var obj=chunk.Tiles[x,y];obj!=null;obj=obj.TNext) {
+                    // Mobile silhouettes come from the completed native draw below.
+                    if(obj is Mobile) continue;
+                    if(obj is not (Static or Multi or Item) || obj.Graphic>=tiles.Length) continue;
+                    if(WindowLightTable.BuiltIn.ContainsKey(obj.Graphic)) cached.Objects.Add(obj);
+                }
+                cached.Version=chunk.ObjectsVersion;
+            }
+            foreach(var obj in cached.Objects) {
                 if(!obj.AllowedToDraw || obj.Z>=_maxZ) continue;
-                // Mobile silhouettes come from the completed native draw below.
-                if(obj is Mobile) continue;
-                if(obj is not (Static or Multi or Item) || obj.Graphic>=tiles.Length) continue;
-                ref var td=ref tiles[obj.Graphic];
-                if(windows && WindowLightTable.BuiltIn.TryGetValue(obj.Graphic,out var opening))
+                if(WindowLightTable.BuiltIn.TryGetValue(obj.Graphic,out var opening)) {
+                    if(SpeedWindowVerify) _speedWindowSeen.Add(obj);
                     CollectSpeedWindow(inputs,opening,obj,ray,view);
-
+                }
             }
         }
+        if(SpeedWindowVerify && windows) VerifySpeedWindowCandidates(ref tiles);
+        long t3=System.Diagnostics.Stopwatch.GetTimestamp(); SpeedLightFrame.ShadowWindowTicks+=t3-t2;
         CollectSpeedStaticShadows(inputs,batcher,view,direction,sky.Length,sky.Strength);
+        long t4=System.Diagnostics.Stopwatch.GetTimestamp(); SpeedLightFrame.ShadowStaticTicks+=t4-t3;
         CollectSpeedMobileShadows(inputs,batcher,view,direction,sky.Length,sky.Strength,selected[..selectedCount]);
+        SpeedLightFrame.ShadowMobileTicks+=System.Diagnostics.Stopwatch.GetTimestamp()-t4;
         // PORT DEVIATION (GUO): task 1136. Enhanced shadows exist this frame only with a sun shadow
         // (strength > 0) or a selected lamp shadow; at night with no lamp in reach there are none.
         GuoEffectPolicy.EnhancedShadowsProduced=(sun && sky.Strength>0) || selectedCount>0;
         frame.RenderInputs=inputs.RenderCallback; frame.RenderPatches=inputs.PatchCallback; frame.ReleaseInputs=inputs.ReleaseCallback;
+    }
+
+    // Probe-only check (GUO_SPEED_WINDOW_VERIFY=1): the cached candidates must name the same
+    // objects, in the same order, as the full tile scan they replace.
+    internal static readonly bool SpeedWindowVerify=System.Environment.GetEnvironmentVariable("GUO_SPEED_WINDOW_VERIFY")=="1";
+    internal static long SpeedWindowVerifyFrames,SpeedWindowVerifyMismatches,SpeedWindowVerifyObjects;
+    private readonly List<GameObject> _speedWindowSeen=new();
+    private void VerifySpeedWindowCandidates(ref StaticTiles[] tiles)
+    {
+        int at=0; bool same=true;
+        foreach(var chunk in _visibleChunks) {
+            if(chunk==null || chunk.IsDestroyed) continue;
+            for(int y=0;y<8;y++) for(int x=0;x<8;x++) for(var obj=chunk.Tiles[x,y];obj!=null;obj=obj.TNext) {
+                if(!obj.AllowedToDraw || obj.Z>=_maxZ) continue;
+                if(obj is Mobile) continue;
+                if(obj is not (Static or Multi or Item) || obj.Graphic>=tiles.Length) continue;
+                if(!WindowLightTable.BuiltIn.ContainsKey(obj.Graphic)) continue;
+                if(at>=_speedWindowSeen.Count || !ReferenceEquals(_speedWindowSeen[at],obj)) same=false;
+                at++;
+            }
+        }
+        if(at!=_speedWindowSeen.Count) same=false;
+        SpeedWindowVerifyFrames++; SpeedWindowVerifyObjects+=at; if(!same) SpeedWindowVerifyMismatches++;
+        _speedWindowSeen.Clear();
     }
 
     partial void DisposeSpeedShadows()
