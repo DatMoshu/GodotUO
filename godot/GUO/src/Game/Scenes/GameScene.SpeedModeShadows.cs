@@ -125,10 +125,13 @@ internal partial class GameScene
             }
             foreach(var obj in cached.Objects) {
                 if(!obj.AllowedToDraw || obj.Z>=_maxZ) continue;
-                if(WindowLightTable.BuiltIn.TryGetValue(obj.Graphic,out var opening))
+                if(WindowLightTable.BuiltIn.TryGetValue(obj.Graphic,out var opening)) {
+                    if(SpeedWindowVerify) _speedWindowSeen.Add(obj);
                     CollectSpeedWindow(inputs,opening,obj,ray,view);
+                }
             }
         }
+        if(SpeedWindowVerify && windows) VerifySpeedWindowCandidates(ref tiles);
         long t3=System.Diagnostics.Stopwatch.GetTimestamp(); SpeedLightFrame.ShadowWindowTicks+=t3-t2;
         CollectSpeedStaticShadows(inputs,batcher,view,direction,sky.Length,sky.Strength);
         long t4=System.Diagnostics.Stopwatch.GetTimestamp(); SpeedLightFrame.ShadowStaticTicks+=t4-t3;
@@ -138,6 +141,30 @@ internal partial class GameScene
         // (strength > 0) or a selected lamp shadow; at night with no lamp in reach there are none.
         GuoEffectPolicy.EnhancedShadowsProduced=(sun && sky.Strength>0) || selectedCount>0;
         frame.RenderInputs=inputs.RenderCallback; frame.RenderPatches=inputs.PatchCallback; frame.ReleaseInputs=inputs.ReleaseCallback;
+    }
+
+    // Probe-only check (GUO_SPEED_WINDOW_VERIFY=1): the cached candidates must name the same
+    // objects, in the same order, as the full tile scan they replace.
+    internal static readonly bool SpeedWindowVerify=System.Environment.GetEnvironmentVariable("GUO_SPEED_WINDOW_VERIFY")=="1";
+    internal static long SpeedWindowVerifyFrames,SpeedWindowVerifyMismatches,SpeedWindowVerifyObjects;
+    private readonly List<GameObject> _speedWindowSeen=new();
+    private void VerifySpeedWindowCandidates(ref StaticTiles[] tiles)
+    {
+        int at=0; bool same=true;
+        foreach(var chunk in _visibleChunks) {
+            if(chunk==null || chunk.IsDestroyed) continue;
+            for(int y=0;y<8;y++) for(int x=0;x<8;x++) for(var obj=chunk.Tiles[x,y];obj!=null;obj=obj.TNext) {
+                if(!obj.AllowedToDraw || obj.Z>=_maxZ) continue;
+                if(obj is Mobile) continue;
+                if(obj is not (Static or Multi or Item) || obj.Graphic>=tiles.Length) continue;
+                if(!WindowLightTable.BuiltIn.ContainsKey(obj.Graphic)) continue;
+                if(at>=_speedWindowSeen.Count || !ReferenceEquals(_speedWindowSeen[at],obj)) same=false;
+                at++;
+            }
+        }
+        if(at!=_speedWindowSeen.Count) same=false;
+        SpeedWindowVerifyFrames++; SpeedWindowVerifyObjects+=at; if(!same) SpeedWindowVerifyMismatches++;
+        _speedWindowSeen.Clear();
     }
 
     partial void DisposeSpeedShadows()
