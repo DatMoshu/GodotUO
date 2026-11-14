@@ -81,7 +81,9 @@ class RunnerLayout(unittest.TestCase):
         self.assertTrue(segments)
         layouts = []
         with tempfile.TemporaryDirectory(prefix='guo-layers-layout-controls-') as temp:
-            base = Path(temp)
+            # Resolved once: a temp folder given as an 8.3 short path must not differ from the
+            # resolved paths the runner records.
+            base = Path(temp).resolve()
             original_mkdtemp = tempfile.mkdtemp
             for index, mode in enumerate(['component', 'plugin']):
                 out = base / ('evidence-' + str(index))
