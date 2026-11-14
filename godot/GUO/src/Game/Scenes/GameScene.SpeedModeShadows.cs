@@ -46,6 +46,7 @@ internal partial class GameScene
             inputs.Lamps[i]=new ShadowLamp(new N3(s.X+s.OffsetX+.5f,s.Y+s.OffsetY+.5f,s.Z+10),s.Radius,(uint)i);
         }
         ref var tiles=ref Client.Game.UO.FileManager.TileData.StaticData;
+        long t0=System.Diagnostics.Stopwatch.GetTimestamp();
         // The reach snapshot already has stable chunk membership/content stamps.
         // Rebuild from source, never aggregate BlockTop (which includes trees).
         if(_shadowGridHash!=_speedGridHash || inputs.Grid.Width==0) {
@@ -68,6 +69,7 @@ internal partial class GameScene
             }
             _shadowGridHash=_speedGridHash;
         }
+        long t1=System.Diagnostics.Stopwatch.GetTimestamp(); SpeedLightFrame.ShadowGridTicks+=t1-t0;
         // Validated packet0x5B wins; otherwise use the named brightness
         // approximation. Never derive server time from the PC clock.
 #if GUO_LABS
@@ -90,6 +92,7 @@ internal partial class GameScene
             if(sun && sky.Strength>0) inputs.PhysicalSun=PhysicalSunProjection.Create(inputs.PhysicalWorld,
                 new N2(frame.Origin.X,frame.Origin.Y),sky.Direction,sky.Length,sky.Strength);
         }
+        long t2=System.Diagnostics.Stopwatch.GetTimestamp(); SpeedLightFrame.ShadowPhysicalTicks+=t2-t1;
         N2 ray=sky.Direction;
         Vector2 direction=new(ray.X-ray.Y,ray.X+ray.Y);
         direction=direction.Normalized();
@@ -114,8 +117,11 @@ internal partial class GameScene
 
             }
         }
+        long t3=System.Diagnostics.Stopwatch.GetTimestamp(); SpeedLightFrame.ShadowWindowTicks+=t3-t2;
         CollectSpeedStaticShadows(inputs,batcher,view,direction,sky.Length,sky.Strength);
+        long t4=System.Diagnostics.Stopwatch.GetTimestamp(); SpeedLightFrame.ShadowStaticTicks+=t4-t3;
         CollectSpeedMobileShadows(inputs,batcher,view,direction,sky.Length,sky.Strength,selected[..selectedCount]);
+        SpeedLightFrame.ShadowMobileTicks+=System.Diagnostics.Stopwatch.GetTimestamp()-t4;
         // PORT DEVIATION (GUO): task 1136. Enhanced shadows exist this frame only with a sun shadow
         // (strength > 0) or a selected lamp shadow; at night with no lamp in reach there are none.
         GuoEffectPolicy.EnhancedShadowsProduced=(sun && sky.Strength>0) || selectedCount>0;

@@ -4075,7 +4075,10 @@ With lighting speed mode on, `speed_grid_cpu_ms` and `speed_reach_cpu_ms` are th
 CPU time per frame for the tile grid and for the light-reach stage. The reach stage
 is also split into `speed_reach_loop_cpu_ms` (collecting lights and each light's
 reach), `speed_light_inputs_cpu_ms` and `speed_shadow_inputs_cpu_ms`; the three
-sum to `speed_reach_cpu_ms`. All are 0 with classic lighting.
+sum to `speed_reach_cpu_ms`. The shadow inputs are split again into
+`speed_shadow_grid_cpu_ms`, `speed_shadow_physical_cpu_ms`,
+`speed_shadow_windows_cpu_ms`, `speed_shadow_statics_cpu_ms` and
+`speed_shadow_mobiles_cpu_ms`. All are 0 with classic lighting.
 
 Labs PerfProbe rows add `rd_frames_drawn`, `rd_frames_fallback`,
 `rd_upload_bytes_per_frame`, `rd_draw_calls_per_frame`, `rd_record_cpu_ms`,
