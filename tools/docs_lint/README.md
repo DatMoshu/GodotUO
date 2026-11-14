@@ -6,6 +6,9 @@ The default scope is README, CONTRIBUTING, SECURITY, `docs/**/*.md` and
 every `tools/<job>/README.md`. The default run also requires one README.md in
 each `tools/<job>/` folder (what it is, how to run it, its tests); a folder
 without one is reported as `tools/<job>: job folder has no README.md`.
+It also requires every numbered `docs/architecture/ADR-####-*.md` file to
+have a `| #### |` row in `docs/architecture/README.md`. Unnumbered ADR notes
+are not required, and the check does not judge status words.
 Pass explicit files/folders to narrow it (the README rule then does not run),
 or `--root` for a fixture checkout.
 

@@ -1,7 +1,7 @@
 import tempfile
 from pathlib import Path
 import unittest
-from run import anchors, check, missing_readmes
+from run import anchors, check, missing_adr_rows, missing_readmes
 
 
 class DocsTests(unittest.TestCase):
@@ -62,6 +62,23 @@ class DocsTests(unittest.TestCase):
 
     def test_no_tools_folder_is_not_an_issue(self):
         self.assertEqual(missing_readmes(self.root), [])
+
+    def test_numbered_adr_files_need_an_index_row(self):
+        folder = self.root / "docs" / "architecture"
+        folder.mkdir(parents=True)
+        (folder / "ADR-0039-realtime-lights.md").write_text("# ADR-0039: Realtime Lights\n", encoding="utf-8")
+        (folder / "ADR-local-lighting-clock.md").write_text("# note\n", encoding="utf-8")
+        index = folder / "README.md"
+        index.write_text("| 0007 | Sorted world in batched meshes | proposed; B2 measured 2026-09-27, recommend reject |\n", encoding="utf-8")
+        issues = missing_adr_rows(self.root)
+        self.assertEqual(len(issues), 1)
+        self.assertIn("ADR 0039", issues[0].message)
+        index.write_text(index.read_text(encoding="utf-8") + "| 0039 | Realtime Lights | Proposed, 2026-10-19 |\n", encoding="utf-8")
+        self.assertEqual(missing_adr_rows(self.root), [])
+
+    def test_real_index_lists_every_numbered_adr(self):
+        root = Path(__file__).resolve().parents[2]
+        self.assertEqual(missing_adr_rows(root), [])
 
 
 if __name__ == "__main__":
