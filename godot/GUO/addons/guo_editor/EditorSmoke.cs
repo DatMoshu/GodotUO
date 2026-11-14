@@ -176,6 +176,9 @@ public partial class EditorSmoke : Node
         _elapsed += delta;
         _frames++;
 
+        if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-editor-manual-two-block") >= 0)
+        { StepManualTwoBlock(); return; }
+
         if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-multi-text-proof") >= 0)
         { StepMultiTextProof(); return; }
 
