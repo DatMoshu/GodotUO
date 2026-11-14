@@ -416,7 +416,8 @@ def main() -> int:
             print(f"[editor_smoke]        failed: {k}")
     art = report.get("art") or {}
     if art:
-        checks = [k for k, v in art.items() if v is True or v is False]
+        # splat_lods_present records whether an optional local fixture exists; it is a fact, not a check.
+        checks = [k for k, v in art.items() if (v is True or v is False) and k != "splat_lods_present"]
         bad = [k for k in checks if art[k] is False]
         print(f"[editor_smoke]   {'ok  ' if art.get('ok') else 'FAIL'} Art     {len(checks) - len(bad)}/{len(checks)} checks: "
               f"export, scripted save imported by the watcher, post-process, provenance, Pinta in place, "
@@ -427,6 +428,8 @@ def main() -> int:
             print(f"[editor_smoke]        skipped: {art.get('skipped')}")
             if args.require_native:
                 failures.append(f"--require-native: Art skipped {art.get('skipped')}")
+        if art.get("splat_lods_present") is False:
+            print(f"[editor_smoke]        splat LODs {art.get('splat')}")
         for k in bad:
             print(f"[editor_smoke]        failed: {k}")
     logs = report.get("logs") or {}
