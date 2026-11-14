@@ -19,11 +19,12 @@ the editor.
 | OpenCode | `opencode acp`, using the Go plan or supported provider configured inside OpenCode. Check the selected provider's billing before sending a message. |
 
 For OpenCode, choose ChatGPT Plus/Pro browser sign-in to connect that plan.
-An existing OpenCode Go plan uses its own key: in the Console, open **Settings >
-your account name > Create**, then paste the key into OpenCode's terminal.
-Console browser sign-in connects a separate provider; it does not connect Go.
-The workspace Keys page may offer service-account keys instead. See the
-[OpenCode Go onboarding issue](https://github.com/anomalyco/opencode/issues/56498).
+For an existing OpenCode Go plan, open the Console's account menu, then
+**Account > Personal API keys > Add API key**. Workspace owners/admins may also
+create a key under **Settings > Service accounts**. Paste it into OpenCode's
+terminal, connect **OpenCode Go**, and select a Go model so usage follows that
+plan. A Console connection or saved key alone does not confirm Go routing.
+See the [current maintainer guidance](https://github.com/anomalyco/opencode/issues/52227).
 Claude subscription sign-in uses the Claude adapter, following
 [OpenCode's provider guidance](https://opencode.ai/docs/providers/#anthropic).
 

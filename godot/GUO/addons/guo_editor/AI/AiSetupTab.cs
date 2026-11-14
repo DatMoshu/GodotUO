@@ -115,7 +115,7 @@ public partial class AiSetupTab : ScrollContainer
             "claude" => "Claude: sign in with your Claude account through Claude Code. Plan eligibility and usage limits are controlled by Anthropic.",
             "gemini" => "Gemini CLI: Google may require individual Google AI subscribers to migrate to Antigravity. Check current eligibility before installing; an API key is a separate billing route.",
             "antigravity" => "Google Gemini: use Google's official Antigravity ACP server with Google account sign-in. Legacy Gemini CLI no longer accepts individual Google AI subscriptions. Antigravity CLI (agy) and the ACP server are separate downloads.",
-            _ => "OpenCode: connect ChatGPT Plus/Pro with browser sign-in. For an existing Go plan, find its key in the Console: Settings > your account name > Create. Paste it only into OpenCode's terminal. Console browser login connects a separate provider. Claude subscriptions use the Claude agent above.",
+            _ => "OpenCode: connect ChatGPT Plus/Pro with browser sign-in. For Go, open the Console account menu > Account > Personal API keys > Add API key. Workspace owners can also use Settings > Service accounts. Paste the key only into OpenCode's terminal, choose OpenCode Go, then select a Go model. Claude subscriptions use the Claude agent above.",
         };
         string path = Preset.Find();
         _detected.Text = path == null ? "Adapter not found. Install it, then refresh detection. Restart GUO if your terminal PATH changed." : $"Adapter detected: {path}";
