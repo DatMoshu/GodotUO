@@ -47,7 +47,13 @@ public sealed partial class MultiDocument
         }
         int affected = action == "replace" ? targets.Count(p => p.Id == tile) : targets.Count;
         if (action == "create" && Layers.Count >= 256) throw new InvalidOperationException("Layer limit is 256.");
-        int createdId = checked(Layers.Max(l => l.Id) + 1);
+        int createdId = 0;
+        if (action == "create")
+        {
+            int highestId = Layers.Max(l => l.Id);
+            if (highestId >= int.MaxValue - 1) throw new InvalidOperationException("Layer identifiers exhausted.");
+            createdId = highestId + 1;
+        }
         if (apply)
         {
             if (action == "activate") { ActiveLayerId = layerId; Revision++; Changed?.Invoke(); }
@@ -115,12 +121,13 @@ internal static class MultiLayerCodec
 
     public static List<MultiLayer> Decode(string json, List<MultiPart> parts)
     {
-        var root = JsonNode.Parse(json);
-        if (root["editor_layers"] is not JsonObject meta) return new() { new MultiLayer(0, "Components") };
+        var root = JsonNode.Parse(json) as JsonObject ?? throw new ArgumentException("Expected a component description object.");
+        if (!root.TryGetPropertyValue("editor_layers", out var value)) return new() { new MultiLayer(0, "Components") };
+        if (value is not JsonObject meta) throw new ArgumentException("Invalid editor layer metadata.");
         if ((int?)meta["version"] != 1) throw new ArgumentException("Unsupported editor layer version.");
         var layers = meta["layers"]?.Deserialize<List<MultiLayer>>() ?? throw new ArgumentException("Missing layers.");
         var membership = meta["membership"]?.Deserialize<int[]>() ?? throw new ArgumentException("Missing layer membership.");
-        if (layers.Count == 0 || layers.Count > 256 || layers.Select(l => l.Id).Distinct().Count() != layers.Count
+        if (layers.Count == 0 || layers.Count > 256 || layers.Any(l => l == null) || layers.Select(l => l.Id).Distinct().Count() != layers.Count
             || layers.Any(l => l.Id < 0 || l.Id == int.MaxValue || string.IsNullOrWhiteSpace(l.Name) || l.Name.Length > 80)
             || membership.Length != parts.Count || membership.Any(id => !layers.Any(l => l.Id == id)))
             throw new ArgumentException("Invalid layers or component membership.");

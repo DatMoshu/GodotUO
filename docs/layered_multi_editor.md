@@ -84,14 +84,6 @@ layer identities and editing operations. Custom-house legality warnings and
 private-server multi validity are distinct checks.
 
 
-## Renderer reload lifetime
-The windowed proof also boots World before editing the tavern. This exposed a
-frame_pre_draw delegate left connected during assembly serialization, followed
-by stale callbacks and a shutdown access violation. OrderedWorldCapture now
-owns a native object/method signal relay and frees it during disposal, so
-teardown can disconnect the exact connection even as managed delegates reload.
-This does not change draw ordering or the GPU pass.
-
 ## Database-driven building generation
 
 Run `python tools/multi_layers/database.py --help`. Supply `--db` with the

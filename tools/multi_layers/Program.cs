@@ -47,4 +47,14 @@ Check(JsonNode.Parse(savedGeneration)["generation"]["source_rooms"][0]["id"].Get
 Reject(() => MultiLayerCodec.ReadGeneration("{\"generation\":[]}"), "invalid provenance refused");
 d.Reset(Array.Empty<MultiPart>(), "new");
 Check(d.GenerationJson == null, "new document clears source provenance");
+foreach (string malformed in new[] { "null", "[]", "42", "\"bad\"" })
+    Reject(() => MultiLayerCodec.Decode("{\"editor_layers\":" + malformed + "}", new()), "malformed layer metadata rejected: " + malformed);
+Reject(() => MultiLayerCodec.Decode("{\"editor_layers\":{\"version\":1,\"layers\":[null],\"membership\":[]}}", new()), "null layer record rejected");
+var nearLimit = new MultiDocument();
+nearLimit.Reset(Array.Empty<MultiPart>(), "import", new[] { new MultiLayer(int.MaxValue - 1, "Imported") });
+long nearRevision = nearLimit.Revision;
+Reject(() => nearLimit.EditLayer(nearRevision, "create", 0, "New"), "exhausted layer ID creation refused");
+Check(nearLimit.Revision == nearRevision && nearLimit.Layers.Count == 1, "exhausted creation is atomic");
+nearLimit.EditLayer(nearLimit.Revision, "rename", int.MaxValue - 1, "Renamed");
+Check(nearLimit.Layers.Single().Name == "Renamed", "near-limit imported layer remains editable");
 Console.WriteLine($"{checks} checks passed");
