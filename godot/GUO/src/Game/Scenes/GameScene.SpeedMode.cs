@@ -94,9 +94,13 @@ internal partial class GameScene
                 frame.Lights[i]=new SpeedLightFrame.Entry { Source=source,Reach=reach,PixelCentre=pixel,
                     PixelRadius=1.6f*source.Radius*22*matrix.X.Length(),Flicker=flicker,ShadowRow=-1 };
             }
+            long loopEnd=System.Diagnostics.Stopwatch.GetTimestamp();
             PrepareSpeedLightInputs(frame);
+            long lightEnd=System.Diagnostics.Stopwatch.GetTimestamp();
             PrepareSpeedShadowInputs(frame,batcher,matrix);
-            SpeedLightFrame.ReachTicks+=System.Diagnostics.Stopwatch.GetTimestamp()-reachStart;
+            long reachEnd=System.Diagnostics.Stopwatch.GetTimestamp();
+            SpeedLightFrame.ReachTicks+=reachEnd-reachStart;
+            SpeedLightFrame.ReachLoopTicks+=loopEnd-reachStart; SpeedLightFrame.LightInputTicks+=lightEnd-loopEnd; SpeedLightFrame.ShadowInputTicks+=reachEnd-lightEnd;
             _speedLightOverride=batcher.QueueSpeedLight(frame);
             if(_speedLightOverride!=null) { targets.LightOverride=_speedLightOverride; targets.SpeedLightBlend=_darknessBlend; targets.SpeedLightAmbient=frame.Ambient; }
         }

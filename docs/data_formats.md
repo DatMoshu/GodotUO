@@ -4071,6 +4071,12 @@ also supplies `rd_frames_drawn_in_counter_window`,
 `rd_frames_fallback_in_counter_window` and `rd_last_frame_on_pass` to verify that
 timed observations actually used the pass.
 
+With lighting speed mode on, `speed_grid_cpu_ms` and `speed_reach_cpu_ms` are the
+CPU time per frame for the tile grid and for the light-reach stage. The reach stage
+is also split into `speed_reach_loop_cpu_ms` (collecting lights and each light's
+reach), `speed_light_inputs_cpu_ms` and `speed_shadow_inputs_cpu_ms`; the three
+sum to `speed_reach_cpu_ms`. All are 0 with classic lighting.
+
 Labs PerfProbe rows add `rd_frames_drawn`, `rd_frames_fallback`,
 `rd_upload_bytes_per_frame`, `rd_draw_calls_per_frame`, `rd_record_cpu_ms`,
 `rd_last_fallback`, and parity field `rd_test_on_pass`. These supplement the
