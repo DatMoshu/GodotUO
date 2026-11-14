@@ -145,6 +145,24 @@ namespace GUO.Renderer
             }
         }
 
+#if DEBUG
+        internal static bool IsPending(Texture2D texture)
+            => TryFindPage(texture, out var atlas, out int index) && atlas._dirty[index];
+
+        // Diagnostic invariant: no decoded pixels may remain pending at presentation.
+        internal static int PendingPages
+        {
+            get
+            {
+                int count = 0;
+                foreach (var atlas in _live)
+                    foreach (bool dirty in atlas._dirty)
+                        if (dirty) count++;
+                return count;
+            }
+        }
+#endif
+
         public void Flush()
         {
             for (int i = 0; i < _pages.Count; i++)

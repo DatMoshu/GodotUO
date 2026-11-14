@@ -115,6 +115,8 @@ echo "[smoke] controller regressions and Set controls (synthetic pad; no shard)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" -- --pad-regression-probe --pregame-classic --silent || FAIL=1
 
 if [ "${GuoLabs:-false}" = "true" ]; then
+    echo "[smoke] mobile debug history and inspector lifecycle"
+    "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Labs/MobileDebug/MobileDebugProbe.tscn || FAIL=1
     echo "[smoke] ordered GPU world Labs pixels (real GPU; ADR-0043)"
     "$GODOT_CONSOLE" --path "$UO_GODOT_PROJECT" -- --batcher-probe || FAIL=1
     echo "[smoke] UO+ weather Labs contract"

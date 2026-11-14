@@ -401,6 +401,8 @@ namespace GUO.Renderer.Animations
 
                     if (frame.Width <= 0 || frame.Height <= 0)
                     {
+                        // PORT DEVIATION (GUO): distinguish empty source frames from upload failures.
+                        GUO.Host.MobileRenderTrace.EmptyFrame(id, action, dir, i, frame.Num, frame.Width, frame.Height);
                         spriteInfo = SpriteInfo.Empty;
 
                         /* Missing frame. */

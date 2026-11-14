@@ -1182,6 +1182,7 @@ namespace GUO
                 // The land array copies the pages as well; bring it up to date
                 // for the same frame. A no-op when no page changed.
                 LandPages.Sync();
+                GUO.Host.MobileRenderTrace.CompleteFrame();
 
                 canvasFrameCompleted = true;
             }

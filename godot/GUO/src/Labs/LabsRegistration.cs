@@ -20,6 +20,7 @@ internal static partial class LabsRegistration
         RegisterFeatures(new Context(world, command, option));
         RegisterWeather(new Context(world, command, option));
         RegisterPaging(new Context(world, command, option));
+        RegisterMobileDebug(new Context(world, command, option));
     }
 
     // Intentionally empty until a separately reviewed Labs feature implements it.
@@ -27,6 +28,7 @@ internal static partial class LabsRegistration
     static partial void RegisterFeatures(Context context);
     static partial void RegisterWeather(Context context);
     static partial void RegisterPaging(Context context);
+    static partial void RegisterMobileDebug(Context context);
 
     internal readonly struct Context
     {

@@ -2867,6 +2867,8 @@ namespace GUO.Network
 
             mobile.NotorietyFlag = notoriety;
 
+            // PORT DEVIATION (GUO): opt-in debug movement evidence; no payload or credentials.
+            GUO.Host.MobileRenderTrace.Movement(serial, x, y, z, (byte)direction);
             if (serial == world.Player)
             {
                 mobile.Flags = flags;
