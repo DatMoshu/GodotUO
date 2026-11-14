@@ -78,6 +78,7 @@ jobs:
       - name: Launchers are .bat/.sh pairs with a description
         run: |
           python3 tools/launcher_lint/test_launcher_lint.py
+          python3 tools/launcher_lint/test_smoke_parity.py
           python3 tools/launcher_lint/run.py
 
       - name: Server adapter generation and deployment guards
