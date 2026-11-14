@@ -542,6 +542,15 @@ namespace GUO.Game.UI.Gumps
 
         public void ChangeMap(int index)
         {
+#if GUO_LABS
+            // PORT DEVIATION (GUO): L4 map paging loads a page facet for the world
+            // map, pinned while it renders, or keeps this map and says why;
+            // Labs/Paging/README.md.
+            if (!GUO.Labs.Paging.PagingLab.BeforeWorldMap(this, World, index))
+            {
+                return;
+            }
+#endif
             Client.Game.UO.FileManager.Maps.LoadMap(index, World.ClientFeatures.Flags.HasFlag(CharacterListFlags.CLF_UNLOCK_FELUCCA_AREAS));
             _map = new Map.Map(World, index);
 
@@ -550,6 +559,9 @@ namespace GUO.Game.UI.Gumps
                 _loadingTask = _loadingTask.ContinueWith(_ => LoadMap(index));
             else
                 _loadingTask = Task.Run(() => LoadMap(index));
+#if GUO_LABS
+            GUO.Labs.Paging.PagingLab.AfterWorldMap(this, index, _loadingTask);
+#endif
         }
 
         #endregion

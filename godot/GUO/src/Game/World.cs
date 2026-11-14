@@ -172,6 +172,14 @@ namespace GUO.Game
                         return;
                     }
 
+#if GUO_LABS
+                    // PORT DEVIATION (GUO): L4 map paging readies a page facet before the stock
+                    // loader sees it, or disconnects and builds no map; Labs/Paging/README.md.
+                    if (!GUO.Labs.Paging.PagingLab.BeforeMapChange(this, ref value))
+                    {
+                        return;
+                    }
+#endif
                     if (Map != null)
                     {
                         if (MapIndex >= 0)
@@ -854,6 +862,11 @@ namespace GUO.Game
             _clientViewRangeKnown = false;
             Map?.Destroy();
             Map = null;
+#if GUO_LABS
+            // PORT DEVIATION (GUO): L4 map paging releases its pages with the world;
+            // Labs/Paging/README.md.
+            GUO.Labs.Paging.PagingLab.OnWorldCleared();
+#endif
             Light.Overall = Light.RealOverall = 0;
             Light.Personal = Light.RealPersonal = 0;
             ClientLockedFeatures.SetFlags(0);

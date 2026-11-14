@@ -160,4 +160,8 @@ unset _guo_shared_dir
 # Optional Labs weather proof outputs (empty disables capture).
 : "${GUO_WEATHER_PROOF:=}"
 : "${GUO_WEATHER_PROOF_DIR:=}"
+
+# --- Optional Labs map paging (empty keeps paging off; ADR-0046) ----------
+: "${GUO_LABS_PAGING:=}"
+: "${GUO_LABS_PAGING_RESIDENT:=}"
 set +a

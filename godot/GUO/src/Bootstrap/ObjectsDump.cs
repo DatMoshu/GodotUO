@@ -146,6 +146,16 @@ internal static class ObjectsDump
                 File.Delete(request);
                 if (Client.Game?.UO?.World?.Player != null && line.Length > 0)
                 {
+#if GUO_LABS
+                    // Labs builds only: a line starting with '-' runs as a client
+                    // command, as the chat box does (the L4 paging evidence run).
+                    if (line.Length > 1 && line[0] == '-')
+                    {
+                        string[] words = line.Substring(1).Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+                        Client.Game.UO.World.CommandManager.Execute(words[0], words);
+                    }
+                    else
+#endif
                     GameActions.Say(line);
                 }
 

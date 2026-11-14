@@ -53,10 +53,11 @@ it is taken even if its file has not landed yet.
 | 0043 | [ordered RenderingDevice world prototype](ADR-0043-ordered-rendering-device-lab.md) | owner-authorized L4 experiment, off by default (2026-10-23 document status) |
 | 0044 | Depth World: the world drawn with ClassicUO's depth rules on RenderingDevice | docs/adr-0044-cuo-depth-world-20261026 (accepted 2026-10-26) |
 | 0045 | [Bounded local overview and whole-facet zoom](ADR-0045-wide-zoom-overview.md) | Accepted by Moshu, 2026-10-27 (document status) |
+| 0046 | [Map paging in Labs: stable page facets, bounded residency](ADR-0046-map-paging-lab.md) | Proposed; L4 Labs experiment, off by default |
 | 0047 | Bounded item-art capacity with explicit content profiles | work/art-capacity-20261028 (proposed; offline contract only) |
 | 0048 | Lighting speed mode with a native surface buffer | work/guo-lighting-next-20261031 (opt-in; qualification ongoing) |
 | 0049 | Physical structure and native receivers for enhanced lighting | work/guo-lighting-next-20261031 (Britain implementation authorized 2026-10-31) |
 | 0050 | Legacy Comfy generation export containment | work/release-review-20261112 (release qualification; validation pending) |
 | 0051 | Retire legacy runtime voice synthesis | work/release-review-20261112 (release qualification; validation pending) |
 
-Next free: 0052 (0045 is the wide-zoom overview ADR; 0046 is reserved by the map paging lab branch).
+Next free: 0052.
