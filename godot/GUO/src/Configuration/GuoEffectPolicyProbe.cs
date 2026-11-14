@@ -25,25 +25,24 @@ public partial class GuoEffectPolicyProbe : Node
 
             // SpellLightsEligible
             UoPlusOptions.Set(p, UoPlusFeature.SpellLights, true, 50);
+            // The retired RealtimeLights preference (ADR-0039) never makes spell lights eligible.
             foreach (bool real in new[] { false, true })
                 foreach (bool speed in new[] { false, true })
                 {
                     p.RealtimeLights = real; SpeedModeDebug.Probe = speed;
-                    Check(GuoEffectPolicy.SpellLightsEligible(p) == (real || speed),
-                        $"spell lights realtime={real} speed={speed}");
+                    Check(GuoEffectPolicy.SpellLightsEligible(p) == speed,
+                        $"spell lights retired-realtime={real} speed={speed}");
                 }
-            SpeedModeDebug.Probe = true; p.RealtimeLights = false;
+            SpeedModeDebug.Probe = true; p.RealtimeLights = true;
             SpeedModeDebug.RuntimeUnavailableReason = "probe";
-            Check(!GuoEffectPolicy.SpellLightsEligible(p), "speed only but unsupported: not eligible");
-            p.RealtimeLights = true;
-            Check(GuoEffectPolicy.SpellLightsEligible(p), "realtime still eligible when speed unsupported");
+            Check(!GuoEffectPolicy.SpellLightsEligible(p), "speed unsupported: not eligible, retired realtime does not help");
             SpeedModeDebug.RuntimeUnavailableReason = null;
             UoPlusOptions.Set(p, UoPlusFeature.SpellLights, true, 0);
             Check(!GuoEffectPolicy.SpellLightsEligible(p), "density 0: not eligible");
             UoPlusOptions.Set(p, UoPlusFeature.SpellLights, false, 50);
             Check(!GuoEffectPolicy.SpellLightsEligible(p), "feature off: not eligible");
             Check(!GuoEffectPolicy.SpellLightsEligible(null), "null profile: not eligible");
-            Check(p.RealtimeLights, "RealtimeLights preference untouched");
+            Check(p.RealtimeLights, "retired RealtimeLights preference untouched");
 
             // ClassicShadowsSuppressed
             p.ShadowsEnabled = true; p.ShadowsStatics = true;

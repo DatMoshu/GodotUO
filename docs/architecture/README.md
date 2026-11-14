@@ -47,7 +47,7 @@ it is taken even if its file has not landed yet.
 | 0036 | Recorded audio packs | main |
 | 0037 | Water render modes | work/water-20261018 (proposed) |
 | 0038 | Packet mods and the mod ABI | work/modding-mod02-20261018 (proposed) |
-| 0039 | [Realtime Lights, a tile-grid light field for the 2D world](ADR-0039-realtime-lights.md) | Proposed, 2026-10-19 (document status) |
+| 0039 | [Realtime Lights, a tile-grid light field for the 2D world](ADR-0039-realtime-lights.md) | Drawing path retired 2026-11-14 (owner decision); shared light core kept for ADR-0048. Was Proposed, 2026-10-19 |
 | 0040 | One Input page for keyboard and mouse, controller and touch | work/input-05-20261018 (proposed) |
 | 0042 | [UO+ ambient biome particles](ADR-0042-ambient-particles.md) | Proposed for owner review, 2026-10-20; merging remains an owner decision |
 | 0043 | [ordered RenderingDevice world prototype](ADR-0043-ordered-rendering-device-lab.md) | owner-authorized L4 experiment, off by default (2026-10-23 document status) |

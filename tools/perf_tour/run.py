@@ -6,7 +6,7 @@ report, so it can be repeated after every renderer change without thinking:
 - GUO through tools/perf_probe (--perf-probe: 360 frames per scene, uncapped,
   vsync off) in each MODE: `plain` (what ClassicUO draws and nothing more:
   --perf-profile plain, --merged-land=off --merged-cover=off, no post-processing),
-  `defaults` (GUO as shipped) and `uoplus-max` (realtime lights, every UO+
+  `defaults` (GUO as shipped) and `uoplus-max` (lighting speed mode, every UO+
   feature at 100%, realistic water, HD filter, a post-processing look).
 - ClassicUO through tools/perf_dump (GUO_PERF_DUMP compiled into the
   out-of-tree build): its own profiler's averages over 60 drawn frames at the

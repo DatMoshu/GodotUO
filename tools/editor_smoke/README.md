@@ -69,7 +69,7 @@ editor checks and cannot be combined with `--reload`.
 
 For the spell-wall regression, use `--guo-editor-lights-demo
 12,spellwall,1498,1628,0` with world shot `0,1496,1628,960,720`.
-This editor-only fixture enables Realtime lights and Spell lighting at night
+This editor-only fixture enables lighting speed mode and Spell lighting at night
 level 30, omits the walkers and emits the actual fire-impact producer at the
 explicit X,Y,Z every 30 frames. Compare `world_pan/frame_0008.png` between
 backends: camera, source and simulation time are fixed. It demonstrates a

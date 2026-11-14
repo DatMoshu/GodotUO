@@ -78,7 +78,7 @@ public partial class EditorSmoke
         // Editor-only reproducible spell/wall comparison; no saved player settings.
         if (_demoSpellWall.HasValue)
         {
-            profile.RealtimeLights = profile.SpellLighting = true;
+            profile.LightingSpeedMode = profile.SpellLighting = true;
             profile.UseCustomLightLevel = true;
             profile.LightLevelType = 0;
             profile.LightLevel = 30;
@@ -90,7 +90,7 @@ public partial class EditorSmoke
                 : profile.LightLevel;
             world.Light.Personal = 0;
         }
-        GD.Print($"[lights-demo] realtime={profile?.RealtimeLights} overall={world.Light.Overall} personal={world.Light.Personal} classicAmbient={world.Light.IsometricLevel}");
+        GD.Print($"[lights-demo] speed={profile?.LightingSpeedMode} overall={world.Light.Overall} personal={world.Light.Personal} classicAmbient={world.Light.IsometricLevel}");
         if (_demoSpellWall.HasValue)
         {
             _demoActors.Clear();

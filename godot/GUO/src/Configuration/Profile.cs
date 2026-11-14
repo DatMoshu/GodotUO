@@ -409,10 +409,9 @@ namespace GUO.Configuration
         public bool EnhancedHD { get; set; } = false;
         public HdFilterMode HdFilter { get; set; } = HdFilterMode.Auto;
 
-        // PORT DEVIATION (GUO): Realtime lights (ADR-0039). When true the
-        // world is lit by a tile-grid light field that walls block and the
-        // shard's light level colours; off is the classic light target,
-        // byte-identical. Default off.
+        // PORT DEVIATION (GUO): RETIRED 2026-11-14 (ADR-0039, owner decision). The CPU
+        // Realtime lights drawing path is gone; lighting speed mode (ADR-0048) is the
+        // realtime lighting. Kept only so old saved profiles load; nothing reads it.
         public bool RealtimeLights { get; set; } = false;
         // PORT DEVIATION (GUO): ADR-0048; no GPU resources while disabled.
         public bool LightingSpeedMode { get; set; } = false;
@@ -445,7 +444,7 @@ namespace GUO.Configuration
             set => _speedModeMorningHaze = Math.Clamp(value, 0, 100);
         }
         // PORT DEVIATION (GUO): UO+ spell cast/impact bursts (ADR-0039).
-        // Requires RealtimeLights; existing profiles stay off.
+        // Needs lighting speed mode (ADR-0048); existing profiles stay off.
         public bool SpellLighting { get; set; } = false;
         // PORT DEVIATION (GUO): UO+ ambient particles, non-parity (ADR-0042).
         public bool AmbientFog { get; set; } = false;
