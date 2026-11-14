@@ -910,6 +910,12 @@ namespace GUO
         {
             // PORT DEVIATION (GUO): optional main-thread wall-time attribution.
             long processAt = RuntimeTimings.Now();
+#if GUO_LABS
+            // Task 1155 (Labs only): the competition bench drives simulation time with a fixed
+            // step per rendered frame. Inert (one static bool read) unless the bench is running.
+            if (GUO.Labs.CompetitionBench.CompetitionBenchClock.Active)
+                delta = GUO.Labs.CompetitionBench.CompetitionBenchClock.Step(ref _totalGameTime);
+#endif
             double elapsedMilliseconds = delta * 1000.0;
 
             _totalGameTime += delta;
