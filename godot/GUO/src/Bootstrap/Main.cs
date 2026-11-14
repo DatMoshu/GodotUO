@@ -2062,7 +2062,11 @@ public partial class Main : Node
             // The riverbank cover fix doubled the covering land; merged cover draws
             // it as runs at 0 strict pixels of parity. --merged-land=off and
             // --merged-cover=off restore upstream's draw.
-            if (OperatingSystem.IsWindows())
+            // Linux and the Steam Deck (2026-11-14, docs/perf/2026-11-14_linux_merged_cover.md):
+            // the same default. It only matters on the canvas path (Compatibility, --canvas-world,
+            // a Depth World fallback frame); there it cut the Deck's frame by 25-47% at
+            // 0 differing pixels. OperatingSystem.IsLinux() is false on Android.
+            if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
             {
                 MergedLandMode(true, true, true);
                 GUO.Renderer.UltimaBatcher2D.MergedCover = true;
