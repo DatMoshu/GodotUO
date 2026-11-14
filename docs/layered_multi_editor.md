@@ -2,8 +2,7 @@
 
 Layer: L3 editor plus Tools. Manual editing works with AI disabled. Chat/MCP
 uses the existing AiFeatures lifetime, tool approval and editor-thread dispatch.
-Native multi geometry/export semantics are unchanged. The renderer signal-lifetime
-fix below supports editor assembly reload.
+Native multi geometry/export semantics are unchanged.
 
 The Layers tab supports named layers, active drawing layer, selection, assigning
 selected components, visibility, locks, movement and tile replacement. Visibility

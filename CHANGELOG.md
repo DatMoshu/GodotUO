@@ -15,12 +15,31 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   against 17 ms on canvas). `--depth-world` still selects it.
 
 ### Labs
+- Map paging experiment: pages of a large world load lazily from a local,
+  verified page pack and only the current page and a few recent ones stay
+  loaded. Off unless `GUO_LABS_PAGING` names a manifest (ADR-0046, proposed).
+- Mobile frame inspector: `-mobiledebug` shows a chosen mobile's tile anchor,
+  interpolated feet and offset each frame, keeps 300 frames of history and
+  exports them as JSON. A two-client movement probe (`launchers\dev\mobile_sync`)
+  records the same values for a regression check.
+- A frozen offline GPU benchmark (`launchers\dev\competition_bench`) compares
+  render variants on fixed scenes; its numbers are Debug Labs numbers.
+- A realtime lighting study (`GUO_LIGHTING_STUDY=1`) adds a cool night fill and
+  sun-facing wall shading on top of lighting speed mode.
 - Weather puddle settings no longer enable water impacts on listed Wet tiles.
   Rain rings also reach wet statics above sloped ground; crowded cells are
   skipped when exposure cannot be checked within the scan budget.
 - An opt-in Debug build offers UO+ rain rings, tile puddles and a fading wet-player
   silhouette. Each experiment starts off; the session controls include a drop
   budget and puddle tile list. Labs are excluded from exported clients.
+
+### Weather
+- With the experimental overview and lighting speed mode both on, a
+  `clouds.json` beside your profile selects a cloud preset (soft billowing,
+  thin haze or broken storm) or your own layers. Without the file the clouds
+  are as before; an invalid file is ignored with a warning.
+- Optional weather impacts start from stable event seeds, so rain and wet
+  effects no longer restart in bursts.
 
 ### Water
 - Opt-in Labs water rain can disturb the styled-water wave field, driven by
@@ -51,6 +70,15 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   (`docs/perf/2026-10-19_cover_regression.md`).
 
 ### Editor
+- **Set up AI** in the AI dock walks through choosing an assistant, finding its
+  adapter, signing in and checking a session. It installs nothing and sends no
+  prompt by itself, and appears only while AI is enabled in Editor Settings.
+- Multi Edit has named layers: an active drawing layer, visibility, locks,
+  moving and tile replacement per layer, all undoable. Layers are saved beside
+  the components and never change what is exported. A generator can build a
+  layered two-storey building from a building census.
+- Layer generation in the Layers workspace follows the shared AI setting and is
+  hidden and stopped when AI is off.
 - The editor's automation (MCP) tools have per-user permissions in Editor
   Settings: reading state, moving around and connecting start on; anything
   that changes your server starts off until you turn it on. Every call is
