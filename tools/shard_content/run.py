@@ -68,6 +68,10 @@ def headless(*args: str) -> str:
 
 
 def build_headless() -> None:
+    # A caller that has just built the tool itself (the test suite builds it once per run) says so;
+    # an up-to-date dotnet build still costs about two seconds per command.
+    if os.environ.get("GUO_STORE_HEADLESS_PREBUILT") == "1" and HEADLESS.is_file():
+        return
     r = subprocess.run(["dotnet", "build", str(PROJECT), "-nologo", "-v", "q"], capture_output=True, text=True)
     if r.returncode:
         raise SystemExit("[shard_content] the headless store tool does not build:\n" + r.stdout[-3000:])

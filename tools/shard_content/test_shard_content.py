@@ -2,6 +2,7 @@
 installs exactly what the descriptor names, from catalogues signed with the keys it names."""
 import functools
 import json
+import os
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import subprocess
@@ -35,6 +36,12 @@ def serve(test, folder):
 class ShardContentTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        # Build the C# tool once here; each deploy below then skips its own up-to-date build.
+        project = ROOT / "tools/asset_store/headless/StoreSmoke.csproj"
+        built = subprocess.run(["dotnet", "build", str(project), "-nologo", "-v", "q"], capture_output=True, text=True)
+        assert built.returncode == 0, built.stdout[-3000:]
+        cls._prebuilt = os.environ.get("GUO_STORE_HEADLESS_PREBUILT")
+        os.environ["GUO_STORE_HEADLESS_PREBUILT"] = "1"
         cls.temp = tempfile.TemporaryDirectory()
         cls.root = Path(cls.temp.name)
         cls.public = catalogue.keygen(cls.root / "catalogue.key")
@@ -45,6 +52,10 @@ class ShardContentTests(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        if cls._prebuilt is None:
+            os.environ.pop("GUO_STORE_HEADLESS_PREBUILT", None)
+        else:
+            os.environ["GUO_STORE_HEADLESS_PREBUILT"] = cls._prebuilt
         cls.temp.cleanup()
 
     def deploy(self, shard, url, *extra, pack="sample-content-combined", bind="sample-content-combined:stone=static:6001", ok=True):

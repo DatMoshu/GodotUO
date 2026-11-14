@@ -178,23 +178,35 @@ def mark_rgba(rgba: np.ndarray, payload: bytes) -> np.ndarray:
 
 # --- read ---------------------------------------------------------------------------------------------
 
-def _votes(rgba: np.ndarray, pu: int, pv: int) -> tuple[np.ndarray, np.ndarray]:
-    """(ones, counts) per coded bit for the cells seen at this phase."""
-    h, w = rgba.shape[:2]
+def _prepare(rgba: np.ndarray):
+    """Everything about a picture's votes that does not depend on the phase, or None when no pixel is eligible:
+    (ys, xs, obs, use) for the eligible pixels. read_rgba tries every phase of one window, so this is done once."""
     sel = eligible(rgba)
     if not sel.any():
+        return None
+    ys, xs = np.nonzero(sel)
+    obs = np.stack([(rgba[..., :3][sel] >> b) & 1 for b in range(3)], axis=-1)   # (n, 3, 3)
+    use = np.ones(obs.shape, dtype=bool)
+    use[_grey(rgba)[sel], 1:, :] = False                            # a grey pixel's channels 1 and 2 are copies
+    return ys, xs, obs, use
+
+
+def _votes_at(prepared, pu: int, pv: int) -> tuple[np.ndarray, np.ndarray]:
+    if prepared is None:
         zero = np.zeros(CODED_BITS, dtype=np.int64)
         return zero, zero
-    cells = _cells(h, w, pu, pv)[sel]                               # (n, 3, 3)
-    obs = np.stack([(rgba[..., :3][sel] >> b) & 1 for b in range(3)], axis=-1)   # (n, 3, 3)
-    grey = _grey(rgba)[sel]
-    use = np.ones(cells.shape, dtype=bool)
-    use[grey, 1:, :] = False                                        # a grey pixel's channels 1 and 2 are copies
-    val = (obs ^ WHITE[cells])[use]
-    idx = MAP[cells[use]]
-    ones = np.bincount(idx, weights=val, minlength=CODED_BITS).astype(np.int64)
+    ys, xs, obs, use = prepared
+    cells = _CELL[(ys + pv) % TILE, (xs + pu) % TILE][use]         # the cells _cells gives, for the used channels
+    idx = MAP[cells]
+    set_bits = (obs[use] ^ WHITE[cells]).astype(bool)
+    ones = np.bincount(idx[set_bits], minlength=CODED_BITS).astype(np.int64)
     counts = np.bincount(idx, minlength=CODED_BITS).astype(np.int64)
     return ones, counts
+
+
+def _votes(rgba: np.ndarray, pu: int, pv: int) -> tuple[np.ndarray, np.ndarray]:
+    """(ones, counts) per coded bit for the cells seen at this phase."""
+    return _votes_at(_prepare(rgba), pu, pv)
 
 
 def _decode_at(rgba: np.ndarray, pu: int, pv: int) -> bytes:
@@ -228,9 +240,10 @@ def read_rgba(rgba: np.ndarray) -> dict | None:
     for x0, y0, x1, y1 in _windows(rgba):
         win = np.ascontiguousarray(rgba[y0:y1, x0:x1])
         scores = []
+        prepared = _prepare(win)
         for pv in range(TILE):
             for pu in range(TILE):
-                ones, counts = _votes(win, pu, pv)
+                ones, counts = _votes_at(prepared, pu, pv)
                 d = 2 * ones - counts
                 scores.append((int((d * d).sum() - counts.sum()), pu, pv))
         scores.sort(reverse=True)
