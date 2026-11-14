@@ -283,6 +283,19 @@ and every static. A block not in the project is the install's.
 The block file mirrors the client's own block layout (`MapBlock`: a header
 and 64 cells of id and z; `StaticsBlock`: id, x, y, z, hue), so a project
 converts to `mapdif`/`stadif` or patched `map`/`statics` files without loss.
+**`.block-transaction.json`** is a temporary rollback journal. Each entry
+holds a facet, block coordinates and the prior file text (null if the block
+came from the install). World saves the journal before replacing any block
+in a stroke, and removes it after every replacement succeeds. Reloading or
+reopening the project restores the prior files if a journal remains. Keep this scratch
+file with the project until recovery completes.
+
+World's Undo and Redo keep up to 200 edit batches in the current editor
+session. History replays only if every affected block still matches the
+expected content; a conflict leaves the project and history unchanged. Block
+history is unavailable while connected to Live: the existing bridge accepts
+unconditional whole-block replacements.
+
 **`pins.json`** (the Pins map layer): `{"format": 1, "pins": [{"name", "facet", "x", "y", "z", "note"}]}`,
 written whole on every change; the editor's own, never exported to a shard.
 
@@ -1583,7 +1596,7 @@ mined data (`mined/...`, `Data/map-mining/...`, `client/ClassicUO/Data/...`) res
 | `preset` | `{id, name, description, seed}` of the preset the values come from (default `felucca-stage18`) |
 | `presets`, `default_preset` | Preset ids in `tools/mapgen/MapGen/presets` (file name without `.preset.json`) |
 | `sizes` | `[width, height]` pairs to offer: 256–2048 squares and the client's facet sizes |
-| `passes[]` | In pipeline order: `index`, `name` (also the preset key), `category`, `enabled` (with the preset applied), `default_enabled`, `heavy` (switched off by `--fast`), `file_side_effects` (always off from GUO), `tunables[]` |
+| `passes[]` | In pipeline order: `index`, `name` (also the preset key), `category`, `reads` and `writes` (IR field names), `enabled` (with the preset applied), `default_enabled`, `heavy` (switched off by `--fast`), `file_side_effects` (always off from GUO), `tunables[]` |
 | `tunables[]` | `key` (the parameter name), `label`, `tooltip`, `type` (`int`, `double`, `bool`, `string`, `enum`, `other`), `editable` (false for `other` and read-only), `value` (with the preset), `default` (the pass's own), `min`/`max` when the pass declares a range, `options` for an enum, `tile_set` (`land`/`static`) for tile-id lists |
 | `tables[]` | The transition tables `run --brushes` can name: `id` (`guo`, `guo-core`, `dragon`), `label`, `description`, `available` (false for `dragon` until `prepare --dragon` has run). `guo` is the default and uses the user's measured weights when `prepare --measure` wrote them; `guo-core` is the committed table alone. The editor's MapGen tab offers these plus a table file of the user's own |
 | `warnings` | Preset problems (unknown pass or key) |
@@ -1602,13 +1615,16 @@ Options:
 - `--client-data DIR`;
 - `--brushes T`, the transition table: `guo` (default: the user's resolved table when `prepare --measure`
   wrote one, else the committed table), `guo-core` (the committed table only), `dragon` (the user's
-  Dragon import) or a file.
+  Dragon import) or a file. An explicit non-default table must load.
 
 `--out` must be new or empty, and outside `UO_CLIENT_DATA`.
 
-Lines: `{"event":"start", preset, seed, width, height, passes, enabled, out}`, then per pass
-`{"event":"pass", index, count, name, enabled, ms, preview, notes[], warnings[]}` (`preview` is the
-PNG's path relative to `--out`, or null), then `{"event":"done", hash, elapsed_ms, out, stats, warnings}`.
+Lines: `{"event":"start", preset, seed, width, height, passes, enabled, out}`, then
+`{"event":"pass_started", index, count, name}` for each enabled pass before it runs and
+`{"event":"pass", index, count, name, enabled, ms, preview, notes[], warnings[]}` after each pass.
+`preview` is the PNG's path relative to `--out`, or null. A `{"event":"phase", name}` line announces
+final file writes. Completion emits `{"event":"done", hash, elapsed_ms, step_preview_ms, out, stats, warnings, radar_colours}`.
+`run.json` records `step_preview_ms` separately from total elapsed time.
 
 Folder:
 
@@ -1622,7 +1638,7 @@ Folder:
 | `map.bin` | Analyzer dump: int32 width, int32 height; per cell, row-major, uint16 land id, int8 z, uint8 biome; int32 count; per static uint16 x, uint16 y, int8 z, uint16 id |
 | `pois.json` | `"schema": "guo.mapgen.pois/1"`, `width`, `height`, `pois[]`: `id`, `kind` (`ControlPoint`, `DungeonEntrance`, `Ruin`, `Town`, `Camp`, `Shrine`), `x`, `y`, `z`, `tag` (`fixed-site` for a Town Sites `Sites` entry), `footprint` (`[x1, y1, x2, y2]`, inclusive map cells; towns only, else null), `gates` (`[[x, y], ...]` N, S, W, E edge midpoints where roads end; towns only). What a tool placing content on the map reads (`tools/mapgen_districts`) |
 
-The Map Validator's `BiomeProfile` sets which land-biome mix the `BiomeDistribution` check expects: `felucca` (the default: grass 5–85%, forest ≤ 70%, desert ≤ 60%, mountain ≤ 40%, no biome over 92%), `desert` (desert ≥ 50%, grass ≤ 10%, forest ≤ 5%, mountain ≤ 40%), `ice` (snow ≥ 30%, grass and forest ≤ 10%, mountain ≤ 40%) or `none` (histogram only). Out-of-band shares are warnings; one biome over the cap is an error; an unknown name is an error. The other checks do not depend on the profile.
+The Map Validator's `BiomeProfile` sets which land-biome mix the `BiomeDistribution` check expects: `felucca` (the default: grass 5–85%, forest ≤ 70%, desert ≤ 60%, mountain ≤ 40%, no biome over 92%), `desert` (desert ≥ 50%, grass ≤ 10%, forest ≤ 5%, mountain ≤ 40%), `ice` (snow ≥ 30%, grass and forest ≤ 10%, mountain ≤ 40%) or `none` (histogram only). Out-of-band shares are warnings; one biome over the cap is an error; an unknown name is an error. The other checks do not depend on the profile. Optional validator report paths must resolve inside the MapGen data folder and outside the client install.
 
 Town sites and district pads: **Town Sites** `Sites` places fixed footprints `x,y,w,h[,z];...` first (z omitted = the footprint's median ground Z; entries off the scope or touching water are skipped with a warning), and `BuildableBiomesCsv` replaces the random finder's biome set (empty = Grassland, Forest, DenseForest, Savanna, Beach). **Town Roads** `FlattenTarget` (`centre`, the default, or `poi` = the site's Z), `FlattenSkirt` (blend tiles, default 3) and `PaintStreets` (off = a bare flattened pad). Both passes are opt-in; their defaults generate what they did before.
 
@@ -1674,10 +1690,14 @@ transition table give the same hash; a user's resolved table (`prepare --measure
 
 `export` regenerates the run from `preset.json`, `seed`, `width` and `height`. It refuses when the hash
 differs from `run.json`'s. It then writes `export/map/map{N}.mul`, `staidx{N}.mul` and `statics{N}.mul`
-(legacy MUL, facet `N`, default 0). Finally it reads every cell and static back.
+(legacy MUL, facet `N`, default 0). It checks the file structure, reads every land cell and static
+back, and publishes the export directory after verification and any requested World project write.
+An interrupted process can leave uniquely named `.export-mapgen-*` or World staging folders.
 `export/export-verify.json` holds `ok`, `land_cells_checked`, `land_mismatches`, `statics_expected`,
 `statics_found`, `static_mismatches`, `hash`, `facet`, `width`, `height`, `land_tiles_written`,
-`statics_written` and `files`. The final line is
+`statics_written`, `files` and `sha256` (one byte digest keyed by each relative file path).
+The map hash identifies the generated land and static operations. The three byte digests identify
+the exact files that passed read-back. `phase` events report file writes and read-back. The final line is
 `{"event":"done", ok, hash, export, verify, world_project, world}`. Exit 1 when `ok` is false.
 
 With `--world-project DIR`, a verified export is also written as a world project (§9) in `DIR`, which

@@ -45,15 +45,21 @@ public partial class MiniMap : Control
 
     public override void _Ready()
     {
-        float s = EditorInterface.Singleton.GetEditorScale();
-        CustomMinimumSize = new Vector2(240 * s, 240 * s);
         SetAnchorsPreset(LayoutPreset.TopRight, true);
-        // Top right, inside the view.
-        OffsetLeft = -CustomMinimumSize.X - 10 * s;
+        FitCanvas(GetParent<Control>().Size.X);
+        TooltipText = "Minimap: click or drag to jump. Hide it from the Guides menu.";
+    }
+
+    private void FitCanvas(float width)
+    {
+        float s = EditorInterface.Singleton.GetEditorScale();
+        float side = Math.Clamp(MathF.Round(width * 0.28f), 120 * s, 240 * s);
+        if (CustomMinimumSize.X == side) return;
+        CustomMinimumSize = new Vector2(side, side);
+        OffsetLeft = -side - 10 * s;
         OffsetRight = -10 * s;
         OffsetTop = 10 * s;
-        OffsetBottom = 10 * s + CustomMinimumSize.Y;
-        TooltipText = "Minimap: click or drag to jump. Hide it from the Guides menu.";
+        OffsetBottom = 10 * s + side;
     }
 
     /// <summary>Forgets the radar so the next update fetches it again (after an edit changed the map).</summary>
@@ -85,6 +91,7 @@ public partial class MiniMap : Control
 
     internal void Update(WorldHost host, Func<int, Image> source, Vector2I viewport, float zoom)
     {
+        FitCanvas(viewport.X);
         int facet = host.Facet;
         if (_dirty && facet == _facet && _texture != null)
         {

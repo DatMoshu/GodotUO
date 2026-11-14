@@ -19,16 +19,19 @@ public sealed class MapImage(int width, int height)
     {
         int f = Math.Max(1, (int)Math.Ceiling(Math.Max(Width, Height) / (double)Math.Max(1, max)));
         if (f == 1) { PngWriter.Write(path, Pixels, Width, Height); return; }
-        int w = Width / f, h = Height / f;
+        int w = Math.Max(1, Width / f), h = Math.Max(1, Height / f);
         var outPx = new uint[w * h];
         for (int y = 0; y < h; y++)
         for (int x = 0; x < w; x++)
         {
+            // Include trailing cells when a facet side is not divisible by the reduction factor.
+            int x1 = x * Width / w, x2 = (x + 1) * Width / w;
+            int y1 = y * Height / h, y2 = (y + 1) * Height / h;
             long r = 0, g = 0, b = 0; int n = 0;
-            for (int dy = 0; dy < f; dy++)
-            for (int dx = 0; dx < f; dx++)
+            for (int sy = y1; sy < y2; sy++)
+            for (int sx = x1; sx < x2; sx++)
             {
-                uint c = Pixels[(y * f + dy) * Width + x * f + dx];
+                uint c = Pixels[sy * Width + sx];
                 r += c & 0xFF; g += (c >> 8) & 0xFF; b += (c >> 16) & 0xFF; n++;
             }
             outPx[y * w + x] = Rgb((int)(r / n), (int)(g / n), (int)(b / n));

@@ -3,6 +3,7 @@ namespace GUO.Editor;
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using GUO.Assets;
 
@@ -33,6 +34,7 @@ public enum WorldTool
 
     // The Regions dock: click a shard region on the map to edit it.
     PickRegion,
+    AudioZones,
 }
 
 /// <summary>
@@ -77,6 +79,8 @@ internal sealed class WorldEditor
     /// </summary>
     public event Action<WorldBlock> BlockWritten;
 
+    internal Func<bool> LiveConnected { get; set; }
+
     private void Written(int facet, int bx, int by)
     {
         if (BlockWritten == null || _host.Project == null)
@@ -105,7 +109,19 @@ internal sealed class WorldEditor
             return false;
         }
 
-        _host.Project.WriteBlock(block);
+        var project = _host.Project;
+        try
+        {
+            var before = new WorldProject.BlockSnapshot(block.Facet, block.Bx, block.By,
+                project.BlockText(block.Facet, block.Bx, block.By));
+            project.ReplaceBlocks(new[] { before }, new[] { before with { Text = WorldProject.BlockContents(block) } });
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Changed?.Invoke($"Could not save {from}'s block: {ex.Message}");
+            return false;
+        }
+
         _host.ApplyOverlay();
         Changed?.Invoke($"remote: {from} changed block {block.Bx},{block.By}");
         return true;
@@ -130,36 +146,23 @@ internal sealed class WorldEditor
         }
 
         var changes = new List<Change>();
-        try
+        foreach (var edit in edits)
         {
-            foreach (var edit in edits)
-            {
-                int bx = edit.Key.X, by = edit.Key.Y;
-                string before = project.BlockText(facet, bx, by);
-                WorldBlock block = before != null
-                    ? WorldProject.ReadBlock(project.BlockPath(facet, bx, by))
-                    : WorldProject.Capture(Maps, facet, bx, by);
-                if (block == null) continue;
+            int bx = edit.Key.X, by = edit.Key.Y;
+            string before = project.BlockText(facet, bx, by);
+            WorldBlock block = before != null
+                ? WorldProject.ReadBlock(project.BlockPath(facet, bx, by))
+                : WorldProject.Capture(Maps, facet, bx, by);
+            if (block == null) continue;
 
-                // A filtered/no-op stroke must not create an overlay or consume undo history.
-                ushort[] ids = block.LandId.ToArray();
-                sbyte[] heights = block.LandZ.ToArray();
-                WorldStatic[] statics = block.Statics.ToArray();
-                edit.Value(block);
-                if (ids.SequenceEqual(block.LandId) && heights.SequenceEqual(block.LandZ) && statics.SequenceEqual(block.Statics)) continue;
-                changes.Add(new Change(facet, bx, by, before, null, what));
-                project.WriteBlock(block);
-                string after = project.BlockText(facet, bx, by);
-                changes[^1] = new Change(facet, bx, by, before, after, what);
-            }
+            ushort[] ids = block.LandId.ToArray();
+            sbyte[] heights = block.LandZ.ToArray();
+            WorldStatic[] statics = block.Statics.ToArray();
+            edit.Value(block);
+            if (ids.SequenceEqual(block.LandId) && heights.SequenceEqual(block.LandZ) && statics.SequenceEqual(block.Statics)) continue;
+            changes.Add(new Change(facet, bx, by, before, WorldProject.BlockContents(block), what));
         }
-        catch
-        {
-            foreach (Change c in changes) project.SetBlockText(c.Facet, c.Bx, c.By, c.Before);
-            _host.ApplyOverlay();
-            throw;
-        }
-        if (changes.Count == 0) return false;
+        if (changes.Count == 0 || !Replace(changes, undo: false)) return false;
         _undo.AddLast(changes);
         while (_undo.Count > Depth)
         {
@@ -173,36 +176,62 @@ internal sealed class WorldEditor
         return true;
     }
 
-    public bool Undo()
+    private bool Replace(List<Change> changes, bool undo)
     {
-        if (_undo.Last == null || _host.Project == null)
+        var project = _host.Project;
+        var before = changes.Select(c => new WorldProject.BlockSnapshot(c.Facet, c.Bx, c.By, undo ? c.After : c.Before)).ToArray();
+        var after = changes.Select(c => new WorldProject.BlockSnapshot(c.Facet, c.Bx, c.By, undo ? c.Before : c.After)).ToArray();
+        try
         {
+            foreach (var b in before)
+            {
+                if (project.BlockText(b.Facet, b.Bx, b.By) == b.Text) continue;
+                Changed?.Invoke($"Block map{b.Facet} {b.Bx},{b.By} changed after this edit; history entry kept");
+                return false;
+            }
+
+            project.ReplaceBlocks(before, after);
+            return true;
+        }
+        catch (IOException ex)
+        {
+            Changed?.Invoke($"Block write failed: {ex.Message}");
             return false;
         }
-
-        List<Change> changes = _undo.Last.Value;
-        _undo.RemoveLast();
-        foreach (Change c in changes) _host.Project.SetBlockText(c.Facet, c.Bx, c.By, c.Before);
-        _redo.Push(changes);
-        _host.ApplyOverlay();
-        Changed?.Invoke($"undo: {changes[0].What}");
-        foreach (Change c in changes) Written(c.Facet, c.Bx, c.By);
-        return true;
+        catch (UnauthorizedAccessException ex)
+        {
+            Changed?.Invoke($"Block write failed: {ex.Message}");
+            return false;
+        }
     }
 
-    public bool Redo()
+    public bool Undo() => Replay(undo: true);
+    public bool Redo() => Replay(undo: false);
+
+    private bool Replay(bool undo)
     {
-        if (_redo.Count == 0 || _host.Project == null)
+        if (_host.Project == null) return false;
+        if (LiveConnected?.Invoke() == true)
         {
+            Changed?.Invoke("Disconnect Live to use block history. The shard bridge cannot check a history batch before applying it.");
             return false;
         }
 
-        List<Change> changes = _redo.Pop();
-        foreach (Change c in changes) _host.Project.SetBlockText(c.Facet, c.Bx, c.By, c.After);
-        _undo.AddLast(changes);
+        var changes = undo ? _undo.Last?.Value : _redo.TryPeek(out var next) ? next : null;
+        if (changes == null || !Replace(changes, undo)) return false;
+        if (undo)
+        {
+            _undo.RemoveLast();
+            _redo.Push(changes);
+        }
+        else
+        {
+            _redo.Pop();
+            _undo.AddLast(changes);
+        }
+
         _host.ApplyOverlay();
-        Changed?.Invoke($"redo: {changes[0].What}");
-        foreach (Change c in changes) Written(c.Facet, c.Bx, c.By);
+        Changed?.Invoke($"{(undo ? "undo" : "redo")}: {changes[0].What}");
         return true;
     }
 
@@ -215,6 +244,25 @@ internal sealed class WorldEditor
 
     // --- tools ----------------------------------------------------------
 
+    internal bool EditStatic(int facet, int x, int y, sbyte z, ushort id, ushort hue, int occurrence,
+        string expected, string what, Func<WorldStatic, WorldStatic?> change)
+    {
+        if (_host.Project == null || _host.Project.BlockText(facet, x >> 3, y >> 3) != expected) return false;
+        return Edit(facet, x >> 3, y >> 3, b =>
+        {
+            int match = 0;
+            for (int i = 0; i < b.Statics.Count; i++)
+            {
+                var item = b.Statics[i];
+                if (item.X != (x & 7) || item.Y != (y & 7) || item.Id != id || item.Z != z || item.Hue != hue) continue;
+                if (match++ != occurrence) continue;
+                if (change(item) is { } next) b.Statics[i] = next;
+                else b.Statics.RemoveAt(i);
+                break;
+            }
+        }, what);
+    }
+
     public bool Stamp(int facet, int x, int y, sbyte z, ushort id, ushort hue) =>
         Edit(facet, x >> 3, y >> 3, b => b.Statics.Add(new WorldStatic
         {
@@ -225,10 +273,10 @@ internal sealed class WorldEditor
             Hue = hue,
         }), $"stamp 0x{id:X4} at {x},{y} z {z}");
 
-    public bool Erase(int facet, int x, int y, sbyte z, ushort id) =>
+    public bool Erase(int facet, int x, int y, sbyte z, ushort id, ushort? matchHue = null) =>
         Edit(facet, x >> 3, y >> 3, b =>
         {
-            int i = b.Statics.FindIndex(s => s.Id == id && s.X == (x & 7) && s.Y == (y & 7) && s.Z == z);
+            int i = b.Statics.FindIndex(s => s.Id == id && s.X == (x & 7) && s.Y == (y & 7) && s.Z == z && (matchHue == null || s.Hue == matchHue));
             if (i >= 0)
             {
                 b.Statics.RemoveAt(i);
@@ -242,10 +290,10 @@ internal sealed class WorldEditor
             b.LandZ[i] = (sbyte)Math.Clamp(b.LandZ[i] + delta, sbyte.MinValue, sbyte.MaxValue);
         }, $"altitude {(delta > 0 ? "+" : "")}{delta} at {x},{y}");
 
-    public bool SetHue(int facet, int x, int y, sbyte z, ushort id, ushort hue) =>
+    public bool SetHue(int facet, int x, int y, sbyte z, ushort id, ushort hue, ushort? matchHue = null) =>
         Edit(facet, x >> 3, y >> 3, b =>
         {
-            int i = b.Statics.FindIndex(s => s.Id == id && s.X == (x & 7) && s.Y == (y & 7) && s.Z == z);
+            int i = b.Statics.FindIndex(s => s.Id == id && s.X == (x & 7) && s.Y == (y & 7) && s.Z == z && (matchHue == null || s.Hue == matchHue));
             if (i >= 0)
             {
                 WorldStatic s = b.Statics[i];

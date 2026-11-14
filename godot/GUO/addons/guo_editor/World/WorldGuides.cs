@@ -30,6 +30,7 @@ public partial class WorldGuides : Node2D
     public bool Altitude { get; set; }
     public bool Blocks { get; set; }
     internal readonly System.Collections.Generic.HashSet<(int X, int Y)> BrushCells = new();
+    internal readonly System.Collections.Generic.HashSet<(int X, int Y)> BrushRepairs = new();
     internal int? PlaneZ;
     internal readonly System.Collections.Generic.List<(int X, int Y, int Z, Texture2D Texture)> Ghosts = new();
     internal readonly System.Collections.Generic.List<(int X, int Y, int Z, Texture2D Texture)> RoofGhosts = new();
@@ -42,6 +43,11 @@ public partial class WorldGuides : Node2D
 
     /// <summary>A rectangle of cells (x0, y0, x1, y1) to outline: the Area tool's selection.</summary>
     public (int X0, int Y0, int X1, int Y1)? Area { get; set; }
+
+    internal BoundaryEntry[] Boundaries = Array.Empty<BoundaryEntry>();
+    internal MapBoundary? BoundaryDraft;
+    internal bool BoundaryHandles;
+    internal (int X, int Y)? MoveSource;
 
     internal void Attach(WorldHost host) => _host = host;
 
@@ -76,13 +82,14 @@ public partial class WorldGuides : Node2D
                 Vector2 top = q.Top, right = q.Right, bottom = q.Bottom, left = q.Left;
 
                 CellsDrawn++;
-                if (BrushCells.Contains((x, y)))
+                bool repair = BrushRepairs.Contains((x, y));
+                if (repair || BrushCells.Contains((x, y)))
                 {
                     Vector2[] points = PlaneZ is int pz
                         ? new[] { geo.Project(x, y, pz), geo.Project(x + 1, y, pz), geo.Project(x + 1, y + 1, pz), geo.Project(x, y + 1, pz) }
                         : new[] { top, right, bottom, left };
-                    DrawColoredPolygon(points, new Color(0.15f, 0.9f, 0.8f, 0.22f));
-                    DrawPolyline(new[] { points[0], points[1], points[2], points[3], points[0] }, new Color(0.2f, 0.95f, 0.85f, 0.8f));
+                    DrawColoredPolygon(points, repair ? new Color(1f, 0.65f, 0.2f, 0.26f) : new Color(0.15f, 0.9f, 0.8f, 0.22f));
+                    DrawPolyline(new[] { points[0], points[1], points[2], points[3], points[0] }, repair ? new Color(1f, 0.7f, 0.2f, 0.85f) : new Color(0.2f, 0.95f, 0.85f, 0.8f));
                 }
                 if (Grid)
                 {
@@ -112,7 +119,9 @@ public partial class WorldGuides : Node2D
                     DrawString(_font, centre + new Vector2(-6, 4), text, HorizontalAlignment.Left, -1, 10, new Color(1, 1, 1, 0.9f));
                 }
 
-                if (Area is { } a && x >= a.X0 && x <= a.X1 && y >= a.Y0 && y <= a.Y1)
+                bool selected = Area is { } selection && x >= selection.X0 && x <= selection.X1 &&
+                    y >= selection.Y0 && y <= selection.Y1;
+                if (selected && Area is { } a)
                 {
                     var areaColour = new Color(0.3f, 0.9f, 1f, 0.9f);
                     if (x == a.X0) DrawLine(top, left, areaColour, 2f);
@@ -121,11 +130,38 @@ public partial class WorldGuides : Node2D
                     if (y == a.Y1) DrawLine(left, bottom, areaColour, 2f);
                 }
 
-                if (Hover is { } hv && hv.X == x && hv.Y == y)
+                if (BoundaryDraft is { } draftTile && draftTile.Contains(x, y))
+                    DrawColoredPolygon(new[] { top, right, bottom, left }, new Color(0.3f, 0.9f, 1f, 0.22f));
+                if (MoveSource == (x, y))
+                    DrawPolyline(new[] { top, right, bottom, left, top }, new Color(1f, 0.65f, 0.25f), 3f);
+
+                if (!selected && Hover is { } hv && hv.X == x && hv.Y == y)
                 {
                     DrawPolyline(new[] { top, right, bottom, left, top }, hoverColour, 2f);
                 }
             }
+        }
+        foreach (BoundaryEntry boundary in Boundaries)
+        {
+            var bounds = boundary.Bounds;
+            int range = geo.Range + 8;
+            if (bounds.X1 < geo.CentreX - range || bounds.X0 > geo.CentreX + range ||
+                bounds.Y1 < geo.CentreY - range || bounds.Y0 > geo.CentreY + range) continue;
+            Vector2[] points = bounds.Corners(geo);
+            DrawPolyline(new[] { points[0], points[1], points[2], points[3], points[0] },
+                new Color(0.91f, 0.66f, 0.3f, 0.75f), 1.5f);
+        }
+        if (BoundaryDraft is { } draft)
+        {
+            Vector2[] points = draft.Corners(geo);
+            var edge = new Color(0.3f, 0.9f, 1f);
+            DrawPolyline(new[] { points[0], points[1], points[2], points[3], points[0] }, edge, 2f);
+            if (BoundaryHandles)
+                foreach (Vector2 point in points)
+                {
+                    DrawCircle(point, 6f, new Color(0.08f, 0.13f, 0.15f));
+                    DrawCircle(point, 4f, edge);
+                }
         }
         foreach (var ghost in RoofGhosts)
         {

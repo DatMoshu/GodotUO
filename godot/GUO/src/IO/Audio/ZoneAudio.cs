@@ -245,7 +245,7 @@ namespace GUO.IO.Audio
                         writer.WriteEndObject();
                     }
 
-                    File.WriteAllText(Path.Combine(MusicDir(), _manifest + ".json"),
+                    GUO.Workspace.Workspace.WriteAtomic(Path.Combine(MusicDir(), _manifest + ".json"),
                         System.Text.Encoding.UTF8.GetString(stream.ToArray()) + "\n");
                     _zones = zones;
                     return true;

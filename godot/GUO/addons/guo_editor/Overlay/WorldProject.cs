@@ -91,6 +91,7 @@ public sealed class WorldProject : IDisposable
             JsonNode j = JsonNode.Parse(File.ReadAllText(file));
             p.Name = (string)j["name"];
             p.BaseFingerprint = (string)j["base"]?["fingerprint"];
+            p.RecoverBlockTransaction();
             return p;
         }
 
@@ -167,6 +168,44 @@ public sealed class WorldProject : IDisposable
         Workspace.WriteAtomic(path, text);
     }
 
+    internal sealed record BlockSnapshot(int Facet, int Bx, int By, string Text);
+
+    private string BlockJournal => Path.Combine(Root, ".block-transaction.json");
+
+    private void RestoreBlocks(IEnumerable<BlockSnapshot> blocks)
+    {
+        foreach (var b in blocks)
+            SetBlockText(b.Facet, b.Bx, b.By, b.Text);
+    }
+
+    internal bool RecoverBlockTransaction()
+    {
+        if (!File.Exists(BlockJournal)) return false;
+        RestoreBlocks(JsonSerializer.Deserialize<BlockSnapshot[]>(File.ReadAllText(BlockJournal))
+            ?? throw new InvalidDataException("Missing world block transaction data"));
+        File.Delete(BlockJournal);
+        return true;
+    }
+
+    // The journal holds the rollback state until all block files have been replaced.
+    internal void ReplaceBlocks(BlockSnapshot[] before, BlockSnapshot[] after)
+    {
+        if (File.Exists(BlockJournal))
+            throw new IOException("Reopen the world project to recover an unfinished block edit");
+
+        Workspace.WriteAtomic(BlockJournal, JsonSerializer.Serialize(before));
+        try
+        {
+            RestoreBlocks(after);
+            File.Delete(BlockJournal);
+        }
+        catch
+        {
+            RecoverBlockTransaction();
+            throw;
+        }
+    }
+
     /// <summary>Every block the project replaces on a facet.</summary>
     public List<WorldBlock> Blocks(int facet)
     {
@@ -228,6 +267,12 @@ public sealed class WorldProject : IDisposable
     /// <summary>Saves a block. Statics are written sorted by cell, then z, so a diff shows only what changed.</summary>
     public string WriteBlock(WorldBlock b)
     {
+        SetBlockText(b.Facet, b.Bx, b.By, BlockContents(b));
+        return BlockPath(b.Facet, b.Bx, b.By);
+    }
+
+    internal static string BlockContents(WorldBlock b)
+    {
         // Written by hand rather than by the serializer so that one land row
         // and one static are one line each: a change to a block reviews as a
         // diff of exactly the rows and statics that changed.
@@ -267,10 +312,7 @@ public sealed class WorldProject : IDisposable
         sb.Append(statics.Count > 0 ? "\n  ]\n" : "]\n");
         sb.Append("}\n");
 
-        Directory.CreateDirectory(BlockDir(b.Facet));
-        string path = Path.Combine(BlockDir(b.Facet), $"{b.Key}.json");
-        Workspace.WriteAtomic(path, sb.ToString());
-        return path;
+        return sb.ToString();
     }
 
     /// <summary>

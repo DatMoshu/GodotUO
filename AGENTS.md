@@ -10,6 +10,12 @@ binds to FNA.
 Read `docs/port_plan.md` before doing port work. It is short and it explains
 why the project is structured the way it is.
 
+**Public contributor setup.** This repository's instructions and skills work with
+the documented project tools. No private organization CLI, fleet, personal skill
+directory, external handoff store or maintainer checkout is required. Keep optional
+personal coordination in local, untracked configuration. If an optional tool is
+missing, continue unrelated work and report the documented prerequisite for that tool.
+
 ---
 
 ## Technology stack
@@ -213,7 +219,7 @@ existing authoring in the client is migration work, not a precedent for new code
 | Tools | `tools/<job>/` | Existing launcher-pair, configuration, documentation and privacy rules. |
 
 1. A new chat command, profile field, Options entry, shader or ported-file edit
-   starts with a Discussion or short ADR decided by Moshu. Ask whether ClassicUO
+   starts with a Discussion or short ADR decided by a project maintainer. Ask whether ClassicUO
    would ship it; if not, it belongs in L2–L4 rather than the core/client option.
 2. One feature per PR, with a soft ceiling of about 1,500 lines or 20 files unless
    agreed beforehand. Split larger changes before review, preserving authorship.
@@ -225,6 +231,12 @@ existing authoring in the client is migration work, not a precedent for new code
 6. Packable content goes to the Store. Built-in presets remain a small curated set.
 7. Contributors and agents use the same review template: layer, toggle, parity
    proof, scenario, doctor and docs section. Directors triage the layer first.
+8. **Main exposes ready workflows only.** Untested or rough features must not appear
+   in normal menus, tabs or workflows until their applicable acceptance checks pass.
+   Keep unfinished work on feature branches or behind suitable, tested experimental
+   isolation. `TOOLS`, an experimental label or an Extra Tabs menu alone is not a
+   readiness gate. Use `docs/review/contract.md` and the `guo-readiness-review` skill;
+   missing end-to-end, recovery, performance or clean-setup proof is not a pass.
 
 Native pixel art still uses nearest-neighbour sampling. Any separate render-mode
 exception requires its own owner-approved ADR; this policy grants none.
@@ -274,6 +286,13 @@ Unreal specialists were removed. Port-specific additions:
 front matter says which files it covers. Read the matching rules before
 editing those files.
 
+**Deep code reviews.** Start with [the section map](docs/review/sections.md).
+The project-specific `guo-arch-review`, `guo-ui-review`, `guo-perf-review`,
+`guo-net-review`, `guo-readiness-review` and `guo-portability-review` skills live in
+`.claude/skills/`. They review source and observable behavior; the inherited
+`architecture-review` skill instead checks design-document/ADR coverage. If skill
+discovery is unavailable, read the appropriate `SKILL.md` directly.
+
 **Checks that bind every agent.** Run `launchers\dev\smoke.bat` before a
 commit. `launchers\dev\install_git_hooks.bat` installs the pre-push docs lint,
 launcher lint and privacy scan; CI runs the same guards on every push. A new
@@ -298,8 +317,9 @@ agent can run it.
 
 ## Evidence
 
-Agents save evidence (screenshots, recordings, logs of a run) in the shared agent area, under
-`_agentShared/runs/<project>/<run-id>/`, never in this repo or a worktree; run-id is
-`<YYYYMMDD>_<seat-or-story>_<topic>` (UTC, lower-case kebab). The fleet's evidence tool starts the folder and names
-the files; the naming and retention rules live beside it in `_agentShared/rules/`. Product source assets and test
-fixtures keep their own paths.
+Save screenshots, recordings, logs and benchmark baselines outside the checkout,
+under the configured external `UO_BUILD_DIR` or an explicitly selected external
+evidence directory. Use a distinct run folder and record revision, command and test
+context. A personal shared evidence service is optional; no fleet tool or private
+directory is required. Product source assets and test fixtures keep their own paths.
+Sanitize public reports and never commit proprietary client art or credentials.

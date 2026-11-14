@@ -47,10 +47,13 @@ def build(root: Path, force: bool = False) -> Path:
     if not force and exe.exists() and exe.stat().st_mtime >= newest_source():
         return exe
     print("[mapgen] building guo-mapgen ...", file=sys.stderr)
-    result = subprocess.run(
-        ["dotnet", "build", str(PROJECT), "-c", "Release", "-o", str(output_dir(root)), "-nologo", "-v", "q"],
-        stdout=sys.stderr, stderr=sys.stderr,
-    )
+    try:
+        result = subprocess.run(
+            ["dotnet", "build", str(PROJECT), "-c", "Release", "-o", str(output_dir(root)), "-nologo", "-v", "q"],
+            stdout=sys.stderr, stderr=sys.stderr,
+        )
+    except FileNotFoundError:
+        sys.exit("[mapgen] dotnet was not found. Install the .NET SDK required by GUO, add it to PATH, then retry.")
     if result.returncode != 0:
         sys.exit(f"[mapgen] build failed (exit {result.returncode})")
     exe.touch()

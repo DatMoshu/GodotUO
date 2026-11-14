@@ -97,6 +97,7 @@ public partial class ShardDock : EditorDock
     {
         _world = world;
         _world.Editor.BlockWritten += OnBlockWritten;
+        _world.Editor.LiveConnected = () => _link.Connected;
         _world.Objects.Put += OnObjectPut;
         _world.Objects.Deleted += OnObjectDeleted;
         _world.Layers.LiveSource = () => _liveMobiles;
@@ -330,7 +331,11 @@ public partial class ShardDock : EditorDock
                     string from = (string)msg["from"] ?? "?";
                     WorldBlock b = ShardLink.ToBlock(msg);
                     long latency = msg["sent_ms"] is JsonNode sent ? now - (long)sent : -1;
-                    _world?.Editor.ApplyRemote(b, from);
+                    if (_world?.Editor.ApplyRemote(b, from) != true)
+                    {
+                        Log($"[color=orange]Could not save incoming block map{b.Facet} {b.Bx},{b.By} to the active project[/color]");
+                        break;
+                    }
                     LastRemote = (from, b.Facet, b.Bx, b.By, now, latency);
                     Log($"{from} changed block map{b.Facet} {b.Bx},{b.By}" + (latency >= 0 ? $" ({latency} ms after they sent it)" : ""));
                     break;
@@ -412,6 +417,7 @@ public partial class ShardDock : EditorDock
         if (_world != null)
         {
             _world.Editor.BlockWritten -= OnBlockWritten;
+            _world.Editor.LiveConnected = null;
             _world.Objects.Put -= OnObjectPut;
             _world.Objects.Deleted -= OnObjectDeleted;
         }

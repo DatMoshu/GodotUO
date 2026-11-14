@@ -18,8 +18,8 @@ using System.Threading.Tasks;
 /// </summary>
 public static class MapGenCli
 {
-    /// <summary>Where the tab's runs go: build/mapgen/runs, never the install.</summary>
-    public static string RunsRoot => Path.Combine(EditorData.RepoRoot, "build", "mapgen", "runs");
+    /// <summary>Where the tab's runs go under UO_BUILD_DIR, never the install.</summary>
+    public static string RunsRoot => Path.Combine(EditorData.BuildDirectory, "mapgen", "runs");
 
     /// <summary>The user's own presets: &lt;UO_MAPGEN_DATA&gt;/presets.</summary>
     public static string UserPresetsDir => Path.Combine(DataDir, "presets");
@@ -78,7 +78,15 @@ public static class MapGenCli
     {
         return Task.Run(() =>
         {
-            var psi = new ProcessStartInfo(EditorData.Python())
+            if (cancel.IsCancellationRequested) return -1;
+            string python = EditorData.Python();
+            string entryPoint = Path.Combine(EditorData.RepoRoot, "tools", "mapgen", "run.py");
+            if (!File.Exists(entryPoint))
+            {
+                onLog("MapGen's tools/mapgen/run.py is missing. Open the Godot project from a complete GUO checkout.");
+                return 2;
+            }
+            var psi = new ProcessStartInfo(python)
             {
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -89,7 +97,7 @@ public static class MapGenCli
                 StandardErrorEncoding = Encoding.UTF8,
             };
             psi.Environment["PYTHONUNBUFFERED"] = "1";
-            psi.ArgumentList.Add(Path.Combine(EditorData.RepoRoot, "tools", "mapgen", "run.py"));
+            psi.ArgumentList.Add(entryPoint);
             foreach (string a in args)
             {
                 psi.ArgumentList.Add(a);
@@ -120,7 +128,17 @@ public static class MapGenCli
                     onLog(e.Data);
                 }
             };
-            p.Start();
+            try
+            {
+                p.Start();
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                string message = $"Could not start Python ({python}). Install Python 3.12 or set UO_PYTHON, then retry.";
+                onLog(message);
+                onJson(JsonSerializer.SerializeToElement(new { @event = "error", message }));
+                return 2;
+            }
             p.BeginOutputReadLine();
             p.BeginErrorReadLine();
             using (cancel.Register(() =>

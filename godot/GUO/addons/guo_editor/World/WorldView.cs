@@ -105,24 +105,15 @@ public partial class WorldView : VBoxContainer
     private Node2D _canvas;
 
     private Vector2 _drag;
-    private bool _dragging;
-    private Vector2 _rightPress;
-    private bool _rightDown;
+    private MouseButton _pointerButton;
+    private bool _pointerPan, _pointerDragged;
+    private Vector2 _pointerTravel;
+    private (int X, int Y)? _selectionStart;
+    private Vector2I? _lastDrawMouse;
     private (int facet, int x, int y) _pending = (0, 1496, 1628);
 
     /// <summary>Raised with what a click picked.</summary>
     public event Action<Inspection> Inspect;
-
-    /// <summary>What the map context menu can make from an Area selection.</summary>
-    public enum NewZoneKind
-    {
-        Music,
-        Sfx,
-        Shard,
-    }
-
-    /// <summary>Fired by the map context menu: kind, facet and inclusive rect.</summary>
-    public Action<NewZoneKind, int, int, int, int, int> NewZoneFromArea;
 
     public bool IsBooted => _host.IsBooted;
     public string Error => _host.Error ?? _data?.Error;
@@ -157,7 +148,20 @@ public partial class WorldView : VBoxContainer
         get => _activeTool;
         set
         {
+            if (_activeTool != value)
+            {
+                CancelPointer();
+                _moving = null;
+                if (_areaB == null) ClearArea();
+                if (_mapLayers != null)
+                {
+                    _mapLayers.Route.Start = null;
+                    if (_mapLayers.Measure.B == null) _mapLayers.Measure.Clear();
+                }
+            }
+            bool changed = _activeTool != value;
             _activeTool = value;
+            if (changed) UpdateBoundaryTool();
             if (_tool != null)
             {
                 _tool.Selected = (int)value;
@@ -380,6 +384,7 @@ public partial class WorldView : VBoxContainer
             TextureFilter = TextureFilterEnum.Nearest,
         };
         _container.GuiInput += OnInput;
+        _container.FocusExited += CancelPointer;
         _stage.AddChild(_container);
         _container.SetAnchorsPreset(LayoutPreset.FullRect);
 
@@ -423,7 +428,7 @@ public partial class WorldView : VBoxContainer
 
     private void OnVisibilityChanged()
     {
-        if (!Visible) { _painting = false; _stroke.Clear(); _spacePan = false; }
+        if (!IsVisibleInTree()) CancelPointer();
         if (Visible)
         {
             EnsureBooted();
@@ -526,11 +531,10 @@ public partial class WorldView : VBoxContainer
     /// <summary>Opens a world project (creating it if needed) and forgets the old one's undo history.</summary>
     public WorldProject OpenProject(string root)
     {
-        _stackIndex = -1;
+        ResetMapContext();
         _editor.Clear();
-        _stackCell = null;
-        _moving = null;
         WorldProject project = _host.OpenProject(root);
+        RefreshBoundaries();
         _mapLayers.ProjectChanged();
         _modeNode?.Invalidate();
         _objects.Open(project?.Root);
@@ -542,8 +546,21 @@ public partial class WorldView : VBoxContainer
     /// <summary>Re-reads the world project from disk and lays it over the map again.</summary>
     public int ReloadOverlay()
     {
+        CancelPointer();
+        bool recovered;
+        try
+        {
+            recovered = _host.Project?.RecoverBlockTransaction() == true;
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            GD.PushError($"World project recovery: {ex.Message}");
+            _status.Text = "Could not recover an interrupted edit. Check the project folder and the editor log.";
+            return 0;
+        }
         int n = _host.ApplyOverlay();
         UpdateStatus();
+        if (recovered) _status.Text = "Recovered an interrupted block edit and reloaded the project.";
         return n;
     }
 
@@ -551,6 +568,7 @@ public partial class WorldView : VBoxContainer
     public bool GoTo(int facet, int x, int y)
     {
         _stackIndex = -1;
+        _lastDrawMouse = null;
         _pending = (facet, x, y);
         if (!EnsureBooted())
         {
@@ -558,7 +576,9 @@ public partial class WorldView : VBoxContainer
         }
 
         int before = _host.Facet;
+        if (facet != before) ResetMapContext();
         bool ok = _host.GoTo(facet, x, y);
+        if (facet != before) RefreshBoundaries();
         if (_host.Facet != before)
         {
             _objects.Redraw();
@@ -619,7 +639,7 @@ public partial class WorldView : VBoxContainer
             _minimap.Update(_host, RadarSource, size, _host.Scene.Camera.Zoom);
         }
 
-        _guides.Hover = Tool != WorldTool.Select && _host.Picked is GameObject hover ? (hover.X, hover.Y) : null;
+        _guides.Hover = _host.Picked is GameObject hover ? (hover.X, hover.Y) : null;
         UpdateWorkspace(delta);
         UpdateModeUi();
         Vector2 local = _container.GetLocalMousePosition();
@@ -634,6 +654,17 @@ public partial class WorldView : VBoxContainer
         try
         {
             _host.Draw(_canvas, size, mouse);
+            _lastDrawMouse = mouse;
+            if (_painting && mouse != null) ExtendStroke();
+            _guides.MoveSource = _moving is Guid source ? _objects.Objects?.Find(source) switch
+            {
+                ShardItem item => (item.X, item.Y),
+                ShardSpawner spawner => (spawner.X, spawner.Y),
+                _ => null,
+            } : null;
+            if (BoundaryTool) UpdateBoundaryPointer(mouse);
+            if (_pointerDragged && _selectionStart is { } start && _host.Picked is GameObject end && mouse != null)
+                PreviewArea(start, (end.X, end.Y));
         }
         catch (Exception ex)
         {
@@ -651,58 +682,43 @@ public partial class WorldView : VBoxContainer
         }
 
         if (WorkspaceInput(e)) { _container.AcceptEvent(); return; }
+        if (_pointerButton != MouseButton.None &&
+            (e is InputEventKey || e is InputEventMouseButton { ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown }))
+        {
+            _container.AcceptEvent();
+            return;
+        }
 
         switch (e)
         {
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp }:
+                _lastDrawMouse = null;
                 _host.Scene.Camera.ZoomIn();
                 UpdateStatus();
                 break;
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelDown }:
+                _lastDrawMouse = null;
                 _host.Scene.Camera.ZoomOut();
                 UpdateStatus();
                 break;
-            case InputEventMouseButton { ButtonIndex: MouseButton.Right or MouseButton.Middle } b:
-                _dragging = b.Pressed;
-                _drag = Vector2.Zero;
-                if (b.ButtonIndex == MouseButton.Right)
-                {
-                    if (b.Pressed)
-                    {
-                        _rightDown = true;
-                        _rightPress = b.Position;
-                    }
-                    else if (_rightDown)
-                    {
-                        _rightDown = false;
-                        // A release that barely moved is a click, not a pan.
-                        if ((b.Position - _rightPress).Length() < 8f)
-                        {
-                            ShowMapMenu();
-                        }
-                    }
-                }
-
+            case InputEventMouseButton { ButtonIndex: MouseButton.Left or MouseButton.Right or MouseButton.Middle } button:
+                HandlePointerButton(button);
+                _container.AcceptEvent();
                 break;
-            case InputEventMouseMotion m when _dragging:
-                Pan(m.Relative);
-                break;
-            case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } lb:
-                _container.GrabFocus();
-                if (Tool == WorldTool.Select)
+            case InputEventMouseMotion motion when _pointerButton != MouseButton.None:
+                _pointerTravel += motion.Relative;
+                _pointerDragged |= _pointerTravel.LengthSquared() >= 64;
+                if (_pointerPan && (_pointerDragged || _pointerButton != MouseButton.Right))
                 {
-                    if (_modeNode.ModeName == "Reachability" && _host.Picked is GameObject at)
-                    {
-                        _modeNode.SetOrigin(at.X, at.Y, StandZ(at));
-                    }
-
-                    InspectPicked();
+                    Pan(_pointerTravel);
+                    _pointerTravel = Vector2.Zero;
                 }
-                else
+                else if (_painting && ForcedMouse != null)
                 {
-                    ApplyTool(lb.ShiftPressed);
+                    // The tour drives the same handler without the OS pointer.
+                    ExtendStroke();
                 }
-
+                _container.AcceptEvent();
                 break;
             case InputEventKey { Pressed: true, CtrlPressed: true, Keycode: Key.Z } z:
                 if (z.ShiftPressed)
@@ -739,6 +755,133 @@ public partial class WorldView : VBoxContainer
 
                 break;
         }
+    }
+
+    private void RefreshPointerPick(Vector2 position)
+    {
+        var mouse = ForcedMouse ?? new Vector2I((int)position.X, (int)position.Y);
+        if (_lastDrawMouse == mouse) return;
+        _host.Draw(_canvas, _viewport.Size, mouse);
+        _lastDrawMouse = mouse;
+    }
+
+    private void HandlePointerButton(InputEventMouseButton button)
+    {
+        if (button.Pressed)
+        {
+            if (_pointerButton != MouseButton.None) return;
+            _container.GrabFocus();
+            _pointerButton = button.ButtonIndex;
+            _pointerPan = button.ButtonIndex != MouseButton.Left || _spacePan;
+            _pointerTravel = Vector2.Zero;
+            _drag = Vector2.Zero;
+            if (_pointerPan) return;
+
+            RefreshPointerPick(button.Position);
+            if (_host.Picked is GameObject clicked && _stackCell != ((int)clicked.X, (int)clicked.Y))
+                _stackIndex = -1;
+
+            if (BoundaryTool)
+            {
+                BeginBoundaryPointer(button.Position);
+            }
+            else if (Tool == WorldTool.Brush)
+            {
+                BeginStroke();
+            }
+            else if (Tool is WorldTool.Select or WorldTool.Area)
+            {
+                if (_host.Picked is GameObject at) _selectionStart = (at.X, at.Y);
+            }
+            else
+            {
+                ApplyTool(button.ShiftPressed);
+            }
+            return;
+        }
+
+        if (button.ButtonIndex != _pointerButton) return;
+        var start = _selectionStart;
+        bool dragged = _pointerDragged;
+        bool pan = _pointerPan;
+        _pointerButton = MouseButton.None;
+        _pointerDragged = _pointerPan = false;
+        _selectionStart = null;
+        if (pan)
+        {
+            if (button.ButtonIndex == MouseButton.Right && !dragged)
+            {
+                RefreshPointerPick(button.Position);
+                ShowMapMenu();
+            }
+            return;
+        }
+
+        if (BoundaryTool)
+        {
+            RefreshPointerPick(button.Position);
+            FinishBoundaryPointer(dragged);
+        }
+        else if (_painting)
+        {
+            RefreshPointerPick(button.Position);
+            ExtendStroke();
+            _painting = false;
+            CommitStroke();
+        }
+        else if (Tool is WorldTool.Select or WorldTool.Area)
+        {
+            RefreshPointerPick(button.Position);
+            _guides.Area = Area;
+            if (dragged && start is { } corner && _host.Picked is GameObject end)
+            {
+                SetArea(corner.X, corner.Y, end.X, end.Y);
+                ShowAreaSize();
+            }
+            else if (!dragged && Tool == WorldTool.Area)
+            {
+                ApplyTool();
+            }
+            else if (!dragged)
+            {
+                if (_host.Picked is GameObject at)
+                {
+                    SetArea(at.X, at.Y, at.X, at.Y);
+                    if (_modeNode.ModeName == "Reachability") _modeNode.SetOrigin(at.X, at.Y, StandZ(at));
+                }
+                else ClearArea();
+                InspectPicked();
+            }
+        }
+    }
+
+    private void CancelPointer()
+    {
+        _pointerButton = MouseButton.None;
+        _pointerPan = _pointerDragged = _spacePan = _painting = false;
+        _selectionStart = _lastStroke = null;
+        _strokeRecipe = null;
+        _strokeCapped = false;
+        CancelBoundaryPointer();
+        _stroke.Clear();
+        if (_guides != null) _guides.Area = BoundaryTool ? null : Area;
+    }
+
+    private void ResetMapContext()
+    {
+        CancelPointer();
+        ClearBoundary();
+        _itemPlacementZ = null;
+        ClearArea();
+        _moving = null;
+        _stackCell = _nearbyCenter = null;
+        _pinNearby?.SetPressedNoSignal(false);
+        _stackIndex = -1;
+        _stackEntries.Clear();
+        _stack?.Clear();
+        _mapLayers.Route.Clear();
+        _mapLayers.Measure.Clear();
+        _lastDrawMouse = null;
     }
 
     /// <summary>
@@ -779,44 +922,6 @@ public partial class WorldView : VBoxContainer
         // Stay open while ticking several items.
         m.GetPopup().HideOnCheckableItemSelection = false;
         return m;
-    }
-
-    /// <summary>
-    /// Right-click without dragging: what to make of the Area selection, if
-    /// any. Music/SFX zones land in their manifests (tracks come later);
-    /// shard regions go to the Regions dock for naming and saving.
-    /// </summary>
-    private void ShowMapMenu()
-    {
-        bool hasArea = Area != null;
-        var pm = new PopupMenu();
-        // On the editor base control, not on this view: WorldView is a
-        // layout container and would arrange a child popup at its top.
-        EditorInterface.Singleton.GetBaseControl().AddChild(pm);
-        pm.AddItem(hasArea ? "New Music zone from area" : "New Music zone (Area tool: click two corners first)", 0);
-        pm.AddItem(hasArea ? "New SFX zone from area" : "New SFX zone (Area tool: click two corners first)", 1);
-        pm.AddItem(hasArea ? "New Shard region from area" : "New Shard region (Area tool: click two corners first)", 2);
-        if (!hasArea)
-        {
-            for (int i = 0; i < 3; i++)
-            {
-                pm.SetItemDisabled(i, true);
-            }
-        }
-
-        pm.IdPressed += id =>
-        {
-            if (Area is { } a)
-            {
-                NewZoneFromArea?.Invoke((NewZoneKind)(int)id, _host.Facet,
-                    Math.Min(a.X0, a.X1), Math.Min(a.Y0, a.Y1),
-                    Math.Max(a.X0, a.X1), Math.Max(a.Y0, a.Y1));
-            }
-
-            pm.Hide();
-        };
-        pm.PopupHide += () => pm.QueueFree();
-        pm.Popup(new Rect2I((Vector2I)GetGlobalMousePosition(), new Vector2I(10, 10)));
     }
 
     private readonly System.Collections.Generic.Dictionary<string, (PopupMenu Menu, int Id, Action<bool> Set)> _toggles = new();
@@ -973,6 +1078,18 @@ public partial class WorldView : VBoxContainer
     /// </summary>
     public string ApplyTool(bool big = false)
     {
+        if ((Tool is WorldTool.Erase or WorldTool.Hue) && _stackIndex >= 0 &&
+            _stackIndex < _stackEntries.Count && _stackEntries[_stackIndex] is { Land: false } entry)
+        {
+            bool erase = Tool == WorldTool.Erase;
+            EditStackRow(entry, $"{Tool}: 0x{entry.Id:X4} at {entry.X},{entry.Y} Z {entry.Z}", item =>
+            {
+                if (erase) return null;
+                item.Hue = BrushHue;
+                return item;
+            });
+            return _status.Text;
+        }
         if (EffectivePicked() is not GameObject o)
         {
             return _status.Text = "nothing under the pointer";
@@ -1003,7 +1120,7 @@ public partial class WorldView : VBoxContainer
                     return _status.Text = $"Erase takes an item; that is {Plain(o)}";
                 }
 
-                done = _editor.Erase(facet, es.X, es.Y, es.Z, es.Graphic);
+                done = _editor.Erase(facet, es.X, es.Y, es.Z, es.Graphic, es.Hue);
                 break;
 
             case WorldTool.Raise:
@@ -1019,7 +1136,7 @@ public partial class WorldView : VBoxContainer
                     return _status.Text = $"Hue takes an item; that is {Plain(o)}";
                 }
 
-                done = _editor.SetHue(facet, hs.X, hs.Y, hs.Z, hs.Graphic, BrushHue);
+                done = _editor.SetHue(facet, hs.X, hs.Y, hs.Z, hs.Graphic, BrushHue, hs.Hue);
                 break;
 
             case WorldTool.PlaceItem:
@@ -1086,11 +1203,28 @@ public partial class WorldView : VBoxContainer
         else
         {
             _areaB = (x, y);
-            (int X0, int Y0, int X1, int Y1) a = Area.Value;
-            _status.Text = $"Area: {a.X1 - a.X0 + 1} x {a.Y1 - a.Y0 + 1} cells; Area to multi (Advanced > World & overlays) takes its items";
+            ShowAreaSize();
         }
 
         _guides.Area = Area ?? (_areaA is { } c ? (c.X, c.Y, c.X, c.Y) : null);
+    }
+
+    private void ShowAreaSize()
+    {
+        if (Area is { } a)
+            _status.Text = $"Selection: {a.X1 - a.X0 + 1} × {a.Y1 - a.Y0 + 1} cells · right-click for actions";
+    }
+
+    private void PreviewArea((int X, int Y) a, (int X, int Y) b)
+    {
+        _guides.Area = (Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Max(a.X, b.X), Math.Max(a.Y, b.Y));
+        _status.Text = $"Area: {Math.Abs(a.X - b.X) + 1} × {Math.Abs(a.Y - b.Y) + 1} cells · release to select";
+    }
+
+    private void ClearArea()
+    {
+        _areaA = _areaB = null;
+        if (_guides != null) _guides.Area = null;
     }
 
     /// <summary>Sets both corners at once (the smoke check, F3).</summary>
@@ -1199,7 +1333,7 @@ public partial class WorldView : VBoxContainer
                     return _status.Text = "Place item needs an item: choose one in the brush library or UO Assets > Art (Statics)";
                 }
 
-                _objects.PlaceItem(facet, o.X, o.Y, z, (ushort)(art - EditorData.LandCount), BrushHue);
+                _objects.PlaceItem(facet, o.X, o.Y, _itemPlacementZ ?? z, (ushort)(art - EditorData.LandCount), BrushHue);
                 break;
             }
 
@@ -1244,7 +1378,8 @@ public partial class WorldView : VBoxContainer
     {
         if (EffectivePicked() is not GameObject o)
         {
-            _status.Text = "nothing under the pointer";
+            _status.Text = "Nothing under the pointer";
+            Inspect?.Invoke(new Inspection { Source = "World", Title = "No tile selected", Text = "Click a visible tile to inspect it." });
             return null;
         }
 
@@ -1270,7 +1405,6 @@ public partial class WorldView : VBoxContainer
         // not: their graphic is a body id, not static art.
         if (_data?.IsLoaded == true && o is Land or Static or Item)
         {
-            _data.CurrentArt = index;
             AssetActions.Add(inspection, _data, land ? AssetKind.Land : AssetKind.Static, o.Graphic, inspection.Image);
         }
         Inspect?.Invoke(inspection);
@@ -1322,6 +1456,7 @@ public partial class WorldView : VBoxContainer
         if (_container != null)
         {
             _container.GuiInput -= OnInput;
+            _container.FocusExited -= CancelPointer;
         }
 
         if (_data != null)

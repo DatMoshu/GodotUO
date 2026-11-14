@@ -64,7 +64,7 @@ migration; it is not a precedent for adding generation to the base client.
 | Tools | `tools/<job>/` | Launcher pairs and the existing config, docs and privacy rules. |
 
 1. Propose new chat commands, profile fields, Options entries, shaders and
-   ported-file edits through a Discussion or short ADR, decided by Moshu. Ask
+   ported-file edits through a Discussion or short ADR, decided by a project maintainer. Ask
    whether ClassicUO would ship it; otherwise use L2–L4.
 2. One feature per PR. Aim below about 1,500 lines or 20 files unless agreed
    beforehand; split larger work and keep the author's credit.

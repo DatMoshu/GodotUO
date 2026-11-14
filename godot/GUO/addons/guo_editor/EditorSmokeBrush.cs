@@ -68,7 +68,7 @@ public partial class EditorSmoke
         brush.Edges = "2=0x00A9,8=0x00AA";
         bool firstEdge = brush.Apply(editor, data, 0, new[] { (x, y) }, 0x00A8);
         data.Invalidate();
-        Expect(firstEdge && brush.PlanCells(data, new[] { (x + 1, y) }, 0x00A8).Contains((x, y)), "brush_edges_reconnect_existing_stroke");
+        Expect(firstEdge && brush.Plan(data, new[] { (x + 1, y) }, 0x00A8).Cells.Any(c => (c.X, c.Y) == (x, y) && c.Repair), "brush_edges_reconnect_existing_stroke");
         if (firstEdge) editor.Undo();
         Expect(project.BlockText(0, a.Item1, a.Item2) == beforeA && project.BlockText(0, b.Item1, b.Item2) == beforeB, "brush_test_restores_project");
         VerifyScatterThenSingle(editor, data, x, y);

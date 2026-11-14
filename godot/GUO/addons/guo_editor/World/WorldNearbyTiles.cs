@@ -90,10 +90,15 @@ public partial class WorldView
         _stackIndex = -1; RefreshStack(center.X, center.Y);
     }
 
-    internal void ShowNearbyForSmoke(int x, int y)
+    internal void ShowNearbyForSmoke(int x, int y) => ShowNearbyAt(x, y);
+
+    private void ShowNearbyAt(int x, int y)
     {
-        _detailTabs.CurrentTab = 1; _pinNearby.ButtonPressed = true;
-        _nearbyCenter = (x, y); _nearbyVersion = -1; UpdateNearbyTiles();
+        _detailTabs.CurrentTab = 1;
+        _pinNearby.ButtonPressed = true;
+        _nearbyCenter = (x, y);
+        _nearbyVersion = -1;
+        UpdateNearbyTiles();
     }
 
     internal bool NearbyHasCenterTile() => _nearbyCells[4].Icon != null && _stack.ItemCount > 0;

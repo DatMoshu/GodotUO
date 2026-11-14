@@ -24,6 +24,7 @@ public partial class RadarView : Control
 
     /// <summary>Screen pixels per radar pixel from which the per-cell detail replaces the 1:4 overview.</summary>
     public const float DetailScale = 6f;
+    private const int CellStride = 4;
     private const int PerBlock = 2;        // radar pixels per block side (8 cells / the 4-cell stride)
     private const int BudgetPerFrame = 300;
 
@@ -208,7 +209,7 @@ public partial class RadarView : Control
 
         if (_mark is { } m)
         {
-            var r = new Rect2(o + new Vector2(m.X, m.Y) * s, new Vector2(s, s)).Grow(5);
+            var r = new Rect2(o + new Vector2(m.X, m.Y) * (s / CellStride), new Vector2(s, s) / CellStride).Grow(5);
             DrawRect(r.Grow(1.5f), Colors.Black, false, 2f);
             DrawRect(r, new Color(1, 0, 1), false, 2f);
         }
@@ -304,7 +305,10 @@ public partial class RadarView : Control
                         Vector2 t = _texture.GetSize();
                         if (p.X >= 0 && p.Y >= 0 && p.X < t.X && p.Y < t.Y)
                         {
-                            Picked?.Invoke(new Vector2I((int)p.X, (int)p.Y), b.CtrlPressed, b.DoubleClick);
+                            Vector2I cell = ShowingDetail
+                                ? (Vector2I)(p * CellStride)
+                                : (Vector2I)p * CellStride;
+                            Picked?.Invoke(cell, b.CtrlPressed, b.DoubleClick);
                         }
                     }
                 }

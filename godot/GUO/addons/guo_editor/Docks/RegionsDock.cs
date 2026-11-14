@@ -11,7 +11,7 @@ using Godot;
 using GUO.Assets;
 
 /// <summary>
-/// The Zones dock: the shard's own regions (ModernUO Data/regions.json)
+/// The Regions dock: the shard's own regions (ModernUO Data/regions.json)
 /// listed, jumped to, edited and saved, with a one-click bridge onto the
 /// variant-atlas themes (paint a theme on every rect of a region).
 /// Edits round-trip the file's JSON: unknown fields ($type extras, Parent,
@@ -61,76 +61,81 @@ public partial class RegionsDock : EditorDock
         if (_world != null)
         {
             _world.RegionClick -= PickRegionAt;
-            _world.NewZoneFromArea -= NewZoneFromArea;
+            _world.RegionEditor = null;
         }
 
         _world = world;
         if (_world != null)
         {
             _world.RegionClick += PickRegionAt;
-            _world.NewZoneFromArea += NewZoneFromArea;
+            _world.RegionEditor = this;
         }
     }
 
-    /// <summary>
-    /// The map context menu's New-zone items: audio zones go straight to
-    /// their manifests (tracks are added in the -audiozones gump), shard
-    /// regions land in the list for naming and saving.
-    /// </summary>
-    private void NewZoneFromArea(WorldView.NewZoneKind kind, int facet, int x0, int y0, int x1, int y1)
+    internal bool AddBoundary(int facet, string name, MapBoundary rect)
     {
-        switch (kind)
+        if (_regions == null || facet < 0 || facet >= ShardObjects.MapNames.Length) return false;
+        var region = new JsonObject
         {
-            case WorldView.NewZoneKind.Music:
-            case WorldView.NewZoneKind.Sfx:
+            ["$type"] = "BaseRegion",
+            ["Map"] = ShardObjects.MapNames[facet],
+            ["Name"] = name,
+            ["Priority"] = 50,
+            ["Area"] = new JsonArray(new JsonObject
             {
-                var audio = kind == WorldView.NewZoneKind.Music ? GUO.IO.Audio.ZoneAudio.Music : GUO.IO.Audio.ZoneAudio.Sfx;
-                string baseName = kind == WorldView.NewZoneKind.Music ? "New music zone" : "New sfx zone";
-                int n = audio.Zones.Count(z => z.Name.StartsWith(baseName)) + 1;
-                audio.Zones.Add(new GUO.IO.Audio.ZoneAudio.Zone
+                ["x1"] = rect.X0, ["y1"] = rect.Y0, ["x2"] = rect.X1, ["y2"] = rect.Y1,
+            }),
+        };
+        _regions.Add(region);
+        SelectEditedRegion(region);
+        return true;
+    }
+
+    internal IEnumerable<BoundaryEntry> Boundaries(int facet)
+    {
+        if (_regions == null) yield break;
+        foreach (JsonNode node in _regions)
+        {
+            if (node is not JsonObject region || ShardObjects.FacetOf(TextOf(region, "Map")) != facet) continue;
+            IEnumerable<JsonNode> rectangles = region["Area"] is JsonArray list ? list
+                : region["Area"] is JsonObject single ? new[] { single } : Array.Empty<JsonNode>();
+            foreach (JsonNode item in rectangles)
+            {
+                if (item is not JsonObject rect) continue;
+                string originalName = TextOf(region, "Name");
+                MapBoundary original = ReadBoundary(rect);
+                yield return new BoundaryEntry(originalName, original, (name, bounds) =>
                 {
-                    Name = $"{baseName} {n}",
-                    Facet = facet,
-                    X0 = x0,
-                    Y0 = y0,
-                    X1 = x1,
-                    Y1 = y1,
+                    if (!ReferenceEquals(region.Parent, _regions) || TextOf(region, "Name") != originalName ||
+                        ReadBoundary(rect) != original ||
+                        !(ReferenceEquals(rect, region["Area"]) || ReferenceEquals(rect.Parent, region["Area"])))
+                        return false;
+
+                    region["Name"] = name;
+                    rect["x1"] = bounds.X0;
+                    rect["y1"] = bounds.Y0;
+                    rect["x2"] = bounds.X1;
+                    rect["y2"] = bounds.Y1;
+                    SelectEditedRegion(region);
+                    return true;
                 });
-                Report(audio.Save(audio.Zones)
-                    ? $"'{baseName} {n}' created (add tracks in the -audiozones gump)"
-                    : "save failed");
-                break;
-            }
-
-            default:
-            {
-                if (_regions == null)
-                {
-                    Report("no regions.json to add to");
-                    return;
-                }
-
-                var o = new JsonObject
-                {
-                    ["$type"] = "BaseRegion",
-                    ["Map"] = ShardObjects.MapNames[Math.Clamp(facet, 0, ShardObjects.MapNames.Length - 1)],
-                    ["Name"] = "New region",
-                    ["Priority"] = 50,
-                    ["Area"] = new JsonArray
-                    {
-                        new JsonObject { ["x1"] = x0, ["y1"] = y0, ["x2"] = x1, ["y2"] = y1 },
-                    },
-                };
-                _regions.Add(o);
-                MarkDirty();
-                RefreshList();
-                _selected = _regions.Count - 1;
-                _list.Select(_shown.IndexOf(_selected));
-                FillForm();
-                Report("shard region added (name it, then Save)");
-                break;
             }
         }
+    }
+
+    private static MapBoundary ReadBoundary(JsonObject rect) =>
+        MapBoundary.Between(Num(rect, "x1"), Num(rect, "y1"), Num(rect, "x2"), Num(rect, "y2"));
+
+    private void SelectEditedRegion(JsonObject region)
+    {
+        int index = _regions.IndexOf(region);
+        RefreshList();
+        _selected = index;
+        int shown = _shown.IndexOf(index);
+        if (shown >= 0) _list.Select(shown);
+        FillForm();
+        MarkDirty();
+        Report("Boundary applied. Use Save regions.json to write it.");
     }
 
     /// <summary>
@@ -202,6 +207,7 @@ public partial class RegionsDock : EditorDock
 
     public string Status => _status?.Text ?? "";
     public int RegionCount => _regions?.Count ?? 0;
+    internal bool HasRegionFile => _regions != null;
     public bool Dirty => _dirty;
 
     public override void _Ready()
@@ -422,6 +428,7 @@ public partial class RegionsDock : EditorDock
         _path = RegionsPath();
         if (_path.Length == 0 || !File.Exists(_path))
         {
+            _world?.RefreshBoundaries();
             return;
         }
 
@@ -433,6 +440,7 @@ public partial class RegionsDock : EditorDock
         {
             Report($"{_path}: {ex.Message}");
         }
+        _world?.RefreshBoundaries();
     }
 
     private static string TextOf(JsonObject o, string key) =>

@@ -3,7 +3,9 @@ using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
 using CentrED.MapGen;
+using CentrED.MapGen.Data;
 using CentrED.MapGen.IR;
+using CentrED.MapGen.Passes.Validation;
 using CentrED.MapGen.Pipeline;
 
 namespace GuoMapGen;
@@ -35,9 +37,9 @@ public static class RunCommand
         var settings = new RunSettings(presetId, seed, width, height, a.Flag("fast"),
             a.All("set").ToList(), a.All("disable").ToList(), a.All("enable").ToList(), a.Get("brushes"));
 
-        OutputFolder.PrepareFresh(outDir);
         var warnings = new List<string>();
         var steps = Pipeline.Build(preset, settings, warnings);
+        OutputFolder.PrepareFresh(outDir);
 
         json.Event("start", new()
         {
@@ -51,13 +53,16 @@ public static class RunCommand
         bool stepPreviews = a.Flag("step-previews");
 
         var total = Stopwatch.StartNew();
+        long stepPreviewMs = 0;
         var ir = Pipeline.Run(preset, settings, steps, warnings, (i, step, ms, irNow) =>
         {
             string? preview = null;
             if (stepPreviews && step.Enabled)
             {
+                var previewClock = Stopwatch.StartNew();
                 preview = $"steps/{i:D2}-{Slug(step.Pass.Name)}.png";
                 Render.Best(irNow, radar).Save(Path.Combine(outDir, preview), previewMax);
+                stepPreviewMs += previewClock.ElapsedMilliseconds;
             }
             var report = irNow.Reports.GetValueOrDefault(step.Pass.Name);
             json.Event("pass", new()
@@ -67,8 +72,12 @@ public static class RunCommand
                 ["notes"] = step.Enabled ? report?.Notes.Take(5).ToList() : null,
                 ["warnings"] = step.Enabled ? report?.Warnings.Take(5).ToList() : null,
             });
-        });
+        }, (i, step) => json.Event("pass_started", new()
+        {
+            ["index"] = i, ["count"] = steps.Count, ["name"] = step.Pass.Name,
+        }));
 
+        json.Event("phase", new() { ["name"] = "Writing final previews and run manifest" });
         var files = new Dictionary<string, string>();
         Render.Best(ir, radar).Save(Path.Combine(outDir, "radar.png"), previewMax); files["radar"] = "radar.png";
         Render.Biome(ir).Save(Path.Combine(outDir, "biome.png"), previewMax); files["biome"] = "biome.png";
@@ -108,6 +117,7 @@ public static class RunCommand
             ["fast"] = settings.Fast, ["sets"] = settings.Sets, ["disable"] = settings.Disable, ["enable"] = settings.Enable,
             ["brushes"] = settings.Brushes ?? "guo", ["brush_table"] = ir.Brushes.Source,
             ["hash"] = hash, ["elapsed_ms"] = total.ElapsedMilliseconds,
+            ["step_preview_ms"] = stepPreviewMs,
             ["statics"] = ir.StaticOps.Count(o => o.Kind == StaticOpKind.Add),
             ["stats"] = stats, ["files"] = files, ["passes"] = passes, ["warnings"] = warnings,
             ["radar_colours"] = radar is not null,
@@ -117,7 +127,8 @@ public static class RunCommand
         json.Event("done", new()
         {
             ["hash"] = hash, ["elapsed_ms"] = total.ElapsedMilliseconds, ["out"] = Path.GetFullPath(outDir),
-            ["stats"] = stats, ["warnings"] = warnings,
+            ["stats"] = stats, ["warnings"] = warnings, ["step_preview_ms"] = stepPreviewMs,
+            ["radar_colours"] = radar is not null,
         });
         return 0;
     }
@@ -145,20 +156,48 @@ public static class Pipeline
             ApplySet(steps, set);
         // An explicit --enable must not switch a side-effect pass back on.
         PipelineFactory.ApplySideEffectGate(steps, allow: false, spawnOutputDir: null, warnings);
+        try
+        {
+            PipelineRunner.Validate(steps);
+        }
+        catch (PipelineValidationException ex)
+        {
+            throw new CliError(ex.Message + " Re-enable its input pass or turn off the dependent pass.");
+        }
+        var writes = steps.Where(step => step.Enabled).Aggregate(IrFields.None, (fields, step) => fields | step.Pass.Writes);
+        if (!writes.HasFlag(IrFields.LandId) || !writes.HasFlag(IrFields.Height))
+            throw new CliError("This setup does not produce land tiles and elevations. Restore the preset's terrain and land passes.");
+        var validator = steps.FirstOrDefault(step => step.Enabled && step.Parameters is MapValidatorParams);
+        if (validator?.Parameters is MapValidatorParams { WriteReport: true } report)
+        {
+            string path = RepoRootResolver.Resolve(report.ReportPath);
+            if (string.IsNullOrWhiteSpace(path) || !OutputFolder.IsInside(path, RepoRootResolver.DataDir()))
+                throw new CliError("Map Validator's report path must be inside the MapGen data folder (UO_MAPGEN_DATA).");
+            OutputFolder.RequireOutsideClient(path);
+        }
         return steps;
     }
 
     public static GenIR Run(CentrED.MapGen.Presets.MapGenPreset preset, RunSettings s, List<PipelineStep> steps,
-        List<string> warnings, Action<int, PipelineStep, long, GenIR>? afterStep = null)
+        List<string> warnings, Action<int, PipelineStep, long, GenIR>? afterStep = null,
+        Action<int, PipelineStep>? beforeStep = null)
     {
         var ir = PipelineFactory.CreateIR((ushort)s.Width, (ushort)s.Height,
             PipelineFactory.FullScope(s.Width, s.Height), unchecked((ulong)s.Seed),
             new PipelineDataOptions { BrushesPath = s.Brushes }, warnings);
+        if (!string.IsNullOrWhiteSpace(s.Brushes) && !s.Brushes.Equals("guo", StringComparison.OrdinalIgnoreCase) && !ir.Brushes.IsLoaded)
+            throw new CliError(s.Brushes.Equals("dragon", StringComparison.OrdinalIgnoreCase)
+                ? "Dragon's transition table is unavailable. Run tools/mapgen/run.py prepare --dragon DIR, or choose GUO."
+                : $"Could not load transition table '{s.Brushes}'. Check the file or choose GUO.");
         var runner = new PipelineRunner();
         for (int i = 0; i < steps.Count; i++)
         {
             var sw = Stopwatch.StartNew();
-            if (steps[i].Enabled) runner.RunRange(ir, steps, i, i + 1);
+            if (steps[i].Enabled)
+            {
+                beforeStep?.Invoke(i, steps[i]);
+                runner.RunRange(ir, steps, i, i + 1);
+            }
             afterStep?.Invoke(i, steps[i], sw.ElapsedMilliseconds, ir);
         }
         return ir;
@@ -204,12 +243,22 @@ public static class OutputFolder
 {
     public static void PrepareFresh(string dir)
     {
+        RequireFresh(dir);
+        Directory.CreateDirectory(dir);
+    }
+
+    public static void RequireFresh(string dir)
+    {
+        RequireOutsideClient(dir);
         if (Directory.Exists(dir) && Directory.EnumerateFileSystemEntries(dir).Any())
             throw new CliError($"output folder is not empty: {dir}. Each run writes to a fresh folder.");
+    }
+
+    public static void RequireOutsideClient(string path)
+    {
         var client = Environment.GetEnvironmentVariable("UO_CLIENT_DATA");
-        if (!string.IsNullOrWhiteSpace(client) && IsInside(dir, client))
-            throw new CliError("output folder is inside the UO install; generated maps never go there");
-        Directory.CreateDirectory(dir);
+        if (!string.IsNullOrWhiteSpace(client) && IsInside(path, client))
+            throw new CliError("output path is inside the UO install; MapGen cannot write there");
     }
 
     public static bool IsInside(string path, string root)

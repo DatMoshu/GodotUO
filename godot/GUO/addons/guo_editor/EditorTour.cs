@@ -652,6 +652,8 @@ public partial class EditorTour : Node
                 ("objects", "World objects: items and spawners", ObjectsSeg),
                 ("we_stamp", "Stamp: place one item", WeStamp),
                 ("we_select", "Select: what is on this spot?", WeSelect),
+                ("we_safety", "Select an area and verify safe history", WeSafety),
+                ("we_boundaries", "Select one tile and edit map boundaries", WeBoundaries),
                 ("we_stack", "Select: several things on one spot", WeStack),
                 ("we_view", "Moving around the map", WeView),
                 ("we_edit", "Changing one item: colour, height, erase", WeEdit),
@@ -672,6 +674,7 @@ public partial class EditorTour : Node
                 ("maplayers", "World tab: map layers, measure, route, scene pack", MapLayersSeg),
                 ("assetoverlay", "Asset overlay: replace art, never the install", AssetOverlaySeg),
                 ("we_export", "Export and verify the project", WeExport),
+                ("mapgen_result", "MapGen result and cancellation", MapGenResultSeg),
                 ("export", "Export and verify", ExportSeg),
                 ("shard", "UO Shard dock: live", ShardSeg),
                 ("server_console", "Server console: managed output in Logs", ServerConsoleSeg),
@@ -1592,7 +1595,7 @@ public partial class EditorTour : Node
 
             JsonNode state = JsonNode.Parse(await tools.RunAsync("world_state", null, CancellationToken.None));
             Check((int)state["facet"] == 0, "world_state read the active Britain facet");
-            log.Text = "DIRECT EDITOR TOOL RESULT — world_state\n"
+            log.Text = "DIRECT EDITOR TOOL RESULT â€” world_state\n"
                 + $"map{state["facet"]} cell {state["x"]},{state["y"]}, z {state["z"]} ({state["position_source"]})\n"
                 + $"View: {state["view_mode"]}   Project: {state["project"] ?? "none"}\n"
                 + "These results come from the editor tool host. No model or agent is running.";
@@ -1605,7 +1608,7 @@ public partial class EditorTour : Node
             JsonNode cell = JsonNode.Parse(await tools.RunAsync("describe_cell", wallArgs, CancellationToken.None));
             JsonArray stack = (JsonArray)cell["statics"];
             Check(stack.Any(s => (int)s["id"] == 168), "describe_cell found Britain's known wall static 0x00A8");
-            var detail = new StringBuilder("DIRECT EDITOR TOOL RESULT — describe_cell\nmap0 cell 1473,1607\n");
+            var detail = new StringBuilder("DIRECT EDITOR TOOL RESULT â€” describe_cell\nmap0 cell 1473,1607\n");
             detail.AppendLine($"Land {cell["land"]["id"]}: {cell["land"]["name"]}, z {cell["land"]["z"]}");
             foreach (JsonNode s in stack)
                 detail.AppendLine($"Static 0x{(int)s["id"]:X4}: {s["name"]}, z {s["z"]}, height {s["height"]}, hue {s["hue"]}; {s["flags"]}");
@@ -1621,7 +1624,7 @@ public partial class EditorTour : Node
                 new JsonObject { ["facet"] = 0, ["x"] = 1496, ["y"] = 1628 }, CancellationToken.None));
             Check((string)wall["verdict"] == "blocked", "walkable reports the wall blocked");
             Check((string)road["verdict"] is "walkable" or "surface", "walkable reports the Britain road open");
-            log.Text = "DIRECT EDITOR TOOL RESULTS — walkable\n"
+            log.Text = "DIRECT EDITOR TOOL RESULTS â€” walkable\n"
                 + $"Wall map0 1473,1607: {wall["verdict"]}; standing z {wall["standing_z"]}\n"
                 + $"Road map0 1496,1628: {road["verdict"]}; standing z {road["standing_z"]}\n"
                 + "The same World mode data supplies both verdicts. No world edits were made.";

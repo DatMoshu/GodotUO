@@ -83,6 +83,7 @@ internal sealed class WorldData
 {
     private readonly WorldHost _host;
     private readonly Dictionary<long, BlockData> _blocks = new();
+    private readonly Dictionary<(int Facet, int Bx, int By), WorldBlock> _overlayBlocks = new();
     private int _facet = -1;
 
     public WorldData(WorldHost host)
@@ -101,7 +102,21 @@ internal sealed class WorldData
     public void Invalidate()
     {
         _blocks.Clear();
+        _overlayBlocks.Clear();
         Version++;
+    }
+
+    // Brush previews need the same raw statics as a write, including hidden art.
+    internal WorldBlock OverlayBlock(int bx, int by)
+    {
+        var key = (_host.Facet, bx, by);
+        if (_overlayBlocks.TryGetValue(key, out var block)) return block;
+        var project = _host.Project;
+        block = project?.BlockText(key.Facet, bx, by) != null
+            ? WorldProject.ReadBlock(project.BlockPath(key.Facet, bx, by))
+            : WorldProject.Capture(Client.Game.UO.FileManager.Maps, key.Facet, bx, by);
+        _overlayBlocks[key] = block;
+        return block;
     }
 
     private static long Key(int bx, int by) => ((long)bx << 20) | (uint)by;

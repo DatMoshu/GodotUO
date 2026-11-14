@@ -13,6 +13,10 @@ internal sealed class WorldBrush
     public string Operation = "Paint", AllowedLand = "", Variants = "", Edges = "";
     public ushort Hue;
 
+    internal bool ChangesTerrain => Operation == "Paint" ? Land : Operation is "Raise" or "Lower" or "Flatten" or "Smooth";
+    internal WorldBrush Snapshot() => (WorldBrush)MemberwiseClone();
+    private static readonly (int X, int Y)[] Neighbors = { (0, -1), (1, 0), (0, 1), (-1, 0) };
+
     internal string Validate(EditorData data)
     {
         if (data?.IsLoaded != true) return "Wait for client art to load";
@@ -77,23 +81,29 @@ internal sealed class WorldBrush
         }
     }
 
-    internal bool AcceptCell(WorldData data, int x, int y) => Rejection(data, x, y) == null;
+    private HashSet<ushort> AllowedIds() => AllowedLand.Length == 0 ? null
+        : ParseVariants(AllowedLand).Select(v => v.Id).ToHashSet();
 
     /// <summary>Which rule leaves a cell alone ("water", "occupied", ...), or null when the brush takes it.</summary>
-    internal string Rejection(WorldData data, int x, int y)
+    private string Rejection(WorldData data, int x, int y, HashSet<ushort> allowed, bool repair = false)
     {
         BlockData b = data.Block(x >> 3, y >> 3);
         if (b == null) return "outside";
         int i = (y & 7) * 8 + (x & 7);
         if (AvoidWater && b.LandWet[i]) return "water";
-        if (AllowedLand.Length > 0 && !ParseVariants(AllowedLand).Any(v => v.Id == b.LandId[i])) return "land";
+        if (allowed != null && !allowed.Contains(b.LandId[i])) return "land";
         if (Operation == "Paint" && !Land && KeepStatics && b.Objs[i]?.Count > 0) return "occupied";
         if (MaxSlope < 127)
         {
             int z = b.LandZ[i];
-            if (Math.Abs(data.LandZ(x + 1, y) - z) > MaxSlope || Math.Abs(data.LandZ(x, y + 1) - z) > MaxSlope) return "slope";
+            foreach (var offset in Neighbors)
+            {
+                int nx = x + offset.X, ny = y + offset.Y;
+                if (nx < 0 || ny < 0 || data.Block(nx >> 3, ny >> 3) == null) continue;
+                if (Math.Abs(data.LandZ(nx, ny) - z) > MaxSlope) return "slope";
+            }
         }
-        if (Operation != "Paint") return null;
+        if (Operation != "Paint" || repair) return null;
         int step = Math.Max(1, Spacing);
         return (Land || (x % step == 0 && y % step == 0)) && Hash(x, y) % 100 < Math.Clamp(Density, 0, 100) ? null : "density";
     }
@@ -102,20 +112,18 @@ internal sealed class WorldBrush
     /// ED6: why a stroke changed nothing, in words, naming the setting to change. The rule that turned away the
     /// most cells is the one named.
     /// </summary>
-    internal string WhyNothing(WorldData data, IEnumerable<(int X, int Y)> cells)
+    private string WhyNothing(IReadOnlyDictionary<string, int> rejected, int requested)
     {
-        var cellList = cells.Distinct().ToList();
-        var reasons = cellList.Select(c => Rejection(data, c.X, c.Y)).ToList();
-        if (cellList.Count == 0) return "Nothing changed: the brush had no cells under it";
-        if (reasons.All(r => r == null))
+        if (requested == 0) return "Nothing changed: the brush had no cells under it";
+        if (rejected.Count == 0)
             return Operation switch
             {
                 "Paint" when !Land => "Nothing changed: the same item already stands there at that height",
                 "Erase statics" or "Hue statics" => $"Nothing changed: {Operation} found no item there (between Visible Z min and max)",
                 _ => "Nothing changed: the ground there is already like that",
             };
-        string top = reasons.Where(r => r != null).GroupBy(r => r).OrderByDescending(g => g.Count()).First().Key;
-        bool one = cellList.Count == 1;
+        string top = rejected.MaxBy(r => r.Value).Key;
+        bool one = requested == 1;
         return top switch
         {
             "occupied" => one
@@ -132,81 +140,131 @@ internal sealed class WorldBrush
     internal ushort Choose(int x, int y, ushort fallback)
     {
         var variants = ParseVariants(Variants);
-        if (variants.Count == 0) return fallback;
-        int pick = (int)((Hash(x, y) / 100) % (uint)variants.Sum(v => v.Weight));
+        return Choose(x, y, fallback, variants, variants.Sum(v => v.Weight));
+    }
+
+    private ushort Choose(int x, int y, ushort fallback, List<(ushort Id, int Weight)> variants, int weight)
+    {
+        if (weight == 0) return fallback;
+        int pick = (int)((Hash(x, y) / 100) % (uint)weight);
         foreach (var v in variants) { pick -= v.Weight; if (pick < 0) return v.Id; }
         return fallback;
     }
 
-    internal bool Apply(WorldEditor editor, WorldData data, int facet, IEnumerable<(int X, int Y)> cells, ushort fallback)
+    internal enum EditKind { Material, Height, Add, Erase, Hue }
+
+    internal readonly record struct CellEdit(int X, int Y, EditKind Kind, ushort Id, sbyte Z, bool Repair = false);
+
+    internal sealed record StrokePlan(IReadOnlyList<CellEdit> Cells, int Skipped, string Reason, ushort Hue, int MinZ, int MaxZ)
     {
-        var accepted = PlanCells(data, cells, fallback);
-        var edits = new Dictionary<(int, int), Action<WorldBlock>>();
-        foreach (var group in accepted.GroupBy(c => (c.X >> 3, c.Y >> 3)))
+        public bool Apply(WorldEditor editor, int facet, string operation)
         {
-            var captured = group.ToArray();
-            // Heights are sampled before any blocks change, including across block edges.
-            var smooth = captured.ToDictionary(c => c, c => (data.LandZ(c.X - 1, c.Y) + data.LandZ(c.X + 1, c.Y)
-                + data.LandZ(c.X, c.Y - 1) + data.LandZ(c.X, c.Y + 1)) / 4);
-            edits[group.Key] = b =>
+            var edits = new Dictionary<(int, int), Action<WorldBlock>>();
+            foreach (var group in Cells.GroupBy(c => (c.X >> 3, c.Y >> 3)))
             {
-                foreach (var c in captured)
+                var batch = group.ToArray();
+                edits.Add(group.Key, block =>
                 {
-                    int i = (c.Y & 7) * 8 + (c.X & 7);
-                    ushort id = Choose(c.X, c.Y, fallback);
-                    if (Operation == "Paint" && Land)
+                    foreach (var c in batch)
                     {
-                        // Match both this stroke and the existing terrain family at its boundary.
-                        var family = TerrainFamily(fallback);
-                        bool Inside(int px, int py) => accepted.Contains((px, py)) || InFamily(data, px, py, family);
-                        int mask = (Inside(c.X, c.Y - 1) ? 1 : 0) | (Inside(c.X + 1, c.Y) ? 2 : 0)
-                            | (Inside(c.X, c.Y + 1) ? 4 : 0) | (Inside(c.X - 1, c.Y) ? 8 : 0);
-                        foreach (string rule in Edges.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                        byte x = (byte)(c.X & 7), y = (byte)(c.Y & 7);
+                        int i = y * 8 + x;
+                        switch (c.Kind)
                         {
-                            string[] pair = rule.Trim().Split('=');
-                            if (pair.Length == 2 && int.TryParse(pair[0], out int m) && m == mask && TryId(pair[1], out ushort edge)) id = edge;
-                        }
-                        b.LandId[i] = id;
-                    }
-                    else if (Operation == "Paint")
-                    {
-                        sbyte z = (sbyte)Math.Clamp((FixedHeight ? 0 : b.LandZ[i]) + Height, -128, 127);
-                        if (!b.Statics.Any(s => s.X == (c.X & 7) && s.Y == (c.Y & 7) && s.Id == id && s.Z == z))
-                            b.Statics.Add(new WorldStatic { X = (byte)(c.X & 7), Y = (byte)(c.Y & 7), Id = id, Z = z, Hue = Hue });
-                    }
-                    else if (Operation == "Erase statics")
-                        b.Statics.RemoveAll(s => s.X == (c.X & 7) && s.Y == (c.Y & 7) && s.Z >= data.Host.MinVisibleZ && s.Z <= data.Host.MaxVisibleZ);
-                    else if (Operation == "Hue statics")
-                    {
-                        for (int j = 0; j < b.Statics.Count; j++)
-                        {
-                            var s = b.Statics[j];
-                            if (s.X != (c.X & 7) || s.Y != (c.Y & 7) || s.Z < data.Host.MinVisibleZ || s.Z > data.Host.MaxVisibleZ) continue;
-                            s.Hue = Hue; b.Statics[j] = s;
+                            case EditKind.Material: block.LandId[i] = c.Id; break;
+                            case EditKind.Height: block.LandZ[i] = c.Z; break;
+                            case EditKind.Add:
+                                block.Statics.Add(new WorldStatic { X = x, Y = y, Z = c.Z, Id = c.Id, Hue = Hue });
+                                break;
+                            case EditKind.Erase:
+                                block.Statics.RemoveAll(s => s.X == x && s.Y == y && s.Z >= MinZ && s.Z <= MaxZ);
+                                break;
+                            case EditKind.Hue:
+                                for (int j = 0; j < block.Statics.Count; j++)
+                                {
+                                    var item = block.Statics[j];
+                                    if (item.X != x || item.Y != y || item.Z < MinZ || item.Z > MaxZ) continue;
+                                    item.Hue = Hue;
+                                    block.Statics[j] = item;
+                                }
+                                break;
                         }
                     }
-                    else
-                    {
-                        int z = b.LandZ[i];
-                        int next = Operation switch { "Raise" => z + Strength, "Lower" => z - Strength, "Flatten" => Height,
-                            "Smooth" => z + Math.Clamp(smooth[c] - z, -Strength, Strength), _ => z };
-                        b.LandZ[i] = (sbyte)Math.Clamp(next, -128, 127);
-                    }
-                }
-            };
+                });
+            }
+            return editor.EditBatch(facet, edits, $"{operation}: {Cells.Count} changed, {Skipped} skipped");
         }
-        return editor.EditBatch(facet, edits, $"{Operation}: {accepted.Count} cells");
     }
 
-    private HashSet<ushort> TerrainFamily(ushort fallback)
+    internal bool Apply(WorldEditor editor, WorldData data, int facet, IEnumerable<(int X, int Y)> cells, ushort fallback)
+        => Plan(data, cells, fallback).Apply(editor, facet, Operation);
+
+    internal StrokePlan Plan(WorldData data, IEnumerable<(int X, int Y)> cells, ushort fallback)
     {
-        var family = ParseVariants(Variants).Select(v => v.Id).ToHashSet(); family.Add(fallback);
+        var requested = cells.ToHashSet();
+        var edits = new List<CellEdit>();
+        var variants = ParseVariants(Variants);
+        int weight = variants.Sum(v => v.Weight);
+        var edges = new Dictionary<int, ushort>();
         foreach (string rule in Edges.Split(',', StringSplitOptions.RemoveEmptyEntries))
         {
             string[] pair = rule.Split('=');
-            if (pair.Length == 2 && TryId(pair[1], out ushort id)) family.Add(id);
+            if (pair.Length == 2 && int.TryParse(pair[0], out int mask) && TryId(pair[1], out ushort id)) edges[mask] = id;
         }
-        return family;
+        var family = variants.Select(v => v.Id).Concat(edges.Values).ToHashSet();
+        family.Add(fallback);
+        var rejected = new Dictionary<string, int>();
+        var accepted = PlanCells(data, requested, AllowedIds(), family, edges.Count > 0, rejected);
+        int minZ = data.Host.MinVisibleZ, maxZ = data.Host.MaxVisibleZ;
+        foreach (var c in accepted)
+        {
+            BlockData block = data.Block(c.X >> 3, c.Y >> 3);
+            int i = (c.Y & 7) * 8 + (c.X & 7);
+            int z = block.LandZ[i];
+            if (Operation == "Paint" && Land)
+            {
+                int mask = 0;
+                for (int n = 0; edges.Count > 0 && n < Neighbors.Length; n++)
+                {
+                    var neighbor = (c.X + Neighbors[n].X, c.Y + Neighbors[n].Y);
+                    if (accepted.Contains(neighbor) || InFamily(data, neighbor.Item1, neighbor.Item2, family)) mask |= 1 << n;
+                }
+                ushort id = edges.TryGetValue(mask, out ushort edge) ? edge : Choose(c.X, c.Y, fallback, variants, weight);
+                if (block.LandId[i] != id) edits.Add(new CellEdit(c.X, c.Y, EditKind.Material, id, (sbyte)z, !requested.Contains(c)));
+            }
+            else if (Operation == "Paint")
+            {
+                ushort id = Choose(c.X, c.Y, fallback, variants, weight);
+                sbyte height = (sbyte)Math.Clamp((FixedHeight ? 0 : z) + Height, -128, 127);
+                var statics = data.OverlayBlock(c.X >> 3, c.Y >> 3)?.Statics;
+                if (statics != null && !statics.Any(s => s.X == (c.X & 7) && s.Y == (c.Y & 7) && s.Id == id && s.Z == height))
+                    edits.Add(new CellEdit(c.X, c.Y, EditKind.Add, id, height));
+            }
+            else if (Operation is "Erase statics" or "Hue statics")
+            {
+                bool erase = Operation == "Erase statics";
+                var statics = data.OverlayBlock(c.X >> 3, c.Y >> 3)?.Statics;
+                if (statics?.Any(s => s.X == (c.X & 7) && s.Y == (c.Y & 7) && s.Z >= minZ && s.Z <= maxZ && (erase || s.Hue != Hue)) == true)
+                    edits.Add(new CellEdit(c.X, c.Y, erase ? EditKind.Erase : EditKind.Hue, 0, 0));
+            }
+            else
+            {
+                int next = Operation switch
+                {
+                    "Raise" => z + Strength,
+                    "Lower" => z - Strength,
+                    "Flatten" => Height,
+                    "Smooth" => z + Math.Clamp(Neighbors.Sum(n =>
+                        data.Block((c.X + n.X) >> 3, (c.Y + n.Y) >> 3) == null
+                            ? z : data.LandZ(c.X + n.X, c.Y + n.Y)) / 4 - z, -Strength, Strength),
+                    _ => z,
+                };
+                next = Math.Clamp(next, -128, 127);
+                if (next != z) edits.Add(new CellEdit(c.X, c.Y, EditKind.Height, 0, (sbyte)next));
+            }
+        }
+        int skipped = requested.Count - edits.Count(e => !e.Repair);
+        return new StrokePlan(edits, skipped, edits.Count == 0 ? WhyNothing(rejected, requested.Count) : null, Hue, minZ, maxZ);
     }
 
     private static bool InFamily(WorldData data, int x, int y, HashSet<ushort> family)
@@ -216,16 +274,22 @@ internal sealed class WorldBrush
     }
 
     /// <summary>Includes adjacent matching terrain when an edge recipe must reconnect an older stroke.</summary>
-    internal HashSet<(int X, int Y)> PlanCells(WorldData data, IEnumerable<(int X, int Y)> cells, ushort fallback)
+    private HashSet<(int X, int Y)> PlanCells(WorldData data, HashSet<(int X, int Y)> cells,
+        HashSet<ushort> allowed, HashSet<ushort> family, bool hasEdges, Dictionary<string, int> rejected)
     {
-        var result = cells.Distinct().Where(c => AcceptCell(data, c.X, c.Y)).ToHashSet();
-        if (Operation != "Paint" || !Land || string.IsNullOrWhiteSpace(Edges)) return result;
-        var family = TerrainFamily(fallback);
+        var result = new HashSet<(int X, int Y)>();
+        foreach (var c in cells)
+        {
+            string reason = Rejection(data, c.X, c.Y, allowed);
+            if (reason == null) result.Add(c);
+            else rejected[reason] = rejected.GetValueOrDefault(reason) + 1;
+        }
+        if (Operation != "Paint" || !Land || !hasEdges) return result;
         foreach (var c in result.ToArray())
-        foreach (var offset in new[] { (0, -1), (1, 0), (0, 1), (-1, 0) })
+        foreach (var offset in Neighbors)
         {
             var n = (X: c.X + offset.Item1, Y: c.Y + offset.Item2);
-            if (n.X >= 0 && n.Y >= 0 && InFamily(data, n.X, n.Y, family)) result.Add(n);
+            if (n.X >= 0 && n.Y >= 0 && InFamily(data, n.X, n.Y, family) && Rejection(data, n.X, n.Y, allowed, repair: true) == null) result.Add(n);
         }
         return result;
     }

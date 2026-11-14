@@ -22,8 +22,9 @@ public partial class WorldView
         WorldTool.PlaceSpawner => "Place spawner",
         WorldTool.MoveObject => "Move object",
         WorldTool.DeleteObject => "Delete object",
-        WorldTool.Area => "Area (select for a multi)",
-        WorldTool.PickRegion => "Pick region",
+        WorldTool.Area => "Area",
+        WorldTool.PickRegion => "Regions",
+        WorldTool.AudioZones => "Audio Zones",
         _ => tool.ToString(),
     };
 

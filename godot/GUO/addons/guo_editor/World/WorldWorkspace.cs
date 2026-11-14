@@ -35,7 +35,13 @@ public partial class WorldView
     private readonly Dictionary<WorldTool, Button> _toolButtons = new();
     private readonly WorldBrush _recipe = new();
     private readonly HashSet<(int X, int Y)> _stroke = new();
-    private bool _painting, _spacePan;
+    private const int StrokeCellLimit = 8192;
+    private bool _painting, _spacePan, _strokeCapped;
+    private bool _focusMode, _previousDistractionFree, _previousLibraryVisible;
+    private bool _autoLibrary = true;
+    private WorldBrush _strokeRecipe;
+    private uint _strokeArt;
+    private int _strokeVersion;
     private (int X, int Y)? _lastStroke;
     private readonly Dictionary<string, SpinBox> _numbers = new();
     private readonly Dictionary<string, CheckBox> _checks = new();
@@ -50,7 +56,10 @@ public partial class WorldView
     private readonly List<uint> _favorites = new();
     private HFlowContainer _favoriteButtons;
     private VBoxContainer _variantRows;
-    private readonly List<(int X, int Y, sbyte Z, ushort Id, bool Land)> _stackEntries = new();
+    private readonly record struct StackEntry(int X, int Y, sbyte Z, ushort Id, bool Land, ushort Hue = 0, int Occurrence = 0);
+    private readonly List<StackEntry> _stackEntries = new();
+    private string _stackBlock;
+    private int _stackVersion;
     private (int X, int Y)? _stackCell;
     private int _stackIndex = -1;
     private double _workspaceClock;
@@ -99,16 +108,19 @@ public partial class WorldView
         {
             (WorldTool.Select, "ToolSelect", "V"), (WorldTool.Brush, "Edit", "B"), (WorldTool.Stamp, "Duplicate", "S"),
             (WorldTool.Erase, "Remove", "E"), (WorldTool.Raise, "MoveUp", "R"), (WorldTool.Lower, "MoveDown", "F"),
-            (WorldTool.Hue, "ColorPick", "H"), (WorldTool.PlaceItem, "Node3D", ""), (WorldTool.PlaceSpawner, "MemberSignal", ""),
-            (WorldTool.MoveObject, "ToolMove", ""), (WorldTool.DeleteObject, "Remove", ""),
-            (WorldTool.Measure, "Ruler", "M"), (WorldTool.Route, "CurvePath", ""), (WorldTool.Pin, "Pin", ""), (WorldTool.Area, "RegionEdit", "G"),
-            (WorldTool.PickRegion, "Search", "N"),
+            (WorldTool.Hue, "ColorPick", "H"),
+            (WorldTool.Area, "ToolSelect", "G"), (WorldTool.PickRegion, "RegionEdit", "N"),
+            (WorldTool.AudioZones, "AudioStreamPlayer", ""),
+            (WorldTool.PlaceItem, "Node3D", ""), (WorldTool.PlaceSpawner, "MemberSignal", ""),
+            (WorldTool.MoveObject, "ToolMove", ""), (WorldTool.DeleteObject, "Trash", ""),
+            (WorldTool.Measure, "Ruler", "M"), (WorldTool.Route, "CurvePath", ""), (WorldTool.Pin, "Pin", ""),
         };
         foreach (var entry in icons)
         {
+            if (entry.Tool is WorldTool.Area or WorldTool.PlaceItem or WorldTool.Measure) rail.AddChild(new HSeparator());
             Texture2D icon = EditorInterface.Singleton.GetBaseControl().GetThemeIcon(entry.Icon, "EditorIcons");
             var button = new Button { Icon = icon, Text = icon == null ? entry.Tool.ToString()[..1] : "", ToggleMode = true,
-                ButtonGroup = group, CustomMinimumSize = new Vector2(38, 34), TooltipText = ToolName(entry.Tool) + (entry.Shortcut.Length > 0 ? " (" + entry.Shortcut + ")" : "") };
+                ButtonGroup = group, CustomMinimumSize = new Vector2(38, 34), AccessibilityName = ToolName(entry.Tool), TooltipText = ToolName(entry.Tool) + (entry.Shortcut.Length > 0 ? " (" + entry.Shortcut + ")" : "") };
             button.Pressed += () => Tool = entry.Tool; rail.AddChild(button); _toolButtons[entry.Tool] = button;
         }
 
@@ -176,6 +188,7 @@ public partial class WorldView
         _water = new WaterPanel { Name = "Water" };
         _water.Attach(() => _host.World);
         settingsTabs.AddChild(_water);
+        BuildBoundaryControls(settingsTabs);
         var advancedOptions = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill }; advancedScroll.AddChild(advancedOptions);
         var editors = new HBoxContainer(); advancedOptions.AddChild(editors);
         ActionButton(editors, "Pixelorama", () => EditBrushArt(false), "Project > GUO: save back to GUO returns the edit");
@@ -190,7 +203,7 @@ public partial class WorldView
         foreach (string op in new[] { "Paint", "Erase statics", "Hue statics", "Raise", "Lower", "Flatten", "Smooth" }) _operation.AddItem(op);
         _operation.ItemSelected += i => _recipe.Operation = _operation.GetItemText((int)i); operationRow.AddChild(_operation); _operation.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         _targetPick = new OptionButton(); _targetPick.AddItem("Statics"); _targetPick.AddItem("Terrain");
-        _targetPick.ItemSelected += i => { _recipe.Land = i == 1; _brushArt.SelectKind(i == 1); _brushArt.Search(""); };
+        _targetPick.ItemSelected += i => { SetBrushTarget(i == 1); _brushArt.SelectKind(i == 1); _brushArt.Search(""); };
         operationRow.AddChild(_targetPick); _targetPick.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         var values = new GridContainer { Columns = 2 }; brushSettings.AddChild(values);
         Number(values, "Size (tiles)", 7, 1, 31, v => _recipe.Size = v);
@@ -201,6 +214,16 @@ public partial class WorldView
         var hueLabel = new Label { Text = "Hue", SizeFlagsHorizontal = SizeFlags.ExpandFill }; hueRow.AddChild(hueLabel);
         _hue.Reparent(hueRow); _hue.CustomMinimumSize = new Vector2(74, 0); _hue.TooltipText = "Hue: a name or an id, 0 for none; applies to Stamp and brush painting/recoloring";
         _hue.Committed += v => _recipe.Hue = (ushort)v;
+
+        var terrainRecipes = Section(advancedOptions, "Landscape recipes");
+        var landscape = new HFlowContainer();
+        terrainRecipes.AddChild(landscape);
+        ActionButton(landscape, "Coast", () => LandscapeRecipe(true, 3, 100, 1, 8),
+            "Narrow terrain paint that avoids water. Select a shore tile and add compatible edge rules.");
+        ActionButton(landscape, "Footpath", () => LandscapeRecipe(true, 2, 100, 1, 5),
+            "Two-tile terrain paint for paths. Choose the ground material and limit allowed land IDs as needed.");
+        ActionButton(landscape, "Woodland edge", () => LandscapeRecipe(false, 9, 28, 1, 10),
+            "Seeded tree scatter that protects water and existing objects. Pick tree art or add weighted variants.");
 
         var variation = Section(advancedOptions, "Variation & rules", true);
         Number(variation, "Seed", 1, 0, 999999, v => _recipe.Seed = v);
@@ -257,11 +280,29 @@ public partial class WorldView
         var spacer = new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill }; bar.AddChild(spacer);
         ActionButton(bar, "Undo", () => _editor.Undo(), "Ctrl+Z");
         ActionButton(bar, "Redo", () => _editor.Redo(), "Ctrl+Y");
-        ActionButton(bar, "Brushes", () => { _leftWorkspace.Show(); _library.Visible = !_library.Visible; });
-        ActionButton(bar, "Precision", () => { _leftWorkspace.Show(); _library.Hide(); _settings.Show(); });
+        ActionButton(bar, "Brushes", () =>
+        {
+            _autoLibrary = false;
+            _leftWorkspace.Show();
+            _library.Visible = !_library.Visible;
+        }, "Show or hide the brush library");
+        ActionButton(bar, "Precision", () =>
+        {
+            _autoLibrary = false;
+            _leftWorkspace.Show();
+            _library.Hide();
+            _settings.Show();
+        });
         ActionButton(bar, "Focus", ToggleWorkspaceFocus, "Tab: hide panels and Godot docks");
-        _previewLabel = new Label { Position = new Vector2(12, 12), MouseFilter = MouseFilterEnum.Ignore };
+        _previewLabel = new Label { ClipText = true, MouseFilter = MouseFilterEnum.Ignore };
         _stage.AddChild(_previewLabel);
+        _previewLabel.SetAnchorsPreset(LayoutPreset.TopWide);
+        _previewLabel.OffsetLeft = 12;
+        _previewLabel.OffsetRight = -12;
+        _previewLabel.OffsetTop = 12;
+        _previewLabel.OffsetBottom = 40;
+        Resized += UpdateCompactWorkspace;
+        Callable.From(UpdateCompactWorkspace).CallDeferred();
         var quick = new PanelContainer { Visible = false, Position = new Vector2(24, 60) };
         _stage.AddChild(quick); _quickFavorites = quick;
         SyncToolButtons(); LoadBrushPresets();
@@ -344,6 +385,18 @@ public partial class WorldView
         _brushArt.SelectKind(land); _brushArt.Search(""); Tool = WorldTool.Brush;
     }
 
+    private void LandscapeRecipe(bool land, int size, int density, int spacing, int slope)
+    {
+        QuickRecipe(land, "Paint", size, density, spacing);
+        _numbers["Seed"].Value = 1;
+        _numbers["Maximum slope"].Value = slope;
+        _checks["Avoid water"].ButtonPressed = true;
+        _checks["Keep existing statics"].ButtonPressed = true;
+        _status.Text = land
+            ? "Choose a land tile. Use Height and Reachability to check slopes and connections."
+            : "Choose a tree or shrub. Add weighted variations for an irregular woodland edge.";
+    }
+
     private void RebuildVariants()
     {
         if (_variantRows == null) return;
@@ -378,15 +431,34 @@ public partial class WorldView
     private void SyncToolButtons()
     {
         foreach (var pair in _toolButtons) pair.Value.SetPressedNoSignal(pair.Key == Tool);
-        _painting = false; _stroke.Clear(); _lastStroke = null;
+    }
+
+    private void UpdateCompactWorkspace()
+    {
+        if (_autoLibrary && !_focusMode && Size.X > 0)
+            _library.Visible = Size.X >= 1150 * EditorInterface.Singleton.GetEditorScale();
     }
 
     private void ToggleWorkspaceFocus()
     {
-        bool focus = _leftWorkspace.Visible;
-        _leftWorkspace.Visible = !focus; _library.Visible = !focus;
-        EditorInterface.Singleton.SetDistractionFreeMode(true);
-        if (focus) FocusRequested?.Invoke();
+        if (!_focusMode)
+        {
+            _previousDistractionFree = EditorInterface.Singleton.IsDistractionFreeModeEnabled();
+            _previousLibraryVisible = _library.Visible;
+            _focusMode = true;
+            _leftWorkspace.Hide();
+            _library.Hide();
+            EditorInterface.Singleton.SetDistractionFreeMode(true);
+            FocusRequested?.Invoke();
+        }
+        else
+        {
+            _focusMode = false;
+            _leftWorkspace.Show();
+            _library.Visible = _previousLibraryVisible;
+            EditorInterface.Singleton.SetDistractionFreeMode(_previousDistractionFree);
+            UpdateCompactWorkspace();
+        }
     }
 
     private void EditBrushArt(bool pinta)
@@ -418,11 +490,29 @@ public partial class WorldView
         foreach (Node n in _favoriteButtons.GetChildren()) { _favoriteButtons.RemoveChild(n); n.QueueFree(); }
         foreach (uint id in _favorites)
         {
-            var b = ActionButton(_favoriteButtons, "", () => { _data.CurrentArt = id; Tool = WorldTool.Brush; }, NameThenId(id, (int)(id < EditorData.LandCount ? id : id - EditorData.LandCount)));
+            var b = ActionButton(_favoriteButtons, "", () => UseFavorite(id), NameThenId(id, (int)(id < EditorData.LandCount ? id : id - EditorData.LandCount)));
             Image img = _data?.ArtImage(id);
             if (img != null) b.Icon = ImageTexture.CreateFromImage(img);
             b.ExpandIcon = true; b.CustomMinimumSize = new Vector2(38, 38); b.TextureFilter = TextureFilterEnum.Nearest;
         }
+    }
+
+    private void UseFavorite(uint id)
+    {
+        _data.CurrentArt = id;
+        SetBrushTarget(id < EditorData.LandCount);
+        Tool = WorldTool.Brush;
+    }
+
+    private void SetBrushTarget(bool land)
+    {
+        if (_recipe.Land != land)
+        {
+            _recipe.Variants = _weights.Text = "";
+            RebuildVariants();
+        }
+        _recipe.Land = land;
+        _targetPick.Select(land ? 1 : 0);
     }
 
     private void ShowQuickFavorites()
@@ -431,7 +521,7 @@ public partial class WorldView
         var list = new VBoxContainer(); _quickFavorites.AddChild(list);
         list.AddChild(new Label { Text = "Quick favorites · Q / Esc to close" });
         foreach (uint id in _favorites)
-            ActionButton(list, NameThenId(id, (int)(id < EditorData.LandCount ? id : id - EditorData.LandCount)), () => { _data.CurrentArt = id; _quickFavorites.Hide(); Tool = WorldTool.Brush; });
+            ActionButton(list, NameThenId(id, (int)(id < EditorData.LandCount ? id : id - EditorData.LandCount)), () => { _quickFavorites.Hide(); UseFavorite(id); });
         if (_favorites.Count == 0) list.AddChild(new Label { Text = "Use + Favorite in the brush library" });
         _quickFavorites.Visible = !_quickFavorites.Visible;
     }
@@ -452,6 +542,7 @@ public partial class WorldView
         _historyLabel.Text = $"Undo {_editor.UndoCount} · Redo {_editor.RedoCount}\n{_editor.LastWhat}";
         if (_pinNearby?.ButtonPressed != true && _host.Picked is GameObject o && !_painting && _stackIndex < 0 && _stackCell != ((int)o.X, (int)o.Y)) RefreshStack(o.X, o.Y);
         _guides.BrushCells.Clear();
+        _guides.BrushRepairs.Clear();
         _guides.Ghosts.Clear();
         _guides.RoofGhosts.Clear();
         if (_host.GhostRoofs && _data?.IsLoaded == true)
@@ -469,39 +560,67 @@ public partial class WorldView
                 }
             }
         }
-        if (Tool == WorldTool.Brush && _host.Picked is GameObject h && _modeNode?.Data != null)
+        string destination = Tool switch
         {
-            var hoverCell = BrushCell(h);
-            uint currentArt = _data?.CurrentArt ?? 0;
-            ushort fallback = (ushort)(currentArt < EditorData.LandCount ? currentArt : currentArt - EditorData.LandCount);
-            foreach (var c in _recipe.PlanCells(_modeNode.Data, _painting ? _stroke : _recipe.Footprint(hoverCell.X, hoverCell.Y), fallback))
-            {
-                _guides.BrushCells.Add(c);
-                if (_recipe.Operation != "Paint" || _recipe.Land || _data?.IsLoaded != true || _guides.Ghosts.Count >= 128) continue;
-                uint art = _data.CurrentArt;
-                if (art < EditorData.LandCount) continue;
-                ushort id = _recipe.Choose(c.X, c.Y, (ushort)(art - EditorData.LandCount));
-                Texture2D texture = GhostTexture(EditorData.LandCount + id);
-                if (texture != null) _guides.Ghosts.Add((c.X, c.Y, Math.Clamp((_recipe.FixedHeight ? 0 : _modeNode.Data.LandZ(c.X, c.Y)) + _recipe.Height, -128, 127), texture));
-            }
-            _guides.PlaneZ = _recipe.FixedHeight ? _recipe.Height : null;
-            _previewLabel.Text = $"{ToolLabel}: {_guides.BrushCells.Count} cells · release to apply · Esc cancel";
+            WorldTool.Brush or WorldTool.Stamp or WorldTool.Erase or WorldTool.Hue or WorldTool.Raise or WorldTool.Lower => "Map blocks",
+            WorldTool.PlaceItem or WorldTool.PlaceSpawner or WorldTool.MoveObject or WorldTool.DeleteObject => "Project objects",
+            WorldTool.Pin => "Project bookmarks",
+            WorldTool.PickRegion => "Shard boundaries",
+            WorldTool.AudioZones => "Client audio boundaries",
+            _ => "Inspect & navigate",
+        };
+        _previewLabel.Text = $"{ToolLabel} · {destination} · map{_host.Facet}";
+        _guides.PlaneZ = null;
+        if (Tool != WorldTool.Brush || _host.Picked is not GameObject h || _modeNode?.Data == null) return;
+
+        WorldBrush recipe = _strokeRecipe ?? _recipe;
+        uint art = _strokeRecipe != null ? _strokeArt : _data?.CurrentArt ?? 0;
+        string refusal = BrushRefusal(recipe, art);
+        if (refusal != null)
+        {
+            _previewLabel.Text += $" · {refusal}";
+            return;
         }
-        else { _previewLabel.Text = $"{ToolLabel} · Alt: pick art · Space: pan · Q: favorites · Tab: focus"; _guides.PlaneZ = null; }
+
+        var hoverCell = BrushCell(h);
+        var plan = recipe.Plan(_modeNode.Data, _painting ? _stroke : recipe.Footprint(hoverCell.X, hoverCell.Y), BrushId(art));
+        int repairs = 0;
+        foreach (var c in plan.Cells)
+        {
+            if (c.Repair) { _guides.BrushRepairs.Add((c.X, c.Y)); repairs++; }
+            else _guides.BrushCells.Add((c.X, c.Y));
+            if (c.Kind != WorldBrush.EditKind.Add || _guides.Ghosts.Count >= 128) continue;
+            Texture2D texture = GhostTexture(EditorData.LandCount + c.Id);
+            if (texture != null) _guides.Ghosts.Add((c.X, c.Y, c.Z, texture));
+        }
+        _guides.PlaneZ = recipe.FixedHeight ? recipe.Height : null;
+        _previewLabel.Text += $" · {plan.Cells.Count} to change · {plan.Skipped} skipped";
+        if (repairs > 0) _previewLabel.Text += $" · {repairs} edge repairs";
+        if (_strokeCapped) _previewLabel.Text += " · stroke limit";
+        if (_painting) _previewLabel.Text += " · release to apply · Esc cancels";
     }
 
     private bool WorkspaceInput(InputEvent e)
     {
-        if (e is InputEventKey { Keycode: Key.Space } space) { _spacePan = space.Pressed; if (!space.Pressed) _dragging = false; return true; }
-        if (e is InputEventMouseButton { ButtonIndex: MouseButton.Left } pan && _spacePan)
-        { _dragging = pan.Pressed; _drag = Vector2.Zero; return true; }
+        if (e is InputEventKey { Keycode: Key.Space } space) { _spacePan = space.Pressed; return true; }
         if (e is InputEventKey { Pressed: true, Echo: false, CtrlPressed: false, AltPressed: false } key)
         {
             switch (key.Keycode)
             {
                 case Key.Tab: ToggleWorkspaceFocus(); return true;
                 case Key.Q: ShowQuickFavorites(); return true;
-                case Key.Escape: _painting = false; _stroke.Clear(); _quickFavorites.Hide(); _stackIndex = -1; return true;
+                case Key.Escape:
+                    if (_pointerButton != MouseButton.None) CancelPointer();
+                    else if (BoundaryTool) ClearBoundary();
+                    else
+                    {
+                        ClearArea();
+                        _moving = null;
+                        _mapLayers.Route.Start = null;
+                        if (_mapLayers.Measure.B == null) _mapLayers.Measure.Clear();
+                    }
+                    _quickFavorites.Hide(); _stackIndex = -1;
+                    return true;
                 case Key.V: Tool = WorldTool.Select; return true;
                 case Key.B: Tool = WorldTool.Brush; return true;
                 case Key.S: Tool = WorldTool.Stamp; return true;
@@ -511,13 +630,21 @@ public partial class WorldView
                 case Key.H: Tool = WorldTool.Hue; return true;
                 case Key.M: Tool = WorldTool.Measure; return true;
                 case Key.G: Tool = WorldTool.Area; return true;
+                case Key.N: Tool = WorldTool.PickRegion; return true;
                 case Key.Bracketleft: _numbers["Size (tiles)"].Value--; return true;
                 case Key.Bracketright: _numbers["Size (tiles)"].Value++; return true;
             }
         }
         if (e is InputEventMouseButton { Pressed: true, AltPressed: true } alt)
         {
-            if (alt.ButtonIndex == MouseButton.Left) { PickBrushFromWorld(); return true; }
+            if (alt.ButtonIndex == MouseButton.Left && !_spacePan && _pointerButton == MouseButton.None)
+            {
+                RefreshPointerPick(alt.Position);
+                if (_host.Picked is GameObject clicked && _stackCell != ((int)clicked.X, (int)clicked.Y))
+                    _stackIndex = -1;
+                PickBrushFromWorld();
+                return true;
+            }
             if (alt.ButtonIndex is MouseButton.WheelUp or MouseButton.WheelDown)
             {
                 if (_host.Picked is GameObject at && _stackIndex < 0) RefreshStack(at.X, at.Y);
@@ -529,72 +656,110 @@ public partial class WorldView
                 return true;
             }
         }
-        if (e is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left }
-            && _host.Picked is GameObject clicked && _stackCell != ((int)clicked.X, (int)clicked.Y)) _stackIndex = -1;
-        if (e is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left, ShiftPressed: true } && Tool == WorldTool.Select)
-        { _stackIndex = -1; if (_host.Picked is GameObject at) RefreshStack(at.X, at.Y); InspectPicked(); return true; }
-        if (Tool != WorldTool.Brush) return false;
-        if (e is InputEventMouseButton { ButtonIndex: MouseButton.Left } b)
+        if (!_spacePan && _pointerButton == MouseButton.None && Tool == WorldTool.Select &&
+            e is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left, ShiftPressed: true } select)
         {
-            if (b.Pressed) { _painting = true; _stroke.Clear(); _lastStroke = null; ExtendStroke(); _container.GrabFocus(); }
-            else if (_painting) { ExtendStroke(); _painting = false; CommitStroke(); }
+            RefreshPointerPick(select.Position);
+            _stackIndex = -1;
+            if (_host.Picked is GameObject at) { SetArea(at.X, at.Y, at.X, at.Y); RefreshStack(at.X, at.Y); }
+            InspectPicked();
             return true;
         }
-        if (e is InputEventMouseMotion && _painting) { ExtendStroke(); return true; }
         return false;
+    }
+
+    private void BeginStroke()
+    {
+        _painting = true;
+        _strokeRecipe = _recipe.Snapshot();
+        _strokeArt = _data?.CurrentArt ?? 0;
+        _strokeVersion = _modeNode.Data.Version;
+        _strokeCapped = false;
+        _stroke.Clear();
+        _lastStroke = null;
+        ExtendStroke();
     }
 
     private void ExtendStroke()
     {
         if (_host.Picked is not GameObject at) return;
         var end = BrushCell(at);
+        if (_lastStroke == end) return;
         var start = _lastStroke ?? end;
         int steps = Math.Max(Math.Abs(end.X - start.X), Math.Abs(end.Y - start.Y));
         for (int s = 0; s <= steps; s++)
         {
             int x = start.X + (end.X - start.X) * s / Math.Max(1, steps);
             int y = start.Y + (end.Y - start.Y) * s / Math.Max(1, steps);
-            foreach (var c in _recipe.Footprint(x, y)) if (_stroke.Count < 8192) _stroke.Add(c);
+            foreach (var c in (_strokeRecipe ?? _recipe).Footprint(x, y))
+            {
+                if (_stroke.Count < StrokeCellLimit) _stroke.Add(c);
+                else if (!_stroke.Contains(c)) _strokeCapped = true;
+            }
         }
         _lastStroke = end;
     }
 
     private (int X, int Y) BrushCell(GameObject at)
     {
-        if (_recipe.FixedHeight && CellGeometry.From(_host) is { } geometry)
+        WorldBrush recipe = _strokeRecipe ?? _recipe;
+        if (recipe.FixedHeight && CellGeometry.From(_host) is { } geometry)
         {
             Vector2 mouse = ForcedMouse is { } forced ? new Vector2(forced.X, forced.Y) : _container.GetLocalMousePosition();
-            var c = geometry.CellAt(mouse, _recipe.Height);
+            var c = geometry.CellAt(mouse, recipe.Height);
             return ((int)Math.Floor(c.X), (int)Math.Floor(c.Y));
         }
         return (at.X, at.Y);
+    }
+
+    private static ushort BrushId(uint art) => (ushort)(art < EditorData.LandCount ? art : art - EditorData.LandCount);
+
+    private string BrushRefusal(WorldBrush recipe, uint art)
+    {
+        if (_host.Project == null) return "Open a world project to paint";
+        if (recipe.ChangesTerrain && TerrainLocked) return "Terrain is locked";
+        if (recipe.Operation == "Paint" && ((_data?.IsLoaded != true || !_data.HasArt(art)) ||
+                (art < EditorData.LandCount) != recipe.Land))
+            return "Choose art matching the target: terrain or statics";
+        return recipe.Validate(_data);
     }
 
     private void CommitStroke()
     {
         try
         {
-            string invalid = _recipe.Validate(_data);
+            WorldBrush recipe = _strokeRecipe ?? _recipe;
+            uint art = _strokeRecipe != null ? _strokeArt : _data?.CurrentArt ?? 0;
+            if (_strokeRecipe != null && _strokeVersion != _modeNode.Data.Version)
+            {
+                _status.Text = "Map changed during this stroke. Paint again to see the updated result.";
+                return;
+            }
+            string invalid = BrushRefusal(recipe, art);
             if (invalid != null) { _status.Text = invalid; return; }
-            bool terrain = (_recipe.Operation == "Paint" && _recipe.Land) || _recipe.Operation is "Raise" or "Lower" or "Flatten" or "Smooth";
-            if (terrain && _lockTerrain.ButtonPressed) { _status.Text = "Terrain is locked"; return; }
-            if (_recipe.Operation == "Paint" && (_data?.IsLoaded != true || (_data.CurrentArt < EditorData.LandCount) != _recipe.Land))
-            { _status.Text = "Choose art matching the target: terrain or statics"; return; }
-            uint art = _data?.CurrentArt ?? 0;
-            ushort id = (ushort)(art < EditorData.LandCount ? art : art - EditorData.LandCount);
-            bool changed = _recipe.Apply(_editor, _modeNode.Data, _host.Facet, _stroke, id);
-            if (!changed) _status.Text = _recipe.WhyNothing(_modeNode.Data, _stroke);
-            _stackIndex = -1; _stackCell = null;
+            var plan = recipe.Plan(_modeNode.Data, _stroke, BrushId(art));
+            if (plan.Cells.Count == 0) _status.Text = plan.Reason ?? "Nothing changed";
+            else if (plan.Apply(_editor, _host.Facet, recipe.Operation) && _strokeCapped)
+                _status.Text += " · stroke limit reached";
+            _stackIndex = -1;
+            _stackCell = null;
         }
         catch (Exception ex) { _status.Text = $"Brush failed: {ex.Message}"; }
-        finally { _stroke.Clear(); _lastStroke = null; }
+        finally { _strokeRecipe = null; _strokeCapped = false; _stroke.Clear(); _lastStroke = null; }
     }
 
     public override void _Input(InputEvent e)
     {
-        // Release is global so dragging out of the viewport cannot leave a live stroke behind.
-        if (_painting && e is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: false })
-        { _painting = false; CommitStroke(); }
+        // Cancel if the button is released over another control or outside this window.
+        if (_pointerButton != MouseButton.None &&
+            e is InputEventMouseButton { Pressed: false } release && release.ButtonIndex == _pointerButton &&
+            !_container.GetGlobalRect().HasPoint(_container.GetGlobalMousePosition()))
+            CancelPointer();
+    }
+
+    public override void _Notification(int what)
+    {
+        if (what == NotificationWMWindowFocusOut) CancelPointer();
     }
 
     private Texture2D GhostTexture(uint art)
@@ -610,17 +775,23 @@ public partial class WorldView
     private void RefreshStack(int x, int y)
     {
         _stackCell = (x, y); _stackEntries.Clear(); _stack.Clear();
+        _stackBlock = _host.Project?.BlockText(_host.Facet, x >> 3, y >> 3);
+        _stackVersion = _modeNode.Data.Version;
+        var occurrences = new Dictionary<(sbyte, ushort, ushort), int>();
         foreach (var s in _editor.StaticsAt(_host.Facet, x, y).OrderByDescending(s => s.Z))
         {
             if (s.Z < _host.MinVisibleZ || s.Z > _host.MaxVisibleZ) continue;
-            _stackEntries.Add((x, y, s.Z, s.Id, false));
+            var key = (s.Z, s.Id, s.Hue);
+            int occurrence = occurrences.GetValueOrDefault(key);
+            occurrences[key] = occurrence + 1;
+            _stackEntries.Add(new StackEntry(x, y, s.Z, s.Id, false, s.Hue, occurrence));
             _stack.AddItem($"{NameThenId(EditorData.LandCount + s.Id, s.Id)}\nZ {s.Z} · hue {s.Hue}", GhostTexture(EditorData.LandCount + s.Id));
         }
         BlockData b = _modeNode?.Data?.Block(x >> 3, y >> 3);
         if (b != null)
         {
             int i = (y & 7) * 8 + (x & 7);
-            _stackEntries.Add((x, y, b.LandZ[i], b.LandId[i], true));
+            _stackEntries.Add(new StackEntry(x, y, b.LandZ[i], b.LandId[i], true));
             _stack.AddItem($"{NameThenId(b.LandId[i], b.LandId[i])} (ground)\nZ {b.LandZ[i]}", GhostTexture(b.LandId[i]));
         }
     }
@@ -629,18 +800,28 @@ public partial class WorldView
     {
         if (_stackIndex < 0 || _stackIndex >= _stackEntries.Count) return _host.Picked as GameObject;
         var s = _stackEntries[_stackIndex];
+        if (_stackVersion != _modeNode.Data.Version) return null;
         var chunk = _host.World.Map.GetChunk2(s.X >> 3, s.Y >> 3, true);
         for (GameObject o = chunk?.GetHeadObject(s.X & 7, s.Y & 7); o != null; o = o.TNext)
-            if ((s.Land ? o is Land : o is Static) && o.Graphic == s.Id && o.Z == s.Z) return o;
+            if ((s.Land ? o is Land : o is Static) && o.Graphic == s.Id && o.Z == s.Z && (s.Land || o.Hue == s.Hue)) return o;
         return null;
     }
 
     private void PickBrushFromWorld()
     {
         if (EffectivePicked() is not GameObject o || _data == null) return;
-        _data.CurrentArt = o is Land ? o.Graphic : EditorData.LandCount + o.Graphic;
-        BrushHue = o.Hue; _recipe.Land = o is Land; _targetPick.Select(_recipe.Land ? 1 : 0);
-        _status.Text = $"Picked {NameThenId(_data.CurrentArt, o.Graphic)} · Z {o.Z}";
+        SampleBrush(o);
+    }
+
+    private void SampleBrush(GameObject o) => SampleBrush(o.Graphic, o.Hue, o.Z, o is Land);
+
+    private void SampleBrush(ushort art, ushort hue, sbyte z, bool land)
+    {
+        if (_data == null) return;
+        _data.CurrentArt = land ? art : EditorData.LandCount + art;
+        BrushHue = hue;
+        SetBrushTarget(land);
+        _status.Text = $"Picked {NameThenId(_data.CurrentArt, art)} · Z {z}";
     }
 
     private void TransformStackSelection()
@@ -650,13 +831,26 @@ public partial class WorldView
         var s = _stackEntries[_stackIndex];
         if (s.Land) { _status.Text = "Set Z / hue changes items, not the ground; use the Flatten brush to set ground height"; return; }
         string name = NameThenId(EditorData.LandCount + s.Id, s.Id);
-        _editor.Edit(_host.Facet, s.X >> 3, s.Y >> 3, b =>
+        if (!EditStackRow(s, $"Set Z / hue: {name} now at Z {_recipe.Height}, hue {BrushHue}", item =>
         {
-            int i = b.Statics.FindIndex(t => t.X == (s.X & 7) && t.Y == (s.Y & 7) && t.Id == s.Id && t.Z == s.Z);
-            if (i < 0) return;
-            var t = b.Statics[i]; t.Z = (sbyte)_recipe.Height; t.Hue = BrushHue; b.Statics[i] = t;
-        }, $"Set Z / hue: {name} now at Z {_recipe.Height}, hue {BrushHue}");
-        _stackIndex = -1; RefreshStack(s.X, s.Y);
+            item.Z = (sbyte)_recipe.Height;
+            item.Hue = BrushHue;
+            return item;
+        })) return;
+    }
+
+    private bool EditStackRow(StackEntry entry, string what, Func<WorldStatic, WorldStatic?> change)
+    {
+        if (_stackVersion == _modeNode.Data.Version && _editor.EditStatic(_host.Facet, entry.X, entry.Y,
+                entry.Z, entry.Id, entry.Hue, entry.Occurrence, _stackBlock, what, change))
+        {
+            _stackIndex = -1;
+            RefreshStack(entry.X, entry.Y);
+            return true;
+        }
+
+        _status.Text = "No static changed. Refresh Nearby tiles and choose the item again.";
+        return false;
     }
 
     /// <summary>ED6: a Nearby row was chosen; the status line says which button applies the change.</summary>

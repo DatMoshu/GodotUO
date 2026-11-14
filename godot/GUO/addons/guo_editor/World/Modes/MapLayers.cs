@@ -861,6 +861,14 @@ internal sealed class PinsLayer : IMapLayer
         return pin;
     }
 
+    public bool Rename(Pin pin, string name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || !All.Contains(pin)) return false;
+        pin.Name = name.Trim();
+        Save();
+        return true;
+    }
+
     public bool Remove(Pin pin)
     {
         bool ok = All.Count > 0 && _pins.Remove(pin);

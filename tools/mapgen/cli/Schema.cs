@@ -55,6 +55,8 @@ public static class SchemaCommand
                 ["index"] = i,
                 ["name"] = step.Pass.Name,
                 ["category"] = step.Pass.Category,
+                ["reads"] = step.Pass.Reads.ToString(),
+                ["writes"] = step.Pass.Writes.ToString(),
                 ["enabled"] = step.Enabled,
                 ["default_enabled"] = step.DefaultEnabled,
                 ["heavy"] = PipelineFactory.HeavyPassNames.Contains(step.Pass.Name),

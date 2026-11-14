@@ -97,12 +97,11 @@ stamps, and coasts keep the table's transitions. A "Prepare generator data" step
 
 ## The editor tab
 
-The GUO editor's **Map Generator** tab (`godot/GUO/addons/guo_editor/MapGen`) runs this CLI through
-`run.py`. It has presets, a seed, a size and six quick knobs. Each pass gets a group with an on/off
-toggle, a control per setting, reset, randomise and locks. A radar, biome and height preview shows the
-result, with a stepper over the per-pass pictures. A Felucca-likeness card scores it. **Export map
-files** writes the MUL triad and a world project, and **Open in UO World** opens that project. The
-editor smoke checks the tab (stage `mapgen`).
+The GUO editor's **MapGen** tab runs this CLI through `run.py`. **Setup** holds the preset, seed,
+size, transition table and terrain controls. **Passes** lists the ordered generator passes and
+their settings. The preview, result identity and run actions stay visible in both tabs. See the
+[MapGen guide](../../docs/mapgen_guide.md) for the build, inspection, export and World workflow.
+The editor smoke checks the tab (stage `mapgen`).
 
 ## Known look problems (2026-10-02)
 

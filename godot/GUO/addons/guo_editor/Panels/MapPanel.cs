@@ -41,6 +41,8 @@ public partial class MapPanel : AssetPanel
     private (int X, int Y)? _lastCell;
     private Label _status;
     private Image _radarImage;
+    private readonly Dictionary<int, Image> _radarCache = new();
+    private Button _jump;
     private int _radarFacet = -1;
 
     public override string SmokeQuery => "1496,1628";
@@ -99,7 +101,7 @@ public partial class MapPanel : AssetPanel
     /// </summary>
     public void RefreshBlocks(int facet, List<int> blocks)
     {
-        if (_radarImage == null || facet != _radarFacet || blocks == null || blocks.Count == 0)
+        if (!_radarCache.TryGetValue(facet, out var image) || image == null || blocks == null || blocks.Count == 0)
         {
             return;
         }
@@ -111,7 +113,7 @@ public partial class MapPanel : AssetPanel
         foreach (int number in blocks)
         {
             int bx = number / height, by = number % height;
-            _radar?.DropDetail(bx, by);
+            if (facet == _radarFacet) _radar?.DropDetail(bx, by);
             if (!ReadBlock(facet, bx, by, colours, null))
             {
                 continue;
@@ -122,12 +124,12 @@ public partial class MapPanel : AssetPanel
                 for (int sy = 0; sy < per; sy++)
                 {
                     uint c = GUO.Utility.HuesHelper.Color16To32(colours[(sy * Stride) * 8 + sx * Stride]);
-                    _radarImage.SetPixel(bx * per + sx, by * per + sy, Color.Color8((byte)c, (byte)(c >> 8), (byte)(c >> 16)));
+                    image.SetPixel(bx * per + sx, by * per + sy, Color.Color8((byte)c, (byte)(c >> 8), (byte)(c >> 16)));
                 }
             }
         }
 
-        _radar.Texture = ImageTexture.CreateFromImage(_radarImage);
+        if (facet == _radarFacet && _radar.Texture is ImageTexture texture) texture.Update(image);
     }
 
     /// <summary>What the "Show in UO World" button does, for scripted use.</summary>
@@ -161,9 +163,10 @@ public partial class MapPanel : AssetPanel
         _coords.TextSubmitted += t => Search(t);
         bar.AddChild(_coords);
 
-        var jump = new Button
+        var jump = _jump = new Button
         {
             Text = "Jump to UO World",
+            Disabled = true,
             TooltipText = "Show the last clicked cell in the UO World tab (a double click does it too)",
         };
         jump.Pressed += () =>
@@ -185,6 +188,10 @@ public partial class MapPanel : AssetPanel
 
         _status = new Label { Text = "loading client data...", ClipText = true };
         AddChild(_status);
+        VisibilityChanged += () =>
+        {
+            if (IsVisibleInTree() && _radarFacet < 0) Render();
+        };
     }
 
     public override void OnDataLoaded()
@@ -196,14 +203,14 @@ public partial class MapPanel : AssetPanel
             _facet.AddItem($"map{f} ({Data.Files.Maps.MapsDefaultSize[f, 0]}x{Data.Files.Maps.MapsDefaultSize[f, 1]})", f);
         }
 
-        _status.Text = "pick a facet; the radar renders when the tab is shown";
-        VisibilityChanged += () =>
-        {
-            if (IsVisibleInTree() && _radarFacet < 0)
-            {
-                Render();
-            }
-        };
+        _radarCache.Clear();
+        _radarFacet = -1;
+        _radarImage = null;
+        ClearCell();
+        _radar.ClearDetail();
+        _radar.Texture = null;
+        _status.Text = "Pick a facet; the radar renders when the tab is shown";
+        if (IsVisibleInTree()) Render();
     }
 
     private bool EnsureFacet(int facet)
@@ -225,15 +232,19 @@ public partial class MapPanel : AssetPanel
         }
 
         int facet = _facet.Selected < 0 ? 0 : _facet.GetItemId(_facet.Selected);
-        if (!EnsureFacet(facet))
-        {
-            _status.Text = $"map{facet}: no map files in the install";
-            _radar.Texture = null;
-            _radarFacet = facet;
-            return;
-        }
+        ClearCell();
+        _radarFacet = facet;
+        _coords.Clear();
+        _radar.ClearDetail();
+        _radarImage = RadarFor(facet);
+        _radar.Texture = _radarImage == null ? null : ImageTexture.CreateFromImage(_radarImage);
+        _status.Text = _radarImage == null ? $"map{facet}: no map files in the install"
+            : $"map{facet}: {_radarImage.GetWidth() * Stride}×{_radarImage.GetHeight() * Stride} cells · click to inspect, double-click to jump";
+    }
 
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+    private Image BuildRadar(int facet)
+    {
+        if (!EnsureFacet(facet)) return null;
         MapLoader maps = Maps;
         int bw = maps.MapBlocksSize[facet, 0], bh = maps.MapBlocksSize[facet, 1];
         int per = 8 / Stride;
@@ -265,11 +276,7 @@ public partial class MapPanel : AssetPanel
             }
         }
 
-        _radarImage = Image.CreateFromData(w, bh * per, false, Image.Format.Rgba8, rgba);
-        _radar.Texture = ImageTexture.CreateFromImage(_radarImage);
-        _radar.ClearDetail();
-        _radarFacet = facet;
-        _status.Text = $"map{facet}: {bw * 8}x{bh * 8} cells, radar 1:{Stride} in {sw.ElapsedMilliseconds} ms. Click a cell, double-click to jump.";
+        return Image.CreateFromData(w, bh * per, false, Image.Format.Rgba8, rgba);
     }
 
     /// <summary>
@@ -340,6 +347,8 @@ public partial class MapPanel : AssetPanel
     public override int? Search(string text)
     {
         EnsureUi();
+        ClearCell();
+        if (_radarFacet < 0) Render();
         _coords.Text = text ?? "";
         string[] parts = (text ?? "").Split(',', ' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length < 2
@@ -348,11 +357,6 @@ public partial class MapPanel : AssetPanel
         {
             _status.Text = "type x,y";
             return null;
-        }
-
-        if (_radarFacet < 0)
-        {
-            Render();
         }
 
         return InspectCell(x, y) ? x * 65536 + y : null;
@@ -366,46 +370,32 @@ public partial class MapPanel : AssetPanel
             Render();
         }
 
-        OnRadarPicked(new Vector2I(x / Stride, y / Stride), false, doubleClick);
+        OnRadarPicked(new Vector2I(x, y), false, doubleClick);
     }
 
-    private void OnRadarPicked(Vector2I px, bool ctrl, bool doubleClick)
+    private void ClearCell()
     {
-        int x = px.X * Stride, y = px.Y * Stride;
-        _coords.Text = $"{x},{y}";
-        _lastCell = (x, y);
-        _radar.Mark = px;
-        if (ctrl || doubleClick)
-        {
-            // Ctrl+click or a double click: straight to the World tab.
-            JumpToWorld?.Invoke(Facet, x, y);
-            return;
-        }
-
-        InspectCell(x, y);
+        _lastCell = null;
+        _jump.Disabled = true;
+        _radar.Mark = null;
     }
 
-    /// <summary>The radar's image for a facet (rendered on first use), for the World tab's minimap. Null if the install has no such map.</summary>
+    private void OnRadarPicked(Vector2I cell, bool ctrl, bool doubleClick)
+    {
+        ClearCell();
+        _coords.Text = $"{cell.X},{cell.Y}";
+        if (InspectCell(cell.X, cell.Y) && (ctrl || doubleClick))
+            JumpToWorld?.Invoke(Facet, cell.X, cell.Y);
+    }
+
+    /// <summary>Get a facet image without changing the Maps browser's selection.</summary>
     public Image RadarFor(int facet)
     {
-        if (Data == null || !Data.IsLoaded || _facet == null)
-        {
-            return null;
-        }
-
-        if (_radarFacet != facet || _radarImage == null)
-        {
-            int at = _facet.GetItemIndex(facet);
-            if (at < 0)
-            {
-                return null;
-            }
-
-            _facet.Select(at);
-            Render();
-        }
-
-        return _radarFacet == facet ? _radarImage : null;
+        if (Data?.IsLoaded != true || facet < 0 || facet >= MapLoader.MAPS_COUNT) return null;
+        if (_radarCache.TryGetValue(facet, out var image)) return image;
+        image = BuildRadar(facet);
+        if (image != null) _radarCache[facet] = image;
+        return image;
     }
 
     private bool InspectCell(int x, int y)
@@ -413,6 +403,12 @@ public partial class MapPanel : AssetPanel
         int facet = _radarFacet < 0 ? 0 : _radarFacet;
         if (!EnsureFacet(facet))
         {
+            return false;
+        }
+
+        if (x < 0 || y < 0 || x >= Maps.MapBlocksSize[facet, 0] * 8 || y >= Maps.MapBlocksSize[facet, 1] * 8)
+        {
+            _status.Text = $"{x},{y} is outside map{facet}";
             return false;
         }
 
@@ -461,6 +457,10 @@ public partial class MapPanel : AssetPanel
             return false;
         }
 
+        _lastCell = (x, y);
+        _jump.Disabled = false;
+        _radar.Mark = new Vector2I(x, y);
+
         // Mark the cell.
         var mark = new Color(1, 0, 1);
         int m = Around * Zoom;
@@ -476,7 +476,10 @@ public partial class MapPanel : AssetPanel
 
         sb.Append($"(radar of the {side}x{side} cells around it, {Zoom}x; double-click the radar to jump)\n");
         var inspection = Inspection.Still("Maps", $"{x},{y}", img, sb.ToString());
-        inspection.Actions.Add(("Show in UO World", () => JumpToWorld?.Invoke(facet, x, y)));
+        inspection.Actions.Add(("Show in UO World", () =>
+        {
+            if (_radarFacet == facet && _lastCell == (x, y)) JumpToWorld?.Invoke(facet, x, y);
+        }));
         Raise(inspection);
         return true;
     }

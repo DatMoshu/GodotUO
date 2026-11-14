@@ -3,6 +3,7 @@ namespace GUO.Editor;
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -12,12 +13,8 @@ using System.Threading.Tasks;
 using Godot;
 
 /// <summary>
-/// The Map Generator main-screen tab (ADR-0030). The left column holds the preset, seed, size, six
-/// quick knobs and the actions. The middle column has one group per generator pass, built from
-/// <c>guo-mapgen schema</c>: an on/off toggle and a control per tunable, with reset, randomise
-/// and lock. The right column shows the radar preview, a pass stepper, layers and the
-/// Felucca-likeness card. Every run goes to a fresh folder under build/mapgen/runs. Export and
-/// opening the result in UO World are separate buttons.
+/// The Map Generator main-screen tab (ADR-0030). Setup and schema-driven pass settings share
+/// a column beside the result, with generation and export actions available in either tab.
 /// </summary>
 [Tool]
 public partial class MapGenView : VBoxContainer
@@ -64,6 +61,7 @@ public partial class MapGenView : VBoxContainer
         public CheckBox Enabled;
         public VBoxContainer Body;
         public Control Root;
+        public Button Fold;
         public readonly List<Tunable> Tunables = new();
     }
 
@@ -77,21 +75,31 @@ public partial class MapGenView : VBoxContainer
     private readonly List<string> _presetValues = new();
     private readonly List<string> _tableValues = new();
     private string _tableFile;
-    private SpinBox _seed;
+    private string _selectedTable = "guo";
+    private LineEdit _seed;
     private CheckBox _fast, _stepPreviews;
-    private Button _generate, _cancel, _export, _openWorld, _savePreset;
+    private Button _generate, _cancel, _export, _openWorld, _savePreset, _restoreRun, _reloadSchema, _final;
     private LineEdit _savePresetName, _filter;
     private VBoxContainer _passList;
     private TextureRect _preview;
     private HSlider _stepSlider;
-    private Label _stepLabel, _status, _score, _cellLabel;
+    private Label _stepLabel, _status, _score, _cellLabel, _resultLabel, _presetDescription, _empty, _warningSummary;
     private GridContainer _likeness;
     private RichTextLabel _log;
+    private ProgressBar _progress;
+    private int _warningCount;
+    private bool _showingStep, _radarColours;
 
     private bool _busy;
-    private string _lastRun, _lastWorld;
-    private int _mapW, _mapH, _originX, _originY;
+    private string _lastRun, _lastWorld, _resultText, _resultHash;
+    private CompletedRun _previous;
+    private sealed record CompletedRun(string Run, string World, string Label, string Hash, int Width, int Height,
+        int Facet, int X, int Y, JsonElement Stats, bool RadarColours, int Warnings, string Log,
+        (int Index, string Name, string File)[] Steps);
+    private JsonElement _resultStats;
+    private int _mapW, _mapH, _facet, _originX, _originY;
     private JsonElement? _schema;
+    private volatile bool _retired;
 
     /// <summary>The schema the tab is showing (for the smoke check).</summary>
     public int PassGroupCount => _passes.Count;
@@ -99,7 +107,7 @@ public partial class MapGenView : VBoxContainer
     public string LastRun => _lastRun;
 
     /// <summary>The transition table the next run uses: guo, guo-core, dragon or a file path.</summary>
-    public string CurrentTable => _tableValues.Count > 0 && _table.Selected >= 0 ? _tableValues[_table.Selected] : "guo";
+    public string CurrentTable => _selectedTable;
 
     /// <summary>The tables the picker offers (ids, and file paths once picked).</summary>
     public IReadOnlyList<string> TableChoices => _tableValues;
@@ -111,19 +119,30 @@ public partial class MapGenView : VBoxContainer
         SizeFlagsVertical = SizeFlags.ExpandFill;
         Visible = false;
 
-        var title = new HBoxContainer();
-        title.AddChild(new Label { Text = "UO Map Generator", ThemeTypeVariation = "HeaderLarge" });
-        _status = new Label { Text = "", SizeFlagsHorizontal = SizeFlags.ExpandFill, HorizontalAlignment = HorizontalAlignment.Right };
-        title.AddChild(_status);
-        AddChild(title);
+        AddChild(new Label { Text = "UO Map Generator", ThemeTypeVariation = "HeaderLarge" });
 
         var split = new HSplitContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
         AddChild(split);
-        split.AddChild(BuildLeft());
-        var split2 = new HSplitContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        split.AddChild(split2);
-        split2.AddChild(BuildMiddle());
-        split2.AddChild(BuildRight());
+        var settings = new TabContainer();
+        var setup = BuildLeft();
+        setup.Name = "Setup";
+        settings.AddChild(setup);
+        var passes = BuildMiddle();
+        passes.Name = "Passes";
+        settings.AddChild(passes);
+        split.AddChild(Pane(settings, 295, SizeFlags.Fill));
+        split.AddChild(Pane(BuildRight(), 240, SizeFlags.ExpandFill));
+        AddChild(BuildActions());
+        SetBusy(false, "Choose a preset to begin.");
+    }
+
+    // Keep a tab or log's content minimum from widening the editor's entire main screen.
+    private static Control Pane(Control content, int width, SizeFlags flags)
+    {
+        var pane = new Control { ClipContents = true, CustomMinimumSize = new Vector2(width, 0), SizeFlagsHorizontal = flags };
+        pane.AddChild(content);
+        content.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        return pane;
     }
 
     public override void _Notification(int what)
@@ -138,48 +157,52 @@ public partial class MapGenView : VBoxContainer
 
     private Control BuildLeft()
     {
-        var scroll = new ScrollContainer { CustomMinimumSize = new Vector2(260, 0), HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        var scroll = new ScrollContainer { FollowFocus = true };
         var col = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         scroll.AddChild(col);
 
         col.AddChild(Heading("Preset"));
-        _preset = new OptionButton { TooltipText = "The starting point. felucca-stage18 is the measured Felucca-like candidate." };
+        _preset = new OptionButton { FitToLongestItem = false, TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis };
         _preset.ItemSelected += i => _ = LoadSchemaAsync(_presetValues[(int)i]);
         col.AddChild(_preset);
-
-        var save = new HBoxContainer();
-        _savePresetName = new LineEdit { PlaceholderText = "name for this setup", SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        _savePreset = new Button { Text = "Save", Disabled = true, TooltipText = "Save the last run's settings as a preset of your own (in the generator data folder)." };
-        _savePreset.Pressed += SavePreset;
-        save.AddChild(_savePresetName);
-        save.AddChild(_savePreset);
-        col.AddChild(save);
+        _presetDescription = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart, MaxLinesVisible = 2 };
+        col.AddChild(_presetDescription);
 
         col.AddChild(Heading("Seed"));
         var seedRow = new HBoxContainer();
-        _seed = new SpinBox { MinValue = 0, MaxValue = int.MaxValue, Step = 1, Rounded = true, SizeFlagsHorizontal = SizeFlags.ExpandFill, Value = 1234567 };
+        _seed = new LineEdit { Text = "1234567", SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            TooltipText = "Signed 64-bit integer. Reuse the seed and settings to reproduce a run." };
         var dice = new Button { Text = "Roll", TooltipText = "A new random seed" };
-        dice.Pressed += () => _seed.Value = _random.Next(1, int.MaxValue);
+        dice.Pressed += () => _seed.Text = _random.Next(1, int.MaxValue).ToString(CultureInfo.InvariantCulture);
         seedRow.AddChild(_seed);
         seedRow.AddChild(dice);
         col.AddChild(seedRow);
 
+        col.AddChild(Heading("Size (tiles)"));
+        _size = new OptionButton { TooltipText = "Start with 256 × 256 to tune quickly. Larger facets need more time and storage." };
+        col.AddChild(_size);
+
         col.AddChild(Heading("Transition table"));
-        _table = new OptionButton { TooltipText = "Which tiles blend one ground into another. GUO's own table is the default." };
+        _table = new OptionButton { FitToLongestItem = false, TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
+            TooltipText = "Which tiles blend one ground into another. GUO core uses the same table on every machine." };
         _table.ItemSelected += i =>
         {
             if (_tableValues[(int)i] == FileChoice)
             {
                 PickTableFile();
             }
+            else
+                _selectedTable = _tableValues[(int)i];
         };
         col.AddChild(_table);
 
-        col.AddChild(Heading("Size"));
-        _size = new OptionButton { TooltipText = "Map size in tiles. The client's facets are 7168x4096 (Felucca, Trammel), 2304x1600 (Ilshenar), 2560x2048 (Malas), 1448x1448 (Tokuno)." };
-        col.AddChild(_size);
+        col.AddChild(Heading("Run options"));
+        _fast = new CheckBox { Text = "Fast draft", TooltipText = "Skips heavy passes, including roads, stamps and scatter. Turn it off for the full preset." };
+        _stepPreviews = new CheckBox { Text = "Save pass previews", ButtonPressed = true, TooltipText = "Save a picture after each enabled pass. This adds time and disk use." };
+        col.AddChild(_fast);
+        col.AddChild(_stepPreviews);
 
-        col.AddChild(Heading("Quick start"));
+        col.AddChild(Heading("Shape terrain"));
         for (int k = 0; k < Knobs.Length; k++)
         {
             int knob = k;
@@ -190,13 +213,28 @@ public partial class MapGenView : VBoxContainer
             col.AddChild(slider);
         }
 
-        col.AddChild(Heading("Run"));
-        _fast = new CheckBox { Text = "Fast preview (no roads, stamps, scatter)", TooltipText = "Switches off the heavy passes. The map's shape and biomes are the same; roads and trees are missing." };
-        _stepPreviews = new CheckBox { Text = "Picture after every pass", ButtonPressed = true, TooltipText = "Lets the stepper show the map after each pass." };
-        col.AddChild(_fast);
-        col.AddChild(_stepPreviews);
+        col.AddChild(Heading("Save completed settings"));
+        var save = new HBoxContainer();
+        _savePresetName = new LineEdit { PlaceholderText = "Preset name", SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _savePreset = new Button { Text = "Save", Disabled = true, TooltipText = "Save the completed run's passes and seed as a preset." };
+        _savePreset.Pressed += SavePreset;
+        save.AddChild(_savePresetName);
+        save.AddChild(_savePreset);
+        col.AddChild(save);
+        return scroll;
+    }
 
-        _generate = new Button { Text = "Generate", TooltipText = "Run the generator into a new folder under build/mapgen/runs." };
+    private Control BuildActions()
+    {
+        var actions = new VBoxContainer();
+        actions.AddChild(new HSeparator());
+        _status = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart, MaxLinesVisible = 2 };
+        actions.AddChild(_status);
+        _progress = new ProgressBar { ShowPercentage = false, Visible = false, CustomMinimumSize = new Vector2(0, 5) };
+        actions.AddChild(_progress);
+        var buttons = new HFlowContainer();
+        actions.AddChild(buttons);
+        _generate = new Button { Text = "Generate", TooltipText = "Generate from the settings in Setup and Passes." };
         _generate.Pressed += () => _ = GenerateAsync();
         _cancel = new Button { Text = "Cancel", Disabled = true };
         _cancel.Pressed += () => _cancelSource?.Cancel();
@@ -204,12 +242,17 @@ public partial class MapGenView : VBoxContainer
         _export.Pressed += () => _ = ExportAsync();
         _openWorld = new Button { Text = "Open in UO World", Disabled = true, TooltipText = "Open the exported map's world project in the UO World tab. Deploying to a shard is a separate step there." };
         _openWorld.Pressed += OpenWorld;
-        foreach (Button b in new[] { _generate, _cancel, _export, _openWorld })
+        _restoreRun = new Button { Text = "Show previous completed run", Disabled = true,
+            TooltipText = "Restore the last successful preview and its export actions after an incomplete attempt." };
+        _restoreRun.Pressed += RestoreCompletedRun;
+        _reloadSchema = new Button { Text = "Retry loading generator", Visible = false };
+        _reloadSchema.Pressed += () => _ = LoadSchemaAsync(null);
+        foreach (Button b in new[] { _generate, _cancel, _restoreRun, _export, _openWorld, _reloadSchema })
         {
-            col.AddChild(b);
+            buttons.AddChild(b);
         }
 
-        return scroll;
+        return actions;
     }
 
     private CancellationTokenSource _cancelSource;
@@ -218,23 +261,23 @@ public partial class MapGenView : VBoxContainer
 
     private Control BuildMiddle()
     {
-        var col = new VBoxContainer { CustomMinimumSize = new Vector2(380, 0), SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        var bar = new HBoxContainer();
+        var col = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         _filter = new LineEdit { PlaceholderText = "Filter passes and settings", SizeFlagsHorizontal = SizeFlags.ExpandFill, ClearButtonEnabled = true };
         _filter.TextChanged += ApplyFilter;
+        col.AddChild(_filter);
+        var bar = new HFlowContainer();
         var expand = new Button { Text = "Open all" };
         expand.Pressed += () => SetAllOpen(true);
         var collapse = new Button { Text = "Close all" };
         collapse.Pressed += () => SetAllOpen(false);
         var resetAll = new Button { Text = "Reset all", TooltipText = "Every pass back to the preset" };
         resetAll.Pressed += () => { foreach (PassGroup g in _passes) ResetPass(g); ResetKnobs(); };
-        bar.AddChild(_filter);
         bar.AddChild(expand);
         bar.AddChild(collapse);
         bar.AddChild(resetAll);
         col.AddChild(bar);
 
-        var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill, FollowFocus = true };
         _passList = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         scroll.AddChild(_passList);
         col.AddChild(scroll);
@@ -245,16 +288,18 @@ public partial class MapGenView : VBoxContainer
 
     private Control BuildRight()
     {
-        var col = new VBoxContainer { CustomMinimumSize = new Vector2(420, 0), SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        var col = new VBoxContainer();
+        _resultLabel = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart, Text = "No completed run", ThemeTypeVariation = "HeaderSmall" };
+        col.AddChild(_resultLabel);
         var bar = new HBoxContainer();
-        bar.AddChild(new Label { Text = "Show" });
-        _layer = new OptionButton();
-        _layer.AddItem("Radar (client colours)");
+        _layer = new OptionButton { FitToLongestItem = false, TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill, TooltipText = "Colour layer for the final map." };
+        _layer.AddItem("Radar");
         _layer.AddItem("Biomes");
         _layer.AddItem("Height");
         _layer.ItemSelected += _ => ShowFinal();
         bar.AddChild(_layer);
-        _cellLabel = new Label { SizeFlagsHorizontal = SizeFlags.ExpandFill, HorizontalAlignment = HorizontalAlignment.Right };
+        _cellLabel = new Label { HorizontalAlignment = HorizontalAlignment.Right };
         bar.AddChild(_cellLabel);
         col.AddChild(bar);
 
@@ -269,25 +314,50 @@ public partial class MapGenView : VBoxContainer
             TooltipText = "Click: the cell under the mouse. After Export, a click shows that spot in UO World.",
         };
         _preview.GuiInput += OnPreviewInput;
+        _preview.MouseExited += () => _cellLabel.Text = "";
+        _empty = new Label { Text = "Choose a preset and select Generate.", HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center, SizeFlagsVertical = SizeFlags.ExpandFill,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        col.AddChild(_empty);
+        _preview.Hide();
         col.AddChild(_preview);
 
         var stepRow = new HBoxContainer();
-        stepRow.AddChild(new Label { Text = "After pass" });
+        stepRow.AddChild(new Label { Text = "Pass" });
         _stepSlider = new HSlider { SizeFlagsHorizontal = SizeFlags.ExpandFill, MinValue = 0, MaxValue = 0, Step = 1, Editable = false };
-        _stepSlider.ValueChanged += v => ShowStep((int)v);
+        _stepSlider.ValueChanged += v =>
+        {
+            if (v == _steps.Count) ShowFinal();
+            else ShowStep((int)v);
+        };
         stepRow.AddChild(_stepSlider);
-        _stepLabel = new Label { CustomMinimumSize = new Vector2(150, 0) };
-        stepRow.AddChild(_stepLabel);
+        _final = new Button { Text = "Final map", Disabled = true };
+        _final.Pressed += ShowFinal;
+        stepRow.AddChild(_final);
         col.AddChild(stepRow);
+        _stepLabel = new Label { Text = "Pass previews appear here when enabled.", AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        col.AddChild(_stepLabel);
 
-        col.AddChild(Heading("Felucca-likeness"));
-        _score = new Label { Text = "Generate a map to measure it." };
-        col.AddChild(_score);
+        var details = new Button { Text = "Run details", ToggleMode = true, Alignment = HorizontalAlignment.Left };
+        _warningSummary = new Label();
+        var detailRow = new HBoxContainer();
+        detailRow.AddChild(details);
+        detailRow.AddChild(_warningSummary);
+        col.AddChild(detailRow);
+        var diagnostics = new TabContainer { Visible = false, CustomMinimumSize = new Vector2(0, 112) };
+        details.Toggled += visible => diagnostics.Visible = visible;
+        col.AddChild(diagnostics);
+        var metrics = new ScrollContainer { Name = "Felucca likeness" };
+        var metricList = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        metrics.AddChild(metricList);
+        _score = new Label { Text = "Generate a map to measure it.", AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        metricList.AddChild(_score);
         _likeness = new GridContainer { Columns = 3 };
-        col.AddChild(_likeness);
+        metricList.AddChild(_likeness);
 
-        _log = new RichTextLabel { CustomMinimumSize = new Vector2(0, 110), ScrollFollowing = true, SelectionEnabled = true, FitContent = false };
-        col.AddChild(_log);
+        _log = new RichTextLabel { Name = "Log", BbcodeEnabled = true, ScrollFollowing = true, SelectionEnabled = true };
+        diagnostics.AddChild(_log);
+        diagnostics.AddChild(metrics);
         return col;
     }
 
@@ -295,7 +365,9 @@ public partial class MapGenView : VBoxContainer
 
     private async Task LoadSchemaAsync(string preset)
     {
-        SetBusy(true, preset == null ? "Reading the generator ..." : $"Loading {Path.GetFileName(preset)} ...");
+        if (_retired || _busy) return;
+        var clock = Stopwatch.StartNew();
+        SetBusy(true, preset == null ? "Reading the generator…" : $"Loading {Path.GetFileName(preset)}…");
         var args = new List<string> { "schema" };
         if (preset != null)
         {
@@ -303,28 +375,41 @@ public partial class MapGenView : VBoxContainer
             args.Add(preset);
         }
 
-        (JsonElement? schema, string error) = await MapGenCli.QueryAsync(args);
-        Callable.From(() =>
+        JsonElement? schema = null;
+        string error;
+        try { (schema, error) = await MapGenCli.QueryAsync(args); }
+        catch (Exception ex) { error = ex.Message; }
+        OnUi(() =>
         {
-            SetBusy(false, error.Length > 0 ? $"Generator: {error}" : "");
             if (schema is JsonElement s)
             {
-                LoadSchema(s);
+                long queryMs = clock.ElapsedMilliseconds;
+                LoadSchema(s, preset);
+                Log($"Preset query {queryMs} ms · building controls {clock.ElapsedMilliseconds - queryMs} ms");
             }
-        }).CallDeferred();
+            else if (_schema.HasValue)
+                _preset.Select(_loadedPreset);
+            if (error.Length > 0)
+                Log(Escape(error));
+            SetBusy(false, schema.HasValue ? "Adjust the setup, then generate." : "Could not load the generator preset. " + error);
+        });
     }
 
+    private int _loadedPreset;
+
     /// <summary>Builds the controls from a <c>schema</c> object (docs/data_formats.md §26).</summary>
-    public void LoadSchema(JsonElement schema)
+    public void LoadSchema(JsonElement schema, string presetPath = null)
     {
         _schema = schema;
         string presetId = schema.GetProperty("preset").GetProperty("id").GetString();
-        if (schema.GetProperty("preset").TryGetProperty("seed", out JsonElement seed) && seed.ValueKind == JsonValueKind.Number)
-        {
-            _seed.Value = seed.GetInt64();
-        }
+        JsonElement preset = schema.GetProperty("preset");
+        _seed.Text = preset.TryGetProperty("seed", out JsonElement seed) && seed.ValueKind == JsonValueKind.Number
+            ? seed.GetInt64().ToString(CultureInfo.InvariantCulture) : "1234567";
+        _presetDescription.Text = preset.GetProperty("description").GetString() ?? "";
+        _presetDescription.TooltipText = _presetDescription.Text;
+        _presetDescription.MouseFilter = MouseFilterEnum.Pass;
 
-        FillPresets(schema, presetId);
+        FillPresets(schema, presetPath ?? presetId);
         FillSizes(schema);
         FillTables(schema);
 
@@ -347,7 +432,10 @@ public partial class MapGenView : VBoxContainer
 
         ResetKnobs();
         ApplyFilter(_filter.Text);
-        Log($"[color=gray]{_passes.Count} passes, {TunableControlCount} settings, preset {presetId}[/color]");
+        if (schema.TryGetProperty("warnings", out JsonElement warnings))
+            foreach (JsonElement warning in warnings.EnumerateArray())
+                Log(Escape(warning.GetString()));
+        Log($"{_passes.Count} passes, {TunableControlCount} settings, preset {presetId}");
     }
 
     private void FillPresets(JsonElement schema, string current)
@@ -369,8 +457,8 @@ public partial class MapGenView : VBoxContainer
             }
         }
 
-        int sel = _presetValues.FindIndex(v => v == current || Path.GetFileName(v) == current + ".preset.json");
-        _preset.Select(Math.Max(0, sel));
+        _loadedPreset = Math.Max(0, _presetValues.IndexOf(current));
+        _preset.Select(_loadedPreset);
     }
 
     private const string FileChoice = "<file>";
@@ -417,12 +505,13 @@ public partial class MapGenView : VBoxContainer
         int sel = _tableValues.IndexOf(value);
         bool ok = sel >= 0 && !_table.IsItemDisabled(sel) && value != FileChoice;
         _table.Select(ok ? sel : 0);
+        _selectedTable = ok ? value : "guo";
         return ok;
     }
 
     private void PickTableFile()
     {
-        string back = _tableFile ?? "guo";
+        string back = _selectedTable;
         var dialog = new FileDialog
         {
             FileMode = FileDialog.FileModeEnum.OpenFile,
@@ -440,7 +529,7 @@ public partial class MapGenView : VBoxContainer
             }
 
             SelectTable(path);
-            Log($"[color=gray]transition table: {Path.GetFileName(path)}[/color]");
+            Log($"Transition table: {Escape(Path.GetFileName(path))}");
             dialog.QueueFree();
         };
         dialog.Canceled += () =>
@@ -449,7 +538,7 @@ public partial class MapGenView : VBoxContainer
             dialog.QueueFree();
         };
         AddChild(dialog);
-        dialog.PopupCentered(new Vector2I(800, 500));
+        dialog.PopupCenteredRatio(0.8f);
     }
 
     private void FillSizes(JsonElement schema)
@@ -481,24 +570,29 @@ public partial class MapGenView : VBoxContainer
 
         var box = new VBoxContainer();
         var head = new HBoxContainer();
-        var fold = new Button { Text = "+", Flat = true, CustomMinimumSize = new Vector2(24, 0), TooltipText = "Show the settings" };
-        g.Enabled = new CheckBox { Text = g.Name, ButtonPressed = g.PresetEnabled, TooltipText = $"{g.Category} pass. Untick to skip it." };
-        var cat = new Label { Text = g.Category + (p.GetProperty("heavy").GetBoolean() ? " (heavy)" : ""), Modulate = new Color(1, 1, 1, 0.55f), SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        int order = p.GetProperty("index").GetInt32() + 1;
+        string dependency = p.TryGetProperty("reads", out var reads) && p.TryGetProperty("writes", out var writes)
+            ? $"\nReads {reads.GetString()}\nWrites {writes.GetString()}" : "";
+        string heavy = p.GetProperty("heavy").GetBoolean() ? "\nSkipped in Fast draft unless explicitly enabled." : "";
+        g.Enabled = new CheckBox { ButtonPressed = g.PresetEnabled, TooltipText = $"Enable {g.Name}.{heavy}{dependency}" };
+        g.Fold = new Button { Text = $"{order:00}  {g.Name}", Alignment = HorizontalAlignment.Left, ToggleMode = true,
+            TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis, Flat = true, SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            TooltipText = $"{g.Category} · {g.Name}{heavy}{dependency}" };
         var reset = new Button { Text = "Reset", Flat = true, TooltipText = "Back to the preset" };
         var roll = new Button { Text = "Randomise", Flat = true, TooltipText = "Every unlocked setting with a range gets a random value inside it" };
-        head.AddChild(fold);
         head.AddChild(g.Enabled);
-        head.AddChild(cat);
-        head.AddChild(reset);
-        head.AddChild(roll);
+        head.AddChild(g.Fold);
         box.AddChild(head);
 
         g.Body = new VBoxContainer { Visible = false };
-        var grid = new GridContainer { Columns = 3, SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        g.Body.AddChild(grid);
+        var tools = new HFlowContainer();
+        tools.AddChild(new Label { Text = g.Category });
+        tools.AddChild(reset);
+        tools.AddChild(roll);
+        g.Body.AddChild(tools);
         box.AddChild(g.Body);
         box.AddChild(new HSeparator());
-        fold.Pressed += () => { g.Body.Visible = !g.Body.Visible; fold.Text = g.Body.Visible ? "-" : "+"; };
+        g.Fold.Toggled += open => g.Body.Visible = open;
         reset.Pressed += () => ResetPass(g);
         roll.Pressed += () => RandomisePass(g);
 
@@ -517,15 +611,23 @@ public partial class MapGenView : VBoxContainer
                 Max = t.TryGetProperty("max", out JsonElement mx) ? mx.GetDouble() : null,
                 Options = t.TryGetProperty("options", out JsonElement o) ? o.EnumerateArray().Select(e => e.GetString()).ToArray() : null,
             };
-            string tooltip = (tu.Tooltip ?? tu.Label) + $"\n{g.Name}.{tu.Key}" + (tu.Min.HasValue ? $"  [{Num(tu.Min.Value)} .. {Num(tu.Max ?? 0)}]" : "");
-            var label = new Label { Text = tu.Label, TooltipText = tooltip, MouseFilter = MouseFilterEnum.Pass, SizeFlagsHorizontal = SizeFlags.ExpandFill, ClipText = true };
+            string tooltip = (tu.Tooltip ?? tu.Label) + $"\n{g.Name}.{tu.Key}"
+                + (tu.Min.HasValue ? $"  [{Num(tu.Min.Value)} .. {Num(tu.Max ?? 0)}]" : "")
+                + $"\nPreset value: {tu.PresetValue}";
+            var label = new Label { Text = tu.Label, TooltipText = tooltip, MouseFilter = MouseFilterEnum.Pass,
+                SizeFlagsHorizontal = SizeFlags.ExpandFill, AutowrapMode = TextServer.AutowrapMode.WordSmart };
             tu.Control = MakeControl(tu);
             tu.Control.TooltipText = tooltip;
-            tu.Lock = new CheckBox { TooltipText = "Locked: Randomise leaves it alone", Text = "lock" };
-            grid.AddChild(label);
-            grid.AddChild(tu.Control);
-            grid.AddChild(tu.Lock);
-            tu.Row = label;
+            tu.Lock = new CheckBox { TooltipText = "Lock this setting against Randomise and the terrain sliders.", Text = "Lock" };
+            var row = new VBoxContainer();
+            var input = new HBoxContainer();
+            tu.Control.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            input.AddChild(tu.Control);
+            input.AddChild(tu.Lock);
+            row.AddChild(label);
+            row.AddChild(input);
+            g.Body.AddChild(row);
+            tu.Row = row;
             g.Tunables.Add(tu);
         }
 
@@ -565,7 +667,8 @@ public partial class MapGenView : VBoxContainer
                 return new CheckBox { ButtonPressed = v.ValueKind == JsonValueKind.True, Disabled = !t.Editable };
             case "enum":
             {
-                var opt = new OptionButton { Disabled = !t.Editable };
+                var opt = new OptionButton { Disabled = !t.Editable, FitToLongestItem = false,
+                    TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis, CustomMinimumSize = new Vector2(100, 0) };
                 foreach (string o in t.Options ?? Array.Empty<string>())
                 {
                     opt.AddItem(o);
@@ -702,7 +805,7 @@ public partial class MapGenView : VBoxContainer
     /// <summary>The run's arguments: the preset, then only what differs from it.</summary>
     public List<string> BuildRunArgs(string outDir)
     {
-        var args = new List<string> { "run", "--out", outDir, "--preset", CurrentPreset(), "--seed", ((long)_seed.Value).ToString(CultureInfo.InvariantCulture) };
+        var args = new List<string> { "run", "--out", outDir, "--preset", CurrentPreset(), "--seed", _seed.Text.Trim() };
         string[] size = (_size.ItemCount > 0 ? _size.GetItemText(_size.Selected) : "1024 x 1024").Split(" x ");
         args.AddRange(new[] { "--width", size[0], "--height", size[1] });
         if (CurrentTable != "guo" && CurrentTable != FileChoice)
@@ -759,27 +862,46 @@ public partial class MapGenView : VBoxContainer
 
     private async Task GenerateAsync()
     {
-        if (_busy)
+        if (_busy || _retired || !_schema.HasValue) return;
+        if (!long.TryParse(_seed.Text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out long seed))
         {
+            _status.Text = "Enter a whole-number seed in the signed 64-bit range.";
+            _seed.GrabFocus();
             return;
         }
 
-        string outDir = MapGenCli.NewRunDir(CurrentPreset(), (long)_seed.Value);
+        string preset = CurrentPreset();
+        string outDir = MapGenCli.NewRunDir(preset, seed);
         List<string> args = BuildRunArgs(outDir);
+        bool fast = args.Contains("--fast");
+        string setup = $"{_preset.GetItemText(_preset.Selected)} · seed {seed} · {_size.GetItemText(_size.Selected)}";
+        if (_lastRun != null)
+            _previous = new CompletedRun(_lastRun, _lastWorld, _resultText, _resultHash, _mapW, _mapH, _facet,
+                _originX, _originY, _resultStats, _radarColours, _warningCount, _log.GetParsedText(), _steps.ToArray());
         _steps.Clear();
-        _lastWorld = null;
+        _resultLabel.Text = $"Generating {(fast ? "fast draft" : "map")}\n{setup}";
+        _resultLabel.TooltipText = "";
+        _lastRun = _lastWorld = null;
+        _mapW = _mapH = _originX = _originY = 0;
+        ClearPreview("Waiting for the first preview…");
+        _stepLabel.Text = "Pass previews are " + (_stepPreviews.ButtonPressed ? "enabled." : "off for this run.");
+        _cellLabel.Text = "";
+        _score.Text = "Waiting for a completed run.";
+        ClearStats();
+        _savePreset.Disabled = true;
         _openWorld.Disabled = true;
         _stepSlider.Editable = false;
+        _showingStep = false;
+        _stepSlider.MaxValue = 0;
+        _stepSlider.SetValueNoSignal(0);
+        _warningCount = 0;
+        UpdateWarnings();
         _log.Clear();
-        Log($"[b]Generate[/b] {string.Join(' ', args.Skip(3).Select(a => a.Contains(' ') ? $"\"{a}\"" : a))}");
-        _cancelSource = new CancellationTokenSource();
-        SetBusy(true, "Generating ...");
-        JsonElement? done = null;
-        string error = null;
-        int code = await MapGenCli.RunAsync(args, j => Callable.From(() =>
+        Log($"[b]Generate[/b] {Escape(string.Join(' ', args.Skip(3)))}");
+        SetBusy(true, "Starting MapGen…");
+        var (code, done, error) = await RunCommandAsync(args, j =>
         {
-            string ev = j.TryGetProperty("event", out JsonElement e) ? e.GetString() : "";
-            switch (ev)
+            switch (EventName(j))
             {
                 case "start":
                     _mapW = j.GetProperty("width").GetInt32();
@@ -788,125 +910,194 @@ public partial class MapGenView : VBoxContainer
                 case "pass":
                     OnPassEvent(j, outDir);
                     break;
-                case "done":
-                    done = j;
+                case "pass_started":
+                    ShowProgress(j);
                     break;
-                case "error":
-                    error = j.GetProperty("message").GetString();
+                case "phase":
+                    _status.Text = j.GetProperty("name").GetString();
                     break;
             }
-        }).CallDeferred(), line => Callable.From(() => Log($"[color=gray]{Escape(line)}[/color]")).CallDeferred(), _cancelSource.Token);
+        });
 
-        Callable.From(() =>
+        OnUi(() =>
         {
-            SetBusy(false, code == -1 ? "Cancelled" : error != null ? $"Failed: {error}" : code != 0 ? $"Failed (exit {code})" : "Done");
-            if (code == 0 && done is JsonElement d)
+            bool completed = code == 0 && done.HasValue;
+            if (completed)
             {
+                JsonElement d = done.Value;
+                string hash = d.GetProperty("hash").GetString();
                 _lastRun = outDir;
-                _export.Disabled = false;
-                _savePreset.Disabled = false;
+                _previous = null;
+                _resultStats = d.GetProperty("stats");
+                _resultHash = hash;
+                _radarColours = d.TryGetProperty("radar_colours", out var radar) && radar.GetBoolean();
+                _resultText = $"{(fast ? "Fast draft complete" : "Completed run")} · {hash[..12]}\n{setup}";
+                _resultLabel.Text = _resultText;
+                _resultLabel.TooltipText = $"{hash}\n{outDir}";
+                LogWarnings(d);
                 ShowFinal();
-                ShowStats(d.GetProperty("stats"));
-                Log($"[b]Done[/b] in {d.GetProperty("elapsed_ms").GetInt64()} ms, hash {d.GetProperty("hash").GetString()[..12]}. Folder: {Escape(outDir)}");
+                ShowStats(_resultStats);
+                string previewMs = d.TryGetProperty("step_preview_ms", out var ms) ? $", pass images {ms.GetInt64()} ms" : "";
+                Log($"[b]Done[/b] in {d.GetProperty("elapsed_ms").GetInt64()} ms{previewMs}. Folder: {Escape(outDir)}");
             }
-        }).CallDeferred();
+            else
+            {
+                _resultLabel.Text = $"{(code == -1 ? "Cancelled attempt" : "Failed attempt")}\n{setup}";
+                _resultLabel.TooltipText = "";
+                if (_preview.Texture == null)
+                    ClearPreview(code == -1 ? "Generation was cancelled." : "No preview was produced. Check the message below and retry.");
+            }
+
+            SetBusy(false, completed ? "Inspect the final map or step through the passes." : code == -1 ? "Generation cancelled." : error ?? $"No completed result (exit {code}). See Run details.");
+        });
+    }
+
+    private void RestoreCompletedRun()
+    {
+        if (_busy || _lastRun != null || _previous is not { } previous) return;
+        _previous = null;
+        (_lastRun, _lastWorld, _resultText, _resultHash, _mapW, _mapH, _facet, _originX, _originY, _resultStats, _radarColours) =
+            (previous.Run, previous.World, previous.Label, previous.Hash, previous.Width, previous.Height,
+                previous.Facet, previous.X, previous.Y, previous.Stats, previous.RadarColours);
+        _log.Clear();
+        Log(Escape(previous.Log));
+        _warningCount = previous.Warnings;
+        UpdateWarnings();
+        _steps.Clear();
+        _steps.AddRange(previous.Steps);
+        _cellLabel.Text = "";
+        _resultLabel.Text = _lastWorld == null ? _resultText : "Verified export\n" + _resultText;
+        _resultLabel.TooltipText = $"{_resultHash}\n{_lastRun}";
+        ShowFinal();
+        ShowStats(_resultStats);
+        SetBusy(false, "Showing the previous completed run");
     }
 
     private void OnPassEvent(JsonElement j, string outDir)
     {
-        int index = j.GetProperty("index").GetInt32(), count = j.GetProperty("count").GetInt32();
+        int index = j.GetProperty("index").GetInt32();
         string name = j.GetProperty("name").GetString();
         bool enabled = j.GetProperty("enabled").GetBoolean();
-        _status.Text = $"Pass {index + 1}/{count}: {name}";
         if (!enabled)
         {
             return;
         }
 
-        string warn = j.TryGetProperty("warnings", out JsonElement w) && w.ValueKind == JsonValueKind.Array && w.GetArrayLength() > 0
-            ? $"  [color=orange]{Escape(w[0].GetString())}[/color]" : "";
-        Log($"{name}  {j.GetProperty("ms").GetInt64()} ms{warn}");
+        Log($"{name} · {j.GetProperty("ms").GetInt64()} ms");
+        LogWarnings(j);
         if (j.TryGetProperty("preview", out JsonElement p) && p.ValueKind == JsonValueKind.String)
         {
+            bool follow = _steps.Count == 0 || _stepSlider.Value == _steps.Count - 1;
             _steps.Add((index, name, Path.Combine(outDir, p.GetString())));
             _stepSlider.MaxValue = _steps.Count - 1;
             _stepSlider.Editable = true;
-            _stepSlider.SetValueNoSignal(_steps.Count - 1);
-            ShowStep(_steps.Count - 1);
+            if (follow)
+            {
+                _stepSlider.SetValueNoSignal(_steps.Count - 1);
+                ShowStep(_steps.Count - 1);
+            }
         }
     }
 
     private async Task ExportAsync()
     {
-        if (_busy || _lastRun == null)
+        if (_busy || _lastRun == null || _lastWorld != null)
         {
             return;
         }
 
-        string world = MapGenCli.NewWorldProjectDir(_lastRun);
-        var args = new List<string> { "export", "--run", _lastRun, "--world-project", world };
-        _cancelSource = new CancellationTokenSource();
-        SetBusy(true, "Exporting ...");
-        Log("[b]Export[/b] regenerating to check the hash ...");
-        JsonElement? done = null;
-        string error = null;
-        int code = await MapGenCli.RunAsync(args, j => Callable.From(() =>
+        string run = _lastRun;
+        string world = MapGenCli.NewWorldProjectDir(run);
+        var args = new List<string> { "export", "--run", run, "--world-project", world };
+        SetBusy(true, "Regenerating to check the result hash…");
+        Log("[b]Export[/b] Regenerating to check the result hash.");
+        var (code, done, error) = await RunCommandAsync(args, j =>
         {
-            string ev = j.TryGetProperty("event", out JsonElement e) ? e.GetString() : "";
-            if (ev == "done")
-            {
-                done = j;
-            }
-            else if (ev == "error")
-            {
-                error = j.GetProperty("message").GetString();
-            }
-            else if (ev == "pass")
-            {
-                _status.Text = $"Export: pass {j.GetProperty("index").GetInt32() + 1}/{j.GetProperty("count").GetInt32()}";
-            }
-        }).CallDeferred(), line => Callable.From(() => Log($"[color=gray]{Escape(line)}[/color]")).CallDeferred(), _cancelSource.Token);
+            if (EventName(j) == "pass" && j.GetProperty("enabled").GetBoolean())
+                ShowProgress(j);
+            else if (EventName(j) == "phase")
+                _status.Text = j.GetProperty("name").GetString();
+        });
+        // Cancellation can reach the wrapper just after the CLI published both directories.
+        // In that case the public receipts identify a completed export even without a done event.
+        if (code == -1)
+        {
+            done = ReadPublishedExport(run, world);
+            if (done.HasValue) code = 0;
+        }
 
-        Callable.From(() =>
+        OnUi(() =>
         {
-            bool ok = code == 0 && done is JsonElement d && d.GetProperty("ok").GetBoolean();
-            SetBusy(false, ok ? "Exported and verified" : error != null ? $"Export failed: {error}" : $"Export failed (exit {code})");
+            bool ok = code == 0 && done is JsonElement d && d.GetProperty("ok").GetBoolean()
+                && d.GetProperty("hash").GetString() == _resultHash
+                && d.GetProperty("world").GetProperty("hash").GetString() == _resultHash;
             if (ok)
             {
                 JsonElement v = done.Value.GetProperty("verify");
                 Log($"[b]Exported[/b] {v.GetProperty("land_cells_checked").GetInt32()} cells and {v.GetProperty("statics_found").GetInt32()} statics read back, 0 mismatches. "
                     + $"Map files: {Escape(Path.Combine(_lastRun, "export", "map"))}. World project: {Escape(world)}");
                 _lastWorld = world;
-                JsonElement origin = done.Value.GetProperty("world").GetProperty("origin");
+                JsonElement generated = done.Value.GetProperty("world");
+                JsonElement origin = generated.GetProperty("origin");
+                _facet = generated.GetProperty("facet").GetInt32();
                 _originX = origin[0].GetInt32();
                 _originY = origin[1].GetInt32();
-                _openWorld.Disabled = OpenInWorld == null;
+                _resultLabel.Text = "Verified export\n" + _resultText;
+                ShowFinal();
             }
-        }).CallDeferred();
+            SetBusy(false, ok ? "MUL files verified. Open World or click a cell on the final map."
+                : code == -1 ? "Export cancelled. You can retry from this completed run."
+                : error ?? (code == 0 ? "Export identity did not match the completed run." : $"Export failed (exit {code}). See Run details."));
+        });
+    }
+
+    private static JsonElement? ReadPublishedExport(string run, string world)
+    {
+        string verification = Path.Combine(run, "export", "export-verify.json");
+        string marker = Path.Combine(world, "generated.json");
+        if (!File.Exists(verification) || !File.Exists(marker)) return null;
+        try
+        {
+            using var verify = JsonDocument.Parse(File.ReadAllText(verification));
+            using var generated = JsonDocument.Parse(File.ReadAllText(marker));
+            return JsonSerializer.SerializeToElement(new
+            {
+                ok = verify.RootElement.GetProperty("ok").GetBoolean(),
+                hash = verify.RootElement.GetProperty("hash").GetString(),
+                verify = verify.RootElement,
+                world = generated.RootElement,
+            });
+        }
+        catch (IOException) { return null; }
+        catch (JsonException) { return null; }
     }
 
     private void OpenWorld()
     {
-        if (_lastWorld != null && OpenInWorld != null)
+        if (!_busy && _lastWorld != null && OpenInWorld != null)
         {
-            OpenInWorld(_lastWorld, 0, _originX + _mapW / 2, _originY + _mapH / 2);
+            OpenInWorld(_lastWorld, _facet, _originX + _mapW / 2, _originY + _mapH / 2);
         }
     }
 
     private void SavePreset()
     {
         string name = MapGenCli.Slug(_savePresetName.Text);
-        if (_lastRun == null || name.Length == 0)
+        if (_busy || _lastRun == null || name.Length == 0)
         {
             _status.Text = "Name the preset first";
             return;
         }
 
-        Directory.CreateDirectory(MapGenCli.UserPresetsDir);
-        string path = Path.Combine(MapGenCli.UserPresetsDir, name + ".preset.json");
-        File.Copy(Path.Combine(_lastRun, "preset.json"), path, overwrite: true);
-        _status.Text = $"Saved preset '{name}'";
-        _ = LoadSchemaAsync(path);
+        try
+        {
+            Directory.CreateDirectory(MapGenCli.UserPresetsDir);
+            string path = Path.Combine(MapGenCli.UserPresetsDir, name + ".preset.json");
+            File.Copy(Path.Combine(_lastRun, "preset.json"), path, overwrite: false);
+            _ = LoadSchemaAsync(path);
+        }
+        catch (IOException ex) { _status.Text = $"Could not save preset '{name}'. {ex.Message}"; }
+        catch (UnauthorizedAccessException ex) { _status.Text = $"Could not save preset '{name}'. {ex.Message}"; }
     }
 
     // ---------------------------------------------------------------- preview
@@ -920,7 +1111,13 @@ public partial class MapGenView : VBoxContainer
 
         string file = _layer.Selected switch { 1 => "biome.png", 2 => "height.png", _ => "radar.png" };
         ShowImage(Path.Combine(_lastRun, file));
-        _stepLabel.Text = "final";
+        _showingStep = false;
+        _layer.Disabled = false;
+        _layer.SetItemText(0, _radarColours ? "Radar" : "Radar (biome colours)");
+        _stepSlider.MaxValue = _steps.Count;
+        _stepSlider.SetValueNoSignal(_steps.Count);
+        _stepSlider.Editable = _steps.Count > 0;
+        _stepLabel.Text = _steps.Count > 0 ? "Final map · drag left to inspect passes" : "Final map · no pass previews";
     }
 
     private void ShowStep(int i)
@@ -931,21 +1128,33 @@ public partial class MapGenView : VBoxContainer
         }
 
         ShowImage(_steps[i].File);
-        _stepLabel.Text = $"{_steps[i].Index + 1}. {_steps[i].Name}";
+        _showingStep = true;
+        _layer.Disabled = true;
+        _stepLabel.Text = $"After pass {_steps[i].Index + 1} · {_steps[i].Name}";
     }
 
     private void ShowImage(string path)
     {
-        if (!File.Exists(path))
-        {
-            return;
-        }
-
-        Image img = Image.LoadFromFile(path);
-        if (img != null)
+        var clock = Stopwatch.StartNew();
+        using Image img = File.Exists(path) ? Image.LoadFromFile(path) : null;
+        if (img != null && !img.IsEmpty())
         {
             _preview.Texture = ImageTexture.CreateFromImage(img);
+            _preview.Show();
+            _empty.Hide();
+            _cellLabel.Text = "";
+            Log($"Preview {Escape(Path.GetFileName(path))} · {clock.Elapsed.TotalMilliseconds:0.0} ms");
         }
+        else
+            ClearPreview("The preview image is unavailable.");
+    }
+
+    private void ClearPreview(string message)
+    {
+        _preview.Texture = null;
+        _preview.Hide();
+        _empty.Text = message;
+        _empty.Show();
     }
 
     private void OnPreviewInput(InputEvent e)
@@ -966,22 +1175,36 @@ public partial class MapGenView : VBoxContainer
             return;
         }
 
-        int x = (int)(px.X * _mapW / tex.X), y = (int)(px.Y * _mapH / tex.Y);
-        _cellLabel.Text = $"cell {x}, {y}";
-        if (e is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } && _lastWorld != null && OpenInWorld != null)
+        int x = PreviewCell(px.X, (int)tex.X, _mapW), y = PreviewCell(px.Y, (int)tex.Y, _mapH);
+        bool handoff = !_showingStep && !_busy && _lastWorld != null && OpenInWorld != null;
+        _cellLabel.Text = handoff ? $"{_facet}: {_originX + x}, {_originY + y}" : $"{x}, {y}";
+        if (handoff && e is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
         {
-            OpenInWorld(_lastWorld, 0, _originX + x, _originY + y);
+            OpenInWorld(_lastWorld, _facet, _originX + x, _originY + y);
         }
     }
 
-    private void ShowStats(JsonElement stats)
+    // Match the source-cell interval averaged into each pixel by MapImage.Save.
+    private static int PreviewCell(float position, int previewSize, int mapSize)
+    {
+        int pixel = (int)position;
+        int start = pixel * mapSize / previewSize;
+        int end = (pixel + 1) * mapSize / previewSize;
+        return start + (int)((position - pixel) * (end - start));
+    }
+
+    private void ClearStats()
     {
         foreach (Node c in _likeness.GetChildren())
         {
             _likeness.RemoveChild(c);
             c.QueueFree();
         }
+    }
 
+    private void ShowStats(JsonElement stats)
+    {
+        ClearStats();
         if (!stats.TryGetProperty("available", out JsonElement a) || !a.GetBoolean())
         {
             _score.Text = "No land ids yet: nothing to measure.";
@@ -1019,15 +1242,13 @@ public partial class MapGenView : VBoxContainer
             {
                 bool hit = passHit || t.Label.ToLowerInvariant().Contains(q) || t.Key.ToLowerInvariant().Contains(q);
                 t.Row.Visible = hit;
-                t.Control.Visible = hit;
-                t.Lock.Visible = hit;
                 any |= hit;
             }
 
             g.Root.Visible = any;
-            if (q.Length > 0 && any && !passHit)
+            if (q.Length > 0 && any)
             {
-                g.Body.Visible = true;
+                g.Fold.ButtonPressed = true;
             }
         }
     }
@@ -1036,22 +1257,95 @@ public partial class MapGenView : VBoxContainer
     {
         foreach (PassGroup g in _passes)
         {
-            g.Body.Visible = open;
+            g.Fold.ButtonPressed = open;
         }
     }
+
+    private async Task<(int Code, JsonElement? Done, string Error)> RunCommandAsync(List<string> args, Action<JsonElement> onEvent)
+    {
+        _cancelSource = new CancellationTokenSource();
+        _cancel.Show();
+        _cancel.Disabled = false;
+        JsonElement? done = null;
+        string error = null;
+        try
+        {
+            int code = await MapGenCli.RunAsync(args, j =>
+            {
+                switch (EventName(j))
+                {
+                    case "done": done = j; break;
+                    case "error": error = j.GetProperty("message").GetString(); break;
+                    default: OnUi(() => onEvent(j)); break;
+                }
+            }, line => OnUi(() => Log(Escape(line))), _cancelSource.Token);
+            return (code, done, error);
+        }
+        catch (Exception ex)
+        {
+            OnUi(() => Log(Escape(ex.Message)));
+            return (1, null, ex.Message);
+        }
+    }
+
+    private static string EventName(JsonElement j) =>
+        j.TryGetProperty("event", out JsonElement e) ? e.GetString() : "";
+
+    private void OnUi(Action action)
+    {
+        if (_retired) return;
+        Callable.From(() =>
+        {
+            if (!_retired) action();
+        }).CallDeferred();
+    }
+
+    private void ShowProgress(JsonElement j)
+    {
+        int index = j.GetProperty("index").GetInt32() + 1, count = j.GetProperty("count").GetInt32();
+        _progress.Indeterminate = false;
+        _progress.MaxValue = count;
+        _progress.Value = index - 1;
+        _status.Text = $"Pass {index}/{count} · {j.GetProperty("name").GetString()}";
+    }
+
+    private void LogWarnings(JsonElement data)
+    {
+        if (!data.TryGetProperty("warnings", out var warnings) || warnings.ValueKind != JsonValueKind.Array) return;
+        foreach (var warning in warnings.EnumerateArray())
+        {
+            Log($"[color=orange]{Escape(warning.GetString())}[/color]");
+            _warningCount++;
+        }
+        UpdateWarnings();
+    }
+
+    private void UpdateWarnings() =>
+        _warningSummary.Text = _warningCount == 0 ? "" : _warningCount == 1 ? "1 warning" : $"{_warningCount} warnings";
 
     private void SetBusy(bool busy, string status)
     {
         _busy = busy;
-        _generate.Disabled = busy;
-        _cancel.Disabled = !busy;
-        _preset.Disabled = busy;
-        if (busy)
+        if (!busy)
         {
-            _export.Disabled = true;
+            _cancelSource?.Dispose();
+            _cancelSource = null;
         }
-
+        _generate.Disabled = busy || !_schema.HasValue;
+        _cancel.Visible = busy && _cancelSource != null;
+        _progress.Visible = busy;
+        _progress.Indeterminate = busy;
+        _preset.Disabled = busy;
+        _export.Disabled = busy || _lastRun == null || _lastWorld != null;
+        _savePreset.Disabled = busy || _lastRun == null;
+        _openWorld.Disabled = busy || _lastWorld == null || OpenInWorld == null;
+        _restoreRun.Disabled = busy || _lastRun != null || _previous == null;
+        _restoreRun.Visible = !_restoreRun.Disabled;
+        _reloadSchema.Visible = !busy && !_schema.HasValue;
+        _final.Disabled = _lastRun == null;
+        _layer.Disabled = _lastRun == null || _showingStep;
         _status.Text = status;
+        _status.TooltipText = status;
     }
 
     private void Log(string bbcode) => _log.AppendText(bbcode + "\n");
@@ -1063,6 +1357,10 @@ public partial class MapGenView : VBoxContainer
     private static Label Heading(string text) => new() { Text = text, ThemeTypeVariation = "HeaderSmall" };
 
     /// <summary>Stops a run in progress (TearDown, before an assembly reload).</summary>
-    public void Shutdown() => _cancelSource?.Cancel();
+    public void Shutdown()
+    {
+        _retired = true;
+        _cancelSource?.Cancel();
+    }
 }
 #endif

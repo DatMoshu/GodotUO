@@ -493,6 +493,282 @@ public partial class EditorTour
         _world.ForcedMouse = null;
     }
 
+    private async Task MapGenResultSeg()
+    {
+        var view = GuoEditorPlugin.MapGenMain;
+        Check(view != null, "MapGen view exists");
+        if (view == null) return;
+        EditorInterface.Singleton.SetMainScreenEditor(MapGenView.TabName);
+        bool schemaAlreadyLoaded = view.PassGroupCount > 0;
+        var schemaClock = System.Diagnostics.Stopwatch.StartNew();
+        for (int i = 0; i < 900 && view.PassGroupCount == 0; i++) await Frames(1);
+        Check(view.PassGroupCount > 0, schemaAlreadyLoaded ? "the generator schema was already loaded"
+            : $"the generator schema loaded ({schemaClock.ElapsedMilliseconds} ms from tab selection)");
+        if (view.PassGroupCount == 0) return;
+
+        Button button(string label) => All<Button>(view).First(b => b.Text == label);
+        void press(Button b) => b.EmitSignal(BaseButton.SignalName.Pressed);
+        var size = All<OptionButton>(view).First(b => Enumerable.Range(0, b.ItemCount)
+            .Any(i => b.GetItemText(i) == "256 x 256"));
+        void selectSize(string text) => size.Select(Enumerable.Range(0, size.ItemCount).First(i => size.GetItemText(i) == text));
+        selectSize("256 x 256");
+        var generate = button("Generate");
+        var export = button("Export map files");
+        var cancel = button("Cancel");
+        var restore = button("Show previous completed run");
+        var setup = All<TabContainer>(view).FirstOrDefault(t => t.GetTabTitle(0) == "Setup");
+        async Task capture(string caption)
+        {
+            Say(caption);
+            _overlay.SetCaption("", "", "");
+            await Shot(settle: 1);
+        }
+        await Frames(15); // the native editor rearranges its chrome after a compact resize
+        await capture("Setup with the default preset and a 256 x 256 trial map");
+        if (setup != null)
+        {
+            Rect2 window = EditorInterface.Singleton.GetBaseControl().GetGlobalRect();
+            Check(window.Encloses(generate.GetGlobalRect()) && window.Encloses(export.GetGlobalRect())
+                && window.Encloses(button("Final map").GetGlobalRect()),
+                "Setup actions and preview controls are inside the editor window");
+        }
+        var generateClock = System.Diagnostics.Stopwatch.StartNew();
+        press(generate);
+        for (int i = 0; i < 3600 && generate.Disabled; i++) await Frames(1);
+        string completed = view.LastRun;
+        Check(completed != null && !export.Disabled, $"completed generation is available for export ({generateClock.ElapsedMilliseconds} ms)");
+        if (completed == null || generate.Disabled) return;
+        await capture("Completed result A and its hash");
+
+        if (setup != null) setup.CurrentTab = 1;
+        var filter = All<LineEdit>(view).First(l => l.PlaceholderText == "Filter passes and settings");
+        filter.Text = "River Carve";
+        filter.EmitSignal(LineEdit.SignalName.TextChanged, filter.Text);
+        var fold = All<Button>(view).FirstOrDefault(b => b.Text.EndsWith("  River Carve", StringComparison.Ordinal));
+        if (fold != null) fold.ButtonPressed = true;
+        var slider = All<HSlider>(view).Single(s => s.Editable && s.MaxValue > 1);
+        var previewClock = System.Diagnostics.Stopwatch.StartNew();
+        slider.Value = Math.Min(7, slider.MaxValue - 1);
+        double previewMs = previewClock.Elapsed.TotalMilliseconds;
+        await capture("Advanced pass search and a saved intermediate image");
+        var preview = All<TextureRect>(view).First(t => t.Texture != null && t.MouseFilter == Control.MouseFilterEnum.Stop);
+        Check(preview.Texture != null, $"selecting a saved pass updated the preview ({previewMs:0.0} ms synchronous)");
+        if (setup != null)
+        {
+            Rect2 window = EditorInterface.Singleton.GetBaseControl().GetGlobalRect();
+            Check(window.Encloses(preview.GetGlobalRect()) && preview.Size.Y >= 120,
+                $"advanced preview fits the window ({preview.Size.X:0} x {preview.Size.Y:0})");
+        }
+        var sourceCount = All<SpinBox>(view).First(s => s.TooltipText.Contains("River Carve.SourceCount", StringComparison.Ordinal));
+        sourceCount.Value = 28;
+        var river = All<CheckBox>(view).First(b => b.Text == "River Carve" || b.TooltipText.StartsWith("Enable River Carve.", StringComparison.Ordinal));
+        river.ButtonPressed = false;
+        if (setup != null) setup.CurrentTab = 0;
+        selectSize("2048 x 2048");
+        var seedText = All<LineEdit>(view).FirstOrDefault(l => l.TooltipText.StartsWith("Signed 64-bit", StringComparison.Ordinal));
+        if (seedText != null) seedText.Text = "7654321";
+        else All<SpinBox>(view).First(s => s.MaxValue == int.MaxValue).Value = 7654321;
+        press(generate);
+        for (int i = 0; i < 240 && generate.Disabled
+            && !All<Label>(view).Any(l => l.Text.StartsWith("Pass 1/", StringComparison.Ordinal)); i++)
+            await Frames(1);
+        Check(generate.Disabled, "the larger second attempt is in progress before cancellation");
+        await capture("Generating a different seed and size with River Carve disabled");
+        press(cancel);
+        for (int i = 0; i < 900 && generate.Disabled; i++) await Frames(1);
+        Check(view.LastRun == null && export.Disabled && !restore.Disabled,
+            "cancelled generation has no export and offers the completed run explicitly");
+        if (restore.Disabled) return;
+        await capture("Cancelled B offers explicit restoration of A");
+        press(restore);
+        Check(view.LastRun == completed && !export.Disabled, "restore selects the original result and export");
+        await capture("Restored A with B's settings still in Setup");
+
+        var open = button("Open in UO World");
+        press(export);
+        for (int i = 0; i < 5400 && generate.Disabled; i++) await Frames(1);
+        Check(!open.Disabled, "the restored result exported and verified");
+        if (open.Disabled) return;
+        await capture("Verified export of A before opening World");
+        const int x = 37, y = 59;
+        Vector2 tex = preview.Texture.GetSize();
+        float scale = Math.Min(preview.Size.X / tex.X, preview.Size.Y / tex.Y);
+        Vector2 point = (preview.Size - tex * scale) / 2 + new Vector2(x + 0.5f, y + 0.5f) * tex * (scale / 256f);
+        var projectRoot = Path.Combine(completed, "export");
+        preview.EmitSignal(Control.SignalName.GuiInput, new InputEventMouseButton
+            { ButtonIndex = MouseButton.Left, Pressed = true, Position = point });
+        await Frames(30);
+        string marker = _world.Host.Project?.Root is { } root ? Path.Combine(root, "generated.json") : "";
+        bool opened = WorldUp && _world.IsVisibleInTree() && File.Exists(marker);
+        Check(opened, "a click on the verified preview opened the generated World project");
+        string verifyPath = Path.Combine(projectRoot, "export-verify.json");
+        if (!opened || !File.Exists(verifyPath)) return;
+        using var manifest = System.Text.Json.JsonDocument.Parse(File.ReadAllText(marker));
+        using var verify = System.Text.Json.JsonDocument.Parse(File.ReadAllText(verifyPath));
+        using var run = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(completed, "run.json")));
+        var generated = manifest.RootElement;
+        var origin = generated.GetProperty("origin");
+        string hash = run.RootElement.GetProperty("hash").GetString();
+        Check(generated.GetProperty("run").GetString() == Path.GetFullPath(completed)
+            && generated.GetProperty("hash").GetString() == hash && verify.RootElement.GetProperty("hash").GetString() == hash,
+            "the completed run, exported files, and World project share the same hash");
+        if (setup != null)
+        {
+            Check(verify.RootElement.TryGetProperty("sha256", out var digests) && digests.GetRawText().Length > 2
+                && digests.EnumerateObject().Count() == 3 && digests.EnumerateObject().All(entry =>
+                {
+                    using var file = File.OpenRead(Path.Combine(projectRoot, entry.Name));
+                    return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(file))
+                        .Equals(entry.Value.GetString(), StringComparison.OrdinalIgnoreCase);
+                }), "the actual MUL triad matches the verification manifest's byte hashes");
+        }
+        Check(_world.Host.Facet == generated.GetProperty("facet").GetInt32()
+            && _world.Host.X == origin[0].GetInt32() + x && _world.Host.Y == origin[1].GetInt32() + y,
+            "the preview jumped to the exact generated cell on its facet");
+        await capture($"World at facet {_world.Host.Facet}, cell {_world.Host.X}, {_world.Host.Y}");
+
+        EditorInterface.Singleton.SetMainScreenEditor(MapGenView.TabName);
+        selectSize("256 x 256");
+        var height = All<CheckBox>(view).First(b => b.Text == "Noise Height" || b.TooltipText.StartsWith("Enable Noise Height.", StringComparison.Ordinal));
+        height.ButtonPressed = false;
+        press(generate);
+        for (int i = 0; i < 900 && generate.Disabled; i++) await Frames(1);
+        Check(view.LastRun == null && export.Disabled && !restore.Disabled,
+            "missing height dependency fails and leaves the completed run restorable");
+        await capture("Invalid dependency is reported with the export action disabled");
+        height.ButtonPressed = true;
+        river.ButtonPressed = true;
+        if (setup != null)
+        {
+            string python = System.Environment.GetEnvironmentVariable("UO_PYTHON");
+            try
+            {
+                System.Environment.SetEnvironmentVariable("UO_PYTHON", Path.Combine(completed, "missing-python.exe"));
+                press(generate);
+                for (int i = 0; i < 900 && generate.Disabled; i++) await Frames(1);
+                Check(!generate.Disabled && view.LastRun == null && export.Disabled && !restore.Disabled
+                    && All<Label>(view).Any(l => l.Text.Contains("Could not start Python", StringComparison.Ordinal)),
+                    "missing Python explains the dependency and leaves Generate available for retry");
+                await capture("Missing Python gives a recovery message");
+            }
+            finally { System.Environment.SetEnvironmentVariable("UO_PYTHON", python); }
+        }
+        press(generate);
+        for (int i = 0; i < 3600 && generate.Disabled; i++) await Frames(1);
+        Check(view.LastRun != null && view.LastRun != completed && !export.Disabled, "correcting the dependency lets the advanced setup retry");
+        if (view.LastRun != null)
+        {
+            using var retry = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(view.LastRun, "run.json")));
+            Check(retry.RootElement.GetProperty("seed").GetInt64() == 7654321
+                && retry.RootElement.GetProperty("sets").EnumerateArray().Any(s => s.GetString() == "River Carve.SourceCount=28"),
+                "the retry used the advanced seed and edited river source count");
+        }
+        await capture("Retry completes the advanced setup with the new seed");
+    }
+
+    private async Task WeSafety()
+    {
+        if (!await NeedWe()) return;
+        int x = EditX, y = EditY;
+        await OpenWe(x, y);
+        await Rail(WorldTool.Select);
+        var visible = EditorInterface.Singleton.GetBaseControl().GetGlobalRect();
+        var outside = _world.CommandRowOutside(visible);
+        Check(outside.Count == 0, outside.Count == 0 ? "World command bar and minimap fit"
+            : $"clipped World controls: {string.Join(", ", outside)}");
+        if (visible.Size.X < 1150)
+        {
+            await Frames(5);
+            float canvas = _world.TourStage.Size.X;
+            bool library = _world.TourLibrary.IsVisibleInTree();
+            Check(!library && canvas >= visible.Size.X * 0.5f,
+                $"compact layout gives the map {canvas:0} of {visible.Size.X:0} pixels; library visible: {library}");
+        }
+        await KeyPress(Key.Escape);
+        int depth = _world.Editor.UndoCount;
+        Say("Drag from one tile to another in Select. World outlines the rectangle and shows its size before you release.");
+        await AimCell(x, y);
+        var start = _world.Host.Picked as GameObject;
+        (int X, int Y)? anchor = start == null ? null : (start.X, start.Y);
+        _world.TourInput(MouseEv(MouseButton.Left, true));
+        await AimCell(x + 2, y + 1);
+        _world.TourInput(new InputEventMouseMotion { ButtonMask = MouseButtonMask.Left, Relative = new Vector2(16, 0) });
+        await Frames(3);
+        Check(_world.Area == null, "the draft is not selected until release");
+        _overlay.ClearMarks();
+        await Shot();
+        var end = _world.Host.Picked as GameObject;
+        (int X, int Y)? last = end == null ? null : (end.X, end.Y);
+        _world.TourInput(MouseEv(MouseButton.Left, false));
+        await Frames(4);
+        Check(anchor is { } a && last is { } corner && a != corner && _world.Area ==
+            (Math.Min(a.X, corner.X), Math.Min(a.Y, corner.Y), Math.Max(a.X, corner.X), Math.Max(a.Y, corner.Y)),
+            "drag commits the exact inclusive rectangle between the picked cells");
+        Check(_world.Editor.UndoCount == depth, "selecting does not write any blocks");
+        Say("Release to keep the selection. Right-click for Select actions, or press Escape to clear it.");
+        _overlay.ClearMarks(keepPointer: true);
+        await Shot();
+        Control root = EditorInterface.Singleton.GetBaseControl();
+        await Click(MouseButton.Right);
+        var menu = root.GetNodeOrNull<PopupMenu>("WorldMapActions");
+        var labels = menu == null ? Array.Empty<string>() : Enumerable.Range(0, menu.ItemCount).Select(menu.GetItemText).ToArray();
+        Check(menu is { Visible: true } && labels.Contains("Inspect tile stack") && labels.Contains("Clear selection")
+            && !labels.Any(label => label.Contains("zone", StringComparison.OrdinalIgnoreCase) || label.Contains("region", StringComparison.OrdinalIgnoreCase)),
+            "Select context menu shows tile and selection actions without boundary creation");
+        menu?.Hide();
+        await Frames(3);
+
+        _world.TourInput(MouseEv(MouseButton.Right, true));
+        _world.TourInput(new InputEventMouseMotion { ButtonMask = MouseButtonMask.Right, Relative = new Vector2(55, 0) });
+        _world.TourInput(new InputEventMouseMotion { ButtonMask = MouseButtonMask.Right, Relative = new Vector2(-55, 0) });
+        _world.TourInput(MouseEv(MouseButton.Right, false));
+        await Frames(3);
+        Check(root.GetNodeOrNull<PopupMenu>("WorldMapActions") is not { Visible: true },
+            "an out-and-back right drag stays a pan");
+        await KeyPress(Key.Escape);
+        Check(_world.Area == null, "Escape clears the selected rectangle");
+
+        await OpenWe(x, y);
+        await Rail(WorldTool.Brush);
+        await AimCell(x, y);
+        _world.TourInput(MouseEv(MouseButton.Left, true));
+        await KeyPress(Key.Escape);
+        _world.TourInput(MouseEv(MouseButton.Left, false));
+        Check(_world.Editor.UndoCount == depth, "Escape cancels a brush before release");
+        await Rail(WorldTool.Select);
+
+        var project = _world.Host.Project;
+        var editor = _world.Editor;
+        int bx = x >> 3, by = y >> 3;
+        var before = new WorldProject.BlockSnapshot(0, bx, by, project.BlockText(0, bx, by));
+        Check(editor.Stamp(0, x, y, 110, Crate, 0), "first edit writes a block");
+        string first = project.BlockText(0, bx, by);
+        Check(editor.Stamp(0, x, y, 110, Crate, 4), "the same art and Z can have a different hue");
+        string second = project.BlockText(0, bx, by);
+        Check(editor.EditStatic(0, x, y, 110, Crate, 4, 0, second, "exact erase", _ => null)
+            && project.BlockText(0, bx, by) == first, "exact erase leaves the same art and Z with a different hue");
+        project.SetBlockText(0, bx, by, second);
+        int withChanges = editor.UndoCount;
+        Check(!editor.Undo() && editor.UndoCount == withChanges && project.BlockText(0, bx, by) == second,
+            "stale history leaves the modified file and history entry intact");
+
+        // Model an interruption after a block was written and before the journal was removed.
+        string journal = Path.Combine(project.Root, ".block-transaction.json");
+        File.WriteAllText(journal, System.Text.Json.JsonSerializer.Serialize(new[] { before }));
+        using (var reopened = WorldProject.OpenOrCreate(project.Root, _data.ClientData, _data.ClientVersion))
+        {
+            Check(reopened.BlockText(0, bx, by) == before.Text && !File.Exists(journal),
+                "reopen rolls back an interrupted write and removes the journal");
+        }
+        project.SetBlockText(0, bx, by, second);
+        File.WriteAllText(journal, System.Text.Json.JsonSerializer.Serialize(new[] { before }));
+        _world.ReloadOverlay();
+        Check(project.BlockText(0, bx, by) == before.Text && !File.Exists(journal),
+            "Reload project also recovers the interrupted edit");
+        editor.Clear();
+        _world.ForcedMouse = null;
+    }
+
     private async Task WeSelect()
     {
         if (!await NeedWe())
@@ -858,7 +1134,7 @@ public partial class EditorTour
         await Frames(15);
         int z1 = LandZ(cx, cy);
         Check(z1 == z0 + 1, $"Raise lifted the ground one step ({z0} to {z1})");
-        _overlay.SetDetail($"Ground height here: {z0} → {z1}");
+        _overlay.SetDetail($"Ground height here: {z0} â†’ {z1}");
         await Shot();
 
         Say("Shift + click lifts it five steps at once.");
@@ -867,7 +1143,7 @@ public partial class EditorTour
         await Frames(15);
         int z2 = LandZ(cx, cy);
         Check(z2 == z1 + 5, $"Shift + Raise lifted it five steps ({z1} to {z2})");
-        _overlay.SetDetail($"Ground height here: {z1} → {z2}");
+        _overlay.SetDetail($"Ground height here: {z1} â†’ {z2}");
         await Shot();
 
         Say("Lower (keyboard: F) works the same way, downward. Shift + click: five steps down.");
@@ -877,7 +1153,7 @@ public partial class EditorTour
         await Frames(15);
         int z3 = LandZ(cx, cy);
         Check(z3 == z2 - 5, $"Shift + Lower dropped it five steps ({z2} to {z3})");
-        _overlay.SetDetail($"Ground height here: {z2} → {z3}");
+        _overlay.SetDetail($"Ground height here: {z2} â†’ {z3}");
         await Shot();
         _overlay.SetDetail(null);
         _overlay.ClearMarks();

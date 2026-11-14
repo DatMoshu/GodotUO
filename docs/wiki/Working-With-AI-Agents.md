@@ -4,6 +4,10 @@ GUO is built with AI coding agents working alongside people. Every agent and
 every person follows the same rules, skills and checks. Using an agent is
 optional; the repository works the same without one.
 
+The public setup needs no private organization tools, fleet, personal skill directory
+or maintainer handoffs. Use the repository's instructions, documented prerequisites
+and local configuration. Optional personal integrations must not block ordinary work.
+
 ## One set of instructions, in every tool
 
 | Tool | Reads | Skills |
@@ -32,6 +36,18 @@ copy serves every tool. Some you'll use most:
 | `uo-multi`, `uo-decorate` | Build and furnish new multis ([Building Multis](Building-Multis.md)). |
 | `editor-smoke` | Proves the editor add-on panel by panel. |
 | `uo-world-authoring`, `localize` | World authoring flows, and UI and shard translations. |
+| `guo-arch-review` | Deep source review of ownership, boundaries, lifecycle and parity. |
+| `guo-ui-review` | Complete editor/player workflows, each workspace and mode. |
+| `guo-perf-review` | Matched performance measurements and optimization correctness. |
+| `guo-net-review` | Protocol, transport, reconnect and plugin dispatch. |
+| `guo-readiness-review` | Evidence required before normal main-branch exposure. |
+| `guo-portability-review` | Fresh-clone setup, dependencies and public agent experience. |
+
+Start with the [deep review section map](../review/sections.md) and its
+[review contract](../review/contract.md). These skills need only project sources and
+the relevant documented tools. Read their `SKILL.md` directly if automatic discovery
+is unavailable. The inherited `architecture-review` checks design/ADR coverage;
+`guo-arch-review` traces actual code and behavior.
 
 The rest come from Claude Code Game Studios (MIT): design, QA, release and
 production workflows. `launchers\dev\agent_skills.bat --check` validates every

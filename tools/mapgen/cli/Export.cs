@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using CentrED.MapGen.Commit;
 using CentrED.MapGen.IR;
@@ -30,8 +31,8 @@ public static class ExportCommand
         long seed = r.GetProperty("seed").GetInt64();
         string expected = r.GetProperty("hash").GetString() ?? "";
 
-        var exportDir = Path.Combine(runDir, "export");
-        OutputFolder.PrepareFresh(exportDir);
+        using var export = new StagedFolder(Path.Combine(runDir, "export"));
+        using var worldOutput = worldProject is null ? null : new StagedFolder(worldProject);
 
         // The effective preset already holds every --set, --disable, --enable and --fast choice.
         var preset = MapGenPreset.Load(Path.Combine(runDir, "preset.json"));
@@ -47,8 +48,9 @@ public static class ExportCommand
         if (hash != expected)
             throw new CliError($"regenerated map differs from the run (hash {hash[..12]} vs {expected[..Math.Min(12, expected.Length)]}); export refused");
 
-        var mapDir = Path.Combine(exportDir, "map");
-        var baseline = Path.Combine(exportDir, ".baseline");
+        json.Event("phase", new() { ["name"] = "Writing MUL files" });
+        var mapDir = Path.Combine(export.WorkingPath, "map");
+        var baseline = Path.Combine(export.WorkingPath, ".baseline");
         Directory.CreateDirectory(baseline);
         int bw = width / 8, bh = height / 8, blocks = bw * bh;
         File.WriteAllBytes(Path.Combine(baseline, "map.mul"), new byte[blocks * 196]);
@@ -70,26 +72,71 @@ public static class ExportCommand
         });
         Directory.Delete(baseline, recursive: true);
 
+        json.Event("phase", new() { ["name"] = "Reading MUL files back" });
         var verify = MulVerify.Check(ir, mapDir, facet);
         verify["hash"] = hash;
         verify["facet"] = facet;
         verify["width"] = width; verify["height"] = height;
         verify["land_tiles_written"] = result.LandTilesWritten;
         verify["statics_written"] = result.StaticsWritten;
-        verify["files"] = new[] { $"map/map{facet}.mul", $"map/staidx{facet}.mul", $"map/statics{facet}.mul" };
-        File.WriteAllText(Path.Combine(exportDir, "export-verify.json"),
+        string[] files = { $"map/map{facet}.mul", $"map/staidx{facet}.mul", $"map/statics{facet}.mul" };
+        verify["files"] = files;
+        verify["sha256"] = files.ToDictionary(file => file, file =>
+        {
+            using var stream = File.OpenRead(Path.Combine(export.WorkingPath, file));
+            return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+        });
+        File.WriteAllText(Path.Combine(export.WorkingPath, "export-verify.json"),
             JsonSerializer.Serialize(verify, new JsonSerializerOptions { WriteIndented = true }));
 
         bool ok = (bool)verify["ok"]!;
         Dictionary<string, object?>? world = null;
-        if (ok && worldProject is not null)
-            world = WorldProjectWriter.Write(ir, worldProject, facet, originX, originY, hash, runDir);
+        if (ok)
+        {
+            if (worldOutput is not null)
+            {
+                json.Event("phase", new() { ["name"] = "Writing World project" });
+                world = WorldProjectWriter.Write(ir, worldOutput.WorkingPath, facet, originX, originY, hash, runDir);
+                worldOutput.Publish();
+            }
+            export.Publish();
+        }
         json.Event("done", new()
         {
-            ["ok"] = ok, ["hash"] = hash, ["export"] = Path.GetFullPath(exportDir), ["verify"] = verify,
+            ["ok"] = ok, ["hash"] = hash, ["export"] = ok ? export.Destination : null, ["verify"] = verify,
             ["world_project"] = worldProject is null ? null : Path.GetFullPath(worldProject), ["world"] = world,
         });
         return ok ? 0 : 1;
+    }
+
+    // Keep unfinished writes away from the public paths. A process killed during export can
+    // leave a staging folder, but a retry always starts in a different one.
+    private sealed class StagedFolder : IDisposable
+    {
+        public string Destination { get; }
+        public string WorkingPath { get; }
+
+        public StagedFolder(string destination)
+        {
+            Destination = Path.TrimEndingDirectorySeparator(Path.GetFullPath(destination));
+            OutputFolder.RequireFresh(Destination);
+            WorkingPath = Path.Combine(Path.GetDirectoryName(Destination)!,
+                $".{Path.GetFileName(Destination)}-mapgen-{Guid.NewGuid():N}");
+            OutputFolder.PrepareFresh(WorkingPath);
+        }
+
+        public void Publish()
+        {
+            if (Directory.Exists(Destination))
+                Directory.Delete(Destination); // only an empty destination is replaceable
+            Directory.Move(WorkingPath, Destination);
+        }
+
+        public void Dispose()
+        {
+            if (Directory.Exists(WorkingPath))
+                Directory.Delete(WorkingPath, recursive: true);
+        }
     }
 }
 
@@ -102,6 +149,9 @@ public static class MulVerify
         var map = File.ReadAllBytes(Path.Combine(mapDir, $"map{facet}.mul"));
         var idx = File.ReadAllBytes(Path.Combine(mapDir, $"staidx{facet}.mul"));
         var sta = File.ReadAllBytes(Path.Combine(mapDir, $"statics{facet}.mul"));
+        int blocks = (w / 8) * bh;
+        if (map.Length != blocks * 196 || idx.Length != blocks * 12 || sta.Length % 7 != 0)
+            throw new CliError("MUL verification failed: unexpected file lengths");
 
         int landMismatch = 0, cells = 0;
         for (int x = 0; x < w; x++)
@@ -131,18 +181,26 @@ public static class MulVerify
 
         var found = new Dictionary<(int, int, sbyte, ushort, ushort), int>();
         int foundCount = 0;
-        for (int block = 0; block * 12 + 12 <= idx.Length; block++)
+        int bytesRead = 0;
+        for (int block = 0; block < blocks; block++)
         {
             int start = BitConverter.ToInt32(idx, block * 12), len = BitConverter.ToInt32(idx, block * 12 + 4);
-            if (start < 0 || len <= 0) continue;
+            if (start == -1 && len == -1) continue;
+            if (start != bytesRead || len <= 0 || len % 7 != 0 || len > sta.Length - start)
+                throw new CliError($"MUL verification failed: invalid statics index for block {block}");
             int bx = block / bh, by = block % bh;
-            for (int p = start; p + 7 <= start + len && p + 7 <= sta.Length; p += 7)
+            for (int p = start; p < start + len; p += 7)
             {
+                if (sta[p + 2] >= 8 || sta[p + 3] >= 8)
+                    throw new CliError($"MUL verification failed: out-of-block static in block {block}");
                 var key = (bx * 8 + sta[p + 2], by * 8 + sta[p + 3], (sbyte)sta[p + 4], BitConverter.ToUInt16(sta, p), BitConverter.ToUInt16(sta, p + 5));
                 found[key] = found.GetValueOrDefault(key) + 1;
                 foundCount++;
             }
+            bytesRead += len;
         }
+        if (bytesRead != sta.Length)
+            throw new CliError("MUL verification failed: unindexed static data");
         int staticMismatch = 0;
         foreach (var (k, c) in expected) staticMismatch += Math.Abs(c - found.GetValueOrDefault(k));
         foreach (var (k, c) in found) if (!expected.ContainsKey(k)) staticMismatch += c;

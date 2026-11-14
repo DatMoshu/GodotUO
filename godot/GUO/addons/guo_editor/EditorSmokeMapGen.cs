@@ -126,7 +126,16 @@ public partial class EditorSmoke
         MapGenCheck("toggle_changes_hash", hashC != null && hashC != hashA, $"{hashC}");
         MapGenCheck("previews_written", File.Exists(Path.Combine(a, "radar.png")) && Directory.GetFiles(Path.Combine(a, "steps"), "*.png").Length > 0);
 
+        string missingTable = Path.Combine(root, "missing-table.json");
+        int missing = await MapGenCli.RunAsync(new[] { "run", "--out", Path.Combine(root, "missing-table"),
+            "--size", "256", "--brushes", missingTable }, _ => { }, _ => { }, default);
+        MapGenCheck("missing_table_refused", missing == 2 && !File.Exists(Path.Combine(root, "missing-table", "run.json")));
+
         string world = Path.Combine(root, "world-a");
+        int badExport = await MapGenCli.RunAsync(new[] { "export", "--run", a, "--world-project", world, "--origin-x", "1" },
+            _ => { }, _ => { }, default);
+        MapGenCheck("failed_export_retryable", badExport == 2 && !Directory.Exists(Path.Combine(a, "export")) && !Directory.Exists(world));
+
         JsonElement? done = null;
         int code = await MapGenCli.RunAsync(new[] { "export", "--run", a, "--world-project", world },
             j => { if (j.TryGetProperty("event", out JsonElement e) && e.GetString() == "done") done = j; }, _ => { }, default);
@@ -140,6 +149,9 @@ public partial class EditorSmoke
             _mapgenReport["world_blocks"] = Directory.GetFiles(Path.Combine(world, "blocks", "0"), "*.json").Length;
             MapGenCheck("export_mismatches_zero", v.GetProperty("land_mismatches").GetInt32() == 0 && v.GetProperty("static_mismatches").GetInt32() == 0);
             MapGenCheck("world_project_blocks", (int)_mapgenReport["world_blocks"] == 32 * 32, $"{_mapgenReport["world_blocks"]} blocks");
+            using var marker = JsonDocument.Parse(File.ReadAllText(Path.Combine(world, "generated.json")));
+            MapGenCheck("export_identity", v.GetProperty("hash").GetString() == hashA
+                && marker.RootElement.GetProperty("hash").GetString() == hashA);
         }
     }
 
