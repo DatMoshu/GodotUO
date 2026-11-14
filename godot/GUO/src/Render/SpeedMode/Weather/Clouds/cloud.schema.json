@@ -1,0 +1,39 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"guo/cloud@1",
+  "title":"GUO experimental 2D cloud style",
+  "type":"object", "additionalProperties":false,
+  "required":["schema","name","zoom_start","zoom_end","layers"],
+  "properties":{
+    "schema":{"const":"guo/cloud@1"},
+    "name":{"type":"string","minLength":1,"maxLength":48},
+    "zoom_start":{"type":"number","minimum":4,"maximum":5},
+    "zoom_end":{"type":"number","exclusiveMinimum":4,"maximum":6},
+    "layers":{"type":"array","minItems":1,"maxItems":2,"items":{"$ref":"#/$defs/layer"}}
+  },
+  "$comment":"Runtime also rejects duplicate keys, controls/blank name, invalid UTF-8, >16KiB and zoom_end<=zoom_start. Sprite paths are sandboxed by CloudPreset.ResolveSprite.",
+  "$defs":{
+    "rgb":{"type":"array","minItems":3,"maxItems":3,"items":{"type":"number","minimum":0,"maximum":1}},
+    "layer":{
+      "type":"object","additionalProperties":false,
+      "required":["algorithm","mask","sprite","density","coverage","scale","wind_degrees","wind_speed","opacity","day_color","night_color","daynight_response","height","parallax"],
+      "properties":{
+        "algorithm":{"enum":["procedural","sprite-layered","hybrid"]},
+        "mask":{"enum":["billow","haze","broken"]},
+        "sprite":{"type":"string","maxLength":200},
+        "density":{"type":"number","minimum":0,"maximum":2},
+        "coverage":{"type":"number","minimum":0,"maximum":1},
+        "scale":{"type":"number","minimum":0.01,"maximum":0.25},
+        "wind_degrees":{"type":"number","minimum":0,"maximum":360},
+        "wind_speed":{"type":"number","minimum":0,"maximum":2},
+        "opacity":{"type":"number","minimum":0,"maximum":1},
+        "day_color":{"$ref":"#/$defs/rgb"},
+        "night_color":{"$ref":"#/$defs/rgb"},
+        "daynight_response":{"type":"number","minimum":0,"maximum":1},
+        "height":{"type":"number","minimum":0,"maximum":600},
+        "parallax":{"type":"number","minimum":0,"maximum":0.03}
+      },
+      "allOf":[{"if":{"properties":{"algorithm":{"const":"procedural"}}},"then":{"properties":{"sprite":{"const":""}}},"else":{"properties":{"sprite":{"minLength":1}}}}]
+    }
+  }
+}

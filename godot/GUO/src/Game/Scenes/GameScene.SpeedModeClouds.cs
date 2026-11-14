@@ -14,6 +14,7 @@ internal partial class GameScene
     private RenderTargets _speedCloudPublication;
     private long _speedCloudGeneration, _speedCloudFrame;
     private Rid _speedCloudItem;
+    internal string SpeedCloudLightingSource { get; private set; }
 
     // Main-thread only. This target is an independent transparent cloud plane.
     partial void DrawSpeedClouds(UltimaBatcher2D batcher, bool overview)
@@ -37,6 +38,9 @@ internal partial class GameScene
                 _speedCloudTarget.ClearColor = Colors.Transparent;
                 _speedCloudGeneration++;
                 _speedCloudPass = new SpeedModeCloudPass();
+                // Optional player cloud preset beside the profile; absent or invalid keeps the legacy plane.
+                if (!string.IsNullOrEmpty(ProfileManager.ProfilePath))
+                    _speedCloudPass.Configure(System.IO.Path.Combine(ProfileManager.ProfilePath, "clouds.json"));
                 _speedCloudTarget.ViewportNode.AddChild(_speedCloudPass);
                 _speedCloudItem = RenderingServer.CanvasItemCreate();
                 RenderingServer.CanvasItemSetParent(_speedCloudItem, _speedCloudTarget.CanvasItem);
@@ -47,6 +51,7 @@ internal partial class GameScene
             var origin = SpeedModeCameraOrigin();
             var size = new Vector2I(worldTarget.Width, worldTarget.Height);
             var sky = CloudLighting.Resolve(_world, profile, RealtimeAmbientLevel());
+            SpeedCloudLightingSource = sky.Source;
             _speedCloudPass.Bind(size, new Vector3(origin.X, origin.Y, player.Z),
                 new SpeedModeCloudView(true, Camera.Zoom, altitude),
                 GUO.Renderer.Water.WaterRender.Wind(_world, profile), Time.Ticks / 1000.0, sky.Daylight);
@@ -107,5 +112,6 @@ internal partial class GameScene
         }
         _speedCloudTarget?.Dispose();
         _speedCloudPass = null; _speedCloudTarget = _speedCloudWorld = null;
+        SpeedCloudLightingSource = null;
     }
 }

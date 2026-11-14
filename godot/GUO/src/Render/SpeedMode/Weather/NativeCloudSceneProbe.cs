@@ -140,6 +140,12 @@ public partial class NativeCloudSceneProbe : Node
             setup.Invoke(NetClient.Socket,new[]{Enum.Parse(setup.GetParameters()[0].ParameterType,"TcpSocket")});
             Settings.GlobalSettings.ProfilesPath=Path.Combine(_root,"data","fixture","profiles");
             ProfileManager.Load("Offline","cloud-fixture","cloud-fixture");
+            // Probe-only selection; never copies into an attended profile.
+            string cloudPreset=System.Environment.GetEnvironmentVariable("GUO_CLOUD_PROBE_PRESET");
+            if(!string.IsNullOrEmpty(cloudPreset)) {
+                Require(Array.IndexOf(CloudPresetProbe.Presets,cloudPreset)>=0,"Unknown probe cloud preset");
+                File.WriteAllText(Path.Combine(ProfileManager.ProfilePath,"clouds.json"),CloudPresetProbe.Json(cloudPreset));
+            }
             _profile=ProfileManager.CurrentProfile;
             _profile.GameWindowFullSize=true;_profile.TopbarGumpIsDisabled=true;
             _profile.UseCircleOfTransparency=false;_profile.NoColorObjectsOutOfRange=false;
@@ -160,6 +166,36 @@ public partial class NativeCloudSceneProbe : Node
             _targets=Read<RenderTargets>(_game,"_renderTargets");
             _resetClouds=typeof(GameScene).GetMethod("ResetSpeedClouds",Private);
             foreach(float zoom in new[]{4f,4.5f,5f,6f}) await Crossing(zoom);
+
+            if(!string.IsNullOrEmpty(cloudPreset)) {
+                var originalClock=world.ShardClock;
+                try {
+                    foreach(byte hour in new byte[]{6,12,18,0}) {
+                        world.ShardClock.Set(hour,0,0,Time.Ticks);Zoom(5);await Warm(2);
+                        using var light=await Capture("clock-hour-"+hour);
+                        float value=(float)typeof(GameScene).GetProperty("SpeedCloudDaylightValue",Private).GetValue(_scene);
+                        string source=(string)typeof(GameScene).GetProperty("SpeedCloudLightingSource",Private).GetValue(_scene);
+                        float expected=hour==12 ? 1 : .1f;
+                        Record(Math.Abs(value-expected)<.0001f&&source=="shard-clock","actual cloud minute source hour"+hour);
+                        _rows.Add(new{test="cloud-clock",hour,value,source});
+                    }
+                } finally {world.ShardClock=originalClock;}
+            }
+
+            if(!string.IsNullOrEmpty(cloudPreset)) {
+                var selectedPass=Read<SpeedModeCloudPass>(_scene,"_speedCloudPass");
+                Zoom(4);await Warm();
+                Record(!GodotObject.IsInstanceValid(selectedPass)&&!HasClouds(),"reload retires prior variant layers/material");
+                string presetPath=Path.Combine(ProfileManager.ProfilePath,"clouds.json");
+                File.Delete(presetPath);Zoom(5);await Warm();
+                using var legacy=await Capture("reload-removed-legacy");
+                Zoom(4);await Warm();File.WriteAllText(presetPath,"{invalid");
+                Zoom(5);await Warm();using var invalid=await Capture("reload-invalid-legacy");
+                int invalidDiff=PixelDiff(legacy,invalid);
+                Record(invalidDiff==0,"invalid/removed reload restores exact legacy diff="+invalidDiff);
+                _rows.Add(new{test="variant-reload",invalidDiff,priorPassAlive=GodotObject.IsInstanceValid(selectedPass)});
+                Zoom(4);await Warm();File.WriteAllText(presetPath,CloudPresetProbe.Json(cloudPreset));
+            }
 
             // Sample several real cloud phases over the actual opaque pin head;
             // a lucky gap in one procedural frame must not pass clearance.

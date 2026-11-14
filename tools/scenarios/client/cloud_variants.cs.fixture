@@ -1,0 +1,21 @@
+// Task1056: isolated cloud@1 scenarios. Source-first contract in docs/tasks/cloud-variants/CONTRACT.md.
+// No account, shard edits, network connection or attended-client input.
+// After lead-admitted build/import, use configured godot-console --path godot/GUO:
+// 1. --headless res://src/Render/SpeedMode/Weather/Clouds/CloudPresetProbe.tscn
+//    Required log: [cloud-preset] PASS. Strict parse + negative corpus.
+// 2. Native renderer res://src/Render/SpeedMode/Weather/SpeedModeCloudProbe.tscn
+//    Required log: [speed-cloud] PASS. Unselected legacy exact threshold/off.
+// 3. GUO_WEATHER_PROBE_OUT=<external run>/stills/variants
+//    res://src/Render/SpeedMode/Weather/Clouds/CloudVariantsProbe.tscn
+//    Required log: [cloud-variants] PASS. Inspect all three day/night takes.
+// 4. For each soft-billowing/thin-haze/broken-storm set GUO_CLOUD_PROBE_PRESET
+//    and separate GUO_CLOUD_SCENE_OUT=<external run>/<preset> (run data directories).
+//    res://src/Render/SpeedMode/Weather/NativeCloudSceneProbe.tscn -- --window-size 1280x720
+//    Pin this intended fixture size: default640x480 clips the test city marker.
+//    Required log: [native-cloud-scene] PASS, zero failures in native-cloud-results.json.
+//    Actual GameScene zoom4/4.5/5/6, reverse crossing, pin phases, labels,
+//    resize/target replacement, parent/experimental-off and unload/retirement.
+// 5. Inspect actual before/after stills natively. Obtain verified owner-authorized
+//    Gemini review of exact same media. Distinct takes/pin/labels/night/resize
+//    need visual acceptance; pixel differences alone do not establish quality.
+// 6. Required full smoke before commit; log head, DLL hash, actual exits/cleanup.

@@ -1,0 +1,7 @@
+{
+  "schema":"guo/cloud@1", "name":"Soft billowing", "zoom_start":4, "zoom_end":5,
+  "layers":[
+    {"algorithm":"hybrid","mask":"billow","sprite":"builtin:billow","density":1.2,"coverage":0.7,"scale":0.035,"wind_degrees":20,"wind_speed":0.08,"opacity":0.75,"day_color":[0.94,0.96,0.98],"night_color":[0.19,0.24,0.34],"daynight_response":1,"height":300,"parallax":0.015},
+    {"algorithm":"sprite-layered","mask":"billow","sprite":"builtin:billow","density":0.9,"coverage":0.65,"scale":0.065,"wind_degrees":30,"wind_speed":0.12,"opacity":0.45,"day_color":[0.77,0.83,0.9],"night_color":[0.12,0.17,0.26],"daynight_response":1,"height":430,"parallax":0.01}
+  ]
+}
