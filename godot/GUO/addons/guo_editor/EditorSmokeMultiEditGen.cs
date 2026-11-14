@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Threading;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Godot;
@@ -191,6 +193,65 @@ public partial class EditorSmoke
         MeUnsaved(view);
         view.NewMulti();
         MeDeploy(view, root);
+        await MeGeneratorTeardownAsync(view);
+    }
+
+    private async Task MeGeneratorTeardownAsync(MultiEditView view)
+    {
+        var gate = (SemaphoreSlim)typeof(MultiGenerateClient)
+            .GetField("_gate", BindingFlags.Instance | BindingFlags.NonPublic)
+            .GetValue(view.GenClient);
+
+        var panel = new GeneratePanel(view.GenClient);
+        AddChild(panel);
+        bool ready = await WaitFor(() => panel.StylesLoaded.IsCompleted && panel.Last != null, 10);
+        MeCheck("generate_teardown_probe_ready", ready);
+        if (!ready)
+        {
+            panel.Free();
+            return;
+        }
+
+        bool acquired = await gate.WaitAsync(TimeSpan.FromSeconds(10));
+        MeCheck("generate_teardown_gate_acquired", acquired);
+        if (!acquired)
+        {
+            panel.Free();
+            return;
+        }
+
+        int lateEvents = 0;
+        panel.Generated += (_, _) => lateEvents++;
+        Task<GenResult> pending = panel.NowAsync();
+        bool queued = !pending.IsCompleted;
+        panel.Free();
+        gate.Release();
+        bool completed = await Task.WhenAny(pending, Task.Delay(10000)) == pending;
+        Exception error = null;
+        if (completed)
+        {
+            try { await pending; }
+            catch (Exception ex) { error = ex; }
+        }
+
+        MeCheck("generate_after_free_has_no_exception_or_event", queued && completed && error == null && lateEvents == 0,
+            error?.Message ?? $"queued={queued} completed={completed} late_events={lateEvents}");
+
+        // The styles callback has its own await and must also avoid freed controls.
+        acquired = await gate.WaitAsync(TimeSpan.FromSeconds(10));
+        MeCheck("styles_teardown_gate_acquired", acquired);
+        if (!acquired)
+        {
+            return;
+        }
+
+        var stylesPanel = new GeneratePanel(view.GenClient);
+        AddChild(stylesPanel);
+        Task stylesLoaded = stylesPanel.StylesLoaded;
+        stylesPanel.Free();
+        gate.Release();
+        bool stylesCompleted = await Task.WhenAny(stylesLoaded, Task.Delay(10000)) == stylesLoaded;
+        MeCheck("styles_after_free_settles", stylesCompleted && !stylesLoaded.IsFaulted);
     }
 
     private void MeDeploy(MultiEditView view, string root)
