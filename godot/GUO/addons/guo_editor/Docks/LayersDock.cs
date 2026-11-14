@@ -14,8 +14,8 @@ using GUO.Renderer;
 /// to a tile rect; the game reads the manifest at boot, so the dock says so
 /// and every mutation saves immediately. Images picked outside the layer
 /// folder are copied into overlays/ (or underlays/) so the manifest stays
-/// portable. Generation itself stays in the Art dock; this dock is the
-/// registry the game reads.
+/// portable. Manual authoring stays available with AI disabled; optional
+/// generation uses the shared editor AI gate.
 /// </summary>
 [Tool]
 public partial class LayersDock : EditorDock
@@ -26,7 +26,7 @@ public partial class LayersDock : EditorDock
     private LineEdit _id, _name, _image, _prompt;
     private OptionButton _kind;
     private SpinBox _facet, _x0, _y0, _x1, _y1, _opacity;
-    private Label _dir, _status;
+    private Label _dir, _status, _promptLabel;
     private Button _add, _update, _remove;
     private bool _ready;
 
@@ -160,7 +160,8 @@ public partial class LayersDock : EditorDock
 
         var promptRow = new HBoxContainer();
         left.AddChild(promptRow);
-        promptRow.AddChild(new Label { Text = "Prompt" });
+        _promptLabel = new Label { Text = "Layer note" };
+        promptRow.AddChild(_promptLabel);
         _prompt = new LineEdit { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         promptRow.AddChild(_prompt);
 
@@ -188,6 +189,7 @@ public partial class LayersDock : EditorDock
         _status = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
         root.AddChild(_status);
         Refresh();
+        ApplyAiFeatures();
     }
 
     private static LineEdit Field(GridContainer form, string label)

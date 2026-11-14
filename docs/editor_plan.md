@@ -428,8 +428,13 @@ folder, so the user's editor settings are never changed.
 
 AI is optional: Editor Settings > GUO > AI > Enabled (`guo/ai/enabled`).
 Disabling it immediately removes AI UI/F3 commands, stops owned agents,
-requests and editor MCP, and hides Art image generation. Manual authoring
-remains available. Every AI feature must use the shared `AiFeatures` gate
+requests and editor MCP, and hides Art and Layers image generation. Layers
+also skips workflow catalog discovery while disabled and cancels pending
+generation through shared and dock-owned lifetimes. Its manual registry,
+capture, mask, extraction and staged save remain available; Prompt metadata is
+shown as Layer note while off, and completed staging is retained. A fresh
+manual capture still needs a generated image before decal extraction. Every
+AI feature must use the shared `AiFeatures` gate
 and cancellation lifetime; see [the workspace plan](editor_ai_workspace_plan.md).
 
 The **AI** dock (`addons/guo_editor/AI/`, bottom panel beside UO Shard) has three tabs.
