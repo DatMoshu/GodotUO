@@ -331,7 +331,15 @@ public partial class EditorSmoke
             {
                 int sessionsBefore = Ai.Hub.Sessions.Count;
                 // Reuse this synthetic ACP session: setup must not spawn a real provider or send a prompt.
-                AiCheck("setup_reuses_ready_session", await Ai.Setup.CheckAsync() && Ai.Hub.Sessions.Count == sessionsBefore);
+                // A developer machine may export OPENAI_API_KEY; the wizard then rightly refuses to check
+                // subscription sign-in. Hide it for this check only so the result does not depend on the host.
+                string hostApiKey = System.Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+                System.Environment.SetEnvironmentVariable("OPENAI_API_KEY", null);
+                try
+                {
+                    AiCheck("setup_reuses_ready_session", await Ai.Setup.CheckAsync() && Ai.Hub.Sessions.Count == sessionsBefore);
+                }
+                finally { System.Environment.SetEnvironmentVariable("OPENAI_API_KEY", hostApiKey); }
                 Ai.Setup.Finish();
                 AiCheck("setup_finishes_only_when_ready", AiSetupTab.IsCompleted && Ai.Chat.Current?.Id == "agent:Fake");
                 EditorSettings setupSettings = EditorInterface.Singleton.GetEditorSettings();
