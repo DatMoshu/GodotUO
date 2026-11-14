@@ -7,6 +7,7 @@ on the source grid. No second native encoder or ID allocator is introduced.
 from __future__ import annotations
 
 import collections
+from functools import lru_cache
 import copy
 import json
 from pathlib import Path
@@ -20,6 +21,7 @@ import render
 import validate
 import walkcheck
 import pieces
+import styles
 from multifile import Component
 from guo.uoread import Art, TileData
 from decorate import rooms as R
@@ -31,6 +33,7 @@ from layout_import.semantic import ResolutionError
 
 
 DEFAULT_THEME = {"format": 1, "name": "uo-classic", "version": 1,
+    "wall_style": "rubble_stone",
     "cell_scale": 1, "wall_conversion": "source-wall-cells; native-neighbour-signatures",
     "floor_z": 7, "storey_height": 20, "wall_height": 20,
     "stair_adaptation": "carve-internal-flight",
@@ -39,6 +42,31 @@ DEFAULT_THEME = {"format": 1, "name": "uo-classic", "version": 1,
           "bookcase": "bookcase", "counter": "counter", "display": "display", "chair": "chair", "table": "table",
           "chest": "chest", "container": "container", "plant": "plant", "light": "light", "farm": "farm",
           "tools": "tools", "misc": "art"}}
+
+
+@lru_cache(maxsize=1)
+def _wall_styles():
+    return styles.load_file(Path(__file__).with_name("wall_styles.json"))
+
+
+def wall_piece(cat, theme, signature, window=False):
+    """Use an explicit coherent wall set; mined frequency is not sprite geometry.
+
+    A theme changing material does not inherit the default stone set. Other
+    materials keep the mined picker unless their theme supplies a matching set.
+    """
+    key = theme.get("wall_style")
+    material = theme["materials"]["wall"]
+    if key:
+        sets = _wall_styles()
+        if key not in sets:
+            raise ResolutionError(f"Unknown wall style: {key}")
+        st = sets[key]
+        if st.get("material") == material:
+            if st["walls"]["height"] != theme["wall_height"]:
+                raise ResolutionError("Wall style height does not match theme")
+            return styles.StyleCatalogue({key: st}).wall(key, theme["wall_height"], signature, window)
+    return cat.wall(material, theme["wall_height"], signature, window)
 
 
 def groups(level):
@@ -368,8 +396,9 @@ def compile_layout(layout, cat, lib, theme=None, as_scene=False):
         floor_by_z[level["z"]] = floors
         walls_by_z[level["z"]] = solid
         for x, y in sorted(solid):
-            built.add(cat.wall("wooden fence" if (x,y) in rails else theme["materials"]["wall"],
-                              6 if (x,y) in rails else theme["wall_height"], G.signature(shell, x, y), (x, y) in windows), x, y, z)
+            sig = G.signature(shell, x, y)
+            piece = cat.wall("wooden fence", 6, sig) if (x,y) in rails else wall_piece(cat, theme, sig, (x,y) in windows)
+            built.add(piece, x, y, z)
         for x, y in sorted(floors):
             built.add(G.scatter(floor_ids, x, y), x, y, z)
             lineage.append({"target": [x, y, z], "source": cells[(x, y)]["lineage"], "kind": "floor"})

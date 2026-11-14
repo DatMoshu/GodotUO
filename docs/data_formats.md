@@ -4647,3 +4647,7 @@ Exports contain character serials and positions, never raw packet payloads or
 credentials. Keep them private. Recording/UI/GPU capture overhead makes these
 diagnostics unsuitable for performance comparisons. Doctor:
 `launchers/dev/mobile_debug_doctor`; scenario: `tools/scenarios/client/mobile_debug.md`.
+
+## 57. Layered multi authoring metadata (components format 1)
+
+The optional editor_layers version-1 extension preserves named layer IDs, visibility, locks and a component-order membership array. Legacy descriptions remain one-layer documents; native writers consume the unchanged components array. See [layered multi editing](layered_multi_editor.md) for the schema and shared editing API. Editor-hidden layers still export; retain the authoring JSON for future edits.

@@ -30,6 +30,7 @@ public partial class MultiEditView
     /// </summary>
     public async Task<bool> TransformAsync(string op, int turns = 1, string axis = "x")
     {
+        long revision = _doc.Revision;
         bool whole = _doc.Selection.Count == 0;
         List<MultiPart> targets = whole ? _doc.Parts.ToList() : _doc.Parts.Where(p => _doc.Selection.Contains(p.Uid)).ToList();
         if (targets.Count == 0)
@@ -46,7 +47,7 @@ public partial class MultiEditView
         }
 
         var args = new JsonObject { ["components"] = comps, ["keep_centre"] = !whole };
-        if (targets.Any(p => p.TextFlags.HasValue || p.TextExtra.HasValue)) args["preserve_entries"] = true;
+        if (_doc.Layers.Count > 1 || targets.Any(p => p.TextFlags.HasValue || p.TextExtra.HasValue)) args["preserve_entries"] = true;
         if (op == "rotate")
         {
             args["turns"] = ((turns % 4) + 4) % 4;
@@ -68,7 +69,9 @@ public partial class MultiEditView
             return false;
         }
 
+        if (revision != _doc.Revision) { _status.Text = "Document changed during transform; try again."; return false; }
         bool sameCount = r.Components.Count == targets.Count;
+        if (_doc.Layers.Count > 1 && !sameCount) { _status.Text = "Transform cannot preserve layer membership."; return false; }
         if (targets.Any(p => p.TextFlags.HasValue || p.TextExtra.HasValue) && (!sameCount || r.Components.Any(c => c.X < short.MinValue || c.X > short.MaxValue || c.Y < short.MinValue || c.Y > short.MaxValue || c.Z < short.MinValue || c.Z > short.MaxValue)))
         {
             _status.Text = "Transform refused: imported TXT flags need one-to-one components and coordinates within signed 16-bit bounds.";
@@ -80,6 +83,7 @@ public partial class MultiEditView
             GenComponent c = r.Components[i];
             made.Add(_doc.Make((ushort)c.Item, c.X, c.Y, c.Z, c.Visible, sameCount ? targets[i].Hue : (ushort)0,
                 sameCount ? targets[i].TextFlags : null, sameCount ? targets[i].TextExtra : null));
+            if (sameCount) { var part = made[^1]; part.LayerId = targets[i].LayerId; made[^1] = part; }
         }
 
         var gone = new HashSet<int>(targets.Select(t => t.Uid));

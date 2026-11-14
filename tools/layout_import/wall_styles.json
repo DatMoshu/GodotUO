@@ -1,0 +1,28 @@
+{
+  "format": "guo.multi.styles/1",
+  "provenance": "Hand-checked native wall sprite roles. IDs only; no artwork. Wall-only sets, not complete house presets.",
+  "styles": {
+    "rubble_stone": {
+      "name": "Rubble stone walls",
+      "material": "stone",
+      "walls": {
+        "height": 20,
+        "EW": "0x00c8",
+        "NS": "0x00c9",
+        "post": "0x00cc",
+        "corners": {
+          "NW": "0x00cc",
+          "NE": "0x00c8",
+          "SW": "0x00ce",
+          "SE": "0x00c7"
+        }
+      },
+      "windows": [
+        {
+          "EW": "0x00ca",
+          "NS": "0x00cb"
+        }
+      ]
+    }
+  }
+}
