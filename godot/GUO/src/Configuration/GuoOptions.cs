@@ -33,7 +33,7 @@ internal static class GuoOptions
                     if (profile.SpeedModeLampShadows > 0) text += $", {profile.SpeedModeLampShadows} lamp shadows";
                     return text;
                 }
-                return profile.RealtimeLights ? "Classic realtime lights" : "Classic lighting";
+                return "Classic lighting";
             case GuoSection.Weather:
             {
                 bool enhanced = profile.LightingSpeedMode && SpeedModeDebug.Supported;

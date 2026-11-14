@@ -46,7 +46,7 @@ internal partial class GameScene
         if(ReferenceEquals(targets.LightOverride,_speedLightOverride)) targets.LightOverride=null;
         targets.SpeedLightBlend=null;
         GuoEffectPolicy.EnhancedShadowsProduced=false; // task 1136: set again only by a prepared frame
-        if(!UseSpeedLights || !batcher.CanQueueSpeedLight) { if(!UseRealtimeLights) _rtSourceCount=0; return; }
+        if(!UseSpeedLights || !batcher.CanQueueSpeedLight) { _rtSourceCount=0; return; }
         try
         {
             _rtField ??=new RealtimeLightField();

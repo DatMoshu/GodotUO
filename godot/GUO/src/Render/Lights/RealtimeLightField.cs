@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
-// GUO-owned (ADR-0039): the tile-grid light field behind the Realtime lights option.
+// GUO-owned (ADR-0039; drawing path retired 2026-11-14): the tile grid and reach rays that
+// lighting speed mode (ADR-0048) shares. The CPU field that summed lights into a texture is gone.
 
 using System;
 using System.Collections.Generic;
@@ -8,9 +9,9 @@ using Godot;
 namespace GUO.Renderer.Lights
 {
     /// <summary>
-    /// Light as a field on the tile grid: ambient from the shard's light level,
-    /// plus every light source's reach, walked through a blocker grid built from
-    /// tiledata. Pure CPU, no engine objects, so the probe runs it headless.
+    /// The tile grid light sources are walked through: ground, blockers, wall
+    /// lines and cover built from tiledata, and the visibility rays of a light.
+    /// Pure CPU, no engine objects, so the probe runs it headless.
     /// </summary>
     /// <remarks>
     /// The grid covers the visible chunks plus a margin. Each cell keeps the
@@ -38,9 +39,6 @@ namespace GUO.Renderer.Lights
 
         /// <summary>A light's peak above ambient: pools saturate near the source and read from afar.</summary>
         public const float Energy = 2.2f;
-
-        /// <summary>A static standing this many Z above every light reaching its tile is above the light (a roof): ambient only.</summary>
-        public const int AboveLightZ = 10;
 
         /// <summary>The tint of an uncoloured light: warm, as a flame is.</summary>
         public static readonly Color WarmLight = new Color(1.0f, 0.72f, 0.38f);
@@ -87,30 +85,17 @@ namespace GUO.Renderer.Lights
             public override int GetHashCode() => HashCode.Combine(X, Y, Z, Radius);
         }
 
-        private sealed class Reach
-        {
-            public float[] Map;
-            public ulong BlockerHash;
-            public int Frame;
-        }
-
         private int _originX, _originY, _width, _height;
         private sbyte[] _groundZ = Array.Empty<sbyte>();
         private short[] _blockTop = Array.Empty<short>();
         private bool[] _roof = Array.Empty<bool>();
         private short[] _roofZ = Array.Empty<short>();
         private bool[] _roofFlag = Array.Empty<bool>();
-        private float[] _field = Array.Empty<float>();
-        private short[] _lightTop = Array.Empty<short>();
         private short[] _hTop = Array.Empty<short>(), _vTop = Array.Empty<short>();
         private float[] _hOff = Array.Empty<float>(), _vOff = Array.Empty<float>();
-        private float[] _fine = Array.Empty<float>();
         private int _fineScale = 4;
         private float[] _scratchVis = Array.Empty<float>();
         private float[] _scratchBlur = Array.Empty<float>();
-        private readonly Dictionary<CacheKey, Reach> _cache = new();
-        private int _frame;
-        private ulong _blockerHash;
 
         public int OriginX => _originX;
         public int OriginY => _originY;
@@ -119,23 +104,12 @@ namespace GUO.Renderer.Lights
 
         /// <summary>Light samples per tile side this frame (4, or 2 on a very large grid).</summary>
         public int FineScale => _fineScale;
-        public int FineWidth => _width * _fineScale;
-        public int FineHeight => _height * _fineScale;
 
         /// <summary>Grids with more cells than this sample 2 per tile side, not 4.</summary>
         public const int FineCellLimit = 192 * 192;
 
-        /// <summary>Reach maps computed by the last <see cref="Compute"/> (the cost log; the rest were cache hits).</summary>
+        /// <summary>Reach maps computed since the last <c>BeginSpeedReach</c> (the cost log; the rest were cache hits).</summary>
         public int LastComputed { get; private set; }
-
-        /// <summary>Cache entries alive.</summary>
-        public int CacheCount => _cache.Count;
-
-        /// <summary>Ambient colour of the last <see cref="Compute"/>.</summary>
-        public Color Ambient { get; private set; } = Colors.White;
-
-        /// <summary>The ambient a roofed cell gets (roof sprites draw in this, no light reaches their top).</summary>
-        public Color RoofAmbient { get; private set; } = Colors.White;
 
         /// <summary>Start a frame: the grid covers tiles [originX, originX+width) x [originY, originY+height).</summary>
         public void Begin(int originX, int originY, int width, int height)
@@ -145,9 +119,7 @@ namespace GUO.Renderer.Lights
             int cells = width * height;
 
             int fine = cells <= FineCellLimit ? 4 : 2;
-            if (fine != _fineScale) _cache.Clear();
             _fineScale = fine;
-            if (_fine.Length != cells * fine * fine * 3) _fine = new float[cells * fine * fine * 3];
 
             if (_groundZ.Length != cells)
             {
@@ -160,14 +132,6 @@ namespace GUO.Renderer.Lights
                 _roof = new bool[cells];
                 _roofZ = new short[cells];
                 _roofFlag = new bool[cells];
-                _field = new float[cells * 3];
-                _lightTop = new short[cells];
-            }
-
-            if (originX != _originX || originY != _originY || width != _width || height != _height)
-            {
-                // The reach maps are grid-relative; a moved grid invalidates them.
-                _cache.Clear();
             }
 
             _originX = originX;
@@ -177,7 +141,6 @@ namespace GUO.Renderer.Lights
             Array.Fill(_blockTop, NoBlock);
             Array.Fill(_hTop, NoBlock);
             Array.Fill(_vTop, NoBlock);
-            Array.Fill(_lightTop, NoBlock);
             Array.Fill(_roof, false);
             Array.Fill(_roofZ, NoBlock);
             Array.Fill(_roofFlag, false);
@@ -297,146 +260,6 @@ namespace GUO.Renderer.Lights
             float luminance = c.R * 0.2126f + c.G * 0.7152f + c.B * 0.0722f;
             float scale = t / luminance;
             return new Color(c.R * scale, c.G * scale, c.B * scale);
-        }
-
-        /// <summary>
-        /// Sum ambient and every source into the field. <paramref name="isometricLevel"/>
-        /// is the classic grey; <paramref name="nightness"/> out is 0 by day, 1 at the darkest.
-        /// </summary>
-        public void Compute(float isometricLevel, ReadOnlySpan<Source> sources)
-        {
-            _frame++;
-            Ambient = AmbientFor(isometricLevel);
-            float day = Math.Clamp(isometricLevel, 0f, 1f);
-            float roofShare = RoofDaylight + (1f - RoofDaylight) * (1f - day);
-            RoofAmbient = new Color(Ambient.R * roofShare, Ambient.G * roofShare, Ambient.B * roofShare);
-            int cells = _width * _height;
-
-            int f = _fineScale, fw = _width * f;
-            for (int ty = 0; ty < _height; ty++)
-            {
-                for (int tx = 0; tx < _width; tx++)
-                {
-                    float s = _roof[ty * _width + tx] ? roofShare : 1f;
-                    float r = Ambient.R * s, g = Ambient.G * s, b = Ambient.B * s;
-                    for (int sy = 0; sy < f; sy++)
-                    {
-                        int row = ((ty * f + sy) * fw + tx * f) * 3;
-                        for (int sx = 0; sx < f; sx++, row += 3)
-                        {
-                            _fine[row] = r;
-                            _fine[row + 1] = g;
-                            _fine[row + 2] = b;
-                        }
-                    }
-                }
-            }
-
-            _blockerHash = HashBlockers();
-            LastComputed = 0;
-
-            if (_cache.Count > CacheLimit) _cache.Clear();
-
-            for (int n = 0; n < sources.Length; n++)
-            {
-                ref readonly Source s = ref sources[n];
-                if (!Contains(s.X, s.Y)) continue;
-
-                var key = new CacheKey(in s);
-                if (!_cache.TryGetValue(key, out Reach reach) || reach.BlockerHash != _blockerHash)
-                {
-                    reach ??= new Reach();
-                    reach.Map = ComputeReach(in s, reach.Map);
-                    reach.BlockerHash = _blockerHash;
-                    _cache[key] = reach;
-                    LastComputed++;
-                }
-
-                reach.Frame = _frame;
-                Accumulate(in s, reach.Map);
-            }
-
-            // The tile field is the mean of its samples (the dump, Cell, Corner).
-            float inv = 1f / (f * f);
-            for (int ty = 0; ty < _height; ty++)
-            {
-                for (int tx = 0; tx < _width; tx++)
-                {
-                    float r = 0f, g = 0f, b = 0f;
-                    for (int sy = 0; sy < f; sy++)
-                    {
-                        int row = ((ty * f + sy) * fw + tx * f) * 3;
-                        for (int sx = 0; sx < f; sx++, row += 3)
-                        {
-                            r += _fine[row];
-                            g += _fine[row + 1];
-                            b += _fine[row + 2];
-                        }
-                    }
-                    int o = (ty * _width + tx) * 3;
-                    _field[o] = r * inv;
-                    _field[o + 1] = g * inv;
-                    _field[o + 2] = b * inv;
-                }
-            }
-
-            // Forget lights that have gone out (not seen this frame).
-            if (_cache.Count > 0 && (_frame & 63) == 0)
-            {
-                var dead = new List<CacheKey>();
-                foreach (var kv in _cache) if (kv.Value.Frame != _frame) dead.Add(kv.Key);
-                foreach (var k in dead) _cache.Remove(k);
-            }
-        }
-
-        /// <summary>
-        /// The field at a cell (clamped to the grid). Light is summed without
-        /// a ceiling; a cell brighter than white is scaled by its brightest
-        /// channel, so a torch's orange stays orange near the flame instead
-        /// of clipping channel by channel to yellow.
-        /// </summary>
-        public Color Cell(int x, int y)
-        {
-            int cx = Math.Clamp(x - _originX, 0, _width - 1);
-            int cy = Math.Clamp(y - _originY, 0, _height - 1);
-            int i = (cy * _width + cx) * 3;
-            float r = _field[i], g = _field[i + 1], b = _field[i + 2];
-            float m = Math.Max(r, Math.Max(g, b));
-            if (m > 1f)
-            {
-                r /= m; g /= m; b /= m;
-            }
-
-            return new Color(r, g, b);
-        }
-
-        /// <summary>
-        /// The field for a static at height <paramref name="z"/> on a cell: the
-        /// cell's light, or the roof ambient when it stands above every light
-        /// that reaches the cell (a roof over a lamp, a floor above).
-        /// </summary>
-        public Color CellAt(int x, int y, int z) => IsAboveLight(x, y, z) ? RoofAmbient : Cell(x, y);
-
-        /// <summary>Whether a static at <paramref name="z"/> stands above every light reaching its cell.</summary>
-        public bool IsAboveLight(int x, int y, int z)
-        {
-            if (!Contains(x, y)) return false;
-            short top = _lightTop[Index(x, y)];
-            return top != NoBlock && z > top + AboveLightZ;
-        }
-
-        /// <summary>
-        /// The field at a tile corner: corner (x, y) is shared by the cells
-        /// (x-1..x, y-1..y). The tile (x, y)'s diamond has its top at corner
-        /// (x, y), right at (x+1, y), bottom at (x+1, y+1), left at (x, y+1).
-        /// </summary>
-        public Color Corner(int x, int y)
-        {
-            Color a = Cell(x - 1, y - 1), b = Cell(x, y - 1), c = Cell(x - 1, y), d = Cell(x, y);
-            return new Color(
-                (a.R + b.R + c.R + d.R) * 0.25f,
-                (a.G + b.G + c.G + d.G) * 0.25f,
-                (a.B + b.B + c.B + d.B) * 0.25f);
         }
 
         /// <summary>Radial falloff: 1 at the source, 0 at the radius, soft in between (curve B).</summary>
@@ -618,189 +441,6 @@ namespace GUO.Renderer.Lights
             }
 
             return 1f;
-        }
-
-        private void Accumulate(in Source s, float[] map)
-        {
-            int f = _fineScale;
-            int r = s.Radius + 1;
-            int side = (r * 2 + 1) * f;
-            int fw = _width * f, fh = _height * f;
-            // The sample grid's origin, in samples, relative to the field.
-            int gx0 = (s.X - r - _originX) * f, gy0 = (s.Y - r - _originY) * f;
-            (float lx, float ly) = LightOrigin(s.X, s.Y);
-            lx += s.OffsetX;
-            ly += s.OffsetY;
-            for (int j = 0; j < side; j++)
-            {
-                int gy = gy0 + j;
-                if (gy < 0 || gy >= fh) continue;
-                float py = s.Y - r + (j + 0.5f) / f;
-                for (int i = 0; i < side; i++)
-                {
-                    int gx = gx0 + i;
-                    if (gx < 0 || gx >= fw) continue;
-                    float v = map[j * side + i];
-                    if (v <= 0f) continue;
-                    float px = s.X - r + (i + 0.5f) / f;
-                    float fx = px - lx, fy = py - ly;
-                    v *= Falloff(MathF.Sqrt(fx * fx + fy * fy), s.Radius, s.Curve, s.CustomCurve);
-                    if (v <= 0f) continue;
-                    int cell = gy / f * _width + gx / f;
-                    if (s.Z > _lightTop[cell]) _lightTop[cell] = (short)s.Z;
-                    int o = (gy * fw + gx) * 3;
-                    v *= s.Energy;
-                    _fine[o] += s.Color.R * v;
-                    _fine[o + 1] += s.Color.G * v;
-                    _fine[o + 2] += s.Color.B * v;
-                }
-            }
-        }
-
-        /// <summary>
-        /// The field at a world point in tile units (bilinear between samples,
-        /// clamped to the grid), brightness kept as <see cref="Cell"/> keeps it.
-        /// The shader reads the same samples from <see cref="FillTexture"/>.
-        /// </summary>
-        public Color FineAt(float wx, float wy)
-        {
-            int f = _fineScale, fw = _width * f, fh = _height * f;
-            float gx = (wx - _originX) * f - 0.5f, gy = (wy - _originY) * f - 0.5f;
-            int x0 = (int)MathF.Floor(gx), y0 = (int)MathF.Floor(gy);
-            float ax = gx - x0, ay = gy - y0;
-            float r = 0f, g = 0f, b = 0f;
-            for (int k = 0; k < 4; k++)
-            {
-                int xx = Math.Clamp(x0 + (k & 1), 0, fw - 1), yy = Math.Clamp(y0 + (k >> 1), 0, fh - 1);
-                float w = ((k & 1) != 0 ? ax : 1f - ax) * ((k >> 1) != 0 ? ay : 1f - ay);
-                int o = (yy * fw + xx) * 3;
-                r += _fine[o] * w;
-                g += _fine[o + 1] * w;
-                b += _fine[o + 2] * w;
-            }
-
-            float m = Math.Max(r, Math.Max(g, b));
-            if (m > 1f)
-            {
-                r /= m; g /= m; b /= m;
-            }
-
-            return new Color(r, g, b);
-        }
-
-        /// <summary>The largest sample value <see cref="FillTexture"/> can carry.</summary>
-        public const float TextureRange = 8f;
-
-        /// <summary>
-        /// The samples as RGBA8, <see cref="FineWidth"/> x <see cref="FineHeight"/>,
-        /// north row first: each channel is <c>sqrt(v / 8)</c>, so the dark end
-        /// keeps its precision (the shader decodes <c>c * c * 8</c>).
-        /// </summary>
-        public void FillTexture(byte[] rgba)
-        {
-            int n = _width * _fineScale * _height * _fineScale;
-            for (int i = 0; i < n; i++)
-            {
-                int o = i * 3, t = i * 4;
-                rgba[t] = Encode(_fine[o]);
-                rgba[t + 1] = Encode(_fine[o + 1]);
-                rgba[t + 2] = Encode(_fine[o + 2]);
-                rgba[t + 3] = 255;
-            }
-        }
-
-        /// <summary>Steps of the encode table over [0, <see cref="TextureRange"/>].</summary>
-        private const int EncodeSteps = 8192;
-
-        private static readonly byte[] _encode = BuildEncode();
-
-        private static byte[] BuildEncode()
-        {
-            var t = new byte[EncodeSteps + 1];
-            for (int i = 0; i <= EncodeSteps; i++)
-            {
-                float v = i * TextureRange / EncodeSteps;
-                t[i] = (byte)Math.Clamp((int)(MathF.Sqrt(v / TextureRange) * 255f + 0.5f), 0, 255);
-            }
-            return t;
-        }
-
-        private static byte Encode(float v)
-            => _encode[Math.Clamp((int)(v * (EncodeSteps / TextureRange) + 0.5f), 0, EncodeSteps)];
-
-        /// <summary>
-        /// The tile under a world-target pixel: the inverse of the world's iso
-        /// projection, <c>u = (x - y) * 22</c>, <c>v = (x + y) * 22 - 4z</c>, where
-        /// (u, v) is the pixel plus the scene's offset (a tile's diamond centre
-        /// maps to its own tile). Z is the height the pixel is read at.
-        /// </summary>
-        public static (int X, int Y) ScreenToTile(float u, float v, int z)
-        {
-            v += z * 4;
-            float a = (u + v) / 44f, b = (v - u) / 44f;
-            return ((int)MathF.Floor(a + 0.5f), (int)MathF.Floor(b + 0.5f));
-        }
-
-        /// <summary>The brightness glyph of a cell: its brightest channel in tenths, '0'..'9', 'X' at white.</summary>
-        public char Glyph(int x, int y)
-        {
-            Color c = Cell(x, y);
-            float m = Math.Max(c.R, Math.Max(c.G, c.B));
-            int g = (int)(m * 10f);
-            return g >= 10 ? 'X' : (char)('0' + Math.Max(0, g));
-        }
-
-        /// <summary>
-        /// The grid as text, one row per tile row (north at the top, west at the
-        /// left): '*' a light source, '@' the marked tile, '#' a blocker standing
-        /// above ground + <see cref="BlockClearance"/>, '^' covered (roof or upper
-        /// floor), else the brightness digit. A cell outside <paramref name="visible"/>
-        /// is lower case: '+' blocker, '.' anything else. A legend and the source
-        /// list follow the grid.
-        /// </summary>
-        public string DumpAscii(ReadOnlySpan<Source> sources, Func<int, int, bool> visible = null, int markX = int.MinValue, int markY = int.MinValue)
-        {
-            var sb = new System.Text.StringBuilder((_width + 1) * (_height + 8));
-            sb.Append("# grid origin=").Append(_originX).Append(',').Append(_originY)
-              .Append(" size=").Append(_width).Append('x').Append(_height)
-              .Append(" ambient=").Append(Ambient.R.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture)).Append(',')
-              .Append(Ambient.G.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture)).Append(',')
-              .Append(Ambient.B.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture))
-              .Append(" lights=").Append(sources.Length).Append('\n');
-            sb.Append("# legend: * light  @ mark  # wall  ^ covered  0-9 brightness/10  X white  (outside view: + wall  . other)\n");
-
-            var lit = new HashSet<long>();
-            foreach (ref readonly Source s in sources) lit.Add(((long)s.X << 32) | (uint)s.Y);
-
-            for (int y = _originY; y < _originY + _height; y++)
-            {
-                for (int x = _originX; x < _originX + _width; x++)
-                {
-                    int i = Index(x, y);
-                    int above = _groundZ[i] + BlockClearance;
-                    bool wall = (_blockTop[i] != NoBlock && _blockTop[i] > above)
-                        || (_hTop[i] != NoBlock && _hTop[i] > above) || (_vTop[i] != NoBlock && _vTop[i] > above);
-                    char ch;
-                    if (visible != null && !visible(x, y)) ch = wall ? '+' : '.';
-                    else if (x == markX && y == markY) ch = '@';
-                    else if (lit.Contains(((long)x << 32) | (uint)y)) ch = '*';
-                    else if (wall) ch = '#';
-                    else if (_roofZ[i] != NoBlock) ch = '^';
-                    else ch = Glyph(x, y);
-                    sb.Append(ch);
-                }
-                sb.Append('\n');
-            }
-
-            foreach (ref readonly Source s in sources)
-            {
-                sb.Append("# light ").Append(s.X).Append(',').Append(s.Y).Append(',').Append(s.Z)
-                  .Append(" r=").Append(s.Radius).Append(" curve=").Append(s.Curve)
-                  .Append(" energy=").Append(s.Energy.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture))
-                  .Append(" color=#").Append(s.Color.ToHtml(false)).Append('\n');
-            }
-
-            return sb.ToString();
         }
 
         private ulong HashBlockers()

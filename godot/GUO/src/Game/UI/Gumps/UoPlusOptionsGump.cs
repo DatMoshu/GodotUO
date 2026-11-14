@@ -18,7 +18,6 @@ internal sealed class UoPlusOptionsGump : Gump
     private readonly bool _lighting, _weather, _worldSection;
     private Checkbox _speedMode; // PORT DEVIATION (GUO): ADR-0048
     private HSliderBar _speedNightFloor,_speedSoften;
-    private Checkbox _realtimeLights;
 #if GUO_LABS
     private Checkbox _localClock;
     private HSliderBar _localClockHour;
@@ -166,12 +165,6 @@ internal sealed class UoPlusOptionsGump : Gump
             var status = new Label(shadows, true, 0x0386, Width - 70, 1) { X = 4, Y = y };
             area.Add(status); y += status.Height + 12;
         }
-        // PORT DEVIATION (GUO): moved here from Classic/Modern Options; same Profile.RealtimeLights.
-        _realtimeLights = new Checkbox(0xD2, 0xD3, "Classic realtime lights (CPU)", 1, 0xFFFF)
-            { X = 4, Y = y, IsChecked = _profile.RealtimeLights };
-        area.Add(_realtimeLights);
-        area.Add(new Label("Used only when enhanced lighting is off or unavailable.", true, 0x0386, Width - 70, 1) { X = 4, Y = y + 24 });
-        y += 54;
         AddFeatureRows(area, ref y, GuoOptions.LightingFeatures);
         void SpeedControls() {
             bool enabled=_speedMode.IsEnabled && _speedMode.IsChecked;
@@ -316,7 +309,6 @@ internal sealed class UoPlusOptionsGump : Gump
         if (_lighting)
         {
             _profile.LightingSpeedMode = _speedMode.IsChecked;
-            _profile.RealtimeLights = _realtimeLights.IsChecked;
 #if GUO_LABS
             if(_defaultsStaged) {
                 _profile.LocalLightingTestAuto=false;_profile.LocalLightingTestSpeed=60;
@@ -367,7 +359,6 @@ internal sealed class UoPlusOptionsGump : Gump
         if (_lighting)
         {
             _speedMode.IsChecked = false;
-            _realtimeLights.IsChecked = false;
 #if GUO_LABS
             _localClock.IsChecked=false;_localClockHour.Value=12;
 #endif

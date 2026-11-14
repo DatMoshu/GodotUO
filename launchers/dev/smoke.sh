@@ -80,7 +80,7 @@ echo "[smoke] Sky/direct compatibility arithmetic (headless; ADR-0049)"
 echo "[smoke] Lighting shard clock framing and logout contract (offline; ADR-0048)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/SpeedMode/Shadows/ShardClockProbe.tscn || FAIL=1
 
-echo "[smoke] Realtime lights contract (synthetic; ADR-0039)"
+echo "[smoke] Shared light core contract (synthetic; ADR-0039, drawing path retired)"
 echo "[smoke] Lighting speed surface transport and default-off persistence (headless contract; ADR-0048)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" -- --lighting-speed-probe "--lighting-speed-out=$UO_BUILD_DIR/lighting-speed-probe" --no-focus || FAIL=1
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/Lights/RealtimeLightsProbe.tscn || FAIL=1

@@ -89,7 +89,7 @@ echo [smoke] Sky/direct compatibility arithmetic (headless; ADR-0049)
 echo [smoke] Lighting shard clock framing and logout contract (offline; ADR-0048)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/SpeedMode/Shadows/ShardClockProbe.tscn || set "FAIL=1"
 
-echo [smoke] Realtime lights contract (synthetic; ADR-0039)
+echo [smoke] Shared light core contract (synthetic; ADR-0039, drawing path retired)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/Lights/RealtimeLightsProbe.tscn || set "FAIL=1"
 echo [smoke] UO+ spell lighting contract (synthetic; no shard or install)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/Lights/SpellLightingProbe.tscn || set "FAIL=1"

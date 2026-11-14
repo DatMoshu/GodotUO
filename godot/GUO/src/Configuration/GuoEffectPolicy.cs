@@ -9,13 +9,13 @@ namespace GUO.Configuration;
 internal static class GuoEffectPolicy
 {
     /// <summary>
-    /// Spell-effect lights may be collected by whichever lighting path owns the frame:
-    /// the legacy CPU lights (RealtimeLights) or enhanced speed-mode lighting. The
-    /// stored RealtimeLights preference is not touched.
+    /// Spell-effect lights are collected only by enhanced speed-mode lighting; the old
+    /// CPU realtime lights (ADR-0039) are retired and their stored RealtimeLights
+    /// preference is ignored, never rewritten.
     /// </summary>
     internal static bool SpellLightsEligible(Profile profile) =>
         profile != null && UoPlusOptions.Enabled(profile, UoPlusFeature.SpellLights)
-        && (profile.RealtimeLights || SpeedModeDebug.Active);
+        && SpeedModeDebug.Active;
 
     /// <summary>
     /// Game-thread only. True when the last prepared enhanced frame actually produced

@@ -45,7 +45,7 @@ public partial class NativePhysicalWorldProbe
     {
         var shadows = Shadows; var lights = Lights;
         return new {
-            effectiveEnhanced = _scene.UseSpeedLights, effectiveRealtime = _scene.UseRealtimeLights,
+            effectiveEnhanced = _scene.UseSpeedLights,
             worldFramesDrawn = OrderedWorldCapture.FramesDrawn, worldFramesFallback = OrderedWorldCapture.FramesFallback,
             enhancedOfferCount = _scene.UseSpeedLights ? lights?.Count : null,
             selectedStructuralLamp = _scene.UseSpeedLights ? shadows?.StructuralLampOffer : null,
@@ -154,7 +154,7 @@ public partial class NativePhysicalWorldProbe
         _profile.LightingSpeedMode = enhanced; Mutated();
         for (int i = 0; i < PerfWarmup; i++) { draw(); await Painted(); }
         Require(FrozenState() == expected, "fixed native scene/camera/clock after mode warmup");
-        Require(!_scene.UseRealtimeLights && _scene.UseSpeedLights == enhanced, "requested lighting mode admitted");
+        Require(_scene.UseSpeedLights == enhanced, "requested lighting mode admitted");
         if (enhanced) Require(Shadows.StructuralSun?.Ready == true && Shadows.StructuralLamp?.Ready == true
             && Shadows.Shelter?.Ready == true && Lights.Count >= 1, "sun/lamp/shelter actually admitted before timing");
         object memoryBefore = await PerfMemory(), passesBefore = PerfPassCounters();

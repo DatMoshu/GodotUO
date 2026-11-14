@@ -222,14 +222,13 @@ public partial class GuoOptionsFlowProbe : Node
         {
             var lighting = Panel(world, p, GuoSection.Lighting);
             Box(lighting, "Lighting speed mode (GPU per-pixel lights)").IsChecked = true;
-            Box(lighting, "Classic realtime lights (CPU)").IsChecked = true;
             F<HSliderBar>(lighting, "_speedNightFloor").Value = 47;
             F<HSliderBar>(lighting, "_speedSoften").Value = 8;
             F<Combobox>(lighting, "_speedLampShadows").SelectedIndex = 3;
             F<Checkbox>(lighting, "_speedSunShadows").IsChecked = false;
             Check(lighting.ApplyChanges(save: false), "lighting panel applies");
             string before = LightingSnap(p);
-            Check(p.LightingSpeedMode && p.RealtimeLights && p.SpeedModeNightFloor == 47 && p.SpeedModeSoften == 8 && p.SpeedModeLampShadows == 3 && !p.SpeedModeSunShadows,
+            Check(p.LightingSpeedMode && p.SpeedModeNightFloor == 47 && p.SpeedModeSoften == 8 && p.SpeedModeLampShadows == 3 && !p.SpeedModeSunShadows,
                 "panel wrote lighting values: " + before);
             try { Invoke(options, "Apply"); }
             catch (Exception e) { Check(false, "OptionsGump.Apply threw (cannot test stale overwrite): " + e); return; }
@@ -270,7 +269,6 @@ public partial class GuoOptionsFlowProbe : Node
             var lighting = Panel(world, p, GuoSection.Lighting);
             Box(lighting, "Lighting speed mode (GPU per-pixel lights)").IsChecked = true;
             F<HSliderBar>(lighting, "_speedNightFloor").Value = 29;
-            Box(lighting, "Classic realtime lights (CPU)").IsChecked = true;
             lighting.ApplyChanges(save: false);
             string snap = LightingSnap(p);
             try { Invoke(options, "Apply"); }
@@ -307,7 +305,7 @@ public partial class GuoOptionsFlowProbe : Node
             var cp = Panel(world, q, which);
             switch (which)
             {
-                case GuoSection.Lighting: F<HSliderBar>(cp, "_speedNightFloor").Value = 5; Box(cp, "Classic realtime lights (CPU)").IsChecked = false; break;
+                case GuoSection.Lighting: F<HSliderBar>(cp, "_speedNightFloor").Value = 5; break;
                 case GuoSection.Weather: F<HSliderBar>(cp, "_speedHaze").Value = 5; F<Checkbox>(cp, "_speedWeather").IsChecked = true; break;
                 case GuoSection.World: F<Checkbox>(cp, "_overview").IsChecked = false; F<Combobox>(cp, "_touchUi").SelectedIndex = 2; break;
             }
@@ -325,7 +323,7 @@ public partial class GuoOptionsFlowProbe : Node
         SetCurrent(p, tmp);
         const string Speed = "Lighting speed mode (GPU per-pixel lights)", Real = "Classic realtime lights (CPU)", Fog = "Fog banks", WFog = "Weather fog";
         var l = Panel(world, p, GuoSection.Lighting);
-        Check(Has(l, Real) && Has(l, Speed) && !Has(l, Fog) && !Has(l, WFog), "Lighting: realtime+speed, no fog");
+        Check(!Has(l, Real) && Has(l, Speed) && !Has(l, Fog) && !Has(l, WFog), "Lighting: speed only (realtime retired), no fog");
         Check(F<Combobox>(l, "_water") == null && F<Checkbox>(l, "_overview") == null, "Lighting: no water/overview");
         Check(F<HSliderBar>(l, "_speedNightFloor") != null && F<HSliderBar>(l, "_cap") == null, "Lighting: night floor, no ambient cap");
         var w = Panel(world, p, GuoSection.Weather);
@@ -334,7 +332,7 @@ public partial class GuoOptionsFlowProbe : Node
         var o = Panel(world, p, GuoSection.World);
         Check(F<Combobox>(o, "_water") != null && F<Checkbox>(o, "_overview") != null && !Has(o, Fog) && !Has(o, Speed) && !Has(o, Real), "World: water+overview only");
         var a = Panel(world, p, GuoSection.All);
-        Check(Has(a, Speed) && Has(a, Real) && Has(a, Fog) && Has(a, WFog) && F<Combobox>(a, "_water") != null && F<Checkbox>(a, "_overview") != null, "All: everything");
+        Check(Has(a, Speed) && !Has(a, Real) && Has(a, Fog) && Has(a, WFog) && F<Combobox>(a, "_water") != null && F<Checkbox>(a, "_overview") != null, "All: everything");
         l.Dispose(); w.Dispose(); o.Dispose(); a.Dispose();
     }
 
@@ -443,7 +441,7 @@ public partial class GuoOptionsFlowProbe : Node
         SpeedModeDebug.Probe = false;
         Check(!SpellLighting.Enabled(p), "speed-only profile + speed mode inactive: spell lights off");
         p.RealtimeLights = true;
-        Check(SpellLighting.Enabled(p), "realtime-only: spell lights enabled");
+        Check(!SpellLighting.Enabled(p), "retired realtime preference does not enable spell lights");
     }
 
     private static object ModernRow(System.Collections.IList list, string page, string label)
@@ -561,7 +559,6 @@ public partial class GuoOptionsFlowProbe : Node
             {
                 case GuoSection.Lighting:
                     Box(panel, "Lighting speed mode (GPU per-pixel lights)").IsChecked = true;
-                    Box(panel, "Classic realtime lights (CPU)").IsChecked = true;
                     F<HSliderBar>(panel, "_speedNightFloor").Value = 43; F<HSliderBar>(panel, "_speedSoften").Value = 6;
                     F<Combobox>(panel, "_speedLampShadows").SelectedIndex = 2; F<Checkbox>(panel, "_speedSunShadows").IsChecked = false; break;
                 case GuoSection.Weather:

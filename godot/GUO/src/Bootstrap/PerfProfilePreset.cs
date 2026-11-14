@@ -53,7 +53,6 @@ internal static class PerfProfilePreset
                 UoPlusOptions.DisableAll(p);
                 p.LightingSpeedMode=name=="lighting-speed";
                 p.SpeedModeNightFloor=3; p.SpeedModeSoften=3;
-                p.RealtimeLights = false;
                 p.AmbientParticleDensity = 0;
                 p.WaterStyle = GUO.Renderer.Water.WaterRender.Classic;
                 p.HdFilter = HdFilterMode.Auto;
@@ -69,7 +68,7 @@ internal static class PerfProfilePreset
             case "defaults":
                 break;
             case "uoplus-max":
-                p.RealtimeLights = true;
+                p.LightingSpeedMode = true;
                 p.ShadowsEnabled = true;
                 p.ShadowsStatics = true;
                 p.AmbientParticleDensity = 100;
@@ -112,7 +111,7 @@ internal static class PerfProfilePreset
             }
         }
 
-        return $"lights {(p.LightingSpeedMode ? "speed" : p.RealtimeLights ? "realtime" : "classic")}, water {p.WaterStyle}, hd {p.HdFilter}, enhanced HD {p.EnhancedHD}, "
+        return $"lights {(p.LightingSpeedMode ? "speed" : "classic")}, water {p.WaterStyle}, hd {p.HdFilter}, enhanced HD {p.EnhancedHD}, "
                + $"shadows {(p.ShadowsEnabled ? "on" : "off")}, static shadows {p.ShadowsStatics}, terrain shadows {p.TerrainShadowsLevel}, "
                + $"animated water {p.AnimatedWaterEffect}, ambient density {p.AmbientParticleDensity}, particle cap {p.AmbientParticleCap}, "
                + $"uo+ [{(on.Count == 0 ? "none" : string.Join("; ", on))}]";

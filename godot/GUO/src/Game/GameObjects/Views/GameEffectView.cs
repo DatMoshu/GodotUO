@@ -248,7 +248,7 @@ namespace GUO.Game.GameObjects
             // including after MovingEffect replaces its entity Source with
             // coordinates. ADR-0048 reuses this offer; the classic source-based
             // offer is unchanged off.
-            if (data.IsLight && (Client.Game.GetScene<GameScene>().UseRealtimeLights || Client.Game.GetScene<GameScene>().UseSpeedLights))
+            if (data.IsLight && (Client.Game.GetScene<GameScene>().UseSpeedLights))
             {
                 Client.Game.GetScene<GameScene>().AddLight(this, this, posX + 22, posY + 22);
             }

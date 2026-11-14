@@ -457,7 +457,6 @@ public partial class CompetitionBenchProbe : Node
 
     private void CheckAdmission(string where)
     {
-        Require(!_gameScene.UseRealtimeLights, "realtime lights active (" + where + ")");
         Require(_gameScene.UseSpeedLights == _enhanced,
             (_enhanced ? "enhanced lighting requested but not admitted" : "classic lighting requested but enhanced active") + " (" + where + ")");
         Require(ProfileManager.CurrentProfile.DrawRoofs, "roofs not drawn (" + where + ")");
