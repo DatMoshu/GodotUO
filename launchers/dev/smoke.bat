@@ -69,7 +69,7 @@ echo [smoke] optional HD pack contracts (synthetic)
 echo [smoke] UO+ ambient particles contract (synthetic; ADR-0042)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/Particles/AmbientParticlesProbe.tscn || set "FAIL=1"
 echo [smoke] shared UO+ flags, densities and Touch UI persistence (synthetic; ADR-uoplus-settings, UX-03)
-"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Configuration/UoPlusProbe.tscn || set "FAIL=1"
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Configuration/UoPlusProbe.tscn -- --depth-world || set "FAIL=1"
 echo [smoke] GUO effect ownership: spell lights and classic shadow replacement (synthetic; task 1136)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Configuration/GuoEffectPolicyProbe.tscn -- --depth-world || set "FAIL=1"
 echo [smoke] GUO options category: no stale overwrites, section-scoped Apply/Defaults/Cancel, Classic+Modern entry (client data; task 1136)
@@ -92,7 +92,7 @@ echo [smoke] Lighting shard clock framing and logout contract (offline; ADR-0048
 echo [smoke] Shared light core contract (synthetic; ADR-0039, drawing path retired)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/Lights/RealtimeLightsProbe.tscn || set "FAIL=1"
 echo [smoke] UO+ spell lighting contract (synthetic; no shard or install)
-"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/Lights/SpellLightingProbe.tscn || set "FAIL=1"
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/Lights/SpellLightingProbe.tscn -- --depth-world || set "FAIL=1"
 echo [smoke] water render modes contract (synthetic; ADR-0037)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/Water/WaterProbe.tscn || set "FAIL=1"
 echo [smoke] server lab tables and server rows (synthetic; nothing fetched or started)

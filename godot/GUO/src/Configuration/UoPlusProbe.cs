@@ -89,7 +89,7 @@ public partial class UoPlusProbe : Node
                 "Defaults also clears flags unavailable in this build");
             RealtimeLightEffects.Add(100u, 1, 1, 0, 3, Colors.White, 1000);
             var lights = new RealtimeLightField.Source[64];
-            copy.RealtimeLights = true;
+            GUO.Renderer.SpeedMode.SpeedModeDebug.Probe = true; // spell lights need speed mode; smoke passes --depth-world
             UoPlusOptions.Set(copy, UoPlusFeature.SpellLights, true, 100);
             for (int i = 0; i < 32; i++) SpellLighting.Emit(copy, 100, Game.Data.GraphicEffectType.Moving, 0x36D4, 2, 2, 0);
             Check(RealtimeLightEffects.Count == 17, "full density preserves spell cap plus generic hook");

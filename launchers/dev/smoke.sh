@@ -62,7 +62,7 @@ echo "[smoke] optional HD pack contracts (synthetic)"
 echo "[smoke] UO+ ambient particles contract (synthetic; ADR-0042)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/Particles/AmbientParticlesProbe.tscn || FAIL=1
 echo "[smoke] shared UO+ flags, densities and Touch UI persistence (synthetic; ADR-uoplus-settings, UX-03)"
-"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Configuration/UoPlusProbe.tscn || FAIL=1
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Configuration/UoPlusProbe.tscn -- --depth-world || FAIL=1
 # Both probes exercise the Depth World options (speed mode); macOS defaults to canvas, so they ask for it.
 echo "[smoke] GUO effect ownership: spell lights and classic shadow replacement (synthetic; task 1136)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Configuration/GuoEffectPolicyProbe.tscn -- --depth-world || FAIL=1
@@ -85,7 +85,7 @@ echo "[smoke] Lighting speed surface transport and default-off persistence (head
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" -- --lighting-speed-probe "--lighting-speed-out=$UO_BUILD_DIR/lighting-speed-probe" --no-focus || FAIL=1
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/Lights/RealtimeLightsProbe.tscn || FAIL=1
 echo "[smoke] UO+ spell lighting contract (synthetic; no shard or install)"
-"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/Lights/SpellLightingProbe.tscn || FAIL=1
+"$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/Lights/SpellLightingProbe.tscn -- --depth-world || FAIL=1
 echo "[smoke] water render modes contract (synthetic; ADR-0037)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Render/Water/WaterProbe.tscn || FAIL=1
 echo "[smoke] perf lab report: fields kept, privacy refusal, size (synthetic; tools/perf_lab)"

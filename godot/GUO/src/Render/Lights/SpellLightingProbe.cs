@@ -39,7 +39,7 @@ public partial class SpellLightingProbe : Node
             p = JsonSerializer.Deserialize(JsonSerializer.Serialize(p, ProfileJsonContext.DefaultToUse.Profile), ProfileJsonContext.DefaultToUse.Profile);
             Require(p.SpellLighting && !SpellLighting.Enabled(p), "toggle persists; needs Realtime lights");
             Require(SpellLighting.Emit(p, 1000, GraphicEffectType.Moving, 0x36D4, 8, 8, 0) == 0, "parent off emits nothing");
-            p.RealtimeLights = true;
+            GUO.Renderer.SpeedMode.SpeedModeDebug.Probe = true; // spell lights need speed mode (ADR-0039 retired the CPU lights); smoke passes --depth-world
             UoPlusOptions.Set(p, UoPlusFeature.SpellLights, true, 100);
             p.SpellLighting = false;
             current.SetValue(null, p);
