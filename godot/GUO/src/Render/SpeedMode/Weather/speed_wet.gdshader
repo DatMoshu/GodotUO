@@ -2,6 +2,7 @@
 shader_type canvas_item;
 render_mode unshaded;
 #include "res://src/Render/SpeedMode/Weather/speed_reflection.gdshaderinc"
+#include "res://src/Render/SpeedMode/Weather/speed_weather_events.gdshaderinc"
 uniform sampler2D scene_color : hint_screen_texture, filter_nearest, repeat_disable;
 uniform sampler2D surface_buffer : filter_nearest, repeat_disable;
 uniform sampler2D shelter_status : filter_nearest, repeat_disable;
@@ -12,6 +13,8 @@ uniform vec2 surface_origin = vec2(0.0);
 uniform float wetness : hint_range(0.0, 1.0) = 0.0;
 uniform float rain_intensity : hint_range(0.0, 1.0) = 0.0;
 uniform float seconds = 0.0;
+// Same candidate-start retention as rain; wetness/intensity remain separate.
+uniform float splash_start_fraction : hint_range(0.0, 1.0) = 0.5;
 // Four-tap geometric reflection; gated by the mode's Reflections option.
 uniform bool reflections_enabled = false;
 uniform float reflection_art_scale = 1.0;
@@ -60,11 +63,13 @@ void fragment() {
 		color *= 1.0 - wetness * (0.18 + puddle * 0.08);
 		color += light * wetness * (0.015 + sheen * 0.055 + puddle * 0.075);
 		vec2 cell = floor(world * 2.0);
-		float phase = fract(seconds * 1.7 + wet_hash(cell));
+		float clock = seconds * 1.7 + weather_event_hash(cell, 0.0, 3u);
+		float phase = fract(clock);
 		vec2 local = fract(world * 2.0) - 0.5;
 		float radius = length(local * vec2(1.0, 1.4));
 		float ring = (1.0 - smoothstep(0.015, 0.045, abs(radius - phase * 0.55))) * (1.0 - phase);
-		color += vec3(0.12, 0.15, 0.17) * ring * puddle * rain_intensity;
+		float event_on = weather_event_hash(cell, floor(clock), 4u) < splash_start_fraction ? 1.0 : 0.0;
+		color += vec3(0.12, 0.15, 0.17) * ring * puddle * rain_intensity * event_on;
 		if (reflections_enabled && wetness > 0.3 && puddle > 0.0) {
 			vec4 reflection = speed_reflection(surface_buffer, scene_color, uv,
 				target_size, surface.xyz, surface_origin, reflection_art_scale, seconds);

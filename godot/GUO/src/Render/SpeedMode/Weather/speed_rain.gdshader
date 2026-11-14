@@ -1,6 +1,7 @@
 // GUO procedural rain, ADR-0048. One canvas pass, three data-only sheet regions.
 shader_type canvas_item;
 render_mode unshaded;
+#include "res://src/Render/SpeedMode/Weather/speed_weather_events.gdshaderinc"
 
 uniform sampler2D surface_buffer : filter_nearest, repeat_disable;
 uniform sampler2D shelter_status : filter_nearest, repeat_disable;
@@ -12,6 +13,9 @@ uniform vec2 surface_origin = vec2(0.0);
 uniform float seconds = 0.0;
 uniform float intensity : hint_range(0.0, 1.0) = 0.0;
 uniform float wind = 0.0;
+// Shared tuning: 0.6/0.5/0.4 retain 60/50/40% of candidate starts.
+// Independent of streak intensity, event cadence, lifetime and opacity.
+uniform float splash_start_fraction : hint_range(0.0, 1.0) = 0.5;
 // Probe isolation: bits 1 streaks, 2 splashes, 4 drips. Production uses all.
 uniform int component_mask = 7;
 
@@ -38,7 +42,8 @@ void fragment() {
 		if (shelter > 0.25) covered = shelter > 0.75;
 	}
 	float alpha = 0.0;
-	if (!covered && intensity > 0.0) {
+	// Uninitialized/unknown surface pixels must not become exposed receivers.
+	if (kind != 0 && !covered && intensity > 0.0) {
 		vec2 pixel = uv * target_size;
 		// Fixed real-time velocity. The grid is screen-space precipitation;
 		// density and sprite phase remain independent of frame cadence.
@@ -59,9 +64,12 @@ void fragment() {
 			// ADR-0048: restore absolute XY before any world-space lookup.
 			vec2 world_cells = (surface.xy + surface_origin) * 2.0;
 			vec2 cell = floor(world_cells);
-			float phase = fract(seconds * 2.0 + hash(cell));
+			float clock = seconds * 2.0 + weather_event_hash(cell, 0.0, 1u);
+			float phase = fract(clock);
+			float event_index = floor(clock);
 			vec2 splash_uv = (fract(world_cells) - 0.5) / max(phase, 0.05) + 0.5;
-			if (hash(cell + 23.0) < intensity && all(greaterThanEqual(splash_uv, vec2(0.0)))
+			if (weather_event_hash(cell, event_index, 2u) < intensity * splash_start_fraction
+				&& all(greaterThanEqual(splash_uv, vec2(0.0)))
 				&& all(lessThanEqual(splash_uv, vec2(1.0)))) {
 				alpha = max(alpha, sheet(splash_uv, 1.0) * (1.0 - phase) * 0.5);
 			}
