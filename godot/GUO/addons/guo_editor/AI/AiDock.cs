@@ -24,6 +24,9 @@ public partial class AiDock : EditorDock
     private AiQueueTab _queue;
     private AiSessionsTab _sessions;
     private AiServicesTab _services;
+    private AiSetupTab _setup;
+    private Button _setupButton;
+    private Window _setupWindow;
     private readonly Queue<(AgentSession Session, JsonNode Params, TaskCompletionSource<JsonNode> Result)> _asks = new();
     private AcceptDialog _dialog;
     private TaskCompletionSource<JsonNode> _dialogResult;
@@ -35,6 +38,7 @@ public partial class AiDock : EditorDock
     public AiQueueTab Queue => _queue;
     public AiSessionsTab Sessions => _sessions;
     public AiServicesTab Services => _services;
+    internal AiSetupTab Setup => _setup;
     internal AiHub Hub => _hub;
 
     /// <summary>The permission dialog on screen, or null (the smoke answers it).</summary>
@@ -62,6 +66,9 @@ public partial class AiDock : EditorDock
         var root = new VBoxContainer();
         root.SetAnchorsPreset(LayoutPreset.FullRect);
         AddChild(root);
+        _setupButton = new Button { Text = AiSetupTab.IsCompleted ? "AI setup…" : "Set up AI", Alignment = HorizontalAlignment.Left };
+        _setupButton.Pressed += () => ShowTab("Setup");
+        root.AddChild(_setupButton);
         _tabs = new TabContainer { SizeFlagsVertical = SizeFlags.ExpandFill, CustomMinimumSize = new Vector2(480, 220) };
         root.AddChild(_tabs);
         _chat = new AiChatTab(_hub);
@@ -74,7 +81,20 @@ public partial class AiDock : EditorDock
         _tabs.AddChild(_sessions);
         _services = new AiServicesTab(_hub);
         _tabs.AddChild(_services);
+        _setupWindow = new Window { Title = "AI setup", Size = new Vector2I(760, 640), MinSize = new Vector2I(580, 440), Transient = true, Exclusive = false };
+        AddChild(_setupWindow);
+        _setupWindow.Hide();
+        _setupWindow.CloseRequested += () => _setupWindow.Hide();
+        var margin = new MarginContainer();
+        margin.SetAnchorsPreset(LayoutPreset.FullRect);
+        foreach (string side in new[] { "left", "right", "top", "bottom" }) margin.AddThemeConstantOverride("margin_" + side, 16);
+        _setupWindow.AddChild(margin);
+        _setup = new AiSetupTab(this);
+        _setup.Completed += () => _setupButton.Text = "AI setup…";
+        margin.AddChild(_setup);
         _hub.Permission = AskPermission;
+        if (Array.Exists(OS.GetCmdlineUserArgs(), arg => arg == "--guo-ai-setup"))
+            Callable.From(() => ShowTab("Setup")).CallDeferred();
     }
 
     public override void _Process(double delta) => _hub.Drain();
@@ -84,6 +104,8 @@ public partial class AiDock : EditorDock
     {
         if (!AiFeatures.Enabled) return;
         MakeVisible();
+        if (name == "Setup") { _setupWindow.PopupCentered(); return; }
+        _setupWindow?.Hide();
         for (int i = 0; i < _tabs.GetTabCount(); i++)
         {
             if (_tabs.GetChild(i).Name == name)

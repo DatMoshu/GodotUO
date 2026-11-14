@@ -46,6 +46,8 @@ class Agent:
     def __init__(self, args: list[str]) -> None:
         self.silent = "--silent" in args
         self.no_session = "--no-session-new" in args
+        self.needs_auth = "--auth" in args
+        self.authenticated = not self.needs_auth
         self.cancelled = False
         self.backlog: list[dict] = []
         self.next_id = 1000
@@ -76,12 +78,17 @@ class Agent:
                 "protocolVersion": 1,
                 "agentCapabilities": {"loadSession": False, "promptCapabilities": {}},
                 "agentInfo": {"name": "fake-acp-agent", "title": "Fake ACP agent", "version": "0.1"},
-                "authMethods": []}})
+                "authMethods": [{"id": "oauth-personal", "name": "Synthetic Google sign-in"}] if self.needs_auth else []}})
         elif method == "session/new":
-            if self.no_session:
+            if self.no_session or not self.authenticated:
                 send({"jsonrpc": "2.0", "id": mid, "error": {"code": -32000, "message": "auth_required: sign in first"}})
             else:
                 send({"jsonrpc": "2.0", "id": mid, "result": {"sessionId": "fake-1"}})
+        elif method == "authenticate" and self.needs_auth:
+            print("Open https://accounts.google.com/o/oauth2/auth?state=synthetic-test", file=sys.stderr, flush=True)
+            time.sleep(0.1)  # Model a browser flow: stderr is consumed before authentication completes.
+            self.authenticated = True
+            send({"jsonrpc": "2.0", "id": mid, "result": {}})
         elif method == "session/prompt":
             self.prompt(mid, msg["params"])
         elif method == "session/cancel":

@@ -285,6 +285,31 @@ public partial class EditorSmoke
             }
 
             Ai.ShowTab("Agents");
+            bool hadSetupSetting = EditorInterface.Singleton.GetEditorSettings().HasSetting(AiSetupTab.CompletedSetting);
+            Variant oldSetupSetting = hadSetupSetting ? EditorInterface.Singleton.GetEditorSettings().GetSetting(AiSetupTab.CompletedSetting) : false;
+            EditorInterface.Singleton.GetEditorSettings().SetSetting(AiSetupTab.CompletedSetting, false);
+            Ai.Setup.Finish();
+            AiCheck("setup_cannot_finish_without_ready_session", !AiSetupTab.IsCompleted);
+            AiCheck("setup_commands_are_executable", AiSetupTab.LoginCommand(AgentCatalog.Codex) == "codex login"
+                && AiSetupTab.LoginCommand(AgentCatalog.ClaudeCode) == "claude auth login"
+                && AiSetupTab.LoginCommand(AgentCatalog.Antigravity) == "");
+            AiCheck("setup_excludes_api_auth_methods", AiSetupTab.SubscriptionMethod("chat-gpt")
+                && AiSetupTab.SubscriptionMethod("oauth-personal") && !AiSetupTab.SubscriptionMethod("api-key")
+                && !AiSetupTab.SubscriptionMethod("gemini-api-key") && !AiSetupTab.SubscriptionMethod("agent-platform")
+                && !AiSetupTab.SubscriptionMethod("vertex-ai") && !AiSetupTab.SubscriptionMethod("gateway"));
+            AiCheck("setup_google_signin_url_boundary", AgentSession.TrySignInPage("Open https://accounts.google.com/o/oauth2/auth?state=synthetic", out string loginUrl)
+                && loginUrl.StartsWith("https://accounts.google.com/")
+                && !AgentSession.TrySignInPage("https://accounts.google.com.attacker.invalid/", out _)
+                && !AgentSession.TrySignInPage("http://accounts.google.com/", out _)
+                && !AgentSession.TrySignInPage("https://attacker@accounts.google.com/", out _)
+                && !AgentSession.TrySignInPage("https://accounts.google.com:444/", out _));
+            string oldApiOverride = System.Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+            try
+            {
+                System.Environment.SetEnvironmentVariable("OPENAI_API_KEY", "synthetic-test-value");
+                AiCheck("setup_detects_api_override", AiSetupTab.HasBillingOverride(AgentCatalog.Codex));
+            }
+            finally { System.Environment.SetEnvironmentVariable("OPENAI_API_KEY", oldApiOverride); }
             string detection = Ai.Agents.DetectionText;
             AiCheck("detect_lists_presets", detection.Contains("OpenCode") && detection.Contains("Codex") && detection.Contains("Claude Code") && detection.Contains("Gemini CLI"), detection);
             _aiReport["detection"] = detection.Replace("\n", " | ");
@@ -293,11 +318,25 @@ public partial class EditorSmoke
                 AiCheck("detect_missing_shows_install", detection.Contains("npm i -g opencode-ai"), detection);
             }
 
-            bool up = await Ai.Agents.StartAsync(AgentCatalog.Custom, "Fake", python, new[] { fake });
+            bool up = await Ai.Agents.StartAsync(AgentCatalog.Codex, "Fake", python, new[] { fake });
             AiCheck("dock_agent_started", up && Ai.Hub.Sessions.Count == 1 && Ai.Hub.Sessions[0].Ready, Ai.Hub.Sessions.FirstOrDefault()?.Error);
             int fakePid = Ai.Hub.Sessions.FirstOrDefault()?.Client.ProcessId ?? 0;
+            if (!up)
+            {
+                EditorSettings setupSettings = EditorInterface.Singleton.GetEditorSettings();
+                if (hadSetupSetting) setupSettings.SetSetting(AiSetupTab.CompletedSetting, oldSetupSetting);
+                else setupSettings.Erase(AiSetupTab.CompletedSetting);
+            }
             if (up)
             {
+                int sessionsBefore = Ai.Hub.Sessions.Count;
+                // Reuse this synthetic ACP session: setup must not spawn a real provider or send a prompt.
+                AiCheck("setup_reuses_ready_session", await Ai.Setup.CheckAsync() && Ai.Hub.Sessions.Count == sessionsBefore);
+                Ai.Setup.Finish();
+                AiCheck("setup_finishes_only_when_ready", AiSetupTab.IsCompleted && Ai.Chat.Current?.Id == "agent:Fake");
+                EditorSettings setupSettings = EditorInterface.Singleton.GetEditorSettings();
+                if (hadSetupSetting) setupSettings.SetSetting(AiSetupTab.CompletedSetting, oldSetupSetting);
+                else setupSettings.Erase(AiSetupTab.CompletedSetting);
                 Task<string> turn = Ai.Agents.SendPromptAsync("permission via dock");
                 bool dialog = await Until(() => Ai.PermissionDialog != null, 10);
                 AiCheck("dock_permission_dialog", dialog);
