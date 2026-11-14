@@ -38,8 +38,7 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
   `clouds.json` beside your profile selects a cloud preset (soft billowing,
   thin haze or broken storm) or your own layers. Without the file the clouds
   are as before; an invalid file is ignored with a warning.
-- Optional weather impacts start from stable event seeds, so rain and wet
-  effects no longer restart in bursts.
+- Optional weather impacts start less often and from stable event seeds.
 
 ### Water
 - Opt-in Labs water rain can disturb the styled-water wave field, driven by
