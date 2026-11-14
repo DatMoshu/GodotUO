@@ -444,7 +444,7 @@ internal static partial class PerfProbe
                     command_sent=false, expected_map=ExpectMap };
             // PORT DEVIATION (GUO): ADR-0048; untimed live off/on/off lifetime proof.
             if(_profilePreset=="lighting-speed" && scene.Name=="britain-bank")
-                sceneResult["speed_off_proof"]=await LightingSpeedProbe.CheckLiveOff(host,outDir,label);
+                sceneResult["speed_off_proof"]=await LightingSpeedProbe.CheckLiveOff(host,outDir,label,PerfFixture.Quiet);
             results.Add(sceneResult);
 
             // With --perf-parity, the same spot again with the path under test
