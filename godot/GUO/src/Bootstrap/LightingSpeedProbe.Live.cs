@@ -12,7 +12,7 @@ namespace GUO.Host;
 
 public partial class LightingSpeedProbe
 {
-    internal static async Task<Dictionary<string,object>> CheckLiveOff(Node host,string output,string label)
+    internal static async Task<Dictionary<string,object>> CheckLiveOff(Node host,string output,string label,bool strictCounts=true)
     {
         var profile=ProfileManager.CurrentProfile;
         bool previous=profile.LightingSpeedMode;
@@ -57,7 +57,9 @@ public partial class LightingSpeedProbe
                 ["off_counts"]=new[] {counts.TextureSwitches,counts.Items,counts.Commands},["off_binding_cleared"]=cleared,
                 ["draw_calls_equal"]=sameDraws,["off_draw_calls"]=new[] {draws,afterDraws} };
             GD.Print($"[lighting-speed-live] off-diff={diff} counts-equal={sameCounts} binding-cleared={cleared} draw-calls={draws}/{afterDraws}");
-            if(diff!=0 || !sameCounts || !sameDraws || !cleared) throw new InvalidOperationException("Live speed off parity failed; inspect the saved frames.");
+            // Counts are an invariant only when nothing moves: a live shard's mobiles change them between frames.
+            result["counts_checked"]=strictCounts;
+            if(diff!=0 || !cleared || (strictCounts && (!sameCounts || !sameDraws))) throw new InvalidOperationException("Live speed off parity failed; inspect the saved frames.");
             // Client-only existing light-level option; no shard packet or world edit.
             profile.LightingSpeedMode=true; profile.UseCustomLightLevel=true; profile.LightLevel=30; profile.LightLevelType=0;
             await DrawnFrames(4);

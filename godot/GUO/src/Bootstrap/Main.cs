@@ -873,7 +873,17 @@ public partial class Main : Node
     /// <summary>Frame time in the five fixed scenes, then quit; see PerfProbe.</summary>
     private async void PerfProbeThenQuit()
     {
-        await PerfProbe.Run(this, _options.PerfOut, _options.PerfLabel, _options.PerfZoom, _options.PerfParity, _options.PerfProfile, _options.PerfStaticWorld, _options.PerfQuiet);
+        // A probe that throws must still end the process: the runner otherwise waits out its timeout.
+        try
+        {
+            await PerfProbe.Run(this, _options.PerfOut, _options.PerfLabel, _options.PerfZoom, _options.PerfParity, _options.PerfProfile, _options.PerfStaticWorld, _options.PerfQuiet);
+        }
+        catch (System.Exception e)
+        {
+            GD.PushError("[GUO] perf probe failed: " + e);
+            Quit(1);
+            return;
+        }
         Quit(PerfProbe.Passed ? 0 : 1);
     }
 
