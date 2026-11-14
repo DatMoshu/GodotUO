@@ -5,6 +5,8 @@ detail lives in the commit history and the ADRs under `docs/architecture/`.
 
 ## Unreleased
 
+## 0.1.0 (2026-11-14)
+
 ### macOS
 - The `.sh` launchers run on Apple Silicon Macs: the bootstrap fetches the
   macOS .NET engine and the launchers find its binary inside the app bundle.
