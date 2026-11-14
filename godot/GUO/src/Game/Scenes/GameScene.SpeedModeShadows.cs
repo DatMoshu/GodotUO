@@ -21,6 +21,8 @@ namespace GUO.Game.Scenes;
 internal partial class GameScene
 {
     private SpeedShadowInputs _speedShadows;
+    private sealed class SpeedWindowCandidates { internal int Version=-1; internal readonly List<GameObject> Objects=new(); }
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<GUO.Game.Map.Chunk,SpeedWindowCandidates> _speedWindowCandidates=new();
     private ulong _shadowGridHash;
     private static long _physicalWorldIdentityCounter;
     private readonly ulong _physicalWorldIdentity=(ulong)System.Threading.Interlocked.Increment(ref _physicalWorldIdentityCounter);
@@ -104,17 +106,27 @@ internal partial class GameScene
             inputs.PhysicalLamp=PhysicalLampProjection.Create(inputs.PhysicalWorld,inputs.Lamps[selected[0]],
                 new N2(frame.Origin.X,frame.Origin.Y),selected[0]);
         }
-        foreach(var chunk in _visibleChunks) {
+        // Window light. The objects that can be windows change only when a chunk's contents do
+        // (Chunk.ObjectsVersion), so each chunk keeps its short list in tile order and the frame
+        // walks that instead of every object on every visible tile. What changes per frame (roof
+        // cut-away, visibility, the view) is still checked per frame.
+        if(windows) foreach(var chunk in _visibleChunks) {
             if(chunk==null || chunk.IsDestroyed) continue;
-            for(int y=0;y<8;y++) for(int x=0;x<8;x++) for(var obj=chunk.Tiles[x,y];obj!=null;obj=obj.TNext) {
+            var cached=_speedWindowCandidates.GetOrCreateValue(chunk);
+            if(cached.Version!=chunk.ObjectsVersion) {
+                cached.Objects.Clear();
+                for(int y=0;y<8;y++) for(int x=0;x<8;x++) for(var obj=chunk.Tiles[x,y];obj!=null;obj=obj.TNext) {
+                    // Mobile silhouettes come from the completed native draw below.
+                    if(obj is Mobile) continue;
+                    if(obj is not (Static or Multi or Item) || obj.Graphic>=tiles.Length) continue;
+                    if(WindowLightTable.BuiltIn.ContainsKey(obj.Graphic)) cached.Objects.Add(obj);
+                }
+                cached.Version=chunk.ObjectsVersion;
+            }
+            foreach(var obj in cached.Objects) {
                 if(!obj.AllowedToDraw || obj.Z>=_maxZ) continue;
-                // Mobile silhouettes come from the completed native draw below.
-                if(obj is Mobile) continue;
-                if(obj is not (Static or Multi or Item) || obj.Graphic>=tiles.Length) continue;
-                ref var td=ref tiles[obj.Graphic];
-                if(windows && WindowLightTable.BuiltIn.TryGetValue(obj.Graphic,out var opening))
+                if(WindowLightTable.BuiltIn.TryGetValue(obj.Graphic,out var opening))
                     CollectSpeedWindow(inputs,opening,obj,ray,view);
-
             }
         }
         long t3=System.Diagnostics.Stopwatch.GetTimestamp(); SpeedLightFrame.ShadowWindowTicks+=t3-t2;
