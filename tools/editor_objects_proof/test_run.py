@@ -40,7 +40,7 @@ class ProofOutTests(unittest.TestCase):
 
     def test_refuses_outside_build(self) -> None:
         for out in (self.root, self.root / "repo", self.root / "repo" / "tools", self.root / "elsewhere"):
-            with self.subTest(out=out):
+            with self.subTest(out=str(out)):
                 self.refused(run.proof_out, out, "x")
 
     def test_refuses_build_itself(self) -> None:
