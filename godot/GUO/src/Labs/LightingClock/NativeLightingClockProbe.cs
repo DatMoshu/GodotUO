@@ -132,6 +132,55 @@ public partial class NativeLightingClockProbe : Node
     private static double Cos(double ax, double ay, double bx, double by) => (ax * bx + ay * by) / (Math.Sqrt(ax * ax + ay * ay) * Math.Sqrt(bx * bx + by * by) + 1e-12);
     private static (N2 dir, double len) Proj(int h) { var r = SunShadowProjection.FromShardMinute(h * 60); return (Screen(r.Direction), r.Length); }
 
+    private async Task CaptureLightingStudy()
+    {
+        var world = _game.UO.World;
+        bool enabled = LightingStudy.LightingStudy.Enabled;
+        try {
+            _profile.DrawRoofs = true;
+            _profile.SpeedModeWindowLight = true;
+            _profile.SpeedModeLampShadows = 4;
+            _profile.LocalLightingTestTime = true;
+            foreach (var (name, x, y, hour) in new[] {
+                ("britain-night", 1602, 1591, 22), ("britain-noon", 1602, 1591, 12),
+                ("yew-noon", 633, 858, 12), ("minoc-noon", 2500, 560, 12)
+            }) {
+                _game.SetProcess(true);
+                world.Player.SetInWorldTile((ushort)x, (ushort)y, 0);
+                Mutated();
+                world.Map.GetMapZ(x, y, out sbyte ground, out _);
+                world.Player.SetInWorldTile((ushort)x, (ushort)y, ground);
+                LightingTestClock.Seek(_profile, hour * 60);
+                LightingStudy.LightingStudy.Enabled = false;
+                // Let the native static fade and camera settle after teleporting.
+                await ToSignal(GetTree().CreateTimer(0.75), SceneTreeTimer.SignalName.Timeout);
+                _game.SetProcess(false);
+                var baseline = await Shot(name + "-before", true);
+                LightingStudy.LightingStudy.Enabled = true;
+                var study = await Shot(name + "-study", true);
+                LightingStudy.LightingStudy.Enabled = false;
+                var restored = await Shot(name + "-restored", true);
+                int brighter = 0, darker = 0;
+                for (int i = 0; i < baseline.Rgba.Length; i += 4) {
+                    double change = Lum(study.Rgba, i) - Lum(baseline.Rgba, i);
+                    if (change >= 9) brighter++;
+                    if (change <= -9) darker++;
+                }
+                bool restoredExactly = baseline.Rgba.AsSpan().SequenceEqual(restored.Rgba);
+                _rows.Add(new { test = name, x, y, ground, hour, brighter, darker, restoredExactly });
+                Check(restoredExactly, name + " restores the baseline");
+                Check(hour == 22 ? brighter > 10000 : darker > 1000, name + " shows the expected change");
+            }
+            _profile.LightingSpeedMode = false;
+            var classic = await Shot("classic-before", true);
+            LightingStudy.LightingStudy.Enabled = true;
+            var classicStudy = await Shot("classic-study", true);
+            Check(classic.Rgba.AsSpan().SequenceEqual(classicStudy.Rgba), "Classic is byte-exact with study enabled");
+        } finally {
+            LightingStudy.LightingStudy.Enabled = enabled;
+        }
+    }
+
     public override async void _Ready()
     {
         try {
@@ -159,6 +208,16 @@ public partial class NativeLightingClockProbe : Node
             world.Player.SetInWorldTile(X, Y, 20); world.ShardClock.Set(12, 0, 0, Time.Ticks);
             _scene = new GameScene(world); _game.SetScene(_scene); _game.SetWindowSize(1280, 720); _scene.Camera.Zoom = 1;
             for (int i = 0; i < 12; i++) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            if (System.Environment.GetEnvironmentVariable("GUO_LIGHTING_STUDY_CAPTURE") == "1") {
+                _draw = _game.GetType().GetMethod("DrawFrame", Private);
+                await CaptureLightingStudy();
+                Check(!NetClient.Socket.IsConnected, "never connected");
+                Save();
+                if (_failures.Count != 0) throw new InvalidOperationException(string.Join("; ", _failures));
+                GD.Print("[native-lighting-study] PASS");
+                GetTree().Quit(0);
+                return;
+            }
             world.Map.GetMapZ(X, Y, out sbyte ground, out _); _z = ground + 1;
             world.Player.SetInWorldTile(X, Y, (sbyte)_z);
             for (int y = -6; y <= 6; y++) for (int x = -6; x <= 6; x++) Place(0x0495, X + x, Y + y, _z);

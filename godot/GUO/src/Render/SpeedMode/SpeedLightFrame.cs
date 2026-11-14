@@ -23,6 +23,9 @@ internal sealed class SpeedLightFrame
     internal float RoofShare;
     // Once-resolved artistic shadow strength; it is not solar irradiance.
     internal float SunShadowStrength;
+#if GUO_LABS
+    internal Vector4 LightingStudy;
+#endif
 #if DEBUG
     internal int AmbientProbeTerm;
 #endif
