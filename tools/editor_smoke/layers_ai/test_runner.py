@@ -100,9 +100,9 @@ class RunnerLayout(unittest.TestCase):
                 project = Path(command[2]).parent
                 scratch = project.parent.parent
                 world = project.joinpath(*segments).resolve()
-                self.assertTrue(world.is_relative_to(scratch))
-                self.assertFalse(world.is_relative_to(base / 'build'))
-                self.assertEqual(world, scratch / 'build/editor_world')
+                self.assertTrue(world.is_relative_to(scratch.resolve()))
+                self.assertFalse(world.is_relative_to((base / 'build').resolve()))
+                self.assertEqual(world, (scratch / 'build/editor_world').resolve())
                 self.assertEqual(Path(options['cwd']), project)
                 self.assertEqual(Path(options['env']['UO_BUILD_DIR']), scratch / 'build')
                 self.assertEqual(Path(options['env']['UO_WORKSPACE_DIR']), scratch / 'workspace')
