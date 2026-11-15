@@ -344,6 +344,7 @@ namespace GUO.Renderer
             arrays[(int)Mesh.ArrayType.Color] = colors;
             arrays[(int)Mesh.ArrayType.TexUV] = uvs;
             mesh.ClearSurfaces();
+            GUO.Renderer.MeshRevisions.Bump(mesh.GetRid()); // retained canvas: contents changed under the same RID
             mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
         }
 
@@ -383,6 +384,7 @@ namespace GUO.Renderer
 
             System.Buffer.BlockCopy(moved, 0, _moveBytes, 0, _moveBytes.Length);
             RenderingServer.MeshSurfaceUpdateVertexRegion(mesh.GetRid(), 0, 0, _moveBytes);
+            GUO.Renderer.MeshRevisions.Bump(mesh.GetRid()); // retained canvas: contents changed in place
         }
 
         /// <summary>

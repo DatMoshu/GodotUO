@@ -301,6 +301,7 @@ internal sealed class PersistentLand : IDisposable
         int attributeLength = checked(vertices * _attributeStride);
         _mesh.SurfaceUpdateVertexRegion(0, positionStart, _positions.AsSpan(positionStart, positionLength));
         _mesh.SurfaceUpdateAttributeRegion(0, attributeStart, _attributes.AsSpan(attributeStart, attributeLength));
+        GUO.Renderer.MeshRevisions.Bump(_mesh.GetRid()); // retained canvas: contents changed in place
         ++DirtySlots;
         DirtySprites += layer.VisibleSpriteCount;
         PositionBytes += positionLength; AttributeBytes += attributeLength;
@@ -358,6 +359,7 @@ internal sealed class PersistentLand : IDisposable
         {
             int bytes = checked(touched * _indexStride);
             RS.MeshSurfaceUpdateIndexRegion(_mesh.GetRid(), 0, 0, _indices.AsSpan(0, bytes));
+            GUO.Renderer.MeshRevisions.Bump(_mesh.GetRid()); // retained canvas: contents changed in place
             IndexBytes += bytes;
         }
         _previousIndexCount = activeCount;

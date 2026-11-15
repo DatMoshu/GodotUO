@@ -454,6 +454,7 @@ namespace GUO.Renderer
 
                 ArrayMesh mesh = _runMeshes[run];
                 mesh.ClearSurfaces();
+                GUO.Renderer.MeshRevisions.Bump(mesh.GetRid()); // retained canvas: contents changed under the same RID
 
                 // Disposed here, not by the finalizer thread: AddSurfaceFromArrays
                 // copies the data, and a Godot Array left to the GC is freed by
@@ -499,6 +500,7 @@ namespace GUO.Renderer
             WriteTriangles(index, 0);
 
             mesh.ClearSurfaces();
+            GUO.Renderer.MeshRevisions.Bump(mesh.GetRid()); // retained canvas: contents changed under the same RID
 
             using var arrays = new Godot.Collections.Array();
             arrays.Resize((int)Mesh.ArrayType.Max);
