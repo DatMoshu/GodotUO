@@ -141,7 +141,7 @@ public partial class BatcherProbe
                             arrays[(int)Mesh.ArrayType.Index] = new[] { 0, 1, 2, 1, 3, 2 };
                             mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
                         }
-                        // Pooled builders stamp a rebuild; an unstamped mesh is always resubmitted.
+                        // Pooled builders stamp a rebuild so retained canvas resubmits it.
                         MeshRevisions.Bump(mesh.GetRid());
                     }
                     long submitted = RetainedCanvasCommands.Submitted;

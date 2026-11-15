@@ -25,7 +25,7 @@ internal sealed class RetainedCanvasCommands
         internal readonly Color Modulate;
         internal readonly Transform2D Transform;
         // A mesh's contents can change under the same RID (pooled meshes are rebuilt in
-        // place); only a builder that stamps MeshRevisions makes it comparable. -1 never matches.
+        // place); pooled builders stamp MeshRevisions so a rebuild is resubmitted.
         internal readonly int MeshRevision;
 
         internal Command(Kind type, Rid texture, Rid mesh, Rect2 destination,
@@ -38,7 +38,7 @@ internal sealed class RetainedCanvasCommands
         }
 
         internal bool Same(in Command other) => Type == other.Type && Texture == other.Texture
-            && Mesh == other.Mesh && MeshRevision >= 0 && MeshRevision == other.MeshRevision
+            && Mesh == other.Mesh && MeshRevision == other.MeshRevision
             && Exact(Modulate.R, other.Modulate.R)
             && Exact(Modulate.G, other.Modulate.G) && Exact(Modulate.B, other.Modulate.B)
             && Exact(Modulate.A, other.Modulate.A)
