@@ -439,6 +439,24 @@ class AdapterTests(unittest.TestCase):
             p.write_bytes(data+b'unexpected')
             with self.assertRaises(ValueError): zomboid.tile_definitions(p)
 
+    def test_zomboid_properties_find_both_install_layouts(self):
+        from layout_import import zomboid
+        import struct
+        def ints(*n): return struct.pack('<'+'i'*len(n),*n)
+        data=b'tdef'+ints(1,1)+b'neutral\nneutral.png\n'+ints(1,1,1,1,1)+b'WallN\n\n'
+        # Older installs keep the .tiles files in media/, current ones in media/tile_definitions/.
+        for sub in ('media','media/tile_definitions'):
+            with tempfile.TemporaryDirectory() as root:
+                folder=Path(root)/sub;folder.mkdir(parents=True)
+                (folder/'newtiledefinitions.tiles').write_bytes(data)
+                tiles,sources=zomboid.properties(root)
+                self.assertEqual(tiles['neutral_0']['properties'],{'WallN':''})
+                self.assertEqual([s['file'] for s in sources],['newtiledefinitions.tiles'])
+        # No definitions at all is an error, not an empty table.
+        with tempfile.TemporaryDirectory() as root:
+            (Path(root)/'media').mkdir()
+            with self.assertRaises(ValueError): zomboid.properties(root)
+
     def test_zomboid_edge_kind_reads_both_window_spellings(self):
         from layout_import.zomboid import edge_kind
         # A wall with a window opening (`Window*`) and the window set in it (`window*`).
