@@ -230,6 +230,22 @@ def stair_links(decoded, metadata, owned=None):
     return links
 
 
+def edge_kind(props, axis):
+    """What a tile puts on its cell's north ('N') or west ('W') edge.
+
+    Returns 'door', 'window', 'wall' or None. A wall with a window opening
+    carries `WindowN`/`WindowW`; the window object set in it carries
+    `windowN`/`windowW`. Both mark a window edge (ADR-0053).
+    """
+    if any(k in props for k in (f'DoorWall{axis}',f'door{axis}')):
+        return 'door'
+    if any(k in props for k in (f'Window{axis}',f'window{axis}')):
+        return 'window'
+    if any(k in props for k in (f'Wall{axis}','WallNW',f'collide{axis}')):
+        return 'wall'
+    return None
+
+
 def resolve(install, map_name, header_name, building_id, name):
     folder = Path(install)/'media'/'maps'/map_name
     if Path(header_name).name != header_name:
@@ -288,11 +304,10 @@ def resolve(install, map_name, header_name, building_id, name):
                 for dx in (0,1):
                     for dy in (0,1):
                         cells[(x+dx,y+dy)]['source_tiles'].append({'id':tile,'properties':props})
-                for axis, keys in [('N',('WallN','WallNW','collideN','DoorWallN','doorN','windowN')),
-                                   ('W',('WallW','WallNW','collideW','DoorWallW','doorW','windowW'))]:
-                    if not any(k in props for k in keys):
+                for axis in ('N','W'):
+                    kind = edge_kind(props,axis)
+                    if kind is None:
                         continue
-                    kind = 'door' if any(k in props for k in (f'DoorWall{axis}',f'door{axis}')) else 'window' if f'window{axis}' in props else 'wall'
                     for offset in range(3):
                         pos=(x+offset,y) if axis=='N' else (x,y+offset)
                         if pos not in cells:
@@ -319,7 +334,7 @@ def resolve(install, map_name, header_name, building_id, name):
                             c=cells[(x+dx,y+dy)]
                             if c['indoors'] and c['role']=='floor':
                                 c.update(furniture=group,furnishing_role=role)
-                elif 'solidfloor' not in props and not any(k.startswith('stairs') for k in props) and not any(k in props for k in ('WallN','WallW','WallNW','collideN','collideW','doorN','doorW','windowN','windowW')):
+                elif 'solidfloor' not in props and not any(k.startswith('stairs') for k in props) and edge_kind(props,'N') is None and edge_kind(props,'W') is None:
                     pending['unmapped-detail-tile']+=1
         for c in cells.values():
             if z>0 and c['indoors'] and c['role']=='floor' and not any('solidfloor' in t['properties'] for t in c['source_tiles']):

@@ -59,5 +59,6 @@ it is taken even if its file has not landed yet.
 | 0049 | Physical structure and native receivers for enhanced lighting | work/guo-lighting-next-20261031 (Britain implementation authorized 2026-10-31) |
 | 0050 | Legacy Comfy generation export containment | work/release-review-20261112 (release qualification; validation pending) |
 | 0051 | Retire legacy runtime voice synthesis | work/release-review-20261112 (release qualification; validation pending) |
+| 0053 | [Read both window spellings on Project Zomboid wall edges](ADR-0053-zomboid-window-edge-vocabulary.md) | Accepted for local implementation, 2026-11-15 (tool correction) |
 
-Next free: 0052.
+Next free: 0054 (0052 is reserved for the source-object furnishing proposal).
