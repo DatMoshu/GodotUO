@@ -408,12 +408,13 @@ internal static partial class PerfProbe
             && GUO.Game.Managers.UIManager.GetGump<GUO.Game.UI.Gumps.MiniMapGump>() == null)
             GUO.Game.Managers.UIManager.Add(new GUO.Game.UI.Gumps.MiniMapGump(world));
 
-        Scene[] scenes = Only.Count == 0 ? Scenes.Where(s => s.Go != null).ToArray() : System.Array.FindAll(Scenes, s => Only.Contains(s.Name));
+        Scene[] table = CustomScenes(System.Environment.GetEnvironmentVariable("GUO_PERF_SCENES")) ?? Scenes;
+        Scene[] scenes = Only.Count == 0 ? table.Where(s => s.Go != null).ToArray() : System.Array.FindAll(table, s => Only.Contains(s.Name));
         // A misspelt --perf-scene measured nothing and still passed (review M6).
-        List<string> unknown = Only.Where(n => !Scenes.Any(s => s.Name == n)).ToList();
+        List<string> unknown = Only.Where(n => !table.Any(s => s.Name == n)).ToList();
         if (unknown.Count > 0)
         {
-            GD.PrintErr($"[GUO] perf probe: no scene named {string.Join(", ", unknown)}; the scenes are {string.Join(", ", Scenes.Select(s => s.Name))}");
+            GD.PrintErr($"[GUO] perf probe: no scene named {string.Join(", ", unknown)}; the scenes are {string.Join(", ", table.Select(s => s.Name))}");
         }
 
         bool arrivedEverywhere = true;
@@ -502,6 +503,29 @@ internal static partial class PerfProbe
         inGame && hasPlayer && worldScene && map == expectedMap;
 
     /// <summary>The player stands at the scene's [go target: x, y, z and map, by LoginPreflight.ArrivedAt.</summary>
+    /// <summary>
+    /// GUO_PERF_SCENES (diagnostic, for recordings such as a lighting tour):
+    /// "name=[go x y z;name2=[go x y z" replaces the built-in places. Each place
+    /// is measured standing, then as name-walk running from the same spot,
+    /// turning where blocked. Null when unset; a malformed entry fails the run.
+    /// </summary>
+    private static Scene[] CustomScenes(string spec)
+    {
+        if (string.IsNullOrWhiteSpace(spec)) return null;
+        var list = new List<Scene>();
+        foreach (string entry in spec.Split(';', System.StringSplitOptions.RemoveEmptyEntries | System.StringSplitOptions.TrimEntries))
+        {
+            int eq = entry.IndexOf('=');
+            string name = eq > 0 ? entry[..eq].Trim() : "";
+            string go = eq > 0 ? entry[(eq + 1)..].Trim() : "";
+            if (name.Length == 0 || !go.StartsWith("[go ", System.StringComparison.Ordinal))
+                throw new System.ArgumentException($"GUO_PERF_SCENES entry '{entry}' is not name=[go x y z.");
+            list.Add(new Scene(name, go, $"custom place ({go})"));
+            list.Add(new Scene(name + "-walk", go, $"custom place ({go}), running and turning where blocked", Walks: true));
+        }
+        return list.ToArray();
+    }
+
     private static bool Arrived(World world, Scene scene, out string where)
     {
         var player = world.Player;

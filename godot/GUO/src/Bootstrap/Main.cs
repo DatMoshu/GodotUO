@@ -886,6 +886,8 @@ public partial class Main : Node
         // A probe that throws must still end the process: the runner otherwise waits out its timeout.
         try
         {
+            // --shard-command lines (a light level for a recording, say) are typed first, as other probes do.
+            await Preamble();
             await PerfProbe.Run(this, _options.PerfOut, _options.PerfLabel, _options.PerfZoom, _options.PerfParity, _options.PerfProfile, _options.PerfStaticWorld, _options.PerfQuiet);
         }
         catch (System.Exception e)
