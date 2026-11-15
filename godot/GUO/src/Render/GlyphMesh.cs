@@ -89,6 +89,7 @@ internal sealed class GlyphMesh
         // The sprite shaders take CUSTOM0 on a mesh; zeros, as a rect has none.
         var custom = new float[n * 4];
         run.Mesh.ClearSurfaces();
+        GUO.Renderer.MeshRevisions.Bump(run.Mesh.GetRid()); // retained canvas: contents changed under the same RID
         using var arrays = new Godot.Collections.Array();
         arrays.Resize((int)Mesh.ArrayType.Max);
         arrays[(int)Mesh.ArrayType.Vertex] = points;

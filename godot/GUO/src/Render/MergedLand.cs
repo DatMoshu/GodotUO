@@ -208,6 +208,7 @@ namespace GUO.Renderer
 
                 ArrayMesh mesh = _meshes[s];
                 mesh.ClearSurfaces();
+                GUO.Renderer.MeshRevisions.Bump(mesh.GetRid()); // retained canvas: contents changed under the same RID
                 using var arrays = new Godot.Collections.Array();
                 arrays.Resize((int)Mesh.ArrayType.Max);
                 arrays[(int)Mesh.ArrayType.Vertex] = points;
@@ -273,6 +274,7 @@ namespace GUO.Renderer
 
             ArrayMesh mesh = _meshes[0];
             mesh.ClearSurfaces();
+            GUO.Renderer.MeshRevisions.Bump(mesh.GetRid()); // retained canvas: contents changed under the same RID
             using var arrays = new Godot.Collections.Array();
             arrays.Resize((int)Mesh.ArrayType.Max);
             arrays[(int)Mesh.ArrayType.Vertex] = points;

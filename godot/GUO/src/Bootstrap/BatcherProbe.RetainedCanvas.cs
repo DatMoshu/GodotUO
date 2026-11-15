@@ -141,6 +141,8 @@ public partial class BatcherProbe
                             arrays[(int)Mesh.ArrayType.Index] = new[] { 0, 1, 2, 1, 3, 2 };
                             mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
                         }
+                        // Pooled builders stamp a rebuild; an unstamped mesh is always resubmitted.
+                        MeshRevisions.Bump(mesh.GetRid());
                     }
                     long submitted = RetainedCanvasCommands.Submitted;
                     batcher.BeginFrame(); batcher.Begin();
@@ -154,9 +156,12 @@ public partial class BatcherProbe
                     {
                         CheckThat($"retained native mesh mutation {step}", reference[step].AsSpan().SequenceEqual(actual),
                             "same RID surface/bounds/color changes, empty surface and disposed/replaced resource");
-                        if (step is 1 or 2 or 3 or 4)
-                            CheckThat("retained mesh update needs no command resubmission", mesh.GetRid() == original
-                                && RetainedCanvasCommands.Submitted == submitted, "native command references live mesh");
+                        if (step == 1)
+                            CheckThat("unchanged retained mesh needs no command resubmission", mesh.GetRid() == original
+                                && RetainedCanvasCommands.Submitted == submitted, "same RID, same revision");
+                        if (step is 2 or 3 or 4)
+                            CheckThat("rebuilt retained mesh is resubmitted", mesh.GetRid() == original
+                                && RetainedCanvasCommands.Submitted > submitted, "same RID, new revision (MeshRevisions)");
                     }
                 }
             }
