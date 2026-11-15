@@ -92,7 +92,9 @@ bad references and missing tile metadata fail. Supported maps have 8×8 chunks
 and 256×256 cells; older 10×10 chunk maps are not supported.
 
 An explicit 2:1 grid adaptation converts walls between tiles into shared cell
-geometry, with one native opening per door/window edge. Authored room masks,
+geometry, with one native opening per door/window edge. A window edge is a wall
+piece with a window opening (`WindowN`/`WindowW`) or the window object set in it
+(`windowN`/`windowW`); see ADR-0053. Authored room masks,
 names, functional zones, source properties and coordinates survive. Connected
 multipart furniture shares semantic groups. A flat UO roof over the authored
 footprint is a recorded adaptation. Detail tiles without functional mappings

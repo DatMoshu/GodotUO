@@ -439,6 +439,27 @@ class AdapterTests(unittest.TestCase):
             p.write_bytes(data+b'unexpected')
             with self.assertRaises(ValueError): zomboid.tile_definitions(p)
 
+    def test_zomboid_edge_kind_reads_both_window_spellings(self):
+        from layout_import.zomboid import edge_kind
+        # A wall with a window opening (`Window*`) and the window set in it (`window*`).
+        self.assertEqual(edge_kind({'WindowN':''},'N'),'window')
+        self.assertEqual(edge_kind({'windowN':''},'N'),'window')
+        self.assertEqual(edge_kind({'WindowW':''},'W'),'window')
+        self.assertEqual(edge_kind({'WallNW':'','windowW':''},'W'),'window')
+        # An opening is on its own axis only.
+        self.assertIsNone(edge_kind({'WindowN':''},'W'))
+        self.assertIsNone(edge_kind({'WindowW':''},'N'))
+        # Doors win over windows, and plain walls stay walls.
+        self.assertEqual(edge_kind({'DoorWallN':'','WindowN':''},'N'),'door')
+        self.assertEqual(edge_kind({'doorW':''},'W'),'door')
+        self.assertEqual(edge_kind({'WallN':''},'N'),'wall')
+        self.assertEqual(edge_kind({'WallNW':''},'W'),'wall')
+        self.assertEqual(edge_kind({'collideW':''},'W'),'wall')
+        # Not an edge: floors, free-standing solids and the south-east corner piece.
+        for props in ({},{'solidfloor':''},{'solid':''},{'solidtrans':''},{'WallSE':''}):
+            self.assertIsNone(edge_kind(props,'N'))
+            self.assertIsNone(edge_kind(props,'W'))
+
     def test_schema_two_upgrade_keeps_old_rows_and_enforces_new_keys(self):
         with tempfile.TemporaryDirectory() as root:
             p=Path(root)/'catalogue.sqlite'
