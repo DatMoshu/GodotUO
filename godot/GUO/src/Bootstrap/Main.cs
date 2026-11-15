@@ -583,7 +583,10 @@ public partial class Main : Node
             args.AddRange(new[]
             {
                 "-username", _options.Account,
-                "-password", string.IsNullOrEmpty(_options.Password) ? _options.Account : _options.Password,
+                // The configured secret for this account (UO_SHARD_OWNER_PASSWORD or
+                // UO_SHARD_GM_PASSWORD), as the scripted login uses; the account name
+                // only when none is configured, as on the dev shard.
+                "-password", string.IsNullOrEmpty(_options.Password) ? InputProbe.DevShardPassword(_options.Account) : _options.Password,
                 "-autologin", "true",
                 "-skiploginscreen",
             });
