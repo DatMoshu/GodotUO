@@ -104,6 +104,8 @@ def tile_definitions(path):
 
 def properties(install):
     media = Path(install)/'media'
+    if (media/'tile_definitions').is_dir():
+        media = media/'tile_definitions'
     # This is the installed core load order, not alphabetical patch order.
     names = ['newtiledefinitions.tiles','tiledefinitions_erosion.tiles',
              'tiledefinitions_overlays.tiles','tiledefinitions_b42chunkcaching.tiles',
@@ -119,6 +121,8 @@ def properties(install):
                 else:
                     out[key] = record
             sources.append({'file':name,'sha256':hashlib.sha256(path.read_bytes()).hexdigest()})
+    if not out:
+        raise ValueError('no supported tile definitions in selected source directory')
     return out, sources
 
 
