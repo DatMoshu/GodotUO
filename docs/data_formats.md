@@ -2138,8 +2138,8 @@ Zomboid B42 headers/packs use supported `LOTH`/`LOTP` versions 0/1 with little
 endian integers, line strings, 8×8 chunks, 32×32 chunk cells, authored room
 rectangles and building room references. Tile-definition files use `tdef` version
 1. Edge properties become a recorded 2:1 cell-grid adaptation; source art is
-never decoded or copied. Unsupported older chunk sizes, cross-cell buildings,
-missing property metadata and incomplete stair triplets block conversion. PZ
+never decoded or copied. Unsupported older chunk sizes, cross-cell buildings
+without the explicit neighboring-cell opt-in below, missing property metadata and incomplete stair triplets block conversion. PZ
 B/M/T stairs link north/west upper exits; original upper holes are retained, and
 the native flight records any necessary landing fill. Unmapped
 detail tiles remain explicitly counted. A flat UO roof derived from the authored
@@ -2155,6 +2155,66 @@ Every candidate still passes native stair and parcel checks.
 Gameplay reports require arrivals without jump tags and placement acknowledgments;
 negative wall targets must fail to arrive. Source gameplay extras remain retained
 without claiming conversion into server mechanics.
+
+### Proposed source-object furnishing extension (ADR-0052)
+
+The proposed `furnishing_contract: "pz-source-objects/1"` is additive to
+semantic-layout/1. It is not emitted by the released converter yet. Per-level
+`furnishing_groups` is the authoritative object inventory when present; per-cell
+furniture fields only support legacy room-label inference. Every group has:
+
+- `id`: unique deterministic source object identity within its level.
+- `source_id`: readable source group identity; no source artwork.
+- `role`: an existing furnishing role or `unresolved`.
+- `status`: `resolved` or `unresolved`, with `diagnostics` explaining the latter.
+- `tiles`: source observations, each with tile ID, cell-local `at:[x,y,z]`,
+  tileset, group name, optional `sprite_grid:[x,y]`, and classification evidence.
+- `intended_cells`: exact target projection before structural trimming.
+- `cells`: surviving native semantic floor cells; an empty result is a blocker,
+  not an omitted object. Multiple groups may overlap and must remain distinct.
+
+The native consumer validates unique IDs and source/target references, consumes
+whole objects, and preserves strict fit/circulation/door-clearance diagnostics.
+Unresolved objects cannot certify a native build. Detail-only observations remain
+explicit source coverage, never guessed fixtures. Hashing includes the extension
+when present, while old layouts keep their previous hash. Old consumers do not
+support this extension; producer and native consumer must be upgraded together.
+Converter identity must bind every helper used to classify/assemble source objects.
+
+The PZ binary definition order is: `newtiledefinitions.tiles`,
+`tiledefinitions_erosion.tiles`, `tiledefinitions_overlays.tiles`,
+`tiledefinitions_b42chunkcaching.tiles`, `tiledefinitions_noiseworks.patch.tiles`,
+`jumbo_trees.tiles`, `jumbo_trees_big.tiles`. Prefer `media/tile_definitions` if
+present, otherwise `media`; do not mix directory layouts. Non-patch definitions
+replace records wholesale. Patch definitions merge properties into existing keys;
+new patch keys retain the existing loader behavior. Record exact source hashes.
+
+### Proposed bounded PZ source windows (ADR-0055)
+
+The isolated converter offers `zomboid-resolve --neighbor-cells`; default calls
+still refuse source boundaries. A crossing window is at most256 source squares
+per axis and four source cells. All required headers and packs must exist and
+pass their own decoders. Each cell uses its own tile dictionary. Primary-header
+room rectangles remain authoritative; neighboring rooms are never merged.
+Single-cell output stays unchanged, including when the flag is supplied.
+
+Cross-cell provenance declares `source_window_contract: "pz-cell-window/1"`,
+`source_window_bounds:[x0,y0,x1,y1]` (half-open primary-cell-relative bounds), and
+`source_cells`, sorted by cell coordinates. Each entry contains `cell:[cx,cy]`,
+`header`, `header_sha256`, `pack`, and `pack_sha256`. Include every intersected
+cell, including the primary; legacy primary identity/hash fields must agree.
+All entries participate in the existing provenance/snapshot/profile identities.
+Consumers verify the complete set and every filename/hash against the extraction
+manifest; duplicate, omitted, extra, mismatched or unsupported entries fail.
+
+Authored rectangles and object observation `at` stay continuous in the primary
+cell's frame. Cross-cell observations additionally carry `source_cell:[cx,cy]`
+and local `source_at:[x,y,z]`. Cell `source`/`lineage` instead uses actual source
+`cell` and cell-local `at`, adding primary-relative `frame_at:[x,y,z]` and
+`room_header` to identify the primary authored-room namespace. These additive
+fields distinguish tile provenance from room ownership. Native coordinates,
+wall-edge orientation, stacks and the source-object inventory contract remain
+unchanged. No source artwork or binaries are distributed.
 
 ## 33. GUO editor MCP (`tools/editor_mcp`, editor addon `Automation/`)
 
