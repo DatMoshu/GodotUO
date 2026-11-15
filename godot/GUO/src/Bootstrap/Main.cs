@@ -503,6 +503,16 @@ public partial class Main : Node
                 && RenderingServer.GetCurrentRenderingMethod() != "gl_compatibility"
                 ? "canvas (macOS default; --depth-world for Depth World)" : "canvas")
             + "; backend=" + RenderingServer.GetCurrentRenderingMethod());
+            // Retained canvas commands (docs/perf/2026-10-24_retained_canvas_commands.md) by default
+            // when the world is drawn on the canvas: Compatibility, --canvas-world, the macOS default.
+            // Owner decision 2026-11-14 after Deck parity (0 differing pixels, 20 checks) and timing
+            // (3-12 percent faster at far zoom); docs/perf/2026-11-14_retained_canvas_default.md.
+            // GUO_RETAIN_CANVAS=0 turns it off, =1 turns it on everywhere; Depth World sessions keep it off.
+            if (string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("GUO_RETAIN_CANVAS")) && !GUO.Renderer.DepthWorldProbe.Enabled)
+            {
+                GUO.Renderer.UltimaBatcher2D.RetainCanvas = true;
+                GD.Print("[GUO] canvas commands: retained (canvas world default; GUO_RETAIN_CANVAS=0 turns it off)");
+            }
         if (_options.SafForget)
         {
             GD.Print($"[GUO] saf           : --saf-forget released {SafFolder.Release()} grant(s)");

@@ -409,6 +409,7 @@ namespace GUO.Renderer
             arrays[(int)Mesh.ArrayType.TexUV] = uvs;
             layer.Mesh ??= new ArrayMesh();
             layer.Mesh.ClearSurfaces();
+            GUO.Renderer.MeshRevisions.Bump(layer.Mesh.GetRid()); // retained canvas: contents changed under the same RID
             layer.Mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
         }
 
