@@ -149,15 +149,7 @@ public partial class AiDock : EditorDock
         _hub.Post(() =>
         {
             if (!AiFeatures.Enabled) { tcs.TrySetResult(false); return; }
-            var dlg = new ConfirmationDialog
-            {
-                Title = "A model wants to change something",
-                DialogText = $"The chat model asks to run:\n\n{what}\n\nAllow this once?",
-                DialogAutowrap = true,
-                OkButtonText = "Allow once",
-                CancelButtonText = "Refuse",
-                Exclusive = true,
-            };
+            var dlg = AiToolApprovalDialog.Create(what);
             _toolApprovals[dlg] = tcs;
             dlg.Confirmed += () => tcs.TrySetResult(true);
             dlg.Canceled += () => tcs.TrySetResult(false);
@@ -166,7 +158,7 @@ public partial class AiDock : EditorDock
             dlg.Confirmed += dlg.QueueFree;
             dlg.Canceled += dlg.QueueFree;
             EditorInterface.Singleton.GetBaseControl().AddChild(dlg);
-            dlg.PopupCentered(new Vector2I(520, 240));
+            AiToolApprovalDialog.Popup(dlg, EditorInterface.Singleton.GetEditorScale());
         });
         return tcs.Task;
     }
