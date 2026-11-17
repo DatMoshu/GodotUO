@@ -58,7 +58,7 @@ coordinate distinction in section32 before emitting it. Source-object masks and
 native layout coordinates remain in the same target frame as before.
 
 The complete provenance enters existing snapshot/profile/instance identities.
-Do not reuse a single-cell source profile for a multi-cell read. The SWUO native
+Do not reuse a single-cell source profile for a multi-cell read. A downstream native
 consumer must verify every declared pair against its completed source manifest,
 reject duplicates, unsupported contracts or a primary mismatch, and refuse any
 changed neighbor before overlay export. This extends provenance verification;
