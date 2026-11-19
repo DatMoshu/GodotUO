@@ -150,43 +150,10 @@ def asset_export_checks(cfg, project_dir: Path, out: Path) -> list[str]:
     return failures
 
 
-def ultimalive_stale_checks(out: Path) -> list[str]:
-    """tools/world notices a client's stale UltimaLive map copy after a re-export (and
-    clears it when asked). Uses a scratch root, never the real %ProgramData%."""
-    import json as _json
-    failures = []
-    project = out / "world_project"
-    block = project / "blocks" / "0" / "187_203.json"
-    if not block.is_file():
-        return ["the overlay stage left no world project block to export"]
-    root = out / "ultimalive_root"
-    shard = root / "GUO-Smoke"
-    exp1, exp2 = out / "ul_export1", out / "ul_export2"
-    common = ["--ultimalive-root", str(root), "--ultimalive-shard", "GUO-Smoke"]
-    code, text = world_tool("export", "--project", str(project), "--out", str(exp1), *common)
-    if code != 0:
-        return [f"export for the UltimaLive check failed: {text}"]
-    # A client that played on the shard after that export: its copy is the exported map.
-    shard.mkdir(parents=True)
-    for name in ("map0.mul", "staidx0.mul", "statics0.mul"):
-        shutil.copyfile(exp1 / name, shard / name)
-    code, text = world_tool("ultimalive", "--project", str(project), "--out", str(exp1), *common)
-    fresh = code == 0 and "already has this export" in text and "WARNING" not in text
-    # The project is edited and exported again: the client's copy is now stale.
-    j = _json.loads(block.read_text(encoding="utf-8"))
-    j["statics"].append({"id": "0x0CE3", "x": 7, "y": 7, "z": 0, "hue": "0x0000"})
-    block.write_text(_json.dumps(j, indent=2), encoding="utf-8")
-    code, text = world_tool("export", "--project", str(project), "--out", str(exp2), *common)
-    warned = code == 0 and "WARNING" in text and "lacks 1 of this export's 1 block(s)" in text and "--clear-ultimalive" in text
-    code, text = world_tool("ultimalive", "--project", str(project), "--out", str(exp2), *common, "--clear-ultimalive")
-    cleared = code == 0 and "removed" in text and not (shard / "map0.mul").exists()
-    for ok, what in ((fresh, "a current copy was reported stale"), (warned, "a stale copy after a re-export was not reported"),
-                     (cleared, "--clear-ultimalive did not remove the stale copy")):
-        if not ok:
-            failures.append(f"UltimaLive: {what}")
-    print(f"[editor_smoke]   {'ok  ' if not failures else 'FAIL'} UltLive stale client map copy: current one accepted {fresh}, "
-          f"stale one after a re-export reported {warned}, --clear-ultimalive removed it {cleared}")
-    return failures
+def ultimalive_stale_checks(out: Path, staging_root: Path | None = None) -> list[str]:
+    from ultimalive_staging import run_checks
+
+    return run_checks(out, world_tool, staging_root)
 
 
 def check_world_project(report: dict, project: Path, facet: int, x: int, y: int) -> list[str]:
@@ -226,6 +193,7 @@ def main() -> int:
     ap.add_argument("--multi-dump", default="",
                     help="comma list of multi ids whose panel composite is also saved as multi_XXXX.png")
     ap.add_argument("--out", type=Path, help="output folder (default build/editor_smoke/<mode>)")
+    ap.add_argument("--staging-root", type=Path, help="temporary map payload parent under _disposable/guo (default system temp/_disposable/guo/editor-smoke)")
     ap.add_argument("--no-build", action="store_true", help="skip the first C# build")
     ap.add_argument("--require-native", action="store_true",
                     help="fail when a check that needs a real external program was skipped")
@@ -474,7 +442,7 @@ def main() -> int:
             failures += asset_export_checks(cfg, project_dir, out)
 
     if (world.get("overlay") or {}).get("ok"):
-        failures += ultimalive_stale_checks(out)
+        failures += ultimalive_stale_checks(out, args.staging_root)
 
     shots = sorted(out.glob("editor_*.png"))
     if shots:
