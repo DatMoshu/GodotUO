@@ -214,8 +214,18 @@ def main() -> int:
             assert len(look) == 3
         except (ValueError, AssertionError):
             ap.error("--look takes FACET,X,Y")
-        if not (args.world_project / "project.json").exists():
-            ap.error(f"{args.world_project} is not a world project (no project.json)")
+        if not (args.world_project / "project.json").is_file():
+            # On first open World fingerprints the install and creates project.json itself.
+            marker = args.world_project / "generated.json"
+            try:
+                generated = json.loads(marker.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                generated = None
+            if not isinstance(generated, dict) or generated.get("schema") != "guo.mapgen.generated/1":
+                ap.error(f"{args.world_project} needs project.json or a MapGen generated.json")
+            facet, x, y = look
+            if not (args.world_project / "blocks" / str(facet) / f"{x // 8}_{y // 8}.json").is_file():
+                ap.error("--look must name a block in the generated map")
         if args.reload or args.header_only:
             ap.error("--world-project cannot be combined with --reload or --header-only")
     if args.header_only and (not args.windowed or args.reload):

@@ -20,6 +20,12 @@
 
 ## Tune with a fixed seed
 
+In World, **Brush library → Terrain palette…** opens a locally supplied UO Landscaper
+`Data/System/Terrain.xml`. Choose a named terrain to paint its displayed hexadecimal land ID.
+The brush preserves ground elevation. Use **Single** or **Scatter** in the same library to
+place statics. Terrain palette import reads the base tiles only. Coast transitions, altitude
+colour maps and static placement catalogues have separate formats.
+
 Start with **Shape terrain** in Setup. In **Passes**, search for a pass, setting or category.
 Click its numbered row to expand settings and use the checkbox to enable it. The row tooltip
 lists the pass's input and output fields. Setting tooltips show the preset value and range.

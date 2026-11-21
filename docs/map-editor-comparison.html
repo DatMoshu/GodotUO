@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GUO and CentrED# · Mapper workflows</title>
+<style>body{margin:auto;max-width:76rem;padding:2rem;color:#172d32;background:#faf8f1;font:17px/1.55 system-ui}h1,h2{font-family:Georgia,serif;line-height:1.15}h1{font-size:clamp(2rem,5vw,4rem)}h2{margin-top:2.5rem}a{color:#00565b}table{border-collapse:collapse;width:100%}th,td{padding:.7rem;text-align:left;vertical-align:top;border-bottom:1px solid #b7c5bd}thead{background:#dbe8dc}td b{display:block;color:#254d3a}td small{display:block}section{overflow:auto}li{margin:.7rem 0}code{overflow-wrap:anywhere}</style>
+</head>
+<body>
+<main><h1>Painting a UO map</h1>
+<p>World edits individual land cells and statics. MapGen generates a facet and verifies its MUL export. CentrED# lets several builders edit the same server-backed map. The biggest gap for a mapper moving to GUO is carrying familiar terrain choices and coast rules into an ordinary brush stroke.</p>
+<h2>Where each job lives</h2>
+<p>Supported means the linked implementation covers the job. Partial marks a narrower workflow. Unverified details need a separate run. The source comparison uses GUO e10a721d and CentrED# 7ae0bfb5. That CentrED# commit is the <a href="https://github.com/kaczy93/centredsharp/releases/tag/0.7.0.4">0.7.0.4 release</a>, published November 19, 2026.</p>
+<section><table><thead><tr>
+<th>Mapper job</th>
+<th>GUO World + MapGen</th>
+<th>CentrED#</th>
+</tr>
+</thead>
+<tbody><tr>
+<th scope="row">Find land or a static</th>
+<td><b>Supported</b>Choose land or statics in the brush library, or pick from the World stack.<small><a href="../godot/GUO/addons/guo_editor/World/WorldWorkspace.cs">GUO source</a></small></td>
+<td><b>Supported</b>Tiles window separates land and statics. Named tile sets keep selections handy.<small><a href="https://github.com/kaczy93/centredsharp/blob/7ae0bfb5f0db6ae799acb00c54c7d244913f56ee/CentrED/UI/Windows/TilesWindow.cs">CentrED# source</a></small></td>
+</tr>
+<tr>
+<th scope="row">Search by name, hex or type</th>
+<td><b>Partial</b>Art autocomplete accepts names and IDs. The land/static switch covers broad types. Matching every tiledata flag is unverified.<small><a href="../godot/GUO/addons/guo_editor/World/WorldWorkspace.cs">GUO source</a></small></td>
+<td><b>Supported</b>Search checks name, hex and decimal ID. Flag filters support any/all and include/exclude.<small><a href="https://github.com/kaczy93/centredsharp/blob/7ae0bfb5f0db6ae799acb00c54c7d244913f56ee/CentrED/UI/Windows/TilesWindow.cs">CentrED# source</a></small></td>
+</tr>
+<tr>
+<th scope="row">Paint across a coast</th>
+<td><b>Partial</b>World has a coast recipe and four-neighbour repair. This branch adds named base-tile selection. Pair-specific eight-direction transition import remains open.<small><a href="../godot/GUO/addons/guo_editor/World/WorldBrush.cs">GUO source</a></small></td>
+<td><b>Supported</b>Select a land brush and drag. Its destination brush and direction determine eligible edge tiles.<small><a href="https://github.com/kaczy93/centredsharp/blob/7ae0bfb5f0db6ae799acb00c54c7d244913f56ee/CentrED/Tools/LandBrushTool.cs">CentrED# source</a></small></td>
+</tr>
+<tr>
+<th scope="row">Adjust height and transitions</th>
+<td><b>Supported</b>Raise, lower, flatten or smooth in World. Tune coast terraces and land transitions separately in MapGen.<small><a href="../godot/GUO/addons/guo_editor/World/WorldBrush.cs">GUO source</a></small></td>
+<td><b>Supported</b>The altitude gradient tool groups slope edits. Brush definitions carry transition directions.<small><a href="https://github.com/kaczy93/centredsharp/blob/7ae0bfb5f0db6ae799acb00c54c7d244913f56ee/CentrED/Tools/AltitudeGradientTool.cs">CentrED# source</a></small></td>
+</tr>
+<tr>
+<th scope="row">Place objects and scatter</th>
+<td><b>Supported</b>Single places one static. Scatter controls density, spacing, variants, slope and existing objects.<small><a href="../godot/GUO/addons/guo_editor/World/WorldWorkspace.cs">GUO source</a></small></td>
+<td><b>Partial</b>Insert Objects handles large areas. Matching GUO’s biome-, density- and spacing-based scatter is unverified.<small><a href="https://github.com/kaczy93/centredsharp/blob/7ae0bfb5f0db6ae799acb00c54c7d244913f56ee/CentrED/Tools/LargeScale/Operations/InsertObjects.cs">CentrED# source</a></small></td>
+</tr>
+<tr>
+<th scope="row">Select and undo</th>
+<td><b>Supported</b>World batches one brush stroke, including adjacent repaired cells, into one undo entry.<small><a href="../godot/GUO/addons/guo_editor/World/WorldEditor.cs">GUO source</a></small></td>
+<td><b>Supported</b>Interactive tools open and close undo groups around edits. Bulk-operation undo coverage is unverified.<small><a href="https://github.com/kaczy93/centredsharp/blob/7ae0bfb5f0db6ae799acb00c54c7d244913f56ee/CentrED/Tools/BaseTool.cs">CentrED# source</a></small></td>
+</tr>
+<tr>
+<th scope="row">Save and reopen</th>
+<td><b>Supported</b>World writes project overlay blocks. MapGen separately exports and reads back map, static index and statics files.<small><a href="../godot/GUO/addons/guo_editor/Overlay/WorldProject.cs">GUO source</a></small></td>
+<td><b>Supported</b>The server owns the map and static files. Reconnect to the same server to revisit an edited facet; restart durability was not exercised here.<small><a href="https://github.com/kaczy93/centredsharp/blob/7ae0bfb5f0db6ae799acb00c54c7d244913f56ee/Server/Map/ServerLandscape.cs">CentrED# source</a></small></td>
+</tr>
+<tr>
+<th scope="row">Collaborate on a live map</th>
+<td><b>Partial</b>GUO has private-shard live tooling. Concurrent authoring, conflict handling and shared undo parity are unverified.<small><a href="../godot/GUO/addons/guo_editor/EditorSmoke.cs">GUO source</a></small></td>
+<td><b>Supported</b>One server handles map updates from connected editing clients. Multi-user conflict behavior was not exercised here.<small><a href="https://github.com/kaczy93/centredsharp/blob/7ae0bfb5f0db6ae799acb00c54c7d244913f56ee/Server/Map/ServerLandscapePacketHandlers.cs">CentrED# source</a></small></td>
+</tr>
+<tr>
+<th scope="row">Edit large regions</th>
+<td><b>Partial</b>MapGen operates on full maps and World caps an interactive brush stroke at 8,192 cells. Inspect preview, warnings and verified export before opening World.<small><a href="../godot/GUO/addons/guo_editor/World/WorldWorkspace.cs">GUO source</a></small></td>
+<td><b>Supported</b>Choose an area and operation such as copy/move, draw land, set altitude or insert objects.<small><a href="https://github.com/kaczy93/centredsharp/blob/7ae0bfb5f0db6ae799acb00c54c7d244913f56ee/CentrED/UI/Windows/LargeScaleOperationsWindow.cs">CentrED# source</a></small></td>
+</tr>
+</tbody>
+</table>
+</section>
+<h2>Which brushes travel?</h2>
+<p>The upstream manager reads <code>TilesBrush.xml</code> from CentrED+. It maps hexadecimal land IDs and directional edge types to named brushes. Its converter ignores the base tile’s Chance attribute and maps unknown edge types to zero. Profiles store a <code>land_brushes</code> dictionary with <code>Tiles</code> and <code>To</code>. Legacy <code>landbrush.json</code> uses <code>Transitions</code>. On the GUO baseline, selecting a raw current dictionary silently drops its edges. This branch reads both spellings in the existing custom-table picker. Supply only the JSON value of land_brushes, with brush names that match GUO materials. A complete CentrED# profile is a line-oriented settings file. <a href="https://github.com/kaczy93/centredsharp/blob/7ae0bfb5f0db6ae799acb00c54c7d244913f56ee/CentrED/IO/LandBrush/LandBrushManager.ImportCedPlus.cs">CED+ converter</a> · <a href="https://github.com/kaczy93/centredsharp/blob/7ae0bfb5f0db6ae799acb00c54c7d244913f56ee/CentrED/IO/ProfileMigration.cs">profile migration</a> · <a href="../tools/mapgen/MapGen/Data/LandBrushTable.cs">GUO reader</a></p>
+<p>No direct Landscaper reader surfaced in the inspected upstream brush IO, tools or manager window. Similar edge picking does not establish file compatibility. GUO MapGen descends from the owner’s CentrED# fork and explicitly reads selected Landscaper catalogues. MapCreator’s author separately describes compatibility with Landscaper XML. <a href="upstream/mapgen.md">GUO provenance</a> · <a href="https://github.com/rfbwhite/MapCreator-Development/tree/a1d48ebf03f9e296e01e39a473243251a1d8a2a5/">MapCreator author’s account</a></p>
+<h2>Source and dataset register</h2>
+<ul>
+<li><strong>CentrED# and CentrED+.</strong> MIT, kaczy93 (2023). The CED+ model contains Brush, Land, Edge and EdgeLand. Read user-supplied XML. The software license establishes no provenance for a separate brush pack. <a href="https://github.com/kaczy93/centredsharp/blob/7ae0bfb5f0db6ae799acb00c54c7d244913f56ee/CentrED/IO/LandBrush/Centredplus/TilesBrush.cs">XML model</a> · <a href="https://github.com/kaczy93/centredsharp/blob/7ae0bfb5f0db6ae799acb00c54c7d244913f56ee/LICENSE">license</a></li>
+<li><strong>UO Landscaper Mod.</strong> norad32, b0e05fbb. The pinned tree contains 93 terrain entries, 1,466 transition paths and 13 static catalogue paths. System/Terrain.xml maps names, RGB and terrain classes to decimal TileID. System/Altitude.xml maps palette RGB and keys to signed elevations. System/MapTrans/Mod9.xml and Mod11.xml translate Dragon palettes. Statics/Beach.xml supplies placements. Data/Transitions/Common.xml and System/RoughEdge/Corner.xml are examples from separate transition and rough-edge collections. The root license is MIT (2024). Earlier OrBSydia material has unresolved rights. GUO reads the user’s files. The XML palettes and consolidated tables are excluded from distribution here. <a href="https://github.com/norad32/uo-landscaper-mod/tree/b0e05fbb1fd67a883cb57d17a24e475baa9e186d/Data">file tree</a> · <a href="https://github.com/norad32/uo-landscaper-mod/tree/b0e05fbb1fd67a883cb57d17a24e475baa9e186d/LICENSE">license</a> · <a href="upstream/mapgen.md">provenance history</a></li>
+<li><strong>Original UO Landscaper.</strong> Dknight / OrBSydia, archived 1.1–1.4. Painted terrain and altitude BMPs compile into map and statics files. Reference-only archive; rights for redistribution of the original package and OSI source maps remain unverified. <a href="https://uo.wzk.cz/uolandscaper/">archived releases</a></li>
+<li><strong>Dragon.</strong> Ryandor’s mapping tutorial pairs terrain and elevation swatches with the Dragon rule engine. For 1.03.62 Imod13, GUO converts user-supplied Scripts/map/*.txt to landbrush.dragon.json; it keeps height ranges as separate fields. The rule files have no established redistribution grant. <a href="https://ryandor.com/files/makingmaps.11.pdf">author’s tutorial</a> · <a href="../tools/mapgen/MapGen/Mining/DragonRulesImporter.cs">GUO conversion</a></li>
+<li><strong>MapCreator.</strong> rfbwhite, a1d48ebf. In MapCreator/bin/Debug/net7.0-windows, Development/DrawingTools/AdobePhotoshop/OptimizedColors contains Terrain.act and Altitude.act. MapCompiler/Engine contains Terrain.xml, TerrainTypes/Beach.xml and DragonMod09/ColorPalette.bmp under MapTrans. Root license GPLv3; embedded legacy palettes and bundled files need individual attribution checks. Reference only for this slice. <a href="https://github.com/rfbwhite/MapCreator-Development/tree/a1d48ebf03f9e296e01e39a473243251a1d8a2a5/">pinned tree</a> · <a href="https://github.com/rfbwhite/MapCreator-Development/tree/a1d48ebf03f9e296e01e39a473243251a1d8a2a5/LICENSE">license</a> · <a href="https://github.com/S3lium/UOMapCreator/tree/802993767ecc844ca3ec2192f9347e542dcae02a">related C# implementation</a></li>
+<li><strong>UOFiddler.</strong> polserver, dc6eae8b. Inspect the user’s land tile, tiledata flags, static art and map as a second reference. Project identifies its source license as Beerware; the client files are user supplied. No compatible transition pack verified. <a href="https://github.com/polserver/UOFiddler/tree/dc6eae8b701f6b05131eb13f0236b9e3011c7faf">pinned source</a></li>
+<li><strong>GUO defaults.</strong> transitions.guo.json, scatter.guo.json and tile-tables.default.json are project-authored. User-measured tables and client art stay local. <a href="upstream/mapgen.md">per-file attribution and ownership</a></li>
+</ul>
+<h2>Hands-on checks</h2>
+<p>The 0.7.0.4 importer read a two-material synthetic CED+ XML. Edge type DL became northeast (mask 2), selecting tile 0x0035. The same importer rejected norad32’s Terrain.xml. The upstream profile converter wrote and reopened the dictionary; a GUO test checked that its northeast tile did not appear southwest. The test harness replaced the UI/profile store and used the upstream conversion and lookup code. The release GUI and multi-client session remain unverified.</p>
+<p>World loaded a separately authored terrain row with class ID 91 and TileID 3. A rejected altitude document left that palette usable. On facet 0 at (1498, 1629), the project reopened with land 0x0003 and Z 10. Undo restored the original block text. MapGen accepted a JSON dictionary emitted by the upstream writer, generated a 128 × 64 map and read back 8,192 cells and 1,998 statics with zero mismatches. The fixture brush names Pier and Bay test ingestion; the directional lookup test independently checks edge selection. A separate 256 × 256 export checked 65,536 cells and 13,721 statics.</p>
+<p>Godot’s hot-reload run completed its first pass and failed to unload the assembly. A separate full smoke encountered a Windows access error while publishing a staged World folder. Export of the same run to a new destination passed. The World editor reopened all 1,024 blocks at (19, 37), Z −5. A fresh standalone headless smoke also passed, including export. Integration review remains open.</p>
+<p>The related S3lium tree contains <code>Data/Photoshop/UOL 1.5 - Terrain.aco</code>, its Altitude counterpart and <code>Map Drawing.abr</code>. Its root LICENSE is GPLv2. Treat the drawing assets as reference until their individual origins are established. Fork discovery included <a href="https://github.com/Dramoor/centredsharp/tree/9cb9cbb334d80d3d116af685f5db533d11390c6c">Dramoor’s filter fork</a> and the related S3lium MapCreator tree. No separate distribution rights for fork-provided art or third-party palettes were established.</p>
+<p>Reproducible checks live in the <a href="../godot/GUO/addons/guo_editor/EditorSmokeBrush.cs">World editor smoke</a> and <a href="../tools/mapgen/MapGen.Tests/CentredBrushTests.cs">MapGen direction test</a>.</p>
+<h2>What to build first</h2>
+<ol><li><b>Prevent silent changes to the terrain.</b> Resolve a palette entry to its land tile, preserve Z, and reject unsupported formats before replacing the active selection.</li>
+<li><b>Make a coast reproducible.</b> Carry the source pair and eight-direction orientation through preview, stroke, undo and reopen. Require fixtures for asymmetric shores and mixed corners.</li>
+<li><b>Carry a painted draft through export.</b> Use the existing image-import pipeline and pass controls. Bind source images and palette identity to the result. Click a warning to inspect the corresponding World cell.</li>
+<li><b>Prove collaborative and large edits separately.</b> A pair of editing clients must agree on the same saved block after a conflict and reconnect.</li>
+</ol>
+<p>Search covered the named repositories, release notes, original mapping tutorial, archived tool versions, related MapCreator projects and public brush-library searches. Third-party conversions outside these trees, original archive rights and runtime comparison of two concurrent CentrED# clients remain open. <a href="mapgen_review.md">Sprint plan and prior measured checks</a> · <a href="mapgen_guide.md">Current GUO workflow</a></p>
+</main>
+</body>
+</html>

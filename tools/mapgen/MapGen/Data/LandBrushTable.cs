@@ -32,7 +32,7 @@ public sealed class LandBrushTable
         public int Weight = 1;       // relative frequency among the entries that fit a mask (GUO tables)
     }
 
-    /// <summary>"guo" for GUO's own table, "dragon" for a LandBrush JSON, "" for an empty table.</summary>
+    /// <summary>"guo", "dragon" (legacy Transitions), "centred" (profile brush dictionary), or empty.</summary>
     public string Source { get; init; } = "";
 
     /// <summary>"Owner>Other" to the material an owner cell facing the other becomes when no tile fits (GUO tables).</summary>
@@ -73,15 +73,20 @@ public sealed class LandBrushTable
             if (GuoTransitionTable.IsGuoTable(path)) return GuoTransitionTable.Load(path).ToBrushTable();
             using var fs = File.OpenRead(path);
             using var doc = JsonDocument.Parse(fs);
-            var t = new LandBrushTable { Source = "dragon" };
-            foreach (var bp in doc.RootElement.EnumerateObject())
+            var records = doc.RootElement.EnumerateObject()
+                .Where(p => !p.Name.StartsWith("_") && p.Value.ValueKind == JsonValueKind.Object).ToArray();
+            bool current = records.Any(p => p.Value.TryGetProperty("To", out _));
+            var t = new LandBrushTable { Source = current ? "centred" : "dragon" };
+            foreach (var bp in records)
             {
-                if (bp.Name.StartsWith("_")) continue; // skip provenance / metadata fields
-                if (bp.Value.ValueKind != JsonValueKind.Object) continue;
+                if (!bp.Value.TryGetProperty("Tiles", out _) && !bp.Value.TryGetProperty("Transitions", out _) && !bp.Value.TryGetProperty("To", out _))
+                    continue;
                 var brush = new Brush { Name = bp.Name };
-                if (bp.Value.TryGetProperty("Tiles", out var tiles) && tiles.ValueKind == JsonValueKind.Array)
-                    foreach (var tid in tiles.EnumerateArray()) brush.Tiles.Add((ushort)tid.GetInt32());
-                if (bp.Value.TryGetProperty("Transitions", out var trs) && trs.ValueKind == JsonValueKind.Object)
+                if (bp.Value.TryGetProperty("Tiles", out var tiles))
+                    foreach (var tid in tiles.EnumerateArray()) brush.Tiles.Add(tid.GetUInt16());
+                if (current && bp.Value.TryGetProperty("Transitions", out _))
+                    throw new InvalidDataException("Brush file mixes current To and legacy Transitions entries.");
+                if (bp.Value.TryGetProperty(current ? "To" : "Transitions", out var trs))
                 {
                     foreach (var tp in trs.EnumerateObject())
                     {
@@ -90,8 +95,8 @@ public sealed class LandBrushTable
                         {
                             var entry = new Transition
                             {
-                                TileID = (ushort)tEl.GetProperty("TileID").GetInt32(),
-                                Direction = tEl.TryGetProperty("Direction", out var d) ? (byte)d.GetInt32() : (byte)0,
+                                TileID = tEl.GetProperty("TileID").GetUInt16(),
+                                Direction = tEl.TryGetProperty("Direction", out var d) ? d.GetByte() : (byte)0,
                             };
                             if (tEl.TryGetProperty("HashKey9", out var hk) && hk.ValueKind == JsonValueKind.String)
                                 entry.HashKey9 = hk.GetString();

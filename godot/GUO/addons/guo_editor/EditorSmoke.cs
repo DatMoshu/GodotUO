@@ -1409,6 +1409,7 @@ public partial class EditorSmoke : Node
             _overlayBaseMapAddress = baseline.MapAddress;
             _overlayBaseLand = WorldProject.Capture(maps, 0, OverlayBx, OverlayBy).LandId[0];
             WorldProject project = _world.OpenProject(root);
+            VerifyTerrainPalette(project);
             WorldBlock b = WorldProject.Capture(Client.Game.UO.FileManager.Maps, 0, OverlayBx, OverlayBy);
             _overlayReport["base_statics"] = b.Statics.Count;
             _overlayReport["base_trees"] = CountInChunk(OverlayTree, statics: true);

@@ -138,6 +138,10 @@ public partial class WorldView
         ActionButton(recipes, "Scatter", () => QuickRecipe(false, "Paint", 7, 35, 2), "Many items over a 7-tile area at 35% density");
         ActionButton(recipes, "Terrain", () => QuickRecipe(true, "Paint", 5, 100, 1));
         ActionButton(recipes, "Sculpt", () => QuickRecipe(true, "Raise", 5, 100, 1));
+        ActionButton(recipes, "Terrain palette…", PickTerrainPalette, "Open a UO Landscaper Data/System/Terrain.xml palette");
+        _terrainPalette = new OptionButton { Visible = false, FitToLongestItem = false, AllowReselect = true };
+        library.AddChild(_terrainPalette);
+        _terrainPalette.ItemSelected += SelectPaletteTerrain;
         _brushArt = new ArtPanel { MinimumGridHeight = 80, ShowNames = true, Autocomplete = true, SizeFlagsVertical = SizeFlags.ExpandFill };
         _brushArt.SetCellSize(80);
         _brushArt.Attach(_data); library.AddChild(_brushArt);

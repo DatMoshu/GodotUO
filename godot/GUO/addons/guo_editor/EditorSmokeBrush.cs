@@ -8,6 +8,45 @@ using Godot;
 
 public partial class EditorSmoke
 {
+    private void VerifyTerrainPalette(WorldProject project)
+    {
+        var data = new WorldData(_world.Host);
+        int x = OverlayBx * 8 + 2, y = OverlayBy * 8 + 5;
+        ushort tile = data.LandId(x, y) == 3 ? (ushort)22 : (ushort)3;
+        sbyte z = data.LandZ(x, y);
+        string path = System.IO.Path.Combine(_out, "terrain-palette.xml");
+        System.IO.File.WriteAllText(path, $"<Terrains><Terrain Name='Trial shore' ID='91' TileID='{tile}'/></Terrains>");
+        if (!_world.LoadTerrainPalette(path)) throw new InvalidOperationException(_world.BrushStatus);
+        System.IO.File.WriteAllText(path, "<Altitudes/>");
+        if (_world.LoadTerrainPalette(path)) throw new InvalidOperationException("Accepted an altitude table as terrain");
+        uint previous = _data.CurrentArt;
+        bool locked = _world.TerrainLocked;
+        _world.TerrainLocked = false;
+        int undo = _world.Editor.UndoCount;
+        string before = project.BlockText(0, OverlayBx, OverlayBy);
+        try
+        {
+            _world.SelectPaletteTerrain(1);
+            _world.PlaceForSmoke(new[] { (x, y) });
+            if (_world.Editor.UndoCount != undo + 1) throw new InvalidOperationException(_world.BrushStatus);
+            using var reopened = WorldProject.OpenOrCreate(project.Root, "", "");
+            var block = reopened.Blocks(0).Single(b => b.Bx == OverlayBx && b.By == OverlayBy);
+            if (block.LandId[42] != tile || block.LandZ[42] != z)
+                throw new InvalidOperationException("Reopened terrain ID, orientation or height differs");
+            _overlayReport["palette_tile"] = tile;
+            _overlayReport["palette_z"] = z;
+        }
+        finally
+        {
+            if (_world.Editor.UndoCount == undo + 1) _world.Editor.Undo();
+            _data.CurrentArt = previous;
+            _world.TerrainLocked = locked;
+        }
+        if (project.BlockText(0, OverlayBx, OverlayBy) != before)
+            throw new InvalidOperationException("Undo failed to restore the original palette stroke block");
+        _overlayReport["palette_undo_restored"] = true;
+    }
+
     private void VerifyBrushWorkspace()
     {
         WorldProject project = _world.Host.Project;
