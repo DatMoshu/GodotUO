@@ -16,7 +16,7 @@ internal static class BoatDemo
     // Haven docks, Trammel: open water south-west of the pier.
     private const int StartX = 3503, StartY = 2574;
 
-    public static async System.Threading.Tasks.Task Run(Node host)
+    public static async System.Threading.Tasks.Task Run(Node host, string shotDir = "")
     {
         for (int i = 0; i < 1200 && Client.Game?.UO?.World == null; i++) await InputProbe.Wait(host, 1);
         if (!Client.Game.UO.World.InGame) await InputProbe.EnterTheWorld(host, 200);
@@ -37,19 +37,41 @@ internal static class BoatDemo
         }
         GD.Print($"[GUO] boat demo: open water at {bx},{by},{bz}");
 
-        await InputProbe.Say(host, "[add SmallBoat");
-        for (int i = 0; i < 120 && !world.TargetManager.IsTargeting; i++) await InputProbe.Wait(host, 2);
-        if (!world.TargetManager.IsTargeting)
+        // The way a player does it: a deed in the pack, used, aimed at the water.
+        var backpack = world.Player.FindItemByLayer(Game.Data.Layer.Backpack);
+        if (backpack == null) { Fail(world, "no backpack"); return; }
+        await InputProbe.Say(host, "[AddToPack SmallBoatDeed");
+        if (!await WaitTarget(host, world)) { Fail(world, "[AddToPack gave no target cursor (is this a staff account?)"); return; }
+        world.TargetManager.Target(world.Player.Serial);
+        Game.GameObjects.Item deed = null;
+        for (int i = 0; i < 60 && deed == null; i++)
         {
-            GD.PrintErr("[GUO] boat demo: [add gave no target cursor (is this account staff?).");
-            return;
+            await InputProbe.Wait(host, 5);
+            foreach (var it in world.Items.Values)
+                if (it.Container == backpack.Serial && it.Graphic == 0x14F2 && (deed == null || it.Serial > deed.Serial)) deed = it;
         }
-        world.TargetManager.Target(graphic, (ushort)bx, (ushort)by, bz, true);
-        await InputProbe.Wait(host, 90);
+        if (deed == null) { Fail(world, "no boat deed arrived in the backpack"); return; }
 
-        // Stand on the deck: the boat's centre tile, a little above the water.
-        await InputProbe.Say(host, $"[go {bx} {by} {bz + 3}");
-        await InputProbe.Wait(host, 120);
+        var before = new System.Collections.Generic.HashSet<uint>();
+        foreach (var it in world.Items.Values) if (it.IsMulti) before.Add(it.Serial);
+        Game.GameActions.DoubleClick(world, deed.Serial);
+        if (!await WaitTarget(host, world)) { Fail(world, "the deed gave no placement cursor"); return; }
+        world.TargetManager.Target(graphic, (ushort)bx, (ushort)by, bz, true);
+
+        Game.GameObjects.Item boat = null;
+        for (int i = 0; i < 60 && boat == null; i++)
+        {
+            await InputProbe.Wait(host, 5);
+            foreach (var it in world.Items.Values)
+                if (it.IsMulti && !before.Contains(it.Serial) && Math.Abs(it.X - bx) <= 3 && Math.Abs(it.Y - by) <= 3) boat = it;
+        }
+        if (boat == null) { Fail(world, $"the shard placed no boat at {bx},{by} (see the journal)"); return; }
+        GD.Print($"[GUO] boat demo: boat 0x{boat.Serial:X8} at {boat.X},{boat.Y},{boat.Z}");
+
+        // Stand on the deck at the boat's centre, then check we are there.
+        await InputProbe.Say(host, $"[go {boat.X} {boat.Y} {boat.Z + 3}");
+        for (int i = 0; i < 30 && !(world.Player.X == boat.X && world.Player.Y == boat.Y); i++) await InputProbe.Wait(host, 10);
+        if (!(world.Player.X == boat.X && world.Player.Y == boat.Y)) { Fail(world, "could not step onto the boat"); return; }
 
         var p = ProfileManager.CurrentProfile;
         if (p != null)
@@ -61,8 +83,31 @@ internal static class BoatDemo
         }
         Game.UI.Gumps.WaterQuickGump.Toggle(world);
 
+        if (!string.IsNullOrWhiteSpace(shotDir))
+        {
+            await InputProbe.Wait(host, 120);
+            await host.ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
+            string path = shotDir.PathJoin("boat_demo.png");
+            host.GetViewport().GetTexture().GetImage().SavePng(path);
+            GD.Print($"[GUO] boat demo shot -> {ProjectSettings.GlobalizePath(path)}");
+        }
         GD.Print($"[GUO] boat demo: aboard at {world.Player.X},{world.Player.Y},{world.Player.Z}");
-        Game.GameActions.Print(world, "Your boat is ready. Steer by saying: forward, back, left, right, forward left, forward right, turn left, turn right, come about, stop. Type -water to show or hide the Water panel.");
+        Game.GameActions.Print(world, "Your boat is ready (anchored). Say 'raise anchor', then steer: forward, back, left, right, forward left, forward right, turn left, turn right, come about, stop. Type -water to show or hide the Water panel.");
+    }
+
+    private static async System.Threading.Tasks.Task<bool> WaitTarget(Node host, Game.World world)
+    {
+        for (int i = 0; i < 120 && !world.TargetManager.IsTargeting; i++) await InputProbe.Wait(host, 2);
+        return world.TargetManager.IsTargeting;
+    }
+
+    private static void Fail(Game.World world, string why)
+    {
+        GD.PrintErr("[GUO] boat demo: FAIL " + why);
+        var entries = Game.Managers.JournalManager.Entries;
+        for (int j = Math.Max(0, entries.Count - 8); j < entries.Count; j++)
+            GD.PrintErr($"[GUO] boat demo journal: {entries[j].Name}: {entries[j].Text}");
+        Game.GameActions.Print(world, "Boat demo: " + why + ".");
     }
 
     // The nearest wet land tile whose 7x7 neighbourhood is all wet land and
