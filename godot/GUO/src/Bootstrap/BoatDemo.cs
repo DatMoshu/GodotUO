@@ -36,6 +36,11 @@ internal static class BoatDemo
             return;
         }
         GD.Print($"[GUO] boat demo: open water at {bx},{by},{bz}");
+        // A boat deed's placement target only reaches 7 tiles: stand just off the
+        // boat's beam first (staff can stand on water).
+        int sx = bx + 5, sy = by;
+        await InputProbe.Say(host, $"[go {sx} {sy} {bz}");
+        for (int i = 0; i < 30 && !(world.Player.X == sx && world.Player.Y == sy); i++) await InputProbe.Wait(host, 10);
 
         // The way a player does it: a deed in the pack, used, aimed at the water.
         var backpack = world.Player.FindItemByLayer(Game.Data.Layer.Backpack);
@@ -56,6 +61,10 @@ internal static class BoatDemo
         foreach (var it in world.Items.Values) if (it.IsMulti) before.Add(it.Serial);
         Game.GameActions.DoubleClick(world, deed.Serial);
         if (!await WaitTarget(host, world)) { Fail(world, "the deed gave no placement cursor"); return; }
+        // Answer as a player's click on that water would (GameSceneInputHandler):
+        // the water static when there is one, else the land with graphic 0. The
+        // shard re-reads a land target's z from the terrain, so sea drawn as a
+        // static over deeper land must be targeted as that static.
         world.TargetManager.Target(graphic, (ushort)bx, (ushort)by, bz, true);
 
         Game.GameObjects.Item boat = null;
@@ -65,7 +74,20 @@ internal static class BoatDemo
             foreach (var it in world.Items.Values)
                 if (it.IsMulti && !before.Contains(it.Serial) && Math.Abs(it.X - bx) <= 3 && Math.Abs(it.Y - by) <= 3) boat = it;
         }
-        if (boat == null) { Fail(world, $"the shard placed no boat at {bx},{by} (see the journal)"); return; }
+        if (boat == null)
+        {
+            for (int yy = -6; yy <= 6; yy += 3)
+            for (int xx = -2; xx <= 2; xx += 2)
+            {
+                var sb = new System.Text.StringBuilder();
+                for (var o = world.Map.GetTile(bx + xx, by + yy); o != null; o = o.TNext)
+                    sb.Append($" {o.GetType().Name}:0x{o.Graphic:X4}@{o.Z}");
+                GD.PrintErr($"[GUO] boat demo tile {bx + xx},{by + yy}:{sb}");
+            }
+            GD.PrintErr($"[GUO] boat demo player {world.Player.X},{world.Player.Y},{world.Player.Z} map {world.MapIndex}");
+            Fail(world, $"the shard placed no boat at {bx},{by},{bz} (see the journal)");
+            return;
+        }
         GD.Print($"[GUO] boat demo: boat 0x{boat.Serial:X8} at {boat.X},{boat.Y},{boat.Z}");
 
         // Stand on the deck at the boat's centre, then check we are there.
@@ -110,40 +132,48 @@ internal static class BoatDemo
         Game.GameActions.Print(world, "Boat demo: " + why + ".");
     }
 
-    // The nearest wet land tile whose 7x7 neighbourhood is all wet land and
-    // free of statics (room for a small boat), searched in rings from the start.
+    // The nearest spot where a small boat fits by the shard's own rule
+    // (ModernUO BaseBoat.CanFit): every tile under the hull is sea water at
+    // one z -- land 168-171/310-311 or a water static 0x1796-0x17B2 at that z --
+    // with nothing else standing at or above it. Searched in rings from the start.
     private static bool FindOpenWater(Game.World world, out int bx, out int by, out sbyte bz, out ushort graphic)
     {
-        var tiles = Client.Game.UO.FileManager.TileData;
-        bool Wet(int x, int y, out sbyte z, out ushort g)
+        bool Sea(int x, int y, out sbyte z) => SeaTile(x, y, out z, out _);
+        bool SeaTile(int x, int y, out sbyte z, out ushort target)
         {
-            z = 0; g = 0;
-            var o = world.Map.GetTile(x, y);
-            bool wetLand = false;
-            for (; o != null; o = o.TNext)
+            z = 0; target = 0; ushort waterG = 0;
+            sbyte landZ = 0; ushort landG = 0; bool haveLand = false;
+            sbyte? staticWaterZ = null; sbyte otherTop = sbyte.MinValue;
+            for (var o = world.Map.GetTile(x, y); o != null; o = o.TNext)
             {
-                if (o is Game.GameObjects.Land land)
+                if (o is Game.GameObjects.Land land) { landZ = land.Z; landG = land.Graphic; haveLand = true; }
+                else if (o is Game.GameObjects.Static or Game.GameObjects.Multi)
                 {
-                    g = land.Graphic; z = land.Z;
-                    wetLand = land.Graphic < tiles.LandData.Length && (tiles.LandData[land.Graphic].Flags & TileFlag.Wet) != 0;
+                    if (o.Graphic >= 0x1796 && o.Graphic <= 0x17B2) { staticWaterZ = o.Z; waterG = o.Graphic; }
+                    else otherTop = Math.Max(otherTop, o.Z);
                 }
-                else if (o is Game.GameObjects.Static or Game.GameObjects.Multi) return false;
             }
-            return wetLand;
+            bool seaLand = haveLand && (landG is >= 168 and <= 171 or >= 310 and <= 311);
+            if (staticWaterZ.HasValue) { z = staticWaterZ.Value; target = waterG; }
+            else if (seaLand) z = landZ;
+            else return false;
+            return otherTop < z;
         }
 
-        for (int r = 4; r < 40; r++)
+        for (int r = 2; r < 48; r++)
         {
             for (int dy = -r; dy <= r; dy++)
             for (int dx = -r; dx <= r; dx++)
             {
                 if (Math.Max(Math.Abs(dx), Math.Abs(dy)) != r) continue;
                 int cx = StartX + dx, cy = StartY + dy;
-                if (!Wet(cx, cy, out bz, out graphic)) continue;
+                if (!SeaTile(cx, cy, out bz, out graphic)) continue;
+                // A north-facing small boat spans about 5 x 13 tiles: keep a
+                // margin of one tile all round.
                 bool room = true;
-                for (int yy = -3; yy <= 3 && room; yy++)
+                for (int yy = -7; yy <= 7 && room; yy++)
                 for (int xx = -3; xx <= 3 && room; xx++)
-                    room = Wet(cx + xx, cy + yy, out _, out _);
+                    room = Sea(cx + xx, cy + yy, out sbyte z2) && z2 == bz;
                 if (!room) continue;
                 bx = cx; by = cy;
                 return true;
