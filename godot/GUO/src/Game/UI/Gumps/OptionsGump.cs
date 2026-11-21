@@ -490,6 +490,7 @@ namespace GUO.Game.UI.Gumps
             BuildContainers();
             BuildExperimental();
             BuildGuo(); // PORT DEVIATION (GUO)
+            OptionsSearch.Attach(this); // PORT DEVIATION (GUO): searchable Options (owner request 2026-11-21)
 
             ChangePage(1);
         }

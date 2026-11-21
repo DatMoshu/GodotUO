@@ -139,6 +139,17 @@ public partial class GuoOptionsFlowProbe : Node
         UIManager.Add(options);
         options.ChangePage(13);
         await Shot("guo-options-classic-page");
+        var searchBox = SearchBoxOf(options);
+        foreach (var q in new[] { "volume", "shadow", "music", "health bar" })
+        {
+            F<StbTextBox>(searchBox, "_text").SetText(q);
+            await Shot("guo-options-search-" + q.Replace(' ', '-'));
+        }
+        F<StbTextBox>(searchBox, "_text").SetText("zoom");
+        await Frames(2);
+        GoFirst(options, searchBox, e => e.Page > 0);
+        await Shot("guo-options-search-zoom-jump");
+        F<StbTextBox>(searchBox, "_text").SetText("");
         foreach (var section in new[] { GuoSection.Lighting, GuoSection.Weather, GuoSection.World })
         {
             UoPlusOptionsGump.Open(world, section);
@@ -148,6 +159,70 @@ public partial class GuoOptionsFlowProbe : Node
         options.Dispose();
         _notes.Add("captures saved to " + folder);
     }
+
+
+    // ---- searchable Options (owner request 2026-11-21) ----
+    private static Control SearchBoxOf(OptionsGump g) => g.Children.FirstOrDefault(c => c.GetType().Name == "SearchBox");
+
+    private static List<OptionsSearch.Entry> Hits(OptionsGump g, string q, List<OptionsSearch.Entry> details) =>
+        OptionsSearch.Query(OptionsSearch.BuildIndex(g, null, details), q);
+
+    private static void GoFirst(OptionsGump g, Control box, Func<OptionsSearch.Entry, bool> which)
+    {
+        var area = g.Children.OfType<ScrollArea>().First(a => a.Page == OptionsSearch.RESULTS_PAGE);
+        var row = area.Children.FirstOrDefault(c => c.GetType().Name == "ResultRow" && !c.IsDisposed && which(F<OptionsSearch.Entry>(c, "_entry")));
+        if (row == null) throw new InvalidOperationException("no result row");
+        box.GetType().GetMethod("Go", Inst).Invoke(box, new object[] { F<OptionsSearch.Entry>(row, "_entry") });
+    }
+
+    private void Search(World world, string tmp)
+    {
+        SetCurrent(new Profile(), tmp);
+        var g = NewOptions(world);
+        try
+        {
+            var details = OptionsSearch.BuildDetailIndex(world);
+            var index = OptionsSearch.BuildIndex(g, null, details);
+            Check(index.Count > 200, "search index covers the pages: " + index.Count + " entries");
+            Check(index.Select(e => e.Page).Distinct().Count() >= 10, "search index spans >= 10 pages");
+            Check(details.Any(e => e.Detail == GuoSection.Lighting) && details.Any(e => e.Detail == GuoSection.World),
+                "detail panels indexed: " + details.Count);
+            Check(Hits(g, "volume", details).Any(e => e.Page == 2), "'volume' finds the Sound page");
+            Check(Hits(g, "music", details).Any(e => e.Page == 2), "'music' finds the Sound page");
+            Check(Hits(g, "audio", details).Any(e => e.Page == 2), "synonym 'audio' finds the Sound page");
+            Check(Hits(g, "shadow", details).Any(e => e.Page == 0 && e.Detail == GuoSection.Lighting), "'shadow' finds the GUO lighting panel");
+            Check(Hits(g, "water", details).Any(e => e.Page == 0 && e.Detail == GuoSection.World), "'water' finds the GUO world panel");
+            Check(Hits(g, "zzqxv", details).Count == 0, "nonsense finds nothing");
+            var hp = Hits(g, "MUSIC", details);
+            Check(hp.Count > 0 && hp[0].Score >= 3, "case-insensitive, text matches rank first: "
+                + string.Join(" | ", hp.Take(5).Select(e => $"{e.Score}:{e.Text}@{e.Location}")));
+
+            var box = SearchBoxOf(g);
+            Check(box != null, "search box attached to Options");
+            if (box == null) return;
+            var text = F<StbTextBox>(box, "_text");
+            g.ChangePage(3);
+            text.SetText("music");
+            Check(g.ActivePage == OptionsSearch.RESULTS_PAGE, "typing shows the results page, got " + g.ActivePage);
+            var area = g.Children.OfType<ScrollArea>().First(a => a.Page == OptionsSearch.RESULTS_PAGE);
+            int rows = area.Children.Count(c => c.GetType().Name == "ResultRow" && !c.IsDisposed);
+            Check(rows > 0, "result rows listed: " + rows);
+            GoFirst(g, box, e => e.Page == 2);
+            Check(g.ActivePage == 2, "picking a Sound result opens page 2, got " + g.ActivePage);
+            text.SetText("zzqxv");
+            Check(g.ActivePage == OptionsSearch.RESULTS_PAGE && !area.Children.Any(c => c.GetType().Name == "ResultRow" && !c.IsDisposed),
+                "no-match query shows an empty results page");
+            text.SetText("");
+            Check(g.ActivePage == 3, "clearing the box returns to the page it started on, got " + g.ActivePage);
+            text.SetText("shadow");
+            GoFirst(g, box, e => e.Page == 0);
+            var panel = UIManager.GetGump<UoPlusOptionsGump>();
+            Check(panel != null, "a GUO panel result opens that panel");
+            panel?.Dispose();
+        }
+        finally { g.Dispose(); }
+    }
+
 
     private static void SetCurrent(Profile p, string path)
     {
@@ -186,6 +261,7 @@ public partial class GuoOptionsFlowProbe : Node
             await Step("modern apply keeps panel fields", () => ModernKeepsPanel(world, tmp));
             await Step("persistence round trip", () => Persistence(world, tmp));
             await Step("shard water consent", () => ShardWater(world, tmp));
+            await Step("options search", () => Search(world, tmp));
             string shots = OS.GetEnvironment("GUO_OPTIONS_CAPTURE");
             if (!string.IsNullOrWhiteSpace(shots)) await Capture(world, tmp, shots);
         }
