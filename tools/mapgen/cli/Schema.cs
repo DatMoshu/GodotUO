@@ -60,6 +60,7 @@ public static class SchemaCommand
                 ["enabled"] = step.Enabled,
                 ["default_enabled"] = step.DefaultEnabled,
                 ["heavy"] = PipelineFactory.HeavyPassNames.Contains(step.Pass.Name),
+                ["replaced_by_draft"] = PipelineFactory.ImageImportReplacedPassNames.Contains(step.Pass.Name),
                 ["file_side_effects"] = PipelineFactory.FileSideEffectPassNames.Contains(step.Pass.Name),
                 ["tunables"] = Tunables(step.Parameters, defaults),
             });

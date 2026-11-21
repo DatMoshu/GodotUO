@@ -1,5 +1,9 @@
 # tools/editor_smoke
 
+`python tools/editor_smoke/run.py --painted-draft` opens a synthetic terrain/altitude
+pair through MapGen Setup, tunes coast and scatter, rejects a mismatched height,
+restores the completed run, exports it and inspects its warning and two World cells.
+
 For central evidence, pass `--out FOLDER`, or set `GUO_EDITOR_SMOKE_OUT` to a
 parent folder (the mode is appended). The latter also redirects the editor stage
 when running `launchers/dev/smoke.bat`. MCP checks include every access-group

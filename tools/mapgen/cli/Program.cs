@@ -3,7 +3,7 @@
 // output goes to stderr so stdout stays machine-readable.
 //
 //   guo-mapgen schema  [--preset P]                     passes, tunables, presets
-//   guo-mapgen run     --out DIR [--preset P] [--seed N] [--width W --height H | --size N]
+//   guo-mapgen run     --out DIR [--preset P] [--seed N] [--width W --height H | --size N | --painted-draft NAME.terrain.png]
 //                      [--set "Pass.Key=value"]... [--disable "Pass"]... [--enable "Pass"]...
 //                      [--fast] [--step-previews] [--preview-max N] [--client-data DIR]
 //                      [--brushes guo|guo-core|dragon|FILE]

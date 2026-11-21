@@ -53,6 +53,31 @@ from guo.process import build_child_env, no_activate  # noqa: E402
 TIMEOUT_S = 600
 
 
+def check_painted_retry(out: Path, env: dict) -> list[str]:
+    """A corrected setting must work at the same --out without manual cleanup."""
+    target = out / "setting-retry"
+    runner = Path(__file__).resolve().parents[1] / "mapgen" / "run.py"
+    command = [sys.executable, str(runner), "run", "--painted-draft", str(out / "inlet.terrain.png"),
+               "--out", str(target), "--seed", "528", "--set"]
+    def run(setting: str, log_name: str):
+        result = subprocess.run([*command, setting], capture_output=True, env=env, timeout=90)
+        (out / f"setting-{log_name}.log").write_bytes(result.stdout + result.stderr)
+        return result
+
+    invalid = run("NoSuchPass.NoSuchField=1", "invalid")
+    if invalid.returncode == 0 or b"no pass named" not in invalid.stdout:
+        return ["invalid painted setting did not produce the expected diagnostic"]
+    if target.exists() and any(target.iterdir()):
+        return ["invalid painted setting left files in the retry folder"]
+    setting = "Coast Terrace.TerraceBandWidth=12"
+    if run(setting, "corrected").returncode != 0:
+        return ["corrected painted setting failed in the same folder"]
+    manifest = json.loads((target / "run.json").read_bytes())
+    if manifest["sets"] != [setting] or not (target / "draft/input.altitude.png").is_file():
+        return ["corrected painted run did not retain its setting and inputs"]
+    return []
+
+
 def build(project: Path) -> bool:
     print("[editor_smoke] building C#")
     result = subprocess.run(
@@ -199,12 +224,15 @@ def main() -> int:
                     help="fail when a check that needs a real external program was skipped")
     ap.add_argument("--header-only", action="store_true", help="check the toolbar at three window widths without running unrelated editor checks")
     ap.add_argument("--assets-workbench", action="store_true", help="capture the Assets workbench at three widths and its export review (requires --windowed)")
+    ap.add_argument("--painted-draft", action="store_true", help="generate a painted terrain/altitude pair and verify its World export")
     ap.add_argument("--world-project", type=Path,
                     help="open this world project (UO_WORLD_PROJECT) in the World tab and check it there; needs --look")
     ap.add_argument("--look", help="FACET,X,Y: the cell the World tab shows for --world-project; its block must be one the project edits")
     args = ap.parse_args()
     if args.assets_workbench and (not args.windowed or args.reload or args.world_project or args.header_only):
         ap.error("--assets-workbench requires --windowed and cannot combine with reload, world-project or header-only")
+    if args.painted_draft and (args.reload or args.world_project or args.header_only or args.assets_workbench):
+        ap.error("--painted-draft runs its own MapGen and World checks")
     look = None
     if args.world_project or args.look:
         if not (args.world_project and args.look):
@@ -238,6 +266,8 @@ def main() -> int:
     args.headless = not args.windowed
     mode = ("headless" if args.headless else "windowed") + ("_reload" if args.reload else "") + ("_world_project" if look else "")
     evidence_out = os.environ.get("GUO_EDITOR_SMOKE_OUT")
+    if args.painted_draft:
+        mode += "_painted_draft"
     out = (args.out or (Path(evidence_out) / mode if evidence_out else cfg.build / "editor_smoke" / mode)).resolve()
 
     # Old markers from an earlier run would make the addon think it is past a
@@ -266,6 +296,9 @@ def main() -> int:
     if args.reload:
         cmd.append("--guo-editor-smoke-reload")
     env = build_child_env()
+    if args.painted_draft:
+        cmd.append("--guo-editor-painted-draft")
+        env.update(UO_WORLD_PROJECT=str(out / "world" / "default"), UO_BUILD_DIR=str(out / "build"))
     if look:
         # The World tab opens UO_WORLD_PROJECT when it boots, as it does for a user.
         env = {**env, "UO_WORLD_PROJECT": str(args.world_project.resolve())}
@@ -307,6 +340,10 @@ def main() -> int:
 
     report = json.loads(report_path.read_text(encoding="utf-8"))
     failures = list(report.get("failures", []))
+    if args.painted_draft and not report.get("painted_draft"):
+        failures.append("missing painted draft World receipt")
+    elif args.painted_draft:
+        failures += check_painted_retry(out, env)
     if look:
         failures += check_world_project(report, args.world_project.resolve(), *look)
 

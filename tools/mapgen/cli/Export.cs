@@ -37,14 +37,18 @@ public static class ExportCommand
         // The effective preset already holds every --set, --disable, --enable and --fast choice.
         var preset = MapGenPreset.Load(Path.Combine(runDir, "preset.json"));
         string? brushes = r.TryGetProperty("brushes", out var br) ? br.GetString() : null;
-        var settings = new RunSettings("run", seed, width, height, false, Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), brushes);
+        var settings = new RunSettings("run", seed, width, height, false, Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), brushes,
+            PaintedDraft.Verify(r, runDir));
         var warnings = new List<string>();
-        var steps = Pipeline.Build(preset, settings, warnings);
+        var steps = Pipeline.Build(preset, settings, warnings, out _);
         json.Event("start", new() { ["run"] = Path.GetFullPath(runDir), ["width"] = width, ["height"] = height, ["seed"] = seed });
         var ir = Pipeline.Run(preset, settings, steps, warnings, (i, step, ms, _) =>
             json.Event("pass", new() { ["index"] = i, ["count"] = steps.Count, ["name"] = step.Pass.Name, ["enabled"] = step.Enabled, ["ms"] = ms }));
 
         string hash = MapHash.Of(ir);
+        if (settings.Draft != null && r.TryGetProperty("palette_sha256", out var paletteHash) &&
+            ir.Reports[CentrED.MapGen.Pipeline.PipelineFactory.ImageImportPassName].Diagnostics?.PaletteSha256 != paletteHash.GetString())
+            throw new CliError("The painted draft palette changed. Generate a new run.");
         if (hash != expected)
             throw new CliError($"regenerated map differs from the run (hash {hash[..12]} vs {expected[..Math.Min(12, expected.Length)]}); export refused");
 
@@ -107,36 +111,6 @@ public static class ExportCommand
             ["world_project"] = worldProject is null ? null : Path.GetFullPath(worldProject), ["world"] = world,
         });
         return ok ? 0 : 1;
-    }
-
-    // Keep unfinished writes away from the public paths. A process killed during export can
-    // leave a staging folder, but a retry always starts in a different one.
-    private sealed class StagedFolder : IDisposable
-    {
-        public string Destination { get; }
-        public string WorkingPath { get; }
-
-        public StagedFolder(string destination)
-        {
-            Destination = Path.TrimEndingDirectorySeparator(Path.GetFullPath(destination));
-            OutputFolder.RequireFresh(Destination);
-            WorkingPath = Path.Combine(Path.GetDirectoryName(Destination)!,
-                $".{Path.GetFileName(Destination)}-mapgen-{Guid.NewGuid():N}");
-            OutputFolder.PrepareFresh(WorkingPath);
-        }
-
-        public void Publish()
-        {
-            if (Directory.Exists(Destination))
-                Directory.Delete(Destination); // only an empty destination is replaceable
-            Directory.Move(WorkingPath, Destination);
-        }
-
-        public void Dispose()
-        {
-            if (Directory.Exists(WorkingPath))
-                Directory.Delete(WorkingPath, recursive: true);
-        }
     }
 }
 

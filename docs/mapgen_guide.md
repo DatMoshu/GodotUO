@@ -18,6 +18,23 @@
    coordinate. The tab exports on facet 0 at origin (0, 0). Continue manual terrain and static
    edits in World. Deploying to a shard is a separate workflow.
 
+## Start from painted terrain and heights
+
+In **MapGen → Setup**, select **Use painted draft…** and choose
+`NAME.terrain.png`. Put `NAME.altitude.png` beside it. Use two single-frame
+PNGs of the same dimensions, with one pixel per map cell. Both sides must be
+multiples of eight, at least 64 cells, and at most 7168 wide by 4096 high.
+The upper-left pixel is (0, 0). Example terrain swatches include deep water
+(`#000080`), grass (`#60C040`), forest (`#208020`) and mountain (`#808080`).
+Paint the altitude image in grayscale. Black starts at Z −10 and white at Z 80.
+
+Keep the seed fixed while adjusting **Coast Terrace** and **Forest Scatter**.
+Later passes can change the painted elevations. Compare **Biomes**, **Height**
+and **Radar** after generating. An unmatched terrain colour produces a warning
+with its first coordinate. After export, **Inspect draft warning** opens that
+cell in World. To revise the layout, repaint the original pair and generate
+again. Each completed run keeps its own input copies for export.
+
 ## Tune with a fixed seed
 
 In World, **Brush library → Terrain palette…** opens a locally supplied UO Landscaper
