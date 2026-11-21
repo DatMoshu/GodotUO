@@ -9,7 +9,7 @@ namespace GUO.Configuration;
 internal enum UoPlusFeature
 {
     None = 0, Fog = 1, Leaves = 2, Dust = 4, RainRings = 8,
-    Puddles = 16, WetPlayer = 32, Sway = 64, SpellLights = 128, WaterRipples = 256
+    Puddles = 16, WetPlayer = 32, Sway = 64, SpellLights = 128, WaterRipples = 256, ShallowShores = 512
 }
 
 /// <summary>The shared flag and density contract. Game-loop thread only.</summary>
@@ -27,6 +27,7 @@ internal static class UoPlusOptions
         new(UoPlusFeature.Sway, "Tree and plant sway", "Not available in this version", false),
         new(UoPlusFeature.SpellLights, "Spell-effect lights", "Uses the active lighting (enhanced or classic realtime)", true),
         new(UoPlusFeature.WaterRipples, "Water ripples and wakes", "Requires a non-Classic water style", true),
+        new(UoPlusFeature.ShallowShores, "Shallow shores and caustics", "Requires a non-Classic water style; density sets strength", true),
     };
 #if GUO_LABS
     internal const bool LabsAvailable = true;
@@ -38,7 +39,7 @@ internal static class UoPlusOptions
     private const UoPlusFeature ParticleFlags = UoPlusFeature.Fog | UoPlusFeature.Leaves | UoPlusFeature.Dust;
     private const UoPlusFeature LegacyFlags = ParticleFlags | UoPlusFeature.SpellLights;
     private const UoPlusFeature KnownFlags = ParticleFlags | UoPlusFeature.RainRings | UoPlusFeature.Puddles
-        | UoPlusFeature.WetPlayer | UoPlusFeature.Sway | UoPlusFeature.SpellLights | UoPlusFeature.WaterRipples;
+        | UoPlusFeature.WetPlayer | UoPlusFeature.Sway | UoPlusFeature.SpellLights | UoPlusFeature.WaterRipples | UoPlusFeature.ShallowShores;
 
     internal static UoPlusFeature Flags(Profile p)
     {

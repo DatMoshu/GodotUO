@@ -22,6 +22,8 @@
 // at texel x & 127, y & 127), rebuilt on the CPU by WaterMask:
 //   R  1 when the cell has water (Wet land or a Wet static), else 0
 //   G  the height of that water, z + 128, over 255
+//   B  shore distance of a wet cell: cells to the nearest dry cell along the
+//      eight directions, capped at 5, as distance / 5 (0 for dry cells)
 // Cells outside water_mask_origin .. + 128 are unknown and read as water, so
 // a stale texel never draws foam.
 
@@ -95,7 +97,7 @@ vec3 water_local_light(vec2 target_px) {
 vec4 water_mask_at(vec2 cell) {
 	vec2 rel = cell - water_mask_origin;
 	if (rel.x < 0.0 || rel.y < 0.0 || rel.x >= 128.0 || rel.y >= 128.0) {
-		return vec4(1.0, 123.0 / 255.0, 0.0, 1.0);
+		return vec4(1.0, 123.0 / 255.0, 1.0, 1.0);
 	}
 	return texelFetch(water_mask, ivec2(mod(cell, 128.0)), 0);
 }
@@ -384,7 +386,44 @@ vec3 water_realistic_lighting(vec3 base, vec2 cell, vec2 f, vec2 world, float t,
 
 uniform int water_debug = 0;
 
-vec3 water_shade(vec3 base, vec2 target_px) {
+// Shallow shores (L1 option, off by default). x: strength 0..1, 0 skips all
+// of it so every model draws as before; y: shard daylight for the caustics.
+uniform vec2 water_shallow = vec2(0.0, 1.0);
+
+// Shore distance averaged at the cell corners (the same four-cell blend as
+// water_wet_linear), so the band fades across tile boundaries. 0 at land, 1 deep.
+float water_shore_depth(vec2 xy) {
+	vec2 lo = floor(xy);
+	vec2 blend = fract(xy);
+	return mix(mix(water_mask_at(lo).b, water_mask_at(lo + vec2(1.0, 0.0)).b, blend.x),
+			mix(water_mask_at(lo + vec2(0.0, 1.0)).b,
+			water_mask_at(lo + vec2(1.0, 1.0)).b, blend.x), blend.y);
+}
+
+// One scrolling caustic layer: bright thin ridges of a noise field.
+float water_caustic_layer(vec2 p, vec2 dir, float t) {
+	float n = water_noise(p + dir * t);
+	return pow(1.0 - abs(2.0 * n - 1.0), 5.0);
+}
+
+// Sandy-teal sea floor showing through near land, with two caustic layers
+// drifting in different directions. Generated here; no art.
+vec3 water_shallow_apply(vec3 c, vec2 cell, vec2 f, vec2 world, float t) {
+	float depth = water_shore_depth(cell + f);
+	float band = 1.0 - smoothstep(0.1, 1.0, depth);
+	float s = band * water_shallow.x;
+	if (s <= 0.0) { return c; }
+	float luma = dot(c, vec3(0.299, 0.587, 0.114));
+	vec3 floor_c = mix(vec3(0.30, 0.58, 0.52), vec3(0.62, 0.66, 0.46), band * band) * (0.65 + 0.9 * luma);
+	c = mix(c, floor_c, clamp(s * 0.6, 0.0, 0.6));
+	vec2 p = world * 0.06;
+	float k = water_caustic_layer(p, vec2(0.11, 0.07), t * 1.4)
+			* water_caustic_layer(p * 1.3 + 7.0, vec2(-0.09, 0.12), t * 1.2);
+	c += vec3(0.55, 0.85, 0.80) * k * 1.6 * s * water_shallow.y;
+	return clamp(c, 0.0, 1.0);
+}
+
+vec3 water_shade_core(vec3 base, vec2 target_px) {
 	// GUO_WATER_DEBUG: 1 paints the water magenta, 2 shows the ripple field.
 	if (water_debug == 1) {
 		return vec3(1.0, 0.0, 1.0);
@@ -506,4 +545,14 @@ vec3 water_shade(vec3 base, vec2 target_px) {
 	c = mix(c, vec3(0.86, 0.92, 0.95), foam);
 
 	return clamp(c, 0.0, 1.0);
+}
+
+vec3 water_shade(vec3 base, vec2 target_px) {
+	vec3 c = water_shade_core(base, target_px);
+	if (water_shallow.x <= 0.0 || water_debug != 0) { return c; }
+	float grain = max(water_params3.x, 1.0);
+	vec2 world = (floor((target_px * water_target_to_world.xy + water_target_to_world.zw) / grain) + 0.5) * grain;
+	vec2 f;
+	vec2 cell = water_cell(world, f);
+	return water_shallow_apply(c, cell, f, world, water_time * water_params.x);
 }
