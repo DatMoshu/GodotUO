@@ -232,6 +232,7 @@ internal static class WaterRender
     private static long _lastTicks;
     private static int _lastMap = -1;
     private static Vector4 _styleParams2;
+    private static Vector4 _styleParams = new(1f, 0.045f, 0.22f, 0.85f);
     private static bool _ripplesEnabled;
 
     // ADR-0048: called after the current speed-mode light target is ready.
@@ -547,6 +548,7 @@ internal static class WaterRender
             style.Bind((name, value) =>
             {
                 if (name == "water_params2") _styleParams2 = value.AsVector4();
+                if (name == "water_params") _styleParams = value.AsVector4();
                 batcher.SetWaterUniform(name, value);
             });
             style.BindRipples(_ripples);
@@ -579,6 +581,18 @@ internal static class WaterRender
         bool ripplesEnabled = RipplesEnabled(ProfileManager.CurrentProfile);
         var parameters = _styleParams2;
         if (!ripplesEnabled) parameters.W = 0f;
+        // The Water panel's tuning, percent of the style's own numbers.
+        var tune = ProfileManager.CurrentProfile;
+        float Pct(int v) => Math.Clamp(v, 0, 400) / 100f;
+        var main = _styleParams;
+        if (tune != null)
+        {
+            main.X *= Pct(tune.WaterTuneSpeed);
+            main.Z *= Pct(tune.WaterTuneWave);
+            main.W *= Pct(tune.WaterTuneFoam);
+            parameters.X *= Pct(tune.WaterTuneGlint);
+        }
+        batcher.SetWaterUniform("water_params", main);
         batcher.SetWaterUniform("water_params2", parameters);
         if (ripplesEnabled != _ripplesEnabled)
         {

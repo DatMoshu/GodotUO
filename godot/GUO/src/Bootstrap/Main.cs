@@ -1028,6 +1028,13 @@ public partial class Main : Node
     /// <summary>Go photograph a terrain layer; see LayerShot.</summary>
     private async void LayerShotThenQuit()
     {
+        if (_options.BoatDemo)
+        {
+            // PORT DEVIATION (GUO): --boat-demo hands the client to the player afterwards; no quit.
+            await Preamble();
+            await BoatDemo.Run(this);
+            return;
+        }
         LayerShot.At = string.IsNullOrWhiteSpace(_options.LayerAt) ? LayerShot.At : _options.LayerAt;
         LayerShot.SwapManifest = _options.LayerSwap;
         LayerShot.Zoom = _options.LayerZoom;
@@ -1838,6 +1845,8 @@ public partial class Main : Node
         public string LayerCapture { get; private set; } = "";
         /// <summary>--layer-light: with --layer-shot, photograph the lighting speed mode off and on at night; see LayerShot.</summary>
         public bool LayerLight { get; private set; }
+        /// <summary>--boat-demo: dev shard only; log in, put a boat on the water at the Haven docks and stay; see BoatDemo.</summary>
+        public bool BoatDemo { get; private set; }
 
         /// <summary>--extract-test: prove ExtractDecal on two PNGs; see ExtractTest.</summary>
         public bool ExtractTest { get; private set; }
@@ -2596,6 +2605,10 @@ public partial class Main : Node
                         break;
                     case "--layer-light":
                         o.LayerLight = true;
+                        break;
+                    case "--boat-demo":
+                        o.BoatDemo = true;
+                        o.LayerShot = true;
                         break;
                     case "--layer-capture":
                         o.LayerCapture = Next();
