@@ -10,7 +10,13 @@ config_version=5
 
 [application]
 
-config/name="GUO"
+config/name="GodotUO"
+; Keep existing desktop user:// data when the display name changes.
+config/use_custom_user_dir.windows=true
+config/use_custom_user_dir.macos=true
+config/use_custom_user_dir.linux=true
+config/custom_user_dir_name="Godot/app_userdata/GUO"
+config/custom_user_dir_name.linux="godot/app_userdata/GUO"
 config/description="Godot Ultima Online - the Classic client, ported from ClassicUO onto Godot."
 run/main_scene="res://scenes/Main.tscn"
 config/quit_on_go_back=false

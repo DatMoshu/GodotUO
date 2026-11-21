@@ -547,6 +547,8 @@ public partial class Main : Node
 
         System.IO.Directory.CreateDirectory(dataDir);
         System.Environment.CurrentDirectory = dataDir;
+        // Reading the client version also initializes CUOEnviroment.ExecutablePath.
+        GetWindow().Title = GameController.DefaultWindowTitle;
         // The player's own looks and shaders (ADR-0023).
         GUO.Renderer.PostFx.PostFxLibrary.UserFolder = System.IO.Path.Combine(dataDir, "postfx");
         GUO.Renderer.PostFx.PostFxStack.RunOverride = string.IsNullOrWhiteSpace(_options.PostFx) ? null : _options.PostFx;
