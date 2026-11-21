@@ -1031,6 +1031,7 @@ public partial class Main : Node
         LayerShot.At = string.IsNullOrWhiteSpace(_options.LayerAt) ? LayerShot.At : _options.LayerAt;
         LayerShot.SwapManifest = _options.LayerSwap;
         LayerShot.Zoom = _options.LayerZoom;
+        LayerShot.Water = _options.LayerWater;
         LayerShot.CaptureRect = _options.LayerCapture;
         await Preamble();
         await LayerShot.Run(this, _options.ScreenshotDir);
@@ -1856,6 +1857,9 @@ public partial class Main : Node
         /// <summary>--layer-zoom Z: pin the camera zoom for the shots.</summary>
         public float LayerZoom { get; private set; }
 
+        /// <summary>--layer-water: photograph realtime water with shallow shores off, then on.</summary>
+        public bool LayerWater { get; private set; }
+
         /// <summary>File the world objects near the player are written to after the shard commands; see ObjectsDump.</summary>
         public string ObjectsDump { get; private set; } = "";
 
@@ -2273,6 +2277,10 @@ public partial class Main : Node
                         // ADR-0037: this session's water style, not saved to the profile.
                         GUO.Renderer.Water.WaterRender.Override = Next();
                         break;
+                    case "--water-shallow":
+                        // Shallow shores strength 0..100 for this session only, not saved.
+                        if (int.TryParse(Next(), out int shallow)) GUO.Renderer.Water.WaterRender.ShallowOverride = Math.Clamp(shallow, 0, 100);
+                        break;
                     case "--merged-cover=off":
                         GUO.Renderer.UltimaBatcher2D.MergedCover = false;
                         break;
@@ -2585,6 +2593,9 @@ public partial class Main : Node
                         break;
                     case "--layer-capture":
                         o.LayerCapture = Next();
+                        break;
+                    case "--layer-water":
+                        o.LayerWater = true;
                         break;
                     case "--layer-zoom":
                         if (float.TryParse(Next(), System.Globalization.NumberStyles.Float,

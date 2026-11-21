@@ -61,7 +61,7 @@ internal static class GuoOptions
     internal const UoPlusFeature WeatherFeatures = UoPlusFeature.Fog | UoPlusFeature.Leaves | UoPlusFeature.Dust
         | UoPlusFeature.RainRings | UoPlusFeature.Puddles | UoPlusFeature.WetPlayer | UoPlusFeature.Sway;
     internal const UoPlusFeature LightingFeatures = UoPlusFeature.SpellLights;
-    internal const UoPlusFeature WorldFeatures = UoPlusFeature.WaterRipples;
+    internal const UoPlusFeature WorldFeatures = UoPlusFeature.WaterRipples | UoPlusFeature.ShallowShores;
 
     internal static UoPlusFeature FeaturesOf(GuoSection section) => section switch
     {

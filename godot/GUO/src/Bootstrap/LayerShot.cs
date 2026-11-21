@@ -29,6 +29,9 @@ internal static class LayerShot
     /// it. Proves the capture mapping where screenshots exist.</summary>
     public static string CaptureRect { get; set; } = "";
 
+    /// <summary>--layer-water: photograph realtime water with shallow shores off, then on.</summary>
+    public static bool Water { get; set; }
+
     public static async System.Threading.Tasks.Task Run(Node host, string dir)
     {
         // Started as soon as Main is ready, before the client has booted.
@@ -141,6 +144,30 @@ internal static class LayerShot
             host.GetViewport().GetTexture().GetImage().SavePng(path);
             GD.Print($"[GUO] layer shot -> {ProjectSettings.GlobalizePath(path)}");
             await InputProbe.Wait(host, 30);
+        }
+
+        if (Water)
+        {
+            string was = GUO.Renderer.Water.WaterRender.Override;
+            int? shallowWas = GUO.Renderer.Water.WaterRender.ShallowOverride;
+            try
+            {
+                GUO.Renderer.Water.WaterRender.Override = "uo";
+                foreach ((string name, int strength) in new[] { ("water_before", 0), ("water_after", 100) })
+                {
+                    GUO.Renderer.Water.WaterRender.ShallowOverride = strength;
+                    await InputProbe.Wait(host, 90);
+                    await host.ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
+                    string path = dir.PathJoin(name + ".png");
+                    host.GetViewport().GetTexture().GetImage().SavePng(path);
+                    GD.Print($"[GUO] layer water -> {ProjectSettings.GlobalizePath(path)}");
+                }
+            }
+            finally
+            {
+                GUO.Renderer.Water.WaterRender.Override = was;
+                GUO.Renderer.Water.WaterRender.ShallowOverride = shallowWas;
+            }
         }
 
         Passed = true;

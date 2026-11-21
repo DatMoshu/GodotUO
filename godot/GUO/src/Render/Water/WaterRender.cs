@@ -280,6 +280,12 @@ internal static class WaterRender
         batcher.SetWaterUniform("water_reflection_art_scale", float.IsFinite(artScale) ? Math.Clamp(artScale, 0.125f, 8f) : 1f);
     }
 
+    // Shallow shores (L1, off by default): density 0..100 is the strength.
+    internal static int? ShallowOverride; // --water-shallow N: this session only
+    internal static float ShallowStrength(Profile profile) =>
+        IsStyled(profile) && ShallowOverride is int forced ? forced / 100f : IsStyled(profile) && UoPlusOptions.Enabled(profile, UoPlusFeature.ShallowShores)
+            ? UoPlusOptions.Density(profile, UoPlusFeature.ShallowShores) / 100f : 0f;
+
     internal static bool RipplesEnabled(Profile profile) =>
         IsStyled(profile) && UoPlusOptions.Enabled(profile, UoPlusFeature.WaterRipples);
 
@@ -581,6 +587,9 @@ internal static class WaterRender
             _ripplesEnabled = ripplesEnabled;
         }
 
+        // x strength (0 = off, the shader skips it), y shard daylight for the caustics.
+        batcher.SetWaterUniform("water_shallow", new Vector2(ShallowStrength(ProfileManager.CurrentProfile),
+            Daylight(world, ProfileManager.CurrentProfile)));
         batcher.SetWaterUniform("water_time", (float)(Time.Ticks % 3_600_000L) / 1000f);
 #if TOOLS
         if (InEditorPreview) batcher.SetWaterUniform("water_time", EditorSeconds);
@@ -675,6 +684,43 @@ internal sealed class WaterMask
         return true;
     }
 
+    /// <summary>Shore distance cap, in cells (mask B = distance / cap).</summary>
+    public const int ShoreCap = 5;
+
+    /// <summary>
+    /// B channel: for a wet cell, the distance in cells to the nearest dry
+    /// cell found along the eight directions (capped at ShoreCap), scaled to
+    /// 0..255; 0 for dry. Unloaded and off-window cells read as water.
+    /// </summary>
+    private void ShoreDistance()
+    {
+        // The mask is a ring: walk world cells inside the window, wrap at lookup.
+        for (int y = 0; y < Size; y++)
+        {
+            for (int x = 0; x < Size; x++)
+            {
+                int at = ((((OriginY + y) & (Size - 1)) * Size) + ((OriginX + x) & (Size - 1))) * 4;
+                if (_pixels[at] == 0) { _pixels[at + 2] = 0; continue; }
+                int best = ShoreCap;
+                for (int dy = -1; dy <= 1 && best > 1; dy++)
+                {
+                    for (int dx = -1; dx <= 1 && best > 1; dx++)
+                    {
+                        if (dx == 0 && dy == 0) continue;
+                        for (int s = 1; s < best; s++)
+                        {
+                            int nx = x + dx * s, ny = y + dy * s;
+                            if (nx < 0 || ny < 0 || nx >= Size || ny >= Size) break;
+                            int n = ((((OriginY + ny) & (Size - 1)) * Size) + ((OriginX + nx) & (Size - 1))) * 4;
+                            if (_pixels[n] == 0) { best = s; break; }
+                        }
+                    }
+                }
+                _pixels[at + 2] = (byte)(best * 255 / ShoreCap);
+            }
+        }
+    }
+
     public void Invalidate()
     {
         _chunks = -1;
@@ -717,7 +763,7 @@ internal sealed class WaterMask
         {
             _pixels[i] = 255;
             _pixels[i + 1] = 123;
-            _pixels[i + 2] = 0;
+            _pixels[i + 2] = 255;
             _pixels[i + 3] = 255;
         }
 
@@ -765,11 +811,14 @@ internal sealed class WaterMask
                     // so a style can tell a beach from a cliff.
                     int at = (((wy & (Size - 1)) * Size) + (wx & (Size - 1))) * 4;
                     _pixels[at] = wet ? (byte)255 : (byte)0;
+                    _pixels[at + 2] = 0;
                     _pixels[at + 1] = wet ? (byte)Math.Clamp(z + 128, 0, 255)
                         : dryZ == int.MinValue ? (byte)0 : (byte)Math.Clamp(dryZ + 128, 0, 255);
                 }
             }
         }
+
+        ShoreDistance();
 
         if (_image == null)
         {

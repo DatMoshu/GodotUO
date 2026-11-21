@@ -3221,6 +3221,14 @@ requires fresh consent; changing pack content alone does not. Policy is used
 only for its session's connection endpoint. Unknown or missing styles fall
 back to Classic. The player may always withdraw consent, including when locked.
 
+**Shallow shores** (`ShallowShores`, UO+ flag 512, Options > World, default off) work only under a 
+non-Classic water style; the density is the strength (0 = off). `WaterMask` gains a B channel: for a wet 
+cell the distance in cells to the nearest dry cell along the eight directions, capped at 5, stored as 
+distance / 5 (0 for dry cells, 1 for unknown cells). The shader blends the four nearest cells so the band fades 
+across tile boundaries, tints water toward a sandy-teal floor near land, and adds two procedural caustic 
+layers scrolling in different directions, scaled by shard daylight. No art is loaded. Off, `water_shallow.x` 
+is 0 and the shader returns the style's colour unchanged.
+
 **Ripples** (`WaterRipples`, WATER-03) are a two-buffer wave equation stepped
 at 20 Hz on the CPU (a front moves about three cells a second) over the ripple window, which follows the player (it
 shifts by whole cells when the player is 16 cells from its centre, keeping
@@ -3937,8 +3945,8 @@ its checkbox selected. Parent Options Apply does not overwrite panel edits.
 
 | Profile field | Type | Default | Meaning |
 |---|---|---|---|
-| `UoPlusFlags` (`uo_plus_flags`) | integer bit mask | 0 | 8 rain rings, 16 puddles, 32 wet player, 64 reserved sway, 256 water ripples |
-| `UoPlusDensities` (`uo_plus_densities`) | object of feature-name → integer | `{}` | Independent 0–100 values, clamped at use; names `Fog`, `Leaves`, `Dust`, `RainRings`, `Puddles`, `WetPlayer`, `Sway`, `SpellLights`, `WaterRipples` |
+| `UoPlusFlags` (`uo_plus_flags`) | integer bit mask | 0 | 8 rain rings, 16 puddles, 32 wet player, 64 reserved sway, 256 water ripples, 512 shallow shores |
+| `UoPlusDensities` (`uo_plus_densities`) | object of feature-name → integer | `{}` | Independent 0–100 values, clamped at use; names `Fog`, `Leaves`, `Dust`, `RainRings`, `Puddles`, `WetPlayer`, `Sway`, `SpellLights`, `WaterRipples`, `ShallowShores` |
 
 Fog/leaves/dust flags remain authoritative in `AmbientFog`, `AmbientLeaves`
 and `AmbientDust`; spell lights remain in `SpellLighting` (`spell_lighting`).
