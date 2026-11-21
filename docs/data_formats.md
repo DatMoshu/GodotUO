@@ -3077,7 +3077,8 @@ speed-mode light offers read it; the classic light path never does.
   item over light id over default, field by field; a field no level sets keeps
   the offer's value.
 - `curve`: the falloff over `t = distance / radius`, each 1 at the source and
-  0 at the radius: **A** linear `1 - t`; **B** smoothstep (the default above);
+  0 at the radius: **A** linear `1 - t`; **B** smoothstep (the default until
+  2026-11-21; an offer with no profile curve now uses **C**);
   **C** windowed inverse square `(1 - t²)² / (1 + 8t²)`, a hot core;
   **D** quadratic `1 - t²`, broad; **E** a plateau to `t = 0.6`, then a
   smoothstep edge. Or the name of a `curves` entry: 2 or more samples
@@ -4232,16 +4233,32 @@ wall-lamp standoff and projectile positions, plus enabled spell bursts within
 the existing cap. The lamp is ten UO Z units above its offer; distance uses
 eleven UO Z units per tile. A..E/custom curves, source colour/energy and a small
 deterministic temporal flicker feed the fragment. B uses `(1-d*d/r/r)^2`.
-Facing dims back-facing walls/cards with a 0.2 floor. Ambient uses AmbientFor,
+An offer no profile sets a curve for uses C, the windowed inverse square
+(2026-11-21; it was B, whose saturated disc ended in a short hard rim).
+Wall faces use wrapped Lambert `clamp((n.l+0.25)/1.25,0,1)`: a face turned
+away from a light takes none of it; cards keep the 0.2 floor. Upward-facing
+receivers (ground, floors, roofs, wet) take `smoothstep(-3,3,lightZ-surfaceZ)`,
+so a lamp below a roof never lights the roof. A wall face samples the reach
+3/8 tile in front of its line, so window tiles (which do not block rays) and
+solid wall tiles beside them read the same light.
+Window statics that tiledata flags as light sources are offered as lights
+only when a non-window light stands on a roofed tile within 4 tiles; then they
+are a soft glow (radius at most 2, energy at most 0.45). Ambient uses AmbientFor,
 the profile's Night floor (%), and the existing RoofDaylight ramp under cover.
 
 The loaded blocker grid retains the original fill rules. A speed-only cache
 depends on grid bounds, facet, loaded chunk identity, ObjectsVersion and both
 mesh content stamps. A change rebuilds it and hashes blockers; stable frames
 perform dependency checks only. Per-light reach reuses ComputeReach's exact
-rays at four samples per tile, at lamp height. R8G8 stores exact visibility and
-one-tile dilation (summed-area-table construction). A linear reach sampler
-feathers the exact edge by 1/8 tile; native art and surface lookups stay nearest.
+rays at four samples per tile, at lamp height. A ray falls from the lamp's Z
+to the receiver tile's ground Z; a blocker shadows only where the ray passes
+below its top there, and a whole-tile blocker (post, pillar, tree) is a column
+of radius 0.35 tile in the tile's middle. R8G8 stores a filtered penumbra and
+one-tile dilation (summed-area-table construction): R is the box mean of the
+exact rays with half-width `min(0.12 x samples from the light, half the tile
+distance to the nearest blocker tile, 1.25 tiles)`, so shadows are sharp where
+they touch their blocker and widen across open ground. A linear reach sampler
+reads it; native art and surface lookups stay nearest.
 Maps upload only on revision changes. No full-grid light field is computed.
 
 The two-pass soften uses a triangular kernel of 0..10 steps (default3), stopping

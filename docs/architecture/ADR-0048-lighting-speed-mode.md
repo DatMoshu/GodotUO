@@ -69,11 +69,18 @@ computes
 
 - `d` in tiles from the light's world position (lamp height tile Z + 10, carried lights at the mobile's
   interpolated position), `falloff` the profile's curve (ADR-0039 amendment: A..E or custom), default
-  `(1 - d^2 / r^2)^2`.
+  `(1 - d^2 / r^2)^2`. Amended 2026-11-21 (owner): an offer without a profile curve uses C, the windowed inverse
+  square, so pools fade smoothly instead of saturating to most of the radius.
 - `facing`: walls `max(0, dot(face normal, to light))` with a 0.2 floor so a lit wall never goes black beside a
-  lit floor; uprights lit from the front, dimmed from behind; floor 1.
+  lit floor; uprights lit from the front, dimmed from behind; floor 1. Amended 2026-11-21: walls use wrapped
+  Lambert with no floor (a face turned away takes no light) and sample the reach 3/8 tile in front of their line;
+  upward-facing receivers (ground, floors, roofs) are lit only from above (`smoothstep(-3,3,lightZ-surfaceZ)`).
+  Tiledata window light sources glow softly only with an interior light behind them (data_formats section 49).
 - `visibility`: the light field's cached reach map (`RealtimeLightField.ComputeReach`, walls and edges as today)
   uploaded once per light per change as an `R8G8` tile texture (exact, dilated by one), feathered 1/8 tile.
+  Amended 2026-11-21: rays are height-aware (a blocker shadows only where the falling ray is below its top),
+  whole-tile blockers are 0.35-tile columns, and R is a filtered penumbra that widens with distance from the
+  light and from the blocker (data_formats section 49).
   No full-grid field is computed in this mode.
 - `shadow`: section 3.
 - Lights are the classic `AddLight` offers (the 100-offer cap), plus spell bursts when that option is on.

@@ -56,6 +56,7 @@ internal partial class GameScene
             SpeedLightFrame.GridTicks+=reachStart-gridStart;
             _rtField.BeginSpeedReach(gridChanged);
             _rtSources ??=new RealtimeLightField.Source[RtSourceCapacity];
+            FilterSpeedWindowLights();
             _rtSourceCount+=RealtimeLightEffects.Collect(Time.Ticks,_rtSources,_rtSourceCount,
                 SpellLighting.Enabled(ProfileManager.CurrentProfile));
             _speedLights ??=new SpeedLightFrame { BindLightTarget=OnSpeedLightTarget,ClearLightTarget=OnSpeedLightClear };
