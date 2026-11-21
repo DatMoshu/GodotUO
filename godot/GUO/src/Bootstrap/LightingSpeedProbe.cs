@@ -159,7 +159,18 @@ public partial class LightingSpeedProbe : Node
                     File.WriteAllText(Path.Combine(output,"surface-frame.json"),System.Text.Json.JsonSerializer.Serialize(new {
                         origin=new[] { origin.X,origin.Y },size=new[] {960,240},format="RGBA16F",
                         position="camera-relative XY, world Z",light_hook="synthetic binding only; no light pass" }));
-                    CheckGpuLight(device,origin,data,output);
+                    var lightFrame=CheckGpuLight(device,origin,data,output);
+                    CheckLightLifetime(device,lightFrame,origin,size => {
+                        device.DisposeRT(false); // the capture's size-change path: wrapper kept for the queued frame
+                        var after=device.SpeedLightPublishedRid;
+                        device.InitializeRT(size,OrderedWorldCapture.ShaderSource("resident_world_vertex.glsl.txt"),
+                            OrderedWorldCapture.ShaderSource("ordered_world_fragment.glsl.txt"),
+                            OrderedWorldCapture.ShaderSource("depth_world_resident_vertex.glsl.txt"));
+                        var resized=push; resized.Screen=new Vector4(size.X,size.Y,0,0);
+                        device.RenderRT(occurrences,geometry,states,segments,3,resized,true,resident,cameraX,cameraY);
+                        device.RenderSurfaceRT(rows,segments,resized,resident,cameraX,cameraY,127,0,origin);
+                        return after;
+                    });
                     // A new origin is a new surface ticket, even when geometry is reused.
                     var nextOrigin=origin+new Vector2I(1,-1);
                     device.RenderSurfaceRT(rows,segments,push,resident,cameraX,cameraY,127,0,nextOrigin);
@@ -217,7 +228,7 @@ public partial class LightingSpeedProbe : Node
             throw new InvalidOperationException("Reach invalidation, wall blocking or one-tile dilation failed.");
     }
 
-    private static void CheckGpuLight(OrderedWorldDevice device,Vector2I origin,byte[] surface,string output)
+    private static SpeedLightFrame CheckGpuLight(OrderedWorldDevice device,Vector2I origin,byte[] surface,string output)
     {
         static float Component(byte[] bytes,int pixel,int channel)
             => (float)BitConverter.UInt16BitsToHalf(BitConverter.ToUInt16(bytes,pixel*8+channel*2));
@@ -246,7 +257,7 @@ public partial class LightingSpeedProbe : Node
             throw new InvalidOperationException("GPU bounded additive light failed.");
         device.RenderLightsRT(frame);
         if(OrderedWorldDevice.SpeedReachUploads!=uploads || !device.SpeedLightReady
-            || SpeedModeBindings.Current.LightTarget!=device.SpeedLightTexture || SpeedModeBindings.Current.Origin!=origin)
+            || SpeedModeBindings.Current.Origin!=origin) // the light target is published by the soften/presentation pass (checked in CheckLightLifetime)
             throw new InvalidOperationException("GPU reach upload cache or light binding failed.");
         var rgba=new byte[960*240*4];
         for(int i=0;i<960*240;i++) { for(int c=0;c<3;c++) rgba[i*4+c]=(byte)(Math.Clamp(Component(lit,i,c),0,1)*255); rgba[i*4+3]=255; }
@@ -282,6 +293,7 @@ public partial class LightingSpeedProbe : Node
         }
         GD.Print("[lighting-speed-probe] SOFTEN PASS steps=0,1,3,10 zero-diff=0 class-boundary=pass finite-hdr=pass");
         GD.Print("[lighting-speed-probe] LIGHT PASS ambient-cover=pass bounded-additive=pass reach-upload-cache=pass same-origin=pass");
+        return frame;
     }
 }
 
