@@ -215,6 +215,11 @@ namespace GUO.Game.Data
             Span<ushort> gfx = stackalloc ushort[N];
             GraphicsFromEntity(entity, gfx);
 
+            return BuildInWorld(gfx, altTorsoTable, direction, dest);
+        }
+
+        internal static int BuildInWorld(ReadOnlySpan<ushort> gfx, bool altTorsoTable, byte direction, Span<Layer> dest)
+        {
             Span<Layer> order = stackalloc Layer[N];
             Build(gfx, altTorsoTable, order);
 
