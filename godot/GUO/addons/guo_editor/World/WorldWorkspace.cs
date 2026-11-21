@@ -25,6 +25,8 @@ public partial class WorldView
     private WaterPanel _water;
     internal WaterPanel WaterWorkspace => _water;
     internal SpinBox BrushSizeInput => _numbers["Size (tiles)"];
+    internal SpinBox BrushDensityInput => _numbers["Density (%)"];
+    internal SpinBox BrushSpacingInput => _numbers["Spacing (tiles)"];
     internal void ShowInspectorTab(bool inspector) => _detailTabs.CurrentTab = inspector ? 0 : 1;
     // Methods deliberately: Godot serializes settable properties during assembly reload.
     internal Vector2I GetWorkspaceSplit() => new(((HSplitContainer)_leftWorkspace.GetParent()).SplitOffsets[0], _leftWorkspace.SplitOffsets[0]);
@@ -139,7 +141,7 @@ public partial class WorldView
         ActionButton(recipes, "Terrain", () => QuickRecipe(true, "Paint", 5, 100, 1));
         ActionButton(recipes, "Sculpt", () => QuickRecipe(true, "Raise", 5, 100, 1));
         ActionButton(recipes, "Terrain palette…", PickTerrainPalette, "Open a UO Landscaper Data/System/Terrain.xml palette");
-        _terrainPalette = new OptionButton { Visible = false, FitToLongestItem = false, AllowReselect = true };
+        _terrainPalette = new OptionButton { Name = "TerrainSwatches", Visible = false, FitToLongestItem = false, AllowReselect = true };
         library.AddChild(_terrainPalette);
         _terrainPalette.ItemSelected += SelectPaletteTerrain;
         _brushArt = new ArtPanel { MinimumGridHeight = 80, ShowNames = true, Autocomplete = true, SizeFlagsVertical = SizeFlags.ExpandFill };
