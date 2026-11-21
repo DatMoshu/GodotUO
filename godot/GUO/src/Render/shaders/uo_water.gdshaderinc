@@ -32,6 +32,8 @@ const int WATER_UO = 1;
 const int WATER_PIXEL = 2;
 const int WATER_CEL = 3;
 const int WATER_REALISTIC = 4;
+uniform bool water_harbor = false;
+uniform bool water_harbor_swell = false;
 const int WATER_CLASSICPLUS = 5;
 
 // 0 is Classic: the branch is never taken. 1 to 5 are the built-in models a
@@ -318,12 +320,19 @@ vec3 water_realistic(vec3 base, vec2 cell, vec2 f, vec2 world, float t, float li
 	vec3 c = mix(base, deep, 0.35 + 0.35 * open_w * (1.0 - edge));
 	c *= 1.0 + (light - 0.75) * water_params.z * 2.4;
 	c += ripple * rs * vec3(0.50, 0.58, 0.64);
-	float spec = pow(clamp(light, 0.0, 1.0), 48.0) * water_params2.x * 2.0;
+	if (water_harbor) {
+		// A crest only catches the sun where the small crossing ripples agree.
+		float fleck = water_noise(world * vec2(0.16, 0.37) + vec2(t * 0.34, -t * 0.21));
+		float spec = pow(clamp(light, 0.0, 1.0), 64.0) * smoothstep(0.59, 0.89, fleck);
+		c += vec3(0.76, 0.87, 0.94) * spec * min(water_params2.x, 2.0) * 0.27;
+	} else {
+		float spec = pow(clamp(light, 0.0, 1.0), 48.0) * water_params2.x * 2.0;
 #if CURRENT_RENDERER != RENDERER_COMPATIBILITY
-	float sparkle = step(0.94, water_noise(world * 0.5 + vec2(t * 2.3, -t * 1.7))) * step(0.9, light);
-	spec += sparkle * water_params2.x;
+		float sparkle = step(0.94, water_noise(world * 0.5 + vec2(t * 2.3, -t * 1.7))) * step(0.9, light);
+		spec += sparkle * water_params2.x;
 #endif
-	c += vec3(spec) * (0.4 + 1.6 * luma);
+		c += vec3(spec) * (0.4 + 1.6 * luma);
+	}
 	float lace = water_noise(world * 0.12 + vec2(t * 0.5, t * 0.3));
 	float foam = water_surf(cell, f, t) * smoothstep(0.3, 0.7, lace + edge * 0.4) * water_params.w;
 	c = mix(c, vec3(0.88, 0.93, 0.96), foam);
@@ -352,7 +361,12 @@ vec3 water_realistic_lighting(vec3 base, vec2 cell, vec2 f, vec2 world, float t,
 	c += ripple * rs * vec3(0.50, 0.58, 0.64);
 	// Calm water has sparse, soft crests; stronger shared wind admits more.
 	float crest = pow(clamp(light, 0.0, 1.0), 96.0);
-	float spec = crest * water_params2.x * 0.7
+	float crest_gain = water_params2.x * 0.7;
+	if (water_harbor) {
+		float fleck = water_noise(world * vec2(0.16, 0.37) + vec2(t * 0.34, -t * 0.21));
+		crest_gain = smoothstep(0.59, 0.89, fleck) * min(water_params2.x, 2.0) * 0.27;
+	}
+	float spec = crest * crest_gain
 			* (0.45 + 0.55 * min(abs(water_wind), 1.0));
 	if (water_environment) {
 		// Sky colour follows shard daylight, not wall-clock time. Final world
@@ -388,6 +402,7 @@ uniform int water_debug = 0;
 
 // Shallow shores (L1 option, off by default). x: strength 0..1, 0 skips all
 // of it so every model draws as before; y: shard daylight for the caustics.
+
 uniform vec2 water_shallow = vec2(0.0, 1.0);
 
 // Shore distance averaged at the cell corners (the same four-cell blend as
@@ -406,6 +421,47 @@ float water_caustic_layer(vec2 p, vec2 dir, float t) {
 	return pow(1.0 - abs(2.0 * n - 1.0), 5.0);
 }
 
+// Small patches of stones, with fish cruising together above the bed.
+// All distances here are projected art pixels, independent of tile UV and zoom.
+vec3 water_harbor_bed(vec3 bed, vec2 world, float t, float visibility) {
+	vec2 patch_size = vec2(118.0, 72.0);
+	vec2 patch = floor(world / patch_size);
+	float seed = water_hash(mod(patch, 127.0));
+	vec2 local = (fract(world / patch_size) - 0.5) * patch_size;
+	local -= vec2(seed - 0.5, water_hash(mod(patch.yx, 113.0)) - 0.5) * vec2(24.0, 12.0);
+	if (seed > 0.59) {
+		for (int i = 0; i < 3; i++) {
+			float k = float(i);
+			vec2 center = vec2((k - 1.0) * 8.0, sin(seed * 19.0 + k * 2.4) * 4.0);
+			vec2 q = (local - center) / (vec2(6.8, 4.2) * (0.7 + 0.24 * k));
+			float d = length(q) + 0.10 * sin(q.x * 4.0 + seed);
+			float stone = 1.0 - smoothstep(0.79, 1.0, d);
+			vec3 slate = mix(vec3(0.08, 0.15, 0.15), vec3(0.34, 0.40, 0.33),
+					clamp(0.54 - 0.25 * q.x - 0.44 * q.y, 0.0, 1.0));
+			bed = mix(bed, slate, visibility * stone);
+		}
+	}
+	if (seed < 0.18) {
+		// Sample once per school position so its silhouettes react together.
+		vec2 sample_f;
+		vec2 sample_cell = water_cell((patch + 0.5) * patch_size, sample_f);
+		float disturbance = clamp(abs(water_ripple(sample_cell + sample_f)) * water_params2.w * 2.5, 0.0, 1.0);
+		float phase = t * 0.48 + seed * 35.0;
+		vec2 center = vec2(24.0 * sin(phase), 8.0 * cos(phase));
+		vec2 dir = normalize(vec2(24.0 * cos(phase), -8.0 * sin(phase)));
+		vec2 rel = local - center;
+		vec2 fish = vec2(dot(rel, dir), dot(rel, vec2(-dir.y, dir.x)));
+		for (int i = 0; i < 3; i++) {
+			float k = float(i);
+			vec2 q = fish - vec2(-5.0 * k - disturbance * (k + 1.0) * 2.0, (k - 1.0) * (4.0 + disturbance * 5.0) + sin(t * 2.4 + k));
+			float body = 1.0 - smoothstep(0.72, 1.0, length(q / vec2(3.6, 1.3)));
+			float tail = 1.0 - smoothstep(0.65, 1.0, length((q + vec2(3.9, sin(t * 5.0 + k) * 0.6)) / vec2(1.2, 1.3)));
+			bed = mix(bed, vec3(0.045, 0.13, 0.14), max(body, tail) * visibility);
+		}
+	}
+	return bed;
+}
+
 // Sandy-teal sea floor showing through near land, with two caustic layers
 // drifting in different directions. Generated here; no art.
 vec3 water_shallow_apply(vec3 c, vec2 cell, vec2 f, vec2 world, float t) {
@@ -415,11 +471,14 @@ vec3 water_shallow_apply(vec3 c, vec2 cell, vec2 f, vec2 world, float t) {
 	if (s <= 0.0) { return c; }
 	float luma = dot(c, vec3(0.299, 0.587, 0.114));
 	vec3 floor_c = mix(vec3(0.30, 0.58, 0.52), vec3(0.62, 0.66, 0.46), band * band) * (0.65 + 0.9 * luma);
+	if (water_harbor && water_model == WATER_REALISTIC) {
+		floor_c = water_harbor_bed(floor_c, world, t, smoothstep(0.05, 0.55, band));
+	}
 	c = mix(c, floor_c, clamp(s * 0.6, 0.0, 0.6));
 	vec2 p = world * 0.06;
 	float k = water_caustic_layer(p, vec2(0.11, 0.07), t * 1.4)
 			* water_caustic_layer(p * 1.3 + 7.0, vec2(-0.09, 0.12), t * 1.2);
-	c += vec3(0.55, 0.85, 0.80) * k * 1.6 * s * water_shallow.y;
+	c += vec3(0.55, 0.85, 0.80) * k * (water_harbor && water_model == WATER_REALISTIC ? 0.80 : 1.6) * s * water_shallow.y;
 	return clamp(c, 0.0, 1.0);
 }
 
@@ -452,6 +511,11 @@ vec3 water_shade_core(vec3 base, vec2 target_px) {
 	}
 
 	vec2 p = world * water_params.y;
+	// These are projected art pixels. Compress only the visible realistic swell;
+	// shoreline and disturbance positions below stay in the original cell space.
+	if (water_harbor && water_model == WATER_REALISTIC) {
+		p.y *= 1.45;
+	}
 	if (water_environment) {
 		p += vec2(water_wind * t * 0.22, -abs(water_wind) * t * 0.08);
 	}
@@ -492,6 +556,13 @@ vec3 water_shade_core(vec3 base, vec2 target_px) {
 	}
 	if (water_debug == 2) {
 		return vec3(clamp(0.5 + ripple * 6.0, 0.0, 1.0));
+	}
+	if (water_harbor_swell) {
+		vec2 xy = cell + f;
+		vec2 slope = 1.7 * vec2(0.26, -0.17) * cos(dot(xy, vec2(0.26, -0.17)) + water_time * 1.26)
+				+ 0.9 * vec2(0.13, 0.32) * cos(dot(xy, vec2(0.13, 0.32)) - water_time * 0.87);
+		hx += (slope.x - slope.y) / 44.0;
+		hy += (slope.x + slope.y) / 44.0;
 	}
 	vec3 n = normalize(vec3(-hx, -hy, 0.6));
 	float light = dot(n, normalize(vec3(-0.4, -0.6, 0.7)));
@@ -554,5 +625,15 @@ vec3 water_shade(vec3 base, vec2 target_px) {
 	vec2 world = (floor((target_px * water_target_to_world.xy + water_target_to_world.zw) / grain) + 0.5) * grain;
 	vec2 f;
 	vec2 cell = water_cell(world, f);
-	return water_shallow_apply(c, cell, f, world, water_time * water_params.x);
+	float t = water_time * water_params.x;
+	c = water_shallow_apply(c, cell, f, world, t);
+	if (water_harbor && water_model == WATER_REALISTIC && abs(water_mask_at(cell).a - 0.5) < 0.01) {
+		float d = length(f);
+		float shadow = 1.0 - smoothstep(0.17, 0.43, d);
+		float pulse = sin(t * 1.8 + dot(cell, vec2(0.39, 0.17)));
+		float ring = 1.0 - smoothstep(0.012, 0.042, abs(d - (0.36 + 0.035 * pulse)));
+		c *= 1.0 - 0.27 * shadow;
+		c += vec3(0.11, 0.15, 0.15) * ring * smoothstep(0.40, 0.77, water_noise(world * 0.15 + t * 0.12));
+	}
+	return c;
 }

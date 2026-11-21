@@ -1,0 +1,5 @@
+# Haven harbor water (Labs Debug)
+
+Build with GuoLabs=true. Use a local dev shard, a separate GM probe account and a scratch profile. Set GUO_RUST_RIPPLES=1, GUO_HARBOR_POSE=1 and GUO_BOAT_CAPTURE_DIR to a fresh external evidence directory. Run the boat_demo launcher with --account followed by the GM probe account name and --scratch-profile.
+
+The test places a small boat, verifies the returned multi, boards it, backs away from the berth, turns right and stops, captures four full-size frames and records sampled hull and passenger coordinates with matching viewport frames. Require travel observed=True, actual travel of the hull, equal hull/passenger heave during ordinary deck travel, and a visible wake. Trace waterline behavior at the pier, handoff from sail to stop and selection while aboard. The Godot WaterRippleProbe checks ring visibility, zero-strength parity and glint control. The native-enabled run must also print native Rust ripple step active. Repeat without the native library to exercise managed recovery.

@@ -245,6 +245,14 @@ internal sealed class WaterRipples
 
     private void Step()
     {
+#if GUO_LABS
+        if (GUO.Labs.HarborWater.RustRipples.TryStep(_now, _before, Size, Speed2, Damping))
+        {
+            (_now, _before) = (_before, _now);
+            Steps++;
+            return;
+        }
+#endif
         float damping = Damping;
         float[] now = _now, before = _before;
         for (int y = 1; y < Size - 1; y++)
@@ -380,6 +388,10 @@ internal sealed class WaterRipples
 
             _seen.Add(item.Serial);
             (float x, float y) = CellOf(item);
+#if GUO_LABS
+            if (GUO.Labs.HarborWater.HullPose.Enabled && WaterRender.EnvironmentEnabled(GUO.Configuration.ProfileManager.CurrentProfile))
+                GUO.Labs.HarborWater.HullPose.Add(world, item, this, x, y);
+#endif
             if (!_boats.TryGetValue(item.Serial, out var was))
             {
                 _boats[item.Serial] = (x, y);
@@ -388,7 +400,8 @@ internal sealed class WaterRipples
 
             float dx = x - was.X, dy = y - was.Y;
             _boats[item.Serial] = (x, y);
-            if (dx * dx + dy * dy < 1e-4f)
+            float travel = MathF.Sqrt(dx * dx + dy * dy);
+            if (travel < 0.01f || travel > 2f)
             {
                 continue;
             }
@@ -397,17 +410,29 @@ internal sealed class WaterRipples
             // waves it leaves behind become the wake, the ones ahead the bow wave.
             Rectangle r = item.MultiInfo.Value;
             // Cells a second; a boat under way makes two to four.
-            float speed = Math.Min(1f, MathF.Sqrt(dx * dx + dy * dy) / _dt / 3f);
+            float speed = Math.Min(1f, travel / _dt / 3f);
             float push = 3f * speed * _dt;
+            // Displace water at the leading edge and draw a trough astern.
+            // Use travel direction so backing and sideways motion work too.
+            float across = 0f, along = 0f, side = 1f;
+#if GUO_LABS
+            if (GUO.Labs.HarborWater.HullPose.Enabled)
+            {
+                // Stamp subtracts its input, so a negative bow stamp raises the bow wave.
+                across = -dx / travel;
+                along = -dy / travel;
+                side = -0.35f;
+            }
+#endif
             for (int ox = r.X; ox <= r.Width; ox++)
             {
-                Stamp(x + ox, y + r.Y - 0.5f, 0.5f, push);
-                Stamp(x + ox, y + r.Height + 0.5f, 0.5f, push);
+                Stamp(x + ox, y + r.Y - 0.5f, 0.5f, push * (side - along));
+                Stamp(x + ox, y + r.Height + 0.5f, 0.5f, push * (side + along));
             }
             for (int oy = r.Y; oy <= r.Height; oy++)
             {
-                Stamp(x + r.X - 0.5f, y + oy, 0.5f, push);
-                Stamp(x + r.Width + 0.5f, y + oy, 0.5f, push);
+                Stamp(x + r.X - 0.5f, y + oy, 0.5f, push * (side - across));
+                Stamp(x + r.Width + 0.5f, y + oy, 0.5f, push * (side + across));
             }
         }
 
@@ -423,6 +448,9 @@ internal sealed class WaterRipples
         {
             _boats.Remove(serial);
         }
+#if GUO_LABS
+        GUO.Labs.HarborWater.HullPose.Finish();
+#endif
     }
 
     private void ItemsAndEffects(World world, WaterMask mask)

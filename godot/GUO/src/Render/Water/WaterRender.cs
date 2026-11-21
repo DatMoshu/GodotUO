@@ -526,6 +526,12 @@ internal static class WaterRender
     {
         IWaterStyle style = Resolve(ProfileManager.CurrentProfile);
         _styled = style != null;
+#if GUO_LABS
+        batcher.SetWaterUniform("water_harbor", GUO.Labs.HarborWater.HullPose.Enabled);
+        bool harborPose = GUO.Labs.HarborWater.HullPose.Enabled && style is LightingWaterStyle && RipplesEnabled(ProfileManager.CurrentProfile);
+        if (!harborPose) GUO.Labs.HarborWater.HullPose.Finish();
+        batcher.SetWaterUniform("water_harbor_swell", harborPose);
+#endif
         if (!_boundOnce || style != _bound)
         {
             // Whatever changed the profile (Options, the editor, a probe),
@@ -802,6 +808,7 @@ internal sealed class WaterMask
                     bool wet = false;
                     int z = int.MinValue;
                     int dryZ = int.MinValue;
+                    int postBase = int.MinValue;
                     for (GameObject o = chunk.GetHeadObject(cx, cy); o != null; o = o.TNext)
                     {
                         bool w = o switch
@@ -818,6 +825,10 @@ internal sealed class WaterMask
                         else if (o is Land || o is Static)
                         {
                             dryZ = Math.Max(dryZ, o.Z);
+                            // The Britain dock's submerged support is a 10-Z post.
+                            // Upper pier caps, planks and cargo never write contact.
+                            if (o is Static post && post.Graphic == 0x0738)
+                                postBase = Math.Max(postBase, post.Z);
                         }
                     }
 
@@ -826,6 +837,7 @@ internal sealed class WaterMask
                     int at = (((wy & (Size - 1)) * Size) + (wx & (Size - 1))) * 4;
                     _pixels[at] = wet ? (byte)255 : (byte)0;
                     _pixels[at + 2] = 0;
+                    _pixels[at + 3] = wet && postBase <= z && postBase >= z - 10 ? (byte)128 : (byte)255;
                     _pixels[at + 1] = wet ? (byte)Math.Clamp(z + 128, 0, 255)
                         : dryZ == int.MinValue ? (byte)0 : (byte)Math.Clamp(dryZ + 128, 0, 255);
                 }

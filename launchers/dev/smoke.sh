@@ -118,6 +118,7 @@ echo "[smoke] controller regressions and Set controls (synthetic pad; no shard)"
 "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" -- --pad-regression-probe --pregame-classic --silent || FAIL=1
 
 if [ "${GuoLabs:-false}" = "true" ]; then
+    if [ "${GUO_RUST_RIPPLES:-0}" = "1" ]; then bash "$(dirname "$0")/harbor_water_doctor.sh" || FAIL=1; fi
     echo "[smoke] mobile debug history and inspector lifecycle"
     "$GODOT_CONSOLE" --headless --path "$UO_GODOT_PROJECT" res://src/Labs/MobileDebug/MobileDebugProbe.tscn || FAIL=1
     echo "[smoke] ordered GPU world Labs pixels (real GPU; ADR-0043)"

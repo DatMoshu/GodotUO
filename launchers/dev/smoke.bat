@@ -125,6 +125,7 @@ echo [smoke] controller regressions and Set controls (synthetic pad; no shard)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" -- --pad-regression-probe --pregame-classic --silent || set "FAIL=1"
 
 if "%GuoLabs%"=="true" (
+    if "%GUO_RUST_RIPPLES%"=="1" call "%~dp0harbor_water_doctor.bat" || set "FAIL=1"
     echo [smoke] mobile debug history and inspector lifecycle
     "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Labs/MobileDebug/MobileDebugProbe.tscn || set "FAIL=1"
     echo [smoke] ordered GPU world Labs pixels - real GPU - ADR-0043
