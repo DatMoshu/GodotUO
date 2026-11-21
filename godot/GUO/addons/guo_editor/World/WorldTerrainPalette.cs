@@ -77,7 +77,12 @@ public partial class WorldView
             _status.Text = $"Land art 0x{tile:X4} is unavailable in the loaded client.";
             return;
         }
-        QuickRecipe(true, "Paint", 5, 100, 1);
+        _operation.Select(0);
+        _recipe.Operation = "Paint";
+        _brushArt.SelectKind(true);
+        // A palette entry supplies one base tile. Keep the stroke settings the painter chose.
+        _weights.Text = _recipe.Variants = "";
+        RebuildVariants();
         _edges.Text = _recipe.Edges = "";
         UseFavorite(tile);
         _status.Text = $"Painting {_terrainPalette.GetItemText((int)index)}";

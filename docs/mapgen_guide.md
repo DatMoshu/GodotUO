@@ -22,7 +22,11 @@
 
 In World, **Brush library → Terrain palette…** opens a locally supplied UO Landscaper
 `Data/System/Terrain.xml`. Choose a named terrain to paint its displayed hexadecimal land ID.
-The brush preserves ground elevation. Use **Single** or **Scatter** in the same library to
+The brush preserves ground elevation, size, density, spacing and footprint. A swatch supplies
+one base tile and replaces the previous variant mix and edge rules. The pinned norad32 table
+has 93 entries with decimal TileIDs from 2 through 16337. The picker reads the name and
+base TileID, and checks the selected tile against the loaded client's art. RGB, terrain class,
+randomization and altitude fields are outside this import. Use **Single** or **Scatter** in the same library to
 place statics. Terrain palette import reads the base tiles only. Coast transitions, altitude
 colour maps and static placement catalogues have separate formats.
 

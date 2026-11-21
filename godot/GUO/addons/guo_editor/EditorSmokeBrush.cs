@@ -15,7 +15,8 @@ public partial class EditorSmoke
         ushort tile = data.LandId(x, y) == 3 ? (ushort)22 : (ushort)3;
         sbyte z = data.LandZ(x, y);
         string path = System.IO.Path.Combine(_out, "terrain-palette.xml");
-        System.IO.File.WriteAllText(path, $"<Terrains><Terrain Name='Trial shore' ID='91' TileID='{tile}'/></Terrains>");
+        ushort firstTile = tile == 3 ? (ushort)22 : (ushort)3;
+        System.IO.File.WriteAllText(path, $"<Terrains><Terrain Name='Bank' TileID='{firstTile}'/><Terrain Name='Trial shore' ID='91' TileID='{tile}'/></Terrains>");
         if (!_world.LoadTerrainPalette(path)) throw new InvalidOperationException(_world.BrushStatus);
         System.IO.File.WriteAllText(path, "<Altitudes/>");
         if (_world.LoadTerrainPalette(path)) throw new InvalidOperationException("Accepted an altitude table as terrain");
@@ -26,7 +27,15 @@ public partial class EditorSmoke
         string before = project.BlockText(0, OverlayBx, OverlayBy);
         try
         {
+            _world.QuickRecipeForSmoke("Single");
+            _world.BrushSizeInput.Value = 11;
             _world.SelectPaletteTerrain(1);
+            if (_data.CurrentArt != firstTile || _world.BrushSizeInput.Value != 11)
+                throw new InvalidOperationException("First palette swatch changed the selected brush size or tile");
+            _world.SelectPaletteTerrain(2);
+            if (_data.CurrentArt != tile || _world.BrushSizeInput.Value != 11)
+                throw new InvalidOperationException("Second palette swatch changed the selected brush size or tile");
+            _overlayReport["palette_size_after_two_swatches"] = _world.BrushSizeInput.Value;
             _world.PlaceForSmoke(new[] { (x, y) });
             if (_world.Editor.UndoCount != undo + 1) throw new InvalidOperationException(_world.BrushStatus);
             using var reopened = WorldProject.OpenOrCreate(project.Root, "", "");
