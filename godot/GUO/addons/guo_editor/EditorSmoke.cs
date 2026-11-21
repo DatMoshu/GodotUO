@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Threading.Tasks;
 using Godot;
 
 /// <summary>
@@ -459,7 +460,7 @@ public partial class EditorSmoke : Node
                     // The server's delete-object path (0x1D) removes it again,
                     // so the overlay check below has the block to itself.
                     _world.Host.RemoveServerObject(0x4000_0064);
-                    StartOverlay();
+                    _overlayStart = StartOverlay();
                     _stage = 12;
                     _frames = 0;
                 }
@@ -467,6 +468,11 @@ public partial class EditorSmoke : Node
                 break;
 
             case 12:
+                if (!_overlayStart.IsCompleted)
+                {
+                    _frames = 0;
+                    break;
+                }
                 if (_frames >= (Headless ? 5 : SettleFrames))
                 {
                     CheckOverlay();
@@ -1387,7 +1393,8 @@ public partial class EditorSmoke : Node
         return d;
     }
 
-    private void StartOverlay()
+    private Task _overlayStart;
+    private async Task StartOverlay()
     {
         if (!_world.IsBooted)
         {
@@ -1409,6 +1416,7 @@ public partial class EditorSmoke : Node
             _overlayBaseMapAddress = baseline.MapAddress;
             _overlayBaseLand = WorldProject.Capture(maps, 0, OverlayBx, OverlayBy).LandId[0];
             WorldProject project = _world.OpenProject(root);
+            await VerifyTerrainPalette(project);
             WorldBlock b = WorldProject.Capture(Client.Game.UO.FileManager.Maps, 0, OverlayBx, OverlayBy);
             _overlayReport["base_statics"] = b.Statics.Count;
             _overlayReport["base_trees"] = CountInChunk(OverlayTree, statics: true);

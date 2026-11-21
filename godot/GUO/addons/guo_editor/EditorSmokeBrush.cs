@@ -4,10 +4,104 @@ namespace GUO.Editor;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Godot;
 
 public partial class EditorSmoke
 {
+    private async Task VerifyTerrainPalette(WorldProject project)
+    {
+        var data = new WorldData(_world.Host);
+        int x = OverlayBx * 8 + 2, y = OverlayBy * 8 + 5;
+        ushort tile = data.LandId(x, y) == 3 ? (ushort)22 : (ushort)3;
+        sbyte z = data.LandZ(x, y);
+        string path = System.IO.Path.Combine(_out, "terrain-palette.xml");
+        ushort firstTile = tile == 3 ? (ushort)22 : (ushort)3;
+        System.IO.File.WriteAllText(path, $"<Terrains><Terrain Name='Bank' TileID='{firstTile}'/><Terrain Name='Trial shore' ID='91' TileID='{tile}'/></Terrains>");
+        var open = _world.FindChildren("*", "Button", true, false).OfType<Button>()
+            .Single(b => b.Text == "Terrain palette…");
+        EditorFileDialog OpenPicker()
+        {
+            open.EmitSignal(BaseButton.SignalName.Pressed);
+            return _world.GetChildren().OfType<EditorFileDialog>().Single(d => d.Visible && !d.IsQueuedForDeletion());
+        }
+        void ChooseFile(string file)
+        {
+            var picker = OpenPicker();
+            picker.CurrentPath = file;
+            picker.GetOkButton().EmitSignal(BaseButton.SignalName.Pressed);
+            if (!picker.IsQueuedForDeletion()) throw new InvalidOperationException("File picker did not accept the file");
+        }
+        var canceled = OpenPicker();
+        canceled.GetCancelButton().EmitSignal(BaseButton.SignalName.Pressed);
+        if (!canceled.IsQueuedForDeletion()) throw new InvalidOperationException("Cancel left the palette picker open");
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        ChooseFile(path);
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        var swatches = (OptionButton)_world.FindChild("TerrainSwatches", true, false);
+        if (swatches.ItemCount != 3) throw new InvalidOperationException(_world.BrushStatus);
+        string invalid = System.IO.Path.Combine(_out, "altitude-table.xml");
+        System.IO.File.WriteAllText(invalid, "<Altitudes/>");
+        ChooseFile(invalid);
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        if (!_world.BrushStatus.Contains("Terrains root") || swatches.ItemCount != 3)
+            throw new InvalidOperationException("Invalid XML did not leave the imported swatches available");
+        void ChooseSwatch(int index)
+        {
+            swatches.ShowPopup();
+            var popup = swatches.GetPopup();
+            // A temporary accelerator drives Godot's native menu activation in headless runs.
+            popup.SetItemAccelerator(index, Key.F9);
+            using var shortcut = new InputEventKey { Keycode = Key.F9, Pressed = true };
+            bool activated = popup.ActivateItemByEvent(shortcut);
+            popup.SetItemAccelerator(index, Key.None);
+            if (!activated || swatches.Selected != index) throw new InvalidOperationException("Popup did not activate the requested swatch");
+        }
+        uint previous = _data.CurrentArt;
+        bool locked = _world.TerrainLocked;
+        _world.TerrainLocked = false;
+        int undo = _world.Editor.UndoCount;
+        string before = project.BlockText(0, OverlayBx, OverlayBy);
+        try
+        {
+            _world.QuickRecipeForSmoke("Scatter");
+            _world.BrushSizeInput.Value = 11;
+            var density = _world.BrushDensityInput;
+            var spacing = _world.BrushSpacingInput;
+            bool GeometryPreserved() => _world.BrushSizeInput.Value == 11 && density.Value == 35 && spacing.Value == 2;
+            ChooseSwatch(1);
+            if (_data.CurrentArt != firstTile || !GeometryPreserved())
+                throw new InvalidOperationException("First palette swatch changed the selected brush size or tile");
+            ChooseSwatch(2);
+            if (_data.CurrentArt != tile || !GeometryPreserved())
+                throw new InvalidOperationException("Second palette swatch changed the selected brush size or tile");
+            _overlayReport["palette_size_after_two_swatches"] = _world.BrushSizeInput.Value;
+            _overlayReport["palette_density_after_two_swatches"] = density.Value;
+            _overlayReport["palette_spacing_after_two_swatches"] = spacing.Value;
+            _overlayReport["palette_picker_cancel_reopen_and_invalid_recovery"] = true;
+            _overlayReport["palette_selected_ids"] = new[] { firstTile, tile };
+            density.Value = 100;
+            spacing.Value = 1;
+            _world.PlaceForSmoke(new[] { (x, y) });
+            if (_world.Editor.UndoCount != undo + 1) throw new InvalidOperationException(_world.BrushStatus);
+            using var reopened = WorldProject.OpenOrCreate(project.Root, "", "");
+            var block = reopened.Blocks(0).Single(b => b.Bx == OverlayBx && b.By == OverlayBy);
+            if (block.LandId[42] != tile || block.LandZ[42] != z)
+                throw new InvalidOperationException("Reopened terrain ID, orientation or height differs");
+            _overlayReport["palette_tile"] = tile;
+            _overlayReport["palette_z"] = z;
+        }
+        finally
+        {
+            if (_world.Editor.UndoCount == undo + 1) _world.Editor.Undo();
+            _data.CurrentArt = previous;
+            _world.TerrainLocked = locked;
+        }
+        if (project.BlockText(0, OverlayBx, OverlayBy) != before)
+            throw new InvalidOperationException("Undo failed to restore the original palette stroke block");
+        _overlayReport["palette_undo_restored"] = true;
+    }
+
     private void VerifyBrushWorkspace()
     {
         WorldProject project = _world.Host.Project;
