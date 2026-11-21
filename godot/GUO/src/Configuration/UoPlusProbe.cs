@@ -35,12 +35,12 @@ public partial class UoPlusProbe : Node
             var fresh = Profile.CreatePlayerDefaults();
             var freshCopy = JsonSerializer.Deserialize(JsonSerializer.Serialize(fresh, ProfileJsonContext.DefaultToUse.Profile),
                 ProfileJsonContext.DefaultToUse.Profile);
-            Check(freshCopy.WaterStyle == "lighting" && WaterRender.RipplesEnabled(freshCopy)
+            Check(freshCopy.WaterStyle == "uo" && WaterRender.RipplesEnabled(freshCopy)
                 && UoPlusOptions.Density(freshCopy, UoPlusFeature.WaterRipples) == 65
-                && System.Math.Abs(WaterRender.ShallowStrength(freshCopy) - 0.45f) < 0.001f,
+                && System.Math.Abs(WaterRender.ShallowStrength(freshCopy) - 0.64f) < 0.001f,
                 "fresh character harbor style and disturbances survive reload");
-            Check(freshCopy.WaterTuneSpeed == 80 && freshCopy.WaterTuneWave == 85
-                && freshCopy.WaterTuneFoam == 55 && freshCopy.WaterTuneGlint == 30,
+            Check(freshCopy.WaterTuneSpeed == 56 && freshCopy.WaterTuneWave == 21
+                && freshCopy.WaterTuneFoam == 26 && freshCopy.WaterTuneGlint == 15,
                 "fresh character harbor tuning survives reload");
             var legacyWater = JsonSerializer.Deserialize("{\"water_style\":\"uo\"}", ProfileJsonContext.DefaultToUse.Profile);
             Check(WaterRender.RipplesEnabled(legacyWater), "legacy styled water preserves ripples");
