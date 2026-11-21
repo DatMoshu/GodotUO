@@ -67,7 +67,7 @@ namespace GUO.Configuration
 
         public static Profile NewFromDefault()
         {
-            return ConfigurationResolver.Load<Profile>(Path.Combine(RootPath, "default.json"), ProfileJsonContext.DefaultToUse.Profile) ?? new Profile();
+            return ConfigurationResolver.Load<Profile>(Path.Combine(RootPath, "default.json"), ProfileJsonContext.DefaultToUse.Profile) ?? Profile.CreatePlayerDefaults();
         }
 
         private static void ValidateFields(Profile profile)

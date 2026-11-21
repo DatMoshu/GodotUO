@@ -499,6 +499,24 @@ namespace GUO.Configuration
         public int WaterTuneWave { get; set; } = 100;
         public int WaterTuneFoam { get; set; } = 100;
         public int WaterTuneGlint { get; set; } = 100;
+
+        // PORT DEVIATION (GUO): the first character without a saved default
+        // gets the harbor look. Raw initializers above also decode sparse legacy profiles.
+        internal static Profile CreatePlayerDefaults()
+        {
+            var p = new Profile
+            {
+                WaterStyle = "lighting",
+                WaterTuneSpeed = 80,
+                WaterTuneWave = 85,
+                WaterTuneFoam = 55,
+                WaterTuneGlint = 30
+            };
+            UoPlusOptions.Set(p, UoPlusFeature.WaterRipples, true, 65);
+            UoPlusOptions.Set(p, UoPlusFeature.ShallowShores, true, 45);
+            return p;
+        }
+
         // PORT DEVIATION (GUO): opt-in lighting water wind, ADR-0037/0048.
         private float _windStrength;
         public float WindStrength

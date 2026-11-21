@@ -2,6 +2,17 @@
 
 ## Status
 
+Owner amendment, 2026-11-21. A new character without a saved default profile
+starts with Lighting water. It uses the realistic shading model and supports
+dock and character reflections. Ripples are on at 65% to show hull travel
+without a pronounced halo. Shallow shores are on at 45% so the bank stays
+legible without a bright caustic strip. Speed 80% slows short chop, Wave 85%
+softens crossing crests, Foam 55% breaks up the white shore edge, and Glint
+30% leaves small highlights while keeping attention on the dock. These are
+percentages of the style's authored values. Existing characters and saved
+default profiles keep their choices. Classic remains selectable.
+
+
 WATER-05 implementation: the existing `guo/shard-content@1` descriptor now
 carries the optional `water` block. Admin Settings edits
 `Data/GUO/public/shard-content.json`; pack redeployment preserves it. This
