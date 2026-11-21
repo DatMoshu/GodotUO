@@ -29,6 +29,9 @@ internal static class LayerShot
     /// it. Proves the capture mapping where screenshots exist.</summary>
     public static string CaptureRect { get; set; } = "";
 
+    /// <summary>--layer-light: photograph lighting speed mode off then on at a client-side night level, then while walking.</summary>
+    public static bool Light { get; set; }
+
     public static async System.Threading.Tasks.Task Run(Node host, string dir)
     {
         // Started as soon as Main is ready, before the client has booted.
@@ -143,7 +146,47 @@ internal static class LayerShot
             await InputProbe.Wait(host, 30);
         }
 
+        if (Light)
+        {
+            await LightSequence(host, dir, world);
+        }
+
         Passed = true;
+    }
+
+    private static async System.Threading.Tasks.Task LightSequence(Node host, string dir, Game.World world)
+    {
+        var profile = GUO.Configuration.ProfileManager.CurrentProfile;
+        int lo = world.Light.Overall, lr = world.Light.RealOverall; bool mode = profile.LightingSpeedMode;
+        async System.Threading.Tasks.Task Shot(string name)
+        {
+            await host.ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
+            string path = dir.PathJoin(name + ".png");
+            host.GetViewport().GetTexture().GetImage().SavePng(path);
+            GD.Print($"[GUO] layer light -> {ProjectSettings.GlobalizePath(path)}");
+        }
+        try
+        {
+            world.Light.Overall = world.Light.RealOverall = 26;
+            profile.LightingSpeedMode = false; await InputProbe.Wait(host, 30); await Shot("light_off");
+            profile.LightingSpeedMode = true; await InputProbe.Wait(host, 30); await Shot("light_on");
+            { bool sunWas = profile.SpeedModeSunShadows; profile.SpeedModeSunShadows = false; await InputProbe.Wait(host, 30); await Shot("light_on_nosun"); profile.SpeedModeSunShadows = sunWas; int lampWas = profile.SpeedModeLampShadows; profile.SpeedModeLampShadows = 0; await InputProbe.Wait(host, 30); await Shot("light_on_nolampshadow"); profile.SpeedModeLampShadows = lampWas; await InputProbe.Wait(host, 10); }
+            var scene = Client.Game.GetScene<Game.Scenes.GameScene>();
+            GD.Print($"[GUO] layer light: offers={scene?.SpeedLightOfferCount ?? -1}");
+            int n = 0;
+            for (int d = 0; d < 4; d++)
+            {
+                await InputProbe.Pull(host, new Vector2(1, 0), 20);
+                await Shot($"light_walk_{n++:00}");
+                await InputProbe.Wait(host, 10);
+                await Shot($"light_walk_{n++:00}");
+            }
+            GD.Print($"[GUO] layer light: offers after walking={scene?.SpeedLightOfferCount ?? -1}");
+        }
+        finally
+        {
+            world.Light.Overall = lo; world.Light.RealOverall = lr; profile.LightingSpeedMode = mode;
+        }
     }
 
     private static void CaptureArea(Node host, string dir)

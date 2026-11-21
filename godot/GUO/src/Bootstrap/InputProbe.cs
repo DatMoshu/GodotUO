@@ -3761,7 +3761,7 @@ internal static partial class InputProbe
     /// Hold the right button out from the middle of the window, which is how
     /// this client walks: a step at a time for as long as the button is down.
     /// </summary>
-    private static async System.Threading.Tasks.Task Pull(Node host, Vector2 offset, int frames)
+    internal static async System.Threading.Tasks.Task Pull(Node host, Vector2 offset, int frames)
     {
         Compat.Rectangle bounds = Client.Game.Window.ClientBounds;
         Vector2 at = new Vector2(bounds.Width / 2f, bounds.Height / 2f) + (offset * 250f);
