@@ -35,12 +35,15 @@ public static class RunCommand
         int size = a.Int("size", 1024);
         int width = a.Int("width", size), height = a.Int("height", size);
         var (preset, presetPath) = Presets.Load(a.Get("preset"));
+        string? file = a.Get("painted-draft");
+        int previewMax = a.Int("preview-max", 1024);
+        using var stagedInputs = file == null ? null : new StagedFolder(outDir);
         PaintedDraft? draft = null;
-        if (a.Get("painted-draft") is string file)
+        if (file != null)
         {
             if (a.Get("size") != null || a.Get("width") != null || a.Get("height") != null)
                 throw new CliError("Painted drafts use their PNG dimensions. Remove --size, --width and --height.");
-            draft = PaintedDraft.Capture(file, outDir);
+            draft = PaintedDraft.Capture(file, stagedInputs!);
             (width, height) = (draft.Width, draft.Height);
         }
         CheckSize(width, height);
@@ -51,7 +54,7 @@ public static class RunCommand
 
         var warnings = new List<string>();
         var steps = Pipeline.Build(preset, settings, warnings, out var effectivePreset);
-        if (draft == null) OutputFolder.PrepareFresh(outDir);
+        if (stagedInputs == null) OutputFolder.PrepareFresh(outDir);
 
         json.Event("start", new()
         {
@@ -61,7 +64,6 @@ public static class RunCommand
 
         var radar = RadarColors.Load(a.Get("client-data"));
         if (radar is null) warnings.Add("radarcol.mul not found (set UO_CLIENT_DATA or --client-data): previews use biome colours");
-        int previewMax = a.Int("preview-max", 1024);
         bool stepPreviews = a.Flag("step-previews");
 
         var total = Stopwatch.StartNew();
@@ -87,7 +89,7 @@ public static class RunCommand
         }, (i, step) => json.Event("pass_started", new()
         {
             ["index"] = i, ["count"] = steps.Count, ["name"] = step.Pass.Name,
-        }));
+        }), onReady: stagedInputs == null ? null : stagedInputs.Publish);
 
         json.Event("phase", new() { ["name"] = "Writing final previews and run manifest" });
         var files = new Dictionary<string, string>();
@@ -208,7 +210,7 @@ public static class Pipeline
 
     public static GenIR Run(CentrED.MapGen.Presets.MapGenPreset preset, RunSettings s, List<PipelineStep> steps,
         List<string> warnings, Action<int, PipelineStep, long, GenIR>? afterStep = null,
-        Action<int, PipelineStep>? beforeStep = null)
+        Action<int, PipelineStep>? beforeStep = null, Action? onReady = null)
     {
         var ir = PipelineFactory.CreateIR((ushort)s.Width, (ushort)s.Height,
             PipelineFactory.FullScope(s.Width, s.Height), unchecked((ulong)s.Seed),
@@ -217,6 +219,9 @@ public static class Pipeline
             throw new CliError(s.Brushes.Equals("dragon", StringComparison.OrdinalIgnoreCase)
                 ? "Dragon's transition table is unavailable. Run tools/mapgen/run.py prepare --dragon DIR, or choose GUO."
                 : $"Could not load transition table '{s.Brushes}'. Check the file or choose GUO.");
+        // Settings and data tables are now valid. Publish the input pair before passes
+        // read it and start writing live previews into the advertised run folder.
+        onReady?.Invoke();
         var runner = new PipelineRunner();
         for (int i = 0; i < steps.Count; i++)
         {

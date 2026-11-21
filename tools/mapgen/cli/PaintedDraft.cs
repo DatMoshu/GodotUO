@@ -21,7 +21,7 @@ public sealed record PaintedDraft(
     [JsonIgnore] public string InputPrefix { get; private init; } = "";
     private static string Prefix(string run) => Path.GetFullPath(Path.Combine(run, "draft", "input"));
 
-    public static PaintedDraft Capture(string file, string run)
+    internal static PaintedDraft Capture(string file, StagedFolder run)
     {
         const string suffix = ".terrain.png";
         if (!file.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
@@ -37,14 +37,13 @@ public sealed record PaintedDraft(
         if (terrainSize != altitudeSize)
             throw new CliError($"Painted draft dimensions differ: terrain {terrainSize.Width} x {terrainSize.Height}, altitude {altitudeSize.Width} x {altitudeSize.Height}.");
         RunCommand.CheckSize(terrainSize.Width, terrainSize.Height);
-        OutputFolder.PrepareFresh(run);
-        string prefix = Prefix(run);
+        string prefix = Prefix(run.WorkingPath);
         Directory.CreateDirectory(Path.GetDirectoryName(prefix)!);
         string terrainHash = Copy(terrainFile, PaintPngPair.TerrainPath(prefix));
         string altitudeHash = Copy(altitudeFile, PaintPngPair.AltitudePath(prefix));
         var mapping = new ImageImportParams();
         return new(Path.GetFileName(source), terrainSize.Width, terrainSize.Height, terrainHash, altitudeHash,
-            mapping.MinZ, mapping.MaxZ) { InputPrefix = prefix };
+            mapping.MinZ, mapping.MaxZ) { InputPrefix = Prefix(run.Destination) };
     }
 
     private static (int Width, int Height) Identify(Stream input, string path)

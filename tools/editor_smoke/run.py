@@ -53,6 +53,31 @@ from guo.process import build_child_env, no_activate  # noqa: E402
 TIMEOUT_S = 600
 
 
+def check_painted_retry(out: Path, env: dict) -> list[str]:
+    """A corrected setting must work at the same --out without manual cleanup."""
+    target = out / "setting-retry"
+    runner = Path(__file__).resolve().parents[1] / "mapgen" / "run.py"
+    command = [sys.executable, str(runner), "run", "--painted-draft", str(out / "inlet.terrain.png"),
+               "--out", str(target), "--seed", "528", "--set"]
+    def run(setting: str, log_name: str):
+        result = subprocess.run([*command, setting], capture_output=True, env=env, timeout=90)
+        (out / f"setting-{log_name}.log").write_bytes(result.stdout + result.stderr)
+        return result
+
+    invalid = run("NoSuchPass.NoSuchField=1", "invalid")
+    if invalid.returncode == 0 or b"no pass named" not in invalid.stdout:
+        return ["invalid painted setting did not produce the expected diagnostic"]
+    if target.exists() and any(target.iterdir()):
+        return ["invalid painted setting left files in the retry folder"]
+    setting = "Coast Terrace.TerraceBandWidth=12"
+    if run(setting, "corrected").returncode != 0:
+        return ["corrected painted setting failed in the same folder"]
+    manifest = json.loads((target / "run.json").read_bytes())
+    if manifest["sets"] != [setting] or not (target / "draft/input.altitude.png").is_file():
+        return ["corrected painted run did not retain its setting and inputs"]
+    return []
+
+
 def build(project: Path) -> bool:
     print("[editor_smoke] building C#")
     result = subprocess.run(
@@ -317,6 +342,8 @@ def main() -> int:
     failures = list(report.get("failures", []))
     if args.painted_draft and not report.get("painted_draft"):
         failures.append("missing painted draft World receipt")
+    elif args.painted_draft:
+        failures += check_painted_retry(out, env)
     if look:
         failures += check_world_project(report, args.world_project.resolve(), *look)
 
