@@ -29,7 +29,7 @@ internal static class LayerShot
     /// it. Proves the capture mapping where screenshots exist.</summary>
     public static string CaptureRect { get; set; } = "";
 
-    /// <summary>--layer-light: photograph lighting speed mode off then on at a client-side night level, then while walking.</summary>
+    /// <summary>--layer-light: photograph lighting speed mode off then on at a client-side night level (plus its G-buffer view), then while walking.</summary>
     public static bool Light { get; set; }
     /// <summary>--layer-water: photograph realtime water with shallow shores off, then on.</summary>
     public static bool Water { get; set; }
@@ -195,7 +195,7 @@ internal static class LayerShot
             world.Light.Overall = world.Light.RealOverall = 26;
             profile.LightingSpeedMode = false; await InputProbe.Wait(host, 30); await Shot("light_off");
             profile.LightingSpeedMode = true; await InputProbe.Wait(host, 30); await Shot("light_on");
-            { bool sunWas = profile.SpeedModeSunShadows; profile.SpeedModeSunShadows = false; await InputProbe.Wait(host, 30); await Shot("light_on_nosun"); profile.SpeedModeSunShadows = sunWas; int lampWas = profile.SpeedModeLampShadows; profile.SpeedModeLampShadows = 0; await InputProbe.Wait(host, 30); await Shot("light_on_nolampshadow"); profile.SpeedModeLampShadows = lampWas; await InputProbe.Wait(host, 10); }
+            { bool sunWas = profile.SpeedModeSunShadows; profile.SpeedModeSunShadows = false; await InputProbe.Wait(host, 30); await Shot("light_on_nosun"); profile.SpeedModeSunShadows = sunWas; int lampWas = profile.SpeedModeLampShadows; profile.SpeedModeLampShadows = 0; await InputProbe.Wait(host, 30); await Shot("light_on_nolampshadow"); profile.SpeedModeLampShadows = lampWas; Renderer.SpeedMode.SpeedModeDebug.GBuffer = true; await InputProbe.Wait(host, 10); await Shot("light_gbuffer"); Renderer.SpeedMode.SpeedModeDebug.GBuffer = false; await InputProbe.Wait(host, 10); }
             var scene = Client.Game.GetScene<Game.Scenes.GameScene>();
             GD.Print($"[GUO] layer light: offers={scene?.SpeedLightOfferCount ?? -1}");
             int n = 0;
