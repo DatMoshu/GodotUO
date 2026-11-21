@@ -100,6 +100,7 @@ public partial class EditorSmoke
         if (project.BlockText(0, OverlayBx, OverlayBy) != before)
             throw new InvalidOperationException("Undo failed to restore the original palette stroke block");
         _overlayReport["palette_undo_restored"] = true;
+        await VerifyCoast(project, ChooseFile, ChooseSwatch);
     }
 
     private void VerifyBrushWorkspace()
