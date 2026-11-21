@@ -42,6 +42,22 @@ when judging whether the tile transitions and scatter groups read well.
 
 ## Follow-up plan
 
+### Dragon compatibility sprints
+
+The [native compiler comparison](map-editor-comparison.html#dragon) and
+[independent fixture](../tools/mapgen/fixtures/dragon/README.md) establish the Mod 11
+#8a reference. Preserve GUO’s existing generation behavior while testing a distinct Dragon
+import mode. A count of parsed rules is insufficient for release.
+
+| Order | Work and dependency | Map and acceptance | Review |
+|---|---|---|---|
+| D1. Palette, heights and dispatch | Identify the selected version. Parse 1.03.62 group indirection or 1.05 combined rows and the indexed BMP. Resolve enabled Betweentrans group pairs to actual rule paths. Report dangling pairs, malformed numeric fields and unsupported tables before writing. | On the 32 × 24 fixture, accept trial.txt, preserve the +19 landmark and −5 region, then obtain identical cells after RGB recoloring. Repeat with the full-facet 1.03.62 reference and compare all 25,165,824 cells. | Review table provenance, version detection and base-cell output against the binary. |
+| D2. Ordered transitions | Depends on D1. Match exact neighbourhoods with the selected version’s order, duplicate handling and Z additions. Extend experiments to touching three groups, same-group rules, range endpoints and boundary cells. | Reverse duplicate rows and match all 22 small-map edges for #8a (last wins), and all 4,094 full-facet edges for 1.03.62 (first wins). A superset-only rule must miss. Fixed +3 must produce Z +10 only on the interior shore. Compare block payloads independently of headers. | Approve the native/GUO per-cell diff before connecting the mode to a coast painter. |
+| D3. Statics and randomness | Depends on D1–D2. Resolve Items and static-transition dispatch, grouped item offsets, chance, hue and region limits. Establish observed random draw behavior for each supported version. | Decode the nine placement records and compare complete tuples. Repeat random-pool runs; distinguish membership, frequency and exact replay. Repeat with two-item groups and alternate facet dimensions. | Review native SCP, frozen MUL and GUO output independently. Require explicit sizing when DragonSP emits a full-facet index. |
+| D4. Painter handoff | Depends on reviewed D1–D3. Use the existing World brush and MapGen result controls for indexed draft → preview → warnings → verified export → World. | Use a 128 × 64 inlet crossing block boundaries. Check two named swatches at size 11, undo after a cross-block coast stroke, then reopen with IDs, statics, signed Z and orientation intact. | Lead reviews a fresh install and the same map in both tools before advertising Dragon-compatible compilation. |
+
+### World and MapGen workflow sprints
+
 The [mapper comparison](map-editor-comparison.html) adds an ordered delivery sequence to the priorities below.
 
 | Sprint | Dependency and deliverable | Map and acceptance | Review point |
