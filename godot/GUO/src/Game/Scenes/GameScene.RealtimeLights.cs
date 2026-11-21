@@ -23,6 +23,45 @@ namespace GUO.Game.Scenes
         private RealtimeLightField _rtField;
         private RealtimeLightField.Source[] _rtSources;
         private int _rtSourceCount;
+        private bool[] _rtSourceWindow;
+
+        /// <summary>A window light glows only with a non-window light this many tiles away, on a roofed (inside) tile.</summary>
+        private const int WindowLightInteriorReach = 4;
+        /// <summary>A kept window glow: soft and small, never a lamp (owner 2026-11-21).</summary>
+        private const int WindowGlowRadius = 2;
+        private const float WindowGlowEnergy = 0.45f;
+
+        /// <summary>
+        /// Lighting speed mode only: drop window light offers with no interior light
+        /// behind them and turn the rest into a soft glow. Compacts the offer list.
+        /// </summary>
+        private void FilterSpeedWindowLights()
+        {
+            if (_rtSourceWindow == null || _rtField == null) return;
+            int kept = 0;
+            for (int i = 0; i < _rtSourceCount; i++)
+            {
+                var s = _rtSources[i];
+                if (_rtSourceWindow[i])
+                {
+                    bool lit = false;
+                    for (int j = 0; j < _rtSourceCount && !lit; j++)
+                    {
+                        if (_rtSourceWindow[j]) continue;
+                        var o = _rtSources[j];
+                        lit = Math.Abs(o.X - s.X) <= WindowLightInteriorReach && Math.Abs(o.Y - s.Y) <= WindowLightInteriorReach
+                            && _rtField.IsRoofed(o.X, o.Y);
+                    }
+                    if (!lit) continue;
+                    s = new RealtimeLightField.Source(s.X, s.Y, s.Z, Math.Min(s.Radius, WindowGlowRadius), s.Color,
+                        s.OffsetX, s.OffsetY, s.Curve, Math.Min(s.Energy, WindowGlowEnergy), s.CustomCurve);
+                }
+                _rtSourceWindow[kept] = false;
+                _rtSources[kept++] = s;
+            }
+            for (int i = kept; i < _rtSourceCount; i++) _rtSourceWindow[i] = false;
+            _rtSourceCount = kept;
+        }
 
         /// <summary>Margin of tiles around the visible chunks, so a light just off screen still reaches in.</summary>
         private const int RtMargin = 8;
@@ -78,7 +117,10 @@ namespace GUO.Game.Scenes
             if (p.Radius > 0) radius = p.Radius;
             if (p.RadiusScale > 0f) radius = Math.Max(1, (int)MathF.Round(radius * p.RadiusScale));
             Godot.Color color = p.Color ?? RealtimeLightColor(light.Color, light.IsHue);
-            LightCurve curve = p.Curve ?? LightCurve.B;
+            // Built-in default C, the windowed inverse square (owner 2026-11-21): a lamp
+            // is bright near its source and fades smoothly, not a saturated disc to
+            // most of its radius with a short hard rim. A profile can still pick B.
+            LightCurve curve = p.Curve ?? LightCurve.C;
             float energy = p.Energy > 0f ? p.Energy : RealtimeLightField.Energy;
             float[] custom = curve == LightCurve.Custom ? profiles.CustomCurve(p.CustomCurve) : null;
             // Invert the world's isometric projection of the walking offset.
@@ -86,6 +128,13 @@ namespace GUO.Game.Scenes
             // same continuous position as the mobile or moving effect sprite.
             float ox = (obj.Offset.X + obj.Offset.Y) / 44f;
             float oy = (obj.Offset.Y - obj.Offset.X) / 44f;
+            // Tiledata flags many window statics as light sources (classic draws a
+            // small window-light shape). Mark them: lighting speed mode keeps their
+            // glow only when a real light stands inside behind them.
+            _rtSourceWindow ??= new bool[RtSourceCapacity];
+            _rtSourceWindow[_rtSourceCount] = obj is Static or Multi
+                && obj.Graphic < Client.Game.UO.FileManager.TileData.StaticData.Length
+                && Client.Game.UO.FileManager.TileData.StaticData[obj.Graphic].IsWindow;
             _rtSources[_rtSourceCount++] = new RealtimeLightField.Source(
                 obj.X, obj.Y, obj.Z, radius, color, ox, oy, curve, energy, custom);
 #if DEBUG

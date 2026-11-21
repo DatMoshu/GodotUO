@@ -5,7 +5,6 @@
 // ripples, opens the live Water panel and hands the client to the player.
 // Dev shards only: it uses staff commands ([go, [add).
 using System;
-using System.Collections.Generic;
 using Godot;
 using GUO.Assets;
 using GUO.Configuration;
@@ -17,19 +16,20 @@ internal static class BoatDemo
     // Haven docks, Trammel: open water south-west of the pier.
     private const int StartX = 3503, StartY = 2574;
 
-    public static async System.Threading.Tasks.Task Run(Node host)
+    public static async System.Threading.Tasks.Task Run(Node host, string shotDir = "")
     {
         string capture = System.Environment.GetEnvironmentVariable("GUO_BOAT_CAPTURE_DIR");
-        void Failed(string reason)
-        {
-            GD.PrintErr("[GUO] boat demo: " + reason);
-            if (!string.IsNullOrWhiteSpace(capture)) host.GetTree().Quit(1);
-        }
+        bool passed = await RunDemo(host, shotDir, capture);
+        if (!string.IsNullOrWhiteSpace(capture)) host.GetTree().Quit(passed ? 0 : 1);
+    }
+
+    private static async System.Threading.Tasks.Task<bool> RunDemo(Node host, string shotDir, string capture)
+    {
         for (int i = 0; i < 1200 && Client.Game?.UO?.World == null; i++) await InputProbe.Wait(host, 1);
-        if (Client.Game?.UO?.World == null) { Failed("client did not start."); return; }
+        if (Client.Game?.UO?.World == null) return false;
         if (!Client.Game.UO.World.InGame) await InputProbe.EnterTheWorld(host, 200);
         var world = Client.Game.UO.World;
-        if (!world.InGame) { Failed("never got into the world."); return; }
+        if (!world.InGame) { GD.PrintErr("[GUO] boat demo: never got into the world."); return false; }
 
         await InputProbe.Say(host, "[go Trammel");
         await InputProbe.Wait(host, 120);
@@ -37,65 +37,71 @@ internal static class BoatDemo
         for (int i = 0; i < 30 && !(world.Player.X == StartX && world.Player.Y == StartY); i++) await InputProbe.Wait(host, 60);
         await InputProbe.Wait(host, 90);
 
-        if (!FindOpenWater(world, StartX, StartY, false, out int bx, out int by, out sbyte bz, out _))
+        if (!FindOpenWater(world, out int bx, out int by, out sbyte bz, out ushort graphic))
         {
-            Failed("no open water near the docks.");
+            GD.PrintErr("[GUO] boat demo: no open water near the docks.");
             Game.GameActions.Print(world, "Boat demo: no open water found nearby.");
-            return;
+            return false;
         }
         GD.Print($"[GUO] boat demo: open water at {bx},{by},{bz}");
+        // A boat deed's placement target only reaches 7 tiles: stand just off the
+        // boat's beam first (staff can stand on water).
+        int sx = bx + 5, sy = by;
+        await InputProbe.Say(host, $"[go {sx} {sy} {bz}");
+        for (int i = 0; i < 30 && !(world.Player.X == sx && world.Player.Y == sy); i++) await InputProbe.Wait(host, 10);
 
-        // Bring the target into interaction range and wait for the server to
-        // stream the area before distinguishing the newly placed multi.
-        await InputProbe.Say(host, $"[go {bx} {by} {bz}");
-        for (int i = 0; i < 180 && (world.Player.X != bx || world.Player.Y != by); i++)
-            await InputProbe.Wait(host, 1);
-        await InputProbe.Wait(host, 60);
-        // Boats outside the player's original update range only arrive after
-        // teleport. Check clearance against the now-streamed multis.
-        bool tooClose = false;
-        foreach (var other in world.Items.Values)
-            if (other.IsMulti && Math.Abs(other.X - bx) < 10 && Math.Abs(other.Y - by) < 10)
-                tooClose = true;
-        if (tooClose && !FindOpenWater(world, bx, by, true, out bx, out by, out bz, out _))
+        // The way a player does it: a deed in the pack, used, aimed at the water.
+        var backpack = world.Player.FindItemByLayer(Game.Data.Layer.Backpack);
+        if (backpack == null) { Fail(world, "no backpack"); return false; }
+        await InputProbe.Say(host, "[AddToPack SmallBoatDeed");
+        if (!await WaitTarget(host, world)) { Fail(world, "[AddToPack gave no target cursor (is this a staff account?)"); return false; }
+        world.TargetManager.Target(world.Player.Serial);
+        Game.GameObjects.Item deed = null;
+        for (int i = 0; i < 60 && deed == null; i++)
         {
-            Failed("no clear berth near the pier.");
-            return;
+            await InputProbe.Wait(host, 5);
+            foreach (var it in world.Items.Values)
+                if (it.Container == backpack.Serial && it.Graphic == 0x14F2 && (deed == null || it.Serial > deed.Serial)) deed = it;
         }
-        var existing = new HashSet<uint>();
-        foreach (var item in world.Items.Values)
-            if (item.IsMulti) existing.Add(item.Serial);
-        await InputProbe.Say(host, "[add SmallBoat");
-        for (int i = 0; i < 120 && !world.TargetManager.IsTargeting; i++) await InputProbe.Wait(host, 2);
-        if (!world.TargetManager.IsTargeting)
-        {
-            Failed("[add gave no target cursor.");
-            return;
-        }
-        world.TargetManager.Target(0, (ushort)bx, (ushort)by, bz, true);
-        await InputProbe.Wait(host, 90);
+        if (deed == null) { Fail(world, "no boat deed arrived in the backpack"); return false; }
 
-        Game.GameObjects.Item hull = null;
-        foreach (var item in world.Items.Values)
-            if (item.IsMulti && !existing.Contains(item.Serial) && Math.Abs(item.X - bx) <= 3 && Math.Abs(item.Y - by) <= 3)
+        var before = new System.Collections.Generic.HashSet<uint>();
+        foreach (var it in world.Items.Values) if (it.IsMulti) before.Add(it.Serial);
+        Game.GameActions.DoubleClick(world, deed.Serial);
+        if (!await WaitTarget(host, world)) { Fail(world, "the deed gave no placement cursor"); return false; }
+        // Answer as a player's click on that water would (GameSceneInputHandler):
+        // the water static when there is one, else the land with graphic 0. The
+        // shard re-reads a land target's z from the terrain, so sea drawn as a
+        // static over deeper land must be targeted as that static.
+        world.TargetManager.Target(graphic, (ushort)bx, (ushort)by, bz, true);
+
+        Game.GameObjects.Item boat = null;
+        for (int i = 0; i < 60 && boat == null; i++)
+        {
+            await InputProbe.Wait(host, 5);
+            foreach (var it in world.Items.Values)
+                if (it.IsMulti && !before.Contains(it.Serial) && Math.Abs(it.X - bx) <= 3 && Math.Abs(it.Y - by) <= 3) boat = it;
+        }
+        if (boat == null)
+        {
+            for (int yy = -6; yy <= 6; yy += 3)
+            for (int xx = -2; xx <= 2; xx += 2)
             {
-                hull = item;
-                break;
+                var sb = new System.Text.StringBuilder();
+                for (var o = world.Map.GetTile(bx + xx, by + yy); o != null; o = o.TNext)
+                    sb.Append($" {o.GetType().Name}:0x{o.Graphic:X4}@{o.Z}");
+                GD.PrintErr($"[GUO] boat demo tile {bx + xx},{by + yy}:{sb}");
             }
-        if (hull == null)
-        {
-            Failed("shard did not return a newly placed boat at the target.");
-
-
-            return;
+            GD.PrintErr($"[GUO] boat demo player {world.Player.X},{world.Player.Y},{world.Player.Z} map {world.MapIndex}");
+            Fail(world, $"the shard placed no boat at {bx},{by},{bz} (see the journal)");
+            return false;
         }
-        bx = hull.X;
-        by = hull.Y;
-        bz = hull.Z;
-        GD.Print($"[harbor] hull at {bx},{by},{bz}");
-        // Stand on the deck: the boat's centre tile, a little above the water.
-        await InputProbe.Say(host, $"[go {bx} {by} {bz + 3}");
-        await InputProbe.Wait(host, 120);
+        GD.Print($"[GUO] boat demo: boat 0x{boat.Serial:X8} at {boat.X},{boat.Y},{boat.Z}");
+
+        // Stand on the deck at the boat's centre, then check we are there.
+        await InputProbe.Say(host, $"[go {boat.X} {boat.Y} {boat.Z + 3}");
+        for (int i = 0; i < 30 && !(world.Player.X == boat.X && world.Player.Y == boat.Y); i++) await InputProbe.Wait(host, 10);
+        if (!(world.Player.X == boat.X && world.Player.Y == boat.Y)) { Fail(world, "could not step onto the boat"); return false; }
 
         var p = ProfileManager.CurrentProfile;
         if (p != null)
@@ -113,8 +119,8 @@ internal static class BoatDemo
             await InputProbe.Wait(host, 60);
             await Take("01-aboard");
             var start = (world.Player.X, world.Player.Y);
-            var startHull = (hull.X, hull.Y);
-            GD.Print($"[harbor] boarded at hull z={hull.Z}, passenger z={world.Player.Z}");
+            var startHull = (boat.X, boat.Y);
+            GD.Print($"[harbor] boarded at hull z={boat.Z}, passenger z={world.Player.Z}");
             bool recording = true;
             int mismatch = 0, peak = 0;
             var film = Record();
@@ -134,12 +140,11 @@ internal static class BoatDemo
             await Take("04-stopped");
             recording = false;
             await film;
-            moved &= (hull.X, hull.Y) != startHull;
+            moved &= (boat.X, boat.Y) != startHull;
             GD.Print($"[harbor] travel observed={moved} start={start} end=({world.Player.X},{world.Player.Y})");
             GD.Print($"[harbor] maximum hull heave={peak}px mismatched passenger samples={mismatch}");
             bool posePassed = System.Environment.GetEnvironmentVariable("GUO_HARBOR_POSE") != "1" || (peak > 0 && mismatch == 0);
-            host.GetTree().Quit(moved && posePassed ? 0 : 1);
-            return;
+            return moved && posePassed;
 
             async System.Threading.Tasks.Task Record()
             {
@@ -156,12 +161,12 @@ internal static class BoatDemo
                     shot.SavePng(System.IO.Path.Combine(frames, $"frame-{frame:D4}.png"));
                     int heave = 0, passenger = 0;
 #if GUO_LABS
-                    heave = hull.HarborPixels;
+                    heave = boat.HarborPixels;
                     passenger = world.Player.HarborPixels;
                     peak = Math.Max(peak, Math.Abs(heave));
                     if (passenger != heave) mismatch++;
 #endif
-                    csv.WriteLine($"{frame},{Godot.Time.GetTicksMsec()},{hull.X},{hull.Y},{world.Player.X},{world.Player.Y},{heave},{passenger}");
+                    csv.WriteLine($"{frame},{Godot.Time.GetTicksMsec()},{boat.X},{boat.Y},{world.Player.X},{world.Player.Y},{heave},{passenger}");
                     frame++;
                     await InputProbe.Wait(host, 3);
                 }
@@ -177,52 +182,76 @@ internal static class BoatDemo
         }
         Game.UI.Gumps.WaterQuickGump.Toggle(world);
 
+        if (!string.IsNullOrWhiteSpace(shotDir))
+        {
+            await InputProbe.Wait(host, 120);
+            await host.ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
+            string path = shotDir.PathJoin("boat_demo.png");
+            host.GetViewport().GetTexture().GetImage().SavePng(path);
+            GD.Print($"[GUO] boat demo shot -> {ProjectSettings.GlobalizePath(path)}");
+        }
         GD.Print($"[GUO] boat demo: aboard at {world.Player.X},{world.Player.Y},{world.Player.Z}");
-        Game.GameActions.Print(world, "Your boat is ready. Steer by saying: forward, back, left, right, forward left, forward right, turn left, turn right, come about, stop. Type -water to show or hide the Water panel.");
+        Game.GameActions.Print(world, "Your boat is ready (anchored). Say 'raise anchor', then steer: forward, back, left, right, forward left, forward right, turn left, turn right, come about, stop. Type -water to show or hide the Water panel.");
+        return true;
     }
 
-    // The nearest wet land tile whose 7x7 neighbourhood is all wet land and
-    // free of statics (room for a small boat), searched in rings from the start.
-    private static bool FindOpenWater(Game.World world, int centerX, int centerY, bool checkBoats, out int bx, out int by, out sbyte bz, out ushort graphic)
+    private static async System.Threading.Tasks.Task<bool> WaitTarget(Node host, Game.World world)
     {
-        var tiles = Client.Game.UO.FileManager.TileData;
-        bool Wet(int x, int y, out sbyte z, out ushort g)
+        for (int i = 0; i < 120 && !world.TargetManager.IsTargeting; i++) await InputProbe.Wait(host, 2);
+        return world.TargetManager.IsTargeting;
+    }
+
+    private static void Fail(Game.World world, string why)
+    {
+        GD.PrintErr("[GUO] boat demo: FAIL " + why);
+        var entries = Game.Managers.JournalManager.Entries;
+        for (int j = Math.Max(0, entries.Count - 8); j < entries.Count; j++)
+            GD.PrintErr($"[GUO] boat demo journal: {entries[j].Name}: {entries[j].Text}");
+        Game.GameActions.Print(world, "Boat demo: " + why + ".");
+    }
+
+    // The nearest spot where a small boat fits by the shard's own rule
+    // (ModernUO BaseBoat.CanFit): every tile under the hull is sea water at
+    // one z -- land 168-171/310-311 or a water static 0x1796-0x17B2 at that z --
+    // with nothing else standing at or above it. Searched in rings from the start.
+    private static bool FindOpenWater(Game.World world, out int bx, out int by, out sbyte bz, out ushort graphic)
+    {
+        bool Sea(int x, int y, out sbyte z) => SeaTile(x, y, out z, out _);
+        bool SeaTile(int x, int y, out sbyte z, out ushort target)
         {
-            z = 0; g = 0;
-            var o = world.Map.GetTile(x, y);
-            bool wetLand = false;
-            for (; o != null; o = o.TNext)
+            z = 0; target = 0; ushort waterG = 0;
+            sbyte landZ = 0; ushort landG = 0; bool haveLand = false;
+            sbyte? staticWaterZ = null; sbyte otherTop = sbyte.MinValue;
+            for (var o = world.Map.GetTile(x, y); o != null; o = o.TNext)
             {
-                if (o is Game.GameObjects.Land land)
+                if (o is Game.GameObjects.Land land) { landZ = land.Z; landG = land.Graphic; haveLand = true; }
+                else if (o is Game.GameObjects.Static or Game.GameObjects.Multi)
                 {
-                    g = land.Graphic; z = land.Z;
-                    wetLand = land.Graphic < tiles.LandData.Length && (tiles.LandData[land.Graphic].Flags & TileFlag.Wet) != 0;
+                    if (o.Graphic >= 0x1796 && o.Graphic <= 0x17B2) { staticWaterZ = o.Z; waterG = o.Graphic; }
+                    else otherTop = Math.Max(otherTop, o.Z);
                 }
-                else if (o is Game.GameObjects.Static or Game.GameObjects.Multi) return false;
             }
-            return wetLand;
+            bool seaLand = haveLand && (landG is >= 168 and <= 171 or >= 310 and <= 311);
+            if (staticWaterZ.HasValue) { z = staticWaterZ.Value; target = waterG; }
+            else if (seaLand) z = landZ;
+            else return false;
+            return otherTop < z;
         }
 
-        for (int r = 4; r < 40; r++)
+        for (int r = 2; r < 48; r++)
         {
             for (int dy = -r; dy <= r; dy++)
             for (int dx = -r; dx <= r; dx++)
             {
                 if (Math.Max(Math.Abs(dx), Math.Abs(dy)) != r) continue;
-                int cx = centerX + dx, cy = centerY + dy;
-                if (checkBoats)
-                {
-                    bool occupied = false;
-                    foreach (var other in world.Items.Values)
-                        if (other.IsMulti && Math.Abs(other.X - cx) < 10 && Math.Abs(other.Y - cy) < 10)
-                            occupied = true;
-                    if (occupied) continue;
-                }
-                if (!Wet(cx, cy, out bz, out graphic)) continue;
+                int cx = StartX + dx, cy = StartY + dy;
+                if (!SeaTile(cx, cy, out bz, out graphic)) continue;
+                // A north-facing small boat spans about 5 x 13 tiles: keep a
+                // margin of one tile all round.
                 bool room = true;
-                for (int yy = -3; yy <= 3 && room; yy++)
+                for (int yy = -7; yy <= 7 && room; yy++)
                 for (int xx = -3; xx <= 3 && room; xx++)
-                    room = Wet(cx + xx, cy + yy, out _, out _);
+                    room = Sea(cx + xx, cy + yy, out sbyte z2) && z2 == bz;
                 if (!room) continue;
                 bx = cx; by = cy;
                 return true;

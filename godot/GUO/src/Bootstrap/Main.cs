@@ -1032,7 +1032,7 @@ public partial class Main : Node
         {
             // PORT DEVIATION (GUO): --boat-demo hands the client to the player afterwards; no quit.
             await Preamble();
-            await BoatDemo.Run(this);
+            await BoatDemo.Run(this, _options.ScreenshotDir);
             return;
         }
         LayerShot.At = string.IsNullOrWhiteSpace(_options.LayerAt) ? LayerShot.At : _options.LayerAt;

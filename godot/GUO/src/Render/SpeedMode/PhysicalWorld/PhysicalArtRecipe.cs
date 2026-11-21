@@ -15,7 +15,7 @@ internal sealed class PhysicalArtRecipe
     private readonly ArtLoader _loader;
     private readonly ushort _graphic;
     private readonly Dictionary<float, bool> _floors = new();
-    private readonly Dictionary<(WallFaces.Face Face, float Lo, float Hi, float Height), bool> _walls = new();
+    private readonly Dictionary<(WallFaces.Face Face, float Lo, float Hi, float Height, bool Opening), bool> _walls = new();
     public readonly int Width, Height;
     public readonly WallFaces Faces;
     public readonly ulong CoverageFingerprint;
@@ -87,19 +87,25 @@ internal sealed class PhysicalArtRecipe
             && Opaque(art.Pixels,width,height,.95f,.05f,z);
     }
 
-    public bool FullWall(WallFaces.Face face, float lo, float hi, float height)
+    /// <param name="opening">A window piece: its see-through opening may leave
+    /// holes in the face (they discard, so no receiver pixel lies off the plane);
+    /// the opaque pixels and four corners must still fit it.</param>
+    public bool FullWall(WallFaces.Face face, float lo, float hi, float height, bool opening = false)
     {
-        var key = (face,lo,hi,height);
+        var key = (face,lo,hi,height,opening);
         if (_walls.TryGetValue(key,out bool result)) return result;
         if (_walls.Count >= 16) _walls.Clear();
-        result = CheckWall(ReadArt(),face,lo,hi,height);
+        result = CheckWall(ReadArt(),face,lo,hi,height,opening);
         _walls[key] = result;
         return result;
     }
 
-    private static bool CheckWall(ArtInfo art, WallFaces.Face face, float lo, float hi, float height)
+    /// <summary>Largest share of a window face its opening may leave transparent.</summary>
+    internal const float WindowOpeningShare = .3f;
+
+    private static bool CheckWall(ArtInfo art, WallFaces.Face face, float lo, float hi, float height, bool opening = false)
     {
-        int checkedPixels = 0;
+        int checkedPixels = 0, holes = 0;
         int width = art.Width, artHeight = art.Height;
         if (art.Pixels.Length < width * artHeight) return false;
         for (int row = 0; row < artHeight; row++)
@@ -109,11 +115,16 @@ internal sealed class PhysicalArtRecipe
             float along = face.AlongX ? face.Offset + diff : face.Offset - diff;
             float z = (artHeight - 44 + 22 * (along + face.Offset) - row - .5f) / 4;
             if (along <= lo + .025f || along >= hi - .025f || z <= .125f || z >= height - .125f) continue;
-            if (art.Pixels[row * width + column] == 0) return false;
+            if (art.Pixels[row * width + column] == 0)
+            {
+                if (!opening) return false;
+                holes++; continue;
+            }
             checkedPixels++;
         }
+        if (holes > (checkedPixels + holes) * WindowOpeningShare) return false;
         float first = lo + .05f * (hi - lo), last = hi - .05f * (hi - lo);
-        return checkedPixels >= (hi - lo) * 22 * height * 4 * .75f &&
+        return checkedPixels + holes >= (hi - lo) * 22 * height * 4 * .75f &&
             Corner(art,face,first,.25f) && Corner(art,face,last,.25f) &&
             Corner(art,face,first,height-.25f) && Corner(art,face,last,height-.25f);
     }
