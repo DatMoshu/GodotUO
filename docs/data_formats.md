@@ -1758,6 +1758,14 @@ tile. No table's rows are printed.
 
 ### Transition table (`tools/mapgen/MapGen/presets/transitions.guo.json`)
 
+The MapGen custom table picker also reads the JSON dictionary stored as the
+`land_brushes` value in a CentrED# 0.7.0.4 profile. Each material has `Tiles`
+and a `To` dictionary keyed by destination material. Each edge records a numeric
+`TileID` and clockwise eight-neighbour `Direction` byte, starting at north.
+Use material names recognized by the generator. Supply only the dictionary in
+a JSON file. A whole CentrED# profile also contains unrelated connection settings.
+Legacy Dragon dictionaries use `Transitions` in place of `To`.
+
 GUO's own land transition table, `"format": "guo.mapgen.transitions/1"`, and the generator's default
 (Land Transitions, road edges, mountain trails). It holds what GUO authors; the per-user tile variants
 come from `prepare --measure`, which writes a resolved copy in the same format to
