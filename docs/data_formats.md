@@ -4520,7 +4520,10 @@ Unrecognized NoShoot/Bridge structures remain unknown rather than decorative.
 Native surface metadata remains eight bytes per occurrence. Output class/flags
 gain bit256 for a qualified physical receiver. Full native floors and terrain,
 fitted planar roofs, and single opaque wall faces can qualify; cutouts and
-unsupported recipes do not. Roof apparent lift is per graphic/slope, separate
+unsupported recipes do not. A window wall piece qualifies like a plain one when
+its opaque pixels and four corners fit the face and its opening leaves at most
+30% of the face transparent (2026-11-21), so a facade reads one sun and lamp
+receipt instead of per-tile light/dark steps. Roof apparent lift is per graphic/slope, separate
 from native physical Z. Internal kinds8/9/10 encode roof and wall recipes and are
 decoded back to ordinary roof/wall classes in the surface target.
 Moving, PNG-themed and numerically replaced map-art receivers do not qualify.

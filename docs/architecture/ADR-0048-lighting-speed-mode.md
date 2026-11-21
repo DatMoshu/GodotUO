@@ -76,6 +76,8 @@ computes
   Lambert with no floor (a face turned away takes no light) and sample the reach 3/8 tile in front of their line;
   upward-facing receivers (ground, floors, roofs) are lit only from above (`smoothstep(-3,3,lightZ-surfaceZ)`).
   Tiledata window light sources glow softly only with an interior light behind them (data_formats section 49).
+  Window wall pieces qualify as physical wall receivers (opening up to 30% of the face), so they take the same
+  structural sun shadow and lamp receipt as the plain wall pieces beside them (data_formats section 52).
 - `visibility`: the light field's cached reach map (`RealtimeLightField.ComputeReach`, walls and edges as today)
   uploaded once per light per change as an `R8G8` tile texture (exact, dilated by one), feathered 1/8 tile.
   Amended 2026-11-21: rays are height-aware (a blocker shadows only where the falling ray is below its top),
