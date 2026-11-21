@@ -361,7 +361,8 @@ namespace GUO.Game.GameObjects
                 charSitting
             );
 
-            if (!IsEmpty)
+            // Equipment sprites and item lights are submitted only in the body or combined pass.
+            if (!IsEmpty && Pass != DrawPass.Shadow)
             {
                 // draw order built from the layer algorithm (PaperdollOrder), keyed on
                 // the equipped item graphics; cloak is then repositioned by facing
