@@ -1636,11 +1636,19 @@ Folder:
 | `biome.png`, `height.png` | Biome classes; heights (grey above 0, blue below) |
 | `steps/NN-pass-name.png` | With `--step-previews`: the map after each enabled pass (radar once land ids exist, biome or height before) |
 | `map.bin` | Analyzer dump: int32 width, int32 height; per cell, row-major, uint16 land id, int8 z, uint8 biome; int32 count; per static uint16 x, uint16 y, int8 z, uint16 id |
+| `draft/input.terrain.png`, `draft/input.altitude.png` | For `run --painted-draft NAME.terrain.png`, byte copies of the selected terrain and sibling altitude PNGs. Their dimensions supply the run size. Export verifies both fingerprints before regeneration. |
 | `pois.json` | `"schema": "guo.mapgen.pois/1"`, `width`, `height`, `pois[]`: `id`, `kind` (`ControlPoint`, `DungeonEntrance`, `Ruin`, `Town`, `Camp`, `Shrine`), `x`, `y`, `z`, `tag` (`fixed-site` for a Town Sites `Sites` entry), `footprint` (`[x1, y1, x2, y2]`, inclusive map cells; towns only, else null), `gates` (`[[x, y], ...]` N, S, W, E edge midpoints where roads end; towns only). What a tool placing content on the map reads (`tools/mapgen_districts`) |
 
 The Map Validator's `BiomeProfile` sets which land-biome mix the `BiomeDistribution` check expects: `felucca` (the default: grass 5–85%, forest ≤ 70%, desert ≤ 60%, mountain ≤ 40%, no biome over 92%), `desert` (desert ≥ 50%, grass ≤ 10%, forest ≤ 5%, mountain ≤ 40%), `ice` (snow ≥ 30%, grass and forest ≤ 10%, mountain ≤ 40%) or `none` (histogram only). Out-of-band shares are warnings; one biome over the cap is an error; an unknown name is an error. The other checks do not depend on the profile. Optional validator report paths must resolve inside the MapGen data folder and outside the client install.
 
 Town sites and district pads: **Town Sites** `Sites` places fixed footprints `x,y,w,h[,z];...` first (z omitted = the footprint's median ground Z; entries off the scope or touching water are skipped with a warning), and `BuildableBiomesCsv` replaces the random finder's biome set (empty = Grassland, Forest, DenseForest, Savanna, Beach). **Town Roads** `FlattenTarget` (`centre`, the default, or `poi` = the site's Z), `FlattenSkirt` (blend tiles, default 3) and `PaintStreets` (off = a bare flattened pad). Both passes are opt-in; their defaults generate what they did before.
+
+Painted runs add `painted_draft` to the manifest with `terrain_name`, `width`, `height`, `min_z`,
+`max_z`, `terrain_sha256` and `altitude_sha256`. The top-level `palette_sha256` fingerprints the
+ordered effective swatches and their tile pools. Export checks it on replay. The `draft_warnings` array is empty for fully
+matched colours. Otherwise the `unmatched_terrain` warning records the pixel count, first
+`[x,y]`, first RGB as `#RRGGBB`, severity and inclusive `[minX,minY,maxX,maxY]` bounds.
+Coordinates are local to the input image. The optional draft fields preserve older run manifests.
 
 Towns on generated maps (`tools/mapgen_districts`): `build` picks flat lots on dry ground from a first
 run's `map.bin` (on the 8x8 block grid, default 88x88), re-runs with them as fixed z0 `Sites`, streets off,

@@ -199,12 +199,15 @@ def main() -> int:
                     help="fail when a check that needs a real external program was skipped")
     ap.add_argument("--header-only", action="store_true", help="check the toolbar at three window widths without running unrelated editor checks")
     ap.add_argument("--assets-workbench", action="store_true", help="capture the Assets workbench at three widths and its export review (requires --windowed)")
+    ap.add_argument("--painted-draft", action="store_true", help="generate a painted terrain/altitude pair and verify its World export")
     ap.add_argument("--world-project", type=Path,
                     help="open this world project (UO_WORLD_PROJECT) in the World tab and check it there; needs --look")
     ap.add_argument("--look", help="FACET,X,Y: the cell the World tab shows for --world-project; its block must be one the project edits")
     args = ap.parse_args()
     if args.assets_workbench and (not args.windowed or args.reload or args.world_project or args.header_only):
         ap.error("--assets-workbench requires --windowed and cannot combine with reload, world-project or header-only")
+    if args.painted_draft and (args.reload or args.world_project or args.header_only or args.assets_workbench):
+        ap.error("--painted-draft runs its own MapGen and World checks")
     look = None
     if args.world_project or args.look:
         if not (args.world_project and args.look):
@@ -238,6 +241,8 @@ def main() -> int:
     args.headless = not args.windowed
     mode = ("headless" if args.headless else "windowed") + ("_reload" if args.reload else "") + ("_world_project" if look else "")
     evidence_out = os.environ.get("GUO_EDITOR_SMOKE_OUT")
+    if args.painted_draft:
+        mode += "_painted_draft"
     out = (args.out or (Path(evidence_out) / mode if evidence_out else cfg.build / "editor_smoke" / mode)).resolve()
 
     # Old markers from an earlier run would make the addon think it is past a
@@ -266,6 +271,9 @@ def main() -> int:
     if args.reload:
         cmd.append("--guo-editor-smoke-reload")
     env = build_child_env()
+    if args.painted_draft:
+        cmd.append("--guo-editor-painted-draft")
+        env.update(UO_WORLD_PROJECT=str(out / "world" / "default"), UO_BUILD_DIR=str(out / "build"))
     if look:
         # The World tab opens UO_WORLD_PROJECT when it boots, as it does for a user.
         env = {**env, "UO_WORLD_PROJECT": str(args.world_project.resolve())}
@@ -307,6 +315,8 @@ def main() -> int:
 
     report = json.loads(report_path.read_text(encoding="utf-8"))
     failures = list(report.get("failures", []))
+    if args.painted_draft and not report.get("painted_draft"):
+        failures.append("missing painted draft World receipt")
     if look:
         failures += check_world_project(report, args.world_project.resolve(), *look)
 

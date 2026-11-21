@@ -37,14 +37,18 @@ public static class ExportCommand
         // The effective preset already holds every --set, --disable, --enable and --fast choice.
         var preset = MapGenPreset.Load(Path.Combine(runDir, "preset.json"));
         string? brushes = r.TryGetProperty("brushes", out var br) ? br.GetString() : null;
-        var settings = new RunSettings("run", seed, width, height, false, Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), brushes);
+        var settings = new RunSettings("run", seed, width, height, false, Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), brushes,
+            PaintedDraft.Verify(r, runDir));
         var warnings = new List<string>();
-        var steps = Pipeline.Build(preset, settings, warnings);
+        var steps = Pipeline.Build(preset, settings, warnings, out _);
         json.Event("start", new() { ["run"] = Path.GetFullPath(runDir), ["width"] = width, ["height"] = height, ["seed"] = seed });
         var ir = Pipeline.Run(preset, settings, steps, warnings, (i, step, ms, _) =>
             json.Event("pass", new() { ["index"] = i, ["count"] = steps.Count, ["name"] = step.Pass.Name, ["enabled"] = step.Enabled, ["ms"] = ms }));
 
         string hash = MapHash.Of(ir);
+        if (settings.Draft != null && r.TryGetProperty("palette_sha256", out var paletteHash) &&
+            ir.Reports[CentrED.MapGen.Pipeline.PipelineFactory.ImageImportPassName].Diagnostics?.PaletteSha256 != paletteHash.GetString())
+            throw new CliError("The painted draft palette changed. Generate a new run.");
         if (hash != expected)
             throw new CliError($"regenerated map differs from the run (hash {hash[..12]} vs {expected[..Math.Min(12, expected.Length)]}); export refused");
 
@@ -129,7 +133,22 @@ public static class ExportCommand
         {
             if (Directory.Exists(Destination))
                 Directory.Delete(Destination); // only an empty destination is replaceable
-            Directory.Move(WorkingPath, Destination);
+            // Windows readers can briefly hold a freshly written file without delete sharing.
+            // Retry only that rename, and never replace another publisher's result.
+            for (int attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    Directory.Move(WorkingPath, Destination);
+                    return;
+                }
+                catch (Exception e) when (OperatingSystem.IsWindows() && attempt < 5 &&
+                    e is IOException or UnauthorizedAccessException &&
+                    (e.HResult & 0xffff) is 5 or 32 or 33 && !Directory.Exists(Destination))
+                {
+                    Thread.Sleep(50 << attempt);
+                }
+            }
         }
 
         public void Dispose()

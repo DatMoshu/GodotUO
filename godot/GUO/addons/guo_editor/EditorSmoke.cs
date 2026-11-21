@@ -177,6 +177,17 @@ public partial class EditorSmoke : Node
         _elapsed += delta;
         _frames++;
 
+        if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-editor-painted-draft") >= 0)
+        {
+            _mapgenTask ??= CheckPaintedDraftAsync();
+            if (_mapgenTask.IsCompleted)
+            {
+                if (_mapgenTask.IsFaulted) _failures.Add(_mapgenTask.Exception.GetBaseException().Message);
+                Finish();
+            }
+            return;
+        }
+
         if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--guo-editor-manual-two-block") >= 0)
         { StepManualTwoBlock(); return; }
 

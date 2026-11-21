@@ -119,7 +119,7 @@
 <h2>What to build first</h2>
 <ol><li><b>Prevent silent changes to the terrain.</b> Resolve a palette entry to its land tile, preserve Z, and reject unsupported formats before replacing the active selection.</li>
 <li><b>Make a coast reproducible.</b> Carry the source pair and eight-direction orientation through preview, stroke, undo and reopen. Require fixtures for asymmetric shores and mixed corners.</li>
-<li><b>Carry a painted draft through export.</b> Use the existing image-import pipeline and pass controls. Bind source images and palette identity to the result. Click a warning to inspect the corresponding World cell.</li>
+<li><b>Carry a painted draft through export.</b> MapGen Setup accepts sibling terrain and altitude PNGs. The run retains both images and fingerprints the effective palette. Coast and scatter remain adjustable. After export, the first unmatched colour opens at its World coordinate. <a href="mapgen_guide.md">Painted draft workflow</a></li>
 <li><b>Prove collaborative and large edits separately.</b> A pair of editing clients must agree on the same saved block after a conflict and reconnect.</li>
 </ol>
 <p>Search covered the named repositories, release notes, original mapping tutorial, archived tool versions, related MapCreator projects and public brush-library searches. Third-party conversions outside these trees, original archive rights and runtime comparison of two concurrent CentrED# clients remain open. <a href="mapgen_review.md">Sprint plan and prior measured checks</a> · <a href="mapgen_guide.md">Current GUO workflow</a></p>

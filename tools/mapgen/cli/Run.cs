@@ -12,7 +12,7 @@ namespace GuoMapGen;
 
 /// <summary>The settings a run was made with; written to run.json and read back by export.</summary>
 public sealed record RunSettings(string PresetId, long Seed, int Width, int Height, bool Fast,
-    IReadOnlyList<string> Sets, IReadOnlyList<string> Disable, IReadOnlyList<string> Enable, string? Brushes = null);
+    IReadOnlyList<string> Sets, IReadOnlyList<string> Disable, IReadOnlyList<string> Enable, string? Brushes = null, PaintedDraft? Draft = null);
 
 /// <summary>
 /// <c>run</c>: generate one map into a fresh folder. Emits one JSON line per pass
@@ -22,24 +22,36 @@ public static class RunCommand
 {
     public const int MaxWidth = 7168, MaxHeight = 4096;
 
+    internal static void CheckSize(int width, int height)
+    {
+        if (width % 8 != 0 || height % 8 != 0) throw new CliError($"map size {width}x{height}: both sides must be multiples of 8");
+        if (width < 64 || height < 64 || width > MaxWidth || height > MaxHeight)
+            throw new CliError($"map size {width}x{height}: each side must be 64..{MaxWidth}x{MaxHeight}");
+    }
+
     public static int Execute(Args a, JsonEmitter json)
     {
         var outDir = a.Get("out") ?? throw new CliError("run needs --out DIR (a new or empty folder)");
         int size = a.Int("size", 1024);
         int width = a.Int("width", size), height = a.Int("height", size);
-        if (width % 8 != 0 || height % 8 != 0) throw new CliError($"map size {width}x{height}: both sides must be multiples of 8");
-        if (width < 64 || height < 64 || width > MaxWidth || height > MaxHeight)
-            throw new CliError($"map size {width}x{height}: each side must be 64..{MaxWidth}x{MaxHeight}");
-
         var (preset, presetPath) = Presets.Load(a.Get("preset"));
+        PaintedDraft? draft = null;
+        if (a.Get("painted-draft") is string file)
+        {
+            if (a.Get("size") != null || a.Get("width") != null || a.Get("height") != null)
+                throw new CliError("Painted drafts use their PNG dimensions. Remove --size, --width and --height.");
+            draft = PaintedDraft.Capture(file, outDir);
+            (width, height) = (draft.Width, draft.Height);
+        }
+        CheckSize(width, height);
         string presetId = Presets.IdOf(presetPath);
         long seed = a.Long("seed") ?? preset.Seed ?? 1234567;
         var settings = new RunSettings(presetId, seed, width, height, a.Flag("fast"),
-            a.All("set").ToList(), a.All("disable").ToList(), a.All("enable").ToList(), a.Get("brushes"));
+            a.All("set").ToList(), a.All("disable").ToList(), a.All("enable").ToList(), a.Get("brushes"), draft);
 
         var warnings = new List<string>();
-        var steps = Pipeline.Build(preset, settings, warnings);
-        OutputFolder.PrepareFresh(outDir);
+        var steps = Pipeline.Build(preset, settings, warnings, out var effectivePreset);
+        if (draft == null) OutputFolder.PrepareFresh(outDir);
 
         json.Event("start", new()
         {
@@ -83,8 +95,7 @@ public static class RunCommand
         Render.Biome(ir).Save(Path.Combine(outDir, "biome.png"), previewMax); files["biome"] = "biome.png";
         Render.Height(ir).Save(Path.Combine(outDir, "height.png"), previewMax); files["height"] = "height.png";
         MapDump.Write(ir, Path.Combine(outDir, "map.bin")); files["dump"] = "map.bin";
-        File.WriteAllText(Path.Combine(outDir, "preset.json"),
-            PipelineFactory.ExportPreset(steps, preset.Name, preset.Description, seed));
+        File.WriteAllText(Path.Combine(outDir, "preset.json"), effectivePreset);
         files["preset"] = "preset.json";
         // Points of interest, towns with their footprint and gates: what tools placing content on the
         // map (tools/mapgen_districts) read. Map cells, inclusive rectangles.
@@ -122,14 +133,29 @@ public static class RunCommand
             ["stats"] = stats, ["files"] = files, ["passes"] = passes, ["warnings"] = warnings,
             ["radar_colours"] = radar is not null,
         };
+        if (draft != null)
+        {
+            runJson["painted_draft"] = draft;
+            var diagnostics = ir.Reports[PipelineFactory.ImageImportPassName].Diagnostics!;
+            runJson["palette_sha256"] = diagnostics.PaletteSha256;
+            var misses = diagnostics.PaletteMisses;
+            runJson["draft_warnings"] = misses == null ? Array.Empty<object>() : new[] { new
+            {
+                code = "unmatched_terrain", severity = "warning", count = misses.Count,
+                first = new[] { misses.FirstX, misses.FirstY }, rgb = misses.FirstRgb,
+                bounds = new[] { misses.MinX, misses.MinY, misses.MaxX, misses.MaxY }
+            } };
+        }
         File.WriteAllText(Path.Combine(outDir, "run.json"), JsonSerializer.Serialize(runJson, new JsonSerializerOptions { WriteIndented = true }));
 
-        json.Event("done", new()
+        var result = new Dictionary<string, object?>
         {
             ["hash"] = hash, ["elapsed_ms"] = total.ElapsedMilliseconds, ["out"] = Path.GetFullPath(outDir),
             ["stats"] = stats, ["warnings"] = warnings, ["step_preview_ms"] = stepPreviewMs,
             ["radar_colours"] = radar is not null,
-        });
+        };
+        if (draft != null) result["draft_warnings"] = runJson["draft_warnings"];
+        json.Event("done", result);
         return 0;
     }
 
@@ -140,7 +166,7 @@ public static class RunCommand
 /// <summary>Builds and runs the step list the same way for run and export, so a re-run reproduces the hash.</summary>
 public static class Pipeline
 {
-    public static List<PipelineStep> Build(CentrED.MapGen.Presets.MapGenPreset preset, RunSettings s, List<string> warnings)
+    public static List<PipelineStep> Build(CentrED.MapGen.Presets.MapGenPreset preset, RunSettings s, List<string> warnings, out string effectivePreset)
     {
         var steps = PipelineFactory.BuildSteps(new PipelineOptions
         {
@@ -156,6 +182,8 @@ public static class Pipeline
             ApplySet(steps, set);
         // An explicit --enable must not switch a side-effect pass back on.
         PipelineFactory.ApplySideEffectGate(steps, allow: false, spawnOutputDir: null, warnings);
+        effectivePreset = PipelineFactory.ExportPreset(steps, preset.Name, preset.Description, s.Seed);
+        if (s.Draft is { } draft) PipelineFactory.ApplyImageImport(steps, draft.InputPrefix, draft.MinZ, draft.MaxZ);
         try
         {
             PipelineRunner.Validate(steps);
