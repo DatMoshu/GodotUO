@@ -3221,6 +3221,14 @@ requires fresh consent; changing pack content alone does not. Policy is used
 only for its session's connection endpoint. Unknown or missing styles fall
 back to Classic. The player may always withdraw consent, including when locked.
 
+**Water panel** (owner request 2026-11-21): `-water` or Options > GUO > "Water (live)..."
+opens `WaterQuickGump`, which writes the fields below and the existing ones (style,
+`WaterRipples`, `ShallowShores` and its density) as each control changes, and saves the
+profile on close. Four ints tune the active styled water as a percent of the style's own
+number, 0..400 clamped, default 100 (= as authored, so a profile without them draws as
+before): `WaterTuneSpeed` (water_params.x), `WaterTuneWave` (water_params.z),
+`WaterTuneFoam` (water_params.w), `WaterTuneGlint` (water_params2.x). Classic tiles ignore them.
+
 **Shallow shores** (`ShallowShores`, UO+ flag 512, Options > World, default off) work only under a 
 non-Classic water style; the density is the strength (0 = off). `WaterMask` gains a B channel: for a wet 
 cell the distance in cells to the nearest dry cell along the eight directions, capped at 5, stored as 

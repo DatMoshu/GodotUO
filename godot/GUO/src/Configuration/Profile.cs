@@ -493,6 +493,12 @@ namespace GUO.Configuration
         // draws the tiles as upstream does; any other value names a water
         // style (Renderer.Water.WaterRender). Default classic.
         public string WaterStyle { get; set; } = "classic";
+        // PORT DEVIATION (GUO): the Water panel's live tuning of the active
+        // styled water, percent of the style's own value (100 = as authored).
+        public int WaterTuneSpeed { get; set; } = 100;
+        public int WaterTuneWave { get; set; } = 100;
+        public int WaterTuneFoam { get; set; } = 100;
+        public int WaterTuneGlint { get; set; } = 100;
         // PORT DEVIATION (GUO): opt-in lighting water wind, ADR-0037/0048.
         private float _windStrength;
         public float WindStrength

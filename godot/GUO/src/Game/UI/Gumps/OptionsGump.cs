@@ -572,6 +572,13 @@ namespace GUO.Game.UI.Gumps
             AddDetailButton("Lighting and shadows...", GuoSection.Lighting);
             AddDetailButton("Weather and ambience...", GuoSection.Weather);
             AddDetailButton("World map and water...", GuoSection.World);
+            // PORT DEVIATION (GUO): the live Water panel (owner request 2026-11-21).
+            NiceButton waterPanel = new NiceButton(startX, startY, 260, 28, ButtonAction.Activate, "Water (live)...", font: 1)
+            {
+                IsSelectable = false, ButtonParameter = (int) Buttons.Disabled
+            };
+            waterPanel.MouseUp += (s, e) => WaterQuickGump.Toggle(World);
+            sectionDetail.Add(waterPanel);
             GuoOptions.Applied += OnGuoApplied;
 
             // --- Art (relocated from Video).
