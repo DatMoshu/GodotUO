@@ -30,6 +30,22 @@ randomization and altitude fields are outside this import. Use **Single** or **S
 place statics. Terrain palette import reads the base tiles only. Coast transitions, altitude
 colour maps and static placement catalogues have separate formats.
 
+To finish an existing shoreline, open **Terrain palette…** and choose the JSON value of a
+CentrED# profile’s `land_brushes` setting. Select the directed pair in the swatch menu, unlock
+terrain, and drag **Coast edges** over the source bank. The destination entry’s `Tiles` identify
+the neighboring shore. The brush recognizes source base tiles and its own previously painted
+edges. It preserves elevation and limits edits to the stroke. Density, footprint, allowed land,
+water protection and slope filters still apply. Undo reverses one stroke. Saving a brush preset
+includes the selected pair.
+
+Direction bits run clockwise from north (1) through northwest (128). The smallest rule mask
+containing all destination neighbors wins. Equal-size matches use the brush seed and map
+coordinates. Cells without a matching rule keep their tile. A usable pair has disjoint source
+and destination IDs and art available in the loaded client. For a CentrED+ `TilesBrush.xml`,
+convert it in CentrED# first. Its pinned reader recognizes DR, DL, UL, UR, LL and UU and drops
+base tile Chance. Inspect that conversion before painting. World rejects zero-direction rules
+and unsupported JSON fields, including Chance.
+
 Start with **Shape terrain** in Setup. In **Passes**, search for a pass, setting or category.
 Click its numbered row to expand settings and use the checkbox to enable it. The row tooltip
 lists the pass's input and output fields. Setting tooltips show the preset value and range.

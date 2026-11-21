@@ -12,14 +12,16 @@ internal sealed class WorldBrush
     public bool Square, Land, FixedHeight, KeepStatics = true, AvoidWater = true;
     public string Operation = "Paint", AllowedLand = "", Variants = "", Edges = "";
     public ushort Hue;
+    internal WorldCoastPair Coast;
 
-    internal bool ChangesTerrain => Operation == "Paint" ? Land : Operation is "Raise" or "Lower" or "Flatten" or "Smooth";
+    internal bool ChangesTerrain => Operation == "Paint" ? Land : Operation is "Raise" or "Lower" or "Flatten" or "Smooth" or WorldCoastPair.Operation;
     internal WorldBrush Snapshot() => (WorldBrush)MemberwiseClone();
     private static readonly (int X, int Y)[] Neighbors = { (0, -1), (1, 0), (0, 1), (-1, 0) };
 
     internal string Validate(EditorData data)
     {
         if (data?.IsLoaded != true) return "Wait for client art to load";
+        if (Operation == WorldCoastPair.Operation && Coast == null) return "Open a terrain palette and choose a coast brush pair";
         if (Operation != "Paint") return null;
         foreach (string raw in Variants.Split(',', StringSplitOptions.RemoveEmptyEntries))
         {
@@ -103,6 +105,8 @@ internal sealed class WorldBrush
                 if (Math.Abs(data.LandZ(nx, ny) - z) > MaxSlope) return "slope";
             }
         }
+        if (Operation == WorldCoastPair.Operation)
+            return Hash(x, y) % 100 < Math.Clamp(Density, 0, 100) ? null : "density";
         if (Operation != "Paint" || repair) return null;
         int step = Math.Max(1, Spacing);
         return (Land || (x % step == 0 && y % step == 0)) && Hash(x, y) % 100 < Math.Clamp(Density, 0, 100) ? null : "density";
@@ -120,6 +124,7 @@ internal sealed class WorldBrush
             {
                 "Paint" when !Land => "Nothing changed: the same item already stands there at that height",
                 "Erase statics" or "Hue statics" => $"Nothing changed: {Operation} found no item there (between Visible Z min and max)",
+                WorldCoastPair.Operation => $"No matching edge to change here for {Coast?.Label}",
                 _ => "Nothing changed: the ground there is already like that",
             };
         string top = rejected.MaxBy(r => r.Value).Key;
@@ -221,7 +226,13 @@ internal sealed class WorldBrush
             BlockData block = data.Block(c.X >> 3, c.Y >> 3);
             int i = (c.Y & 7) * 8 + (c.X & 7);
             int z = block.LandZ[i];
-            if (Operation == "Paint" && Land)
+            if (Operation == WorldCoastPair.Operation)
+            {
+                ushort current = block.LandId[i];
+                ushort id = Coast.Resolve(data, c.X, c.Y, current, Hash(c.X, c.Y));
+                if (id != current) edits.Add(new CellEdit(c.X, c.Y, EditKind.Material, id, (sbyte)z));
+            }
+            else if (Operation == "Paint" && Land)
             {
                 int mask = 0;
                 for (int n = 0; edges.Count > 0 && n < Neighbors.Length; n++)
