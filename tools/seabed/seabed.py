@@ -116,16 +116,17 @@ def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALL
     shelf = (dist >= 3) & (dist <= 6)
     slope = dist >= 7
     cand = shallow
-    kind[cand & (sandy > 0.58) & (r < 0.55)] = 1
+    kind[cand & (sandy > 0.74)] = 1   # whole patches, not a sprinkle
     rock_zone = cand & (rocky > 0.6)
     kind[rock_zone & (r2 < 0.30) & (rim | shelf)] = 2
+    kind[cand & (sandy > 0.74) & (rocky <= 0.6) & (r2 > 0.9)] = 6
     kind[rock_zone & (r2 < 0.12) & slope] = 3
     kind[cand & rim & (rocky > 0.72) & (r2 < 0.08)] = 3
-    plant_zone = cand & (meadow > 0.55) & (kind == 0)
-    kind[plant_zone & shelf & (r < 0.34)] = 4
-    kind[plant_zone & slope & (r < 0.10)] = 4
-    kind[plant_zone & rim & (r < 0.10)] = 4
-    coral_zone = cand & (meadow < 0.30) & (kind == 0) & (dist >= 4)
+    plant_zone = cand & (meadow > 0.45) & (kind == 0)
+    kind[plant_zone & shelf & (r < 0.45)] = 4
+    kind[plant_zone & slope & (r < 0.18)] = 4
+    kind[plant_zone & rim & (r < 0.14)] = 4
+    coral_zone = cand & (meadow < 0.34) & (kind == 0) & (dist >= 4)
     kind[coral_zone & (r2 < 0.14)] = 5
     kind[cand & (kind == 0) & (r < 0.012)] = 6
 
@@ -226,3 +227,25 @@ def write_stage(facet, placed, out: Path, install: Path):
     sta_path.write_bytes(bytes(sta))
     idx_path.write_bytes(bytes(idx))
     return [f"staidx{facet.facet}.mul={idx_path}", f"statics{facet.facet}.mul={sta_path}"]
+
+
+TRANSLUCENT = 0x8  # TileFlag.Translucent; ClassicUO draws such statics at alpha 178/255
+
+
+def stage_translucent_water(install: Path, out: Path) -> str:
+    """Copy tiledata.mul into `out` with the water statics 0x1796-0x17B2 flagged Translucent,
+    the owner's Transwater convention: the seabed shows through the surface. Returns its
+    files_override line. Only the stage copy is written."""
+    import shutil
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "uodata_write"))
+    import uodata as U
+    out = out.resolve(); install = install.resolve()
+    if out == install or install in out.parents:
+        raise SystemExit(f"refusing to write inside the client install: {out}")
+    out.mkdir(parents=True, exist_ok=True)
+    dst = out / "tiledata.mul"
+    shutil.copyfile(install / "tiledata.mul", dst)
+    for i in range(WATER_STATIC[0], WATER_STATIC[1] + 1):
+        U.write_tile(dst, i, {"flags": U.read_tile(dst, i)["flags"] | TRANSLUCENT})
+    return f"tiledata.mul={dst}"
