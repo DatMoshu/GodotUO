@@ -73,7 +73,7 @@ def listening_ports() -> set[int] | None:
     else:
         cmd = ["ss", "-Hltn"]
     try:
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=10).stdout
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=30).stdout
     except (OSError, subprocess.SubprocessError):
         return None
     return parse_listening(out)
