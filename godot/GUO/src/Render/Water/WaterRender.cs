@@ -806,6 +806,9 @@ internal sealed class WaterMask
             {
                 int at = ((((OriginY + y) & (Size - 1)) * Size) + ((OriginX + x) & (Size - 1))) * 4;
                 if (_pixels[at] == 0) { _pixels[at + 2] = 0; continue; }
+                // No dry cell within ShoreCap in any direction (the long distance, already known):
+                // none along the eight rays either. Most of a sea skips the walk.
+                if (_far[y * Size + x] >= ShoreCap) { _pixels[at + 2] = 255; continue; }
                 int best = ShoreCap;
                 for (int dy = -1; dy <= 1 && best > 1; dy++)
                 {
@@ -929,8 +932,8 @@ internal sealed class WaterMask
             }
         }
 
-        ShoreDistance();
         LongDistance();
+        ShoreDistance();
 
         if (_image == null)
         {
