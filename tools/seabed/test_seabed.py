@@ -45,7 +45,8 @@ def test_bed_extended_to_full_band_and_deep_untouched():
     # the dug bed (x 16..39) already spans the 14-cell band here; shrink it to 4 cells and it must be extended
     land[20:40] = 0xA8; lz[20:40] = -5; wet[20:40] = S.NO_STATIC
     q = S.plan(land, lz, wet, occ, seed=3)
-    assert q.extended_cells > 0 and (q.new_land[20:30] == S.BED_ID).all() and (q.new_lz[20:30] == -15).all()
+    assert q.extended_cells > 0 and (q.new_land[20:26] == S.BED_ID).all() and (q.new_lz[20:26] == -15).all()
+    assert (q.new_land[16 + S.SHALLOW_MAX - 1] == 0xA8).all() and (q.new_land[26:29] == S.BED_ID).any()   # the last ring is the original sea; the ones before thin out
     assert (q.new_land[16 + S.SHALLOW_MAX + 1:] == 0xA8).all()                    # beyond the band: still deep
     waters = {x for x, y, sid, z, h in q.placed if z == -5 and sid not in S.STRIP_IDS}
     assert waters and min(waters) >= 20
@@ -56,19 +57,19 @@ def test_floor_fades_to_the_deep_colour():
     p = S.plan(land, lz, wet, occ, seed=4)
     floor = [(x, hue) for x, y, sid, z, hue in p.placed if sid in S.FLOOR]
     prog = dict(zip(S.HUE_RAMP, S.RAMP_PROGRESS))
-    col = {c: np.mean([prog[h] for xx, h in floor if xx == c]) for c in range(16, 16 + S.SHALLOW_MAX + 1)}
+    col = {c: np.mean([prog[h] for xx, h in floor if xx == c]) for c in range(16, 16 + S.SHALLOW_MAX) if any(xx == c for xx, _ in floor)}
     # stochastic rounding: the column's mean colour follows the straight line shore -> deep (progress = distance / band)
     for c, m in col.items():
         t = (c - 15) / S.SHALLOW_MAX if c > 15 else 0.0
-        assert abs(m - min(t, 1.0)) < 0.12, (c, m, t)
-    assert col[16] < 0.15 and abs(col[16 + S.SHALLOW_MAX] - 1.0) < 0.12   # shore colour at the shore, the sea's own colour at the edge
+        assert abs(m - min(t, S.RAMP_PROGRESS[-1])) < 0.12, (c, m, t)
+    assert col[16] < 0.15 and max(col.values()) > S.RAMP_PROGRESS[-1] - 0.12   # shore colour at the shore, the sea's own colour at the edge
     steps = [b - a for a, b in zip(list(col.values()), list(col.values())[1:])]
     assert max(steps) < 0.17, steps                                                   # no band: no column mean jumps
 
 
 def test_ramp_is_measured_and_ordered():
     assert len(S.HUE_RAMP) == len(S.RAMP_PROGRESS) == len(set(S.HUE_RAMP))
-    assert S.RAMP_PROGRESS[0] == 0.0 and S.RAMP_PROGRESS[-1] >= 1.0      # overshoots the deep colour so the mixture lands on it
+    assert S.RAMP_PROGRESS[0] == 0.0 and S.RAMP_PROGRESS[-1] >= 0.75
     assert all(b > a for a, b in zip(S.RAMP_PROGRESS, S.RAMP_PROGRESS[1:]))
 
 

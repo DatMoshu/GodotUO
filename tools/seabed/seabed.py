@@ -35,13 +35,14 @@ WATER_FILL = (0x1797, 0x1798, 0x1799, 0x179A, 0x179B)   # interior water statics
 SHALLOW_MAX = 14   # cells from dry land over which the shallows fade out into the deep
 # Hue ramp for the floor, shore to deep (hues.mul ids), with each hue's progress along the straight line
 # from the shore colour (hue 1151, as photographed) to the open sea's own colour, as the client showed it
-# (calibrate.py: 64 hues photographed in place, fit residual 1.5 colour units; the deep end is
-# hue 1916, within 2 units of the original opaque deep water, measured (0, 54, 80) at Haven).
-# The hue table has no colour on that line between 0 and 0.17, so plan() mixes neighbours by
-# probability instead of rounding to a step. Hues whose palette speckles (1593, 1599, 1469: bright dots
-# in the tile) or tints it (2571 purple) are left out by calibrate.choose_ramp's spread test.
-HUE_RAMP = (1151, 191, 391, 396, 490, 495, 589, 594, 494, 688, 2757, 593, 587, 392, 592, 1156)
-RAMP_PROGRESS = (0.0, 0.171, 0.183, 0.229, 0.304, 0.362, 0.437, 0.492, 0.51, 0.578, 0.618, 0.632, 0.728, 0.757, 0.788, 1.10)
+# (calibrate.py: 64 hues photographed in place, fit residual 1.5 colour units; the original opaque
+# deep water measured (0, 54, 80) at Haven). The hue table has no colour on that line between 0 and
+# 0.17 and none past 0.8 that is smooth (1916 matches the deep but sparkles; the dark smooth ones read as
+# scattered navy diamonds), so plan() mixes neighbours by probability and, past the last hue, leaves
+# deep cells as the original sea by probability: the fade ends on the sea itself. Hues whose palette
+# speckles (1593, 1599, 1469, 1916) or tints (2571 purple) are left out by calibrate.choose_ramp.
+HUE_RAMP = (1151, 191, 391, 396, 490, 495, 589, 594, 494, 688, 2757, 593, 587, 392, 592)
+RAMP_PROGRESS = (0.0, 0.171, 0.183, 0.229, 0.304, 0.362, 0.437, 0.492, 0.51, 0.578, 0.618, 0.632, 0.728, 0.757, 0.788)
 FLOOR_Z = -15
 OBJECT_Z = -14     # above the floor tile so it never draws over them
 BED_ID = 0x64
@@ -130,10 +131,14 @@ def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALL
     ext = wet_land & (dist <= shallow_max)               # deep land turned into bed (with or without a surface already)
     bed_land = (land >= BED_FIRST) & (land <= BED_LAST)
     lowered = wet_static & ~wet_land & bed_land & ~bed   # Felucca's bed rows raised to the surface: sunk to bed depth
-    shallow = bed | lowered | ext
-    floor_z = np.where(wet_static, wet_z.astype(np.int16) - 10, FLOOR_Z).astype(np.int16)
     xs = np.arange(w)[:, None] * np.ones((1, h), np.int64) + origin[0]
     ys = np.ones((w, 1), np.int64) * np.arange(h)[None, :] + origin[1]
+    # Past the last ramp hue the floor stops: a deep cell (not a dug bed) stays the original opaque sea
+    # with a probability that rises to 1 at the band's edge.
+    back = np.clip((dist.astype(np.float64) / shallow_max - RAMP_PROGRESS[-1]) / (1.0 - RAMP_PROGRESS[-1]), 0.0, 1.0)
+    ext = ext & ~(~wet_static & (_hash2(xs, ys, seed + 19) < back))
+    shallow = bed | lowered | ext
+    floor_z = np.where(wet_static, wet_z.astype(np.int16) - 10, FLOOR_Z).astype(np.int16)
     r = _hash2(xs, ys, seed)
     r2 = _hash2(xs, ys, seed + 7)
     r3 = _hash2(xs, ys, seed + 13)
