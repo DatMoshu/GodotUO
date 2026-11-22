@@ -120,6 +120,8 @@ internal static class WaterSprintShot
             shot.SavePng(Path.Combine(dir, $"coast-{s.Name}.png"));
             var (ms, rebuilds) = WaterRender.MaskStats;
             GD.Print($"[water sprint] coast {s.Name} at {world.Player.X},{world.Player.Y} arrived={at} maskMs={ms:F2} maskRebuilds={rebuilds}");
+            var p = ProfileManager.CurrentProfile;
+            GD.Print($"[water sprint] lighting: speedMode={p.LightingSpeedMode} supported={GUO.Renderer.SpeedMode.SpeedModeDebug.Supported} reason={GUO.Renderer.SpeedMode.SpeedModeDebug.UnavailableReason ?? "none"} weatherBound={GUO.Renderer.SpeedMode.Weather.SpeedModeWeatherRuntime.LastFrameBound} style={p.WaterStyle}");
         }
         return ok;
     }
