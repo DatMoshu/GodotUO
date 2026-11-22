@@ -59,12 +59,14 @@ internal sealed class UoRealtimeWaterStyle : IWaterStyle
         set("water_params2", new Vector4(0.35f, 0.22f, 6f, 1.0f));
         // grain (world px per water pixel)
         set("water_params3", new Vector4(1f, 0f, 0f, 0f));
+        WaterRender.BindShallows(set);
     }
 
     public void BindRipples(WaterRipples ripples)
     {
         ripples.Strength = 1f;
         ripples.Damping = 0.985f;
+        WaterRipples.WakeTrail = 1f;
     }
 }
 
@@ -94,12 +96,14 @@ internal sealed class PackWaterStyle : IWaterStyle
         set("water_params", new Vector4(_style.Speed, _style.Scale, _style.Wave, _style.Foam));
         set("water_params2", new Vector4(_style.Glint, _style.FoamWidth, _style.Levels, _style.RippleStrength > 0f ? 1f : 0f));
         set("water_params3", new Vector4(_style.Grain, 0f, 0f, 0f));
+        WaterRender.BindShallows(set);
     }
 
     public void BindRipples(WaterRipples ripples)
     {
         ripples.Strength = _style.RippleStrength;
         ripples.Damping = _style.RippleDamping;
+        WaterRipples.WakeTrail = 1f;
     }
 }
 
@@ -117,10 +121,12 @@ internal sealed class LightingWaterStyle : IWaterStyle
         set("water_params", new Vector4(0.65f, 0.025f, 0.16f, 0.72f));
         set("water_params2", new Vector4(0.28f, 0.38f, 0f, 1f));
         set("water_params3", new Vector4(1f, 0f, 0f, 0f));
+        WaterRender.BindShallows(set);
     }
 
     public void BindRipples(WaterRipples ripples)
     {
+        WaterRipples.WakeTrail = 1f;
         ripples.Strength = 0.8f;
         ripples.Damping = 0.98f;
     }
@@ -490,6 +496,19 @@ internal static class WaterRender
     // Whether this frame draws a style: set once in PrepareFrame, so the
     // per-tile Flag below is a field read, not a lookup by name.
     private static bool _styled;
+
+    /// <summary>
+    /// The numbers for translucent water and wakes, set by every style so one style's values
+    /// never linger under the next. Every style passes the defaults today; the planned
+    /// guo/water@2 depth and wake groups (data_formats W-01) are where a style would set them.
+    /// </summary>
+    internal static void BindShallows(Action<string, Variant> set, float fadeStart = 9.5f, float fadeEnd = 13f,
+        float floorReach = 17f, float sandBars = 0.5f, float wakeFoam = 1f)
+    {
+        set("water_depth_fade", new Vector2(fadeStart, fadeEnd));
+        set("water_floor_look", new Vector2(floorReach, sandBars));
+        set("water_wake_look", new Vector2(wakeFoam, 0.33f));
+    }
 
     /// <summary>The mode value to add to a tile's hue vector this frame: the bit, or 0.</summary>
     public static float Flag(bool wet) => wet && _styled ? ModeBit : 0f;
