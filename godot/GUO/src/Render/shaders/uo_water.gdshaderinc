@@ -700,7 +700,7 @@ float water_seam_alpha(float alpha, vec2 target_px) {
 // own alpha at the shore, opaque from water_depth_fade.y cells out, where it
 // is the same art as the deep sea's land tiles. x is where the thickening
 // starts; y <= x switches it off (the tile's alpha everywhere, as before).
-uniform vec2 water_depth_fade = vec2(3.5, 12.0);
+uniform vec2 water_depth_fade = vec2(4.0, 12.5);
 
 float water_alpha(float alpha, vec2 target_px) {
 	if (alpha >= 0.999 || water_depth_fade.y <= water_depth_fade.x) { return alpha; }

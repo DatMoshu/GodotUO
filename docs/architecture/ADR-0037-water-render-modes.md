@@ -306,7 +306,7 @@ which left per-cell tones and a line at the first row off the shore.
   tile's own over the wet cells sharing the pixel. No tile identity is needed
   and every shader path gets it (`water_seams`).
 - Depth fade: translucent water thickens with the long shore distance, per
-  pixel, to opaque at 12 cells, where it is the same art as the deep sea's
+  pixel, to opaque at 12.5 cells, where it is the same art as the deep sea's
   land tiles (`water_depth_fade`). The distance is a new mask channel.
 - The mask is 256 cells, was 128: a 3840-wide view reaches 67 cells from the
   player, and cells outside the window read as open sea, so coasts near the

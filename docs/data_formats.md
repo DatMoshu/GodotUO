@@ -3167,7 +3167,7 @@ bit 6, circle-of-transparency in bit 7). Classic never sets it.
 | `water_time` | float | seconds from the client clock |
 | `water_target_to_world` | vec4 | world px = target px * xy + zw; a tile's centre is ((X - Y) * 22, (X + Y) * 22 - 4 Z) |
 | `water_mask` | sampler2D | 256 x 256 RGBA8 ring of world cells (texel x mod N, y mod N; the shader takes N from the texture, so a 128-cell probe mask still works): R 255 water / 0 dry; G + 128 is the water's z, or for a dry cell its highest land or static z (0 when it has none); B shore distance along the eight directions, capped at 5, as distance / 5; A `255 - (far * 8 + post * 4)`, where `far` is the Chebyshev distance to the nearest dry cell capped at 30 (0 dry) and `post` marks a submerged dock post |
-| `water_depth_fade` | vec2 | cells from land at which a translucent water tile starts to thicken (x) and is opaque (y); y <= x leaves the tile's alpha alone. Default 3.5, 12 |
+| `water_depth_fade` | vec2 | cells from land at which a translucent water tile starts to thicken (x) and is opaque (y); y <= x leaves the tile's alpha alone. Default 4, 12.5 |
 | `water_seams` | float | 1 (default): a translucent water pixel on a cell boundary takes the alpha that, blended once per wet cell sharing it, adds up to the tile's own, so overlapping diamonds draw no line. 0: alpha untouched, for water art trimmed to tile once (`tools/seabed --seams art`) |
 | `water_mask_origin` | vec2 | the ring's first cell; cells outside it read as water at z -5 |
 | `water_tint` | vec4 | the colour swells lean towards |
