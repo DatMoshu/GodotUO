@@ -56,7 +56,7 @@ internal sealed class WaterRipples
     private bool _uploaded;
 
     // Per boat: last position, smoothed speed (cells a second) and heading (unit, cells).
-    private sealed class BoatState { public float X, Y, Speed, HX, HY; }
+    internal sealed class BoatState { public float X, Y, Speed, HX, HY; }
     private readonly Dictionary<uint, BoatState> _boats = new Dictionary<uint, BoatState>();
     // When each swimmer last made a ring (ms), so a walking creature leaves a trail of small ones.
     private readonly Dictionary<uint, long> _swimmers = new Dictionary<uint, long>();
@@ -473,46 +473,8 @@ internal sealed class WaterRipples
                 continue;
             }
 
-            // Speed in cells a second, smoothed over about half a second, from
-            // how far the hull moved; a hull that stays put (moored, anchored)
-            // reads zero and leaves nothing. Heading is kept while it moves.
-            float dx = x - boat.X, dy = y - boat.Y;
-            boat.X = x; boat.Y = y;
-            float travel = MathF.Sqrt(dx * dx + dy * dy);
-            float inst = travel > 2f ? 0f : travel / _dt;
-            if (travel >= 0.01f && travel <= 2f)
-            {
-                boat.HX += (dx / travel - boat.HX) * 0.5f;
-                boat.HY += (dy / travel - boat.HY) * 0.5f;
-                float hl = MathF.Sqrt(boat.HX * boat.HX + boat.HY * boat.HY);
-                if (hl > 0.001f) { boat.HX /= hl; boat.HY /= hl; }
-            }
-            boat.Speed += (inst - boat.Speed) * Math.Min(1f, _dt / 0.5f);
-            if (boat.Speed < MinWakeSpeed)
-            {
-                continue;
-            }
-
-            // Hull footprint (the multi's cell rectangle) along the heading: a
-            // trough astern across the beam, a small crest at the bow. The
-            // waves it leaves behind are the wake.
             Rectangle r = item.MultiInfo.Value;
-            float gain = Math.Min(1f, boat.Speed / 3f);
-            float hx = (r.Width - r.X) * 0.5f, hy = (r.Height - r.Y) * 0.5f;
-            float cx = x + (r.X + r.Width) * 0.5f, cy = y + (r.Y + r.Height) * 0.5f;
-            float ux = boat.HX, uy = boat.HY, px = -uy, py = ux;
-            float length = MathF.Abs(ux) * hx + MathF.Abs(uy) * hy;
-            float beam = MathF.Abs(px) * hx + MathF.Abs(py) * hy;
-            float spread = Math.Min(beam, 2f) * 0.6f;
-            float amount = 8f * gain * _dt;
-            for (int k = -1; k <= 1; k++)
-            {
-                float sx = cx - ux * (length + 0.5f) + px * spread * k;
-                float sy = cy - uy * (length + 0.5f) + py * spread * k;
-                if (OpenWater(world, mask, sx, sy)) Stamp(sx, sy, 0.5f, amount * (k == 0 ? 1f : 0.6f));
-            }
-            float bx = cx + ux * (length + 0.5f), by = cy + uy * (length + 0.5f);
-            if (OpenWater(world, mask, bx, by)) Stamp(bx, by, 0.5f, -0.4f * amount);
+            Wake(boat, r, x, y, (sx, sy) => OpenWater(world, mask, sx, sy));
         }
 
         _drop.Clear();
@@ -531,6 +493,54 @@ internal sealed class WaterRipples
         GUO.Labs.HarborWater.HullPose.Finish();
 #endif
     }
+
+    /// <summary>
+    /// One frame of a boat's wake. Speed in cells a second is smoothed over
+    /// about half a second from how far the hull moved; a hull that stays put
+    /// (moored, anchored) reads zero and leaves nothing, and one that stops
+    /// stops within a second or so. Heading is kept while it moves. Along it, a
+    /// trough is made astern across the hull's beam and a small crest at the
+    /// bow; the waves left behind are the wake. open says where water may be disturbed.
+    /// </summary>
+    internal void Wake(BoatState boat, Rectangle r, float x, float y, Func<float, float, bool> open)
+    {
+        float dx = x - boat.X, dy = y - boat.Y;
+        boat.X = x; boat.Y = y;
+        float travel = MathF.Sqrt(dx * dx + dy * dy);
+        float inst = travel > 2f ? 0f : travel / _dt;
+        if (travel >= 0.01f && travel <= 2f)
+        {
+            boat.HX += (dx / travel - boat.HX) * 0.5f;
+            boat.HY += (dy / travel - boat.HY) * 0.5f;
+            float hl = MathF.Sqrt(boat.HX * boat.HX + boat.HY * boat.HY);
+            if (hl > 0.001f) { boat.HX /= hl; boat.HY /= hl; }
+        }
+        boat.Speed += (inst - boat.Speed) * Math.Min(1f, _dt / 0.5f);
+        if (boat.Speed < MinWakeSpeed)
+        {
+            return;
+        }
+
+        float gain = Math.Min(1f, boat.Speed / 3f);
+        float hx = (r.Width - r.X) * 0.5f, hy = (r.Height - r.Y) * 0.5f;
+        float cx = x + (r.X + r.Width) * 0.5f, cy = y + (r.Y + r.Height) * 0.5f;
+        float ux = boat.HX, uy = boat.HY, px = -uy, py = ux;
+        float length = MathF.Abs(ux) * hx + MathF.Abs(uy) * hy;
+        float beam = MathF.Abs(px) * hx + MathF.Abs(py) * hy;
+        float spread = Math.Min(beam, 2f) * 0.6f;
+        float amount = 8f * gain * _dt;
+        for (int k = -1; k <= 1; k++)
+        {
+            float sx = cx - ux * (length + 0.5f) + px * spread * k;
+            float sy = cy - uy * (length + 0.5f) + py * spread * k;
+            if (open(sx, sy)) Stamp(sx, sy, 0.5f, amount * (k == 0 ? 1f : 0.6f));
+        }
+        float bx = cx + ux * (length + 0.5f), by = cy + uy * (length + 0.5f);
+        if (open(bx, by)) Stamp(bx, by, 0.5f, -0.4f * amount);
+    }
+
+    /// <summary>For the probe: the frame length continuous disturbances scale by.</summary>
+    internal void SetFrameForProbe(float seconds) => _dt = seconds;
 
     private void ItemsAndEffects(World world, WaterMask mask)
     {
