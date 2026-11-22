@@ -43,7 +43,7 @@ SHALLOW_MAX = 14   # cells from dry land over which the shallows fade out into t
 # speckles (1593, 1599, 1469, 1916) or tints (2571 purple) are left out by calibrate.choose_ramp.
 HUE_RAMP = (1151, 191, 391, 396, 490, 495, 589, 594, 494, 688, 2757, 593, 587, 392, 592)
 RAMP_PROGRESS = (0.0, 0.171, 0.183, 0.229, 0.304, 0.362, 0.437, 0.492, 0.51, 0.578, 0.618, 0.632, 0.728, 0.757, 0.788)
-PLAIN_FLOOR_HUE = 191   # the floor's one hue when the client fades the surface itself (plan(shader=True))
+PLAIN_FLOOR_HUE = 1151   # the floor's one hue (the shore's sand) when the client shades the floor itself (plan(shader=True))
 FLOOR_Z = -15
 OBJECT_Z = -14     # above the floor tile so it never draws over them
 BED_ID = 0x64
@@ -324,10 +324,11 @@ def write_stage(facet, placed, out: Path, install: Path, new_land=None, new_lz=N
     return lines
 
 
+WET_FLAG = 0x80    # TileFlag.Wet
 TRANSLUCENT = 0x8  # TileFlag.Translucent; ClassicUO draws such statics at alpha 178/255
 
 
-def stage_translucent_water(install: Path, out: Path, strips: bool = True) -> str:
+def stage_translucent_water(install: Path, out: Path, strips: bool = True, seabed_floor: bool = False) -> str:
     """Copy tiledata.mul into `out` with the water statics 0x1796-0x17B2 flagged Translucent,
     the owner's Transwater convention: the seabed shows through the surface. Returns its
     files_override line. Only the stage copy is written."""
@@ -343,6 +344,12 @@ def stage_translucent_water(install: Path, out: Path, strips: bool = True) -> st
     shutil.copyfile(install / "tiledata.mul", dst)
     for i in range(WATER_STATIC[0], WATER_STATIC[1] + 1):
         U.write_tile(dst, i, {"flags": U.read_tile(dst, i)["flags"] | TRANSLUCENT})
+    if seabed_floor:
+        # The client's contract for a seabed floor (data_formats section 44): Wet, and a name that
+        # starts with "seabed". A water style then grades the floor into the deep itself.
+        for i in FLOOR:
+            t = U.read_tile(dst, i)
+            U.write_tile(dst, i, {**t, "name": "seabed sand", "flags": t["flags"] | WET_FLAG})
     for i in (STRIP_IDS if strips else ()):   # the edge strips (stage_seamless_water_art): water that is translucent, with a name
         U.write_tile(dst, i, {**U.read_tile(dst, 0x1797), "name": "water edge", "flags": U.read_tile(dst, 0x1797)["flags"] | TRANSLUCENT})
     return f"tiledata.mul={dst}"

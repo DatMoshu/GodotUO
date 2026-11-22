@@ -74,7 +74,7 @@ def main(argv=None) -> int:
             placed = [q for q in p.placed if not (a.no_floor and q[2] in S.FLOOR)]
             lines = S.write_stage(f, placed, out, install, p.new_land, p.new_lz, land, lz)
             if not a.opaque_water:
-                lines.append(S.stage_translucent_water(install, out, strips=not shader))
+                lines.append(S.stage_translucent_water(install, out, strips=not shader, seabed_floor=shader))
                 if not shader:
                     lines.append(S.stage_seamless_water_art(install, out))
             (out / "files_override.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")

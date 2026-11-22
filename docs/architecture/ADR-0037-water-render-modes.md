@@ -306,7 +306,7 @@ which left per-cell tones and a line at the first row off the shore.
   tile's own over the wet cells sharing the pixel. No tile identity is needed
   and every shader path gets it (`water_seams`).
 - Depth fade: translucent water thickens with the long shore distance, per
-  pixel, to opaque at 12.5 cells, where it is the same art as the deep sea's
+  pixel, to opaque at 13 cells, where it is the same art as the deep sea's
   land tiles (`water_depth_fade`). The distance is a new mask channel.
 - The mask is 256 cells, was 128: a 3840-wide view reaches 67 cells from the
   player, and cells outside the window read as open sea, so coasts near the
@@ -314,3 +314,8 @@ which left per-cell tones and a line at the first row off the shore.
 
 Only tiles with the water bit and alpha below 1 are touched: Classic, and
 opaque water under any style, draw as before.
+- Seabed floor: with one floor hue the shallows lost their grading, so a
+  floor tile (Wet, named "seabed...", mode bit 5) is shaded by distance from
+  land, from shore sand to the deep colour. Measured against the previous
+  per-cell hue ramp at the Haven pier: within 7 colour units to 6 cells from
+  land, up to 9 darker at 8 to 10 cells, identical in open water.

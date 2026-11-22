@@ -494,6 +494,36 @@ internal static class WaterRender
     /// <summary>The mode value to add to a tile's hue vector this frame: the bit, or 0.</summary>
     public static float Flag(bool wet) => wet && _styled ? ModeBit : 0f;
 
+    /// <summary>
+    /// Bit 5 of the mode byte, only ever with ModeBit: the tile is a seabed floor, not a surface.
+    /// The shader darkens it with the distance from land instead of drawing waves on it.
+    /// </summary>
+    public const int FloorBit = 0x20;
+
+    /// <summary>
+    /// Flag for a static: a Wet static whose tiledata name starts with "seabed" is a seabed floor
+    /// (a data contract, docs/data_formats.md section 44; tools/seabed names its floor tiles so).
+    /// </summary>
+    public static float Flag(bool wet, ushort graphic) =>
+        !wet || !_styled ? 0f : IsSeabedFloor(graphic) ? ModeBit + FloorBit : ModeBit;
+
+    private static object _floorSource;
+    private static bool[] _floor = Array.Empty<bool>();
+
+    internal static bool IsSeabedFloor(ushort graphic)
+    {
+        var tiles = Client.Game?.UO?.FileManager?.TileData;
+        if (!ReferenceEquals(tiles, _floorSource))
+        {
+            _floorSource = tiles;
+            var data = tiles?.StaticData;
+            _floor = new bool[data?.Length ?? 0];
+            for (int i = 0; i < _floor.Length; i++)
+                _floor[i] = data[i].IsWet && data[i].Name is { Length: >= 6 } name && name.StartsWith("seabed", StringComparison.OrdinalIgnoreCase);
+        }
+        return graphic < _floor.Length && _floor[graphic];
+    }
+
     internal static Vector2 SurfacePoint(int x, int y, float bx, float by)
         => new(x + (bx + by - 22f) / 44f, y + (by - bx + 22f) / 44f);
 

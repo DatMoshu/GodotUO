@@ -3167,14 +3167,17 @@ bit 6, circle-of-transparency in bit 7). Classic never sets it.
 | `water_time` | float | seconds from the client clock |
 | `water_target_to_world` | vec4 | world px = target px * xy + zw; a tile's centre is ((X - Y) * 22, (X + Y) * 22 - 4 Z) |
 | `water_mask` | sampler2D | 256 x 256 RGBA8 ring of world cells (texel x mod N, y mod N; the shader takes N from the texture, so a 128-cell probe mask still works): R 255 water / 0 dry; G + 128 is the water's z, or for a dry cell its highest land or static z (0 when it has none); B shore distance along the eight directions, capped at 5, as distance / 5; A `255 - (far * 8 + post * 4)`, where `far` is the Chebyshev distance to the nearest dry cell capped at 30 (0 dry) and `post` marks a submerged dock post |
-| `water_depth_fade` | vec2 | cells from land at which a translucent water tile starts to thicken (x) and is opaque (y); y <= x leaves the tile's alpha alone. Default 4, 12.5 |
+| `water_depth_fade` | vec2 | cells from land at which a translucent water tile starts to thicken (x) and is opaque (y); y <= x leaves the tile's alpha alone. Default 9.5, 13 |
+| `water_floor_look` | vec2 | the seabed floor: x the cells from land at which it would reach the deep colour (default 17), y how much lighter its sand bars are (default 0.5) |
+| `water_floor_deep` | vec3 | the colour the seabed floor leans to with distance from land |
 | `water_seams` | float | 1 (default): a translucent water pixel on a cell boundary takes the alpha that, blended once per wet cell sharing it, adds up to the tile's own, so overlapping diamonds draw no line. 0: alpha untouched, for water art trimmed to tile once (`tools/seabed --seams art`) |
 | `water_mask_origin` | vec2 | the ring's first cell; cells outside it read as water at z -5 |
 | `water_tint` | vec4 | the colour swells lean towards |
 | `water_params` | vec4 | speed, scale (1 / world px), wave strength, foam strength |
 | `water_params2` | vec4 | glint, foam width (cells), brightness levels (0 smooth), ripple strength (0 ignores ripples) |
 | `water_params3` | vec4 | x: grain, world pixels per water pixel (1 the art's own grid); yzw unused |
-| `water_ripples` | sampler2D | 256 x 256 R8, the ripple field over 128 x 128 cells, 2 x 2 texels a cell; 128 is flat |
+| `water_ripples` | sampler2D | 256 x 256 RG8, the ripple field over 128 x 128 cells, 2 x 2 texels a cell; R is the height, 128 flat; G the foam of a boat's wake, 0 none |
+| `water_wake_look` | vec2 | wake foam: x strength (0 none), y the grain of its breaking noise |
 | `water_ripples_origin` | vec2 | the ripple window's first cell; outside it the surface is flat |
 
 The mask is rebuilt on the CPU when the player moves 8 cells or the loaded
@@ -3399,6 +3402,8 @@ Contract gate: `python -m pytest tools/asset_store/test_water_schema.py` checks
 the schema, complete defaults, bounds and malformed group shapes, and verifies
 that the shipping v1 Python validator refuses the v2 set. The shared Store
 corpus also checks that refusal in both Python and C# installers.
+
+**Seabed floor contract.** Under a water style, a static that is Wet and whose tiledata name starts with `seabed` is a seabed floor: its mode byte carries bit 5 (0x20) beside the water bit 0x40, and the shader shades it from its own colour at the shore to `water_floor_deep` with the distance from land instead of drawing waves on it. `tools/seabed --seams shader` names its floor tiles `seabed sand` in the stage's tiledata. Classic tiles ignore the name.
 
 ## 42. Packet mods (`Data/Mods/<mod>/mod.json`, `load_mods`, ADR-0038)
 

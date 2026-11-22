@@ -47,7 +47,8 @@ internal sealed class WaterRipples
     private float[] _now = new float[Size * Size];
     private float[] _before = new float[Size * Size];
     private float[] _scratch = new float[Size * Size];
-    private readonly byte[] _pixels = new byte[Size * Size];
+    // Two bytes a texel: R the surface height (128 flat), G the wake's foam (0 none).
+    private readonly byte[] _pixels = new byte[Size * Size * 2];
     private Image _image;
     private ImageTexture _texture;
 
@@ -60,11 +61,14 @@ internal sealed class WaterRipples
     // The wake proper: short-lived marks left astern and at the bow, drawn each step into a
     // layer that is added to the waves, so it stays attached to the hull's track and is gone
     // when the marks expire (not a wave that runs off by itself).
-    private struct WakeMark { public float X, Y, VX, VY, Age, Life, Amp, Radius; }
+    private struct WakeMark { public float X, Y, VX, VY, Age, Life, Amp, Radius, Foam; }
     private readonly List<WakeMark> _marks = new List<WakeMark>();
     private readonly float[] _wake = new float[Size * Size];
-    private const int MaxMarks = 600;
-    private const float EmitEvery = 0.05f;
+    // The broken white water of a wake, 0..1: drawn by the shader as foam on top of the surface,
+    // so a trail reads at any light, where a height alone only tilts the highlights.
+    private readonly float[] _foam = new float[Size * Size];
+    private const int MaxMarks = 2400;
+    private const float EmitEvery = 0.08f;
     private readonly Dictionary<uint, BoatState> _boats = new Dictionary<uint, BoatState>();
     // When each swimmer last made a ring (ms), so a walking creature leaves a trail of small ones.
     private readonly Dictionary<uint, long> _swimmers = new Dictionary<uint, long>();
@@ -112,6 +116,16 @@ internal sealed class WaterRipples
     public int SwimStamps { get; private set; }
     /// <summary>For the probe and the look shot: the largest surface height in the last upload, and texels disturbed on dry ground.</summary>
     internal float PeakHeight { get; private set; }
+    /// <summary>For the probe: the strongest wake foam in the last upload, 0..1, and the foam at a cell.</summary>
+    internal float PeakFoam { get; private set; }
+    internal float FoamAt(int cellX, int cellY)
+    {
+        int tx = (cellX - OriginX) * PerCell, ty = (cellY - OriginY) * PerCell;
+        if (tx < 0 || ty < 0 || tx + 1 >= Size || ty + 1 >= Size) return 0f;
+        int a = ty * Size + tx, b = a + Size;
+        return Math.Max(Math.Max(_foam[a], _foam[a + 1]), Math.Max(_foam[b], _foam[b + 1]));
+    }
+    internal int MarkCount => _marks.Count;
     internal int DryTexels { get; private set; }
 
     /// <summary>Forget everything: a new map, a style switched off and on.</summary>
@@ -124,6 +138,7 @@ internal sealed class WaterRipples
         Array.Clear(_now);
         Array.Clear(_before);
         Array.Clear(_wake);
+        Array.Clear(_foam);
         _marks.Clear();
         _boats.Clear();
         _swimmers.Clear();
@@ -182,6 +197,7 @@ internal sealed class WaterRipples
             Array.Clear(_now);
             Array.Clear(_before);
             Array.Clear(_wake);
+            Array.Clear(_foam);
             stepped = true;
         }
 
@@ -251,23 +267,55 @@ internal sealed class WaterRipples
     private void RebuildWake(float advance)
     {
         Array.Clear(_wake);
-        for (int i = _marks.Count - 1; i >= 0; i--)
+        Array.Clear(_foam);
+        int kept = 0;
+        for (int i = 0; i < _marks.Count; i++)
         {
             WakeMark m = _marks[i];
             m.Age += advance;
-            if (m.Age >= m.Life) { _marks.RemoveAt(i); continue; }
+            if (m.Age >= m.Life) continue;
             m.X += m.VX * advance; m.Y += m.VY * advance;
-            _marks[i] = m;
+            // A wake arm slows as it spreads: the trail opens quickly astern and then holds its width.
+            float drag = MathF.Max(0f, 1f - 0.45f * advance);
+            m.VX *= drag; m.VY *= drag;
+            _marks[kept++] = m;
             float t = m.Age / m.Life;
             float fade = (1f - t) * Math.Min(1f, t * 8f + 0.35f);
-            StampInto(_wake, true, m.X, m.Y, m.Radius, m.Amp * fade);
+            // The mark widens a little as it ages, so an old arm is a soft band, not a row of dots.
+            float radius = m.Radius * (1f + 0.6f * t);
+            StampInto(_wake, true, m.X, m.Y, radius, m.Amp * fade);
+            if (m.Foam > 0f) StampFoam(m.X, m.Y, radius, m.Foam * (1f - t) * (1f - t));
+        }
+        _marks.RemoveRange(kept, _marks.Count - kept);
+    }
+
+    // The foam layer keeps the strongest mark at a texel; never on dry texels.
+    private void StampFoam(float cellX, float cellY, float radius, float amount)
+    {
+        float cx = (cellX - OriginX + 0.5f) * PerCell;
+        float cy = (cellY - OriginY + 0.5f) * PerCell;
+        float r = Math.Max(0.75f, radius * PerCell);
+        int x0 = Math.Max(1, (int)Math.Floor(cx - r)), x1 = Math.Min(Size - 2, (int)Math.Ceiling(cx + r));
+        int y0 = Math.Max(1, (int)Math.Floor(cy - r)), y1 = Math.Min(Size - 2, (int)Math.Ceiling(cy + r));
+        bool clip = _wetAt != long.MinValue;
+        for (int y = y0; y <= y1; y++)
+        {
+            for (int x = x0; x <= x1; x++)
+            {
+                float d = MathF.Sqrt((x + 0.5f - cx) * (x + 0.5f - cx) + (y + 0.5f - cy) * (y + 0.5f - cy)) / r;
+                if (d >= 1f) continue;
+                int i = y * Size + x;
+                if (clip && _wet[i] == 0) continue;
+                float v = amount * (0.5f + 0.5f * MathF.Cos(d * MathF.PI));
+                if (v > _foam[i]) _foam[i] = v;
+            }
         }
     }
 
-    private void AddMark(float x, float y, float vx, float vy, float life, float amp, float radius)
+    private void AddMark(float x, float y, float vx, float vy, float life, float amp, float radius, float foam = 0f)
     {
         if (_marks.Count >= MaxMarks) return;
-        var m = new WakeMark { X = x, Y = y, VX = vx, VY = vy, Life = life, Amp = amp, Radius = radius };
+        var m = new WakeMark { X = x, Y = y, VX = vx, VY = vy, Life = life, Amp = amp, Radius = radius, Foam = foam };
         _marks.Add(m);
         StampInto(_wake, true, x, y, radius, amp * 0.35f);
         Stamps++;
@@ -438,25 +486,30 @@ internal sealed class WaterRipples
     {
         float peak = 0f;
         int leak = 0;
-        for (int i = 0; i < _pixels.Length; i++)
+        float foamPeak = 0f;
+        for (int i = 0; i < _now.Length; i++)
         {
             float h = _now[i] + _wake[i];
-            _pixels[i] = (byte)Math.Clamp((int)((h * 0.5f + 0.5f) * 255f + 0.5f), 0, 255);
+            _pixels[i * 2] = (byte)Math.Clamp((int)((h * 0.5f + 0.5f) * 255f + 0.5f), 0, 255);
+            float fo = _foam[i];
+            _pixels[i * 2 + 1] = (byte)Math.Clamp((int)(fo * 255f + 0.5f), 0, 255);
+            if (fo > foamPeak) foamPeak = fo;
             float a = MathF.Abs(h);
             if (a > peak) peak = a;
             if (a > 0.004f && _wetAt != long.MinValue && _wet[i] == 0) leak++;
         }
         PeakHeight = peak;
+        PeakFoam = foamPeak;
         DryTexels = leak;
 
         if (_image == null)
         {
-            _image = Image.CreateFromData(Size, Size, false, Image.Format.R8, _pixels);
+            _image = Image.CreateFromData(Size, Size, false, Image.Format.Rg8, _pixels);
             _texture = ImageTexture.CreateFromImage(_image);
         }
         else
         {
-            _image.SetData(Size, Size, false, Image.Format.R8, _pixels);
+            _image.SetData(Size, Size, false, Image.Format.Rg8, _pixels);
             _texture.Update(_image);
         }
     }
@@ -703,6 +756,9 @@ internal sealed class WaterRipples
         if (boat.Emit > 4 * EmitEvery) boat.Emit = EmitEvery;
         if (boat.Emit < EmitEvery) return;
         boat.Emit -= EmitEvery;
+        // A faster hull leaves a longer trail: the arms live 2.6 s at a crawl, 6 s at full sail.
+        float speed = Math.Min(boat.Speed, 4f);
+        float armLife = WakeTrail * (2.2f + 0.95f * speed);
 
         float hx = (r.Width - r.X) * 0.5f, hy = (r.Height - r.Y) * 0.5f;
         float cx = x + (r.X + r.Width) * 0.5f, cy = y + (r.Y + r.Height) * 0.5f;
@@ -711,14 +767,19 @@ internal sealed class WaterRipples
         float beam = Math.Min(MathF.Abs(px) * hx + MathF.Abs(py) * hy, 2.5f);
         // The arms of a Kelvin wake open behind the stern at a shallow angle; a mark is left
         // where the hull was and drifts sideways, so the arms spread and fade with distance.
-        float side = Math.Min(boat.Speed, 4f) * 0.4f;
+        // The arms open at the Kelvin angle (about 19 degrees a side, a third of the hull's speed
+        // sideways) and slow as they age (RebuildWake), so a turn bends the trail behind the hull.
+        float side = speed * 0.34f;
         float sx = cx - ux * (length + 0.3f), sy = cy - uy * (length + 0.3f);
         if (open(sx, sy))
         {
-            AddMark(sx, sy, 0f, 0f, 1.1f, WakeTrough * gain, 0.4f);
+            // The churn straight astern: a trough under broken white water, soon gone.
+            AddMark(sx, sy, 0f, 0f, 1.3f + 0.25f * speed, WakeTrough * gain, 0.5f, 0.85f * gain);
             for (int k = -1; k <= 1; k += 2)
             {
-                AddMark(sx + px * beam * 0.7f * k, sy + py * beam * 0.7f * k, px * side * k, py * side * k, 1.5f, WakeArm * gain, 0.4f);
+                // Each arm: a crest with a thin line of foam on it, leaving the quarter and spreading.
+                AddMark(sx + px * beam * 0.55f * k, sy + py * beam * 0.55f * k, px * side * k, py * side * k,
+                    armLife, -WakeArm * gain, 0.42f, 0.7f * gain);
             }
         }
         // A small crest at the bow, spreading a little to either side.
@@ -735,6 +796,8 @@ internal sealed class WaterRipples
 
     // Wake mark heights (before the style's strength): trough astern, arms, bow crest.
     internal static float WakeTrough = 0.70f, WakeArm = 0.55f, WakeBow = 0.40f;
+    /// <summary>How long a wake's arms last, as a share of the built-in length (the Water panel's "Wake length").</summary>
+    internal static float WakeTrail = 1f;
 
     /// <summary>For the probe: the frame length continuous disturbances scale by.</summary>
     internal void SetFrameForProbe(float seconds) => _dt = seconds;
