@@ -182,7 +182,7 @@ def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALL
         has = np.zeros_like(whole)   # has[x, y]: the neighbour at (x + cx, y + cy) carries a whole water tile
         xa, xb = max(0, -cx), w - max(0, cx)
         ya, yb = max(0, -cy), h - max(0, cy)
-        has[xa:xb, ya:yb] = (whole | wet_static)[xa + cx:xb + cx, ya + cy:yb + cy]   # a shore-shaped edge tile draws its share too
+        has[xa:xb, ya:yb] = whole[xa + cx:xb + cx, ya + cy:yb + cy]   # shore-shaped edge tiles never draw these edge pixels (measured: <= 55% of one strip)
         ix, iy = np.nonzero(whole & ~has)
         for x, y in zip(ix.tolist(), iy.tolist()):
             placed.append((x, y, sid, int(water_z[x, y]), 0))
