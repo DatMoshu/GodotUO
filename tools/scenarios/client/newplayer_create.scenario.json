@@ -160,7 +160,7 @@
       },
       "say": "Pick a ready-made profession.",
       "expect": {
-        "ui.exists": "CreateCharCityGump",
+        "ui.exists": "CreateCharSelectionCityGump",
         "within_s": 20
       }
     },
