@@ -85,6 +85,7 @@ public partial class WaterProbe : Node
 
             WakeChecks();
             CreatureChecks();
+            RecentreChecks();
 
             int packs = PackStyles();
 
@@ -157,6 +158,30 @@ public partial class WaterProbe : Node
     /// Swimmers: a moving one makes small short-lived rings, one that stands still makes none, a
     /// crowd does not build the surface up, and nothing is made where water may not be disturbed.
     /// </summary>
+    // The wet map follows the window: after a re-centre nothing is clipped by a map of the old window.
+    private static void RecentreChecks()
+    {
+        Func<int, int, bool> open = (x, y) => x < 1010 || x >= 1020 && x < 1040 || x >= 1050; // land: 1010..1019, 1040..1049
+        var f = new WaterRipples();
+        f.CentreOnForProbe(1000, 1000);
+        f.SetWetForProbe(open);
+        f.Stamp(1005, 1000, 2f, 0.8f);
+        f.Stamp(1030, 1000, 2f, 0.8f);
+        f.StepForProbe(4);
+        f.CentreOnForProbe(1030, 1000); // window slides 30 cells; the wet map must slide with it
+        float water = Math.Abs(f.HeightAt(1030, 1000)) + Math.Abs(f.HeightAt(1028, 1000));
+        Require(water > 1e-3f, $"ripples kept on water right after the re-centre ({water:F4})");
+        f.StepForProbe(6); // before any sliced rebuild has run
+        float land = 0f, kept = 0f;
+        for (int x = 1010; x < 1020; x++) land = Math.Max(land, Math.Abs(f.HeightAt(x, 1000)));
+        for (int x = 1040; x < 1050; x++) land = Math.Max(land, Math.Abs(f.HeightAt(x, 1000)));
+        for (int x = 1026; x <= 1034; x++) kept = Math.Max(kept, Math.Abs(f.HeightAt(x, 1000)));
+        Require(land < 1e-6f, $"no ripple height on land after a re-centre ({land:F5})");
+        Require(kept > 1e-3f, $"ripples still on water after a re-centre and steps ({kept:F5})");
+        Require(f.DryTexels == 0, $"no dry texel carries height ({f.DryTexels})");
+        GD.Print($"[water probe] recentre: land {land:F5}, kept {kept:F4}, dry texels {f.DryTexels}");
+    }
+
     private static void CreatureChecks()
     {
         var f = new WaterRipples();
