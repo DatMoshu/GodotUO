@@ -2504,7 +2504,7 @@ Relative paths resolve against the root of the git work tree holding the profile
 | `service` | object | `user` (default `muo-<id>`; a system user with no login shell), `memory_max` (systemd `MemoryMax`, e.g. `6G`; omitted = no limit), `restart` (`on-failure`, the default, or `always`), `exec_start_pre` (a command as an argument array, run as the service user before every start; a non-zero exit stops the start. `{data_dir}` is replaced by the client data path, `{dist}` by the server folder `/srv/muo/<id>/dist`, `{src}` by the checkout `/srv/muo/<id>/src`) |
 | `client_version` | string | the UO client version the shard expects (dotted, e.g. `7.0.107.76`), written to ModernUO's `clientData.clientVersion`; omitted = ModernUO detects it |
 | `data_manifest` | object | `file` (a JSON manifest of the client data files the shard needs, committed beside the profile), `verify` (`size` or `sha256`); the file is `{"files": {"<path under the client data>": {"size": n, "sha256": "<hex>"}}}`; `deploy` and every start refuse a client data folder that does not match |
-| `host_packages` | array of strings | extra apt packages `bootstrap` installs, beyond the tool's own (.NET SDK, git, zstd, libdeflate). Each a Debian package name, `^[a-z0-9][a-z0-9+.-]*$`, so no entry can reach apt as an option |
+| `host_packages` | array of strings | extra apt packages `bootstrap` installs, beyond the tool's own (.NET SDK, git, zstd, libisal2). Each a Debian package name, `^[a-z0-9][a-z0-9+.-]*$`, so no entry can reach apt as an option |
 | `backup` | object | `root` (absolute POSIX folder on the host, default `/var/backups/muo/<id>`), `include` (folders under the server folder to snapshot, default `["Saves"]`), `keep` (snapshots kept, default 14), `on_calendar` (systemd `OnCalendar` for a backup timer; omitted = no timer) |
 | `seed` | string | the snapshot `reset` restores (snapshots are named `<yyyymmdd_hhmmss>` or `--name`); omitted = `reset` refuses |
 | `host_keys` | object | other names for the host-local keys, when a profile needs them: `client_data` (default `MUO_CLIENT_DATA`), `admin_user` (`MUO_ADMIN_USER`), `admin_password` (`MUO_ADMIN_PASSWORD`) |
@@ -3174,13 +3174,18 @@ bit 6, circle-of-transparency in bit 7). Classic never sets it.
 | `water_model` | int | 0 Classic (branch never taken), 1 `uo`, 2 `pixel`, 3 `cel`, 4 `realistic`, 5 `classicplus` |
 | `water_time` | float | seconds from the client clock |
 | `water_target_to_world` | vec4 | world px = target px * xy + zw; a tile's centre is ((X - Y) * 22, (X + Y) * 22 - 4 Z) |
-| `water_mask` | sampler2D | 128 x 128 RGBA8 ring of world cells (texel x & 127, y & 127): R 255 water / 0 dry; G + 128 is the water's z, or for a dry cell its highest land or static z (0 when it has none) |
+| `water_mask` | sampler2D | 256 x 256 RGBA8 ring of world cells (texel x mod N, y mod N; the shader takes N from the texture, so a 128-cell probe mask still works): R 255 water / 0 dry; G + 128 is the water's z, or for a dry cell its highest land or static z (0 when it has none); B shore distance along the eight directions, capped at 5, as distance / 5; A `255 - (far * 8 + post * 4)`, where `far` is the Chebyshev distance to the nearest dry cell capped at 30 (0 dry) and `post` marks a submerged dock post |
+| `water_depth_fade` | vec2 | cells from land at which a translucent water tile starts to thicken (x) and is opaque (y); y <= x leaves the tile's alpha alone. Default 9.5, 13 |
+| `water_floor_look` | vec2 | the seabed floor: x the cells from land at which it would reach the deep colour (default 17), y how much lighter its sand bars are (default 0.5) |
+| `water_floor_deep` | vec3 | the colour the seabed floor leans to with distance from land |
+| `water_seams` | float | 1 (default): a translucent water pixel on a cell boundary takes the alpha that, blended once per wet cell sharing it, adds up to the tile's own, so overlapping diamonds draw no line. 0: alpha untouched, for water art trimmed to tile once (`tools/seabed --seams art`) |
 | `water_mask_origin` | vec2 | the ring's first cell; cells outside it read as water at z -5 |
 | `water_tint` | vec4 | the colour swells lean towards |
 | `water_params` | vec4 | speed, scale (1 / world px), wave strength, foam strength |
 | `water_params2` | vec4 | glint, foam width (cells), brightness levels (0 smooth), ripple strength (0 ignores ripples) |
 | `water_params3` | vec4 | x: grain, world pixels per water pixel (1 the art's own grid); yzw unused |
-| `water_ripples` | sampler2D | 256 x 256 R8, the ripple field over 128 x 128 cells, 2 x 2 texels a cell; 128 is flat |
+| `water_ripples` | sampler2D | 256 x 256 RG8, the ripple field over 128 x 128 cells, 2 x 2 texels a cell; R is the height, 128 flat; G the foam of a boat's wake, 0 none |
+| `water_wake_look` | vec2 | wake foam: x strength (0 none), y the grain of its breaking noise |
 | `water_ripples_origin` | vec2 | the ripple window's first cell; outside it the surface is flat |
 
 The mask is rebuilt on the CPU when the player moves 8 cells or the loaded
@@ -3367,6 +3372,9 @@ profile fields, Options entries, automatic downloads or shard authority.
 | `depth.tint` | RGB array, each 0..1; `[0.12,0.24,0.42]` | sRGB target colour for the depth blend |
 | `depth.strength` | 0..1; 0 | Maximum tint blend; 0 disables depth tint |
 | `depth.falloff` | 0.25..64 cells; 8 | Tint blend is `strength * (1 - exp(-d / falloff))`. `d` is distance into water from the low-shore contour, not bathymetry: the current world mask contains no underwater floor depth |
+| `depth.fade_start`, `depth.fade_end` | 0..28 and 1..29 cells; 9.5 and 13 | Translucent water (a map whose water tiles are see-through) stays clear to `fade_start` cells from land and is opaque from `fade_end`; `fade_end` must exceed `fade_start`. The client draws with the defaults (`water_depth_fade`, section 44) |
+| `depth.floor_reach` | 2..40 cells; 17 | Distance over which a seabed floor tile darkens to the deep colour (`water_floor_look.x`) |
+| `depth.sand_bars` | 0..1; 0.5 | How much lighter the seabed's pale patches are (`water_floor_look.y`); 0 is an even bed |
 | `shoreline.width` | 0..2 cells; 0.22 | Distance from the low-shore contour covered by foam; 0 disables foam |
 | `shoreline.strength` | 0..1; 0.85 | Foam intensity (native brightness modulation for `classicplus`); 0 disables it; cliffs stay excluded |
 | `normal.amplitude` | 0..2; 0.22 | Dimensionless strength of the procedural surface normal/ripple perturbation; 0 disables ambient perturbation |
@@ -3375,6 +3383,8 @@ profile fields, Options entries, automatic downloads or shard authority.
 | `flow.direction` | two numbers -1..1; `[1,0]` | World cell X/Y direction, normalised when consumed; `[0,0]` disables flow without division by zero |
 | `flow.strength` | 0..8 cells/second; 0 | Pattern advection rate along direction; never moves objects or changes shard physics |
 | `wake.boat`, `wake.player`, `wake.object` | each 0..2; each 1 | Independent multipliers on boat, mobile and falling/thrown item/effect disturbance rates; 0 disables that source. `player` includes other mobiles, as in WATER-03 |
+| `wake.foam` | 0..2; 1 | White water in a boat's trail (`water_wake_look.x`); 0 leaves only the ripples |
+| `wake.length` | 0.25..3; 1 | Lifetime of a boat's trail as a share of the built-in 2 to 5 seconds |
 | `wake.damping` | 0.9..0.999; 0.985 | Amplitude retention per 20 Hz simulation step, independent of render FPS |
 | `lighting.reflection` | 0..1; 0 | Surface reflection blend; 0 disables it. Reflection source and reduced-tier fallback are W-02/W-07 work; no capture pass is authorised by this contract |
 | `lighting.sun_glint` | 0..1; 0.35 | Highlight strength; 0 disables highlights in every model |
@@ -3383,6 +3393,14 @@ profile fields, Options entries, automatic downloads or shard authority.
 | `clock.offset`, `clock.fixed_time` | each 0..3600 seconds; each 0 | Elapsed mode: `(elapsed_seconds * rate + offset) % 3600`; fixed mode: `fixed_time % 3600` (rate/offset ignored). No claim of seamless looping. This clock never changes native art animation or simulation time |
 | `pixel.levels` | integer 0..16; 6 | Brightness levels; 0 allows smooth style shading |
 | `pixel.grain` | integer 1..8 world pixels; 1 | Style pixel size; native art stays nearest-neighbour |
+
+The editor's Water panel (`#if TOOLS`, `addons/guo_editor/Water/WaterShallows.cs`) authors six of
+these today: `depth.fade_start`, `depth.fade_end`, `depth.floor_reach` and `depth.sand_bars`
+(`wake.foam` and `wake.length` are written at their defaults; the World view has no boat to
+show them on). The panel ends the fade at 13 cells, the reach of a seabed stage, though the
+schema allows more. It shows them in the previewed world, and saves and reloads them
+as a complete v2 document whose other fields come from the v1 draft by the correspondence
+below. The client itself still draws with the defaults; no pack carries the document.
 
 Numbers must be finite JSON numbers, not booleans or strings. The document
 uses the v1 transport envelope: at most 16 KiB of UTF-8, no BOM, duplicate keys
@@ -3405,6 +3423,8 @@ Contract gate: `python -m pytest tools/asset_store/test_water_schema.py` checks
 the schema, complete defaults, bounds and malformed group shapes, and verifies
 that the shipping v1 Python validator refuses the v2 set. The shared Store
 corpus also checks that refusal in both Python and C# installers.
+
+**Seabed floor contract.** Under a water style, a static that is Wet and whose tiledata name starts with `seabed` is a seabed floor: its mode byte carries bit 5 (0x20) beside the water bit 0x40, and the shader shades it from its own colour at the shore to `water_floor_deep` with the distance from land instead of drawing waves on it. `tools/seabed --seams shader` names its floor tiles `seabed sand` in the stage's tiledata. Classic tiles ignore the name.
 
 ## 42. Packet mods (`Data/Mods/<mod>/mod.json`, `load_mods`, ADR-0038)
 
@@ -4708,4 +4728,6 @@ The optional editor_layers version-1 extension preserves named layer IDs, visibi
 
 ## 58. Seabed stage (`tools/seabed`)
 
-`python tools/seabed/run.py generate [--facet 0] [--seed 1] [--out DIR]` reads the install read only and writes `staidx<N>.mul`, `statics<N>.mul`, a `tiledata.mul` whose water statics 0x1796-0x17B2 carry the Translucent flag (omit with `--opaque-water`; opaque water hides the seabed), `files_override.txt` and `seabed.json` into `<UO_BUILD_DIR>/seabed/map<N>`. Play it with `--files-override <out>/files_override.txt`; the default client without it is unchanged. `seabed.json` holds `water_chunks` (8x8 blocks with any wet land or wet static), `eligible_chunks` (a dug bed cell within `shallow_max` cells of dry land), `covered_chunks` (at least one object placed), cell counts and `objects`. Same seed, same bytes. The id tables and the shallow rule are in `tools/seabed/README.md`. The floor hue ramp is measured, not computed: `tools/seabed/calibrate.py` photographs 64 hues in the client and fits them (README); the stage's art copy adds four edge-strip statics 0xFFFA-0xFFFD and the tiledata copy names them "water edge" (translucent), both stage-only.
+`python tools/seabed/run.py generate [--facet 0] [--seed 1] [--out DIR] [--seams shader|art]` reads the install read only and writes `staidx<N>.mul`, `statics<N>.mul`, a `tiledata.mul` whose water statics 0x1796-0x17B2 carry the Translucent flag (omit with `--opaque-water`; opaque water hides the seabed), `files_override.txt` and `seabed.json` into `<UO_BUILD_DIR>/seabed/map<N>`. Play it with `--files-override <out>/files_override.txt`; the default client without it is unchanged. `seabed.json` holds `water_chunks` (8x8 blocks with any wet land or wet static), `eligible_chunks` (a dug bed cell within `shallow_max` cells of dry land), `covered_chunks` (at least one object placed), cell counts and `objects`. Same seed, same bytes. The id tables and the shallow rule are in `tools/seabed/README.md`. The floor hue ramp is measured, not computed: `tools/seabed/calibrate.py` photographs 64 hues in the client and fits them (README); the stage's art copy adds four edge-strip statics 0xFFFA-0xFFFD and the tiledata copy names them "water edge" (translucent), both stage-only. That describes `--seams art`, the stage for Classic tiles. The default, `--seams shader`, is for a water style: one floor hue (`PLAIN_FLOOR_HUE`), every cell of the band a bed, no trimmed art, no strips and no art file in the stage; the client fades the surface with depth and blends each water pixel once (section 44, `water_depth_fade` and `water_seams`). `seabed.json` records which as `seams`.
+
+`python tools/seabed/run.py measure [--data DIR] [--facet N] [--override FILE] [--band 24] [--out FILE]` reads any client data folder (or a stage, through its `files_override.txt`) and reports, per shore distance, how the water is made (opaque wet land or a dug bed under a water static), the bed's depth and land ids, and the share of cells holding a submerged object; over the band, the kinds by distance, group sizes, ids per group and how far an empty cell is from the nearest object. The JSON holds aggregate numbers only, never a cell of the map.

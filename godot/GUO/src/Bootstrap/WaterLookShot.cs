@@ -27,6 +27,9 @@ internal static class WaterLookShot
         return v is { Length: 2 } && int.TryParse(v[0], out int a) && int.TryParse(v[1], out int b) ? (a, b) : (3503, 2574);
     }
 
+    // GUO_WAKE_STILL: tenths of 10 frames under way before the still (default 18).
+    private static int StillAfter => int.TryParse(System.Environment.GetEnvironmentVariable("GUO_WAKE_STILL"), out int v) && v > 0 ? v : 18;
+
     public static bool Passed { get; private set; }
 
     /// <summary>--water-look-only presets|wake: run one half.</summary>
@@ -96,6 +99,8 @@ internal static class WaterLookShot
         }
         if (Only is "creatures" or "scout" or "audit")
             return await WaterCreatureShot.Run(host, world, dir, Only);
+        if (Only is "coast" or "pan" or "bench")
+            return await WaterSprintShot.Run(host, world, dir, Only);
         await InputProbe.Say(host, "[go Trammel");
         await InputProbe.Wait(host, 120);
         string cleanup = System.Environment.GetEnvironmentVariable("GUO_WAKE_REMOVE");
@@ -190,6 +195,9 @@ internal static class WaterLookShot
         if (!(world.Player.X == boat.X && world.Player.Y == boat.Y)) { GD.PrintErr("[water look] could not board"); return false; }
         await InputProbe.Wait(host, 120);
 
+        // GUO_WSS_LIGHT pins the world light here too (0 day .. 30 night), for matched day and night films.
+        int pin = int.TryParse(System.Environment.GetEnvironmentVariable("GUO_WSS_LIGHT"), out int lv) ? Math.Clamp(lv, 0, 30) : -1;
+        if (pin >= 0) world.Light.Overall = world.Light.RealOverall = pin;
         string frames = Path.Combine(dir, "frames");
         Directory.CreateDirectory(frames);
         bool recording = true;
@@ -200,8 +208,20 @@ internal static class WaterLookShot
         phase = "under-way";
         await InputProbe.Say(host, "raise anchor");
         await InputProbe.Wait(host, 20);
-        await InputProbe.Say(host, System.Environment.GetEnvironmentVariable("GUO_WAKE_CMD") ?? "forward");
-        await InputProbe.Wait(host, 300);
+        // GUO_WAKE_CMD: the helm orders, ';' between them ("come about;forward"); two seconds pass after each but the last.
+        string[] orders = (System.Environment.GetEnvironmentVariable("GUO_WAKE_CMD") ?? "forward").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        for (int i = 0; i < orders.Length; i++)
+        {
+            await InputProbe.Say(host, orders[i]);
+            if (i < orders.Length - 1) await InputProbe.Wait(host, 150);
+        }
+        for (int i = 0; i < StillAfter; i++)
+        {
+            if (pin >= 0) world.Light.Overall = world.Light.RealOverall = pin;
+            await InputProbe.Wait(host, 10);
+        }
+        var field = GUO.Renderer.Water.WaterRender.Ripples;
+        GD.Print($"[water look] under way: wake marks={field.MarkCount} peak foam={field.PeakFoam:F2} peak height={field.PeakHeight:F2} stamps={field.Stamps} item={field.ItemStamps} effect={field.EffectStamps} swim={field.SwimStamps}");
         await Take(host, Path.Combine(dir, "wake-under-way.png"));
         phase = "stopping";
         await InputProbe.Say(host, "stop");

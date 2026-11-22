@@ -1474,7 +1474,7 @@ public partial class Main : Node
             InstallConfigured = _options.ClientData,
             InstallConfiguredOrigin = _options.ClientDataFromFlag ? "flag" : _options.ClientDataFromShard ? "shard" : "environment",
             SettingsFile = System.IO.Path.Combine(GuoDataDirectory(), Configuration.Settings.SETTINGS_FILENAME),
-            Defaults = DataSources.PlatformDefaults(),
+            Defaults = _options.NoInstallDefaults ? Array.Empty<string>() : DataSources.PlatformDefaults(),
         };
 
         DataSources.Result r = DataSources.Resolve(inputs);
@@ -1589,6 +1589,14 @@ public partial class Main : Node
         /// the check, and presses Continue.
         /// </summary>
         public string FirstRunProbe { get; private set; } = "";
+
+        /// <summary>
+        /// --no-install-defaults: skip the platform defaults (the EA registry key
+        /// and Program Files) when resolving the UO install, so a machine that has
+        /// UO installed can show what a player without one sees (the first-run
+        /// screen). A test seam; a player never needs it.
+        /// </summary>
+        public bool NoInstallDefaults { get; private set; }
 
         /// <summary>True when ClientData is a shard session's whole client (ShardSession).</summary>
         public bool ClientDataFromShard { get; private set; }
@@ -2591,6 +2599,9 @@ public partial class Main : Node
                         break;
                     case "--first-run-probe":
                         o.FirstRunProbe = Next();
+                        break;
+                    case "--no-install-defaults":
+                        o.NoInstallDefaults = true;
                         break;
                     case "--cache-dir":
                         o.CacheDir = NextPath();

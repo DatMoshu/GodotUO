@@ -74,7 +74,7 @@ unset _guo_shared_dir
 # --- Local dev shard (ModernUO) ----------------------------------------------
 : "${UO_SHARD_NAME:=GUO Dev}"
 : "${UO_SHARD_REPO:=https://github.com/modernuo/ModernUO.git}"
-: "${UO_SHARD_REF:=9782fd6aad1c41b3e0ca9e8843855421c00fe3e0}"
+: "${UO_SHARD_REF:=4d9e2b6af2aaa9ff75472d1a12dbb47f38904457}"
 : "${UO_SHARD_SRC:=$UO_ROOT/tools/modernuo/src}"
 : "${UO_SHARD_DIST:=$UO_SHARD_SRC/Distribution}"
 # DFI shard content (patches *-dfi-*): 1 = on (the dev shard's default), 0 = fetch.sh

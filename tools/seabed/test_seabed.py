@@ -67,6 +67,72 @@ def test_floor_fades_to_the_deep_colour():
     assert max(steps) < 0.17, steps                                                   # no band: no column mean jumps
 
 
+def test_shader_seams_plan_has_one_floor_hue_no_strips_and_a_full_band():
+    land, lz, wet, occ = coast()
+    land[20:40] = 0xA8; lz[20:40] = -5; wet[20:40] = S.NO_STATIC
+    p = S.plan(land, lz, wet, occ, seed=3, shader=True)
+    assert {hue for x, y, sid, z, hue in p.placed if sid in S.FLOOR} == {S.PLAIN_FLOOR_HUE}
+    assert not [q for q in p.placed if q[2] in S.STRIP_IDS]
+    # every cell of the band is bed: the client fades the surface, so none is handed back to the opaque sea
+    assert (p.new_land[20:16 + S.SHALLOW_MAX] == S.BED_ID).all()
+    assert (p.new_land[16 + S.SHALLOW_MAX + 1:] == 0xA8).all()
+
+
+def test_shader_layout_has_gaps_thins_out_and_shifts_from_stone_to_weed():
+    w = h = 256
+    land = np.full((w, h), 0xA8, np.uint16); lz = np.full((w, h), -5, np.int8)
+    wet = np.full((w, h), S.NO_STATIC, np.int8)
+    land[:8] = 3; lz[:8] = 0
+    p = S.plan(land, lz, wet, np.zeros((w, h), bool), seed=5, shader=True)
+    objs = [(x, y, sid) for x, y, sid, z, hue in p.placed if z == S.OBJECT_Z]
+    assert objs
+    blocks = {(x // 8, y // 8) for x, y, sid in objs}
+    band_blocks = (S.SHALLOW_MAX // 8 + 1) * (h // 8)
+    assert 0.3 < len(blocks) / band_blocks < 0.9, len(blocks) / band_blocks       # populated stretches and bare ones
+    near = sum(1 for x, y, sid in objs if x - 8 <= 3); far = sum(1 for x, y, sid in objs if x - 8 >= 10)
+    assert near > far * 1.5                                                      # thins with distance
+    rock = set(S.ROCKS_SMALL) | set(S.ROCKS_CLUSTER) | set(S.BOULDERS)
+    share = lambda sel: sum(1 for x, y, sid in sel if sid in rock) / max(len(sel), 1)
+    assert share([o for o in objs if o[0] - 8 <= 3]) > share([o for o in objs if o[0] - 8 >= 8])
+
+
+def test_shader_plan_drops_the_partial_water_tile_where_it_places_a_whole_one():
+    land, lz, wet, occ = coast()
+    full = wet > S.NO_STATIC
+    full[20, 10] = False                                   # one bed cell carries only a shore-shaped tile
+    p = S.plan(land, lz, wet, occ, seed=3, full_water=full, shader=True)
+    assert p.drop is not None and p.drop[20, 10] and p.drop.sum() == 1
+    assert any(x == 20 and y == 10 and sid in S.WATER_FILL for x, y, sid, z, hue in p.placed)
+    assert S.plan(land, lz, wet, occ, seed=3, full_water=full).drop is None   # the art stage keeps every tile
+
+
+def test_measure_reads_a_staged_facet(tmp_path):
+    """measure.py on a tiny synthetic facet: a dug bed is found, its depth and the object on it."""
+    import measure
+
+    class TD:
+        static_count = 0x2000
+
+        def land(self, i):
+            return {"flags": 0x80 if i == 0xA8 else 0, "name": "water" if i == 0xA8 else "x"}
+
+        def static(self, i):
+            return {"flags": 0x80 if i == 0x1797 else 0, "height": 0, "name": "water" if i == 0x1797 else "rock"}
+
+    land = np.full((16, 16), 0x64, np.uint16); lz = np.full((16, 16), -15, np.int8)
+    land[:4] = 3; lz[:4] = 0
+    xs, ys = np.meshgrid(np.arange(4, 16), np.arange(16), indexing="ij")
+    sx = np.concatenate([xs.ravel(), [6]]).astype(np.int32); sy = np.concatenate([ys.ravel(), [5]]).astype(np.int32)
+    sid = np.concatenate([np.full(xs.size, 0x1797), [0x1363]]).astype(np.uint16)
+    sz = np.concatenate([np.full(xs.size, -5), [-14]]).astype(np.int8)
+    hue = np.zeros(sid.size, np.uint16)
+    measure.scan = lambda data, facet, override=None: (TD(), land, lz, (sx, sy, sid, sz, hue))
+    m = measure.measure(tmp_path, 0, None, band=8)
+    assert m["dug_bed_cells"] == 12 * 16 and m["objects_in_band"] == 1
+    assert m["profile"][0]["d"] == 1 and m["profile"][0]["bed_depth_median"] == 10.0
+    assert m["object_kinds"][0][0] == "rock" and m["water_statics"][0][0] == "0x1797"
+
+
 def test_ramp_is_measured_and_ordered():
     assert len(S.HUE_RAMP) == len(S.RAMP_PROGRESS) == len(set(S.HUE_RAMP))
     assert S.RAMP_PROGRESS[0] == 0.0 and S.RAMP_PROGRESS[-1] >= 0.75

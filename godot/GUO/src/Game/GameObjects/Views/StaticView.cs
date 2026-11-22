@@ -69,7 +69,7 @@ namespace GUO.Game.GameObjects
             bool cot = !isTree && !ItemData.IsFoliage && TransparentTest(World.Player.Z + 5);
             Vector3 hueVec = ShaderHueTranslator.GetHueVector(hue, partial, AlphaHue / 255f, circletrans: cot);
             // PORT DEVIATION (GUO): a Wet static under a water style (ADR-0037).
-            hueVec.Y += GUO.Renderer.Water.WaterRender.Flag(ItemData.IsWet);
+            hueVec.Y += GUO.Renderer.Water.WaterRender.Flag(ItemData.IsWet, Graphic);
 
             if (isTree && ProfileManager.CurrentProfile.TreeToStumps)
             {

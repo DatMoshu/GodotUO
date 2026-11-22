@@ -43,6 +43,7 @@ SHALLOW_MAX = 14   # cells from dry land over which the shallows fade out into t
 # speckles (1593, 1599, 1469, 1916) or tints (2571 purple) are left out by calibrate.choose_ramp.
 HUE_RAMP = (1151, 191, 391, 396, 490, 495, 589, 594, 494, 688, 2757, 593, 587, 392, 592)
 RAMP_PROGRESS = (0.0, 0.171, 0.183, 0.229, 0.304, 0.362, 0.437, 0.492, 0.51, 0.578, 0.618, 0.632, 0.728, 0.757, 0.788)
+PLAIN_FLOOR_HUE = 1151   # the floor's one hue (the shore's sand) when the client shades the floor itself (plan(shader=True))
 FLOOR_Z = -15
 OBJECT_Z = -14     # above the floor tile so it never draws over them
 BED_ID = 0x64
@@ -62,6 +63,10 @@ class Plan:
     water_blocks: int
     eligible_blocks: int
     covered_blocks: int
+    # Shader stage only: cells whose own partial water static (a shore-shaped edge or the near-empty
+    # 0x1796) is taken out, because a whole water tile is placed there: two surfaces in one cell
+    # blend a third time along its edges and draw a dark line.
+    drop: object = None
 
 
 def _hash2(x, y, seed):
@@ -91,6 +96,31 @@ def _value_noise(w, h, scale, seed):
     return (a * (1 - fxx) + b * fxx) * (1 - fyy) + (c * (1 - fxx) + d * fxx) * fyy
 
 
+def _measured_layout(free, dist, r, r2, meadow, rocky, w, h, seed):
+    """Object kinds laid out the way a hand-built map's shallows measure (run.py measure):
+    populated stretches and bare ones in about equal share, with a few lone objects on the bare
+    sand; about a fifth of the cells against the shore holding something, thinning steadily with
+    distance; stones and rubble close in, weed taking over further out; and groups that mix kinds,
+    since the local noise only weights the choice. Returns the kind array (0 none)."""
+    d = dist.astype(np.float64)
+    region = _value_noise(w, h, 22, seed + 31)
+    populated = np.clip((region - 0.42) / 0.16, 0.0, 1.0)
+    p = 0.34 * np.exp(-(d - 1.0) / 9.0) * populated + 0.012 * np.exp(-d / 12.0)
+    has = free & (r < p)
+    weights = np.stack([
+        (0.5 + rocky) * np.exp(-d / 5.0) + 0.15,                 # 2 rock
+        np.where(d >= 3, 0.10 * rocky, 0.0),                     # 3 boulder
+        (0.4 + meadow) * (1.0 - np.exp(-d / 3.0)),               # 4 plant
+        np.where(d >= 3, 0.25 * (1.0 - meadow), 0.0),            # 5 coral
+        np.full(d.shape, 0.06),                                  # 6 shell
+    ])
+    cum = np.cumsum(weights, axis=0)
+    pick = (r2[None] * cum[-1][None] >= cum).sum(axis=0)         # 0..4
+    kind = np.zeros((w, h), np.uint8)
+    kind[has] = (pick[has] + 2).astype(np.uint8)
+    return kind
+
+
 def water_masks(land, land_z, wet_z):
     """(water, shallow_bed): water is any wet land or wet static; the bed is a cell
     whose land lies at least 5 below its water static (a dug seabed)."""
@@ -107,7 +137,8 @@ def shore_distance(water):
     return distance_transform_cdt(water, metric="chessboard")
 
 
-def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALLOW_MAX, full_water=None, calibrate=None):
+def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALLOW_MAX, full_water=None, calibrate=None,
+         shader=False):
     """Plan the seabed. Arrays are [x, y]. `occupied` marks cells holding a non-water static
     (piers, boats, ruins); they get a floor but no seabed objects.
 
@@ -122,21 +153,34 @@ def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALL
     beds) get one more at z -5, or the floor would show through bare.
     `calibrate` (calibrate.py) replaces the floor hues by a function (x, y arrays) -> hues and
     drops every object, so the client can photograph what each hue looks like in place.
+    `shader` plans for a client that fades the surface with depth and blends each water pixel once
+    itself (uo_water.gdshaderinc, DEPTH FADE and ONE TILE A PIXEL): one floor hue, no cells handed
+    back to the opaque sea and no edge strips. Per-cell hues read as diamonds under a water style.
     """
     water, bed = water_masks(land, land_z, wet_z)
     w, h = land.shape
     dist = shore_distance(water)
     wet_land = np.isin(land, WET_LAND)
     wet_static = wet_z > NO_STATIC
-    ext = wet_land & (dist <= shallow_max)               # deep land turned into bed (with or without a surface already)
+    # The client measures its depth fade from every cell it draws as dry, and a static standing in
+    # the water (a rock, a wreck, a post) is one. The bed therefore reaches `shallow_max` from those
+    # too, or the fade would show the opaque sea in blocks near them. Densities keep the true shore distance.
+    reach = shore_distance(water & ~occupied) if shader else dist
+    ext = wet_land & (reach <= shallow_max)               # deep land turned into bed (with or without a surface already)
     bed_land = (land >= BED_FIRST) & (land <= BED_LAST)
     lowered = wet_static & ~wet_land & bed_land & ~bed   # Felucca's bed rows raised to the surface: sunk to bed depth
+    if shader:
+        # A water static over any other land near the surface (rock shelves off a cliff) is water to the
+        # client too: sunk and floored like the rest, or the land shows through as a dark block. The
+        # row against the shore keeps its land: the shore-shaped tiles there lie on the beach itself.
+        lowered = lowered | (wet_static & ~wet_land & ~bed & (dist >= 2))
     xs = np.arange(w)[:, None] * np.ones((1, h), np.int64) + origin[0]
     ys = np.ones((w, 1), np.int64) * np.arange(h)[None, :] + origin[1]
     # Past the last ramp hue the floor stops: a deep cell (not a dug bed) stays the original opaque sea
     # with a probability that rises to 1 at the band's edge.
     back = np.clip((dist.astype(np.float64) / shallow_max - RAMP_PROGRESS[-1]) / (1.0 - RAMP_PROGRESS[-1]), 0.0, 1.0)
-    ext = ext & ~(~wet_static & (_hash2(xs, ys, seed + 19) < back))
+    if not shader:
+        ext = ext & ~(~wet_static & (_hash2(xs, ys, seed + 19) < back))
     shallow = bed | lowered | ext
     floor_z = np.where(wet_static, wet_z.astype(np.int16) - 10, FLOOR_Z).astype(np.int16)
     r = _hash2(xs, ys, seed)
@@ -155,6 +199,8 @@ def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALL
     frac = np.clip((t_adj - prog[lo]) / (prog[lo + 1] - prog[lo]), 0.0, 1.0)
     level = np.where(r3 < frac, lo + 1, lo).astype(int)   # stochastic rounding: the mean colour is exact, never a band
     hue_at = np.asarray(HUE_RAMP)[level]
+    if shader:
+        hue_at = np.full((w, h), PLAIN_FLOOR_HUE)
     if calibrate is not None:
         hue_at = calibrate(xs, ys)
     kind = np.zeros((w, h), np.uint8)   # 0 none 2 rock 3 boulder 4 plant 5 coral 6 shell
@@ -167,6 +213,8 @@ def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALL
     coral_zone = free & (meadow < 0.34) & (kind == 0) & (dist >= 3)
     kind[coral_zone & (r2 < 0.30 * fade)] = 5
     kind[free & (kind == 0) & (r < 0.02 * fade)] = 6
+    if shader:
+        kind = _measured_layout(free, dist, r, r2, meadow, rocky, w, h, seed)
 
     new_land = land.copy(); new_lz = land_z.copy()
     new_land[ext] = BED_ID
@@ -183,7 +231,7 @@ def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALL
         placed.append((x, y, FLOOR[int(r2[x, y] * len(FLOOR))], int(floor_z[x, y]), int(hue_at[x, y])))
     whole = need | (full_water if full_water is not None else wet_static)   # cells that now carry a whole (trimmed) water tile
     water_z = np.where(wet_static, wet_z, -5)
-    for (cx, cy), sid in zip(STRIP_CELLS, STRIP_IDS):
+    for (cx, cy), sid in (() if shader else zip(STRIP_CELLS, STRIP_IDS)):
         has = np.zeros_like(whole)   # has[x, y]: the neighbour at (x + cx, y + cy) carries a whole water tile
         xa, xb = max(0, -cx), w - max(0, cx)
         ya, yb = max(0, -cy), h - max(0, cy)
@@ -199,7 +247,8 @@ def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALL
     def blocks(mask):
         return int(mask[: w // 8 * 8, : h // 8 * 8].reshape(w // 8, 8, h // 8, 8).any(axis=(1, 3)).sum())
     return Plan(placed, new_land, new_lz, int(ext.sum()), int(water.sum()), int(shallow.sum()),
-                blocks(water), blocks(shallow), blocks(kind > 0))
+                blocks(water), blocks(shallow), blocks(kind > 0),
+                drop=(need & wet_static) if shader else None)
 
 
 def _pick_unit(x, y, seed, k):
@@ -271,7 +320,7 @@ def _write(path: Path, data) -> None:
             f.write(view[i:i + (4 << 20)])
 
 
-def write_stage(facet, placed, out: Path, install: Path, new_land=None, new_lz=None, old_land=None, old_lz=None):
+def write_stage(facet, placed, out: Path, install: Path, new_land=None, new_lz=None, old_land=None, old_lz=None, drop=None):
     """Copy statics/staidx of `facet` into `out` with `placed` appended per block and, when
     new_land/new_lz are given, a patched copy of the facet's land file (only the blocks
     that changed). Returns the files_override.txt lines. Refuses an `out` inside the install."""
@@ -290,6 +339,14 @@ def write_stage(facet, placed, out: Path, install: Path, new_land=None, new_lz=N
         n = facet.number(bx, by)
         off, length = facet.statics_span(n)
         old = bytes(facet.sta[off:off + length]) if length else b""
+        if drop is not None and old:
+            kept = bytearray()
+            for i in range(0, len(old) - 6, 7):
+                sid, rx, ry = struct.unpack_from("<HBB", old, i)
+                partial = WATER_STATIC[0] <= sid <= WATER_STATIC[1] and not 0x1797 <= sid <= 0x179C
+                if not (partial and drop[bx * 8 + rx, by * 8 + ry]):
+                    kept += old[i:i + 7]
+            old = bytes(kept)
         extra = struct.unpack_from("<i", idx, n * 12 + 8)[0]
         new = old + b"".join(struct.pack("<HBBbH", sid, x, y, z, hue) for sid, x, y, z, hue in items)
         start = len(sta)
@@ -316,10 +373,11 @@ def write_stage(facet, placed, out: Path, install: Path, new_land=None, new_lz=N
     return lines
 
 
+WET_FLAG = 0x80    # TileFlag.Wet
 TRANSLUCENT = 0x8  # TileFlag.Translucent; ClassicUO draws such statics at alpha 178/255
 
 
-def stage_translucent_water(install: Path, out: Path) -> str:
+def stage_translucent_water(install: Path, out: Path, strips: bool = True, seabed_floor: bool = False) -> str:
     """Copy tiledata.mul into `out` with the water statics 0x1796-0x17B2 flagged Translucent,
     the owner's Transwater convention: the seabed shows through the surface. Returns its
     files_override line. Only the stage copy is written."""
@@ -335,7 +393,13 @@ def stage_translucent_water(install: Path, out: Path) -> str:
     shutil.copyfile(install / "tiledata.mul", dst)
     for i in range(WATER_STATIC[0], WATER_STATIC[1] + 1):
         U.write_tile(dst, i, {"flags": U.read_tile(dst, i)["flags"] | TRANSLUCENT})
-    for i in STRIP_IDS:   # the edge strips (stage_seamless_water_art): water that is translucent, with a name
+    if seabed_floor:
+        # The client's contract for a seabed floor (data_formats section 44): Wet, and a name that
+        # starts with "seabed". A water style then grades the floor into the deep itself.
+        for i in FLOOR:
+            t = U.read_tile(dst, i)
+            U.write_tile(dst, i, {**t, "name": "seabed sand", "flags": t["flags"] | WET_FLAG})
+    for i in (STRIP_IDS if strips else ()):   # the edge strips (stage_seamless_water_art): water that is translucent, with a name
         U.write_tile(dst, i, {**U.read_tile(dst, 0x1797), "name": "water edge", "flags": U.read_tile(dst, 0x1797)["flags"] | TRANSLUCENT})
     return f"tiledata.mul={dst}"
 
