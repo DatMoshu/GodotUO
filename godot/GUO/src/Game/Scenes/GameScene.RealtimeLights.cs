@@ -196,7 +196,10 @@ namespace GUO.Game.Scenes
                                     // and shades what is under it, as a roof does.
                                     _rtField.SetRoof(tx, ty, obj.Z, roofFlag: false);
                                 }
-                                if (RealtimeLightField.Blocks(data.IsWall, data.IsImpassable, data.IsDoor, data.IsWindow, data.Height))
+                                // An arrow slit is flagged Window but is solid masonry:
+                                // it blocks like the wall around it (LightOpenings).
+                                if (RealtimeLightField.Blocks(data.IsWall, data.IsImpassable, data.IsDoor,
+                                        LightOpenings.TransmitsLight(graphic, data.IsWindow), data.Height))
                                 {
                                     // A wall stands on a line of its tile, read from
                                     // its art; light reaches each side of it, not
