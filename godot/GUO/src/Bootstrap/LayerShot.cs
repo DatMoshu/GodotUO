@@ -253,18 +253,18 @@ internal static class LayerShot
         }
         try
         {
-            // A flat paved floor, then one five-piece wall per bay on the arrival row.
-            await InputProbe.Say(host, $"[TileXYZ {x0 - 13} {y0 - 4} 27 11 {floorZ} Static {OpeningFloor}");
-            await InputProbe.Wait(host, 40);
-            foreach (var bay in bays)
+            // Each bay is staged afresh after arriving at it: the earlier run found
+            // items staged from afar gone by the time the camera arrived.
+            async System.Threading.Tasks.Task Stage(string name, ushort centre, int bx)
             {
+                await InputProbe.Say(host, $"[TileXYZ {bx - 5} {y0 - 4} 11 11 {floorZ} Static {OpeningFloor}");
+                await InputProbe.Wait(host, 40);
                 for (int dx = -2; dx <= 2; dx++)
                 {
-                    ushort g = dx == 0 ? bay.Centre : OpeningWall;
-                    await InputProbe.Say(host, $"[TileXYZ {bay.X + dx} {y0} 1 1 {floorZ} Static {g}");
+                    await InputProbe.Say(host, $"[TileXYZ {bx + dx} {y0} 1 1 {floorZ} Static {(dx == 0 ? centre : OpeningWall)}");
                     await InputProbe.Wait(host, 20);
                 }
-                GD.Print($"[GUO] layer openings: bay {bay.Name} centre 0x{bay.Centre:X4} at {bay.X},{y0},{floorZ}");
+                GD.Print($"[GUO] layer openings: bay {name} centre 0x{centre:X4} at {bx},{y0},{floorZ}");
             }
 
             // Carry a lit torch: igniting one in the pack equips it (ModernUO BaseEquipableLight).
@@ -286,6 +286,7 @@ internal static class LayerShot
                 foreach (var bay in bays)
                 {
                     await Go(bay.X, y0 + dy);
+                    await Stage(bay.Name, bay.Centre, bay.X);
                     world.Light.Overall = world.Light.RealOverall = 26;
                     string n = $"{bay.Name}_{side}";
                     profile.LightingSpeedMode = false; await InputProbe.Wait(host, 30); await Shot(n + "_classic");
