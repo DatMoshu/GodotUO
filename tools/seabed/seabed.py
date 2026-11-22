@@ -116,10 +116,10 @@ def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALL
     shelf = (dist >= 3) & (dist <= 6)
     slope = dist >= 7
     cand = shallow
-    kind[cand & (sandy > 0.74)] = 1   # whole patches, not a sprinkle
+    kind[cand & (sandy > 0.80)] = 1   # whole patches, not a sprinkle
     rock_zone = cand & (rocky > 0.6)
     kind[rock_zone & (r2 < 0.30) & (rim | shelf)] = 2
-    kind[cand & (sandy > 0.74) & (rocky <= 0.6) & (r2 > 0.9)] = 6
+    kind[cand & (sandy > 0.80) & (rocky <= 0.6) & (r2 > 0.9)] = 6
     kind[rock_zone & (r2 < 0.12) & slope] = 3
     kind[cand & rim & (rocky > 0.72) & (r2 < 0.08)] = 3
     plant_zone = cand & (meadow > 0.45) & (kind == 0)
