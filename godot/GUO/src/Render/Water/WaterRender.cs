@@ -210,6 +210,9 @@ internal static class WaterRender
     internal static World EditorWorld;
     internal static IWaterStyle EditorStyle;
     internal static float EditorSeconds;
+    /// <summary>The Water panel's guo/water@2 depth and wake draft, drawn in the previewed world only; null draws the defaults.</summary>
+    internal static (Vector2 Fade, Vector2 Floor, float WakeFoam, float WakeLength)? EditorShallows;
+    private static bool _editorShallowsDrawn;
     internal static bool EditorPaused;
     private static bool _lightingTargetBound;
     private static bool InEditorPreview => EditorWorld != null && ReferenceEquals(EditorWorld, Client.Game?.UO?.World);
@@ -669,6 +672,21 @@ internal static class WaterRender
         if (CaptureOverrides != null) foreach (var o in CaptureOverrides) batcher.SetWaterUniform(o.Key, o.Value);
 #if TOOLS
         if (InEditorPreview) batcher.SetWaterUniform("water_time", EditorSeconds);
+        if (InEditorPreview && EditorShallows is { } draft)
+        {
+            batcher.SetWaterUniform("water_depth_fade", draft.Fade);
+            batcher.SetWaterUniform("water_floor_look", draft.Floor);
+            batcher.SetWaterUniform("water_wake_look", new Vector2(draft.WakeFoam, 0.33f));
+            WaterRipples.WakeTrail = draft.WakeLength;
+            _editorShallowsDrawn = true;
+        }
+        else if (_editorShallowsDrawn)
+        {
+            // The draft is gone (preview off, or another world): back to what every style draws with.
+            BindShallows(batcher.SetWaterUniform);
+            WaterRipples.WakeTrail = 1f;
+            _editorShallowsDrawn = false;
+        }
 #endif
 
         // Canvas-local = inverse(view) * target; world = local + offset +
