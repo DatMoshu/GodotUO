@@ -34,14 +34,16 @@ shallow cell, **covered** when it received at least one plant, coral, rock or sh
   distance. The ramp (`HUE_RAMP`, `RAMP_PROGRESS`) is 16 hues that lie on the straight line, as the
   client shows it, from the shore colour to the open sea's own colour. Cells take the hue below or
   above their position on that line by probability (stochastic rounding), so the mean colour is exact
-  at every distance and no band shows. The last hue (1916) is within 2 colour units of the original
-  opaque deep water (measured (0, 54, 80) at Haven), so the fade ends on it.
+  at every distance and no band shows. The original opaque deep water measured (0, 54, 80) at Haven. No smooth hue
+  lies on the line that close (the one that does, 1916, has a sparkling palette and shows as cyan speckled
+  tiles), so the ramp overshoots to 1156, smooth and darker than the deep, and at the deep's distance the
+  mixture of 1156 and 592 averages to the deep colour.
 - Measuring (`calibrate.py`): `run.py generate --calibrate` stages 64 hues in an 8x8 pattern with
   no objects; a `--layer-shot` of Haven gives each hue's on-screen mean colour; `calibrate.py fit PNG`
   finds the cell lattice and fits observed = gain * predicted + offset per channel against the hued sand
   tile (gain 0.365, offset (0, 37, 55), residual 1.5 over 63 hues, correlation 0.99). `calibrate.py ramp`
   picks hues within 6 units of the line, one per 0.04 of progress, and drops palettes that speckle
-  (1593, 1599, 1469) or tint (2571 purple) by their per-pixel spread. The table has no colour on
+  (1593, 1599, 1469, 1916) or tint (2571 purple) by their per-pixel spread. The table has no colour on
   the line between 0 and 0.17 and between 0.79 and 0.98; there plan() mixes the two neighbours.
 - Objects (z floor+1, only where no other static stands): plant meadows, rock fields and
   coral heads from three value-noise fields (feature sizes 7, 9, 13 cells), density
