@@ -33,11 +33,14 @@ FLOOR = (0x9DE9, 0x9DEA, 0x9DEB, 0x9DEC)                # "sand_tile": a seamles
 WATER_FILL = (0x1797, 0x1798, 0x1799, 0x179A, 0x179B)   # interior water statics, as on Felucca's own beds
 
 SHALLOW_MAX = 14   # cells from dry land over which the shallows fade out into the deep
-# Hue ramp for the floor, shore to deep (hues.mul ids). The first is a bright teal; the last brings the
-# water, seen through the translucent surface, to the colour of the open sea. Chosen by
-# compositing the tile through every hue over the measured deep-water colour and taking the
-# eight closest to a straight line from the shore colour to the deep colour (README).
-HUE_RAMP = (1151, 91, 390, 489, 588, 587, 1960, 1960)
+# Hue ramp for the floor, shore to deep (hues.mul ids), with each hue's progress along the straight line
+# from the shore colour (hue 1151, as photographed) to the open sea's own colour, as the client showed it
+# (calibrate.py: 64 hues photographed in place, fit residual 1.5 colour units; the deep end is
+# hue 1916, within 2 units of the original opaque deep water, measured (0, 54, 80) at Haven).
+# The hue table has no colour on that line between 0 and 0.17, so plan() mixes neighbours by
+# probability instead of rounding to a step.
+HUE_RAMP = (1151, 291, 391, 2571, 1287, 490, 495, 589, 594, 494, 688, 593, 587, 592, 1593, 1916)
+RAMP_PROGRESS = (0.0, 0.17, 0.183, 0.253, 0.292, 0.304, 0.362, 0.437, 0.492, 0.51, 0.578, 0.632, 0.728, 0.788, 0.9, 0.98)
 FLOOR_Z = -15
 OBJECT_Z = -14     # above the floor tile so it never draws over them
 BED_ID = 0x64
@@ -102,7 +105,7 @@ def shore_distance(water):
     return distance_transform_cdt(water, metric="chessboard")
 
 
-def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALLOW_MAX, full_water=None):
+def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALLOW_MAX, full_water=None, calibrate=None):
     """Plan the seabed. Arrays are [x, y]. `occupied` marks cells holding a non-water static
     (piers, boats, ruins); they get a floor but no seabed objects.
 
@@ -115,6 +118,8 @@ def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALL
     the same distance. `full_water` marks cells that already carry a whole water tile (0x1797-0x179C);
     the others in the band (the near-empty 0x1796 and shore-shaped edges Felucca stacks along its
     beds) get one more at z -5, or the floor would show through bare.
+    `calibrate` (calibrate.py) replaces the floor hues by a function (x, y arrays) -> hues and
+    drops every object, so the client can photograph what each hue looks like in place.
     """
     water, bed = water_masks(land, land_z, wet_z)
     w, h = land.shape
@@ -137,13 +142,18 @@ def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALL
 
     t = np.clip(dist.astype(np.float64) / shallow_max, 0.0, 1.0)   # 0 at the shore, 1 in the deep
     fade = (1.0 - t) ** 1.5                                        # object density falls to 0 smoothly
+    prog = np.asarray(RAMP_PROGRESS)
     nb = len(HUE_RAMP) - 1
-    level = t * nb + (r3 - 0.5) * 0.9 - np.clip(sandy - 0.55, 0, None) * 4.0   # sand patches: lighter, soft
-    level = np.clip(np.rint(level), 0, nb).astype(int)
+    t_adj = np.clip(t - np.clip(sandy - 0.55, 0, None) * 0.57, 0.0, 1.0)   # sand patches: lighter, soft
+    lo = np.clip(np.searchsorted(prog, t_adj, side="right") - 1, 0, nb - 1)
+    frac = np.clip((t_adj - prog[lo]) / (prog[lo + 1] - prog[lo]), 0.0, 1.0)
+    level = np.where(r3 < frac, lo + 1, lo).astype(int)   # stochastic rounding: the mean colour is exact, never a band
     level[dist >= shallow_max] = nb
-
+    hue_at = np.asarray(HUE_RAMP)[level]
+    if calibrate is not None:
+        hue_at = calibrate(xs, ys)
     kind = np.zeros((w, h), np.uint8)   # 0 none 2 rock 3 boulder 4 plant 5 coral 6 shell
-    free = shallow & (dist >= 1) & ~occupied
+    free = shallow & (dist >= 1) & ~occupied & (calibrate is None)
     rock_zone = free & (rocky > 0.6)
     kind[rock_zone & (r2 < 0.55 * fade)] = 2
     kind[rock_zone & (r2 < 0.10 * fade) & (dist >= 3)] = 3
@@ -165,7 +175,7 @@ def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALL
         placed.append((x, y, WATER_FILL[int(r[x, y] * len(WATER_FILL))], int(wet_z[x, y]) if wet_static[x, y] else -5, 0))
     ix, iy = np.nonzero(shallow)
     for x, y in zip(ix.tolist(), iy.tolist()):
-        placed.append((x, y, FLOOR[int(r2[x, y] * len(FLOOR))], int(floor_z[x, y]), HUE_RAMP[level[x, y]]))
+        placed.append((x, y, FLOOR[int(r2[x, y] * len(FLOOR))], int(floor_z[x, y]), int(hue_at[x, y])))
     for k in (2, 3, 4, 5, 6):
         ix, iy = np.nonzero(kind == k)
         for x, y in zip(ix.tolist(), iy.tolist()):

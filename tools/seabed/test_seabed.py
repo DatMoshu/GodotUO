@@ -55,13 +55,39 @@ def test_floor_fades_to_the_deep_colour():
     land, lz, wet, occ = coast(64, 64)
     p = S.plan(land, lz, wet, occ, seed=4)
     floor = [(x, hue) for x, y, sid, z, hue in p.placed if sid in S.FLOOR]
-    near = [h for x, h in floor if x < 19]; far = [h for x, h in floor if x >= 16 + S.SHALLOW_MAX - 2]
-    ramp = S.HUE_RAMP
-    mean = lambda hs: np.mean([ramp.index(h) for h in hs])
-    assert mean(near) < 2.0 and mean(far) > 5.5, (mean(near), mean(far))        # sand at the shore, sea colour at the edge
-    # no hard step: the ramp index along x never jumps by more than 2 between column means
-    cols = [np.mean([ramp.index(h) for xx, h in floor if xx == c]) for c in range(16, 16 + S.SHALLOW_MAX)]
-    assert max(abs(a - b) for a, b in zip(cols, cols[1:])) < 1.2, cols
+    prog = dict(zip(S.HUE_RAMP, S.RAMP_PROGRESS))
+    col = {c: np.mean([prog[h] for xx, h in floor if xx == c]) for c in range(16, 16 + S.SHALLOW_MAX + 1)}
+    # stochastic rounding: the column's mean colour follows the straight line shore -> deep (progress = distance / band)
+    for c, m in col.items():
+        t = (c - 15) / S.SHALLOW_MAX if c > 15 else 0.0
+        assert abs(m - min(t, 1.0)) < 0.12, (c, m, t)
+    assert col[16] < 0.15 and col[16 + S.SHALLOW_MAX] >= S.RAMP_PROGRESS[-1] - 1e-9   # shore colour at the shore, the sea's own colour at the edge
+    steps = [b - a for a, b in zip(list(col.values()), list(col.values())[1:])]
+    assert max(steps) < 0.17, steps                                                   # no band: no column mean jumps
+
+
+def test_ramp_is_measured_and_ordered():
+    assert len(S.HUE_RAMP) == len(S.RAMP_PROGRESS) == len(set(S.HUE_RAMP))
+    assert S.RAMP_PROGRESS[0] == 0.0 and S.RAMP_PROGRESS[-1] >= 0.97
+    assert all(b > a for a, b in zip(S.RAMP_PROGRESS, S.RAMP_PROGRESS[1:]))
+
+
+def test_calibration_stage_has_many_hues_and_no_objects():
+    import calibrate as C
+    land, lz, wet, occ = coast(64, 64)
+    p = S.plan(land, lz, wet, occ, seed=4, calibrate=C.pattern(S.HUE_RAMP))
+    assert all(sid in S.FLOOR or z == -5 for x, y, sid, z, h in p.placed)           # floors and water only
+    assert len({h for x, y, sid, z, h in p.placed if sid in S.FLOOR}) == C.GRID * C.GRID
+
+
+def test_progress_and_choose_ramp_on_a_synthetic_hue_table():
+    import calibrate as C
+    pts = {i: C.SHORE + (C.DEEP - C.SHORE) * (i / 20.0) for i in range(21)}
+    pts[99] = np.array([200.0, 0.0, 0.0])                                             # far off the line
+    model = {h: (c - C.OFFSET) / C.GAIN for h, c in pts.items()}
+    ramp = C.choose_ramp(model)
+    assert 99 not in [h for h, _ in ramp] and ramp[0][1] < 0.05 and ramp[-1][1] > 0.95
+    assert all(abs(C.progress(C.predict(model)[h])[1]) < 1e-6 for h, _ in ramp)
 
 
 def test_objects_thin_out_with_depth():
