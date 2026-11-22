@@ -58,3 +58,22 @@ No new setting and no data-contract change.
 - Server side is out of scope here: a ModernUO shard hosting the same maps
   also needs a size-correct `Data/map-definitions.json`, and shard-made UOP
   maps need their chunks ordered by name (`tools/modernuo/patches`).
+
+## Negative cases
+
+`godot/GUO/src/Assets/MapInferenceProbe.tscn` (in `launchers\dev\smoke.bat`) asserts,
+on synthetic lengths and counts, that nothing changes for official data:
+
+- Official old (1,036,288 B) and new (3,188,736 B) tiledata keep the version's
+  answer, as do lengths that fit neither layout and truncated or padded files.
+- A length can fit both layouts. 428,032 + 1,188a = 493,568 + 1,316b has
+  solutions; the smallest is 601,480 B (146 old groups = 82 new). The version
+  decides there, as upstream. No known file has such a length.
+- Default-size block counts, and zero, negative or non-multiple-of-height
+  counts, are rejected; a count wider than 7168 is rejected; a UOP with no
+  entries reports no count.
+- Found and fixed: 2560x2048 and 1280x4096 have the same block count (81,920),
+  so 1280x4096 could never be inferred. A match that keeps the default height
+  now wins; otherwise the first listed size still wins as before.
+- Not changed: a count that is a multiple of the default height is accepted at
+  any width up to 7168, so a very small file infers a very narrow map.
