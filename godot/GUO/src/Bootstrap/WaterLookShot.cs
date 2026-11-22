@@ -84,6 +84,9 @@ internal static class WaterLookShot
         dir = string.IsNullOrWhiteSpace(dir) ? ProjectSettings.GlobalizePath("user://water_look") : dir;
         Directory.CreateDirectory(dir);
         var profile = ProfileManager.CurrentProfile;
+        // GUO_WATER_LIGHT=0..30 forces an absolute client light level (0 = full daylight) for the capture.
+        if (byte.TryParse(System.Environment.GetEnvironmentVariable("GUO_WATER_LIGHT"), out byte forcedLight))
+        { profile.UseCustomLightLevel = true; profile.LightLevel = forcedLight; profile.LightLevelType = 0; }
 
         InputProbe.FullSizeGameWindow();
         if (float.TryParse(System.Environment.GetEnvironmentVariable("GUO_WAKE_ZOOM"), out float zoom) && zoom > 0
