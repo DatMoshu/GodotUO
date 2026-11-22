@@ -35,9 +35,9 @@ shallow cell, **covered** when it received at least one plant, coral, rock or sh
   client shows it, from the shore colour to the open sea's own colour. Cells take the hue below or
   above their position on that line by probability (stochastic rounding), so the mean colour is exact
   at every distance and no band shows. The original opaque deep water measured (0, 54, 80) at Haven. No smooth hue
-  lies on the line that close (the one that does, 1916, has a sparkling palette and shows as cyan speckled
-  tiles), so the ramp overshoots to 1156, smooth and darker than the deep, and at the deep's distance the
-  mixture of 1156 and 592 averages to the deep colour.
+  lies on the line that close (1916 matches but sparkles; the darker smooth ones read as scattered navy
+  diamonds), so the ramp ends on 592 (11, 61, 87) and past it (progress above 0.79) a deep cell is left as
+  the original sea with a probability that rises to 1 at the band's edge: the fade ends on the sea itself.
 - Measuring (`calibrate.py`): `run.py generate --calibrate` stages 64 hues in an 8x8 pattern with
   no objects; a `--layer-shot` of Haven gives each hue's on-screen mean colour; `calibrate.py fit PNG`
   finds the cell lattice and fits observed = gain * predicted + offset per channel against the hued sand
