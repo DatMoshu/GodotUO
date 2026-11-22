@@ -58,6 +58,7 @@ is retired (as `0004-multi-tile-enumerator` was).
 | 0024 | ModernUO's ConPVP duels set up in Luna's Grand Arena in place of DFI's duel and CTF systems, `[DfiArenas` | **ours**, shard content | none |
 | 0025 | Pins `System.Security.Cryptography.Pkcs` to 10.0.14, past two .NET denial of service advisories in the 10.0.0 that MailKit brings in, which fail the restore under the pin's warnings-as-errors | **ours**, build fix until the pin moves | none |
 | 0026 | `GuoPhotoTour`: off unless `GUO_PHOTO_TOUR` names a manifest, moves listed characters through stops and writes stamps, for photographing clients nothing can be compiled into (`tools/ab_compare/tour.py`) | **ours**, dev tooling | none |
+| 0027 | Read UOP map chunks in index order instead of sorting by each chunk's first int32, which custom UOPs repeat | **upstream** | `upstream/0027-uop-map-chunk-order.patch` |
 | issue | `MultiData.LoadUOP` and uncompressed entries | **upstream** (issue, no patch) | `upstream/issue-multidata-loaduop-uncompressed.md` |
 
 ### 0006: loopback ban exemption (NET-00c, MUO patch)
@@ -97,6 +98,19 @@ GUO patch: `patches/0025-pkcs-advisory.patch`. **Verdict: ours**, until the pin 
 
 GUO patch: `patches/0026-dev-photo-tour.patch`. **Verdict: ours**: dev tooling with no
 upstream use, inert unless `GUO_PHOTO_TOUR` is set.
+
+### 0027: UOP map chunk order (MUO patch)
+
+GUO patch: `patches/0027-uop-map-chunk-order.patch`. `TileMatrix` copies the
+`map*LegacyMUL.uop` entries out of `ReadUOPIndexes` (already keyed by chunk index)
+and re-sorts them by the first int32 of each chunk with `Array.Sort`, which is
+unstable. EA's files carry distinct values there; shard-made UOPs may not (the
+Epic! shard's chunks all start with 1), and the server's terrain then disagrees
+with the client's: every step is refused. The patch takes the entries in key
+order. Found by UO-Maps (`D:/_agentShared/runs/uo-maps/20261121-guo-map-tests/`);
+verified by building the patched Server and walking Epic!'s map on its raw UOP.
+
+**Verdict: upstream.** A plain correctness fix; stock data reads the same.
 
 ### 0007 to 0024: DFI Network shard content (MUO patch)
 

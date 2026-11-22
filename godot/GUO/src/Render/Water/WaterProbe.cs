@@ -84,6 +84,7 @@ public partial class WaterProbe : Node
             Require(ripples.Texture != null && ripples.Texture.GetWidth() == WaterRipples.Size, "the ripple texture");
 
             WakeChecks();
+            CreatureChecks();
 
             int packs = PackStyles();
 
@@ -150,6 +151,57 @@ public partial class WaterProbe : Node
         float y2 = 2000;
         for (int i = 0; i < 120; i++) { y2 -= 3f * dt; closed.Wake(other, hull, 2000, y2, (_, _) => false); }
         Require(closed.Stamps == 0, "no wake is made on land or under a pier");
+    }
+
+    /// <summary>
+    /// Swimmers: a moving one makes small short-lived rings, one that stands still makes none, a
+    /// crowd does not build the surface up, and nothing is made where water may not be disturbed.
+    /// </summary>
+    private static void CreatureChecks()
+    {
+        var f = new WaterRipples();
+        f.CentreOnForProbe(2000, 2000);
+        long t = 1000;
+        // Still: never asked, nothing made, and the field stays flat.
+        f.StepForProbe(40);
+        Require(f.SwimStamps == 0 && f.PeakHeight < 1e-4f, "a swimmer that stands still makes nothing");
+        // Moving for 2 s at 60 fps: a ring about every 350 ms, no more.
+        for (int i = 0; i < 120; i++) { t += 16; f.Swimmer(7, 2000 + i * 0.02f, 2000, t, true); if (i % 3 == 0) f.StepForProbe(1); }
+        Require(f.SwimStamps is >= 4 and <= 7, $"a moving swimmer makes a ring every ~350 ms ({f.SwimStamps} in 2 s)");
+        float moving = f.PeakHeight;
+        Require(moving is > 0.05f and < 0.6f, $"a swimmer's ring is visible but small (peak {moving:F3})");
+        // Then still: five stacked rings die away (the sea is flat to the eye within 8 s) ...
+        f.StepForProbe(160);
+        Require(f.PeakHeight < 0.03f, $"a swimmer's rings are gone 8 s after it stops (peak {f.PeakHeight:F4})");
+        // ... and the one ring of a single swim step within 3 s.
+        var one = new WaterRipples();
+        one.CentreOnForProbe(2000, 2000);
+        one.Swimmer(3, 2000, 2000, 100, true);
+        one.StepForProbe(2);
+        float ring = one.PeakHeight;
+        one.StepForProbe(80);
+        Require(ring > 0.1f && one.PeakHeight < 0.04f, $"one swim step's ring lasts about 4 s (peak {ring:F3} -> {one.PeakHeight:F4})");
+        // A crowd: twelve swimmers on a few cells for 6 s never build the surface past one big ring.
+        var crowd = new WaterRipples();
+        crowd.CentreOnForProbe(2000, 2000);
+        float worst = 0f;
+        t = 5000;
+        for (int i = 0; i < 360; i++)
+        {
+            t += 16;
+            for (uint s = 0; s < 12; s++) crowd.Swimmer(100 + s, 2000 + s % 4 * 0.5f, 2000 + s / 4 * 0.5f, t, true);
+            if (i % 3 == 0) { crowd.StepForProbe(1); worst = Math.Max(worst, crowd.PeakHeight); }
+        }
+        Require(worst < 0.6f, $"a crowd of swimmers does not build up (peak {worst:F3})");
+        float far = 0f;
+        for (int dx = 10; dx <= 25; dx++) far = Math.Max(far, Math.Abs(crowd.HeightAt(2000 + dx, 2000)));
+        Require(far < 0.03f, $"a crowd's rings stay near it (10 cells off {far:F3})");
+        // Where water may not be disturbed (beach, pier): nothing.
+        var shore = new WaterRipples();
+        shore.CentreOnForProbe(2000, 2000);
+        for (int i = 0; i < 120; i++) shore.Swimmer(9, 2000, 2000, 9000 + i * 16, false);
+        Require(shore.SwimStamps == 0 && shore.Stamps == 0, "no swimmer ring on a beach or under a pier");
+        GD.Print($"[water probe] creatures: moving peak {moving:F3}, crowd peak {worst:F3} far {far:F4}, stamps {f.SwimStamps}");
     }
 
     // GUO_WAKE_DUMP=<dir>: write the height field around the hull as a PNG (grey = flat), for a look at the wake's shape without the shader.

@@ -68,6 +68,7 @@ internal sealed class WaterRipples
     private readonly Dictionary<uint, BoatState> _boats = new Dictionary<uint, BoatState>();
     // When each swimmer last made a ring (ms), so a walking creature leaves a trail of small ones.
     private readonly Dictionary<uint, long> _swimmers = new Dictionary<uint, long>();
+    private readonly Dictionary<(int, int), long> _swimAreas = new Dictionary<(int, int), long>();
     private readonly List<uint> _swimDrop = new List<uint>();
     private readonly HashSet<uint> _swimSeen = new HashSet<uint>();
     // Texels that hold water (1) or not (0): the field is cleared on dry ones so a
@@ -109,6 +110,9 @@ internal sealed class WaterRipples
     /// <summary>For the perf table: the last open-water map rebuild (ms) and swimmer rings made so far.</summary>
     public double LastWetMs { get; private set; }
     public int SwimStamps { get; private set; }
+    /// <summary>For the probe and the look shot: the largest surface height in the last upload, and texels disturbed on dry ground.</summary>
+    internal float PeakHeight { get; private set; }
+    internal int DryTexels { get; private set; }
 
     /// <summary>Forget everything: a new map, a style switched off and on.</summary>
     public void Reset()
@@ -123,7 +127,9 @@ internal sealed class WaterRipples
         _marks.Clear();
         _boats.Clear();
         _swimmers.Clear();
+        _swimAreas.Clear();
         _wetAt = long.MinValue;
+        _wetRow = Cells; _wetOriginX = int.MinValue;
         _items.Clear();
         _effects.Clear();
         _seenEffects.Clear();
@@ -360,34 +366,59 @@ internal sealed class WaterRipples
         }
     }
 
-    // Rebuilds the wet-texel map from the mask: when the window moved, and twice
-    // a second while disturbances are made (new ground loads in).
+    // Rebuilds the wet-texel map from the mask, a few rows a frame so no frame pays for all of it
+    // (16 384 cells, tens of ms at once): a first full pass, then when the window moved, and twice
+    // a second only while the water is disturbed (a calm sea needs no map; new ground that loads
+    // in is picked up when it next stirs).
+    private const int WetRowsPerFrame = 8;
+    private int _wetRow = Cells; // Cells: no pass under way
+    private double _wetBusyMs;
     private void RefreshWet(World world, WaterMask mask)
     {
         long now = Time.Ticks;
         if (OriginX == int.MinValue) return;
-        if (OriginX == _wetOriginX && OriginY == _wetOriginY && now - _wetAt < 500) return;
+        bool moved = OriginX != _wetOriginX || OriginY != _wetOriginY;
+        bool active = _calmFor < 6.0 || _marks.Count > 0;
+        if (_wetRow >= Cells)
+        {
+            if (!(moved || (active && now - _wetAt >= 500))) return;
+            _wetRow = 0; _wetBusyMs = 0;
+            _wetOriginX = OriginX; _wetOriginY = OriginY;
+            if (_wetAt == long.MinValue) _wetRowsNow = Cells; // the first pass is all at once
+            else _wetRowsNow = WetRowsPerFrame;
+        }
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-        _wetOriginX = OriginX; _wetOriginY = OriginY; _wetAt = now;
-        for (int cy = 0; cy < Cells; cy++)
+        int end = Math.Min(Cells, _wetRow + _wetRowsNow);
+        for (int cy = _wetRow; cy < end; cy++)
         {
             for (int cx = 0; cx < Cells; cx++)
             {
                 // Open water: wet and with no pier or plank over it, so nothing ripples on sand or under a pier.
-                byte w = OpenWater(world, mask, OriginX + cx, OriginY + cy) ? (byte)1 : (byte)0;
+                byte w = OpenWater(world, mask, _wetOriginX + cx, _wetOriginY + cy) ? (byte)1 : (byte)0;
                 int t = cy * PerCell * Size + cx * PerCell;
                 _wet[t] = _wet[t + 1] = _wet[t + Size] = _wet[t + Size + 1] = w;
             }
         }
-        LastWetMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        _wetRow = end;
+        _wetBusyMs += (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        if (_wetRow >= Cells) { _wetAt = now; LastWetMs = _wetBusyMs; }
     }
+    private int _wetRowsNow = WetRowsPerFrame;
 
     private void Upload()
     {
+        float peak = 0f;
+        int leak = 0;
         for (int i = 0; i < _pixels.Length; i++)
         {
-            _pixels[i] = (byte)Math.Clamp((int)(((_now[i] + _wake[i]) * 0.5f + 0.5f) * 255f + 0.5f), 0, 255);
+            float h = _now[i] + _wake[i];
+            _pixels[i] = (byte)Math.Clamp((int)((h * 0.5f + 0.5f) * 255f + 0.5f), 0, 255);
+            float a = MathF.Abs(h);
+            if (a > peak) peak = a;
+            if (a > 0.004f && _wetAt != long.MinValue && _wet[i] == 0) leak++;
         }
+        PeakHeight = peak;
+        DryTexels = leak;
 
         if (_image == null)
         {
@@ -482,17 +513,55 @@ internal sealed class WaterRipples
             bool moving = m.Steps.Count > 0 || m.Offset.X != 0 || m.Offset.Y != 0;
             if (!moving) continue;
             _swimSeen.Add(m.Serial);
-            long now = Time.Ticks;
-            if (_swimmers.TryGetValue(m.Serial, out long last) && now - last < 350) continue;
-            _swimmers[m.Serial] = now;
             (float x, float y) = CellOf(m);
-            if (!OpenWater(world, mask, x, y)) continue;
-            Stamp(x, y, 0.5f, 0.30f);
-            SwimStamps++;
+            Swimmer(m.Serial, x, y, Time.Ticks, OpenWater(world, mask, x, y));
         }
         _swimDrop.Clear();
         foreach (uint s in _swimmers.Keys) if (!_swimSeen.Contains(s)) _swimDrop.Add(s);
         foreach (uint s in _swimDrop) _swimmers.Remove(s);
+    }
+
+    /// <summary>
+    /// One moving swimmer at a cell position (fractions allowed): a small ring at most every
+    /// SwimEveryMs, none on ground a pier or beach covers (open false), and none where the surface
+    /// is already disturbed, so a crowd of swimmers cannot build the water up or spread rings far.
+    /// </summary>
+    internal bool Swimmer(uint serial, float x, float y, long nowMs, bool open)
+    {
+        _swimSeen.Add(serial);
+        if (_swimmers.TryGetValue(serial, out long last) && nowMs - last < SwimEveryMs) return false;
+        _swimmers[serial] = nowMs;
+        if (!open) return false;
+        if (Math.Abs(SurfaceAt(x, y)) > SwimBusy) return false;
+        // One ring an area (4 x 4 cells) in each SwimEveryMs, whoever made it: a crowd stirs
+        // the water as much as one swimmer would.
+        var area = ((int)MathF.Floor(x / 4f), (int)MathF.Floor(y / 4f));
+        if (_swimAreas.TryGetValue(area, out long at) && nowMs - at < SwimEveryMs) return false;
+        if (_swimAreas.Count > 256) _swimAreas.Clear();
+        _swimAreas[area] = nowMs;
+        Stamp(x, y, SwimRadius, SwimAmount);
+        SwimStamps++;
+        return true;
+    }
+
+    // A ring each 350 ms of a swim step, a cell wide, strong enough to read at the shader's default
+    // ripple strength; a spot already stirred past SwimBusy (surface height) gets none.
+    internal const long SwimEveryMs = 350;
+    internal const float SwimRadius = 0.7f, SwimAmount = 0.5f, SwimBusy = 0.3f;
+
+    private float SurfaceAt(float x, float y)
+    {
+        float cx = (x - OriginX + 0.5f) * PerCell, cy = (y - OriginY + 0.5f) * PerCell;
+        float peak = 0f;
+        for (int j = -2; j <= 2; j++)
+            for (int i = -2; i <= 2; i++)
+            {
+                int tx = (int)cx + i, ty = (int)cy + j;
+                if (tx < 0 || ty < 0 || tx >= Size || ty >= Size) continue;
+                int k = ty * Size + tx;
+                peak = Math.Max(peak, MathF.Abs(_now[k] + _wake[k]));
+            }
+        return peak;
     }
 
     /// <summary>

@@ -763,6 +763,15 @@ manifest. When every listed character is online it moves them through the stops,
 sets the light, writes a stamp at each one, then puts the light back and deletes
 the manifest. `tools/ab_compare/tour.py` writes the manifest and takes the pictures.
 
+### `patches/0027-uop-map-chunk-order.patch`
+
+Reads `map*LegacyMUL.uop` chunks in index order, the order their hashed names give.
+Upstream re-sorts them by each chunk's first int32 with an unstable sort; that works
+for EA's files (distinct values) but scrambles shard-made UOPs whose chunks all start
+alike (the Epic! shard: every chunk starts with 1), so the shard's terrain disagrees
+with the client's and every step is refused. Found by UO-Maps; ADR-0054 covers the
+client side. Upstream candidate.
+
 ### Retired
 
 `0004-multi-tile-enumerator` fixed tile lookups that stopped at a multi with no
