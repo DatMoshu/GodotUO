@@ -58,7 +58,7 @@ is retired (as `0004-multi-tile-enumerator` was).
 | 0024 | ModernUO's ConPVP duels set up in Luna's Grand Arena in place of DFI's duel and CTF systems, `[DfiArenas` | **ours**, shard content | none |
 | 0025 | Pkcs advisory pin | **retired** with the move to `9782fd6aa` (.NET 11) | none |
 | 0026 | `GuoPhotoTour`: off unless `GUO_PHOTO_TOUR` names a manifest, moves listed characters through stops and writes stamps, for photographing clients nothing can be compiled into (`tools/ab_compare/tour.py`) | **ours**, dev tooling | none |
-| 0027 | Read UOP map chunks in index order instead of sorting by each chunk's first int32, which custom UOPs repeat | **upstream** | `upstream/0027-uop-map-chunk-order.patch` |
+| 0027 | Read UOP map chunks in index order instead of sorting by each chunk's first int32, which custom UOPs repeat | **upstream**, PR #2794 open | `upstream/0027-uop-map-chunk-order.patch` |
 | issue | `MultiData.LoadUOP` and uncompressed entries | **upstream** (issue, no patch) | `upstream/issue-multidata-loaduop-uncompressed.md` |
 
 ### 0006: loopback ban exemption (NET-00c, MUO patch)
@@ -112,6 +112,9 @@ order. Found by UO-Maps (`D:/_agentShared/runs/uo-maps/20261121-guo-map-tests/`)
 verified by building the patched Server and walking Epic!'s map on its raw UOP.
 
 **Verdict: upstream.** A plain correctness fix; stock data reads the same.
+
+Offered as modernuo/ModernUO#2794 (2026-11-22, from `DatMoshu:fix/uop-map-chunk-order`). Retire this
+patch at the first pin past its merge.
 
 ### 0007 to 0024: DFI Network shard content (MUO patch)
 
