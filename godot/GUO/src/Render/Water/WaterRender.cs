@@ -59,12 +59,14 @@ internal sealed class UoRealtimeWaterStyle : IWaterStyle
         set("water_params2", new Vector4(0.35f, 0.22f, 6f, 1.0f));
         // grain (world px per water pixel)
         set("water_params3", new Vector4(1f, 0f, 0f, 0f));
+        WaterRender.BindShallows(set);
     }
 
     public void BindRipples(WaterRipples ripples)
     {
         ripples.Strength = 1f;
         ripples.Damping = 0.985f;
+        WaterRipples.WakeTrail = 1f;
     }
 }
 
@@ -94,12 +96,14 @@ internal sealed class PackWaterStyle : IWaterStyle
         set("water_params", new Vector4(_style.Speed, _style.Scale, _style.Wave, _style.Foam));
         set("water_params2", new Vector4(_style.Glint, _style.FoamWidth, _style.Levels, _style.RippleStrength > 0f ? 1f : 0f));
         set("water_params3", new Vector4(_style.Grain, 0f, 0f, 0f));
+        WaterRender.BindShallows(set);
     }
 
     public void BindRipples(WaterRipples ripples)
     {
         ripples.Strength = _style.RippleStrength;
         ripples.Damping = _style.RippleDamping;
+        WaterRipples.WakeTrail = 1f;
     }
 }
 
@@ -117,10 +121,12 @@ internal sealed class LightingWaterStyle : IWaterStyle
         set("water_params", new Vector4(0.65f, 0.025f, 0.16f, 0.72f));
         set("water_params2", new Vector4(0.28f, 0.38f, 0f, 1f));
         set("water_params3", new Vector4(1f, 0f, 0f, 0f));
+        WaterRender.BindShallows(set);
     }
 
     public void BindRipples(WaterRipples ripples)
     {
+        WaterRipples.WakeTrail = 1f;
         ripples.Strength = 0.8f;
         ripples.Damping = 0.98f;
     }
@@ -147,6 +153,9 @@ internal static class WaterRender
     /// never saved. For probes, scenarios and the perf lab.
     /// </summary>
     public static string Override;
+
+    /// <summary>For capture tools: holds the water clock at this many seconds, so two frames differ only by what moved. Null in play.</summary>
+    internal static float? FrozenSeconds;
 
     // The shard session is created only after the player approves its content.
     // Water consent is separate and never inferred from approving that content.
@@ -488,8 +497,51 @@ internal static class WaterRender
     // per-tile Flag below is a field read, not a lookup by name.
     private static bool _styled;
 
+    /// <summary>
+    /// The numbers for translucent water and wakes, set by every style so one style's values
+    /// never linger under the next. Every style passes the defaults today; the planned
+    /// guo/water@2 depth and wake groups (data_formats W-01) are where a style would set them.
+    /// </summary>
+    internal static void BindShallows(Action<string, Variant> set, float fadeStart = 9.5f, float fadeEnd = 13f,
+        float floorReach = 17f, float sandBars = 0.5f, float wakeFoam = 1f)
+    {
+        set("water_depth_fade", new Vector2(fadeStart, fadeEnd));
+        set("water_floor_look", new Vector2(floorReach, sandBars));
+        set("water_wake_look", new Vector2(wakeFoam, 0.33f));
+    }
+
     /// <summary>The mode value to add to a tile's hue vector this frame: the bit, or 0.</summary>
     public static float Flag(bool wet) => wet && _styled ? ModeBit : 0f;
+
+    /// <summary>
+    /// Bit 5 of the mode byte, only ever with ModeBit: the tile is a seabed floor, not a surface.
+    /// The shader darkens it with the distance from land instead of drawing waves on it.
+    /// </summary>
+    public const int FloorBit = 0x20;
+
+    /// <summary>
+    /// Flag for a static: a Wet static whose tiledata name starts with "seabed" is a seabed floor
+    /// (a data contract, docs/data_formats.md section 44; tools/seabed names its floor tiles so).
+    /// </summary>
+    public static float Flag(bool wet, ushort graphic) =>
+        !wet || !_styled ? 0f : IsSeabedFloor(graphic) ? ModeBit + FloorBit : ModeBit;
+
+    private static object _floorSource;
+    private static bool[] _floor = Array.Empty<bool>();
+
+    internal static bool IsSeabedFloor(ushort graphic)
+    {
+        var tiles = Client.Game?.UO?.FileManager?.TileData;
+        if (!ReferenceEquals(tiles, _floorSource))
+        {
+            _floorSource = tiles;
+            var data = tiles?.StaticData;
+            _floor = new bool[data?.Length ?? 0];
+            for (int i = 0; i < _floor.Length; i++)
+                _floor[i] = data[i].IsWet && data[i].Name is { Length: >= 6 } name && name.StartsWith("seabed", StringComparison.OrdinalIgnoreCase);
+        }
+        return graphic < _floor.Length && _floor[graphic];
+    }
 
     internal static Vector2 SurfacePoint(int x, int y, float bx, float by)
         => new(x + (bx + by - 22f) / 44f, y + (by - bx + 22f) / 44f);
@@ -611,6 +663,7 @@ internal static class WaterRender
         batcher.SetWaterUniform("water_shallow", new Vector2(ShallowStrength(ProfileManager.CurrentProfile),
             Daylight(world, ProfileManager.CurrentProfile)));
         batcher.SetWaterUniform("water_time", (float)(Time.Ticks % 3_600_000L) / 1000f);
+        if (FrozenSeconds is float still) batcher.SetWaterUniform("water_time", still);
 #if TOOLS
         if (InEditorPreview) batcher.SetWaterUniform("water_time", EditorSeconds);
 #endif
@@ -666,13 +719,20 @@ internal static class WaterRender
 
 /// <summary>
 /// Which cells around the player hold water, and at what height, as a
-/// 128 x 128 ring texture in world cells (uo_water.gdshaderinc, THE MASK).
+/// 256 x 256 ring texture in world cells (uo_water.gdshaderinc, THE MASK).
 /// Rebuilt when the player has moved a few cells or the loaded chunks change,
 /// never every frame.
 /// </summary>
+/// <remarks>
+/// 256 cells, not 128: a 3840-wide view at zoom 1 reaches 67 cells from the
+/// player, and a cell outside the window reads as open sea, so a coast near
+/// the edge of a large screen lost its surf and shallows and got them back
+/// when the window re-centred. The long shore distance (A) needs its reach
+/// (LongCap) inside the window on every side as well.
+/// </remarks>
 internal sealed class WaterMask
 {
-    public const int Size = 128;
+    public const int Size = 256;
     private const int Recentre = 8;
 
     private readonly byte[] _pixels = new byte[Size * Size * 4];
@@ -708,6 +768,80 @@ internal sealed class WaterMask
     public const int ShoreCap = 5;
 
     /// <summary>
+    /// The long shore distance's cap, in cells. Mask A holds 255 - (distance * 8 + post * 4):
+    /// distance 0 dry, 1..LongCap wet; post 1 when a submerged dock post stands in the cell. So a
+    /// mask written before this channel existed (A 255, or 128 for a post) reads as distance 0.
+    /// </summary>
+    public const int LongCap = 30;
+    private readonly byte[] _far = new byte[Size * Size];
+
+    /// <summary>
+    /// A: Chebyshev distance of each wet cell to the nearest dry one, by the usual two sweeps
+    /// (each cell takes its eight neighbours' least + 1). Cells outside the window count as far.
+    /// </summary>
+    private void LongDistance()
+    {
+        const int M = Size - 1;
+        byte[] d = _far;
+        for (int y = 0; y < Size; y++)
+        {
+            int ry = ((OriginY + y) & M) * Size;
+            for (int x = 0; x < Size; x++)
+            {
+                int at = ry + ((OriginX + x) & M);
+                d[y * Size + x] = _pixels[at * 4] == 0 ? (byte)0 : (byte)LongCap;
+            }
+        }
+        for (int y = 0; y < Size; y++)
+        {
+            for (int x = 0; x < Size; x++)
+            {
+                int i = y * Size + x;
+                int v = d[i];
+                if (v == 0) continue;
+                if (x > 0) v = Math.Min(v, d[i - 1] + 1);
+                if (y > 0)
+                {
+                    v = Math.Min(v, d[i - Size] + 1);
+                    if (x > 0) v = Math.Min(v, d[i - Size - 1] + 1);
+                    if (x < M) v = Math.Min(v, d[i - Size + 1] + 1);
+                }
+                d[i] = (byte)v;
+            }
+        }
+        for (int y = Size - 1; y >= 0; y--)
+        {
+            int ry = ((OriginY + y) & M) * Size;
+            for (int x = Size - 1; x >= 0; x--)
+            {
+                int i = y * Size + x;
+                int v = d[i];
+                if (v != 0)
+                {
+                    if (x < M) v = Math.Min(v, d[i + 1] + 1);
+                    if (y < M)
+                    {
+                        v = Math.Min(v, d[i + Size] + 1);
+                        if (x < M) v = Math.Min(v, d[i + Size + 1] + 1);
+                        if (x > 0) v = Math.Min(v, d[i + Size - 1] + 1);
+                    }
+                    d[i] = (byte)v;
+                }
+                int at = (ry + ((OriginX + x) & M)) * 4 + 3;
+                // _pixels A holds only the post flag (4) until here.
+                _pixels[at] = (byte)(255 - (v * 8 + (_pixels[at] & 4)));
+            }
+        }
+    }
+
+    /// <summary>For the probe: the long shore distance at a cell, in cells; LongCap outside the window.</summary>
+    internal int ShoreDistanceAt(int x, int y)
+    {
+        if (_texture == null || x < OriginX || y < OriginY || x >= OriginX + Size || y >= OriginY + Size) return LongCap;
+        return (255 - _pixels[((((y & (Size - 1)) * Size) + (x & (Size - 1))) * 4) + 3]) >> 3;
+    }
+
+    /// <summary>
     /// B channel: for a wet cell, the distance in cells to the nearest dry
     /// cell found along the eight directions (capped at ShoreCap), scaled to
     /// 0..255; 0 for dry. Unloaded and off-window cells read as water.
@@ -721,6 +855,9 @@ internal sealed class WaterMask
             {
                 int at = ((((OriginY + y) & (Size - 1)) * Size) + ((OriginX + x) & (Size - 1))) * 4;
                 if (_pixels[at] == 0) { _pixels[at + 2] = 0; continue; }
+                // No dry cell within ShoreCap in any direction (the long distance, already known):
+                // none along the eight rays either. Most of a sea skips the walk.
+                if (_far[y * Size + x] >= ShoreCap) { _pixels[at + 2] = 255; continue; }
                 int best = ShoreCap;
                 for (int dy = -1; dy <= 1 && best > 1; dy++)
                 {
@@ -784,7 +921,7 @@ internal sealed class WaterMask
             _pixels[i] = 255;
             _pixels[i + 1] = 123;
             _pixels[i + 2] = 255;
-            _pixels[i + 3] = 255;
+            _pixels[i + 3] = 0;
         }
 
         foreach (var chunk in world.Map.GetUsedChunks())
@@ -837,13 +974,14 @@ internal sealed class WaterMask
                     int at = (((wy & (Size - 1)) * Size) + (wx & (Size - 1))) * 4;
                     _pixels[at] = wet ? (byte)255 : (byte)0;
                     _pixels[at + 2] = 0;
-                    _pixels[at + 3] = wet && postBase <= z && postBase >= z - 10 ? (byte)128 : (byte)255;
+                    _pixels[at + 3] = wet && postBase <= z && postBase >= z - 10 ? (byte)4 : (byte)0;
                     _pixels[at + 1] = wet ? (byte)Math.Clamp(z + 128, 0, 255)
                         : dryZ == int.MinValue ? (byte)0 : (byte)Math.Clamp(dryZ + 128, 0, 255);
                 }
             }
         }
 
+        LongDistance();
         ShoreDistance();
 
         if (_image == null)

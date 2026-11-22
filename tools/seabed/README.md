@@ -7,6 +7,7 @@ reads the staged statics through `--files-override`.
 ```
 python tools/seabed/run.py generate [--facet 0] [--seed 1] [--out DIR]
 python tools/seabed/run.py stats    [--facet 0]
+python tools/seabed/run.py measure  [--data DIR] [--facet 0] [--override FILE] [--out FILE]
 launchers\world\seabed.bat generate
 python tools/seabed/test_seabed.py
 ```
@@ -16,6 +17,36 @@ Default output: `<UO_BUILD_DIR>/seabed/map0/` with `staidx0.mul`, `statics0.mul`
 `--files-override <out>/files_override.txt`. A shard needs nothing: statics on
 the sea floor are client decoration, and its walk and boat rules are unchanged.
 `write_stage` refuses a folder inside the install.
+
+## Two kinds of stage
+
+`--seams shader` (the default) is for GUO's water styles. The client thickens a translucent
+water tile with the distance from land, per pixel, until it is the opaque deep sea, and blends
+each water pixel once where neighbouring tiles overlap (`uo_water.gdshaderinc`, DEPTH FADE and
+ONE BLEND A PIXEL). So the stage is simple: one floor hue, every cell of the band a bed,
+untouched water art, no edge strips. Under Classic tiles this stage shows what any
+translucent-water map shows: a line along each tile edge and a hard end to the shallows.
+
+`--seams art` is for Classic tiles, where no shader runs: the floor carries the measured hue
+ramp, the last rings return to the opaque sea by probability, the water art is trimmed to tile
+exactly once and edge strips fill the trimmed pixels at coasts. Everything under "Layout"
+below about the ramp, trimming and strips describes this kind. Do not play it with a water
+style: the shader would thin the pixels the trimming already left single.
+
+The shader stage also lays its objects out by measurement (`_measured_layout`): populated
+stretches and bare sand, a fifth of the cells against the shore holding something and fewer
+with every cell out, stones close in and weed further out, kinds mixed within a group. Share of
+cells holding an object at 1, 2, 4, 6, 10 and 14 cells from land: 0.19, 0.17, 0.13, 0.11,
+0.07, 0.05 (a hand-built reference map measured 0.19, 0.18, 0.13, 0.11, 0.08, 0.06). Still
+apart from that reference: more of the 8 x 8 blocks hold something (68% against 45%) and
+more objects stand alone (50% against 33%).
+
+## Measuring a map
+
+`measure` reports how any facet's shallows are built: depth and bed by shore distance, what
+lies on the bed, how it groups. Run it on a map whose seabed you like and on a stage
+(`--override <stage>/files_override.txt`) and compare. Numbers only; nothing of the measured
+map is copied.
 
 ## The shallow rule
 

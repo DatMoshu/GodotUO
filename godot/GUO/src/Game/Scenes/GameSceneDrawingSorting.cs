@@ -740,7 +740,7 @@ namespace GUO.Game.Scenes
         private void ApplyInstanceHue(GameObject obj, ChunkMesh mesh, ref StaticTiles itemData, in GatherInputs gatherInputs)
         {
             MeshHueOf(obj, gatherInputs, out float hueX, out float hueY);
-            hueY += GUO.Renderer.Water.WaterRender.Flag(itemData.IsWet);
+            hueY += GUO.Renderer.Water.WaterRender.Flag(itemData.IsWet, obj.Graphic);
             mesh.Instances.SetHue(obj.MeshSpriteIndex, hueX, hueY);
         }
 

@@ -129,8 +129,32 @@ public partial class WaterProbe : Node
         Require(astern < -0.01f, $"the trough is astern of the hull ({astern:F3})");
         // An arm spreads sideways with distance astern: more disturbed 3 cells off the track 3 cells astern than ahead of the hull.
         float arm = 0f;
-        for (int dx = -3; dx <= 3; dx++) arm = Math.Min(arm, field.HeightAt(2000 + dx, (int)MathF.Round(cy + 9f)));
-        Require(arm < -0.01f, "the wake continues astern");
+        for (int dx = -3; dx <= 3; dx++) arm = Math.Max(arm, Math.Abs(field.HeightAt(2000 + dx, (int)MathF.Round(cy + 9f))));
+        Require(arm > 0.01f, "the wake continues astern");
+        // The arms are crests with foam on them, and they open: 5 cells astern the foam is off the track, to both sides.
+        field.StepForProbe(1);
+        float port = 0f, starboard = 0f;
+        for (int dx = 1; dx <= 4; dx++)
+        {
+            port = Math.Max(port, field.FoamAt(2000 - dx, (int)MathF.Round(cy + 11f)));
+            starboard = Math.Max(starboard, field.FoamAt(2000 + dx, (int)MathF.Round(cy + 11f)));
+        }
+        Require(port > 0.05f && starboard > 0.05f, $"both arms carry foam astern ({port:F3}, {starboard:F3})");
+        Require(field.FoamAt(2000, (int)MathF.Round(cy - 12f)) == 0f, "no foam ahead of the bow");
+        // A faster hull leaves a longer trail: more marks alive at 3 cells a second than at 1.
+        var slow = new WaterRipples();
+        slow.CentreOnForProbe(2000, 2000);
+        slow.SetFrameForProbe(dt);
+        var slowBoat = new WaterRipples.BoatState { X = 2000, Y = 2000, HY = -1f };
+        float ys = 2000;
+        for (int i = 0; i < 600; i++) { ys -= 1f * dt; slow.Wake(slowBoat, hull, 2000, ys, (_, _) => true); if (i % 3 == 2) slow.StepForProbe(1); }
+        var fast = new WaterRipples();
+        fast.CentreOnForProbe(2000, 2000);
+        fast.SetFrameForProbe(dt);
+        var fastBoat = new WaterRipples.BoatState { X = 2000, Y = 2000, HY = -1f };
+        float yf = 2000;
+        for (int i = 0; i < 600; i++) { yf -= 3f * dt; fast.Wake(fastBoat, hull, 2000, yf, (_, _) => true); if (i % 3 == 2) fast.StepForProbe(1); }
+        Require(fast.MarkCount > slow.MarkCount * 1.3f, $"a faster hull leaves a longer trail ({slow.MarkCount} marks at 1 cell/s, {fast.MarkCount} at 3)");
         Require(Math.Abs(field.HeightAt(2000, (int)MathF.Round(cy - 12f))) < 1e-4f, "nothing is disturbed far ahead of the bow");
 
         DumpField(field, 2000, (int)MathF.Round(y), "under-way");
@@ -140,10 +164,11 @@ public partial class WaterProbe : Node
         int afterStop = field.Stamps;
         for (int i = 0; i < 120; i++) field.Wake(boat, hull, 2000, y, (_, _) => true);
         Require(field.Stamps == afterStop && afterStop - whileMoving < 4 * 70, "the wake stops soon after the boat does");
-        field.StepForProbe(50); // 2.5 s of the field's own time
+        field.StepForProbe(110); // 5.5 s of the field's own time: the longest rail lives 5
         float rest = 0f;
         for (int dx = -6; dx <= 6; dx++) for (int dy = -14; dy <= 14; dy++) rest = Math.Max(rest, Math.Abs(field.HeightAt(2000 + dx, (int)y + dy)));
-        Require(rest < 0.02f, $"the wake is gone 2.5 s after stopping (still {rest:F4})");
+        Require(rest < 0.02f, $"the wake is gone 5.5 s after stopping (still {rest:F4})");
+        Require(field.MarkCount == 0 && field.PeakFoam == 0f, "no mark or foam is left 5.5 s after stopping");
 
         var closed = new WaterRipples();
         closed.CentreOnForProbe(2000, 2000);
@@ -192,20 +217,31 @@ public partial class WaterProbe : Node
         Require(f.SwimStamps == 0 && f.PeakHeight < 1e-4f, "a swimmer that stands still makes nothing");
         // Moving for 2 s at 60 fps: a ring about every 350 ms, no more.
         for (int i = 0; i < 120; i++) { t += 16; f.Swimmer(7, 2000 + i * 0.02f, 2000, t, true); if (i % 3 == 0) f.StepForProbe(1); }
-        Require(f.SwimStamps is >= 4 and <= 7, $"a moving swimmer makes a ring every ~350 ms ({f.SwimStamps} in 2 s)");
+        Require(f.SwimStamps is >= 4 and <= 7, $"a moving swimmer disturbs the water every ~350 ms ({f.SwimStamps} in 2 s)");
         float moving = f.PeakHeight;
-        Require(moving is > 0.05f and < 0.6f, $"a swimmer's ring is visible but small (peak {moving:F3})");
+        Require(moving is > 0.02f and < 0.3f, $"a swimmer's trail is visible but small (peak {moving:F3})");
         // Then still: five stacked rings die away (the sea is flat to the eye within 8 s) ...
-        f.StepForProbe(160);
-        Require(f.PeakHeight < 0.03f, $"a swimmer's rings are gone 8 s after it stops (peak {f.PeakHeight:F4})");
+        f.StepForProbe(40);
+        Require(f.PeakHeight < 0.01f && f.MarkCount == 0, $"a swimmer's trail is gone 2 s after it stops (peak {f.PeakHeight:F4}, {f.MarkCount} marks)");
         // ... and the one ring of a single swim step within 3 s.
         var one = new WaterRipples();
         one.CentreOnForProbe(2000, 2000);
         one.Swimmer(3, 2000, 2000, 100, true);
         one.StepForProbe(2);
         float ring = one.PeakHeight;
-        one.StepForProbe(80);
-        Require(ring > 0.1f && one.PeakHeight < 0.04f, $"one swim step's ring lasts about 4 s (peak {ring:F3} -> {one.PeakHeight:F4})");
+        one.StepForProbe(30);
+        Require(ring > 0.005f && one.PeakHeight < 0.002f, $"one swim step's dab lasts about a second (peak {ring:F3} -> {one.PeakHeight:F4})");
+        // Nothing reaches out: three cells from a swimmer the water was never touched.
+        var near = new WaterRipples();
+        near.CentreOnForProbe(2000, 2000);
+        float reach = 0f;
+        long tn = 100;
+        for (int i = 0; i < 180; i++)
+        {
+            tn += 16; near.Swimmer(5, 2000 + MathF.Sin(i * 0.05f) * 0.6f, 2000 + MathF.Cos(i * 0.05f) * 0.6f, tn, true);
+            if (i % 3 == 0) { near.StepForProbe(1); for (int d = -1; d <= 1; d++) reach = Math.Max(reach, Math.Max(Math.Abs(near.HeightAt(2003, 2000 + d)), Math.Abs(near.HeightAt(2000 + d, 2003)))); }
+        }
+        Require(reach < 1e-4f, $"a swimmer's trail stays within three cells ({reach:F5})");
         // A crowd: twelve swimmers on a few cells for 6 s never build the surface past one big ring.
         var crowd = new WaterRipples();
         crowd.CentreOnForProbe(2000, 2000);
@@ -217,10 +253,10 @@ public partial class WaterProbe : Node
             for (uint s = 0; s < 12; s++) crowd.Swimmer(100 + s, 2000 + s % 4 * 0.5f, 2000 + s / 4 * 0.5f, t, true);
             if (i % 3 == 0) { crowd.StepForProbe(1); worst = Math.Max(worst, crowd.PeakHeight); }
         }
-        Require(worst < 0.6f, $"a crowd of swimmers does not build up (peak {worst:F3})");
+        Require(worst < 0.3f, $"a crowd of swimmers does not build up (peak {worst:F3})");
         float far = 0f;
-        for (int dx = 10; dx <= 25; dx++) far = Math.Max(far, Math.Abs(crowd.HeightAt(2000 + dx, 2000)));
-        Require(far < 0.03f, $"a crowd's rings stay near it (10 cells off {far:F3})");
+        for (int dx = 5; dx <= 25; dx++) far = Math.Max(far, Math.Abs(crowd.HeightAt(2000 + dx, 2000)));
+        Require(far < 1e-4f, $"a crowd's trails stay near it (5 cells off {far:F5})");
         // Where water may not be disturbed (beach, pier): nothing.
         var shore = new WaterRipples();
         shore.CentreOnForProbe(2000, 2000);
