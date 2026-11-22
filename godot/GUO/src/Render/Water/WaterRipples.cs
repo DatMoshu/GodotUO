@@ -56,7 +56,15 @@ internal sealed class WaterRipples
     private bool _uploaded;
 
     // Per boat: last position, smoothed speed (cells a second) and heading (unit, cells).
-    internal sealed class BoatState { public float X, Y, Speed, HX, HY; }
+    internal sealed class BoatState { public float X, Y, Speed, HX, HY, Emit; }
+    // The wake proper: short-lived marks left astern and at the bow, drawn each step into a
+    // layer that is added to the waves, so it stays attached to the hull's track and is gone
+    // when the marks expire (not a wave that runs off by itself).
+    private struct WakeMark { public float X, Y, VX, VY, Age, Life, Amp, Radius; }
+    private readonly List<WakeMark> _marks = new List<WakeMark>();
+    private readonly float[] _wake = new float[Size * Size];
+    private const int MaxMarks = 600;
+    private const float EmitEvery = 0.05f;
     private readonly Dictionary<uint, BoatState> _boats = new Dictionary<uint, BoatState>();
     // When each swimmer last made a ring (ms), so a walking creature leaves a trail of small ones.
     private readonly Dictionary<uint, long> _swimmers = new Dictionary<uint, long>();
@@ -98,6 +106,9 @@ internal sealed class WaterRipples
     public int Stamps { get; private set; }
     internal int RainStamps { get; private set; }
     public double LastUpdateMs { get; private set; }
+    /// <summary>For the perf table: the last open-water map rebuild (ms) and swimmer rings made so far.</summary>
+    public double LastWetMs { get; private set; }
+    public int SwimStamps { get; private set; }
 
     /// <summary>Forget everything: a new map, a style switched off and on.</summary>
     public void Reset()
@@ -108,6 +119,8 @@ internal sealed class WaterRipples
 #endif
         Array.Clear(_now);
         Array.Clear(_before);
+        Array.Clear(_wake);
+        _marks.Clear();
         _boats.Clear();
         _swimmers.Clear();
         _wetAt = long.MinValue;
@@ -144,6 +157,7 @@ internal sealed class WaterRipples
         RainStamps += _rain.LastStamps;
         Disturb(world, mask, Math.Max(deltaSeconds, 1f / 240f));
 
+        if (_marks.Count > 0) _calmFor = 0;
         bool stepped = false;
         if (_calmFor < 6.0)
         {
@@ -161,6 +175,7 @@ internal sealed class WaterRipples
             // Calm long enough: one last flat upload, then nothing per frame.
             Array.Clear(_now);
             Array.Clear(_before);
+            Array.Clear(_wake);
             stepped = true;
         }
 
@@ -182,6 +197,17 @@ internal sealed class WaterRipples
     /// </summary>
     public void Stamp(float cellX, float cellY, float radius, float amount)
     {
+        if (StampInto(_now, false, cellX, cellY, radius, amount))
+        {
+            Stamps++;
+            _calmFor = 0;
+        }
+    }
+
+    // wake: the boat-wake layer, where the largest mark wins instead of adding up and
+    // dry texels are skipped.
+    private bool StampInto(float[] field, bool wake, float cellX, float cellY, float radius, float amount)
+    {
         float cx = (cellX - OriginX + 0.5f) * PerCell;
         float cy = (cellY - OriginY + 0.5f) * PerCell;
         float r = Math.Max(0.75f, radius * PerCell);
@@ -189,9 +215,10 @@ internal sealed class WaterRipples
         int y0 = (int)Math.Floor(cy - r), y1 = (int)Math.Ceiling(cy + r);
         if (x1 < 1 || y1 < 1 || x0 >= Size - 1 || y0 >= Size - 1)
         {
-            return;
+            return false;
         }
 
+        bool clip = wake && _wetAt != long.MinValue;
         for (int y = Math.Max(1, y0); y <= Math.Min(Size - 2, y1); y++)
         {
             for (int x = Math.Max(1, x0); x <= Math.Min(Size - 2, x1); x++)
@@ -199,13 +226,44 @@ internal sealed class WaterRipples
                 float d = MathF.Sqrt((x + 0.5f - cx) * (x + 0.5f - cx) + (y + 0.5f - cy) * (y + 0.5f - cy)) / r;
                 if (d < 1f)
                 {
-                    float fall = 0.5f + 0.5f * MathF.Cos(d * MathF.PI);
                     int i = y * Size + x;
-                    _now[i] = Math.Clamp(_now[i] - amount * Strength * fall, -1f, 1f);
+                    if (clip && _wet[i] == 0) continue;
+                    float fall = 0.5f + 0.5f * MathF.Cos(d * MathF.PI);
+                    if (wake)
+                    {
+                        float v = -amount * Strength * fall;
+                        if (MathF.Abs(v) > MathF.Abs(field[i])) field[i] = Math.Clamp(v, -1f, 1f);
+                    }
+                    else field[i] = Math.Clamp(field[i] - amount * Strength * fall, -1f, 1f);
                 }
             }
         }
+        return true;
+    }
 
+    // Ages the marks and draws the survivors into a cleared wake layer.
+    private void RebuildWake(float advance)
+    {
+        Array.Clear(_wake);
+        for (int i = _marks.Count - 1; i >= 0; i--)
+        {
+            WakeMark m = _marks[i];
+            m.Age += advance;
+            if (m.Age >= m.Life) { _marks.RemoveAt(i); continue; }
+            m.X += m.VX * advance; m.Y += m.VY * advance;
+            _marks[i] = m;
+            float t = m.Age / m.Life;
+            float fade = (1f - t) * Math.Min(1f, t * 8f + 0.35f);
+            StampInto(_wake, true, m.X, m.Y, m.Radius, m.Amp * fade);
+        }
+    }
+
+    private void AddMark(float x, float y, float vx, float vy, float life, float amp, float radius)
+    {
+        if (_marks.Count >= MaxMarks) return;
+        var m = new WakeMark { X = x, Y = y, VX = vx, VY = vy, Life = life, Amp = amp, Radius = radius };
+        _marks.Add(m);
+        StampInto(_wake, true, x, y, radius, amp * 0.35f);
         Stamps++;
         _calmFor = 0;
     }
@@ -233,6 +291,7 @@ internal sealed class WaterRipples
 
         OriginX = newX;
         OriginY = newY;
+        RebuildWake(0f);
         return true;
     }
 
@@ -266,6 +325,7 @@ internal sealed class WaterRipples
             (_now, _before) = (_before, _now);
             Steps++;
             ClipDry();
+            RebuildWake(StepSeconds);
             return;
         }
 #endif
@@ -286,6 +346,7 @@ internal sealed class WaterRipples
         _now = before;
         Steps++;
         ClipDry();
+        RebuildWake(StepSeconds);
     }
 
     private void ClipDry()
@@ -301,28 +362,31 @@ internal sealed class WaterRipples
 
     // Rebuilds the wet-texel map from the mask: when the window moved, and twice
     // a second while disturbances are made (new ground loads in).
-    private void RefreshWet(WaterMask mask)
+    private void RefreshWet(World world, WaterMask mask)
     {
         long now = Time.Ticks;
         if (OriginX == int.MinValue) return;
         if (OriginX == _wetOriginX && OriginY == _wetOriginY && now - _wetAt < 500) return;
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         _wetOriginX = OriginX; _wetOriginY = OriginY; _wetAt = now;
         for (int cy = 0; cy < Cells; cy++)
         {
             for (int cx = 0; cx < Cells; cx++)
             {
-                byte w = mask.WaterAt(OriginX + cx, OriginY + cy, out _) ? (byte)1 : (byte)0;
+                // Open water: wet and with no pier or plank over it, so nothing ripples on sand or under a pier.
+                byte w = OpenWater(world, mask, OriginX + cx, OriginY + cy) ? (byte)1 : (byte)0;
                 int t = cy * PerCell * Size + cx * PerCell;
                 _wet[t] = _wet[t + 1] = _wet[t + Size] = _wet[t + Size + 1] = w;
             }
         }
+        LastWetMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
     }
 
     private void Upload()
     {
         for (int i = 0; i < _pixels.Length; i++)
         {
-            _pixels[i] = (byte)Math.Clamp((int)((_now[i] * 0.5f + 0.5f) * 255f + 0.5f), 0, 255);
+            _pixels[i] = (byte)Math.Clamp((int)(((_now[i] + _wake[i]) * 0.5f + 0.5f) * 255f + 0.5f), 0, 255);
         }
 
         if (_image == null)
@@ -367,7 +431,8 @@ internal sealed class WaterRipples
         {
             return 0f;
         }
-        return (_now[ty * Size + tx] + _now[ty * Size + tx + 1] + _now[(ty + 1) * Size + tx] + _now[(ty + 1) * Size + tx + 1]) * 0.25f;
+        int a = ty * Size + tx, b = a + Size;
+        return (_now[a] + _now[a + 1] + _now[b] + _now[b + 1] + _wake[a] + _wake[a + 1] + _wake[b] + _wake[b + 1]) * 0.25f;
     }
 
     // ---- what disturbs the water --------------------------------------
@@ -380,7 +445,7 @@ internal sealed class WaterRipples
     private void Disturb(World world, WaterMask mask, float deltaSeconds)
     {
         _dt = deltaSeconds;
-        RefreshWet(mask);
+        RefreshWet(world, mask);
         Player(world, mask);
         Boats(world, mask);
         ItemsAndEffects(world, mask);
@@ -423,6 +488,7 @@ internal sealed class WaterRipples
             (float x, float y) = CellOf(m);
             if (!OpenWater(world, mask, x, y)) continue;
             Stamp(x, y, 0.5f, 0.30f);
+            SwimStamps++;
         }
         _swimDrop.Clear();
         foreach (uint s in _swimmers.Keys) if (!_swimSeen.Contains(s)) _swimDrop.Add(s);
@@ -522,22 +588,42 @@ internal sealed class WaterRipples
         }
 
         float gain = Math.Min(1f, boat.Speed / 3f);
+        boat.Emit += _dt;
+        if (boat.Emit > 4 * EmitEvery) boat.Emit = EmitEvery;
+        if (boat.Emit < EmitEvery) return;
+        boat.Emit -= EmitEvery;
+
         float hx = (r.Width - r.X) * 0.5f, hy = (r.Height - r.Y) * 0.5f;
         float cx = x + (r.X + r.Width) * 0.5f, cy = y + (r.Y + r.Height) * 0.5f;
         float ux = boat.HX, uy = boat.HY, px = -uy, py = ux;
         float length = MathF.Abs(ux) * hx + MathF.Abs(uy) * hy;
-        float beam = MathF.Abs(px) * hx + MathF.Abs(py) * hy;
-        float spread = Math.Min(beam, 2f) * 0.6f;
-        float amount = 40f * gain * _dt;
-        for (int k = -1; k <= 1; k++)
+        float beam = Math.Min(MathF.Abs(px) * hx + MathF.Abs(py) * hy, 2.5f);
+        // The arms of a Kelvin wake open behind the stern at a shallow angle; a mark is left
+        // where the hull was and drifts sideways, so the arms spread and fade with distance.
+        float side = Math.Min(boat.Speed, 4f) * 0.4f;
+        float sx = cx - ux * (length + 0.3f), sy = cy - uy * (length + 0.3f);
+        if (open(sx, sy))
         {
-            float sx = cx - ux * (length + 0.5f) + px * spread * k;
-            float sy = cy - uy * (length + 0.5f) + py * spread * k;
-            if (open(sx, sy)) Stamp(sx, sy, 0.5f, amount * (k == 0 ? 1f : 0.6f));
+            AddMark(sx, sy, 0f, 0f, 1.1f, WakeTrough * gain, 0.4f);
+            for (int k = -1; k <= 1; k += 2)
+            {
+                AddMark(sx + px * beam * 0.7f * k, sy + py * beam * 0.7f * k, px * side * k, py * side * k, 1.5f, WakeArm * gain, 0.4f);
+            }
         }
-        float bx = cx + ux * (length + 0.5f), by = cy + uy * (length + 0.5f);
-        if (open(bx, by)) Stamp(bx, by, 0.5f, -0.4f * amount);
+        // A small crest at the bow, spreading a little to either side.
+        float bx = cx + ux * (length + 0.2f), by = cy + uy * (length + 0.2f);
+        if (open(bx, by))
+        {
+            AddMark(bx, by, 0f, 0f, 0.35f, -WakeBow * gain, 0.4f);
+            for (int k = -1; k <= 1; k += 2)
+            {
+                AddMark(bx + px * beam * 0.5f * k, by + py * beam * 0.5f * k, px * side * 0.6f * k, py * side * 0.6f * k, 0.5f, -WakeBow * 0.7f * gain, 0.35f);
+            }
+        }
     }
+
+    // Wake mark heights (before the style's strength): trough astern, arms, bow crest.
+    internal static float WakeTrough = 0.70f, WakeArm = 0.55f, WakeBow = 0.40f;
 
     /// <summary>For the probe: the frame length continuous disturbances scale by.</summary>
     internal void SetFrameForProbe(float seconds) => _dt = seconds;

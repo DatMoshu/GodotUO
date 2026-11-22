@@ -122,14 +122,26 @@ public partial class WaterProbe : Node
         for (int i = 0; i < 120; i++) { y -= 3f * dt; field.Wake(boat, hull, 2000, y, (_, _) => true); }
         Require(field.Stamps > 0, "a boat under way leaves a wake");
         float cy = y + 0f;
-        Require(field.HeightAt(2000, (int)MathF.Round(cy + 7f)) < -0.01f, "the trough is astern of the hull");
+        float astern = 0f;
+        for (int dy = 6; dy <= 8; dy++) astern = Math.Min(astern, field.HeightAt(2000, (int)MathF.Round(cy + dy)));
+        Require(astern < -0.01f, $"the trough is astern of the hull ({astern:F3})");
+        // An arm spreads sideways with distance astern: more disturbed 3 cells off the track 3 cells astern than ahead of the hull.
+        float arm = 0f;
+        for (int dx = -3; dx <= 3; dx++) arm = Math.Min(arm, field.HeightAt(2000 + dx, (int)MathF.Round(cy + 9f)));
+        Require(arm < -0.01f, "the wake continues astern");
         Require(Math.Abs(field.HeightAt(2000, (int)MathF.Round(cy - 12f))) < 1e-4f, "nothing is disturbed far ahead of the bow");
 
+        DumpField(field, 2000, (int)MathF.Round(y), "under-way");
+        for (int i = 0; i < 30; i++) field.StepForProbe(1);
         int whileMoving = field.Stamps;
         for (int i = 0; i < 90; i++) field.Wake(boat, hull, 2000, y, (_, _) => true);
         int afterStop = field.Stamps;
         for (int i = 0; i < 120; i++) field.Wake(boat, hull, 2000, y, (_, _) => true);
         Require(field.Stamps == afterStop && afterStop - whileMoving < 4 * 70, "the wake stops soon after the boat does");
+        field.StepForProbe(50); // 2.5 s of the field's own time
+        float rest = 0f;
+        for (int dx = -6; dx <= 6; dx++) for (int dy = -14; dy <= 14; dy++) rest = Math.Max(rest, Math.Abs(field.HeightAt(2000 + dx, (int)y + dy)));
+        Require(rest < 0.02f, $"the wake is gone 2.5 s after stopping (still {rest:F4})");
 
         var closed = new WaterRipples();
         closed.CentreOnForProbe(2000, 2000);
@@ -138,6 +150,24 @@ public partial class WaterProbe : Node
         float y2 = 2000;
         for (int i = 0; i < 120; i++) { y2 -= 3f * dt; closed.Wake(other, hull, 2000, y2, (_, _) => false); }
         Require(closed.Stamps == 0, "no wake is made on land or under a pier");
+    }
+
+    // GUO_WAKE_DUMP=<dir>: write the height field around the hull as a PNG (grey = flat), for a look at the wake's shape without the shader.
+    private static void DumpField(WaterRipples field, int cx, int cy, string name)
+    {
+        string dir = System.Environment.GetEnvironmentVariable("GUO_WAKE_DUMP");
+        if (string.IsNullOrEmpty(dir)) return;
+        System.IO.Directory.CreateDirectory(dir);
+        const int W = 24, H = 36, S = 12;
+        var img = Image.CreateEmpty(W * S, H * S, false, Image.Format.Rgb8);
+        for (int py = 0; py < H * S; py++)
+            for (int px = 0; px < W * S; px++)
+            {
+                float h = field.HeightAt(cx - W / 2 + px / S, cy - H / 2 + py / S);
+                float v = Math.Clamp(0.5f + h * 1.6f, 0f, 1f);
+                img.SetPixel(px, py, new Color(v, v, v));
+            }
+        img.SavePng(System.IO.Path.Combine(dir, name + ".png"));
     }
 
     /// <summary>

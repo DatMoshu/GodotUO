@@ -81,8 +81,25 @@ internal static class WaterLookShot
         Directory.CreateDirectory(dir);
         var profile = ProfileManager.CurrentProfile;
 
+        InputProbe.FullSizeGameWindow();
+        if (float.TryParse(System.Environment.GetEnvironmentVariable("GUO_WAKE_ZOOM"), out float zoom) && zoom > 0
+            && Client.Game.GetScene<Game.Scenes.GameScene>()?.Camera is { } cam) cam.Zoom = zoom;
+        var amps = System.Environment.GetEnvironmentVariable("GUO_WAKE_AMPS")?.Split(' ');
+        if (amps is { Length: 3 } && float.TryParse(amps[0], out float wt) && float.TryParse(amps[1], out float wa) && float.TryParse(amps[2], out float wb))
+        {
+            WaterRipples.WakeTrough = wt; WaterRipples.WakeArm = wa; WaterRipples.WakeBow = wb;
+            GD.Print($"[water look] wake amplitudes {wt} {wa} {wb}");
+        }
         await InputProbe.Say(host, "[go Trammel");
         await InputProbe.Wait(host, 120);
+        string cleanup = System.Environment.GetEnvironmentVariable("GUO_WAKE_REMOVE");
+        if (!string.IsNullOrWhiteSpace(cleanup))
+        {
+            // Staff [remove on test boats an earlier run left (serials, hex, comma separated).
+            foreach (string t in cleanup.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                await RemoveItem(host, world, Convert.ToUInt32(t, 16));
+            return true;
+        }
         bool ok = true;
         if (Only != "wake")
         {
@@ -177,7 +194,7 @@ internal static class WaterLookShot
         phase = "under-way";
         await InputProbe.Say(host, "raise anchor");
         await InputProbe.Wait(host, 20);
-        await InputProbe.Say(host, "forward");
+        await InputProbe.Say(host, System.Environment.GetEnvironmentVariable("GUO_WAKE_CMD") ?? "forward");
         await InputProbe.Wait(host, 300);
         await Take(host, Path.Combine(dir, "wake-under-way.png"));
         phase = "stopping";
@@ -190,13 +207,17 @@ internal static class WaterLookShot
         recording = false;
         await film;
         bool moved = (boat.X, boat.Y) != start;
+        // Leave nothing behind: step off, then remove the test boat.
+        await InputProbe.Say(host, "[go Trammel");
+        await InputProbe.Wait(host, 90);
+        await RemoveItem(host, world, boat.Serial);
         GD.Print($"[water look] boat travel observed={moved} start={start} end=({boat.X},{boat.Y})");
         return moved;
 
         async System.Threading.Tasks.Task Record()
         {
             using var csv = new StreamWriter(Path.Combine(dir, "frames.csv"));
-            csv.WriteLine("frame,ms,phase,frameMs,rippleMs,rippleStamps,rippleSteps,hullX,hullY");
+            csv.WriteLine("frame,ms,phase,frameMs,rippleMs,rippleStamps,rippleSteps,swimStamps,wetMs,hullX,hullY");
             int frame = 0;
             ulong last = Godot.Time.GetTicksUsec();
             var times = new List<double>();
@@ -210,7 +231,7 @@ internal static class WaterLookShot
                 shot.Resize(shot.GetWidth() / 2, shot.GetHeight() / 2, Image.Interpolation.Nearest);
                 shot.SavePng(Path.Combine(frames, $"frame-{frame:D4}.png"));
                 var r = WaterRender.Ripples;
-                csv.WriteLine($"{frame},{Godot.Time.GetTicksMsec()},{phase},{frameMs:F2},{r.LastUpdateMs:F3},{r.Stamps},{r.Steps},{boat.X},{boat.Y}");
+                csv.WriteLine($"{frame},{Godot.Time.GetTicksMsec()},{phase},{frameMs:F2},{r.LastUpdateMs:F3},{r.Stamps},{r.Steps},{r.SwimStamps},{r.LastWetMs:F3},{boat.X},{boat.Y}");
                 frame++;
                 // Settle frames between captures measure the live frame time,
                 // not the PNG write.
@@ -224,6 +245,16 @@ internal static class WaterLookShot
             if (times.Count > 0)
                 GD.Print($"[water look] settled frame ms: median={times[times.Count / 2]:F2} p95={times[(int)(times.Count * 0.95)]:F2} n={times.Count}");
         }
+    }
+
+    private static async System.Threading.Tasks.Task RemoveItem(Node host, Game.World world, uint serial)
+    {
+        await InputProbe.Say(host, "[remove");
+        for (int f = 0; f < 120 && !world.TargetManager.IsTargeting; f++) await InputProbe.Wait(host, 2);
+        if (!world.TargetManager.IsTargeting) { GD.PrintErr($"[water look] [remove gave no target for 0x{serial:X8}"); return; }
+        world.TargetManager.Target(serial);
+        await InputProbe.Wait(host, 30);
+        GD.Print($"[water look] removed 0x{serial:X8}");
     }
 
     private static async System.Threading.Tasks.Task Take(Node host, string path)
