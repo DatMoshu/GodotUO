@@ -31,10 +31,20 @@ shallow cell, **covered** when it received at least one plant, coral, rock or sh
 ## Layout
 
 - Floor: a seamless sand tile (0x9DE9-0x9DEC) on every shallow cell, hued by shore
-  distance through an eight-step ramp (`HUE_RAMP`) from bright teal at the shore to
-  the colour of the open sea at 14 cells, dithered by noise, with soft lighter sand
-  patches. The ramp is the eight hues whose composite (tile through the hue, 30% under
-  a 70% translucent surface) lies closest to a straight line between the two colours.
+  distance. The ramp (`HUE_RAMP`, `RAMP_PROGRESS`) is 16 hues that lie on the straight line, as the
+  client shows it, from the shore colour to the open sea's own colour. Cells take the hue below or
+  above their position on that line by probability (stochastic rounding), so the mean colour is exact
+  at every distance and no band shows. The original opaque deep water measured (0, 54, 80) at Haven. No smooth hue
+  lies on the line that close (1916 matches but sparkles; the darker smooth ones read as scattered navy
+  diamonds), so the ramp ends on 592 (11, 61, 87) and past it (progress above 0.79) a deep cell is left as
+  the original sea with a probability that rises to 1 at the band's edge: the fade ends on the sea itself.
+- Measuring (`calibrate.py`): `run.py generate --calibrate` stages 64 hues in an 8x8 pattern with
+  no objects; a `--layer-shot` of Haven gives each hue's on-screen mean colour; `calibrate.py fit PNG`
+  finds the cell lattice and fits observed = gain * predicted + offset per channel against the hued sand
+  tile (gain 0.365, offset (0, 37, 55), residual 1.5 over 63 hues, correlation 0.99). `calibrate.py ramp`
+  picks hues within 6 units of the line, one per 0.04 of progress, and drops palettes that speckle
+  (1593, 1599, 1469, 1916) or tint (2571 purple) by their per-pixel spread. The table has no colour on
+  the line between 0 and 0.17 and between 0.79 and 0.98; there plan() mixes the two neighbours.
 - Objects (z floor+1, only where no other static stands): plant meadows, rock fields and
   coral heads from three value-noise fields (feature sizes 7, 9, 13 cells), density
   falling as `(1 - d/14)^1.5`, so nothing ends at an edge.
@@ -42,6 +52,11 @@ shallow cell, **covered** when it received at least one plant, coral, rock or sh
   owner's Transwater convention), or the floor would be hidden. Translucent diamonds that
   overlap by a pixel blend twice and draw a seam, so `artLegacyMUL.uop` is copied with
   0x1797-0x179C trimmed so neighbours tile exactly once and the outline tile 0x1796 emptied.
+  Trimming leaves the removed pixels open wherever the neighbour that would draw them has no
+  water (a coast, the edge of a bed): the beach shows through as thin light diagonal lines. Four
+  translucent "water edge" tiles (free static ids 0xFFFA-0xFFFD, appended to the stage art, flagged in the
+  stage tiledata) hold exactly the pixels each neighbour takes, and plan() puts one on every whole water
+  cell whose neighbour is missing. A land tile was not the cause: with the art untrimmed the lines vanish.
   All four edits are on stage copies; the install is never written.
 - Same seed, same bytes.
 

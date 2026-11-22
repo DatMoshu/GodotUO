@@ -45,9 +45,10 @@ def test_bed_extended_to_full_band_and_deep_untouched():
     # the dug bed (x 16..39) already spans the 14-cell band here; shrink it to 4 cells and it must be extended
     land[20:40] = 0xA8; lz[20:40] = -5; wet[20:40] = S.NO_STATIC
     q = S.plan(land, lz, wet, occ, seed=3)
-    assert q.extended_cells > 0 and (q.new_land[20:30] == S.BED_ID).all() and (q.new_lz[20:30] == -15).all()
+    assert q.extended_cells > 0 and (q.new_land[20:26] == S.BED_ID).all() and (q.new_lz[20:26] == -15).all()
+    assert (q.new_land[16 + S.SHALLOW_MAX - 1] == 0xA8).all() and (q.new_land[26:29] == S.BED_ID).any()   # the last ring is the original sea; the ones before thin out
     assert (q.new_land[16 + S.SHALLOW_MAX + 1:] == 0xA8).all()                    # beyond the band: still deep
-    waters = {x for x, y, sid, z, h in q.placed if z == -5}
+    waters = {x for x, y, sid, z, h in q.placed if z == -5 and sid not in S.STRIP_IDS}
     assert waters and min(waters) >= 20
 
 
@@ -55,13 +56,57 @@ def test_floor_fades_to_the_deep_colour():
     land, lz, wet, occ = coast(64, 64)
     p = S.plan(land, lz, wet, occ, seed=4)
     floor = [(x, hue) for x, y, sid, z, hue in p.placed if sid in S.FLOOR]
-    near = [h for x, h in floor if x < 19]; far = [h for x, h in floor if x >= 16 + S.SHALLOW_MAX - 2]
-    ramp = S.HUE_RAMP
-    mean = lambda hs: np.mean([ramp.index(h) for h in hs])
-    assert mean(near) < 2.0 and mean(far) > 5.5, (mean(near), mean(far))        # sand at the shore, sea colour at the edge
-    # no hard step: the ramp index along x never jumps by more than 2 between column means
-    cols = [np.mean([ramp.index(h) for xx, h in floor if xx == c]) for c in range(16, 16 + S.SHALLOW_MAX)]
-    assert max(abs(a - b) for a, b in zip(cols, cols[1:])) < 1.2, cols
+    prog = dict(zip(S.HUE_RAMP, S.RAMP_PROGRESS))
+    col = {c: np.mean([prog[h] for xx, h in floor if xx == c]) for c in range(16, 16 + S.SHALLOW_MAX) if any(xx == c for xx, _ in floor)}
+    # stochastic rounding: the column's mean colour follows the straight line shore -> deep (progress = distance / band)
+    for c, m in col.items():
+        t = (c - 15) / S.SHALLOW_MAX if c > 15 else 0.0
+        assert abs(m - min(t, S.RAMP_PROGRESS[-1])) < 0.12, (c, m, t)
+    assert col[16] < 0.15 and max(col.values()) > S.RAMP_PROGRESS[-1] - 0.12   # shore colour at the shore, the sea's own colour at the edge
+    steps = [b - a for a, b in zip(list(col.values()), list(col.values())[1:])]
+    assert max(steps) < 0.17, steps                                                   # no band: no column mean jumps
+
+
+def test_ramp_is_measured_and_ordered():
+    assert len(S.HUE_RAMP) == len(S.RAMP_PROGRESS) == len(set(S.HUE_RAMP))
+    assert S.RAMP_PROGRESS[0] == 0.0 and S.RAMP_PROGRESS[-1] >= 0.75
+    assert all(b > a for a, b in zip(S.RAMP_PROGRESS, S.RAMP_PROGRESS[1:]))
+
+
+def test_calibration_stage_has_many_hues_and_no_objects():
+    import calibrate as C
+    land, lz, wet, occ = coast(64, 64)
+    p = S.plan(land, lz, wet, occ, seed=4, calibrate=C.pattern(S.HUE_RAMP))
+    assert all(sid in S.FLOOR or z == -5 for x, y, sid, z, h in p.placed)           # floors and water only
+    assert len({h for x, y, sid, z, h in p.placed if sid in S.FLOOR}) == C.GRID * C.GRID
+
+
+def test_progress_and_choose_ramp_on_a_synthetic_hue_table():
+    import calibrate as C
+    pts = {i: C.SHORE + (C.DEEP - C.SHORE) * (i / 20.0) for i in range(21)}
+    pts[99] = np.array([200.0, 0.0, 0.0])                                             # far off the line
+    model = {h: (c - C.OFFSET) / C.GAIN for h, c in pts.items()}
+    ramp = C.choose_ramp(model)
+    assert 99 not in [h for h, _ in ramp] and ramp[0][1] < 0.05 and ramp[-1][1] > 0.95
+    assert all(abs(C.progress(C.predict(model)[h])[1]) < 1e-6 for h, _ in ramp)
+
+
+def test_trim_gap_is_refilled_by_edge_strips():
+    """The trimmed pixels leave a hole where the neighbour that would draw them has no water (a coast).
+    Strips hold exactly those pixels, and plan() puts one on each water cell whose neighbour is missing."""
+    mask = np.zeros((44, 44), bool)
+    for y in range(44):
+        n = 2 * (y + 1) if y < 22 else 2 * (44 - y)
+        mask[y, 22 - n // 2:22 + n // 2] = True
+    kept, strips = S.trim_parts(mask)
+    assert (kept | np.logical_or.reduce(strips)).tolist() == mask.tolist()          # nothing lost, nothing added
+    assert not any((kept & s).any() for s in strips) and any(s.any() for s in strips)
+    land, lz, wet, occ = coast()
+    p = S.plan(land, lz, wet, occ, seed=3)
+    at = {(x, y, sid) for x, y, sid, z, h in p.placed if sid in S.STRIP_IDS}
+    assert (16, 30, S.STRIP_IDS[0]) in at                                           # x-1 is land: the shore cell gets the strip
+    assert (30, 30, S.STRIP_IDS[0]) not in at                                       # inside the band the neighbour draws it
+    assert all(x >= 16 for x, y, sid in at)
 
 
 def test_objects_thin_out_with_depth():
@@ -84,7 +129,7 @@ def test_occupied_cells_stay_clear():
     land, lz, wet, occ = coast()
     occ[20:30, :] = True
     p = S.plan(land, lz, wet, occ, seed=3)
-    assert not [1 for x, y, sid, z, h in p.placed if 20 <= x < 30 and sid not in S.FLOOR]   # floor yes, objects no
+    assert not [1 for x, y, sid, z, h in p.placed if 20 <= x < 30 and sid not in S.FLOOR and sid not in S.STRIP_IDS]   # floor yes, objects no
 
 
 def test_groups_not_uniform():

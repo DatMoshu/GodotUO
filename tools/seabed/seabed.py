@@ -33,11 +33,16 @@ FLOOR = (0x9DE9, 0x9DEA, 0x9DEB, 0x9DEC)                # "sand_tile": a seamles
 WATER_FILL = (0x1797, 0x1798, 0x1799, 0x179A, 0x179B)   # interior water statics, as on Felucca's own beds
 
 SHALLOW_MAX = 14   # cells from dry land over which the shallows fade out into the deep
-# Hue ramp for the floor, shore to deep (hues.mul ids). The first is a bright teal; the last brings the
-# water, seen through the translucent surface, to the colour of the open sea. Chosen by
-# compositing the tile through every hue over the measured deep-water colour and taking the
-# eight closest to a straight line from the shore colour to the deep colour (README).
-HUE_RAMP = (1151, 91, 390, 489, 588, 587, 1960, 1960)
+# Hue ramp for the floor, shore to deep (hues.mul ids), with each hue's progress along the straight line
+# from the shore colour (hue 1151, as photographed) to the open sea's own colour, as the client showed it
+# (calibrate.py: 64 hues photographed in place, fit residual 1.5 colour units; the original opaque
+# deep water measured (0, 54, 80) at Haven). The hue table has no colour on that line between 0 and
+# 0.17 and none past 0.8 that is smooth (1916 matches the deep but sparkles; the dark smooth ones read as
+# scattered navy diamonds), so plan() mixes neighbours by probability and, past the last hue, leaves
+# deep cells as the original sea by probability: the fade ends on the sea itself. Hues whose palette
+# speckles (1593, 1599, 1469, 1916) or tints (2571 purple) are left out by calibrate.choose_ramp.
+HUE_RAMP = (1151, 191, 391, 396, 490, 495, 589, 594, 494, 688, 2757, 593, 587, 392, 592)
+RAMP_PROGRESS = (0.0, 0.171, 0.183, 0.229, 0.304, 0.362, 0.437, 0.492, 0.51, 0.578, 0.618, 0.632, 0.728, 0.757, 0.788)
 FLOOR_Z = -15
 OBJECT_Z = -14     # above the floor tile so it never draws over them
 BED_ID = 0x64
@@ -102,7 +107,7 @@ def shore_distance(water):
     return distance_transform_cdt(water, metric="chessboard")
 
 
-def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALLOW_MAX, full_water=None):
+def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALLOW_MAX, full_water=None, calibrate=None):
     """Plan the seabed. Arrays are [x, y]. `occupied` marks cells holding a non-water static
     (piers, boats, ruins); they get a floor but no seabed objects.
 
@@ -115,6 +120,8 @@ def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALL
     the same distance. `full_water` marks cells that already carry a whole water tile (0x1797-0x179C);
     the others in the band (the near-empty 0x1796 and shore-shaped edges Felucca stacks along its
     beds) get one more at z -5, or the floor would show through bare.
+    `calibrate` (calibrate.py) replaces the floor hues by a function (x, y arrays) -> hues and
+    drops every object, so the client can photograph what each hue looks like in place.
     """
     water, bed = water_masks(land, land_z, wet_z)
     w, h = land.shape
@@ -124,10 +131,14 @@ def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALL
     ext = wet_land & (dist <= shallow_max)               # deep land turned into bed (with or without a surface already)
     bed_land = (land >= BED_FIRST) & (land <= BED_LAST)
     lowered = wet_static & ~wet_land & bed_land & ~bed   # Felucca's bed rows raised to the surface: sunk to bed depth
-    shallow = bed | lowered | ext
-    floor_z = np.where(wet_static, wet_z.astype(np.int16) - 10, FLOOR_Z).astype(np.int16)
     xs = np.arange(w)[:, None] * np.ones((1, h), np.int64) + origin[0]
     ys = np.ones((w, 1), np.int64) * np.arange(h)[None, :] + origin[1]
+    # Past the last ramp hue the floor stops: a deep cell (not a dug bed) stays the original opaque sea
+    # with a probability that rises to 1 at the band's edge.
+    back = np.clip((dist.astype(np.float64) / shallow_max - RAMP_PROGRESS[-1]) / (1.0 - RAMP_PROGRESS[-1]), 0.0, 1.0)
+    ext = ext & ~(~wet_static & (_hash2(xs, ys, seed + 19) < back))
+    shallow = bed | lowered | ext
+    floor_z = np.where(wet_static, wet_z.astype(np.int16) - 10, FLOOR_Z).astype(np.int16)
     r = _hash2(xs, ys, seed)
     r2 = _hash2(xs, ys, seed + 7)
     r3 = _hash2(xs, ys, seed + 13)
@@ -137,13 +148,17 @@ def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALL
 
     t = np.clip(dist.astype(np.float64) / shallow_max, 0.0, 1.0)   # 0 at the shore, 1 in the deep
     fade = (1.0 - t) ** 1.5                                        # object density falls to 0 smoothly
+    prog = np.asarray(RAMP_PROGRESS)
     nb = len(HUE_RAMP) - 1
-    level = t * nb + (r3 - 0.5) * 0.9 - np.clip(sandy - 0.55, 0, None) * 4.0   # sand patches: lighter, soft
-    level = np.clip(np.rint(level), 0, nb).astype(int)
-    level[dist >= shallow_max] = nb
-
+    t_adj = np.clip(t - np.clip(sandy - 0.55, 0, None) * 0.57, 0.0, 1.0)   # sand patches: lighter, soft
+    lo = np.clip(np.searchsorted(prog, t_adj, side="right") - 1, 0, nb - 1)
+    frac = np.clip((t_adj - prog[lo]) / (prog[lo + 1] - prog[lo]), 0.0, 1.0)
+    level = np.where(r3 < frac, lo + 1, lo).astype(int)   # stochastic rounding: the mean colour is exact, never a band
+    hue_at = np.asarray(HUE_RAMP)[level]
+    if calibrate is not None:
+        hue_at = calibrate(xs, ys)
     kind = np.zeros((w, h), np.uint8)   # 0 none 2 rock 3 boulder 4 plant 5 coral 6 shell
-    free = shallow & (dist >= 1) & ~occupied
+    free = shallow & (dist >= 1) & ~occupied & (calibrate is None)
     rock_zone = free & (rocky > 0.6)
     kind[rock_zone & (r2 < 0.55 * fade)] = 2
     kind[rock_zone & (r2 < 0.10 * fade) & (dist >= 3)] = 3
@@ -165,7 +180,17 @@ def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALL
         placed.append((x, y, WATER_FILL[int(r[x, y] * len(WATER_FILL))], int(wet_z[x, y]) if wet_static[x, y] else -5, 0))
     ix, iy = np.nonzero(shallow)
     for x, y in zip(ix.tolist(), iy.tolist()):
-        placed.append((x, y, FLOOR[int(r2[x, y] * len(FLOOR))], int(floor_z[x, y]), HUE_RAMP[level[x, y]]))
+        placed.append((x, y, FLOOR[int(r2[x, y] * len(FLOOR))], int(floor_z[x, y]), int(hue_at[x, y])))
+    whole = need | (full_water if full_water is not None else wet_static)   # cells that now carry a whole (trimmed) water tile
+    water_z = np.where(wet_static, wet_z, -5)
+    for (cx, cy), sid in zip(STRIP_CELLS, STRIP_IDS):
+        has = np.zeros_like(whole)   # has[x, y]: the neighbour at (x + cx, y + cy) carries a whole water tile
+        xa, xb = max(0, -cx), w - max(0, cx)
+        ya, yb = max(0, -cy), h - max(0, cy)
+        has[xa:xb, ya:yb] = whole[xa + cx:xb + cx, ya + cy:yb + cy]   # shore-shaped edge tiles never draw these edge pixels (measured: <= 55% of one strip)
+        ix, iy = np.nonzero(whole & ~has)
+        for x, y in zip(ix.tolist(), iy.tolist()):
+            placed.append((x, y, sid, int(water_z[x, y]), 0))
     for k in (2, 3, 4, 5, 6):
         ix, iy = np.nonzero(kind == k)
         for x, y in zip(ix.tolist(), iy.tolist()):
@@ -310,6 +335,8 @@ def stage_translucent_water(install: Path, out: Path) -> str:
     shutil.copyfile(install / "tiledata.mul", dst)
     for i in range(WATER_STATIC[0], WATER_STATIC[1] + 1):
         U.write_tile(dst, i, {"flags": U.read_tile(dst, i)["flags"] | TRANSLUCENT})
+    for i in STRIP_IDS:   # the edge strips (stage_seamless_water_art): water that is translucent, with a name
+        U.write_tile(dst, i, {**U.read_tile(dst, 0x1797), "name": "water edge", "flags": U.read_tile(dst, 0x1797)["flags"] | TRANSLUCENT})
     return f"tiledata.mul={dst}"
 
 
@@ -319,19 +346,34 @@ FULL_WATER = (0x1796, 0x179C)   # 0x1797-0x179C are whole diamonds (1012 pixels)
 _UP_NEIGHBOURS = ((-22, -22), (22, -22), (-44, 0), (0, -44))
 
 
-def trim_overlap(mask):
-    """Drop the pixels of a 44x44 tile that a neighbour above or beside it already draws.
-    Neighbouring diamonds overlap by a pixel row along each edge; opaque that is invisible,
-    but a translucent surface blends twice there and shows a line. Returns the new mask."""
+# The cell offset of each of those neighbours (screen (dx, dy) / 22 -> (x - y, x + y) -> cell).
+STRIP_CELLS = ((-1, 0), (0, -1), (-1, 1), (-1, -1))
+STRIP_IDS = (0xFFFD, 0xFFFC, 0xFFFB, 0xFFFA)   # free static ids (no art, empty tiledata): the edge strips below
+
+
+def trim_parts(mask):
+    """(kept, strips): the tile minus the pixels a neighbour above or beside it already draws,
+    and for each of those neighbours (in _UP_NEIGHBOURS order) the pixels it was the one to
+    take. Neighbouring diamonds overlap by a pixel row along each edge; opaque that is invisible,
+    but a translucent surface blends twice there and shows a line."""
     h, w = mask.shape
     out = mask.copy()
+    strips = []
     for dx, dy in _UP_NEIGHBOURS:
+        strip = np.zeros_like(mask)
         for y in range(h):
             for x in range(w):
                 nx, ny = x - dx, y - dy   # this pixel in the neighbour's frame
                 if out[y, x] and 0 <= nx < w and 0 <= ny < h and mask[ny, nx]:
                     out[y, x] = False
-    return out
+                    strip[y, x] = True
+        strips.append(strip)
+    return out, strips
+
+
+def trim_overlap(mask):
+    """The tile without the pixels a neighbour above or beside it already draws (see trim_parts)."""
+    return trim_parts(mask)[0]
 
 
 def stage_seamless_water_art(install: Path, out: Path) -> str:
@@ -349,6 +391,7 @@ def stage_seamless_water_art(install: Path, out: Path) -> str:
     src, dst = install / "artLegacyMUL.uop", out / "artLegacyMUL.uop"
     shutil.copyfile(src, dst)
     wanted = {U.uop_hash(U.ART_PATTERN.format(0x4000 + i)): i for i in range(FULL_WATER[0], FULL_WATER[1] + 1)}
+    source = {}
     with dst.open("r+b") as f:
         data = f.read()
         magic, _v, _st, block, _bs, _count = struct.unpack_from("<IIIqIi", data, 0)
@@ -361,6 +404,8 @@ def stage_seamless_water_art(install: Path, out: Path) -> str:
                     w, hh, px = uoart.decode_static(data[offset + header:offset + header + decomp])
                     mask = np.array(px, dtype=np.uint16).reshape(hh, w) > 0
                     keep = trim_overlap(mask) if wanted[h] != 0x1796 else np.zeros_like(mask)   # the outline tile is the seam itself
+                    if wanted[h] == 0x1797:
+                        source = {"w": w, "h": hh, "px": px, "mask": mask}
                     px2 = [p if keep[i // w, i % w] else 0 for i, p in enumerate(px)]
                     new = uoart.encode_static(px2, w, hh)
                     if flag != 0 or len(new) > decomp:
@@ -371,4 +416,13 @@ def stage_seamless_water_art(install: Path, out: Path) -> str:
                     f.write(struct.pack("<ii", len(new), len(new)))
                 pos += 34
             block = nxt
+    # The trimmed edge is a gap wherever the neighbour that would draw it has no water (a coast, the
+    # edge of a bed): thin light lines on the beach. Four extra translucent tiles hold exactly the
+    # pixels each neighbour takes; plan() places one on a water cell whose neighbour is missing.
+    _, strips = trim_parts(source["mask"])
+    items = []
+    for sid, strip in zip(STRIP_IDS, strips):
+        px2 = [p if strip[i // source["w"], i % source["w"]] else 0 for i, p in enumerate(source["px"])]
+        items.append((U.ART_PATTERN.format(0x4000 + sid), uoart.encode_static(px2, source["w"], source["h"])))
+    U.uop_append(dst, items)
     return f"artlegacymul.uop={dst}"

@@ -22,6 +22,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 
+import calibrate  # noqa: E402
 import seabed as S  # noqa: E402
 from guo import load_config, uomap  # noqa: E402
 
@@ -34,6 +35,7 @@ def main(argv=None) -> int:
     ap.add_argument("--out")
     ap.add_argument("--opaque-water", action="store_true", help="leave the water statics opaque (the seabed is then hidden)")
     ap.add_argument("--no-floor", action="store_true", help="experiment: leave out the floor tiles")
+    ap.add_argument("--calibrate", action="store_true", help="experiment (calibrate.py): 64 hues in an 8x8 pattern, no objects")
     ap.add_argument("--shallow-max", type=int, default=S.SHALLOW_MAX)
     a = ap.parse_args(argv)
     cfg = load_config()
@@ -42,7 +44,8 @@ def main(argv=None) -> int:
     t0 = time.time()
     with uomap.open_facet(install, a.facet) as f:
         land, lz, wet, occ, full = S.scan_facet(f)
-        p = S.plan(land, lz, wet, occ, seed=a.seed, shallow_max=a.shallow_max, full_water=full)
+        p = S.plan(land, lz, wet, occ, seed=a.seed, shallow_max=a.shallow_max, full_water=full,
+                   calibrate=calibrate.pattern(S.HUE_RAMP) if a.calibrate else None)
         stats = {
             "facet": a.facet, "width": land.shape[0], "height": land.shape[1], "seed": a.seed,
             "shallow_max": a.shallow_max,
