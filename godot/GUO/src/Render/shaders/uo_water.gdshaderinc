@@ -358,7 +358,11 @@ vec3 water_realistic_lighting(vec3 base, vec2 cell, vec2 f, vec2 world, float t,
 	// Broad swell normals should not paint dark bands over native water.
 	// Keep their modulation subtle; crests, ripples and local glints remain.
 	c *= clamp(1.0 + (light - 0.75) * water_params.z * 0.6, 0.94, 1.035);
-	c += ripple * rs * vec3(0.50, 0.58, 0.64);
+	// A local disturbance (a swimmer's ring, a wake) reads at the default ripple strength: small
+	// heights pass through unchanged, so still water is untouched; larger ones are lifted, capped.
+	float disturb = ripple * rs;
+	disturb = clamp(disturb * (1.0 + 1.5 * smoothstep(0.015, 0.1, abs(disturb))), -0.16, 0.16);
+	c += disturb * vec3(0.50, 0.58, 0.64);
 	// Calm water has sparse, soft crests; stronger shared wind admits more.
 	float crest = pow(clamp(light, 0.0, 1.0), 96.0);
 	float crest_gain = water_params2.x * 0.7;
