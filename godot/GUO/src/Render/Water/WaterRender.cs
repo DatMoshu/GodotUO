@@ -148,6 +148,9 @@ internal static class WaterRender
     /// </summary>
     public static string Override;
 
+    /// <summary>For capture tools: holds the water clock at this many seconds, so two frames differ only by what moved. Null in play.</summary>
+    internal static float? FrozenSeconds;
+
     // The shard session is created only after the player approves its content.
     // Water consent is separate and never inferred from approving that content.
     internal static GUO.Store.StoreWaterPolicy ShardPolicy => GUO.Host.ShardSession.Active
@@ -611,6 +614,7 @@ internal static class WaterRender
         batcher.SetWaterUniform("water_shallow", new Vector2(ShallowStrength(ProfileManager.CurrentProfile),
             Daylight(world, ProfileManager.CurrentProfile)));
         batcher.SetWaterUniform("water_time", (float)(Time.Ticks % 3_600_000L) / 1000f);
+        if (FrozenSeconds is float still) batcher.SetWaterUniform("water_time", still);
 #if TOOLS
         if (InEditorPreview) batcher.SetWaterUniform("water_time", EditorSeconds);
 #endif
