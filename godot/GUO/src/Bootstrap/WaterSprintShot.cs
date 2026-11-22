@@ -29,8 +29,12 @@ internal static class WaterSprintShot
         var profile = ProfileManager.CurrentProfile;
         int overall = world.Light.Overall, real = world.Light.RealOverall;
         float? frozen = WaterRender.FrozenSeconds;
+        bool speedMode = profile.LightingSpeedMode;
         try
         {
+            // GUO_WSS_SPEEDMODE=1|0: realtime lighting (lighting speed mode) on or off for the shots; unset keeps the profile's.
+            int sm = EnvInt("GUO_WSS_SPEEDMODE", -1);
+            if (sm >= 0) profile.LightingSpeedMode = sm != 0;
             // GUO_WSS_LIGHT: the world light level, 0 full day to 30 the darkest night, set on the
             // client only and again after every move; unset keeps the shard's own light.
             _light = EnvInt("GUO_WSS_LIGHT", -1);
@@ -52,6 +56,7 @@ internal static class WaterSprintShot
             GUO.Renderer.CleanShots.Set(false);
             WaterRender.FrozenSeconds = frozen;
             world.Light.Overall = overall; world.Light.RealOverall = real;
+            profile.LightingSpeedMode = speedMode;
         }
     }
 
