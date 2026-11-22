@@ -32,6 +32,7 @@ internal partial class GameScene
         static ulong Mix(ulong hash,int value)=>unchecked((hash^(uint)value)*1099511628211UL);
         ulong hash=14695981039346656037UL;
         hash=Mix(Mix(Mix(Mix(Mix(hash,_world.MapIndex),ox),oy),width),height);
+        hash=Mix(hash,GUO.Renderer.Lights.LightOpenings.ProbeSlitsTransmit ? 1 : 0);
         _speedGridChunks.Clear();
         for(int cy=oy>>3;cy<=(oy+height-1)>>3;cy++)
             for(int cx=ox>>3;cx<=(ox+width-1)>>3;cx++)
