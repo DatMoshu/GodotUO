@@ -319,3 +319,17 @@ opaque water under any style, draw as before.
   land, from shore sand to the deep colour. Measured against the previous
   per-cell hue ramp at the Haven pier: within 7 colour units to 6 cells from
   land, up to 9 darker at 8 to 10 cells, identical in open water.
+
+## Wakes and swimmers (owner water sprint, 2026-11-22)
+
+- A boat's wake is two narrow rails of foam from the stern's quarters, laid
+  by distance along the track the hull sailed (a hull the shard moves a cell
+  at a time still leaves an unbroken line), with a short churn between them.
+  They live 2 to 5 seconds by speed. The foam is a second channel of the
+  ripple texture, drawn by the shader; the rails carry almost no height.
+- A swimmer no longer drops a ring into the wave field (a wide circle round
+  every creature, seconds long). It leaves two small uneven dabs behind it
+  that drift apart and are gone in about a second.
+- A boat's own parts (tiller, planks, hold) no longer splash as "items
+  arriving on water": that drew rings and wedges of waves round every hull
+  under way.

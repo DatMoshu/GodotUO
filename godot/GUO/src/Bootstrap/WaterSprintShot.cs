@@ -49,7 +49,7 @@ internal static class WaterSprintShot
             GUO.Renderer.CleanShots.Set(true);
             float zoom = float.TryParse(Env("GUO_WSS_ZOOM", "1"), NumberStyles.Float, CultureInfo.InvariantCulture, out float zz) ? zz : 1f;
             if (Client.Game.GetScene<Game.Scenes.GameScene>()?.Camera is { } cam) cam.Zoom = zoom;
-            return mode == "pan" ? await Pan(host, world, dir) : await Coast(host, world, dir);
+            return mode == "pan" ? await Pan(host, world, dir) : mode == "bench" ? await Bench(host, world, dir) : await Coast(host, world, dir);
         }
         finally
         {
@@ -166,6 +166,58 @@ internal static class WaterSprintShot
     /// centre where the player's own sprite stands. maxBlock is the most changed pixels in one
     /// 32 x 32 block: a pop is local, an animation is everywhere.
     /// </summary>
+    /// <summary>
+    /// Frame times along the pan's route with nothing captured: at each step the camera settles,
+    /// then GUO_WSS_BENCH_FRAMES frames are timed with vsync off. Writes bench.csv (one row a step)
+    /// and prints the median and p95 over all timed frames. Run it once a style (GUO_WSS_STYLE)
+    /// on the same build to compare; the water clock is left running unless GUO_WSS_FREEZE=1.
+    /// </summary>
+    private static async System.Threading.Tasks.Task<bool> Bench(Node host, Game.World world, string dir)
+    {
+        (string Name, int X, int Y, int Z) s = default;
+        foreach (var first in Spots()) { s = first; break; }
+        string[] d = Env("GUO_WSS_PAN_DIR", "1 0").Split(' ');
+        int dx = int.Parse(d[0]), dy = int.Parse(d[1]);
+        int steps = EnvInt("GUO_WSS_PAN_STEPS", 24), frames = EnvInt("GUO_WSS_BENCH_FRAMES", 90);
+        if (!await GoTo(host, world, s.X, s.Y, s.Z, 240)) return false;
+        var vsync = DisplayServer.WindowGetVsyncMode();
+        int cap = Engine.MaxFps;
+        DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
+        Engine.MaxFps = 0;
+        var all = new List<double>();
+        try
+        {
+            using var csv = new StreamWriter(Path.Combine(dir, "bench.csv"));
+            csv.WriteLine("step,x,y,frames,medianMs,p95Ms,maxMs,maskMs");
+            for (int i = 0; i <= steps; i++)
+            {
+                if (i > 0 && !await GoTo(host, world, s.X + dx * i, s.Y + dy * i, s.Z, 30)) break;
+                var t = new List<double>(frames);
+                ulong last = Godot.Time.GetTicksUsec();
+                for (int f = 0; f < frames; f++)
+                {
+                    PinLight(world);
+                    await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
+                    ulong now = Godot.Time.GetTicksUsec();
+                    t.Add((now - last) / 1000.0);
+                    last = now;
+                }
+                all.AddRange(t);
+                t.Sort();
+                csv.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{i},{world.Player.X},{world.Player.Y},{t.Count},{t[t.Count / 2]:F3},{t[(int)(t.Count * 0.95)]:F3},{t[^1]:F3},{WaterRender.MaskStats.Ms:F2}"));
+            }
+        }
+        finally
+        {
+            DisplayServer.WindowSetVsyncMode(vsync);
+            Engine.MaxFps = cap;
+        }
+        if (all.Count == 0) return false;
+        all.Sort();
+        GD.Print(string.Create(CultureInfo.InvariantCulture, $"[water sprint] bench {s.Name} style={Env("GUO_WSS_STYLE", "default")} frames={all.Count} median={all[all.Count / 2]:F3} ms p95={all[(int)(all.Count * 0.95)]:F3} ms max={all[^1]:F3} ms"));
+        return true;
+    }
+
     private static void Compare(Image before, Image now, int sx, int sy, out long changed, out long total, out int maxBlock)
     {
         int w = now.GetWidth(), h = now.GetHeight();

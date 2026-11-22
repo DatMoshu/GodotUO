@@ -99,7 +99,7 @@ internal static class WaterLookShot
         }
         if (Only is "creatures" or "scout" or "audit")
             return await WaterCreatureShot.Run(host, world, dir, Only);
-        if (Only is "coast" or "pan")
+        if (Only is "coast" or "pan" or "bench")
             return await WaterSprintShot.Run(host, world, dir, Only);
         await InputProbe.Say(host, "[go Trammel");
         await InputProbe.Wait(host, 120);
@@ -221,7 +221,7 @@ internal static class WaterLookShot
             await InputProbe.Wait(host, 10);
         }
         var field = GUO.Renderer.Water.WaterRender.Ripples;
-        GD.Print($"[water look] under way: wake marks={field.MarkCount} peak foam={field.PeakFoam:F2} peak height={field.PeakHeight:F2}");
+        GD.Print($"[water look] under way: wake marks={field.MarkCount} peak foam={field.PeakFoam:F2} peak height={field.PeakHeight:F2} stamps={field.Stamps} item={field.ItemStamps} effect={field.EffectStamps} swim={field.SwimStamps}");
         await Take(host, Path.Combine(dir, "wake-under-way.png"));
         phase = "stopping";
         await InputProbe.Say(host, "stop");

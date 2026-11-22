@@ -114,6 +114,8 @@ internal sealed class WaterRipples
     /// <summary>For the perf table: the last open-water map rebuild (ms) and swimmer rings made so far.</summary>
     public double LastWetMs { get; private set; }
     public int SwimStamps { get; private set; }
+    /// <summary>For the capture tools: splashes from items arriving on water, and from effects.</summary>
+    internal int ItemStamps, EffectStamps;
     /// <summary>For the probe and the look shot: the largest surface height in the last upload, and texels disturbed on dry ground.</summary>
     internal float PeakHeight { get; private set; }
     /// <summary>For the probe: the strongest wake foam in the last upload, 0..1, and the foam at a cell.</summary>
@@ -613,7 +615,7 @@ internal sealed class WaterRipples
         }
         _swimDrop.Clear();
         foreach (uint s in _swimmers.Keys) if (!_swimSeen.Contains(s)) _swimDrop.Add(s);
-        foreach (uint s in _swimDrop) _swimmers.Remove(s);
+        foreach (uint s in _swimDrop) { _swimmers.Remove(s); _swimAt.Remove(s); }
     }
 
     /// <summary>
@@ -634,15 +636,40 @@ internal sealed class WaterRipples
         if (_swimAreas.TryGetValue(area, out long at) && nowMs - at < SwimEveryMs) return false;
         if (_swimAreas.Count > 256) _swimAreas.Clear();
         _swimAreas[area] = nowMs;
-        Stamp(x, y, SwimRadius, SwimAmount);
+        // Not a ring in the wave field (that spread a wide circle round every swimmer and stirred
+        // the water for seconds): a small short-lived disturbance left behind the swimmer, as a
+        // boat's trail is. Two uneven dabs either side of its track drift apart and are gone in
+        // about a second, with a little foam; a swimmer whose direction is not yet known leaves one.
+        bool known = _swimAt.TryGetValue(serial, out var was);
+        _swimAt[serial] = (x, y);
+        float dx = known ? x - was.X : 0f, dy = known ? y - was.Y : 0f;
+        float len = MathF.Sqrt(dx * dx + dy * dy);
+        uint h = (uint)(serial * 2654435761u) ^ (uint)(nowMs * 40503);
+        float ra = (h & 0xFF) / 255f, rb = ((h >> 8) & 0xFF) / 255f, rc = ((h >> 16) & 0xFF) / 255f;
+        if (!known || len < 0.02f || len > 3f)
+        {
+            AddMark(x + (ra - 0.5f) * 0.3f, y + (rb - 0.5f) * 0.3f, 0f, 0f, SwimLife * 0.7f, SwimAmount * 0.7f, SwimRadius, SwimFoam * 0.7f);
+        }
+        else
+        {
+            float ux = dx / len, uy = dy / len, px = -uy, py = ux;
+            for (int k = -1; k <= 1; k += 2)
+            {
+                float r = k < 0 ? ra : rb;
+                AddMark(x - ux * (0.25f + 0.3f * rc) + px * (0.18f + 0.14f * r) * k, y - uy * (0.25f + 0.3f * rc) + py * (0.18f + 0.14f * r) * k,
+                    px * 0.3f * k - ux * 0.12f, py * 0.3f * k - uy * 0.12f,
+                    SwimLife * (0.7f + 0.6f * r), SwimAmount * (0.6f + 0.6f * rc) * (k < 0 ? 1f : -0.6f), SwimRadius * (0.75f + 0.4f * r), SwimFoam * (0.5f + 0.5f * rc));
+            }
+        }
         SwimStamps++;
         return true;
     }
 
-    // A ring each 350 ms of a swim step, a cell wide, strong enough to read at the shader's default
-    // ripple strength; a spot already stirred past SwimBusy (surface height) gets none.
+    // A disturbance each 350 ms of a swim step, under half a cell wide and gone in about a second;
+    // a spot already stirred past SwimBusy (surface height) gets none.
     internal const long SwimEveryMs = 350;
-    internal const float SwimRadius = 0.7f, SwimAmount = 0.5f, SwimBusy = 0.3f;
+    internal const float SwimRadius = 0.4f, SwimAmount = 0.2f, SwimBusy = 0.3f, SwimLife = 1.0f, SwimFoam = 0.5f;
+    private readonly Dictionary<uint, (float X, float Y)> _swimAt = new Dictionary<uint, (float X, float Y)>();
 
     private float SurfaceAt(float x, float y)
     {
@@ -675,9 +702,27 @@ internal sealed class WaterRipples
         return true;
     }
 
+    // The hulls seen on the last pass, a cell and a half wider than they are: a boat's parts
+    // step with it, a frame before or after the hull itself.
+    private readonly List<(float X0, float Y0, float X1, float Y1)> _hulls = new List<(float, float, float, float)>();
+
+    private bool OnHull(World world, int x, int y)
+    {
+        foreach (var h in _hulls)
+        {
+            if (x >= h.X0 && x <= h.X1 && y >= h.Y0 && y <= h.Y1) return true;
+        }
+        for (GameObject o = world.Map.GetTile(x, y); o != null; o = o.TNext)
+        {
+            if (o is Multi) return true;
+        }
+        return false;
+    }
+
     private void Boats(World world, WaterMask mask)
     {
         _seen.Clear();
+        _hulls.Clear();
         foreach (Item item in world.Items.Values)
         {
             if (item == null || item.IsDestroyed || !item.IsMulti || item.MultiInfo == null || !item.OnGround
@@ -704,6 +749,7 @@ internal sealed class WaterRipples
             }
 
             Rectangle r = item.MultiInfo.Value;
+            _hulls.Add((item.X + r.X - 1.5f, item.Y + r.Y - 1.5f, item.X + r.Width + 1.5f, item.Y + r.Height + 1.5f));
             Wake(boat, r, x, y, (sx, sy) => OpenWater(world, mask, sx, sy));
         }
 
@@ -753,9 +799,9 @@ internal sealed class WaterRipples
         }
 
         float gain = Math.Min(1f, boat.Speed / 3f);
-        // A faster hull leaves a longer trail: the rails live about 3.5 s at a crawl, 8 s at full sail.
+        // A faster hull leaves a longer trail: the rails live about 2.2 s at a crawl, 5 s at full sail.
         float speed = Math.Min(boat.Speed, 4f);
-        float railLife = WakeTrail * (3f + 1.25f * speed);
+        float railLife = WakeTrail * (1.8f + 0.8f * speed);
 
         float hx = (r.Width - r.X) * 0.5f, hy = (r.Height - r.Y) * 0.5f;
         float cx = x + (r.X + r.Width) * 0.5f, cy = y + (r.Y + r.Height) * 0.5f;
@@ -841,9 +887,11 @@ internal sealed class WaterRipples
             bool arrived = known
                 ? was.X != item.X || was.Y != item.Y
                 : !_jumped && Math.Abs(item.X - world.Player.X) < InsideView && Math.Abs(item.Y - world.Player.Y) < InsideView;
-            if (arrived && mask.WaterAt(item.X, item.Y, out int z) && item.Z <= z + 1)
+            // Not a boat's own parts (tiller, planks, hold): they ride the hull, and a splash a step
+            // from each of them drew a wedge of waves beside every sailing boat.
+            if (arrived && mask.WaterAt(item.X, item.Y, out int z) && item.Z <= z + 1 && !OnHull(world, item.X, item.Y))
             {
-                Stamp(item.X, item.Y, 0.6f, 0.6f);
+                Stamp(item.X, item.Y, 0.6f, 0.6f); ItemStamps++;
             }
         }
         _drop.Clear();
@@ -886,7 +934,7 @@ internal sealed class WaterRipples
                                 _effects[e] = (e.X, e.Y);
                                 if (!known && !_jumped && !e.IsMoving && mask.WaterAt(e.X, e.Y, out int z) && e.Z <= z + 4)
                                 {
-                                    Stamp(e.X, e.Y, 0.8f, 0.5f);
+                                    Stamp(e.X, e.Y, 0.8f, 0.5f); EffectStamps++;
                                 }
                             }
                         }
@@ -903,7 +951,7 @@ internal sealed class WaterRipples
                 _gone.Add(pair.Key);
                 if (pair.Key.IsMoving && mask.WaterAt(pair.Value.X, pair.Value.Y, out _))
                 {
-                    Stamp(pair.Value.X, pair.Value.Y, 0.7f, 0.6f);
+                    Stamp(pair.Value.X, pair.Value.Y, 0.7f, 0.6f); EffectStamps++;
                 }
             }
         }
