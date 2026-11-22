@@ -11,6 +11,7 @@ import json
 import os
 import secrets
 import shutil
+import shlex
 import socket
 import subprocess
 import sys
@@ -158,6 +159,7 @@ class ClientSession:
         self.extra_settings: dict = {}
         self.shard: tuple[str, int] | None = None     # --shard: the address the client connects to (UO_SHARD_HOST / UO_SHARD_PORT)
         self.extra_env: dict[str, str] = {}
+        self.client_exe: Path | None = None     # --client-exe: an exported client is run in place of play.bat and the project
         self._home: Path | None = None
         self.log_path = run_dir / "client.log"
         self.avi = run_dir / "raw" / "run.avi"
@@ -190,12 +192,20 @@ class ClientSession:
         env["GUO_ENGINE_ARGS"] = " ".join(engine)
         quiet = [] if self.record or self.interactive else ["--silent"]     # a recording keeps its audio; so does a person's run
         args = (["--focus", "--sound"] if self.interactive else ["--no-focus"]) + (["--window-size", self.size] if self.size else []) + quiet + list(self.extra_args)
-        cmd = [str(self.cfg.root / "launchers" / "game" / "play.bat"), *args]
+        cmd, cwd = self.command(args, engine)
         log = self.log_path.open("w", encoding="utf-8", errors="replace")
         try:
-            self.proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, cwd=str(self.cfg.root), **no_activate())
+            self.proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, cwd=cwd, **no_activate())
         finally:
             log.close()
+
+    def command(self, args: list[str], engine: list[str]) -> tuple[list[str], str]:
+        """What is started, and where. play.bat reads the engine's arguments from GUO_ENGINE_ARGS; an exported client
+        takes them itself, before the `--` that separates them from the client's own, and runs from its own folder."""
+        if self.client_exe is None:
+            return [str(self.cfg.root / "launchers" / "game" / "play.bat"), *args], str(self.cfg.root)
+        tokens = [t for part in engine for t in shlex.split(part, posix=False)]
+        return [str(self.client_exe), *tokens, "--", *args], str(Path(self.client_exe).parent)
 
     def _make_home(self) -> Path:
         """A client home for this run, made when a launch step names settings: the client keeps settings.json in the parent

@@ -202,6 +202,30 @@
       "shot": true
     },
     {
+      "id": "speak",
+      "do": {
+        "kind": "chat",
+        "text": "hello"
+      },
+      "say": "Say hello."
+    },
+    {
+      "id": "walk",
+      "do": {
+        "kind": "ui.hold",
+        "key": "Left",
+        "seconds": 3
+      },
+      "say": "Hold an arrow key: the character walks (toward the open road; a lamp post blocks the other way at this start).",
+      "expect": {
+        "world.moved": {
+          "at_least": 2
+        },
+        "within_s": 10
+      },
+      "shot": true
+    },
+    {
       "id": "open_backpack",
       "do": {
         "kind": "ui.key",
@@ -245,30 +269,6 @@
         "ui.absent": "ContainerGump",
         "within_s": 10
       }
-    },
-    {
-      "id": "walk",
-      "do": {
-        "kind": "ui.hold",
-        "key": "Right",
-        "seconds": 3
-      },
-      "say": "Hold an arrow key: the character walks.",
-      "expect": {
-        "world.moved": {
-          "at_least": 2
-        },
-        "within_s": 10
-      },
-      "shot": true
-    },
-    {
-      "id": "speak",
-      "do": {
-        "kind": "chat",
-        "text": "hello"
-      },
-      "say": "Say hello."
     },
     {
       "id": "open_paperdoll",

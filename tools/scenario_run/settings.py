@@ -6,6 +6,7 @@ Nothing here has a default path. A setting that is not configured means "do not 
     GUO_RUNS_DB          the registry (SQLite file shared by every project's runs)
     GUO_RUNS_SHARED_DIR  folder that gets run.json, events.jsonl, summary.md and the stills
     GUO_RUNS_VIDEO_DIR   folder that gets the master video (the Drive folder)
+    GUO_CLIENT_EXE       an exported client to run for client scenarios in place of play.bat (run.py --client-exe)
 """
 
 from __future__ import annotations
