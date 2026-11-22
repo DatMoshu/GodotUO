@@ -67,6 +67,44 @@ def test_floor_fades_to_the_deep_colour():
     assert max(steps) < 0.17, steps                                                   # no band: no column mean jumps
 
 
+def test_shader_seams_plan_has_one_floor_hue_no_strips_and_a_full_band():
+    land, lz, wet, occ = coast()
+    land[20:40] = 0xA8; lz[20:40] = -5; wet[20:40] = S.NO_STATIC
+    p = S.plan(land, lz, wet, occ, seed=3, shader=True)
+    assert {hue for x, y, sid, z, hue in p.placed if sid in S.FLOOR} == {S.PLAIN_FLOOR_HUE}
+    assert not [q for q in p.placed if q[2] in S.STRIP_IDS]
+    # every cell of the band is bed: the client fades the surface, so none is handed back to the opaque sea
+    assert (p.new_land[20:16 + S.SHALLOW_MAX] == S.BED_ID).all()
+    assert (p.new_land[16 + S.SHALLOW_MAX + 1:] == 0xA8).all()
+
+
+def test_measure_reads_a_staged_facet(tmp_path):
+    """measure.py on a tiny synthetic facet: a dug bed is found, its depth and the object on it."""
+    import measure
+
+    class TD:
+        static_count = 0x2000
+
+        def land(self, i):
+            return {"flags": 0x80 if i == 0xA8 else 0, "name": "water" if i == 0xA8 else "x"}
+
+        def static(self, i):
+            return {"flags": 0x80 if i == 0x1797 else 0, "height": 0, "name": "water" if i == 0x1797 else "rock"}
+
+    land = np.full((16, 16), 0x64, np.uint16); lz = np.full((16, 16), -15, np.int8)
+    land[:4] = 3; lz[:4] = 0
+    xs, ys = np.meshgrid(np.arange(4, 16), np.arange(16), indexing="ij")
+    sx = np.concatenate([xs.ravel(), [6]]).astype(np.int32); sy = np.concatenate([ys.ravel(), [5]]).astype(np.int32)
+    sid = np.concatenate([np.full(xs.size, 0x1797), [0x1363]]).astype(np.uint16)
+    sz = np.concatenate([np.full(xs.size, -5), [-14]]).astype(np.int8)
+    hue = np.zeros(sid.size, np.uint16)
+    measure.scan = lambda data, facet, override=None: (TD(), land, lz, (sx, sy, sid, sz, hue))
+    m = measure.measure(tmp_path, 0, None, band=8)
+    assert m["dug_bed_cells"] == 12 * 16 and m["objects_in_band"] == 1
+    assert m["profile"][0]["d"] == 1 and m["profile"][0]["bed_depth_median"] == 10.0
+    assert m["object_kinds"][0][0] == "rock" and m["water_statics"][0][0] == "0x1797"
+
+
 def test_ramp_is_measured_and_ordered():
     assert len(S.HUE_RAMP) == len(S.RAMP_PROGRESS) == len(set(S.HUE_RAMP))
     assert S.RAMP_PROGRESS[0] == 0.0 and S.RAMP_PROGRESS[-1] >= 0.75

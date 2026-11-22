@@ -290,3 +290,27 @@ not per frame.
 - `guo-water-pixel`, `guo-water-cel` and `guo-water-realistic` are built from
   `design/packs/water` and published like any pack; the catalogue's index
   signature covers their hashes.
+
+## Translucent water under a style (owner water sprint, 2026-11-22)
+
+A map whose water statics are translucent (a staged seabed, a shard's own)
+showed two faults under every style, both along tile edges: neighbouring
+diamonds overlap by a pixel row and blended twice (a dark line on every edge
+and round every shore tile), and the shallows ended against the opaque deep
+sea in a sawtooth. Both were being worked around in data (trimmed art, edge
+strips, a per-cell hue ramp, cells handed back to the sea by probability),
+which left per-cell tones and a line at the first row off the shore.
+
+- One blend a pixel: the doubled pixels are exactly those whose centre lies
+  on a cell boundary, so the shader gives them the alpha that adds up to the
+  tile's own over the wet cells sharing the pixel. No tile identity is needed
+  and every shader path gets it (`water_seams`).
+- Depth fade: translucent water thickens with the long shore distance, per
+  pixel, to opaque at 12 cells, where it is the same art as the deep sea's
+  land tiles (`water_depth_fade`). The distance is a new mask channel.
+- The mask is 256 cells, was 128: a 3840-wide view reaches 67 cells from the
+  player, and cells outside the window read as open sea, so coasts near the
+  edge of a large screen lost surf and shallows until the window re-centred.
+
+Only tiles with the water bit and alpha below 1 are touched: Classic, and
+opaque water under any style, draw as before.
