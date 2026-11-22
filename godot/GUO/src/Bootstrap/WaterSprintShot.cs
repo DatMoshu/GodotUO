@@ -27,16 +27,13 @@ internal static class WaterSprintShot
     public static async System.Threading.Tasks.Task<bool> Run(Node host, Game.World world, string dir, string mode)
     {
         var profile = ProfileManager.CurrentProfile;
-        bool custom = profile.UseCustomLightLevel; byte level = profile.LightLevel; int type = profile.LightLevelType;
+        int overall = world.Light.Overall, real = world.Light.RealOverall;
         float? frozen = WaterRender.FrozenSeconds;
         try
         {
-            // GUO_WSS_LIGHT: 0 is full day, 30 the darkest night; unset keeps the shard's own light.
-            int light = EnvInt("GUO_WSS_LIGHT", -1);
-            if (light >= 0)
-            {
-                profile.UseCustomLightLevel = true; profile.LightLevelType = 0; profile.LightLevel = (byte)Math.Clamp(light, 0, 30);
-            }
+            // GUO_WSS_LIGHT: the world light level, 0 full day to 30 the darkest night, set on the
+            // client only and again after every move; unset keeps the shard's own light.
+            _light = EnvInt("GUO_WSS_LIGHT", -1);
             // The swell is a function of the water clock; frozen, two frames differ only by what moved.
             if (EnvInt("GUO_WSS_FREEZE", 1) != 0) WaterRender.FrozenSeconds = 40f;
             string style = Env("GUO_WSS_STYLE", "");
@@ -54,8 +51,15 @@ internal static class WaterSprintShot
         {
             GUO.Renderer.CleanShots.Set(false);
             WaterRender.FrozenSeconds = frozen;
-            profile.UseCustomLightLevel = custom; profile.LightLevel = level; profile.LightLevelType = type;
+            world.Light.Overall = overall; world.Light.RealOverall = real;
         }
+    }
+
+    private static int _light = -1;
+
+    private static void PinLight(Game.World world)
+    {
+        if (_light >= 0) world.Light.Overall = world.Light.RealOverall = Math.Clamp(_light, 0, 30);
     }
 
     private static IEnumerable<(string Name, int X, int Y, int Z)> Spots()
@@ -74,7 +78,10 @@ internal static class WaterSprintShot
     {
         await InputProbe.Say(host, $"[go {x} {y} {z}");
         for (int i = 0; i < 60 && !(world.Player.X == x && world.Player.Y == y); i++) await InputProbe.Wait(host, 5);
+        PinLight(world);
         await InputProbe.Wait(host, settle);
+        PinLight(world);
+        await InputProbe.Wait(host, 4);
         return world.Player.X == x && world.Player.Y == y;
     }
 

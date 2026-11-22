@@ -646,6 +646,51 @@ vec3 water_shade_core(vec3 base, vec2 target_px) {
 	return clamp(c, 0.0, 1.0);
 }
 
+// ONE BLEND A PIXEL
+//
+// A tile diamond is 44 x 44 art pixels and its neighbours' centres are 22
+// away, so neighbouring diamonds share the pixels on the line between them:
+// each of a diamond's edge pixels is drawn by two tiles (four at a corner).
+// Opaque that is invisible. A translucent surface blends twice there and
+// draws a dark line along every tile edge and round every shore-shaped tile.
+//
+// Those pixels are exactly the ones whose centre lies on a cell boundary,
+// which a fragment can tell from its own world position; it cannot tell which
+// tile is drawing it, and does not need to: every water tile that covers such
+// a pixel takes the alpha that, blended once per wet cell sharing the pixel,
+// adds up to the tile's own. Same colour, same result as one blend. Cells
+// without water do not count, so the edge against a beach keeps full alpha.
+// water_seams 0 leaves the alpha alone: for a data set whose water art was
+// trimmed to tile exactly once instead (tools/seabed --seams art).
+uniform float water_seams = 1.0;
+
+float water_seam_alpha(float alpha, vec2 target_px) {
+	if (alpha >= 0.999 || water_seams < 0.5) { return alpha; }
+	float grain = max(water_params3.x, 1.0);
+	vec2 world = (floor((target_px * water_target_to_world.xy + water_target_to_world.zw) / grain) + 0.5) * grain;
+	vec2 f;
+	vec2 cell = water_cell(world, f);
+	float z = floor(water_mask_at(cell).g * 255.0 + 0.5) - 128.0;
+	// Pixel centres are half-integers, so these sums are whole numbers: a
+	// boundary along X where the first is a multiple of 44, along Y the second.
+	float a = mod(floor(world.x + world.y + 4.0 * z + 0.5) + 22.0, 44.0);
+	float b = mod(floor(world.y + 4.0 * z - world.x + 0.5) + 22.0, 44.0);
+	bool on_x = a < 0.5;
+	bool on_y = b < 0.5;
+	if (!on_x && !on_y) { return alpha; }
+	// The cell on the far side of each boundary the pixel lies on; found from
+	// a point pushed a quarter cell inside it, so a tie cannot round both ways.
+	float u = world.x / 22.0;
+	float v = (world.y + 4.0 * z) / 22.0;
+	vec2 hi = floor(vec2((u + v) * 0.5, (v - u) * 0.5) + 0.5 + vec2(on_x ? 0.25 : 0.0, on_y ? 0.25 : 0.0));
+	float n = water_mask_at(hi).r;
+	if (on_x) { n += water_mask_at(hi - vec2(1.0, 0.0)).r; }
+	if (on_y) { n += water_mask_at(hi - vec2(0.0, 1.0)).r; }
+	if (on_x && on_y) { n += water_mask_at(hi - vec2(1.0, 1.0)).r; }
+	n = max(floor(n + 0.5), 1.0);
+	return 1.0 - pow(1.0 - alpha, 1.0 / n);
+}
+
 // DEPTH FADE
 //
 // A translucent water tile shows what lies under it: a staged seabed
