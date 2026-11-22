@@ -1028,6 +1028,14 @@ public partial class Main : Node
     /// <summary>Go photograph a terrain layer; see LayerShot.</summary>
     private async void LayerShotThenQuit()
     {
+        if (_options.WaterLookShot)
+        {
+            await Preamble();
+            WaterLookShot.Only = _options.WaterLookOnly;
+            await WaterLookShot.Run(this, _options.ScreenshotDir);
+            Quit(WaterLookShot.Passed ? 0 : 1);
+            return;
+        }
         if (_options.BoatDemo)
         {
             // PORT DEVIATION (GUO): --boat-demo hands the client to the player afterwards; no quit.
@@ -1847,6 +1855,10 @@ public partial class Main : Node
         public bool LayerLight { get; private set; }
         /// <summary>--boat-demo: dev shard only; log in, put a boat on the water at the Haven docks and stay; see BoatDemo.</summary>
         public bool BoatDemo { get; private set; }
+        /// <summary>--water-look-shot: dev shard only; candidate water presets at the Haven dock, then a filmed boat wake; see WaterLookShot.</summary>
+        public bool WaterLookShot { get; private set; }
+        /// <summary>--water-look-only presets|wake: one half of --water-look-shot.</summary>
+        public string WaterLookOnly { get; private set; } = "";
 
         /// <summary>--extract-test: prove ExtractDecal on two PNGs; see ExtractTest.</summary>
         public bool ExtractTest { get; private set; }
@@ -2609,6 +2621,13 @@ public partial class Main : Node
                     case "--boat-demo":
                         o.BoatDemo = true;
                         o.LayerShot = true;
+                        break;
+                    case "--water-look-shot":
+                        o.WaterLookShot = true;
+                        o.LayerShot = true;
+                        break;
+                    case "--water-look-only":
+                        o.WaterLookOnly = Next();
                         break;
                     case "--layer-capture":
                         o.LayerCapture = Next();

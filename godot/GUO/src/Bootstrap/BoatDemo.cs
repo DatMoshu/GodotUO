@@ -49,53 +49,8 @@ internal static class BoatDemo
         int sx = bx + 5, sy = by;
         await InputProbe.Say(host, $"[go {sx} {sy} {bz}");
         for (int i = 0; i < 30 && !(world.Player.X == sx && world.Player.Y == sy); i++) await InputProbe.Wait(host, 10);
-
-        // The way a player does it: a deed in the pack, used, aimed at the water.
-        var backpack = world.Player.FindItemByLayer(Game.Data.Layer.Backpack);
-        if (backpack == null) { Fail(world, "no backpack"); return false; }
-        await InputProbe.Say(host, "[AddToPack SmallBoatDeed");
-        if (!await WaitTarget(host, world)) { Fail(world, "[AddToPack gave no target cursor (is this a staff account?)"); return false; }
-        world.TargetManager.Target(world.Player.Serial);
-        Game.GameObjects.Item deed = null;
-        for (int i = 0; i < 60 && deed == null; i++)
-        {
-            await InputProbe.Wait(host, 5);
-            foreach (var it in world.Items.Values)
-                if (it.Container == backpack.Serial && it.Graphic == 0x14F2 && (deed == null || it.Serial > deed.Serial)) deed = it;
-        }
-        if (deed == null) { Fail(world, "no boat deed arrived in the backpack"); return false; }
-
-        var before = new System.Collections.Generic.HashSet<uint>();
-        foreach (var it in world.Items.Values) if (it.IsMulti) before.Add(it.Serial);
-        Game.GameActions.DoubleClick(world, deed.Serial);
-        if (!await WaitTarget(host, world)) { Fail(world, "the deed gave no placement cursor"); return false; }
-        // Answer as a player's click on that water would (GameSceneInputHandler):
-        // the water static when there is one, else the land with graphic 0. The
-        // shard re-reads a land target's z from the terrain, so sea drawn as a
-        // static over deeper land must be targeted as that static.
-        world.TargetManager.Target(graphic, (ushort)bx, (ushort)by, bz, true);
-
-        Game.GameObjects.Item boat = null;
-        for (int i = 0; i < 60 && boat == null; i++)
-        {
-            await InputProbe.Wait(host, 5);
-            foreach (var it in world.Items.Values)
-                if (it.IsMulti && !before.Contains(it.Serial) && Math.Abs(it.X - bx) <= 3 && Math.Abs(it.Y - by) <= 3) boat = it;
-        }
-        if (boat == null)
-        {
-            for (int yy = -6; yy <= 6; yy += 3)
-            for (int xx = -2; xx <= 2; xx += 2)
-            {
-                var sb = new System.Text.StringBuilder();
-                for (var o = world.Map.GetTile(bx + xx, by + yy); o != null; o = o.TNext)
-                    sb.Append($" {o.GetType().Name}:0x{o.Graphic:X4}@{o.Z}");
-                GD.PrintErr($"[GUO] boat demo tile {bx + xx},{by + yy}:{sb}");
-            }
-            GD.PrintErr($"[GUO] boat demo player {world.Player.X},{world.Player.Y},{world.Player.Z} map {world.MapIndex}");
-            Fail(world, $"the shard placed no boat at {bx},{by},{bz} (see the journal)");
-            return false;
-        }
+        Game.GameObjects.Item boat = await PlaceBoat(host, world, bx, by, bz, graphic);
+        if (boat == null) return false;
         GD.Print($"[GUO] boat demo: boat 0x{boat.Serial:X8} at {boat.X},{boat.Y},{boat.Z}");
 
         // Stand on the deck at the boat's centre, then check we are there.
@@ -195,6 +150,58 @@ internal static class BoatDemo
         return true;
     }
 
+    /// <summary>Uses a small boat deed on the water at bx,by the way a player does; null on failure.</summary>
+    internal static async System.Threading.Tasks.Task<Game.GameObjects.Item> PlaceBoat(Node host, Game.World world, int bx, int by, sbyte bz, ushort graphic)
+    {
+        // The way a player does it: a deed in the pack, used, aimed at the water.
+        var backpack = world.Player.FindItemByLayer(Game.Data.Layer.Backpack);
+        if (backpack == null) { Fail(world, "no backpack"); return null; }
+        await InputProbe.Say(host, "[AddToPack SmallBoatDeed");
+        if (!await WaitTarget(host, world)) { Fail(world, "[AddToPack gave no target cursor (is this a staff account?)"); return null; }
+        world.TargetManager.Target(world.Player.Serial);
+        Game.GameObjects.Item deed = null;
+        for (int i = 0; i < 60 && deed == null; i++)
+        {
+            await InputProbe.Wait(host, 5);
+            foreach (var it in world.Items.Values)
+                if (it.Container == backpack.Serial && it.Graphic == 0x14F2 && (deed == null || it.Serial > deed.Serial)) deed = it;
+        }
+        if (deed == null) { Fail(world, "no boat deed arrived in the backpack"); return null; }
+
+        var before = new System.Collections.Generic.HashSet<uint>();
+        foreach (var it in world.Items.Values) if (it.IsMulti) before.Add(it.Serial);
+        Game.GameActions.DoubleClick(world, deed.Serial);
+        if (!await WaitTarget(host, world)) { Fail(world, "the deed gave no placement cursor"); return null; }
+        // Answer as a player's click on that water would (GameSceneInputHandler):
+        // the water static when there is one, else the land with graphic 0. The
+        // shard re-reads a land target's z from the terrain, so sea drawn as a
+        // static over deeper land must be targeted as that static.
+        world.TargetManager.Target(graphic, (ushort)bx, (ushort)by, bz, true);
+
+        Game.GameObjects.Item boat = null;
+        for (int i = 0; i < 60 && boat == null; i++)
+        {
+            await InputProbe.Wait(host, 5);
+            foreach (var it in world.Items.Values)
+                if (it.IsMulti && !before.Contains(it.Serial) && Math.Abs(it.X - bx) <= 3 && Math.Abs(it.Y - by) <= 3) boat = it;
+        }
+        if (boat == null)
+        {
+            for (int yy = -6; yy <= 6; yy += 3)
+            for (int xx = -2; xx <= 2; xx += 2)
+            {
+                var sb = new System.Text.StringBuilder();
+                for (var o = world.Map.GetTile(bx + xx, by + yy); o != null; o = o.TNext)
+                    sb.Append($" {o.GetType().Name}:0x{o.Graphic:X4}@{o.Z}");
+                GD.PrintErr($"[GUO] boat demo tile {bx + xx},{by + yy}:{sb}");
+            }
+            GD.PrintErr($"[GUO] boat demo player {world.Player.X},{world.Player.Y},{world.Player.Z} map {world.MapIndex}");
+            Fail(world, $"the shard placed no boat at {bx},{by},{bz} (see the journal)");
+            return null;
+        }
+        return boat;
+    }
+
     private static async System.Threading.Tasks.Task<bool> WaitTarget(Node host, Game.World world)
     {
         for (int i = 0; i < 120 && !world.TargetManager.IsTargeting; i++) await InputProbe.Wait(host, 2);
@@ -215,6 +222,9 @@ internal static class BoatDemo
     // one z -- land 168-171/310-311 or a water static 0x1796-0x17B2 at that z --
     // with nothing else standing at or above it. Searched in rings from the start.
     private static bool FindOpenWater(Game.World world, out int bx, out int by, out sbyte bz, out ushort graphic)
+        => FindOpenWaterNear(world, StartX, StartY, out bx, out by, out bz, out graphic);
+
+    internal static bool FindOpenWaterNear(Game.World world, int startX, int startY, out int bx, out int by, out sbyte bz, out ushort graphic)
     {
         bool Sea(int x, int y, out sbyte z) => SeaTile(x, y, out z, out _);
         bool SeaTile(int x, int y, out sbyte z, out ushort target)
@@ -225,7 +235,7 @@ internal static class BoatDemo
             for (var o = world.Map.GetTile(x, y); o != null; o = o.TNext)
             {
                 if (o is Game.GameObjects.Land land) { landZ = land.Z; landG = land.Graphic; haveLand = true; }
-                else if (o is Game.GameObjects.Static or Game.GameObjects.Multi)
+                else if (o is Game.GameObjects.Static or Game.GameObjects.Multi or Game.GameObjects.Item)
                 {
                     if (o.Graphic >= 0x1796 && o.Graphic <= 0x17B2) { staticWaterZ = o.Z; waterG = o.Graphic; }
                     else otherTop = Math.Max(otherTop, o.Z);
@@ -244,7 +254,7 @@ internal static class BoatDemo
             for (int dx = -r; dx <= r; dx++)
             {
                 if (Math.Max(Math.Abs(dx), Math.Abs(dy)) != r) continue;
-                int cx = StartX + dx, cy = StartY + dy;
+                int cx = startX + dx, cy = startY + dy;
                 if (!SeaTile(cx, cy, out bz, out graphic)) continue;
                 // A north-facing small boat spans about 5 x 13 tiles: keep a
                 // margin of one tile all round.
