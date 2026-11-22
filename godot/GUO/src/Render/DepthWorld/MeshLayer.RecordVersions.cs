@@ -31,7 +31,7 @@ public sealed partial class MeshLayer
     {
         // ADR-0044: a pooled layer can return with the same quad count but
         // entirely different geometry/textures, before per-quad IDs exist.
-        ContentStamp++;
+        ContentStamp++; GeometryStamp++;
         if (_recordVersions != null) _recordResetVersion = checked(++_recordSequence);
     }
 }

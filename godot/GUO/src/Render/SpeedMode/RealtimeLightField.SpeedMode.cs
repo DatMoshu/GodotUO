@@ -13,7 +13,24 @@ internal sealed partial class RealtimeLightField
         internal int Side, Scale, X, Y, Revision;
         internal ulong Blockers;
         internal float[] Scratch;
+        /// <summary>Frames this map has been served after its blockers changed (the budget's starvation guard).</summary>
+        internal int StaleFrames,StaleStamp;
     }
+
+    // PORT DEVIATION (GUO): idea from MeesaJarJar fork 495f077. After a grid
+    // rebuild, at most this many same-position reach maps are recomputed per
+    // frame; the rest keep last frame's map for a few frames instead of
+    // spiking one frame. A light that moved or changed size has no map to
+    // reuse and always computes at once; a map stale for MaxStaleFrames frames
+    // is recomputed regardless of budget, so every map converges.
+    internal const int ReachRefreshBudget=2;
+    internal const int MaxStaleFrames=6;
+    private int _reachRefreshesLeft=ReachRefreshBudget;
+    private int _stampedFrame;
+    /// <summary>Stale maps served from the previous frame since the last <c>BeginSpeedReach</c>.</summary>
+    internal int LastDeferred { get; private set; }
+    /// <summary>Cumulative reach maps computed and deferred, for the perf probe.</summary>
+    internal static long ReachComputedTotal,ReachDeferredTotal;
     private readonly Dictionary<CacheKey,SpeedReach> _speedReach = new();
     private ulong _speedHash;
     private int _speedRevision;
@@ -57,7 +74,7 @@ internal sealed partial class RealtimeLightField
             _speedHash=HashBlockers();
             _speedHash^=((ulong)(uint)_width<<32)|(uint)_height;
         }
-        LastComputed=0;
+        LastComputed=0; LastDeferred=0; _reachRefreshesLeft=ReachRefreshBudget; _stampedFrame++;
         if (_speedReach.Count>CacheLimit) _speedReach.Clear();
     }
 
@@ -70,7 +87,15 @@ internal sealed partial class RealtimeLightField
         if (!_speedReach.TryGetValue(key,out var reach))
             _speedReach.Add(key,reach=new SpeedReach());
         if (reach.Pixels!=null && reach.Blockers==_speedHash && reach.Side==side
-            && reach.X==source.X-radius && reach.Y==source.Y-radius) return reach;
+            && reach.X==source.X-radius && reach.Y==source.Y-radius) { reach.StaleFrames=0; return reach; }
+        if (reach.Pixels!=null && reach.Side==side && reach.X==source.X-radius && reach.Y==source.Y-radius
+            && _reachRefreshesLeft<=0 && reach.StaleFrames<MaxStaleFrames)
+        {
+            if (reach.StaleStamp!=_stampedFrame) { reach.StaleFrames++; reach.StaleStamp=_stampedFrame; }
+            LastDeferred++; ReachDeferredTotal++;
+            return reach;
+        }
+        if (reach.Pixels!=null && reach.Side==side && reach.X==source.X-radius && reach.Y==source.Y-radius) _reachRefreshesLeft--;
         // ComputeReach leaves its exact binary rays in _scratchVis. Its existing
         // classic blurred result stays private to this cache and is never summed.
         int classicScale=_fineScale;
@@ -117,8 +142,8 @@ internal sealed partial class RealtimeLightField
             reach.Pixels[index*2+1]=count>0 || soft>0f ? (byte)255 : (byte)0;
         }
         reach.Side=side; reach.Scale=scale; reach.X=source.X-radius; reach.Y=source.Y-radius;
-        reach.Blockers=_speedHash; reach.Revision=++_speedRevision;
-        LastComputed++;
+        reach.Blockers=_speedHash; reach.Revision=++_speedRevision; reach.StaleFrames=0;
+        LastComputed++; ReachComputedTotal++;
         return reach;
     }
 }
