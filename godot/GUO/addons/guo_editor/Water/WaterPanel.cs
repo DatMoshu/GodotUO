@@ -125,16 +125,17 @@ internal partial class WaterPanel : ScrollContainer
         Shallow(shallows, "Clear water reach", 0, (s, v) => s with { FadeStart = v, FadeEnd = Math.Max(s.FadeEnd, v + 1f) },
             "Cells from land over which the water stays clear enough to see the seabed.");
         Shallow(shallows, "Deep water from", 1, (s, v) => s with { FadeEnd = v, FadeStart = Math.Min(s.FadeStart, v - 1f) },
-            "Cells from land at which the surface is the opaque deep sea. Close to the reach above: a sharp drop-off. Far from it: a slow fade.");
+            "Cells from land at which the surface is the opaque deep sea. Close to the reach above: a sharp drop-off. Far from it: a slow fade. "
+            + "Stops at 13 here: a seabed stage lays its bed about that far out, and a fade that reaches past it ends in a hard edge.");
         Shallow(shallows, "Seabed darkening", 2, (s, v) => s with { FloorReach = v },
             "Cells from land over which the seabed sand darkens to the deep colour. Larger keeps the bed pale further out.");
         Shallow(shallows, "Sand bars", 3, (s, v) => s with { SandBars = v }, "How much lighter the pale patches of the seabed are. Zero gives an even bed.");
-        Shallow(shallows, "Wake foam", 4, (s, v) => s with { WakeFoam = v }, "White water in a boat's trail. Zero leaves only the ripples.");
-        Shallow(shallows, "Wake length", 5, (s, v) => s with { WakeLength = v }, "How long a boat's trail lasts, as a share of the built-in 2 to 5 seconds.");
+        // wake.foam and wake.length stay in the draft at their defaults: the World view has no boat
+        // to show them on, so they get no control here until one can be seen working.
         var shallowActions = new HFlowContainer(); shallows.AddChild(shallowActions);
-        AddButton(shallowActions, "Harbor", () => SetShallows(new WaterShallows(6f, 10f, 12f, .25f, .7f, .7f)));
-        AddButton(shallowActions, "Open sea", () => SetShallows(new WaterShallows(4f, 8f, 9f, .3f, 1.3f, 1.6f)));
-        AddButton(shallowActions, "Clear lagoon", () => SetShallows(new WaterShallows(14f, 22f, 30f, .8f, .9f, 1f)));
+        AddButton(shallowActions, "Harbor", () => SetShallows(new WaterShallows(6f, 10f, 12f, .25f, 1f, 1f)));
+        AddButton(shallowActions, "Open sea", () => SetShallows(new WaterShallows(4f, 8f, 9f, .3f, 1f, 1f)));
+        AddButton(shallowActions, "Clear lagoon", () => SetShallows(new WaterShallows(11.5f, 13f, 30f, .8f, 1f, 1f)));
         AddButton(shallowActions, "Defaults", () => SetShallows(WaterShallows.Defaults));
         AddButton(shallowActions, "Save v2 draft…", () =>
         {
@@ -328,6 +329,8 @@ internal partial class WaterPanel : ScrollContainer
         dialog.PopupCenteredRatio(.65f);
     });
 
+    /// <summary>Cells from land a seabed stage covers with bed (tools/seabed); the panel's fade ends inside it.</summary>
+    internal const float StageReach = 13f;
     private WaterShallows _shallows = WaterShallows.Defaults;
     private readonly SpinBox[] _shallowInputs = new SpinBox[6];
     internal WaterShallows Shallows => _shallows;
@@ -337,7 +340,9 @@ internal partial class WaterPanel : ScrollContainer
         var range = WaterShallows.Ranges[index];
         var row = new HBoxContainer { TooltipText = tip }; parent.AddChild(row);
         var label = new Label { Text = title, SizeFlagsHorizontal = SizeFlags.ExpandFill }; row.AddChild(label);
-        var input = new SpinBox { MinValue = range.Low, MaxValue = range.High, Step = index is 3 or 4 or 5 ? .05 : .5, CustomMinimumSize = new Vector2(105, 0) };
+        // The fade's two ends stop where a seabed stage's bed does (StageReach); the schema allows more.
+        float high = index == 0 ? StageReach - 1f : index == 1 ? StageReach : range.High;
+        var input = new SpinBox { MinValue = range.Low, MaxValue = high, Step = index is 3 or 4 or 5 ? .05 : .5, CustomMinimumSize = new Vector2(105, 0) };
         row.AddChild(input); _shallowInputs[index] = input;
         input.ValueChanged += v => { if (!_sync) SetShallows(write(_shallows, (float)v)); };
         NumericScrub.Attach(label, input);
@@ -346,7 +351,15 @@ internal partial class WaterPanel : ScrollContainer
     /// <summary>Takes a draft (checked), shows it in the inputs and in the previewed world.</summary>
     internal void SetShallows(WaterShallows value)
     {
-        _shallows = value.Checked();
+        value = value.Checked();
+        if (value.FadeEnd > StageReach)
+        {
+            // A draft written by hand may reach further than the stage; show what the panel can.
+            float end = StageReach, start = Math.Min(value.FadeStart, end - 1f);
+            value = value with { FadeStart = start, FadeEnd = end };
+            if (_status != null) _status.Text = $"Deep water from was limited to {StageReach:0} cells, the reach of a seabed stage.";
+        }
+        _shallows = value;
         bool was = _sync; _sync = true;
         float[] v = { value.FadeStart, value.FadeEnd, value.FloorReach, value.SandBars, value.WakeFoam, value.WakeLength };
         for (int i = 0; i < v.Length; i++) if (_shallowInputs[i] != null) _shallowInputs[i].Value = v[i];

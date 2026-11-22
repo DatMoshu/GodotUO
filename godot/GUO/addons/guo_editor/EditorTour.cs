@@ -644,6 +644,7 @@ public partial class EditorTour : Node
                 ("pick", "World tab: pick and inspect", PickSeg),
                 ("layers", "World tab: the Layers menu and seasons", LayersSeg),
                 ("water", "Water: author, preview and export a preset", WaterSeg),
+                ("watershallows", "Water: shallows and wakes on a staged seabed", WaterShallowsSeg),
                 ("guides", "World tab: the Guides menu", GuidesSeg),
                 ("minimap", "World tab: the minimap", MinimapSeg),
                 ("multi", "World tab: placing a multi", MultiPlaceSeg),
