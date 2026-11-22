@@ -40,17 +40,17 @@ def main(argv=None) -> int:
     out = Path(a.out) if a.out else cfg.build / "seabed" / f"map{a.facet}"
     t0 = time.time()
     with uomap.open_facet(install, a.facet) as f:
-        land, lz, wet, occ = S.scan_facet(f)
-        p = S.plan(land, lz, wet, occ, seed=a.seed, shallow_max=a.shallow_max)
+        land, lz, wet, occ, full = S.scan_facet(f)
+        p = S.plan(land, lz, wet, occ, seed=a.seed, shallow_max=a.shallow_max, full_water=full)
         stats = {
             "facet": a.facet, "width": land.shape[0], "height": land.shape[1], "seed": a.seed,
             "shallow_max": a.shallow_max,
             "water_chunks": p.water_blocks, "eligible_chunks": p.eligible_blocks, "covered_chunks": p.covered_blocks,
-            "water_cells": p.water_cells, "shallow_cells": p.shallow_cells, "objects": len(p.placed),
+            "water_cells": p.water_cells, "shallow_cells": p.shallow_cells, "extended_cells": p.extended_cells, "statics_added": len(p.placed),
         }
         print(json.dumps(stats, indent=2))
         if a.cmd == "generate":
-            lines = S.write_stage(f, p.placed, out, install)
+            lines = S.write_stage(f, p.placed, out, install, p.new_land, p.new_lz, land, lz)
             if not a.opaque_water:
                 lines.append(S.stage_translucent_water(install, out))
             (out / "files_override.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")

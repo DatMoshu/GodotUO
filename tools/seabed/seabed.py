@@ -1,12 +1,13 @@
-"""Seabed layout for a UO facet: pure planning plus the statics writer.
+"""Seabed layout for a UO facet: pure planning plus the stage writer.
 
 The shallows of Felucca are land tiles dug below the water statics (bed
-0x4C-0x64 at z -15, water at z -5), and nothing lives on them. This module
-reads that, defines which water is shallow, and plans sea plants, corals,
-rocks and sand patches on it, in groups, thinning out toward the deep.
+0x4C-0x64 at z -15, water at z -5), and nothing lives on them. They also stop
+at an arbitrary line, where the deep sea (flat wet land, opaque) begins. This
+module defines the shallow band, extends the bed to its full width, lays a floor
+whose colour fades into the deep, and plants sea plants, corals and rocks on it.
 
-Nothing here writes to the install: the writer copies statics/staidx into a
-stage folder and refuses a stage inside the install.
+Nothing here writes to the install: the writer copies the files it patches into
+a stage folder and refuses a stage inside the install.
 """
 from __future__ import annotations
 
@@ -18,12 +19,9 @@ import numpy as np
 
 WET_LAND = (0xA8, 0xA9, 0xAA, 0xAB, 0x136, 0x137)
 WATER_STATIC = (0x1796, 0x17B2)
-BED_FIRST, BED_LAST = 0x4C, 0x64
 NO_STATIC = -127
 
 # Client art (tiledata names in the comments). Sources in tools/seabed/README.md.
-SAND_RIPPLE = (0x2468, 0x2469, 0x246A, 0x246B)          # "sand" diamonds with ripples
-SAND_RIPPLE_B = (0x245E, 0x245F, 0x2460, 0x2461, 0x2462, 0x2463)
 ROCKS_SMALL = (0x1363, 0x1364, 0x1365, 0x1368, 0x1369, 0x136B, 0x136C, 0x136D)  # "rock"/"rocks"
 ROCKS_CLUSTER = (0x1367, 0x136A)                        # "rocks": 2-3 stones
 BOULDERS = (0x1771, 0x1772, 0x1773, 0x1774, 0x1775, 0x1776)  # large brown/grey "rock"
@@ -31,15 +29,29 @@ PLANTS = (0xD04, 0xD05)                                 # "water plants", "reeds
 CORAL = (0x4C2A, 0x4C2B, 0x4C2C, 0x4C2D, 0x4C2E, 0x4C2F, 0x4C30, 0x4C31)  # "Sea Coral"/"Sea Sponge"
 CORAL_B = (0xA38B, 0xA38D, 0xA38E, 0xA38F, 0xA386)      # fire/staghorn/plate/red coral, anemone
 SHELLS = (0xFC4, 0xFC5, 0xFC6, 0xFC8, 0xFC9, 0xFCA, 0xFCB, 0xFCC)
+FLOOR = (0x9DE9, 0x9DEA, 0x9DEB, 0x9DEC)                # "sand_tile": a seamless sand diamond
+WATER_FILL = (0x1797, 0x1798, 0x1799, 0x179A, 0x179B)   # interior water statics, as on Felucca's own beds
 
-SHALLOW_MAX = 12  # cells from the nearest dry cell (Chebyshev) that still count as shallow
-DENSITY_CAP = 0.5
+SHALLOW_MAX = 14   # cells from dry land over which the shallows fade out into the deep
+# Hue ramp for the floor, shore to deep (hues.mul ids). The first is a bright teal; the last brings the
+# water, seen through the translucent surface, to the colour of the open sea. Chosen by
+# compositing the tile through every hue over the measured deep-water colour and taking the
+# eight closest to a straight line from the shore colour to the deep colour (README).
+HUE_RAMP = (1151, 91, 390, 489, 588, 587, 1960, 1960)
+FLOOR_Z = -15
+OBJECT_Z = -14     # above the floor tile so it never draws over them
+BED_ID = 0x64
+BED_FIRST, BED_LAST = 0x4C, 0x64
 
 
 @dataclass
 class Plan:
-    """What the generator decided: statics as (x, y, id, z) in facet cells."""
+    """What the generator decided: statics as (x, y, id, z, hue) in facet cells, plus the land
+    it turned into seabed (new_land/new_lz) where the dug beds stopped short of the deep."""
     placed: list
+    new_land: object
+    new_lz: object
+    extended_cells: int
     water_cells: int
     shallow_cells: int
     water_blocks: int
@@ -90,71 +102,88 @@ def shore_distance(water):
     return distance_transform_cdt(water, metric="chessboard")
 
 
-def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALLOW_MAX):
-    """Plan seabed objects. Arrays are [x, y]. `occupied` marks cells that already
-    hold a non-water static (piers, boats, ruins) and stay untouched.
+def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALLOW_MAX, full_water=None):
+    """Plan the seabed. Arrays are [x, y]. `occupied` marks cells holding a non-water static
+    (piers, boats, ruins); they get a floor but no seabed objects.
 
-    Shallow rule: a dug seabed cell (see water_masks) within `shallow_max` cells of dry land.
-    Bands by shore distance d:  rim d<=2 rocks and sand; shelf 3..6 plants, corals, sand;
-    slope 7+ boulder fields, coral heads, sparse weed. Groups come from two noise fields
-    (a plant meadow field and a rock field), so objects clump and leave clear sand between.
+    Shallow rule: a water cell no further than `shallow_max` cells (Chebyshev) from dry land,
+    over a dug bed or over deep wet land that is turned into the same bed (land 0x64 at z -15
+    under a water static at z -5), so the shallows reach their full width. Every shallow cell
+    gets a floor tile whose hue steps from plain sand at the shore to the colour of the open
+    sea at `shallow_max`, dithered by noise, so no edge shows between shallows and deep.
+    Plants, corals, rocks and shells sit on the floor in groups whose density falls off with
+    the same distance. `full_water` marks cells that already carry a whole water tile (0x1797-0x179C);
+    the others in the band (the near-empty 0x1796 and shore-shaped edges Felucca stacks along its
+    beds) get one more at z -5, or the floor would show through bare.
     """
     water, bed = water_masks(land, land_z, wet_z)
     w, h = land.shape
     dist = shore_distance(water)
-    shallow = bed & (dist <= shallow_max) & ~occupied
+    wet_land = np.isin(land, WET_LAND)
+    wet_static = wet_z > NO_STATIC
+    ext = wet_land & (dist <= shallow_max)               # deep land turned into bed (with or without a surface already)
+    bed_land = (land >= BED_FIRST) & (land <= BED_LAST)
+    lowered = wet_static & ~wet_land & bed_land & ~bed   # Felucca's bed rows raised to the surface: sunk to bed depth
+    shallow = bed | lowered | ext
+    floor_z = np.where(wet_static, wet_z.astype(np.int16) - 10, FLOOR_Z).astype(np.int16)
     xs = np.arange(w)[:, None] * np.ones((1, h), np.int64) + origin[0]
     ys = np.ones((w, 1), np.int64) * np.arange(h)[None, :] + origin[1]
     r = _hash2(xs, ys, seed)
     r2 = _hash2(xs, ys, seed + 7)
+    r3 = _hash2(xs, ys, seed + 13)
     meadow = _value_noise(w, h, 9, seed + 1)
     rocky = _value_noise(w, h, 7, seed + 2)
-    sandy = _value_noise(w, h, 11, seed + 3)
+    sandy = _value_noise(w, h, 13, seed + 3)
 
-    kind = np.zeros((w, h), np.uint8)   # 0 none 1 sand 2 rock 3 boulder 4 plant 5 coral 6 shell
-    rim = dist <= 2
-    shelf = (dist >= 3) & (dist <= 6)
-    slope = dist >= 7
-    cand = shallow
-    kind[cand & (sandy > 0.80)] = 1   # whole patches, not a sprinkle
-    rock_zone = cand & (rocky > 0.6)
-    kind[rock_zone & (r2 < 0.30) & (rim | shelf)] = 2
-    kind[cand & (sandy > 0.80) & (rocky <= 0.6) & (r2 > 0.9)] = 6
-    kind[rock_zone & (r2 < 0.12) & slope] = 3
-    kind[cand & rim & (rocky > 0.72) & (r2 < 0.08)] = 3
-    plant_zone = cand & (meadow > 0.45) & (kind == 0)
-    kind[plant_zone & shelf & (r < 0.45)] = 4
-    kind[plant_zone & slope & (r < 0.18)] = 4
-    kind[plant_zone & rim & (r < 0.14)] = 4
-    coral_zone = cand & (meadow < 0.34) & (kind == 0) & (dist >= 4)
-    kind[coral_zone & (r2 < 0.14)] = 5
-    kind[cand & (kind == 0) & (r < 0.012)] = 6
+    t = np.clip(dist.astype(np.float64) / shallow_max, 0.0, 1.0)   # 0 at the shore, 1 in the deep
+    fade = (1.0 - t) ** 1.5                                        # object density falls to 0 smoothly
+    nb = len(HUE_RAMP) - 1
+    level = t * nb + (r3 - 0.5) * 0.9 - np.clip(sandy - 0.55, 0, None) * 4.0   # sand patches: lighter, soft
+    level = np.clip(np.rint(level), 0, nb).astype(int)
+    level[dist >= shallow_max] = nb
+
+    kind = np.zeros((w, h), np.uint8)   # 0 none 2 rock 3 boulder 4 plant 5 coral 6 shell
+    free = shallow & (dist >= 1) & ~occupied
+    rock_zone = free & (rocky > 0.6)
+    kind[rock_zone & (r2 < 0.55 * fade)] = 2
+    kind[rock_zone & (r2 < 0.10 * fade) & (dist >= 3)] = 3
+    plant_zone = free & (meadow > 0.45) & (kind == 0)
+    kind[plant_zone & (r < 0.55 * fade)] = 4
+    coral_zone = free & (meadow < 0.34) & (kind == 0) & (dist >= 3)
+    kind[coral_zone & (r2 < 0.30 * fade)] = 5
+    kind[free & (kind == 0) & (r < 0.02 * fade)] = 6
+
+    new_land = land.copy(); new_lz = land_z.copy()
+    new_land[ext] = BED_ID
+    new_lz[ext] = floor_z[ext]
+    new_lz[lowered] = floor_z[lowered]
 
     placed = []
-    for k in range(1, 7):
+    need = shallow & (dist >= 2) & ((ext & ~wet_static) | (wet_static & ~(full_water if full_water is not None else wet_static)))
+    ix, iy = np.nonzero(need)
+    for x, y in zip(ix.tolist(), iy.tolist()):
+        placed.append((x, y, WATER_FILL[int(r[x, y] * len(WATER_FILL))], int(wet_z[x, y]) if wet_static[x, y] else -5, 0))
+    ix, iy = np.nonzero(shallow)
+    for x, y in zip(ix.tolist(), iy.tolist()):
+        placed.append((x, y, FLOOR[int(r2[x, y] * len(FLOOR))], int(floor_z[x, y]), HUE_RAMP[level[x, y]]))
+    for k in (2, 3, 4, 5, 6):
         ix, iy = np.nonzero(kind == k)
         for x, y in zip(ix.tolist(), iy.tolist()):
-            rr = _pick_unit(x + origin[0], y + origin[1], seed, k)
-            placed.append((x, y, _pick_id(k, rr, int(dist[x, y])), int(land_z[x, y])))
+            placed.append((x, y, _pick_id(k, _pick_unit(x + origin[0], y + origin[1], seed, k)), int(floor_z[x, y]) + 1, 0))
 
     def blocks(mask):
         return int(mask[: w // 8 * 8, : h // 8 * 8].reshape(w // 8, 8, h // 8, 8).any(axis=(1, 3)).sum())
-    cov = np.zeros((w, h), bool)
-    for x, y, *_ in placed:
-        cov[x, y] = True
-    return Plan(placed, int(water.sum()), int(shallow.sum()), blocks(water), blocks(bed & (dist <= shallow_max)), blocks(cov))
+    return Plan(placed, new_land, new_lz, int(ext.sum()), int(water.sum()), int(shallow.sum()),
+                blocks(water), blocks(shallow), blocks(kind > 0))
 
 
 def _pick_unit(x, y, seed, k):
-    v = _hash2(np.array([x]), np.array([y]), seed * 31 + k * 101)[0]
-    return float(v)
+    return float(_hash2(np.array([x]), np.array([y]), seed * 31 + k * 101)[0])
 
 
-def _pick_id(k, u, d):
+def _pick_id(k, u):
     def pick(seq):
         return seq[min(int(u * len(seq)), len(seq) - 1)]
-    if k == 1:
-        return pick(SAND_RIPPLE if u < 0.7 else SAND_RIPPLE_B)
     if k == 2:
         return pick(ROCKS_SMALL if u < 0.7 else ROCKS_CLUSTER)
     if k == 3:
@@ -170,12 +199,13 @@ def _pick_id(k, u, d):
 
 def scan_facet(facet):
     """Read a uomap.Facet into [x, y] arrays: land id, land z, wet static z, and
-    cells holding any other (non-water) static."""
+    cells holding any other (non-water) static, and cells carrying a whole water tile."""
     W, H = facet.width_blocks * 8, facet.height_blocks * 8
     land = np.zeros((W, H), np.uint16)
     lz = np.zeros((W, H), np.int8)
     wet = np.full((W, H), NO_STATIC, np.int8)
     occ = np.zeros((W, H), bool)
+    full = np.zeros((W, H), bool)
     for bx in range(facet.width_blocks):
         for by in range(facet.height_blocks):
             n = facet.number(bx, by)
@@ -189,28 +219,36 @@ def scan_facet(facet):
             r = np.frombuffer(facet.sta, dtype=np.uint8, count=length // 7 * 7, offset=off).reshape(-1, 7)
             for k in range(len(r)):
                 sid = int(r[k, 0]) | (int(r[k, 1]) << 8)
-                if sid in (0, 0xFFFF) or sid == 0x21A3:
-                    continue
+                if sid in (0, 0xFFFF) or sid in (0x21A3, 0x21A4) or (sid == 0x45 and int(np.int8(r[k, 4])) < -40):
+                    continue   # blank markers and the arch Felucca hides at z -88: not objects
                 x = bx * 8 + int(r[k, 2]); y = by * 8 + int(r[k, 3]); z = int(np.int8(r[k, 4]))
                 if WATER_STATIC[0] <= sid <= WATER_STATIC[1]:
                     wet[x, y] = max(wet[x, y], z)
+                    if 0x1797 <= sid <= 0x179C:
+                        full[x, y] = True
                 else:
                     occ[x, y] = True
-    return land, lz, wet, occ
+    return land, lz, wet, occ, full
 
 
 # ---------------------------------------------------------------- writing the stage
 
-def write_stage(facet, placed, out: Path, install: Path):
-    """Copy statics/staidx of `facet` into `out` with `placed` appended per block.
-    Returns the files_override.txt lines. Refuses an `out` inside the install."""
+def _inside(out: Path, install: Path) -> bool:
     out = out.resolve(); install = install.resolve()
-    if out == install or install in out.parents:
+    return out == install or install in out.parents
+
+
+def write_stage(facet, placed, out: Path, install: Path, new_land=None, new_lz=None, old_land=None, old_lz=None):
+    """Copy statics/staidx of `facet` into `out` with `placed` appended per block and, when
+    new_land/new_lz are given, a patched copy of the facet's land file (only the blocks
+    that changed). Returns the files_override.txt lines. Refuses an `out` inside the install."""
+    if _inside(out, install):
         raise SystemExit(f"refusing to write inside the client install: {out}")
+    out = out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     by_block = {}
-    for x, y, sid, z in placed:
-        by_block.setdefault((x >> 3, y >> 3), []).append((sid, x & 7, y & 7, z))
+    for x, y, sid, z, hue in placed:
+        by_block.setdefault((x >> 3, y >> 3), []).append((sid, x & 7, y & 7, z, hue))
     sta_path = out / f"statics{facet.facet}.mul"
     idx_path = out / f"staidx{facet.facet}.mul"
     sta = bytearray(facet.sta[:])
@@ -220,13 +258,29 @@ def write_stage(facet, placed, out: Path, install: Path):
         off, length = facet.statics_span(n)
         old = bytes(facet.sta[off:off + length]) if length else b""
         extra = struct.unpack_from("<i", idx, n * 12 + 8)[0]
-        new = old + b"".join(struct.pack("<HBBbH", sid, x, y, z, 0) for sid, x, y, z in items)
+        new = old + b"".join(struct.pack("<HBBbH", sid, x, y, z, hue) for sid, x, y, z, hue in items)
         start = len(sta)
         sta += new
         struct.pack_into("<iii", idx, n * 12, start, len(new), extra)
     sta_path.write_bytes(bytes(sta))
     idx_path.write_bytes(bytes(idx))
-    return [f"staidx{facet.facet}.mul={idx_path}", f"statics{facet.facet}.mul={sta_path}"]
+    lines = [f"staidx{facet.facet}.mul={idx_path}", f"statics{facet.facet}.mul={sta_path}"]
+    if new_land is not None:
+        import shutil
+        src = Path(facet.map_path)
+        dst = out / src.name
+        shutil.copyfile(src, dst)
+        diff = (new_land != old_land) | (new_lz != old_lz)
+        blocks = diff.reshape(diff.shape[0] // 8, 8, diff.shape[1] // 8, 8).any(axis=(1, 3))
+        with dst.open("r+b") as f:
+            for bx, by in zip(*np.nonzero(blocks)):
+                bx, by = int(bx), int(by)
+                ids = new_land[bx * 8:bx * 8 + 8, by * 8:by * 8 + 8].T.reshape(64)
+                zs = new_lz[bx * 8:bx * 8 + 8, by * 8:by * 8 + 8].T.reshape(64)
+                f.seek(facet.map_offset(facet.number(bx, by)) + 4)
+                f.write(b"".join(struct.pack("<Hb", int(i), int(z)) for i, z in zip(ids, zs)))
+        lines.append(f"{src.name.lower()}={dst}")
+    return lines
 
 
 TRANSLUCENT = 0x8  # TileFlag.Translucent; ClassicUO draws such statics at alpha 178/255
@@ -240,9 +294,9 @@ def stage_translucent_water(install: Path, out: Path) -> str:
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "uodata_write"))
     import uodata as U
-    out = out.resolve(); install = install.resolve()
-    if out == install or install in out.parents:
+    if _inside(out, install):
         raise SystemExit(f"refusing to write inside the client install: {out}")
+    out = out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     dst = out / "tiledata.mul"
     shutil.copyfile(install / "tiledata.mul", dst)
