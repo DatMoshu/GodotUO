@@ -234,9 +234,9 @@ internal static class LayerShot
         int x0 = world.Player.X, y0 = world.Player.Y, floorZ = world.Player.Z;
         int lo = world.Light.Overall, lr = world.Light.RealOverall;
         bool mode = profile.LightingSpeedMode; int lampWas = profile.SpeedModeLampShadows;
-        (string Name, ushort Centre, int X)[] bays =
+        (string Name, ushort Centre, int X, int Y)[] bays =
         {
-            ("slit", OpeningSlit, x0 - 9), ("window", OpeningWindow, x0), ("solid", OpeningWall, x0 + 9),
+            ("slit", OpeningSlit, x0 - 9, y0), ("window", OpeningWindow, x0 + 5, y0 - 1), ("solid", OpeningWall, x0 - 9, y0 + 28),
         };
         async System.Threading.Tasks.Task Shot(string name)
         {
@@ -255,16 +255,16 @@ internal static class LayerShot
         {
             // Each bay is staged afresh after arriving at it: the earlier run found
             // items staged from afar gone by the time the camera arrived.
-            async System.Threading.Tasks.Task Stage(string name, ushort centre, int bx)
+            async System.Threading.Tasks.Task Stage(string name, ushort centre, int bx, int by)
             {
-                await InputProbe.Say(host, $"[TileXYZ {bx - 5} {y0 - 4} 11 11 {floorZ} Static {OpeningFloor}");
+                await InputProbe.Say(host, $"[TileXYZ {bx - 5} {by - 4} 11 11 {floorZ} Static {OpeningFloor}");
                 await InputProbe.Wait(host, 40);
                 for (int dx = -2; dx <= 2; dx++)
                 {
-                    await InputProbe.Say(host, $"[TileXYZ {bx + dx} {y0} 1 1 {floorZ} Static {(dx == 0 ? centre : OpeningWall)}");
+                    await InputProbe.Say(host, $"[TileXYZ {bx + dx} {by} 1 1 {floorZ} Static {(dx == 0 ? centre : OpeningWall)}");
                     await InputProbe.Wait(host, 20);
                 }
-                GD.Print($"[GUO] layer openings: bay {name} centre 0x{centre:X4} at {bx},{y0},{floorZ}");
+                GD.Print($"[GUO] layer openings: bay {name} centre 0x{centre:X4} at {bx},{by},{floorZ}");
             }
 
             // Carry a lit torch: igniting one in the pack equips it (ModernUO BaseEquipableLight).
@@ -285,8 +285,8 @@ internal static class LayerShot
             {
                 foreach (var bay in bays)
                 {
-                    await Go(bay.X, y0 + dy);
-                    await Stage(bay.Name, bay.Centre, bay.X);
+                    await Go(bay.X, bay.Y + dy);
+                    await Stage(bay.Name, bay.Centre, bay.X, bay.Y);
                     world.Light.Overall = world.Light.RealOverall = 26;
                     string n = $"{bay.Name}_{side}";
                     profile.LightingSpeedMode = false; await InputProbe.Wait(host, 30); await Shot(n + "_classic");
