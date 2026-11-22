@@ -90,6 +90,8 @@ internal static class WaterLookShot
             WaterRipples.WakeTrough = wt; WaterRipples.WakeArm = wa; WaterRipples.WakeBow = wb;
             GD.Print($"[water look] wake amplitudes {wt} {wa} {wb}");
         }
+        if (Only is "creatures" or "scout" or "audit")
+            return await WaterCreatureShot.Run(host, world, dir, Only);
         await InputProbe.Say(host, "[go Trammel");
         await InputProbe.Wait(host, 120);
         string cleanup = System.Environment.GetEnvironmentVariable("GUO_WAKE_REMOVE");
