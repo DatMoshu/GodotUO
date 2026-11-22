@@ -4694,3 +4694,7 @@ diagnostics unsuitable for performance comparisons. Doctor:
 ## 57. Layered multi authoring metadata (components format 1)
 
 The optional editor_layers version-1 extension preserves named layer IDs, visibility, locks and a component-order membership array. Legacy descriptions remain one-layer documents; native writers consume the unchanged components array. See [layered multi editing](layered_multi_editor.md) for the schema and shared editing API. Editor-hidden layers still export; retain the authoring JSON for future edits.
+
+## 58. Seabed stage (`tools/seabed`)
+
+`python tools/seabed/run.py generate [--facet 0] [--seed 1] [--out DIR]` reads the install read only and writes `staidx<N>.mul`, `statics<N>.mul`, a `tiledata.mul` whose water statics 0x1796-0x17B2 carry the Translucent flag (omit with `--opaque-water`; opaque water hides the seabed), `files_override.txt` and `seabed.json` into `<UO_BUILD_DIR>/seabed/map<N>`. Play it with `--files-override <out>/files_override.txt`; the default client without it is unchanged. `seabed.json` holds `water_chunks` (8x8 blocks with any wet land or wet static), `eligible_chunks` (a dug bed cell within `shallow_max` cells of dry land), `covered_chunks` (at least one object placed), cell counts and `objects`. Same seed, same bytes. The id tables and the shallow rule are in `tools/seabed/README.md`.
