@@ -133,9 +133,18 @@ def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALL
     dist = shore_distance(water)
     wet_land = np.isin(land, WET_LAND)
     wet_static = wet_z > NO_STATIC
-    ext = wet_land & (dist <= shallow_max)               # deep land turned into bed (with or without a surface already)
+    # The client measures its depth fade from every cell it draws as dry, and a static standing in
+    # the water (a rock, a wreck, a post) is one. The bed therefore reaches `shallow_max` from those
+    # too, or the fade would show the opaque sea in blocks near them. Densities keep the true shore distance.
+    reach = shore_distance(water & ~occupied) if shader else dist
+    ext = wet_land & (reach <= shallow_max)               # deep land turned into bed (with or without a surface already)
     bed_land = (land >= BED_FIRST) & (land <= BED_LAST)
     lowered = wet_static & ~wet_land & bed_land & ~bed   # Felucca's bed rows raised to the surface: sunk to bed depth
+    if shader:
+        # A water static over any other land near the surface (rock shelves off a cliff) is water to the
+        # client too: sunk and floored like the rest, or the land shows through as a dark block. The
+        # row against the shore keeps its land: the shore-shaped tiles there lie on the beach itself.
+        lowered = lowered | (wet_static & ~wet_land & ~bed & (dist >= 2))
     xs = np.arange(w)[:, None] * np.ones((1, h), np.int64) + origin[0]
     ys = np.ones((w, 1), np.int64) * np.arange(h)[None, :] + origin[1]
     # Past the last ramp hue the floor stops: a deep cell (not a dug bed) stays the original opaque sea
