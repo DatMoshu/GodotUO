@@ -368,6 +368,9 @@ namespace GUO.Game.GameObjects
             }
             else if (Pass != DrawPass.Shadow)
             {
+                // PORT DEVIATION (GUO): the equipment draw order comes from a cached
+                // MobileDrawLayers in place of upstream's per-frame FindItemByLayer loop;
+                // same layers, same order, same first-duplicate-wins rule.
                 _drawLayers ??= new MobileDrawLayers();
                 foreach (Layer layer in _drawLayers.Read(this, IsFemale || isGargoyle, layerDir))
                 {
