@@ -91,6 +91,27 @@ public partial class WaterWorkbenchProbe : Node
             modelInput.Select(0); modelInput.EmitSignal(OptionButton.SignalName.ItemSelected, 0L);
             Require(panel.Style.Model == "uo" && panel.NumberInput("Palette levels").Editable,
                 "UO realtime enables palette authoring");
+            // The guo/water@2 depth and wake draft: defaults are what the client draws with, a draft
+            // survives save and reload, bad numbers are refused, and the inputs follow a loaded draft.
+            Require(panel.Shallows == WaterShallows.Defaults && WaterShallows.Defaults == new WaterShallows(9.5f, 13f, 17f, .5f, 1f, 1f),
+                "shallows and wake start at the client's numbers");
+            var lagoon = new WaterShallows(14f, 22f, 30f, .8f, .9f, 1.5f);
+            string v2 = Path.Combine(data, "shallows-v2.json");
+            WaterShallows.Save(WaterAuthoring.Presets[3], lagoon, v2);
+            Require(WaterShallows.Read(v2) == lagoon, "a v2 draft's depth and wake numbers survive save and reload");
+            Require(System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(v2)).Contains("\"schema\": \"guo/water@2\""), "the draft is a guo/water@2 document");
+            panel.SetShallows(WaterShallows.Read(v2));
+            Require(panel.Shallows == lagoon, "the panel takes a loaded v2 draft");
+            bool refused = false;
+            try { new WaterShallows(12f, 10f, 17f, .5f, 1f, 1f).Checked(); } catch (InvalidDataException) { refused = true; }
+            Require(refused, "a fade that ends before it starts is refused");
+            refused = false;
+            try { new WaterShallows(9.5f, 13f, 17f, .5f, 5f, 1f).Checked(); } catch (InvalidDataException) { refused = true; }
+            Require(refused, "wake foam out of range is refused");
+            refused = false;
+            try { WaterShallows.Parse(WaterAuthoring.Serialize(WaterAuthoring.Presets[0])); } catch (InvalidDataException) { refused = true; }
+            Require(refused, "a guo/water@1 style is not read as a v2 draft");
+            panel.SetShallows(WaterShallows.Defaults);
             panel.DraftFolderOverride = Path.Combine(data, "draft-library");
             Directory.CreateDirectory(panel.DraftFolderOverride);
             string draftA = Path.Combine(panel.DraftFolderOverride, "a.json"), draftB = Path.Combine(panel.DraftFolderOverride, "b.json");

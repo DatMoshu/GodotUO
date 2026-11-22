@@ -3364,6 +3364,9 @@ profile fields, Options entries, automatic downloads or shard authority.
 | `depth.tint` | RGB array, each 0..1; `[0.12,0.24,0.42]` | sRGB target colour for the depth blend |
 | `depth.strength` | 0..1; 0 | Maximum tint blend; 0 disables depth tint |
 | `depth.falloff` | 0.25..64 cells; 8 | Tint blend is `strength * (1 - exp(-d / falloff))`. `d` is distance into water from the low-shore contour, not bathymetry: the current world mask contains no underwater floor depth |
+| `depth.fade_start`, `depth.fade_end` | 0..28 and 1..29 cells; 9.5 and 13 | Translucent water (a map whose water tiles are see-through) stays clear to `fade_start` cells from land and is opaque from `fade_end`; `fade_end` must exceed `fade_start`. The client draws with the defaults (`water_depth_fade`, section 44) |
+| `depth.floor_reach` | 2..40 cells; 17 | Distance over which a seabed floor tile darkens to the deep colour (`water_floor_look.x`) |
+| `depth.sand_bars` | 0..1; 0.5 | How much lighter the seabed's pale patches are (`water_floor_look.y`); 0 is an even bed |
 | `shoreline.width` | 0..2 cells; 0.22 | Distance from the low-shore contour covered by foam; 0 disables foam |
 | `shoreline.strength` | 0..1; 0.85 | Foam intensity (native brightness modulation for `classicplus`); 0 disables it; cliffs stay excluded |
 | `normal.amplitude` | 0..2; 0.22 | Dimensionless strength of the procedural surface normal/ripple perturbation; 0 disables ambient perturbation |
@@ -3372,6 +3375,8 @@ profile fields, Options entries, automatic downloads or shard authority.
 | `flow.direction` | two numbers -1..1; `[1,0]` | World cell X/Y direction, normalised when consumed; `[0,0]` disables flow without division by zero |
 | `flow.strength` | 0..8 cells/second; 0 | Pattern advection rate along direction; never moves objects or changes shard physics |
 | `wake.boat`, `wake.player`, `wake.object` | each 0..2; each 1 | Independent multipliers on boat, mobile and falling/thrown item/effect disturbance rates; 0 disables that source. `player` includes other mobiles, as in WATER-03 |
+| `wake.foam` | 0..2; 1 | White water in a boat's trail (`water_wake_look.x`); 0 leaves only the ripples |
+| `wake.length` | 0.25..3; 1 | Lifetime of a boat's trail as a share of the built-in 2 to 5 seconds |
 | `wake.damping` | 0.9..0.999; 0.985 | Amplitude retention per 20 Hz simulation step, independent of render FPS |
 | `lighting.reflection` | 0..1; 0 | Surface reflection blend; 0 disables it. Reflection source and reduced-tier fallback are W-02/W-07 work; no capture pass is authorised by this contract |
 | `lighting.sun_glint` | 0..1; 0.35 | Highlight strength; 0 disables highlights in every model |
@@ -3380,6 +3385,12 @@ profile fields, Options entries, automatic downloads or shard authority.
 | `clock.offset`, `clock.fixed_time` | each 0..3600 seconds; each 0 | Elapsed mode: `(elapsed_seconds * rate + offset) % 3600`; fixed mode: `fixed_time % 3600` (rate/offset ignored). No claim of seamless looping. This clock never changes native art animation or simulation time |
 | `pixel.levels` | integer 0..16; 6 | Brightness levels; 0 allows smooth style shading |
 | `pixel.grain` | integer 1..8 world pixels; 1 | Style pixel size; native art stays nearest-neighbour |
+
+The editor's Water panel (`#if TOOLS`, `addons/guo_editor/Water/WaterShallows.cs`) authors six of
+these today: `depth.fade_start`, `depth.fade_end`, `depth.floor_reach`, `depth.sand_bars`,
+`wake.foam` and `wake.length`. It shows them in the previewed world, and saves and reloads them
+as a complete v2 document whose other fields come from the v1 draft by the correspondence
+below. The client itself still draws with the defaults; no pack carries the document.
 
 Numbers must be finite JSON numbers, not booleans or strings. The document
 uses the v1 transport envelope: at most 16 KiB of UTF-8, no BOM, duplicate keys

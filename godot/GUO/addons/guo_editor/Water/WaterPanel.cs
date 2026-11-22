@@ -119,6 +119,36 @@ internal partial class WaterPanel : ScrollContainer
         Number(shore, "Ripple strength", 0, 2, .05, s => s.RippleStrength, (s, v) => s with { RippleStrength = v });
         Number(shore, "Wave retention", .9, .999, .001, s => s.RippleDamping, (s, v) => s with { RippleDamping = v }, "Amount retained each simulation step. Higher values ring longer.");
 
+        var shallows = Group(body, "Shallows & wakes (water v2 draft)");
+        shallows.AddChild(new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            Text = "For maps whose water tiles are see-through (a staged seabed). Shown with Preview in World; saved as a guo/water@2 authoring draft, which no pack carries yet." });
+        Shallow(shallows, "Clear water reach", 0, (s, v) => s with { FadeStart = v, FadeEnd = Math.Max(s.FadeEnd, v + 1f) },
+            "Cells from land over which the water stays clear enough to see the seabed.");
+        Shallow(shallows, "Deep water from", 1, (s, v) => s with { FadeEnd = v, FadeStart = Math.Min(s.FadeStart, v - 1f) },
+            "Cells from land at which the surface is the opaque deep sea. Close to the reach above: a sharp drop-off. Far from it: a slow fade.");
+        Shallow(shallows, "Seabed darkening", 2, (s, v) => s with { FloorReach = v },
+            "Cells from land over which the seabed sand darkens to the deep colour. Larger keeps the bed pale further out.");
+        Shallow(shallows, "Sand bars", 3, (s, v) => s with { SandBars = v }, "How much lighter the pale patches of the seabed are. Zero gives an even bed.");
+        Shallow(shallows, "Wake foam", 4, (s, v) => s with { WakeFoam = v }, "White water in a boat's trail. Zero leaves only the ripples.");
+        Shallow(shallows, "Wake length", 5, (s, v) => s with { WakeLength = v }, "How long a boat's trail lasts, as a share of the built-in 2 to 5 seconds.");
+        var shallowActions = new HFlowContainer(); shallows.AddChild(shallowActions);
+        AddButton(shallowActions, "Harbor", () => SetShallows(new WaterShallows(6f, 10f, 12f, .25f, .7f, .7f)));
+        AddButton(shallowActions, "Open sea", () => SetShallows(new WaterShallows(4f, 8f, 9f, .3f, 1.3f, 1.6f)));
+        AddButton(shallowActions, "Clear lagoon", () => SetShallows(new WaterShallows(14f, 22f, 30f, .8f, .9f, 1f)));
+        AddButton(shallowActions, "Defaults", () => SetShallows(WaterShallows.Defaults));
+        AddButton(shallowActions, "Save v2 draft…", () =>
+        {
+            var dialog = Dialog("Save water v2 draft", FileDialog.FileModeEnum.SaveFile, "*.json ; Water v2 draft");
+            dialog.FileSelected += path => { Try(() => { CommitName(); WaterShallows.Save(_style, _shallows, path); _status.Text = "Saved v2 draft."; }); dialog.QueueFree(); };
+            dialog.PopupCenteredRatio(.65f);
+        });
+        AddButton(shallowActions, "Load v2 draft…", () =>
+        {
+            var dialog = Dialog("Load water v2 draft", FileDialog.FileModeEnum.OpenFile, "*.json ; Water v2 draft");
+            dialog.FileSelected += path => { Try(() => { SetShallows(WaterShallows.Read(path)); _status.Text = "Loaded v2 draft."; }); dialog.QueueFree(); };
+            dialog.PopupCenteredRatio(.65f);
+        });
+
         var drafts = Group(body, "Save & share");
         var draftActions = new HFlowContainer(); drafts.AddChild(draftActions);
         AddButton(draftActions, "Save draft", SaveDraft);
@@ -298,18 +328,46 @@ internal partial class WaterPanel : ScrollContainer
         dialog.PopupCenteredRatio(.65f);
     });
 
+    private WaterShallows _shallows = WaterShallows.Defaults;
+    private readonly SpinBox[] _shallowInputs = new SpinBox[6];
+    internal WaterShallows Shallows => _shallows;
+
+    private void Shallow(Node parent, string title, int index, Func<WaterShallows, float, WaterShallows> write, string tip)
+    {
+        var range = WaterShallows.Ranges[index];
+        var row = new HBoxContainer { TooltipText = tip }; parent.AddChild(row);
+        var label = new Label { Text = title, SizeFlagsHorizontal = SizeFlags.ExpandFill }; row.AddChild(label);
+        var input = new SpinBox { MinValue = range.Low, MaxValue = range.High, Step = index is 3 or 4 or 5 ? .05 : .5, CustomMinimumSize = new Vector2(105, 0) };
+        row.AddChild(input); _shallowInputs[index] = input;
+        input.ValueChanged += v => { if (!_sync) SetShallows(write(_shallows, (float)v)); };
+        NumericScrub.Attach(label, input);
+    }
+
+    /// <summary>Takes a draft (checked), shows it in the inputs and in the previewed world.</summary>
+    internal void SetShallows(WaterShallows value)
+    {
+        _shallows = value.Checked();
+        bool was = _sync; _sync = true;
+        float[] v = { value.FadeStart, value.FadeEnd, value.FloorReach, value.SandBars, value.WakeFoam, value.WakeLength };
+        for (int i = 0; i < v.Length; i++) if (_shallowInputs[i] != null) _shallowInputs[i].Value = v[i];
+        _sync = was;
+        UpdateWorld();
+    }
+
     private void UpdateWorld()
     {
         var world = _apply?.ButtonPressed == true ? _world?.Invoke() : null;
         if (_preview != null) _preview.LiveWorld = world != null;
         if (_ownedWorld != null && world != _ownedWorld && WaterRender.EditorWorld == _ownedWorld)
-        { WaterRender.EditorWorld = null; WaterRender.EditorStyle = null; }
+        { WaterRender.EditorWorld = null; WaterRender.EditorStyle = null; WaterRender.EditorShallows = null; }
         _ownedWorld = world;
         if (world == null) return;
         WaterRender.EditorWorld = world;
         WaterRender.EditorStyle = _classic.ButtonPressed ? null : _liveStyle;
         WaterRender.EditorSeconds = _preview.Seconds;
         WaterRender.EditorPaused = _freeze.ButtonPressed;
+        WaterRender.EditorShallows = _classic.ButtonPressed ? null
+            : (new Vector2(_shallows.FadeStart, _shallows.FadeEnd), new Vector2(_shallows.FloorReach, _shallows.SandBars), _shallows.WakeFoam, _shallows.WakeLength);
     }
     public override void _Process(double delta) => UpdateWorld();
     internal void Shutdown()
