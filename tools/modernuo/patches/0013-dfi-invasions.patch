@@ -1,9 +1,9 @@
 diff --git a/Projects/UOContent.Tests/Tests/Custom/DfiInvasionTests.cs b/Projects/UOContent.Tests/Tests/Custom/DfiInvasionTests.cs
 new file mode 100644
-index 000000000..332e11f13
+index 000000000..bd080655e
 --- /dev/null
 +++ b/Projects/UOContent.Tests/Tests/Custom/DfiInvasionTests.cs
-@@ -0,0 +1,213 @@
+@@ -0,0 +1,220 @@
 +using System;
 +using Server;
 +using Server.Custom.Dfi;
@@ -172,6 +172,7 @@ index 000000000..332e11f13
 +
 +        var player = new PlayerMobile(World.NewMobile);
 +        player.DefaultMobileInit();
++        var survivors = new System.Collections.Generic.List<BaseCreature>();
 +
 +        try
 +        {
@@ -204,6 +205,8 @@ index 000000000..332e11f13
 +            Assert.Equal(10, top[0].Kills);
 +
 +            var boss = invasion.BossCreature;
++            // A won invasion leaves its survivors in the world; this test removes them so later tests start empty.
++            survivors.AddRange(invasion.Invaders);
 +            invasion.OnCreatureDeath(boss);
 +            boss.Delete();
 +
@@ -214,6 +217,10 @@ index 000000000..332e11f13
 +        finally
 +        {
 +            player.Delete();
++            foreach (var bc in survivors)
++            {
++                bc.Delete();
++            }
 +        }
 +    }
 +}

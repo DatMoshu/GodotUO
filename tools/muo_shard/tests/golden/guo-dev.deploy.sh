@@ -13,7 +13,7 @@ ENV_FILE=/etc/muo/guo-dev.env
 UNIT=muo-guo-dev.service
 PORT=2593
 
-PIN=d4531cd94b739613155225c234900de9f47d2c88
+PIN=9782fd6aad1c41b3e0ca9e8843855421c00fe3e0
 CLONE_URL=https://github.com/modernuo/ModernUO.git
 
 as_user() { runuser -u "$SVC_USER" -- env HOME="$BASE" DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 "$@"; }
@@ -75967,10 +75967,10 @@ install -d "$(dirname $BASE/patches/0013-dfi-invasions.patch)"
 cat > $BASE/patches/0013-dfi-invasions.patch <<'MUO_EOF_0'
 diff --git a/Projects/UOContent.Tests/Tests/Custom/DfiInvasionTests.cs b/Projects/UOContent.Tests/Tests/Custom/DfiInvasionTests.cs
 new file mode 100644
-index 000000000..332e11f13
+index 000000000..bd080655e
 --- /dev/null
 +++ b/Projects/UOContent.Tests/Tests/Custom/DfiInvasionTests.cs
-@@ -0,0 +1,213 @@
+@@ -0,0 +1,220 @@
 +using System;
 +using Server;
 +using Server.Custom.Dfi;
@@ -76139,6 +76139,7 @@ index 000000000..332e11f13
 +
 +        var player = new PlayerMobile(World.NewMobile);
 +        player.DefaultMobileInit();
++        var survivors = new System.Collections.Generic.List<BaseCreature>();
 +
 +        try
 +        {
@@ -76171,6 +76172,8 @@ index 000000000..332e11f13
 +            Assert.Equal(10, top[0].Kills);
 +
 +            var boss = invasion.BossCreature;
++            // A won invasion leaves its survivors in the world; this test removes them so later tests start empty.
++            survivors.AddRange(invasion.Invaders);
 +            invasion.OnCreatureDeath(boss);
 +            boss.Delete();
 +
@@ -76181,6 +76184,10 @@ index 000000000..332e11f13
 +        finally
 +        {
 +            player.Delete();
++            foreach (var bc in survivors)
++            {
++                bc.Delete();
++            }
 +        }
 +    }
 +}
@@ -77882,7 +77889,7 @@ index 5b7c9eab6..83bc675b2 100644
                  Load($"dfi/{placed}.json"),
 diff --git a/Projects/UOContent/Custom/DFI/Items/SunArmor.cs b/Projects/UOContent/Custom/DFI/Items/SunArmor.cs
 new file mode 100644
-index 000000000..453995b62
+index 000000000..dbf17e20f
 --- /dev/null
 +++ b/Projects/UOContent/Custom/DFI/Items/SunArmor.cs
 @@ -0,0 +1,264 @@
@@ -77930,7 +77937,7 @@ index 000000000..453995b62
 +                return;
 +            }
 +
-+            chest.Guardians.Add(bc);
++            chest.AddToGuardians(bc);
 +            bc.Hue = Hue;
 +            bc.Title = "The Sun Guardian";
 +            bc.PackItem(CreateRandomPiece());
@@ -80716,11 +80723,11 @@ index 000000000..9f263bb8e
 +    }
 +}
 diff --git a/Projects/UOContent/Items/Maps/TreasureMap.cs b/Projects/UOContent/Items/Maps/TreasureMap.cs
-index 25711e120..6f5a0c64d 100644
+index fd2a9d75d..ecb0f9180 100644
 --- a/Projects/UOContent/Items/Maps/TreasureMap.cs
 +++ b/Projects/UOContent/Items/Maps/TreasureMap.cs
 @@ -809,6 +809,8 @@ protected override void OnTick()
-                         m_Chest.Guardians.Add(bc);
+                         m_Chest.AddToGuardians(bc);
                      }
                  }
 +
@@ -80729,10 +80736,10 @@ index 25711e120..6f5a0c64d 100644
              else
              {
 diff --git a/Projects/UOContent/Mobiles/BaseCreature.cs b/Projects/UOContent/Mobiles/BaseCreature.cs
-index 9a20a47d8..5712ca2af 100644
+index 0c6c76e04..cb803f928 100644
 --- a/Projects/UOContent/Mobiles/BaseCreature.cs
 +++ b/Projects/UOContent/Mobiles/BaseCreature.cs
-@@ -1902,6 +1902,10 @@ public override void OnBeforeSpawn(Point3D location, Map m)
+@@ -1947,6 +1947,10 @@ public override void OnBeforeSpawn(Point3D location, Map m)
              {
                  IsParagon = true;
              }
@@ -98445,22 +98452,6 @@ index 000000000..a1c77a225
 +}
 MUO_EOF_0
 chmod 0644 $BASE/patches/0024-dfi-conpvp-arena.patch
-install -d "$(dirname $BASE/patches/0025-pkcs-advisory.patch)"
-cat > $BASE/patches/0025-pkcs-advisory.patch <<'MUO_EOF_0'
-diff --git a/Projects/UOContent/UOContent.csproj b/Projects/UOContent/UOContent.csproj
-index 5789eabc6..1951c8ec6 100644
---- a/Projects/UOContent/UOContent.csproj
-+++ b/Projects/UOContent/UOContent.csproj
-@@ -43,6 +43,7 @@
-         <PackageReference Include="LibDeflate.Bindings" Version="1.0.4" />
-         <PackageReference Include="System.IO.Hashing" Version="10.0.12" />
-         <PackageReference Include="MailKit" Version="4.18.0" />
-+        <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
-         <PackageReference Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.12" />
-         <PackageReference Include="CommunityToolkit.HighPerformance" Version="8.4.2" />
-         <PackageReference Include="Argon2.Bindings" Version="1.20.0" />
-MUO_EOF_0
-chmod 0644 $BASE/patches/0025-pkcs-advisory.patch
 install -d "$(dirname $BASE/patches/0026-dev-photo-tour.patch)"
 cat > $BASE/patches/0026-dev-photo-tour.patch <<'MUO_EOF_0'
 diff --git a/Projects/UOContent/Misc/GuoPhotoTour.cs b/Projects/UOContent/Misc/GuoPhotoTour.cs
@@ -98660,7 +98651,6 @@ as_user git -C "$SRC" checkout -q -- global.json 2>/dev/null || true
 head="$(as_user git -C "$SRC" rev-parse -q --verify HEAD 2>/dev/null || true)"
 if as_user git -C "$SRC" apply -R --check "$BASE/patches/0027-uop-map-chunk-order.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0027-uop-map-chunk-order.patch"; fi
 if as_user git -C "$SRC" apply -R --check "$BASE/patches/0026-dev-photo-tour.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0026-dev-photo-tour.patch"; fi
-if as_user git -C "$SRC" apply -R --check "$BASE/patches/0025-pkcs-advisory.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0025-pkcs-advisory.patch"; fi
 if as_user git -C "$SRC" apply -R --check "$BASE/patches/0024-dfi-conpvp-arena.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0024-dfi-conpvp-arena.patch"; fi
 if as_user git -C "$SRC" apply -R --check "$BASE/patches/0023-dfi-bomberman.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0023-dfi-bomberman.patch"; fi
 if as_user git -C "$SRC" apply -R --check "$BASE/patches/0022-dfi-crate-race.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0022-dfi-crate-race.patch"; fi
@@ -98886,14 +98876,6 @@ elif as_user git -C "$SRC" apply -R --check "$BASE/patches/0024-dfi-conpvp-arena
 else
     as_user git -C "$SRC" apply --check "$BASE/patches/0024-dfi-conpvp-arena.patch" || true
     die "0024-dfi-conpvp-arena.patch does not apply to the checkout at $PIN; stopping"
-fi
-if as_user git -C "$SRC" apply --check "$BASE/patches/0025-pkcs-advisory.patch" >/dev/null 2>&1; then
-    as_user git -C "$SRC" apply "$BASE/patches/0025-pkcs-advisory.patch"
-elif as_user git -C "$SRC" apply -R --check "$BASE/patches/0025-pkcs-advisory.patch" >/dev/null 2>&1; then
-    echo "muo_shard: 0025-pkcs-advisory.patch already applied, skipping"
-else
-    as_user git -C "$SRC" apply --check "$BASE/patches/0025-pkcs-advisory.patch" || true
-    die "0025-pkcs-advisory.patch does not apply to the checkout at $PIN; stopping"
 fi
 if as_user git -C "$SRC" apply --check "$BASE/patches/0026-dev-photo-tour.patch" >/dev/null 2>&1; then
     as_user git -C "$SRC" apply "$BASE/patches/0026-dev-photo-tour.patch"

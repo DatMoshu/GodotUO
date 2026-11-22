@@ -11,14 +11,25 @@ namespace Server
         public static Timer DelayCall(TimeSpan delay, TimeSpan interval, Action action) => new();
         public void Stop() { }
     }
-    public static class AddressExtensions
+    // The two Utility members IPAddressUtility (compiled for real) needs since the pin's IPv6 bans
+    // (modernuo/ModernUO#2747). WriteMappedIPv6To is copied from Utility.cs; CIDR parsing is not exercised.
+    public static class Utility
     {
-        public static UInt128 ToUInt128(this IPAddress ip)
+        public static void WriteMappedIPv6To(this IPAddress ipAddress, Span<byte> destination)
         {
-            UInt128 value = 0;
-            foreach (byte b in ip.MapToIPv6().GetAddressBytes()) value = (value << 8) | b;
-            return value;
+            if (ipAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+            {
+                ipAddress.TryWriteBytes(destination, out _);
+                return;
+            }
+
+            destination[..8].Clear();
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(destination.Slice(8, 4), 0xFFFF);
+            ipAddress.TryWriteBytes(destination.Slice(12, 4), out _);
         }
+
+        public static UInt128 CreateCidrAddress(ReadOnlySpan<byte> bytes, int prefixLength, bool isMax) =>
+            throw new NotSupportedException("CIDR parsing is outside this test");
     }
 }
 namespace Server.Logging

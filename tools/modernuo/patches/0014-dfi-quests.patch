@@ -442,7 +442,7 @@ index 5b7c9eab6..83bc675b2 100644
                  Load($"dfi/{placed}.json"),
 diff --git a/Projects/UOContent/Custom/DFI/Items/SunArmor.cs b/Projects/UOContent/Custom/DFI/Items/SunArmor.cs
 new file mode 100644
-index 000000000..453995b62
+index 000000000..dbf17e20f
 --- /dev/null
 +++ b/Projects/UOContent/Custom/DFI/Items/SunArmor.cs
 @@ -0,0 +1,264 @@
@@ -490,7 +490,7 @@ index 000000000..453995b62
 +                return;
 +            }
 +
-+            chest.Guardians.Add(bc);
++            chest.AddToGuardians(bc);
 +            bc.Hue = Hue;
 +            bc.Title = "The Sun Guardian";
 +            bc.PackItem(CreateRandomPiece());
@@ -3276,11 +3276,11 @@ index 000000000..9f263bb8e
 +    }
 +}
 diff --git a/Projects/UOContent/Items/Maps/TreasureMap.cs b/Projects/UOContent/Items/Maps/TreasureMap.cs
-index 25711e120..6f5a0c64d 100644
+index fd2a9d75d..ecb0f9180 100644
 --- a/Projects/UOContent/Items/Maps/TreasureMap.cs
 +++ b/Projects/UOContent/Items/Maps/TreasureMap.cs
 @@ -809,6 +809,8 @@ protected override void OnTick()
-                         m_Chest.Guardians.Add(bc);
+                         m_Chest.AddToGuardians(bc);
                      }
                  }
 +
@@ -3289,10 +3289,10 @@ index 25711e120..6f5a0c64d 100644
              else
              {
 diff --git a/Projects/UOContent/Mobiles/BaseCreature.cs b/Projects/UOContent/Mobiles/BaseCreature.cs
-index 9a20a47d8..5712ca2af 100644
+index 0c6c76e04..cb803f928 100644
 --- a/Projects/UOContent/Mobiles/BaseCreature.cs
 +++ b/Projects/UOContent/Mobiles/BaseCreature.cs
-@@ -1902,6 +1902,10 @@ public override void OnBeforeSpawn(Point3D location, Map m)
+@@ -1947,6 +1947,10 @@ public override void OnBeforeSpawn(Point3D location, Map m)
              {
                  IsParagon = true;
              }
