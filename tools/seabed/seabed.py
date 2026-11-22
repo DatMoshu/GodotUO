@@ -92,6 +92,31 @@ def _value_noise(w, h, scale, seed):
     return (a * (1 - fxx) + b * fxx) * (1 - fyy) + (c * (1 - fxx) + d * fxx) * fyy
 
 
+def _measured_layout(free, dist, r, r2, meadow, rocky, w, h, seed):
+    """Object kinds laid out the way a hand-built map's shallows measure (run.py measure):
+    populated stretches and bare ones in about equal share, with a few lone objects on the bare
+    sand; about a fifth of the cells against the shore holding something, thinning steadily with
+    distance; stones and rubble close in, weed taking over further out; and groups that mix kinds,
+    since the local noise only weights the choice. Returns the kind array (0 none)."""
+    d = dist.astype(np.float64)
+    region = _value_noise(w, h, 22, seed + 31)
+    populated = np.clip((region - 0.42) / 0.16, 0.0, 1.0)
+    p = 0.34 * np.exp(-(d - 1.0) / 9.0) * populated + 0.012 * np.exp(-d / 12.0)
+    has = free & (r < p)
+    weights = np.stack([
+        (0.5 + rocky) * np.exp(-d / 5.0) + 0.15,                 # 2 rock
+        np.where(d >= 3, 0.10 * rocky, 0.0),                     # 3 boulder
+        (0.4 + meadow) * (1.0 - np.exp(-d / 3.0)),               # 4 plant
+        np.where(d >= 3, 0.25 * (1.0 - meadow), 0.0),            # 5 coral
+        np.full(d.shape, 0.06),                                  # 6 shell
+    ])
+    cum = np.cumsum(weights, axis=0)
+    pick = (r2[None] * cum[-1][None] >= cum).sum(axis=0)         # 0..4
+    kind = np.zeros((w, h), np.uint8)
+    kind[has] = (pick[has] + 2).astype(np.uint8)
+    return kind
+
+
 def water_masks(land, land_z, wet_z):
     """(water, shallow_bed): water is any wet land or wet static; the bed is a cell
     whose land lies at least 5 below its water static (a dug seabed)."""
@@ -184,6 +209,8 @@ def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALL
     coral_zone = free & (meadow < 0.34) & (kind == 0) & (dist >= 3)
     kind[coral_zone & (r2 < 0.30 * fade)] = 5
     kind[free & (kind == 0) & (r < 0.02 * fade)] = 6
+    if shader:
+        kind = _measured_layout(free, dist, r, r2, meadow, rocky, w, h, seed)
 
     new_land = land.copy(); new_lz = land_z.copy()
     new_land[ext] = BED_ID

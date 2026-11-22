@@ -33,6 +33,14 @@ exactly once and edge strips fill the trimmed pixels at coasts. Everything under
 below about the ramp, trimming and strips describes this kind. Do not play it with a water
 style: the shader would thin the pixels the trimming already left single.
 
+The shader stage also lays its objects out by measurement (`_measured_layout`): populated
+stretches and bare sand, a fifth of the cells against the shore holding something and fewer
+with every cell out, stones close in and weed further out, kinds mixed within a group. Share of
+cells holding an object at 1, 2, 4, 6, 10 and 14 cells from land: 0.19, 0.17, 0.13, 0.11,
+0.07, 0.05 (a hand-built reference map measured 0.19, 0.18, 0.13, 0.11, 0.08, 0.06). Still
+apart from that reference: more of the 8 x 8 blocks hold something (68% against 45%) and
+more objects stand alone (50% against 33%).
+
 ## Measuring a map
 
 `measure` reports how any facet's shallows are built: depth and bed by shore distance, what

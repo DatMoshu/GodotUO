@@ -78,6 +78,24 @@ def test_shader_seams_plan_has_one_floor_hue_no_strips_and_a_full_band():
     assert (p.new_land[16 + S.SHALLOW_MAX + 1:] == 0xA8).all()
 
 
+def test_shader_layout_has_gaps_thins_out_and_shifts_from_stone_to_weed():
+    w = h = 256
+    land = np.full((w, h), 0xA8, np.uint16); lz = np.full((w, h), -5, np.int8)
+    wet = np.full((w, h), S.NO_STATIC, np.int8)
+    land[:8] = 3; lz[:8] = 0
+    p = S.plan(land, lz, wet, np.zeros((w, h), bool), seed=5, shader=True)
+    objs = [(x, y, sid) for x, y, sid, z, hue in p.placed if z == S.OBJECT_Z]
+    assert objs
+    blocks = {(x // 8, y // 8) for x, y, sid in objs}
+    band_blocks = (S.SHALLOW_MAX // 8 + 1) * (h // 8)
+    assert 0.3 < len(blocks) / band_blocks < 0.9, len(blocks) / band_blocks       # populated stretches and bare ones
+    near = sum(1 for x, y, sid in objs if x - 8 <= 3); far = sum(1 for x, y, sid in objs if x - 8 >= 10)
+    assert near > far * 1.5                                                      # thins with distance
+    rock = set(S.ROCKS_SMALL) | set(S.ROCKS_CLUSTER) | set(S.BOULDERS)
+    share = lambda sel: sum(1 for x, y, sid in sel if sid in rock) / max(len(sel), 1)
+    assert share([o for o in objs if o[0] - 8 <= 3]) > share([o for o in objs if o[0] - 8 >= 8])
+
+
 def test_measure_reads_a_staged_facet(tmp_path):
     """measure.py on a tiny synthetic facet: a dug bed is found, its depth and the object on it."""
     import measure
