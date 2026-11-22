@@ -117,6 +117,11 @@ internal static class WaterCreatureShot
         double secs = double.Parse(Env("GUO_CREATURE_SECS", "30"), System.Globalization.CultureInfo.InvariantCulture);
         string tag = Env("GUO_CREATURE_TAG", "swim");
 
+        // The water look: the fresh-launch default, or a named preset (GUO_CREATURE_PRESET) to compare.
+        var look = Env("GUO_CREATURE_PRESET", "") is { Length: > 0 } pn
+            ? Array.Find(WaterLookShot.Presets, q => q.Name == pn)
+            : WaterLookShot.FromProfile(GUO.Configuration.Profile.CreatePlayerDefaults());
+        WaterLookShot.Apply(world, GUO.Configuration.ProfileManager.CurrentProfile, look);
         await InputProbe.Say(host, $"[go {sx} {sy} 0");
         await InputProbe.Wait(host, 120);
         // Open water for the swimmers: the cell nearest the site that is water without a pier over it,

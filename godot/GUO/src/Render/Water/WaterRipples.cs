@@ -129,6 +129,7 @@ internal sealed class WaterRipples
         _swimmers.Clear();
         _swimAreas.Clear();
         _wetAt = long.MinValue;
+        _wetRow = Cells; _wetOriginX = int.MinValue;
         _items.Clear();
         _effects.Clear();
         _seenEffects.Clear();
@@ -365,27 +366,44 @@ internal sealed class WaterRipples
         }
     }
 
-    // Rebuilds the wet-texel map from the mask: when the window moved, and twice
-    // a second while disturbances are made (new ground loads in).
+    // Rebuilds the wet-texel map from the mask, a few rows a frame so no frame pays for all of it
+    // (16 384 cells, tens of ms at once): a first full pass, then when the window moved, and twice
+    // a second only while the water is disturbed (a calm sea needs no map; new ground that loads
+    // in is picked up when it next stirs).
+    private const int WetRowsPerFrame = 8;
+    private int _wetRow = Cells; // Cells: no pass under way
+    private double _wetBusyMs;
     private void RefreshWet(World world, WaterMask mask)
     {
         long now = Time.Ticks;
         if (OriginX == int.MinValue) return;
-        if (OriginX == _wetOriginX && OriginY == _wetOriginY && now - _wetAt < 500) return;
+        bool moved = OriginX != _wetOriginX || OriginY != _wetOriginY;
+        bool active = _calmFor < 6.0 || _marks.Count > 0;
+        if (_wetRow >= Cells)
+        {
+            if (!(moved || (active && now - _wetAt >= 500))) return;
+            _wetRow = 0; _wetBusyMs = 0;
+            _wetOriginX = OriginX; _wetOriginY = OriginY;
+            if (_wetAt == long.MinValue) _wetRowsNow = Cells; // the first pass is all at once
+            else _wetRowsNow = WetRowsPerFrame;
+        }
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-        _wetOriginX = OriginX; _wetOriginY = OriginY; _wetAt = now;
-        for (int cy = 0; cy < Cells; cy++)
+        int end = Math.Min(Cells, _wetRow + _wetRowsNow);
+        for (int cy = _wetRow; cy < end; cy++)
         {
             for (int cx = 0; cx < Cells; cx++)
             {
                 // Open water: wet and with no pier or plank over it, so nothing ripples on sand or under a pier.
-                byte w = OpenWater(world, mask, OriginX + cx, OriginY + cy) ? (byte)1 : (byte)0;
+                byte w = OpenWater(world, mask, _wetOriginX + cx, _wetOriginY + cy) ? (byte)1 : (byte)0;
                 int t = cy * PerCell * Size + cx * PerCell;
                 _wet[t] = _wet[t + 1] = _wet[t + Size] = _wet[t + Size + 1] = w;
             }
         }
-        LastWetMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        _wetRow = end;
+        _wetBusyMs += (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        if (_wetRow >= Cells) { _wetAt = now; LastWetMs = _wetBusyMs; }
     }
+    private int _wetRowsNow = WetRowsPerFrame;
 
     private void Upload()
     {
