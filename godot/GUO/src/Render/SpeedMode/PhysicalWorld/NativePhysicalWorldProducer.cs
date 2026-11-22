@@ -295,7 +295,11 @@ internal static class NativePhysicalWorldProducer
             if (!structural) { _excluded++; return; }
             if (source.Moving) { Unknown(source, PhysicalUnknownReason.UnsupportedStructure); return; }
             if (tile.IsAnimated) { Unknown(source, PhysicalUnknownReason.UnsupportedStructure); return; }
-            if (tile.IsWindow || tile.IsTransparent || tile.IsTranslucent)
+            // An arrow slit is flagged Window but is solid masonry: it goes on to the
+            // art-qualified wall recipe (and stays unknown if its art fails it).
+            bool slit = tile.IsWindow && !LightOpenings.TransmitsLight(source.Graphic, true);
+            if (slit) Hash(source.Graphic);
+            if ((tile.IsWindow && !slit) || tile.IsTransparent || tile.IsTranslucent)
             { Unknown(source, PhysicalUnknownReason.OpticalOpening); return; }
             if (tile.IsRoof)
             {

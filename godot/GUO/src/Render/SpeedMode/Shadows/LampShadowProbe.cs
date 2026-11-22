@@ -39,6 +39,19 @@ public partial class LampShadowProbe : Node
         Check(!filtered.AddBlocker(0,0,30,GUO.Assets.TileFlag.Impassable,30,"oak tree trunk",false),"bare tree trunk name excluded");
         Check(!filtered.AddBlocker(0,0,30,GUO.Assets.TileFlag.Impassable,30,"wood",true),"bare trunk with foliage on tile excluded");
         Check(filtered.AddBlocker(0,0,30,GUO.Assets.TileFlag.Impassable,10,"crate",false),"solid blocker retained");
+        // Arrow slits (verified graphics) are flagged Window yet block like masonry; true windows still transmit.
+        const GUO.Assets.TileFlag windowWall=GUO.Assets.TileFlag.Wall | GUO.Assets.TileFlag.Window | GUO.Assets.TileFlag.Impassable;
+        foreach (ushort slit in new ushort[]{0x005B,0x005C,0x00CA,0x00CB})
+        {
+            Check(WallShadowGrid.Accepts(GUO.Renderer.Lights.LightOpenings.TransmissionFlags(slit,windowWall),20,"arrow loop",false),"arrow slit casts");
+            Check(GUO.Renderer.Lights.RealtimeLightField.Blocks(true,true,false,GUO.Renderer.Lights.LightOpenings.TransmitsLight(slit,true),20),"arrow slit blocks reach");
+        }
+        foreach (ushort window in new ushort[]{0x005D,0x005E,0x0022})
+        {
+            Check(!WallShadowGrid.Accepts(GUO.Renderer.Lights.LightOpenings.TransmissionFlags(window,windowWall),20,"window",false),"true window transmits");
+            Check(!GUO.Renderer.Lights.RealtimeLightField.Blocks(true,true,false,GUO.Renderer.Lights.LightOpenings.TransmitsLight(window,true),20),"true window open to reach");
+        }
+        Check(WallShadowGrid.Accepts(GUO.Renderer.Lights.LightOpenings.TransmissionFlags(0x005A,GUO.Assets.TileFlag.Wall | GUO.Assets.TileFlag.Impassable),20,"stone wall",false),"solid wall casts");
         Check(WallShadowGrid.TreeRule(GUO.Assets.TileFlag.None,"TREE",false)=="tree-trunk-name" &&
             WallShadowGrid.TreeRule(GUO.Assets.TileFlag.None,"wood",true)=="foliage-on-tile","tree rejection rule labelled");
         var line=new WallShadowGrid(); line.Begin(-2,-2,8,8); line.AddEdge(0,0,false,.75f,20);

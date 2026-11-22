@@ -95,6 +95,13 @@ namespace GUO.Renderer
         // PORT DEVIATION (GUO): ADR-0046 metadata; no change to MeshQuad.
         internal uint[] SurfaceData = new uint[INITIAL_CAPACITY];
         public int ContentStamp;
+        // PORT DEVIATION (GUO): idea from MeesaJarJar fork 495f077, done without
+        // touching ContentStamp. Same as ContentStamp except that per-vertex
+        // alpha and hue writes (translucency, circle of transparency) leave it
+        // alone, so the lighting grid hash does not churn on them; lighting
+        // does not depend on alpha. Depth World and the retained canvas still
+        // read ContentStamp.
+        public int GeometryStamp;
 
         // Per-frame visibility filtering
         public bool[] Visible = new bool[INITIAL_CAPACITY];
@@ -235,7 +242,7 @@ namespace GUO.Renderer
 
             _alphaDirty = true;
             _alphaDirtyCount = 0;
-            ContentStamp++;
+            ContentStamp++; // alpha only: GeometryStamp stays
         }
 
         /// <summary>
@@ -312,6 +319,7 @@ namespace GUO.Renderer
             Textures[index] = texture;
             RecordVertexChanged(index);
 
+            GeometryStamp++;
             MarkVertexDirty();
         }
 
@@ -661,7 +669,7 @@ namespace GUO.Renderer
         {
             // PORT DEVIATION (GUO): direct stretched-land writes must also
             // invalidate Depth World's layer-wide resident content stamp.
-            ContentStamp++;
+            ContentStamp++; GeometryStamp++;
             RecordVertexChanged(index);
         }
     }

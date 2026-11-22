@@ -14,6 +14,7 @@ internal partial class GameScene
     private ulong _speedGridHash;
     internal static long SpeedGridBuilds,SpeedGridHits;
 
+    // Hash uses GeometryStamp (task 2343): alpha/translucency writes bump only ContentStamp.
     // Same loaded-chunk bounds and fill as BuildRealtimeGrid. Conservative
     // membership/content dependencies include moving objects too; they may
     // cause an extra rebuild but cannot hide a changed wall or upper floor.
@@ -32,6 +33,7 @@ internal partial class GameScene
         static ulong Mix(ulong hash,int value)=>unchecked((hash^(uint)value)*1099511628211UL);
         ulong hash=14695981039346656037UL;
         hash=Mix(Mix(Mix(Mix(Mix(hash,_world.MapIndex),ox),oy),width),height);
+        hash=Mix(hash,GUO.Renderer.Lights.LightOpenings.ProbeSlitsTransmit ? 1 : 0);
         _speedGridChunks.Clear();
         for(int cy=oy>>3;cy<=(oy+height-1)>>3;cy++)
             for(int cx=ox>>3;cx<=(ox+width-1)>>3;cx++)
@@ -40,7 +42,7 @@ internal partial class GameScene
                 if(chunk==null || chunk.IsDestroyed) continue;
                 _speedGridChunks.Add(chunk);
                 hash=Mix(Mix(Mix(Mix(Mix(Mix(hash,RuntimeHelpers.GetHashCode(chunk)),chunk.X),chunk.Y),
-                    chunk.ObjectsVersion),chunk.Mesh.Land.ContentStamp),chunk.Mesh.Statics.ContentStamp);
+                    chunk.ObjectsVersion),chunk.Mesh.Land.GeometryStamp),chunk.Mesh.Statics.GeometryStamp);
             }
         if(ReferenceEquals(_speedGridOwner,_rtField) && _speedGridHash==hash) { SpeedGridHits++; return false; }
         _rtField.Begin(ox,oy,width,height);

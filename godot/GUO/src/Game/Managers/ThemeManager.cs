@@ -221,18 +221,30 @@ namespace GUO.Game.Managers
                     continue;
                 }
 
+                // PORT DEVIATION (GUO): dirty the baked mesh only when some
+                // object's art actually changed (idea from MeesaJarJar fork
+                // 495f077). Reapply on every theme toggle used to rebuild every
+                // used chunk, a 37-101 ms hitch at wide zoom.
+                bool changed = false;
+
                 for (int x = 0; x < 8; x++)
                 {
                     for (int y = 0; y < 8; y++)
                     {
                         for (GameObjects.GameObject o = chunk.GetHeadObject(x, y); o != null; o = o.TNext)
                         {
+                            ushort graphic = o.Graphic;
+                            var variant = o.ThemedVariant;
                             o.UpdateGraphicBySeason();
+                            changed |= graphic != o.Graphic || !ReferenceEquals(variant, o.ThemedVariant);
                         }
                     }
                 }
 
-                chunk.Mesh.IsDirty = true;
+                if (changed)
+                {
+                    chunk.Mesh.IsDirty = true;
+                }
             }
         }
 

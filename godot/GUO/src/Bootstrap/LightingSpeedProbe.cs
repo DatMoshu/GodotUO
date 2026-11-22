@@ -226,6 +226,47 @@ public partial class LightingSpeedProbe : Node
         if(reach.Revision==revision || field.LastComputed!=1 || reach.Pixels[far]!=0
             || reach.Pixels[far+1]!=0 || reach.Pixels[edge]!=0 || reach.Pixels[edge+1]!=255)
             throw new InvalidOperationException("Reach invalidation, wall blocking or one-tile dilation failed.");
+        CheckReachRefreshBudget();
+    }
+
+    // Task 2343 (idea from MeesaJarJar fork 495f077): a grid change refreshes at
+    // most ReachRefreshBudget same-position maps per frame, a moved light computes
+    // at once, and every deferred map converges inside a bounded number of frames.
+    private static void CheckReachRefreshBudget()
+    {
+        var field=new GUO.Renderer.Lights.RealtimeLightField();
+        field.Begin(0,0,40,16);
+        var lights=new GUO.Renderer.Lights.RealtimeLightField.Source[5];
+        for(int i=0;i<lights.Length;i++) lights[i]=new GUO.Renderer.Lights.RealtimeLightField.Source(3+i*6,8,10,2,Colors.White);
+        field.BeginSpeedReach();
+        var maps=new GUO.Renderer.Lights.RealtimeLightField.SpeedReach[lights.Length];
+        for(int i=0;i<lights.Length;i++) maps[i]=field.GetSpeedReach(in lights[i]);
+        if(field.LastComputed!=lights.Length || field.LastDeferred!=0)
+            throw new InvalidOperationException("First reach frame must compute every new map immediately.");
+        var before=new int[lights.Length];
+        for(int i=0;i<lights.Length;i++) before[i]=maps[i].Revision;
+        for(int y=0;y<16;y++) field.AddEdge(1,y,false,0,32);
+        field.BeginSpeedReach();
+        for(int i=0;i<lights.Length;i++) field.GetSpeedReach(in lights[i]);
+        if(field.LastComputed!=GUO.Renderer.Lights.RealtimeLightField.ReachRefreshBudget
+            || field.LastDeferred!=lights.Length-GUO.Renderer.Lights.RealtimeLightField.ReachRefreshBudget)
+            throw new InvalidOperationException($"Budget: computed={field.LastComputed} deferred={field.LastDeferred}.");
+        var moved=new GUO.Renderer.Lights.RealtimeLightField.Source(30,8,10,2,Colors.White);
+        field.BeginSpeedReach(false);
+        for(int i=0;i<lights.Length;i++) field.GetSpeedReach(in lights[i]);
+        field.GetSpeedReach(in moved);
+        if(field.LastComputed<2) throw new InvalidOperationException("A moved light must not wait on the budget.");
+        int frames=0;
+        while(true)
+        {
+            bool stale=false;
+            for(int i=0;i<lights.Length;i++) stale|=field.GetSpeedReach(in lights[i]).Revision==before[i];
+            if(!stale) break;
+            if(++frames>GUO.Renderer.Lights.RealtimeLightField.MaxStaleFrames+lights.Length)
+                throw new InvalidOperationException("Deferred reach maps did not converge.");
+            field.BeginSpeedReach(false);
+        }
+        GD.Print($"[lighting-speed-probe] REACH BUDGET PASS budget={GUO.Renderer.Lights.RealtimeLightField.ReachRefreshBudget} converged-frames={frames}");
     }
 
     private static SpeedLightFrame CheckGpuLight(OrderedWorldDevice device,Vector2I origin,byte[] surface,string output)
