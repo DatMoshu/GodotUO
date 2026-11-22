@@ -154,9 +154,9 @@ internal static class WaterRender
     /// </summary>
     public static string Override;
 
-    /// <summary>For capture tools: holds the water clock at this many seconds, so two frames differ only by what moved. Null in play.</summary>
     /// <summary>For the capture tools only: uniforms forced after the style's own, every frame (a matched on/off benchmark).</summary>
     internal static Dictionary<string, Variant> CaptureOverrides;
+    /// <summary>For capture tools: holds the water clock at this many seconds, so two frames differ only by what moved. Null in play.</summary>
     internal static float? FrozenSeconds;
 
     // The shard session is created only after the player approves its content.
