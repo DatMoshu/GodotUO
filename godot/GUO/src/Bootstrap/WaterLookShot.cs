@@ -39,6 +39,12 @@ internal static class WaterLookShot
         new("lighting-7742-shallow25", "lighting", 80, 85, 55, 30, 65, 25),
         new("lighting-7742-no-shallow", "lighting", 80, 85, 55, 30, 65, 0),
         new("lighting-7742-glint15", "lighting", 80, 85, 55, 15, 65, 45),
+        new("lighting-s10", "lighting", 80, 85, 55, 30, 65, 10),
+        new("lighting-s20-foam25", "lighting", 80, 85, 25, 20, 65, 20),
+        new("lighting-s20-foam25-wave60", "lighting", 60, 60, 25, 15, 65, 20),
+        new("lighting-s30-foam25-wave60", "lighting", 60, 60, 25, 15, 65, 30),
+        new("lighting-s0-foam25-wave60", "lighting", 60, 60, 25, 15, 65, 0),
+        new("uo-s20", "uo", 56, 21, 26, 15, 65, 20),
     };
 
     public static async System.Threading.Tasks.Task Run(Node host, string dir)
