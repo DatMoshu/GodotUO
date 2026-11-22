@@ -495,9 +495,10 @@ namespace GUO.Configuration
         // A profile still wearing it is moved once to the chosen default; the
         // flag then keeps a later deliberate choice of any look.
         public bool WaterLookMigrated { get; set; }
+        // The look is the "uo" style with all four tunes at 100, whatever the
+        // ripple strength (the owner's own profile wore it with ripples at 50).
         internal bool WearsRejectedWaterLook(bool legacyRipples) =>
-            UoPlusOptions.Enabled(this, UoPlusFeature.WaterRipples) && UoPlusOptions.Density(this, UoPlusFeature.WaterRipples) == 100
-            && WaterTuneSpeed == 100 && WaterTuneWave == 100 && WaterTuneFoam == 100 && WaterTuneGlint == 100
+            WaterTuneSpeed == 100 && WaterTuneWave == 100 && WaterTuneFoam == 100 && WaterTuneGlint == 100
             && (string.Equals(WaterStyle, "uo", StringComparison.OrdinalIgnoreCase)
                 || (legacyRipples && !string.Equals(WaterStyle, "classic", StringComparison.OrdinalIgnoreCase)));
         internal void MigrateRejectedWaterLook(bool legacyRipples)
@@ -509,7 +510,10 @@ namespace GUO.Configuration
             WaterStyle = d.WaterStyle;
             WaterTuneSpeed = d.WaterTuneSpeed; WaterTuneWave = d.WaterTuneWave;
             WaterTuneFoam = d.WaterTuneFoam; WaterTuneGlint = d.WaterTuneGlint;
-            UoPlusOptions.Set(this, UoPlusFeature.WaterRipples, true, 65);
+            // Ripples: only the legacy path forced them on at 100; an explicit saved
+            // strength or an explicit off is the player's choice and stays.
+            if (legacyRipples && UoPlusOptions.Density(this, UoPlusFeature.WaterRipples) == 100)
+                UoPlusOptions.Set(this, UoPlusFeature.WaterRipples, true, 65);
             UoPlusOptions.Set(this, UoPlusFeature.ShallowShores, true, 20);
         }
         public Dictionary<UoPlusFeature, int> UoPlusDensities { get; set; } = new();

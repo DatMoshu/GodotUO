@@ -54,6 +54,10 @@ public partial class UoPlusProbe : Node
             var legacyDensity = JsonSerializer.Deserialize("{\"water_style\":\"uo\",\"uo_plus_densities\":{\"WaterRipples\":25}}", ProfileJsonContext.DefaultToUse.Profile);
             Check(UoPlusOptions.Density(legacyDensity, UoPlusFeature.WaterRipples) == 25,
                 "an explicitly supplied ripple density survives migration");
+            var ownerLike = JsonSerializer.Deserialize("{\"water_style\":\"uo\",\"water_tune_speed\":100,\"water_tune_wave\":100,\"water_tune_foam\":100,\"water_tune_glint\":100,\"uo_plus_flags\":768,\"uo_plus_densities\":{\"WaterRipples\":50}}", ProfileJsonContext.DefaultToUse.Profile);
+            Check(ownerLike.WaterStyle == "lighting" && ownerLike.WaterTuneWave == 60 && ownerLike.WaterTuneGlint == 15
+                && UoPlusOptions.Density(ownerLike, UoPlusFeature.WaterRipples) == 50 && ownerLike.WaterLookMigrated,
+                "all-100 uo look with a chosen ripple strength migrates its look and keeps the strength");
             var explicitOff = JsonSerializer.Deserialize("{\"water_style\":\"uo\",\"uo_plus_flags\":0}", ProfileJsonContext.DefaultToUse.Profile);
             Check(!WaterRender.RipplesEnabled(explicitOff), "explicit saved off survives migration");
             var newWater = new Profile { WaterStyle = "uo" };
