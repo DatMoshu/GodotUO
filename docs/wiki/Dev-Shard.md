@@ -11,7 +11,7 @@ dependency: nothing in `godot\GUO\` knows it exists. Source of truth:
 | | |
 |---|---|
 | **Pinned at** | `d4531cd94` (2026-09-30), `UO_SHARD_REF` in `config.bat` |
-| **Runtime** | .NET 10 SDK (ModernUO's requirement, not the client's) |
+| **Runtime** | .NET 11 SDK (ModernUO's requirement, not the client's) |
 | **Checkout** | `tools\modernuo\src\`, gitignored, about 1 GB built |
 | **Licence** | GPL-3.0. Not vendored: fetched at the pin. |
 

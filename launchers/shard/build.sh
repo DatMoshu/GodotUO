@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the ModernUO dev shard with its publish script and the .NET 10 SDK and prints where the server landed.
+# Builds the ModernUO dev shard with its publish script and the .NET 11 SDK and prints where the server landed.
 set -euo pipefail
 GUO_NEEDS_GODOT=0 . "$(dirname "$0")/../_shared/common.sh" || exit 1
 
