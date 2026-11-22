@@ -61,14 +61,14 @@ def test_floor_fades_to_the_deep_colour():
     for c, m in col.items():
         t = (c - 15) / S.SHALLOW_MAX if c > 15 else 0.0
         assert abs(m - min(t, 1.0)) < 0.12, (c, m, t)
-    assert col[16] < 0.15 and col[16 + S.SHALLOW_MAX] >= S.RAMP_PROGRESS[-1] - 1e-9   # shore colour at the shore, the sea's own colour at the edge
+    assert col[16] < 0.15 and abs(col[16 + S.SHALLOW_MAX] - 1.0) < 0.12   # shore colour at the shore, the sea's own colour at the edge
     steps = [b - a for a, b in zip(list(col.values()), list(col.values())[1:])]
     assert max(steps) < 0.17, steps                                                   # no band: no column mean jumps
 
 
 def test_ramp_is_measured_and_ordered():
     assert len(S.HUE_RAMP) == len(S.RAMP_PROGRESS) == len(set(S.HUE_RAMP))
-    assert S.RAMP_PROGRESS[0] == 0.0 and S.RAMP_PROGRESS[-1] >= 0.97
+    assert S.RAMP_PROGRESS[0] == 0.0 and S.RAMP_PROGRESS[-1] >= 1.0      # overshoots the deep colour so the mixture lands on it
     assert all(b > a for a, b in zip(S.RAMP_PROGRESS, S.RAMP_PROGRESS[1:]))
 
 

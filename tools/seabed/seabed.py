@@ -40,8 +40,8 @@ SHALLOW_MAX = 14   # cells from dry land over which the shallows fade out into t
 # The hue table has no colour on that line between 0 and 0.17, so plan() mixes neighbours by
 # probability instead of rounding to a step. Hues whose palette speckles (1593, 1599, 1469: bright dots
 # in the tile) or tints it (2571 purple) are left out by calibrate.choose_ramp's spread test.
-HUE_RAMP = (1151, 191, 391, 396, 490, 495, 589, 594, 494, 688, 2757, 593, 587, 392, 592, 1916)
-RAMP_PROGRESS = (0.0, 0.171, 0.183, 0.229, 0.304, 0.362, 0.437, 0.492, 0.51, 0.578, 0.618, 0.632, 0.728, 0.757, 0.788, 0.98)
+HUE_RAMP = (1151, 191, 391, 396, 490, 495, 589, 594, 494, 688, 2757, 593, 587, 392, 592, 1156)
+RAMP_PROGRESS = (0.0, 0.171, 0.183, 0.229, 0.304, 0.362, 0.437, 0.492, 0.51, 0.578, 0.618, 0.632, 0.728, 0.757, 0.788, 1.10)
 FLOOR_Z = -15
 OBJECT_Z = -14     # above the floor tile so it never draws over them
 BED_ID = 0x64
@@ -149,7 +149,6 @@ def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALL
     lo = np.clip(np.searchsorted(prog, t_adj, side="right") - 1, 0, nb - 1)
     frac = np.clip((t_adj - prog[lo]) / (prog[lo + 1] - prog[lo]), 0.0, 1.0)
     level = np.where(r3 < frac, lo + 1, lo).astype(int)   # stochastic rounding: the mean colour is exact, never a band
-    level[dist >= shallow_max] = nb
     hue_at = np.asarray(HUE_RAMP)[level]
     if calibrate is not None:
         hue_at = calibrate(xs, ys)
@@ -183,7 +182,7 @@ def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALL
         has = np.zeros_like(whole)   # has[x, y]: the neighbour at (x + cx, y + cy) carries a whole water tile
         xa, xb = max(0, -cx), w - max(0, cx)
         ya, yb = max(0, -cy), h - max(0, cy)
-        has[xa:xb, ya:yb] = whole[xa + cx:xb + cx, ya + cy:yb + cy]
+        has[xa:xb, ya:yb] = (whole | wet_static)[xa + cx:xb + cx, ya + cy:yb + cy]   # a shore-shaped edge tile draws its share too
         ix, iy = np.nonzero(whole & ~has)
         for x, y in zip(ix.tolist(), iy.tolist()):
             placed.append((x, y, sid, int(water_z[x, y]), 0))
