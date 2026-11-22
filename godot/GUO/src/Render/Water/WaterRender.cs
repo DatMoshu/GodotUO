@@ -155,6 +155,8 @@ internal static class WaterRender
     public static string Override;
 
     /// <summary>For capture tools: holds the water clock at this many seconds, so two frames differ only by what moved. Null in play.</summary>
+    /// <summary>For the capture tools only: uniforms forced after the style's own, every frame (a matched on/off benchmark).</summary>
+    internal static Dictionary<string, Variant> CaptureOverrides;
     internal static float? FrozenSeconds;
 
     // The shard session is created only after the player approves its content.
@@ -664,6 +666,7 @@ internal static class WaterRender
             Daylight(world, ProfileManager.CurrentProfile)));
         batcher.SetWaterUniform("water_time", (float)(Time.Ticks % 3_600_000L) / 1000f);
         if (FrozenSeconds is float still) batcher.SetWaterUniform("water_time", still);
+        if (CaptureOverrides != null) foreach (var o in CaptureOverrides) batcher.SetWaterUniform(o.Key, o.Value);
 #if TOOLS
         if (InEditorPreview) batcher.SetWaterUniform("water_time", EditorSeconds);
 #endif
