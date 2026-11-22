@@ -96,6 +96,16 @@ def test_shader_layout_has_gaps_thins_out_and_shifts_from_stone_to_weed():
     assert share([o for o in objs if o[0] - 8 <= 3]) > share([o for o in objs if o[0] - 8 >= 8])
 
 
+def test_shader_plan_drops_the_partial_water_tile_where_it_places_a_whole_one():
+    land, lz, wet, occ = coast()
+    full = wet > S.NO_STATIC
+    full[20, 10] = False                                   # one bed cell carries only a shore-shaped tile
+    p = S.plan(land, lz, wet, occ, seed=3, full_water=full, shader=True)
+    assert p.drop is not None and p.drop[20, 10] and p.drop.sum() == 1
+    assert any(x == 20 and y == 10 and sid in S.WATER_FILL for x, y, sid, z, hue in p.placed)
+    assert S.plan(land, lz, wet, occ, seed=3, full_water=full).drop is None   # the art stage keeps every tile
+
+
 def test_measure_reads_a_staged_facet(tmp_path):
     """measure.py on a tiny synthetic facet: a dug bed is found, its depth and the object on it."""
     import measure

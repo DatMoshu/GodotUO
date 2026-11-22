@@ -72,7 +72,7 @@ def main(argv=None) -> int:
         print(json.dumps(stats, indent=2))
         if a.cmd == "generate":
             placed = [q for q in p.placed if not (a.no_floor and q[2] in S.FLOOR)]
-            lines = S.write_stage(f, placed, out, install, p.new_land, p.new_lz, land, lz)
+            lines = S.write_stage(f, placed, out, install, p.new_land, p.new_lz, land, lz, drop=p.drop)
             if not a.opaque_water:
                 lines.append(S.stage_translucent_water(install, out, strips=not shader, seabed_floor=shader))
                 if not shader:
