@@ -506,14 +506,14 @@ namespace GUO.Configuration
         {
             var p = new Profile
             {
-                WaterStyle = "uo",
-                WaterTuneSpeed = 56,
-                WaterTuneWave = 21,
-                WaterTuneFoam = 26,
+                WaterStyle = "lighting",
+                WaterTuneSpeed = 60,
+                WaterTuneWave = 60,
+                WaterTuneFoam = 25,
                 WaterTuneGlint = 15
             };
             UoPlusOptions.Set(p, UoPlusFeature.WaterRipples, true, 65);
-            UoPlusOptions.Set(p, UoPlusFeature.ShallowShores, true, 64);
+            UoPlusOptions.Set(p, UoPlusFeature.ShallowShores, true, 20);
             return p;
         }
 

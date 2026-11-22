@@ -83,9 +83,11 @@ public partial class WaterProbe : Node
             Require(left < 0.01f, $"the water must calm (still {left:F4})");
             Require(ripples.Texture != null && ripples.Texture.GetWidth() == WaterRipples.Size, "the ripple texture");
 
+            WakeChecks();
+
             int packs = PackStyles();
 
-            GD.Print($"[water] PASS: Classic default and persistence, unknown styles Classic, --water-style override, upstream effect replaced, choices, mode byte, ripples spread, follow and calm, {packs} Store pack styles installed, mounted and bound");
+            GD.Print($"[water] PASS: Classic default and persistence, unknown styles Classic, --water-style override, upstream effect replaced, choices, mode byte, ripples spread, follow and calm, boat wakes follow speed, {packs} Store pack styles installed, mounted and bound");
             return true;
         }
         catch (Exception ex)
@@ -98,6 +100,44 @@ public partial class WaterProbe : Node
             WaterRender.Override = savedOverride;
             WaterRender.ProbePackStyles = null;
         }
+    }
+
+    /// <summary>
+    /// Boat wakes: none at rest, a trough astern (and none ahead) under way, none
+    /// shortly after stopping, none where water may not be disturbed.
+    /// </summary>
+    private static void WakeChecks()
+    {
+        var hull = new GUO.Compat.Rectangle(-2, -6, 2, 6);
+        const float dt = 1f / 60f;
+        var field = new WaterRipples();
+        field.CentreOnForProbe(2000, 2000);
+        field.SetFrameForProbe(dt);
+        var boat = new WaterRipples.BoatState { X = 2000, Y = 2000, HY = -1f };
+        for (int i = 0; i < 120; i++) field.Wake(boat, hull, 2000, 2000, (_, _) => true);
+        Require(field.Stamps == 0, "a boat at rest leaves no wake");
+
+        // North at 3 cells a second.
+        float y = 2000;
+        for (int i = 0; i < 120; i++) { y -= 3f * dt; field.Wake(boat, hull, 2000, y, (_, _) => true); }
+        Require(field.Stamps > 0, "a boat under way leaves a wake");
+        float cy = y + 0f;
+        Require(field.HeightAt(2000, (int)MathF.Round(cy + 7f)) < -0.01f, "the trough is astern of the hull");
+        Require(Math.Abs(field.HeightAt(2000, (int)MathF.Round(cy - 12f))) < 1e-4f, "nothing is disturbed far ahead of the bow");
+
+        int whileMoving = field.Stamps;
+        for (int i = 0; i < 90; i++) field.Wake(boat, hull, 2000, y, (_, _) => true);
+        int afterStop = field.Stamps;
+        for (int i = 0; i < 120; i++) field.Wake(boat, hull, 2000, y, (_, _) => true);
+        Require(field.Stamps == afterStop && afterStop - whileMoving < 4 * 70, "the wake stops soon after the boat does");
+
+        var closed = new WaterRipples();
+        closed.CentreOnForProbe(2000, 2000);
+        closed.SetFrameForProbe(dt);
+        var other = new WaterRipples.BoatState { X = 2000, Y = 2000, HY = -1f };
+        float y2 = 2000;
+        for (int i = 0; i < 120; i++) { y2 -= 3f * dt; closed.Wake(other, hull, 2000, y2, (_, _) => false); }
+        Require(closed.Stamps == 0, "no wake is made on land or under a pier");
     }
 
     /// <summary>
