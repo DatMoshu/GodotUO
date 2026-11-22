@@ -38,9 +38,10 @@ SHALLOW_MAX = 14   # cells from dry land over which the shallows fade out into t
 # (calibrate.py: 64 hues photographed in place, fit residual 1.5 colour units; the deep end is
 # hue 1916, within 2 units of the original opaque deep water, measured (0, 54, 80) at Haven).
 # The hue table has no colour on that line between 0 and 0.17, so plan() mixes neighbours by
-# probability instead of rounding to a step.
-HUE_RAMP = (1151, 291, 391, 2571, 1287, 490, 495, 589, 594, 494, 688, 593, 587, 592, 1593, 1916)
-RAMP_PROGRESS = (0.0, 0.17, 0.183, 0.253, 0.292, 0.304, 0.362, 0.437, 0.492, 0.51, 0.578, 0.632, 0.728, 0.788, 0.9, 0.98)
+# probability instead of rounding to a step. Hues whose palette speckles (1593, 1599, 1469: bright dots
+# in the tile) or tints it (2571 purple) are left out by calibrate.choose_ramp's spread test.
+HUE_RAMP = (1151, 191, 391, 396, 490, 495, 589, 594, 494, 688, 2757, 593, 587, 392, 592, 1916)
+RAMP_PROGRESS = (0.0, 0.171, 0.183, 0.229, 0.304, 0.362, 0.437, 0.492, 0.51, 0.578, 0.618, 0.632, 0.728, 0.757, 0.788, 0.98)
 FLOOR_Z = -15
 OBJECT_Z = -14     # above the floor tile so it never draws over them
 BED_ID = 0x64

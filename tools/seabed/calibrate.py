@@ -69,8 +69,8 @@ def cell_pixel(cx, cy, px, py, ox, oy, z=-15, ref_z=0):
     return ox + (cx - px - (cy - py)) * 22, oy + (cx - px + (cy - py)) * 22 - (z - ref_z) * 4 + 22
 
 
-def sand_mean(install, hues, ids=(0x9DE9, 0x9DEA, 0x9DEB, 0x9DEC)):
-    """{hue: mean colour of the four sand tiles through that hue}."""
+def sand_stats(install, hues, ids=(0x9DE9, 0x9DEA, 0x9DEB, 0x9DEC)):
+    """({hue: mean colour}, {hue: summed per-channel spread}) of the four sand tiles through each hue."""
     import uodata as U
     from guo import uoart
     uop = Path(install) / "artLegacyMUL.uop"
@@ -78,7 +78,17 @@ def sand_mean(install, hues, ids=(0x9DE9, 0x9DEA, 0x9DEB, 0x9DEC)):
     for i in ids:
         w, h, px = uoart.decode_static(U.uop_read(uop, U.ART_PATTERN.format(0x4000 + i)))
         tiles.append([p for p in px if p])
-    return {k: np.mean([hued_tile_mean(t, c) for t in tiles], axis=0) for k, c in hues.items()}
+    mean, spread = {}, {}
+    for k, c in hues.items():
+        mean[k] = np.mean([hued_tile_mean(t, c) for t in tiles], axis=0)
+        grey = [np.clip((((np.asarray(t) >> 10) & 31) + ((np.asarray(t) >> 5) & 31) + (np.asarray(t) & 31)) // 3, 0, 31) for t in tiles]
+        spread[k] = float(np.concatenate([c[g] for g in grey]).std(axis=0).sum())
+    return mean, spread
+
+
+def sand_mean(install, hues, ids=(0x9DE9, 0x9DEA, 0x9DEB, 0x9DEC)):
+    """{hue: mean colour of the four sand tiles through that hue}."""
+    return sand_stats(install, hues, ids)[0]
 
 
 def lattice(im, player_px, top=225, left=40, right=620, search=22, half=(9, 4)):
@@ -158,7 +168,7 @@ def progress(colour):
     return p, float(np.linalg.norm(colour - SHORE - p * v))
 
 
-def choose_ramp(model, bin_width=0.04, tol=4.0):
+def choose_ramp(model, spread=None, bin_width=0.04, tol=4.0, max_spread=30.0):
     """The hues that lie within `tol` colour units of the line from the shore colour to the deep
     colour, one per `bin_width` of progress (the one closest to the line). Returns
     [(hue, progress)] sorted by progress. Neighbours can sit a gap apart where the hue table has
@@ -167,7 +177,7 @@ def choose_ramp(model, bin_width=0.04, tol=4.0):
     best = {}
     for h, c in pred.items():
         p, off = progress(c)
-        if off <= tol and -0.03 <= p <= 1.03:
+        if off <= tol and -0.03 <= p <= 1.03 and (spread is None or spread[h] <= max_spread):
             b = int(round(p / bin_width))
             if b not in best or (off, h) < best[b][:2]:
                 best[b] = (off, h, p)
@@ -182,9 +192,9 @@ if __name__ == "__main__":
     ap.add_argument("png", nargs="?")
     a = ap.parse_args()
     inst = Path(load_config().client_data)
-    model = sand_mean(inst, read_hues(inst / "hues.mul"))
+    model, spread = sand_stats(inst, read_hues(inst / "hues.mul"))
     if a.cmd == "ramp":
-        for h, p in choose_ramp(model):
+        for h, p in choose_ramp(model, spread):
             print(h, round(p, 3), predict(model)[h].round(0))
     else:
         import seabed as S
