@@ -112,6 +112,17 @@ internal sealed class LightPresentationPassRd : IDisposable
         if (resource.IsValid) _rd.FreeRid(resource);
         resource = default;
     }
+    /// <summary>
+    /// Hands the output texture to the caller, which becomes responsible for freeing it (the published
+    /// wrapper may still hold a view of it). Dispose and later renders no longer touch it.
+    /// </summary>
+    internal Rid ReleaseTarget()
+    {
+        if (_rd == null) return default;
+        FreeSet(); Free(ref _pipeline); Free(ref _framebuffer);
+        Rid released = _target; _target = default; _size = default;
+        return released;
+    }
     private void FreeSet()
     {
         if (_set.IsValid && _rd.UniformSetIsValid(_set)) _rd.FreeRid(_set);

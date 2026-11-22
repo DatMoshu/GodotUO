@@ -78,6 +78,7 @@ internal sealed partial class OrderedWorldDevice
         _speedAmbientSet=_rd.UniformSetCreate(new Godot.Collections.Array<RDUniform> { placeholder },_speedLightShader,1);
         Require(_speedAmbientSet,"speed ambient set");
         SpeedLightTexture.TextureRdRid=_speedLight;
+        FreeRetiredLightRT(); // the wrapper has dropped its view of the retired target; now its base may go
     }
 
 #if DEBUG
@@ -261,6 +262,10 @@ internal sealed partial class OrderedWorldDevice
         _speedReachGpu.Clear();
     }
     internal byte[] ReadSpeedLightRT()=>_rd.TextureGetData(_speedOutput,0);
+    // Fixture-only: what the RS wrapper currently borrows, and whether the device still owns it.
+    internal Rid SpeedLightPublishedRid=>SpeedLightTexture.TextureRdRid;
+    internal bool SpeedLightPublishedLive=>_rd!=null && SpeedLightPublishedRid.IsValid && _rd.TextureIsValid(SpeedLightPublishedRid);
+    internal byte[] ReadSpeedLightPublishedRT()=>_rd.TextureGetData(SpeedLightPublishedRid,0);
     internal void DisableLightRT()
     {
         DisposeLightRT();
@@ -272,9 +277,30 @@ internal sealed partial class OrderedWorldDevice
     // kept across that replacement (it is re-pointed when the light pass renders again; SpeedLightReady stays
     // false and the compose item stays hidden until then) instead of being reset to an empty texture.
     private bool _keepSpeedLightWrapper;
+    // Ownership rule: a Texture2Drd keeps its own RD-side view of whatever RID it was given and frees that view when
+    // re-pointed, so it must be re-pointed (or cleared) while the base texture is still alive. Freeing the base first
+    // frees the view with it, and the wrapper's later release is a double free ("Attempted to free invalid ID"),
+    // after which the assignment aborts and the light stays on a dead RID (world black). When the wrapper is kept
+    // across a replacement, the target it borrows is therefore retired here and freed only once the wrapper moved on.
+    // Idea from MeesaJarJar fork 495f077 (detach before dispose); this variant frees the target instead of leaking it.
+    private Rid _retiredLight;
+    private void FreeRetiredLightRT()
+    {
+        if(_retiredLight.IsValid && _rd!=null) _rd.FreeRid(_retiredLight);
+        _retiredLight=default;
+    }
+    private void RetireLightTargetRT(Rid target)
+    {
+        if(target==_retiredLight) return;
+        FreeRetiredLightRT(); _retiredLight=target;
+    }
     private void DisposeLightRT()
     {
-        SpeedLightReady=false; if(!_keepSpeedLightWrapper) SpeedLightTexture.TextureRdRid=default;
+        SpeedLightReady=false;
+        if(!_keepSpeedLightWrapper) { SpeedLightTexture.TextureRdRid=default; FreeRetiredLightRT(); }
+        Rid borrowed=_keepSpeedLightWrapper ? SpeedLightTexture.TextureRdRid : default;
+        if(borrowed.IsValid && _lightPresentation!=null && borrowed==_lightPresentation.Output)
+            RetireLightTargetRT(_lightPresentation.ReleaseTarget());
         DisposeLightPresentationRT();
         DisposeSoftenRT();
         if(_rd==null) return;
@@ -287,6 +313,8 @@ internal sealed partial class OrderedWorldDevice
         _speedReleaseInputs?.Invoke(); _speedReleaseInputs=null;
         FreeSpeedSet(ref _speedLightSet); FreeSpeedSet(ref _speedAmbientSet); Free(ref _speedCurvesBuffer); Free(ref _speedReachSampler);
         Free(ref _speedLightPipeline); Free(ref _speedLightShader);
-        Free(ref _speedLightFramebuffer); Free(ref _speedLight);
+        Free(ref _speedLightFramebuffer);
+        if(borrowed.IsValid && borrowed==_speedLight) { RetireLightTargetRT(_speedLight); _speedLight=default; }
+        else Free(ref _speedLight);
     }
 }
