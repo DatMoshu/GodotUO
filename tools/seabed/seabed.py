@@ -63,6 +63,10 @@ class Plan:
     water_blocks: int
     eligible_blocks: int
     covered_blocks: int
+    # Shader stage only: cells whose own partial water static (a shore-shaped edge or the near-empty
+    # 0x1796) is taken out, because a whole water tile is placed there: two surfaces in one cell
+    # blend a third time along its edges and draw a dark line.
+    drop: object = None
 
 
 def _hash2(x, y, seed):
@@ -243,7 +247,8 @@ def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALL
     def blocks(mask):
         return int(mask[: w // 8 * 8, : h // 8 * 8].reshape(w // 8, 8, h // 8, 8).any(axis=(1, 3)).sum())
     return Plan(placed, new_land, new_lz, int(ext.sum()), int(water.sum()), int(shallow.sum()),
-                blocks(water), blocks(shallow), blocks(kind > 0))
+                blocks(water), blocks(shallow), blocks(kind > 0),
+                drop=(need & wet_static) if shader else None)
 
 
 def _pick_unit(x, y, seed, k):
@@ -315,7 +320,7 @@ def _write(path: Path, data) -> None:
             f.write(view[i:i + (4 << 20)])
 
 
-def write_stage(facet, placed, out: Path, install: Path, new_land=None, new_lz=None, old_land=None, old_lz=None):
+def write_stage(facet, placed, out: Path, install: Path, new_land=None, new_lz=None, old_land=None, old_lz=None, drop=None):
     """Copy statics/staidx of `facet` into `out` with `placed` appended per block and, when
     new_land/new_lz are given, a patched copy of the facet's land file (only the blocks
     that changed). Returns the files_override.txt lines. Refuses an `out` inside the install."""
@@ -334,6 +339,14 @@ def write_stage(facet, placed, out: Path, install: Path, new_land=None, new_lz=N
         n = facet.number(bx, by)
         off, length = facet.statics_span(n)
         old = bytes(facet.sta[off:off + length]) if length else b""
+        if drop is not None and old:
+            kept = bytearray()
+            for i in range(0, len(old) - 6, 7):
+                sid, rx, ry = struct.unpack_from("<HBB", old, i)
+                partial = WATER_STATIC[0] <= sid <= WATER_STATIC[1] and not 0x1797 <= sid <= 0x179C
+                if not (partial and drop[bx * 8 + rx, by * 8 + ry]):
+                    kept += old[i:i + 7]
+            old = bytes(kept)
         extra = struct.unpack_from("<i", idx, n * 12 + 8)[0]
         new = old + b"".join(struct.pack("<HBBbH", sid, x, y, z, hue) for sid, x, y, z, hue in items)
         start = len(sta)

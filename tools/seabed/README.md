@@ -41,6 +41,11 @@ cells holding an object at 1, 2, 4, 6, 10 and 14 cells from land: 0.19, 0.17, 0.
 apart from that reference: more of the 8 x 8 blocks hold something (68% against 45%) and
 more objects stand alone (50% against 33%).
 
+Where the shader stage places a whole water tile on a cell that already carried a partial one
+(a shore-shaped edge tile along an old bed's outline, or the near-empty 0x1796), the partial
+tile is left out of the stage's statics: two surfaces in one cell blend a third time along
+its edges and draw a thin dark line. It is the one case where the stage removes a static.
+
 ## Measuring a map
 
 `measure` reports how any facet's shallows are built: depth and bed by shore distance, what

@@ -33,6 +33,18 @@ internal static class WaterSprintShot
         try
         {
             // GUO_WSS_SPEEDMODE=1|0: realtime lighting (lighting speed mode) on or off for the shots; unset keeps the profile's.
+            // GUO_WSS_SET="name=v[,v];...": water uniforms forced for the run (floats or vec2), to switch one effect off.
+            string forced = Env("GUO_WSS_SET", "");
+            if (forced != "")
+            {
+                WaterRender.CaptureOverrides = new Dictionary<string, Variant>();
+                foreach (string part in forced.Split(';', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    string[] kv = part.Split('=');
+                    float[] v = Array.ConvertAll(kv[1].Split(','), t => float.Parse(t, CultureInfo.InvariantCulture));
+                    WaterRender.CaptureOverrides[kv[0].Trim()] = v.Length == 2 ? new Vector2(v[0], v[1]) : v[0];
+                }
+            }
             int sm = EnvInt("GUO_WSS_SPEEDMODE", -1);
             if (sm >= 0) profile.LightingSpeedMode = sm != 0;
             // GUO_WSS_LIGHT: the world light level, 0 full day to 30 the darkest night, set on the
@@ -57,6 +69,7 @@ internal static class WaterSprintShot
             WaterRender.FrozenSeconds = frozen;
             world.Light.Overall = overall; world.Light.RealOverall = real;
             profile.LightingSpeedMode = speedMode;
+            WaterRender.CaptureOverrides = null;
         }
     }
 
