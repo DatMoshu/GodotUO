@@ -73,7 +73,7 @@ internal sealed class WaterRipples
     private readonly HashSet<uint> _swimSeen = new HashSet<uint>();
     // Texels that hold water (1) or not (0): the field is cleared on dry ones so a
     // wave never runs up a beach or under a pier into water on the far side.
-    private readonly byte[] _wet = new byte[Size * Size];
+    private byte[] _wet = new byte[Size * Size];
     private long _wetAt = long.MinValue;
     private int _wetOriginX = int.MinValue, _wetOriginY;
     private readonly Dictionary<uint, (int X, int Y)> _items = new Dictionary<uint, (int, int)>();
@@ -288,9 +288,21 @@ internal sealed class WaterRipples
         {
             Array.Clear(_now);
             Array.Clear(_before);
+            // Nothing of the old map lines up: back to the first-pass state (no clipping, all at once).
+            _wetAt = long.MinValue;
+            _wetRow = Cells; _wetOriginX = int.MinValue;
         }
         else
         {
+            // The wet map moves with the field. The newly exposed rows and columns are dry (the field
+            // is empty there too) until the sliced pass, which restarts below, has rewritten them; the
+            // rest stays right, so a ripple is never clipped by a map of the old window.
+            if (_wetAt != long.MinValue)
+            {
+                ShiftWet((newX - OriginX) * PerCell, (newY - OriginY) * PerCell);
+                _wetRow = Cells;
+                _wetOriginX = int.MinValue; // moved: RefreshWet starts a fresh pass next frame
+            }
             Shift(ref _now, (newX - OriginX) * PerCell, (newY - OriginY) * PerCell);
             Shift(ref _before, (newX - OriginX) * PerCell, (newY - OriginY) * PerCell);
         }
@@ -299,6 +311,23 @@ internal sealed class WaterRipples
         OriginY = newY;
         RebuildWake(0f);
         return true;
+    }
+
+    private byte[] _wetScratch = new byte[Size * Size];
+    private void ShiftWet(int dx, int dy)
+    {
+        Array.Clear(_wetScratch);
+        for (int y = 0; y < Size; y++)
+        {
+            int sy = y + dy;
+            if (sy < 0 || sy >= Size) continue;
+            for (int x = 0; x < Size; x++)
+            {
+                int sx = x + dx;
+                if (sx >= 0 && sx < Size) _wetScratch[y * Size + x] = _wet[sy * Size + sx];
+            }
+        }
+        (_wet, _wetScratch) = (_wetScratch, _wet);
     }
 
     private void Shift(ref float[] field, int dx, int dy)
@@ -435,6 +464,19 @@ internal sealed class WaterRipples
     // ---- for WaterProbe --------------------------------------------------
 
     internal void CentreOnForProbe(int x, int y) => Follow(x, y);
+
+    /// <summary>Installs a synthetic wet map for the current window: open(x, y) says whether a world cell is open water.</summary>
+    internal void SetWetForProbe(Func<int, int, bool> open)
+    {
+        for (int cy = 0; cy < Cells; cy++)
+            for (int cx = 0; cx < Cells; cx++)
+            {
+                byte w = open(OriginX + cx, OriginY + cy) ? (byte)1 : (byte)0;
+                int t = cy * PerCell * Size + cx * PerCell;
+                _wet[t] = _wet[t + 1] = _wet[t + Size] = _wet[t + Size + 1] = w;
+            }
+        _wetAt = Time.Ticks; _wetRow = Cells; _wetOriginX = OriginX; _wetOriginY = OriginY;
+    }
 
 #if TOOLS
     // The editor owns short-lived synthetic previews across assembly reloads.
