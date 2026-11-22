@@ -651,6 +651,7 @@ internal static partial class PerfProbe
         long rdCallsBefore = GUO.Renderer.DepthWorld.OrderedWorldCapture.DrawCalls;
         long rdTicksBefore = GUO.Renderer.DepthWorld.OrderedWorldCapture.RecordTicks;
         long speedGridBefore=GUO.Renderer.SpeedMode.SpeedLightFrame.GridTicks;
+        long speedBuildsBefore=GUO.Game.Scenes.GameScene.SpeedGridBuilds,speedComputedBefore=GUO.Renderer.Lights.RealtimeLightField.ReachComputedTotal,speedDeferredBefore=GUO.Renderer.Lights.RealtimeLightField.ReachDeferredTotal;
         long speedReachBefore=GUO.Renderer.SpeedMode.SpeedLightFrame.ReachTicks;
         long speedLoopBefore=GUO.Renderer.SpeedMode.SpeedLightFrame.ReachLoopTicks,speedLightInBefore=GUO.Renderer.SpeedMode.SpeedLightFrame.LightInputTicks,speedShadowInBefore=GUO.Renderer.SpeedMode.SpeedLightFrame.ShadowInputTicks;
         long speedShGridBefore=GUO.Renderer.SpeedMode.SpeedLightFrame.ShadowGridTicks,speedShPhysicalBefore=GUO.Renderer.SpeedMode.SpeedLightFrame.ShadowPhysicalTicks,speedShWindowsBefore=GUO.Renderer.SpeedMode.SpeedLightFrame.ShadowWindowTicks,speedShStaticsBefore=GUO.Renderer.SpeedMode.SpeedLightFrame.ShadowStaticTicks,speedShMobilesBefore=GUO.Renderer.SpeedMode.SpeedLightFrame.ShadowMobileTicks;
@@ -874,6 +875,9 @@ internal static partial class PerfProbe
             ["rd_draw_calls_per_frame"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldCapture.DrawCalls - rdCallsBefore) / n, 1),
             ["rd_record_cpu_ms"] = System.Math.Round((double)(GUO.Renderer.DepthWorld.OrderedWorldCapture.RecordTicks - rdTicksBefore) * 1000 / System.Diagnostics.Stopwatch.Frequency / n, 3),
             ["speed_grid_cpu_ms"] = System.Math.Round((double)(GUO.Renderer.SpeedMode.SpeedLightFrame.GridTicks-speedGridBefore)*1000/System.Diagnostics.Stopwatch.Frequency/n,3),
+            ["speed_grid_builds_per_s"] = System.Math.Round((double)(GUO.Game.Scenes.GameScene.SpeedGridBuilds-speedBuildsBefore)/(elapsed/1000.0),3),
+            ["speed_reach_computed_per_frame"] = System.Math.Round((double)(GUO.Renderer.Lights.RealtimeLightField.ReachComputedTotal-speedComputedBefore)/n,3),
+            ["speed_reach_deferred_per_frame"] = System.Math.Round((double)(GUO.Renderer.Lights.RealtimeLightField.ReachDeferredTotal-speedDeferredBefore)/n,3),
             ["speed_reach_cpu_ms"] = System.Math.Round((double)(GUO.Renderer.SpeedMode.SpeedLightFrame.ReachTicks-speedReachBefore)*1000/System.Diagnostics.Stopwatch.Frequency/n,3),
             ["speed_reach_loop_cpu_ms"] = System.Math.Round((double)(GUO.Renderer.SpeedMode.SpeedLightFrame.ReachLoopTicks-speedLoopBefore)*1000/System.Diagnostics.Stopwatch.Frequency/n,3),
             ["speed_light_inputs_cpu_ms"] = System.Math.Round((double)(GUO.Renderer.SpeedMode.SpeedLightFrame.LightInputTicks-speedLightInBefore)*1000/System.Diagnostics.Stopwatch.Frequency/n,3),

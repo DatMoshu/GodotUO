@@ -193,7 +193,7 @@ namespace GUO.Game.Map
             }
             // DepthWorldResident.Add compares this stamp and repacks the same
             // layer's quad range, including Aux.W, before this frame uploads.
-            if (changed) Statics.ContentStamp++;
+            if (changed) { Statics.ContentStamp++; Statics.GeometryStamp++; }
             _physicalQualificationEnabled = true;
         }
 
