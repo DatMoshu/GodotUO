@@ -1,0 +1,307 @@
+{
+  "id": "client.newplayer.combat",
+  "title": "A new player readies for a fight and attacks a creature; the shard answers that the blow landed",
+  "surface": "client",
+  "requires": {
+    "shard": "dev",
+    "account": "$account",
+    "build": "debug"
+  },
+  "timeouts": {
+    "step_s": 60,
+    "run_s": 480
+  },
+  "steps": [
+    {
+      "id": "launch",
+      "do": {
+        "kind": "launch",
+        "args": [
+          "--scratch-profile"
+        ],
+        "settings": {
+          "autologin": false
+        }
+      },
+      "say": "Start GUO.",
+      "timeout_s": 240,
+      "expect": {
+        "scene": "LoginScene",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "login_screen",
+      "do": {
+        "kind": "wait",
+        "seconds": 2
+      },
+      "say": "The login screen is up.",
+      "shot": true
+    },
+    {
+      "id": "type_account",
+      "do": {
+        "kind": "ui.fill",
+        "control": {
+          "type": "StbTextBox"
+        },
+        "text": "$account",
+        "clear": 32
+      },
+      "say": "Type the account name (clearing the account the login gump remembers)."
+    },
+    {
+      "id": "type_password",
+      "do": {
+        "kind": "ui.fill",
+        "control": {
+          "type": "PasswordStbTextBox"
+        },
+        "text": "$password"
+      },
+      "say": "Type the password."
+    },
+    {
+      "id": "log_in",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 2
+        }
+      },
+      "say": "Press Login.",
+      "expect": {
+        "ui.exists": "ServerSelectionGump",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "pick_server",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "ServerEntryGump",
+          "index": 0
+        }
+      },
+      "say": "Pick the first server."
+    },
+    {
+      "id": "server_next",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 1
+        }
+      },
+      "say": "Press Next. The account now has a character, so the character list opens.",
+      "expect": {
+        "ui.exists": "CharacterSelectionGump",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "character_list",
+      "do": {
+        "kind": "wait",
+        "seconds": 2
+      },
+      "say": "The character made earlier is on the list.",
+      "expect": {
+        "ui.exists": {
+          "contains": "$charname"
+        }
+      },
+      "shot": true
+    },
+    {
+      "id": "pick_character",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "CharacterEntryGump",
+          "index": 0
+        }
+      },
+      "say": "Pick it."
+    },
+    {
+      "id": "character_next",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 3
+        }
+      },
+      "say": "Press Next.",
+      "expect": {
+        "scene": "GameScene",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "in_world",
+      "do": {
+        "kind": "wait",
+        "seconds": 4
+      },
+      "say": "The world is drawn around the character.",
+      "expect": {
+        "ui.exists": "WorldViewportGump"
+      },
+      "shot": true
+    },
+    {
+      "id": "creature_near",
+      "do": {
+        "kind": "wait",
+        "seconds": 1
+      },
+      "say": "A creature to fight stands near the start (the gate's fixture, placed by a game master before this link).",
+      "expect": {
+        "world.mobile": {
+          "contains": "Attack Dummy",
+          "within": 12
+        },
+        "within_s": 20
+      }
+    },
+    {
+      "id": "open_paperdoll",
+      "do": {
+        "kind": "ui.key",
+        "key": "P",
+        "alt": true
+      },
+      "say": "Open the paperdoll.",
+      "expect": {
+        "ui.exists": "PaperDollGump",
+        "within_s": 10
+      }
+    },
+    {
+      "id": "war_mode",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "gump": "PaperDollGump",
+          "button_id": 7
+        }
+      },
+      "say": "Press Peace on the paperdoll: it turns to War and the character readies for a fight.",
+      "expect": {
+        "player": {
+          "warMode": true
+        },
+        "within_s": 10
+      },
+      "shot": true
+    },
+    {
+      "id": "attack",
+      "do": {
+        "kind": "world.click",
+        "mobile": {
+          "contains": "Attack Dummy"
+        },
+        "clicks": 2,
+        "within_s": 20
+      },
+      "say": "Double-click the creature: at war, that is an attack.",
+      "expect": {
+        "combat.attacking": {
+          "contains": "Attack Dummy"
+        },
+        "journal.contains": "GUO_PAD: hit attack-dummy",
+        "within_s": 20
+      },
+      "shot": true
+    },
+    {
+      "id": "creature_hurt",
+      "do": {
+        "kind": "wait",
+        "seconds": 1
+      },
+      "say": "The creature is hurt.",
+      "expect": {
+        "world.mobile": {
+          "contains": "Attack Dummy",
+          "hurt": true
+        },
+        "within_s": 20
+      }
+    },
+    {
+      "id": "peace_mode",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "gump": "PaperDollGump",
+          "button_id": 7
+        }
+      },
+      "say": "Press War: back to peace.",
+      "expect": {
+        "player": {
+          "warMode": false
+        },
+        "within_s": 10
+      }
+    },
+    {
+      "id": "log_out",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "gump": "PaperDollGump",
+          "button_id": 2
+        }
+      },
+      "say": "Press Log Out on the paperdoll.",
+      "expect": {
+        "ui.exists": "QuestionGump",
+        "within_s": 10
+      }
+    },
+    {
+      "id": "confirm_log_out",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "gump": "QuestionGump",
+          "button_id": 1
+        }
+      },
+      "say": "Confirm.",
+      "expect": {
+        "scene": "LoginScene",
+        "within_s": 30
+      }
+    },
+    {
+      "id": "back_at_login",
+      "do": {
+        "kind": "wait",
+        "seconds": 2
+      },
+      "say": "Back at the login screen.",
+      "shot": true
+    }
+  ]
+}

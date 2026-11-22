@@ -141,7 +141,9 @@
             "renderdump",
             "render_diff",
             "lane",
-            "editor_tool"
+            "editor_tool",
+            "world.click",
+            "net.drop"
           ]
         }
       },
@@ -661,12 +663,99 @@
               "within_s": {
                 "type": "number",
                 "minimum": 0
+              },
+              "from_offset": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  }
+                }
+              },
+              "to_offset": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  }
+                }
               }
             },
             "required": [
               "kind",
               "from",
               "to"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "world.click"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "world.click"
+              },
+              "mobile": {
+                "type": "object",
+                "minProperties": 1,
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "contains": {
+                    "type": "string"
+                  }
+                }
+              },
+              "clicks": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2
+              },
+              "within_s": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "kind",
+              "mobile"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "net.drop"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "net.drop"
+              }
+            },
+            "required": [
+              "kind"
             ],
             "additionalProperties": false
           }
@@ -817,6 +906,90 @@
               "minimum": 1
             }
           }
+        },
+        "world.equipped": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "delta": {
+              "type": "integer"
+            },
+            "has": {
+              "type": [
+                "integer",
+                "string"
+              ]
+            },
+            "lacks": {
+              "type": [
+                "integer",
+                "string"
+              ]
+            }
+          }
+        },
+        "world.backpack": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "delta": {
+              "type": "integer"
+            },
+            "has": {
+              "type": [
+                "integer",
+                "string"
+              ]
+            },
+            "lacks": {
+              "type": [
+                "integer",
+                "string"
+              ]
+            }
+          }
+        },
+        "world.mobile": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "contains": {
+              "type": "string"
+            },
+            "within": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "hurt": {
+              "type": "boolean"
+            }
+          }
+        },
+        "player": {
+          "type": "object",
+          "minProperties": 1
+        },
+        "combat.attacking": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "contains": {
+              "type": "string"
+            }
+          }
+        },
+        "journal.contains": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },
@@ -858,6 +1031,12 @@
             "index": {
               "type": "integer",
               "minimum": 0
+            },
+            "serial": {
+              "type": [
+                "integer",
+                "string"
+              ]
             }
           }
         }
