@@ -106,6 +106,9 @@ internal sealed class WaterRipples
     public int Stamps { get; private set; }
     internal int RainStamps { get; private set; }
     public double LastUpdateMs { get; private set; }
+    /// <summary>For the perf table: the last open-water map rebuild (ms) and swimmer rings made so far.</summary>
+    public double LastWetMs { get; private set; }
+    public int SwimStamps { get; private set; }
 
     /// <summary>Forget everything: a new map, a style switched off and on.</summary>
     public void Reset()
@@ -364,6 +367,7 @@ internal sealed class WaterRipples
         long now = Time.Ticks;
         if (OriginX == int.MinValue) return;
         if (OriginX == _wetOriginX && OriginY == _wetOriginY && now - _wetAt < 500) return;
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         _wetOriginX = OriginX; _wetOriginY = OriginY; _wetAt = now;
         for (int cy = 0; cy < Cells; cy++)
         {
@@ -375,6 +379,7 @@ internal sealed class WaterRipples
                 _wet[t] = _wet[t + 1] = _wet[t + Size] = _wet[t + Size + 1] = w;
             }
         }
+        LastWetMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
     }
 
     private void Upload()
@@ -483,6 +488,7 @@ internal sealed class WaterRipples
             (float x, float y) = CellOf(m);
             if (!OpenWater(world, mask, x, y)) continue;
             Stamp(x, y, 0.5f, 0.30f);
+            SwimStamps++;
         }
         _swimDrop.Clear();
         foreach (uint s in _swimmers.Keys) if (!_swimSeen.Contains(s)) _swimDrop.Add(s);
@@ -617,7 +623,7 @@ internal sealed class WaterRipples
     }
 
     // Wake mark heights (before the style's strength): trough astern, arms, bow crest.
-    internal static float WakeTrough = 0.30f, WakeArm = 0.24f, WakeBow = 0.18f;
+    internal static float WakeTrough = 0.70f, WakeArm = 0.55f, WakeBow = 0.40f;
 
     /// <summary>For the probe: the frame length continuous disturbances scale by.</summary>
     internal void SetFrameForProbe(float seconds) => _dt = seconds;
