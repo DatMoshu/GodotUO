@@ -24,7 +24,7 @@ internal sealed class NativePhysicalWorldCache
     private ulong _worldIdentity, _artRevision;
     private long _mapRevision;
     private int _themeRevision, _season, _facet;
-    private bool _acceptedComplete;
+    private bool _acceptedComplete, _slitsTransmit;
     public long CacheHits { get; private set; }
     public long CacheBuilds { get; private set; }
     public double LastBuildMilliseconds => _snapshot?.Diagnostics.BuildMilliseconds ?? 0;
@@ -39,6 +39,7 @@ internal sealed class NativePhysicalWorldCache
             && ReferenceEquals(_landData, files.TileData.LandData) && _worldIdentity == key.World && _facet == key.Facet
             && _bounds == bounds && _mapRevision == files.Maps.DataRevision && _artRevision == files.Arts.DataRevision
             && _themeRevision == ThemeManager.Revision && _season == (int)world.Season
+            && _slitsTransmit == GUO.Renderer.Lights.LightOpenings.ProbeSlitsTransmit
             && CollectionsMarshal.AsSpan(_candidate).SequenceEqual(CollectionsMarshal.AsSpan(_accepted));
         if (reusable) { CacheHits++; return _snapshot; }
 
@@ -48,6 +49,7 @@ internal sealed class NativePhysicalWorldCache
         _worldIdentity = key.World; _facet = key.Facet; _bounds = bounds;
         _mapRevision = files.Maps.DataRevision; _artRevision = files.Arts.DataRevision;
         _themeRevision = ThemeManager.Revision; _season = (int)world.Season;
+        _slitsTransmit = GUO.Renderer.Lights.LightOpenings.ProbeSlitsTransmit;
         _accepted.Clear();
         if (signatureComplete) _accepted.AddRange(_candidate);
         _acceptedComplete = signatureComplete;

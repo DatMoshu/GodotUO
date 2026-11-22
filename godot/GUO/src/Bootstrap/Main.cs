@@ -1049,6 +1049,7 @@ public partial class Main : Node
         LayerShot.Water = _options.LayerWater;
         LayerShot.CaptureRect = _options.LayerCapture;
         LayerShot.Light = _options.LayerLight;
+        LayerShot.Openings = _options.LayerOpenings;
         await Preamble();
         await LayerShot.Run(this, _options.ScreenshotDir);
         Quit(LayerShot.Passed ? 0 : 1);
@@ -1853,6 +1854,7 @@ public partial class Main : Node
         public string LayerCapture { get; private set; } = "";
         /// <summary>--layer-light: with --layer-shot, photograph the lighting speed mode off and on at night; see LayerShot.</summary>
         public bool LayerLight { get; private set; }
+        public bool LayerOpenings { get; private set; }
         /// <summary>--boat-demo: dev shard only; log in, put a boat on the water at the Haven docks and stay; see BoatDemo.</summary>
         public bool BoatDemo { get; private set; }
         /// <summary>--water-look-shot: dev shard only; candidate water presets at the Haven dock, then a filmed boat wake; see WaterLookShot.</summary>
@@ -2617,6 +2619,9 @@ public partial class Main : Node
                         break;
                     case "--layer-light":
                         o.LayerLight = true;
+                        break;
+                    case "--layer-openings":
+                        o.LayerOpenings = true;
                         break;
                     case "--boat-demo":
                         o.BoatDemo = true;

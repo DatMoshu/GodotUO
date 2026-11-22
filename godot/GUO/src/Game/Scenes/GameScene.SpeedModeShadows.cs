@@ -60,9 +60,11 @@ internal partial class GameScene
                 for(var o=chunk.Tiles[x,y];o!=null;o=o.TNext) {
                     if(o is not (Static or Multi) || o.Graphic>=tiles.Length) continue;
                     ref var data=ref tiles[o.Graphic];
-                    if(!WallShadowGrid.Accepts(data.Flags,data.Height,data.Name,foliage)) continue;
+                    // An arrow slit is flagged Window but casts like solid masonry (LightOpenings).
+                    var flags=LightOpenings.TransmissionFlags(o.Graphic,data.Flags);
+                    if(!WallShadowGrid.Accepts(flags,data.Height,data.Name,foliage)) continue;
                     WallFaces faces=data.IsWall ? WallFaces.For(o.Graphic) : default;
-                    if(faces.Count==0) inputs.Grid.AddBlocker(o.X,o.Y,o.Z+data.Height,data.Flags,data.Height,data.Name,foliage);
+                    if(faces.Count==0) inputs.Grid.AddBlocker(o.X,o.Y,o.Z+data.Height,flags,data.Height,data.Name,foliage);
                     else {
                         inputs.Grid.AddEdge(o.X,o.Y,faces.First.AlongX,faces.First.Offset,o.Z+data.Height);
                         if(faces.Count>1) inputs.Grid.AddEdge(o.X,o.Y,faces.Second.AlongX,faces.Second.Offset,o.Z+data.Height);
