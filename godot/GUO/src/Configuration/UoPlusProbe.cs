@@ -54,6 +54,12 @@ public partial class UoPlusProbe : Node
             var legacyDensity = JsonSerializer.Deserialize("{\"water_style\":\"uo\",\"uo_plus_densities\":{\"WaterRipples\":25}}", ProfileJsonContext.DefaultToUse.Profile);
             Check(UoPlusOptions.Density(legacyDensity, UoPlusFeature.WaterRipples) == 25,
                 "an explicitly supplied ripple density survives migration");
+            var legacyLighting = JsonSerializer.Deserialize("{\"water_style\":\"lighting\"}", ProfileJsonContext.DefaultToUse.Profile);
+            Check(legacyLighting.WaterStyle == "lighting" && legacyLighting.WaterTuneSpeed == 100 && legacyLighting.WaterTuneGlint == 100,
+                "a legacy lighting-style profile is not rewritten by the rejected-look migration");
+            var legacyPack = JsonSerializer.Deserialize("{\"water_style\":\"pack:harbor\"}", ProfileJsonContext.DefaultToUse.Profile);
+            Check(legacyPack.WaterStyle == "pack:harbor" && legacyPack.WaterTuneWave == 100,
+                "a legacy pack-style profile is not rewritten by the rejected-look migration");
             var ownerLike = JsonSerializer.Deserialize("{\"water_style\":\"uo\",\"water_tune_speed\":100,\"water_tune_wave\":100,\"water_tune_foam\":100,\"water_tune_glint\":100,\"uo_plus_flags\":768,\"uo_plus_densities\":{\"WaterRipples\":50}}", ProfileJsonContext.DefaultToUse.Profile);
             Check(ownerLike.WaterStyle == "lighting" && ownerLike.WaterTuneWave == 60 && ownerLike.WaterTuneGlint == 15
                 && UoPlusOptions.Density(ownerLike, UoPlusFeature.WaterRipples) == 50 && ownerLike.WaterLookMigrated,
