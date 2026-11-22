@@ -1,6 +1,6 @@
 {
   "id": "client.newplayer.create",
-  "title": "A new account logs in, creates its first character, enters the world, opens the backpack and paperdoll, speaks and logs out",
+  "title": "A new account logs in, creates its first character, enters the world, opens the backpack, walks, speaks and logs out",
   "surface": "client",
   "requires": {
     "shard": "dev",
@@ -245,6 +245,22 @@
         "ui.absent": "ContainerGump",
         "within_s": 10
       }
+    },
+    {
+      "id": "walk",
+      "do": {
+        "kind": "ui.hold",
+        "key": "Right",
+        "seconds": 3
+      },
+      "say": "Hold an arrow key: the character walks.",
+      "expect": {
+        "world.moved": {
+          "at_least": 2
+        },
+        "within_s": 10
+      },
+      "shot": true
     },
     {
       "id": "speak",

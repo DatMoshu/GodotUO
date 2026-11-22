@@ -13,7 +13,7 @@ The gate invents an account nobody has used, then runs these scenarios in order 
 
 | Link | Scenario | What a pass means |
 |---|---|---|
-| `create` | `client.newplayer.create` | A first login on an empty account opens character creation; a name, a ready-made profession and a city put the character in the world; the backpack opens and holds items; the character speaks; Log Out returns to the login screen |
+| `create` | `client.newplayer.create` | A first login on an empty account opens character creation; a name, a ready-made profession and a city put the character in the world; the backpack opens and holds items; a held arrow key walks the character; it speaks; Log Out returns to the login screen |
 | `return` | `client.newplayer.return` | The same account logs in again, the character is on the list by name, enters the world again and logs out |
 
 The chain stops at the first link that fails and exits with the runner's code for it (0 pass, 1 a step failed,
@@ -22,8 +22,8 @@ Run folders land where the scenario runner puts them, with stills, events and a 
 
 ## What it does not cover yet
 
-Walking, dragging an item, equip and unequip, combat, a dropped connection and settings kept across a restart.
-The runner has no step for a held walk, a drag or a connection drop; those links come with the step kinds.
+Dragging an item, equip and unequip, combat, a dropped connection and settings kept across a restart.
+The runner can hold a key and drag between controls (`ui.hold`, `ui.drag`); it has no step for a dropped connection yet.
 A pass here is a pass on the shard it ran against, not on other servers (`tools/server_lab` covers those).
 
 ## Notes

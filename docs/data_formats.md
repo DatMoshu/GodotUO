@@ -2278,6 +2278,8 @@ adds it.
 | `ui.click` | `control` (a control selector, below), `button` (`Left` default, `Right`, `Middle`), `clicks` (integer >= 1, default 1), `within_s` (seconds to wait for the control, default 5) | game MCP `guo_ui` + `guo_input` (section 29) | 3 |
 | `ui.fill` | `control`, `text`, `clear` (integer >= 0: BackSpace presses first, default 0), `within_s` (as `ui.click`) | game MCP | 3 |
 | `ui.key` | `key` (a Godot key name), `shift`, `ctrl`, `alt` (booleans, default false) | game MCP `guo_input` | 3 |
+| `ui.hold` | `key`, `seconds` (default 1), `shift`, `ctrl`, `alt`: the key goes down, stays down for that long and comes up, also when the step fails | game MCP `guo_input` | 3 |
+| `ui.drag` | `from`, `to` (control selectors), `button` (default Left), `steps` (pointer moves between them, default 8), `within_s`: press on the first, move, release on the second | game MCP `guo_input` | 3 |
 | `chat` | `text` (e.g. `[go 1434 1697`) | game MCP `guo_input` text | 3 |
 | `renderdump` | `name` (letters, digits, `_`, `-`) | a `client` run with this step in its scenario starts the client with `GUO_RENDER_DUMP_DIR=<run>/render_dump`; the step says `renderdump NAME` in game and waits for `render_dump/NAME/guo.json` within the step timeout; its `log` event carries the dump's `bytes`, `tiles` and `objects` | 4 |
 | `render_diff` | `name` | `tools/render_diff` on the run's `guo.json` and the reference `cuo.json` in `build/render_dump/NAME/` (or in `GUO_RENDER_REF_DIR/NAME/`, environment, then config.local.bat, then config.bat); writes `diff.md` into the run folder; fails on any map, field or drawn mismatch (the event carries the counts and the first mismatch lines), and on a missing dump or reference, naming the path looked for | 4 |
@@ -2296,6 +2298,7 @@ Expectations. A condition the runner does not know fails the step ("unknown expe
 | `ui.text` | `{control, equals \| contains}` | the selected control's text equals `equals`, or contains `contains` | 3 |
 | `ui.count` | `{control, equals \| at_least}` | the number of matching controls equals `equals`, or is at least `at_least` | 3 |
 | `world.position` | `{x, y, z?, map?, tolerance?}` | the player is within `tolerance` tiles (default 0) of each given axis, and on `map` when given | 3 |
+| `world.moved` | `{at_least?}` | the player is at least `at_least` tiles (default 1; the larger of the x and y distance) from where it stood when the step began | 3 |
 | `scene` | string | the client's current scene (game MCP state `scene`) equals it | 3 |
 | `log.contains` | string | the program's log (`client.log`) contains the text | 3 |
 | `render_diff` | `{max_drawn_diff}` | the last `render_diff` found at most that many differing draws | 4 |

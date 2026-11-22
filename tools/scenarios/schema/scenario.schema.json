@@ -134,6 +134,8 @@
             "ui.click",
             "ui.fill",
             "ui.key",
+            "ui.hold",
+            "ui.drag",
             "chat",
             "scene_set",
             "renderdump",
@@ -579,7 +581,93 @@
               "kind",
               "tool"
             ],
-            "not": { "required": ["refused_contains", "until"] },
+            "not": {
+              "required": [
+                "refused_contains",
+                "until"
+              ]
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "ui.hold"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "ui.hold"
+              },
+              "key": {
+                "type": "string",
+                "minLength": 1
+              },
+              "seconds": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "shift": {
+                "type": "boolean"
+              },
+              "ctrl": {
+                "type": "boolean"
+              },
+              "alt": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "kind",
+              "key"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "ui.drag"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "ui.drag"
+              },
+              "from": {
+                "$ref": "#/$defs/control"
+              },
+              "to": {
+                "$ref": "#/$defs/control"
+              },
+              "button": {
+                "enum": [
+                  "Left",
+                  "Right",
+                  "Middle"
+                ]
+              },
+              "steps": {
+                "type": "integer",
+                "minimum": 2
+              },
+              "within_s": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "kind",
+              "from",
+              "to"
+            ],
             "additionalProperties": false
           }
         }
@@ -719,6 +807,16 @@
         "log.contains": {
           "type": "string",
           "minLength": 1
+        },
+        "world.moved": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "at_least": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
         }
       }
     },
