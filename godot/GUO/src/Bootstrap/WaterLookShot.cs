@@ -17,6 +17,16 @@ internal static class WaterLookShot
     // The owner's reference camera: standing on the Haven pier among the moored boats.
     private const int DockX = 3522, DockY = 2591, DockZ = -3;
 
+    // Where the boat is looked for (open sea); GUO_WAKE_START="x y" moves it when the harbor is crowded.
+    private static readonly (int X, int Y) WakeStart = ParseStart();
+    private static int WakeStartX => WakeStart.X;
+    private static int WakeStartY => WakeStart.Y;
+    private static (int, int) ParseStart()
+    {
+        var v = System.Environment.GetEnvironmentVariable("GUO_WAKE_START")?.Split(' ');
+        return v is { Length: 2 } && int.TryParse(v[0], out int a) && int.TryParse(v[1], out int b) ? (a, b) : (3503, 2574);
+    }
+
     public static bool Passed { get; private set; }
 
     /// <summary>--water-look-only presets|wake: run one half.</summary>
@@ -126,11 +136,12 @@ internal static class WaterLookShot
     /// </summary>
     private static async System.Threading.Tasks.Task<bool> Wake(Node host, Game.World world, string dir)
     {
-        if (!BoatDemo.FindOpenWaterNear(world, DockX - 14, DockY - 6, out int bx, out int by, out sbyte bz, out ushort graphic))
+        if (!BoatDemo.FindOpenWaterNear(world, WakeStartX, WakeStartY, out int bx, out int by, out sbyte bz, out ushort graphic))
         {
             GD.PrintErr("[water look] no open water for the boat");
             return false;
         }
+        GD.Print($"[water look] open water for the boat at {bx},{by},{bz} (search from {WakeStartX},{WakeStartY})");
         int sx = bx + 5, sy = by;
         await GoTo(host, world, sx, sy, bz);
         var boat = await BoatDemo.PlaceBoat(host, world, bx, by, bz, graphic);
