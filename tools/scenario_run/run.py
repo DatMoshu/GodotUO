@@ -55,7 +55,7 @@ from redact import load_deny  # noqa: E402
 import capture  # noqa: E402
 import ghost_human as ghost_mod  # noqa: E402
 import human as human_mod  # noqa: E402
-from session import ClientSession, EditorSession  # noqa: E402
+from session import ClientSession, EditorSession, check_home  # noqa: E402
 
 EXIT = {"ok": 0, "failed": 1, "timeout": 1, "error": 1, "hang": 3}
 
@@ -198,7 +198,7 @@ def resolve_client_exe(given: Path | None, root: Path) -> Path | None:
 
 def execute(scen: sc.Scenario, cfg, variables: dict[str, str], *, size: str | None, scale: float, register: bool,
             record: bool | None = None, shard: tuple[str, int] | None = None, driver: str = "ai", clean: bool = False,
-            ghost: bool = False, headless: bool = False, allow_editor_tools: tuple[str, ...] = (), out_dir: Path | None = None, client_exe: Path | None = None) -> tuple[dict, Path]:
+            ghost: bool = False, headless: bool = False, allow_editor_tools: tuple[str, ...] = (), out_dir: Path | None = None, client_exe: Path | None = None, home: Path | None = None) -> tuple[dict, Path]:
     """One run, start to finish: the folder, the driver, the manifest, the shared copy, the registry row."""
     started = datetime.now(timezone.utc)
     run_id = ev.make_run_id(scen.id, driver, started)
@@ -227,6 +227,7 @@ def execute(scen: sc.Scenario, cfg, variables: dict[str, str], *, size: str | No
     elif scen.surface == "client":
         session = ClientSession(cfg, run_dir, record, size, interactive=human and not ghost)    # a stand-in person needs no focus or sound
         session.client_exe = client_exe
+        session.home = home
         session.shard = shard_address(scen, cfg.root, shard) if shard else None
     else:
         session = None
@@ -357,6 +358,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="run against this server profile (Id or Name in the workspace's servers.json) and GUO_SCENARIO_ACCOUNT/_PASSWORD")
     ap.add_argument("--client-exe", type=Path, default=None,
                     help="client scenarios: run this exported client instead of play.bat and the project (or set GUO_CLIENT_EXE)")
+    ap.add_argument("--home", type=Path, default=None,
+                    help="client scenarios: keep the client's settings and profile in this folder between runs (new, empty, or made by an earlier run)")
     ap.add_argument("--no-register", action="store_true", help="do not add the run to the registry")
     ap.add_argument("--clean", action="store_true", help="human driver: hide the overlay (Space and Esc still work), for a clean recording")
     ap.add_argument("--ghost-human", dest="ghost", action="store_true",
@@ -391,7 +394,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         client_exe = resolve_client_exe(args.client_exe, cfg.root)
-    except sc.ScenarioError as ex:
+        home = check_home(args.home) if args.home else None
+    except (sc.ScenarioError, ValueError) as ex:
         print(f"error: {ex}", file=sys.stderr)
         return 2
     shard = None
@@ -431,7 +435,7 @@ def main(argv: list[str] | None = None) -> int:
                                     register=not args.no_register, record=args.record, shard=shard,
                                     driver=args.driver, clean=args.clean, ghost=args.ghost,
                                     headless=args.headless, allow_editor_tools=tuple(args.allow_editor_tool), out_dir=args.out_dir,
-                                    client_exe=client_exe)
+                                    client_exe=client_exe, home=home)
     except sc.ScenarioError as ex:
         print(f"error: {ex}", file=sys.stderr)
         return 2

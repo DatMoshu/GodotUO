@@ -73,3 +73,17 @@ def test_other_options_reach_the_scenario_runner_unchanged():
 
     gate.run_chain(list(gate.CHAIN), "npx", "Guox", {}, ["--no-record", "--client-exe", "C:/pkg/GUO.exe"], run=run, out=lambda _: None)
     assert all(cmd[-3:] == ["--no-record", "--client-exe", "C:/pkg/GUO.exe"] for cmd in seen)
+
+
+def test_the_chain_gets_one_home_for_all_links_and_removes_it(monkeypatch):
+    homes = []
+
+    def run_chain(links, account, charname, env, extra, **kw):
+        home = gate.Path(extra[extra.index("--home") + 1])
+        homes.append((home, home.is_dir()))
+        return 0
+
+    monkeypatch.setattr(gate, "run_chain", run_chain)
+    monkeypatch.setattr(gate, "free_memory_gb", lambda: None)
+    assert gate.main([]) == 0
+    assert homes[0][1] and not homes[0][0].exists()

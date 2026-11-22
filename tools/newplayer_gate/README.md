@@ -10,12 +10,14 @@ launchers\dev\newplayer_gate.bat --client-exe PATH\GUO.exe   run the chain on an
 ```
 
 The gate invents an account nobody has used, then runs these scenarios in order with the scenario runner
-(`tools/scenario_run`, data_formats section 34). Each is its own client launch on a scratch profile.
+(`tools/scenario_run`, data_formats section 34). Each is its own client launch; all share one client home made for
+the run (the runner's `--home`) and removed afterwards, so the first link is still a new player's.
 
 | Link | Scenario | What a pass means |
 |---|---|---|
 | `create` | `client.newplayer.create` | A first login on an empty account opens character creation; a name, a ready-made profession and a city put the character in the world; the backpack opens and holds items; a held arrow key walks the character; it speaks; Log Out returns to the login screen |
 | `return` | `client.newplayer.return` | The same account logs in again, the character is on the list by name, enters the world again and logs out |
+| `kept` | `client.newplayer.kept` | A third start on the same client home: the paperdoll left open at log-out is open again without a key press. **Written, not yet run against a shard** |
 
 The chain stops at the first link that fails and exits with the runner's code for it (0 pass, 1 a step failed,
 2 a missing prerequisite). Exit 3 is the gate's own refusal: less than 10 GB of memory free, nothing started.
@@ -23,7 +25,7 @@ Run folders land where the scenario runner puts them, with stills, events and a 
 
 ## What it does not cover yet
 
-Dragging an item, equip and unequip, combat, a dropped connection and settings kept across a restart.
+Dragging an item, equip and unequip, combat and a dropped connection.
 The runner can hold a key and drag between controls (`ui.hold`, `ui.drag`); it has no step for a dropped connection yet.
 A pass here is a pass on the shard it ran against, not on other servers (`tools/server_lab` covers those).
 

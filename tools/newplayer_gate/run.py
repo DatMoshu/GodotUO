@@ -5,6 +5,10 @@ runner (tools/scenario_run), each as its own client launch against the dev shard
 
     client.newplayer.create   first login on an empty account, character creation, in the world, log out
     client.newplayer.return   the same account again: its character is listed, back in the world, log out
+    client.newplayer.kept     a third start: the paperdoll left open at log-out is open again without a key press
+
+All links share one client home made for the run (the runner's --home), so what one start saves the next one finds;
+the folder is new each time, so the first link is still a new player's, and it is removed when the chain ends.
 
 The chain stops at the first scenario that fails and exits with that scenario's exit code; 0 means all passed.
 The shard must create accounts on first login (the dev shard does; tools/modernuo/config). The password is
@@ -21,6 +25,8 @@ from __future__ import annotations
 import argparse
 import os
 import secrets
+import shutil
+import tempfile
 import subprocess
 import sys
 import time
@@ -33,6 +39,7 @@ RUNNER = ROOT / "tools" / "scenario_run" / "run.py"
 CHAIN = [
     ("create", "client.newplayer.create"),
     ("return", "client.newplayer.return"),
+    ("kept", "client.newplayer.kept"),
 ]
 
 MIN_FREE_GB = 10.0   # a client plus its recording; below this the run is refused rather than reaped half way
@@ -129,7 +136,13 @@ def main(argv=None) -> int:
     elif not env.get("GUO_SCENARIO_PASSWORD"):
         print("newplayer_gate: --account needs that account's password in GUO_SCENARIO_PASSWORD")
         return 2
-    return run_chain(links, account, character_name(account), env, extra)
+    if "--home" in extra:
+        return run_chain(links, account, character_name(account), env, extra)
+    home = Path(tempfile.mkdtemp(prefix="guo_newplayer_home_"))   # may hold a copy of saved settings: never left behind
+    try:
+        return run_chain(links, account, character_name(account), env, [*extra, "--home", str(home)])
+    finally:
+        shutil.rmtree(home, ignore_errors=True)
 
 
 if __name__ == "__main__":

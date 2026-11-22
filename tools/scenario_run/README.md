@@ -48,6 +48,11 @@ variable whose name contains `password` is environment only the same way: `shard
 the run's settings home). A path that is not a file stops the run before launch (exit 2). The manifest's `build` and
 `commit` still describe the checkout, so say which package was run when you report it.
 
+`--home DIR` keeps the client's settings and profile in `DIR` between runs, for checks of what survives a restart. The
+folder must be new, empty or one an earlier run made (it is marked); its `settings.json` starts as a copy of the usual
+one without `profilespath`, so profiles land in `DIR` and never in the player's own. A launch step's `--scratch-profile`
+is dropped for such a run, and the runner does not delete the folder: whoever passed it removes it.
+
 `--server NAME` runs a client scenario against a server profile of the per-user workspace (`profiles/servers.json`,
 found by `Id` or `Name`): its `Host` and `Port` are the address, the login comes from `GUO_SCENARIO_ACCOUNT` /
 `GUO_SCENARIO_PASSWORD` as for `--shard`, and the manifest records `server:<profile id>` as `shard`. The server lab
