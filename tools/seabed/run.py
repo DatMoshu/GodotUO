@@ -33,6 +33,7 @@ def main(argv=None) -> int:
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out")
     ap.add_argument("--opaque-water", action="store_true", help="leave the water statics opaque (the seabed is then hidden)")
+    ap.add_argument("--no-floor", action="store_true", help="experiment: leave out the floor tiles")
     ap.add_argument("--shallow-max", type=int, default=S.SHALLOW_MAX)
     a = ap.parse_args(argv)
     cfg = load_config()
@@ -50,9 +51,11 @@ def main(argv=None) -> int:
         }
         print(json.dumps(stats, indent=2))
         if a.cmd == "generate":
-            lines = S.write_stage(f, p.placed, out, install, p.new_land, p.new_lz, land, lz)
+            placed = [q for q in p.placed if not (a.no_floor and q[2] in S.FLOOR)]
+            lines = S.write_stage(f, placed, out, install, p.new_land, p.new_lz, land, lz)
             if not a.opaque_water:
                 lines.append(S.stage_translucent_water(install, out))
+                lines.append(S.stage_seamless_water_art(install, out))
             (out / "files_override.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
             stats["seconds"] = round(time.time() - t0, 1)
             (out / "seabed.json").write_text(json.dumps(stats, indent=2) + "\n", encoding="utf-8")

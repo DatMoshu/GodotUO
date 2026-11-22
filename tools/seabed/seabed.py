@@ -25,7 +25,7 @@ NO_STATIC = -127
 ROCKS_SMALL = (0x1363, 0x1364, 0x1365, 0x1368, 0x1369, 0x136B, 0x136C, 0x136D)  # "rock"/"rocks"
 ROCKS_CLUSTER = (0x1367, 0x136A)                        # "rocks": 2-3 stones
 BOULDERS = (0x1771, 0x1772, 0x1773, 0x1774, 0x1775, 0x1776)  # large brown/grey "rock"
-PLANTS = (0xD04, 0xD05)                                 # "water plants", "reeds"
+PLANTS = (0xD04,)                                       # "water plants" (0xD05 "reeds" carries a dark diamond base: left out)
 CORAL = (0x4C2A, 0x4C2B, 0x4C2C, 0x4C2D, 0x4C2E, 0x4C2F, 0x4C30, 0x4C31)  # "Sea Coral"/"Sea Sponge"
 CORAL_B = (0xA38B, 0xA38D, 0xA38E, 0xA38F, 0xA386)      # fire/staghorn/plate/red coral, anemone
 SHELLS = (0xFC4, 0xFC5, 0xFC6, 0xFC8, 0xFC9, 0xFCA, 0xFCB, 0xFCC)
@@ -189,7 +189,7 @@ def _pick_id(k, u):
     if k == 3:
         return pick(BOULDERS)
     if k == 4:
-        return PLANTS[0] if u < 0.8 else PLANTS[1]
+        return PLANTS[0]
     if k == 5:
         return pick(CORAL if u < 0.7 else CORAL_B)
     return pick(SHELLS)
@@ -238,6 +238,14 @@ def _inside(out: Path, install: Path) -> bool:
     return out == install or install in out.parents
 
 
+def _write(path: Path, data) -> None:
+    """write_bytes in 4 MiB pieces: one big write has failed with EINVAL on a synced build drive."""
+    view = memoryview(data)
+    with path.open("wb") as f:
+        for i in range(0, len(view), 4 << 20):
+            f.write(view[i:i + (4 << 20)])
+
+
 def write_stage(facet, placed, out: Path, install: Path, new_land=None, new_lz=None, old_land=None, old_lz=None):
     """Copy statics/staidx of `facet` into `out` with `placed` appended per block and, when
     new_land/new_lz are given, a patched copy of the facet's land file (only the blocks
@@ -262,8 +270,8 @@ def write_stage(facet, placed, out: Path, install: Path, new_land=None, new_lz=N
         start = len(sta)
         sta += new
         struct.pack_into("<iii", idx, n * 12, start, len(new), extra)
-    sta_path.write_bytes(bytes(sta))
-    idx_path.write_bytes(bytes(idx))
+    _write(sta_path, sta)
+    _write(idx_path, idx)
     lines = [f"staidx{facet.facet}.mul={idx_path}", f"statics{facet.facet}.mul={sta_path}"]
     if new_land is not None:
         import shutil
@@ -303,3 +311,64 @@ def stage_translucent_water(install: Path, out: Path) -> str:
     for i in range(WATER_STATIC[0], WATER_STATIC[1] + 1):
         U.write_tile(dst, i, {"flags": U.read_tile(dst, i)["flags"] | TRANSLUCENT})
     return f"tiledata.mul={dst}"
+
+
+# ---------------------------------------------------------------- seamless translucent water
+
+FULL_WATER = (0x1796, 0x179C)   # 0x1797-0x179C are whole diamonds (1012 pixels); 0x1796 is only their outline
+_UP_NEIGHBOURS = ((-22, -22), (22, -22), (-44, 0), (0, -44))
+
+
+def trim_overlap(mask):
+    """Drop the pixels of a 44x44 tile that a neighbour above or beside it already draws.
+    Neighbouring diamonds overlap by a pixel row along each edge; opaque that is invisible,
+    but a translucent surface blends twice there and shows a line. Returns the new mask."""
+    h, w = mask.shape
+    out = mask.copy()
+    for dx, dy in _UP_NEIGHBOURS:
+        for y in range(h):
+            for x in range(w):
+                nx, ny = x - dx, y - dy   # this pixel in the neighbour's frame
+                if out[y, x] and 0 <= nx < w and 0 <= ny < h and mask[ny, nx]:
+                    out[y, x] = False
+    return out
+
+
+def stage_seamless_water_art(install: Path, out: Path) -> str:
+    """Copy artLegacyMUL.uop into `out` with the whole-diamond water statics trimmed by
+    trim_overlap (in place in the copy; the install is untouched). Returns its override line."""
+    import shutil
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "uodata_write"))
+    import uodata as U
+    from guo import uoart
+    if _inside(out, install):
+        raise SystemExit(f"refusing to write inside the client install: {out}")
+    out = out.resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    src, dst = install / "artLegacyMUL.uop", out / "artLegacyMUL.uop"
+    shutil.copyfile(src, dst)
+    wanted = {U.uop_hash(U.ART_PATTERN.format(0x4000 + i)): i for i in range(FULL_WATER[0], FULL_WATER[1] + 1)}
+    with dst.open("r+b") as f:
+        data = f.read()
+        magic, _v, _st, block, _bs, _count = struct.unpack_from("<IIIqIi", data, 0)
+        while block:
+            files, nxt = struct.unpack_from("<iq", data, block)
+            pos = block + 12
+            for _ in range(files):
+                offset, header, comp, decomp, h, _crc, flag = struct.unpack_from("<qiiiQIh", data, pos)
+                if h in wanted and offset:
+                    w, hh, px = uoart.decode_static(data[offset + header:offset + header + decomp])
+                    mask = np.array(px, dtype=np.uint16).reshape(hh, w) > 0
+                    keep = trim_overlap(mask) if wanted[h] != 0x1796 else np.zeros_like(mask)   # the outline tile is the seam itself
+                    px2 = [p if keep[i // w, i % w] else 0 for i, p in enumerate(px)]
+                    new = uoart.encode_static(px2, w, hh)
+                    if flag != 0 or len(new) > decomp:
+                        raise SystemExit(f"cannot trim art {wanted[h]:#x} in place")
+                    f.seek(offset + header)
+                    f.write(new)
+                    f.seek(pos + 12)
+                    f.write(struct.pack("<ii", len(new), len(new)))
+                pos += 34
+            block = nxt
+    return f"artlegacymul.uop={dst}"

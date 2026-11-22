@@ -110,6 +110,22 @@ def test_deep_water_untouched():
     assert (p.new_land[far:] == 0xA8).all() and (p.new_lz[far:] == -5).all()  # deep sea keeps its land
 
 
+def test_trim_overlap_makes_a_seamless_tiling():
+    h = w = 44
+    mask = np.zeros((h, w), bool)
+    for y in range(h):
+        half = (y + 1) if y < 22 else (h - y)
+        mask[y, 22 - half:22 + half] = True               # the 44x44 diamond: 1012 pixels, rows 2..44..2
+    assert mask.sum() == 1012
+    t = S.trim_overlap(mask)
+    cover = np.zeros((400, 400), int)
+    for dx in range(-3, 4):
+        for dy in range(-3, 4):
+            cover[200 + (dx + dy) * 22:200 + (dx + dy) * 22 + h, 200 + (dx - dy) * 22:200 + (dx - dy) * 22 + w] += t
+    inner = cover[190:230, 190:230]
+    assert (inner == 1).all(), (int((inner > 1).sum()), int((inner == 0).sum()))   # no overlap, no gap
+
+
 class FakeFacet:
     facet = 0
     def __init__(self):
