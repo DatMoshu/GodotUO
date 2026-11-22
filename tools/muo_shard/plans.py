@@ -21,7 +21,7 @@ from shardprofile import Profile, ProfileError
 TOOLS = Path(__file__).resolve().parents[1]
 MODERNUO_TEMPLATE = TOOLS / "modernuo" / "config" / "modernuo.template.json"
 
-BASE_PACKAGES = ["git", "zstd", "libdeflate-dev", "libargon2-1", "libargon2-dev", "ca-certificates", "python3", "iproute2"]
+BASE_PACKAGES = ["git", "zstd", "libisal2", "libargon2-1", "libargon2-dev", "ca-certificates", "python3", "iproute2"]
 DEFAULT_BACKUP_ROOT = "/var/backups/muo"
 DEFAULT_KEYS = {"client_data": "MUO_CLIENT_DATA", "admin_user": "MUO_ADMIN_USER", "admin_password": "MUO_ADMIN_PASSWORD"}
 

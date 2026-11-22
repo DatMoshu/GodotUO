@@ -4,7 +4,7 @@
   "name": "GUO Dev",
   "server": {
     "source": {"kind": "git", "url": "https://github.com/modernuo/ModernUO.git",
-               "ref": "9782fd6aad1c41b3e0ca9e8843855421c00fe3e0"},
+               "ref": "4d9e2b6af2aaa9ff75472d1a12dbb47f38904457"},
     "patches": ["tools/modernuo/patches/0001-headless-owner-account.patch",
                 "tools/modernuo/patches/0002-settable-update-range.patch",
                 "tools/modernuo/patches/0003-felucca-spring.patch",
@@ -30,8 +30,7 @@
                 "tools/modernuo/patches/0022-dfi-crate-race.patch",
                 "tools/modernuo/patches/0023-dfi-bomberman.patch",
                 "tools/modernuo/patches/0024-dfi-conpvp-arena.patch",
-                "tools/modernuo/patches/0026-dev-photo-tour.patch",
-                "tools/modernuo/patches/0027-uop-map-chunk-order.patch"]
+                "tools/modernuo/patches/0026-dev-photo-tour.patch"]
   },
   "config_overlay": "tools/modernuo/config",
   "listen": {"port": 2593},
