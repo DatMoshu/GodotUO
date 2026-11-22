@@ -177,6 +177,7 @@ vec4 uo_shade(vec4 color, vec2 screen_uv, vec2 screen_pixel_size) {
 
 	if (water && water_model > 0) {
 		color.rgb = water_shade(color.rgb, screen_uv * (1.0 / screen_pixel_size));
+		alpha = water_alpha(alpha, screen_uv * (1.0 / screen_pixel_size));
 	}
 
 	if (use_trans && circle_of_transparency_radius > 0.0) {

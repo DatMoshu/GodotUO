@@ -3,12 +3,16 @@
 
     python tools/seabed/run.py generate [--facet 0] [--seed 1] [--out DIR]
     python tools/seabed/run.py stats    [--facet 0] [--seed 1]
+    python tools/seabed/run.py measure  [--data DIR] [--facet 0] [--override FILE] [--band 24] [--out FILE]
 
 generate reads the install (read only), plans sea plants, corals, rocks and
 sand patches on every shallow cell (see seabed.py for the rule), and writes
 staidx<N>.mul, statics<N>.mul, files_override.txt and seabed.json into --out
 (default <UO_BUILD_DIR>/seabed/map<N>). Give the client --files-override
 <out>/files_override.txt. The install is never written.
+
+measure (measure.py) reads any client data folder and reports how its shallows are built:
+depth and bed by shore distance, what lies on the bed and how it groups. Numbers only.
 """
 from __future__ import annotations
 
@@ -29,7 +33,7 @@ from guo import load_config, uomap  # noqa: E402
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=("generate", "stats"))
+    ap.add_argument("cmd", choices=("generate", "stats", "measure"))
     ap.add_argument("--facet", type=int, default=0)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out")
@@ -37,9 +41,16 @@ def main(argv=None) -> int:
     ap.add_argument("--no-floor", action="store_true", help="experiment: leave out the floor tiles")
     ap.add_argument("--calibrate", action="store_true", help="experiment (calibrate.py): 64 hues in an 8x8 pattern, no objects")
     ap.add_argument("--shallow-max", type=int, default=S.SHALLOW_MAX)
+    ap.add_argument("--data", help="measure: the client data folder to read (default: the configured install)")
+    ap.add_argument("--override", help="measure: a files_override.txt whose map, statics and tiledata replace the folder's")
+    ap.add_argument("--band", type=int, default=24, help="measure: how many cells from the shore to report")
     a = ap.parse_args(argv)
     cfg = load_config()
     install = Path(cfg.client_data)
+    if a.cmd == "measure":
+        import measure
+        return measure.run(Path(a.data) if a.data else install, a.facet, Path(a.override) if a.override else None,
+                           a.band, Path(a.out) if a.out else None)
     out = Path(a.out) if a.out else cfg.build / "seabed" / f"map{a.facet}"
     t0 = time.time()
     with uomap.open_facet(install, a.facet) as f:

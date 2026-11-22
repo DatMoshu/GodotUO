@@ -666,13 +666,20 @@ internal static class WaterRender
 
 /// <summary>
 /// Which cells around the player hold water, and at what height, as a
-/// 128 x 128 ring texture in world cells (uo_water.gdshaderinc, THE MASK).
+/// 256 x 256 ring texture in world cells (uo_water.gdshaderinc, THE MASK).
 /// Rebuilt when the player has moved a few cells or the loaded chunks change,
 /// never every frame.
 /// </summary>
+/// <remarks>
+/// 256 cells, not 128: a 3840-wide view at zoom 1 reaches 67 cells from the
+/// player, and a cell outside the window reads as open sea, so a coast near
+/// the edge of a large screen lost its surf and shallows and got them back
+/// when the window re-centred. The long shore distance (A) needs its reach
+/// (LongCap) inside the window on every side as well.
+/// </remarks>
 internal sealed class WaterMask
 {
-    public const int Size = 128;
+    public const int Size = 256;
     private const int Recentre = 8;
 
     private readonly byte[] _pixels = new byte[Size * Size * 4];
@@ -706,6 +713,80 @@ internal sealed class WaterMask
 
     /// <summary>Shore distance cap, in cells (mask B = distance / cap).</summary>
     public const int ShoreCap = 5;
+
+    /// <summary>
+    /// The long shore distance's cap, in cells. Mask A holds 255 - (distance * 8 + post * 4):
+    /// distance 0 dry, 1..LongCap wet; post 1 when a submerged dock post stands in the cell. So a
+    /// mask written before this channel existed (A 255, or 128 for a post) reads as distance 0.
+    /// </summary>
+    public const int LongCap = 30;
+    private readonly byte[] _far = new byte[Size * Size];
+
+    /// <summary>
+    /// A: Chebyshev distance of each wet cell to the nearest dry one, by the usual two sweeps
+    /// (each cell takes its eight neighbours' least + 1). Cells outside the window count as far.
+    /// </summary>
+    private void LongDistance()
+    {
+        const int M = Size - 1;
+        byte[] d = _far;
+        for (int y = 0; y < Size; y++)
+        {
+            int ry = ((OriginY + y) & M) * Size;
+            for (int x = 0; x < Size; x++)
+            {
+                int at = ry + ((OriginX + x) & M);
+                d[y * Size + x] = _pixels[at * 4] == 0 ? (byte)0 : (byte)LongCap;
+            }
+        }
+        for (int y = 0; y < Size; y++)
+        {
+            for (int x = 0; x < Size; x++)
+            {
+                int i = y * Size + x;
+                int v = d[i];
+                if (v == 0) continue;
+                if (x > 0) v = Math.Min(v, d[i - 1] + 1);
+                if (y > 0)
+                {
+                    v = Math.Min(v, d[i - Size] + 1);
+                    if (x > 0) v = Math.Min(v, d[i - Size - 1] + 1);
+                    if (x < M) v = Math.Min(v, d[i - Size + 1] + 1);
+                }
+                d[i] = (byte)v;
+            }
+        }
+        for (int y = Size - 1; y >= 0; y--)
+        {
+            int ry = ((OriginY + y) & M) * Size;
+            for (int x = Size - 1; x >= 0; x--)
+            {
+                int i = y * Size + x;
+                int v = d[i];
+                if (v != 0)
+                {
+                    if (x < M) v = Math.Min(v, d[i + 1] + 1);
+                    if (y < M)
+                    {
+                        v = Math.Min(v, d[i + Size] + 1);
+                        if (x < M) v = Math.Min(v, d[i + Size + 1] + 1);
+                        if (x > 0) v = Math.Min(v, d[i + Size - 1] + 1);
+                    }
+                    d[i] = (byte)v;
+                }
+                int at = (ry + ((OriginX + x) & M)) * 4 + 3;
+                // _pixels A holds only the post flag (4) until here.
+                _pixels[at] = (byte)(255 - (v * 8 + (_pixels[at] & 4)));
+            }
+        }
+    }
+
+    /// <summary>For the probe: the long shore distance at a cell, in cells; LongCap outside the window.</summary>
+    internal int ShoreDistanceAt(int x, int y)
+    {
+        if (_texture == null || x < OriginX || y < OriginY || x >= OriginX + Size || y >= OriginY + Size) return LongCap;
+        return (255 - _pixels[((((y & (Size - 1)) * Size) + (x & (Size - 1))) * 4) + 3]) >> 3;
+    }
 
     /// <summary>
     /// B channel: for a wet cell, the distance in cells to the nearest dry
@@ -784,7 +865,7 @@ internal sealed class WaterMask
             _pixels[i] = 255;
             _pixels[i + 1] = 123;
             _pixels[i + 2] = 255;
-            _pixels[i + 3] = 255;
+            _pixels[i + 3] = 0;
         }
 
         foreach (var chunk in world.Map.GetUsedChunks())
@@ -837,7 +918,7 @@ internal sealed class WaterMask
                     int at = (((wy & (Size - 1)) * Size) + (wx & (Size - 1))) * 4;
                     _pixels[at] = wet ? (byte)255 : (byte)0;
                     _pixels[at + 2] = 0;
-                    _pixels[at + 3] = wet && postBase <= z && postBase >= z - 10 ? (byte)128 : (byte)255;
+                    _pixels[at + 3] = wet && postBase <= z && postBase >= z - 10 ? (byte)4 : (byte)0;
                     _pixels[at + 1] = wet ? (byte)Math.Clamp(z + 128, 0, 255)
                         : dryZ == int.MinValue ? (byte)0 : (byte)Math.Clamp(dryZ + 128, 0, 255);
                 }
@@ -845,6 +926,7 @@ internal sealed class WaterMask
         }
 
         ShoreDistance();
+        LongDistance();
 
         if (_image == null)
         {

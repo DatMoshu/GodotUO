@@ -18,14 +18,18 @@
 //
 // THE MASK
 //
-// water_mask is a ring of 128 x 128 world cells around the player (cell x, y
-// at texel x & 127, y & 127), rebuilt on the CPU by WaterMask:
+// water_mask is a ring of N x N world cells around the player (cell x, y at
+// texel x mod N, y mod N; N is the texture's own size, 256 from WaterMask),
+// rebuilt on the CPU by WaterMask:
 //   R  1 when the cell has water (Wet land or a Wet static), else 0
 //   G  the height of that water, z + 128, over 255
 //   B  shore distance of a wet cell: cells to the nearest dry cell along the
 //      eight directions, capped at 5, as distance / 5 (0 for dry cells)
-// Cells outside water_mask_origin .. + 128 are unknown and read as water, so
-// a stale texel never draws foam.
+//   A  255 - (long shore distance * 8 + post * 4): the Chebyshev distance to
+//      the nearest dry cell, capped at 30, and whether a submerged dock post
+//      stands in the cell (water_mask_far, water_mask_post)
+// Cells outside water_mask_origin .. + N are unknown and read as deep water,
+// so a stale texel never draws foam.
 
 const int WATER_BIT = 0x40;
 const int WATER_UO = 1;
@@ -98,10 +102,30 @@ vec3 water_local_light(vec2 target_px) {
 
 vec4 water_mask_at(vec2 cell) {
 	vec2 rel = cell - water_mask_origin;
-	if (rel.x < 0.0 || rel.y < 0.0 || rel.x >= 128.0 || rel.y >= 128.0) {
-		return vec4(1.0, 123.0 / 255.0, 1.0, 1.0);
+	float n = float(textureSize(water_mask, 0).x);
+	if (rel.x < 0.0 || rel.y < 0.0 || rel.x >= n || rel.y >= n) {
+		return vec4(1.0, 123.0 / 255.0, 1.0, 15.0 / 255.0);
 	}
-	return texelFetch(water_mask, ivec2(mod(cell, 128.0)), 0);
+	return texelFetch(water_mask, ivec2(mod(cell, n)), 0);
+}
+
+// Mask A unpacked: the long shore distance in cells (0 dry .. 30), and the post flag.
+float water_mask_far(vec4 m) {
+	return floor((255.0 - floor(m.a * 255.0 + 0.5)) / 8.0);
+}
+
+bool water_mask_post(vec4 m) {
+	return mod(255.0 - floor(m.a * 255.0 + 0.5), 8.0) >= 4.0;
+}
+
+// The long shore distance between cell centres, in cells: the same four-cell
+// blend as water_wet_linear, so it has no step at a tile boundary.
+float water_far_linear(vec2 xy) {
+	vec2 lo = floor(xy);
+	vec2 blend = fract(xy);
+	return mix(mix(water_mask_far(water_mask_at(lo)), water_mask_far(water_mask_at(lo + vec2(1.0, 0.0))), blend.x),
+			mix(water_mask_far(water_mask_at(lo + vec2(0.0, 1.0))),
+			water_mask_far(water_mask_at(lo + vec2(1.0, 1.0))), blend.x), blend.y);
 }
 
 // A continuous wet-cell field for Lighting's shallow/deep colour. Sampling
@@ -622,6 +646,30 @@ vec3 water_shade_core(vec3 base, vec2 target_px) {
 	return clamp(c, 0.0, 1.0);
 }
 
+// DEPTH FADE
+//
+// A translucent water tile shows what lies under it: a staged seabed
+// (tools/seabed), a shard's own. Where such water ends against the opaque
+// deep sea the two met along tile edges, a sawtooth of diamonds. Here the
+// surface thickens with the distance from land instead, per pixel: the tile's
+// own alpha at the shore, opaque from water_depth_fade.y cells out, where it
+// is the same art as the deep sea's land tiles. x is where the thickening
+// starts; y <= x switches it off (the tile's alpha everywhere, as before).
+uniform vec2 water_depth_fade = vec2(3.5, 12.0);
+
+float water_alpha(float alpha, vec2 target_px) {
+	if (alpha >= 0.999 || water_depth_fade.y <= water_depth_fade.x) { return alpha; }
+	vec2 world = target_px * water_target_to_world.xy + water_target_to_world.zw;
+	vec2 f;
+	vec2 cell = water_cell(world, f);
+	// The distance is Chebyshev, so its contours are straight along the tile
+	// axes; a slow wobble of a cell or so keeps the fade from tracing them.
+	float wobble = (water_noise(world * 0.021) - 0.5) * 2.4 + (water_noise(world * 0.067 + 9.0) - 0.5) * 0.9;
+	float d = water_far_linear(cell + f) + wobble;
+	float k = smoothstep(water_depth_fade.x, water_depth_fade.y, d);
+	return mix(alpha, 1.0, k);
+}
+
 vec3 water_shade(vec3 base, vec2 target_px) {
 	vec3 c = water_shade_core(base, target_px);
 	if (water_shallow.x <= 0.0 || water_debug != 0) { return c; }
@@ -631,7 +679,7 @@ vec3 water_shade(vec3 base, vec2 target_px) {
 	vec2 cell = water_cell(world, f);
 	float t = water_time * water_params.x;
 	c = water_shallow_apply(c, cell, f, world, t);
-	if (water_harbor && water_model == WATER_REALISTIC && abs(water_mask_at(cell).a - 0.5) < 0.01) {
+	if (water_harbor && water_model == WATER_REALISTIC && water_mask_post(water_mask_at(cell))) {
 		float d = length(f);
 		float shadow = 1.0 - smoothstep(0.17, 0.43, d);
 		float pulse = sin(t * 1.8 + dot(cell, vec2(0.39, 0.17)));
