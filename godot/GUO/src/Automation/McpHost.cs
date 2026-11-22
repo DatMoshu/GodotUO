@@ -181,7 +181,7 @@ public partial class McpHost : Node
     private static object[] Catalog() => new[]
     {
         Tool("guo_ui", "Inspect visible classic gumps and Godot controls; editable field values are omitted. Bounds are viewport pixels. Up to 2000 controls.", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"),
-        Tool("guo_input", "Send one event through GUO's real input queue. Use motion, wait, button down, wait, button up for clicks/drags. button: Left/Right/Middle/WheelUp/WheelDown. key: Godot key name, e.g. Enter or Escape. text inserts Unicode into the focused field. Event completes after two frames. No OS pointer movement.", "{\"type\":\"object\",\"properties\":{\"kind\":{\"enum\":[\"motion\",\"button\",\"key\",\"text\"]},\"x\":{\"type\":\"integer\"},\"y\":{\"type\":\"integer\"},\"button\":{\"type\":\"string\"},\"key\":{\"type\":\"string\"},\"pressed\":{\"type\":\"boolean\"},\"text\":{\"type\":\"string\",\"maxLength\":1024},\"shift\":{\"type\":\"boolean\"},\"ctrl\":{\"type\":\"boolean\"},\"alt\":{\"type\":\"boolean\"}},\"required\":[\"kind\"],\"additionalProperties\":false}"),
+        Tool("guo_input", "Send one event through GUO's real input queue. Use motion, wait, button down, wait, button up for drags; click (x, y, button, clicks 1..2) presses and releases in one frame, a double-click included. button: Left/Right/Middle/WheelUp/WheelDown. key: Godot key name, e.g. Enter or Escape. text inserts Unicode into the focused field. Event completes after two frames. No OS pointer movement.", "{\"type\":\"object\",\"properties\":{\"kind\":{\"enum\":[\"motion\",\"button\",\"click\",\"key\",\"text\"]},\"x\":{\"type\":\"integer\"},\"y\":{\"type\":\"integer\"},\"button\":{\"type\":\"string\"},\"key\":{\"type\":\"string\"},\"pressed\":{\"type\":\"boolean\"},\"text\":{\"type\":\"string\",\"maxLength\":1024},\"shift\":{\"type\":\"boolean\"},\"ctrl\":{\"type\":\"boolean\"},\"alt\":{\"type\":\"boolean\"},\"clicks\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":2}},\"required\":[\"kind\"],\"additionalProperties\":false}"),
         Tool("guo_wait", "Wait 1..600 process frames before observing asynchronous UI/server changes.", "{\"type\":\"object\",\"properties\":{\"frames\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":600}},\"required\":[\"frames\"],\"additionalProperties\":false}"),
         Tool("guo_state", "Cheap state for scripted runs: process frame index, scene, viewport size and, once in the world, the player's map index, tile position, war mode, hits, worn and backpack item serials; the last attack, the entity and the classic control under the pointer, the nearest mobiles (with where their feet are drawn) and the last journal lines.", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"),
         Tool("guo_net_drop", "Test a dropped connection: shut the sending side of the game connection; the shard closes its side and the client meets the end of the stream on its own read path, as when a shard drops it.", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"),
@@ -286,6 +286,26 @@ public partial class McpHost : Node
                 Godot.Input.ParseInputEvent(up);
             }
             return Text("Text dispatched.");
+        }
+        if (kind == "click")
+        {
+            // A whole click, or a double-click, in one frame: the game counts a double-click by game time, and two
+            // presses sent as separate calls can fall outside its window when frames are slow.
+            var at = new Vector2(a.GetProperty("x").GetInt32(), a.GetProperty("y").GetInt32());
+            if (!GetViewport().GetVisibleRect().HasPoint(at)) throw new ArgumentOutOfRangeException();
+            if (!Enum.TryParse(a.TryGetProperty("button", out var b) ? b.GetString() : "Left", true, out MouseButton button) || button < MouseButton.Left || button > MouseButton.Middle) throw new ArgumentException();
+            int clicks = a.TryGetProperty("clicks", out var n) ? n.GetInt32() : 1;
+            if (clicks < 1 || clicks > 2) throw new ArgumentOutOfRangeException();
+            _pointer = at;
+            for (int i = 0; i < clicks; i++)
+            {
+                foreach (bool pressed in new[] { true, false })
+                {
+                    using var click = new InputEventMouseButton { Position = at, GlobalPosition = at, ButtonIndex = button, Pressed = pressed, Factor = 1 };
+                    Godot.Input.ParseInputEvent(click);
+                }
+            }
+            return Text("Click dispatched; inspect UI to verify the effect.");
         }
         InputEvent ev;
         if (kind == "key")

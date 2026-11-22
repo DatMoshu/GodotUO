@@ -599,7 +599,7 @@ def test_world_click_moves_up_the_body_until_the_game_says_it_is_there(tmp_path)
             client.calls.append((tool, arguments))
             motions = [a for t, a in client.calls if t == "guo_input" and a["kind"] == "motion"]
             hover = 77 if motions and motions[-1]["y"] <= 370 else 0       # the sprite starts 30 px above the feet
-            clicked = sum(1 for t, a in client.calls if t == "guo_input" and a["kind"] == "button" and a["pressed"])
+            clicked = sum(a.get("clicks", 1) for t, a in client.calls if t == "guo_input" and a["kind"] == "click")
             state = _world()
             state.update(hover=hover, mobiles=[dummy], combat={"lastAttack": 77 if clicked >= 2 else 0},
                          journal=["GUO_PAD: hit attack-dummy"] if clicked >= 2 else [])
@@ -608,8 +608,8 @@ def test_world_click_moves_up_the_body_until_the_game_says_it_is_there(tmp_path)
 
     client.call = call
     assert r.run()["ok"]
-    presses = [a for t, a in client.calls if t == "guo_input" and a["kind"] == "button" and a["pressed"]]
-    assert len(presses) == 2 and all(p["y"] <= 370 and p["x"] == 600 for p in presses)
+    clicks = [a for t, a in client.calls if t == "guo_input" and a["kind"] == "click"]
+    assert len(clicks) == 1 and clicks[0]["clicks"] == 2 and clicks[0]["y"] <= 370 and clicks[0]["x"] == 600
     observed = events_of(log, "expect")[-1]["detail"]["observed"]
     assert observed["journal.contains"] is True                     # whether, never the journal's lines
 

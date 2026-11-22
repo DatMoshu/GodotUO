@@ -802,10 +802,8 @@ class Runner:
                 self._input(kind="motion", x=x, y=y)
                 self._sleep(0.1)                        # what is under the pointer is worked out while the world draws
                 if int(self._tool_json(GAME_TOOLS["state"], {}).get("hover") or 0) == int(mobile["serial"]):
-                    clicks = max(1, int(do.get("clicks", 1)))
-                    for _ in range(clicks):
-                        self._input(kind="button", x=x, y=y, button="Left", pressed=True)
-                        self._input(kind="button", x=x, y=y, button="Left", pressed=False)
+                    clicks = min(2, max(1, int(do.get("clicks", 1))))
+                    self._input(kind="click", x=x, y=y, button="Left", clicks=clicks)   # one frame: a double-click stays one
                     return {"clicked": mobile.get("name"), "x": x, "y": y, "clicks": clicks}
             if self._clock() >= end:
                 break
