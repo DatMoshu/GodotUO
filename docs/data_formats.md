@@ -3387,8 +3387,10 @@ profile fields, Options entries, automatic downloads or shard authority.
 | `pixel.grain` | integer 1..8 world pixels; 1 | Style pixel size; native art stays nearest-neighbour |
 
 The editor's Water panel (`#if TOOLS`, `addons/guo_editor/Water/WaterShallows.cs`) authors six of
-these today: `depth.fade_start`, `depth.fade_end`, `depth.floor_reach`, `depth.sand_bars`,
-`wake.foam` and `wake.length`. It shows them in the previewed world, and saves and reloads them
+these today: `depth.fade_start`, `depth.fade_end`, `depth.floor_reach` and `depth.sand_bars`
+(`wake.foam` and `wake.length` are written at their defaults; the World view has no boat to
+show them on). The panel ends the fade at 13 cells, the reach of a seabed stage, though the
+schema allows more. It shows them in the previewed world, and saves and reloads them
 as a complete v2 document whose other fields come from the v1 draft by the correspondence
 below. The client itself still draws with the defaults; no pack carries the document.
 

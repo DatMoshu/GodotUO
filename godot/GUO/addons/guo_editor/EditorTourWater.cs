@@ -115,9 +115,9 @@ public partial class EditorTour
 
             var treatments = new (string Name, WaterShallows Value)[]
             {
-                ("harbor", new WaterShallows(6f, 10f, 12f, .25f, .7f, .7f)),
-                ("open-sea", new WaterShallows(4f, 8f, 9f, .3f, 1.3f, 1.6f)),
-                ("clear-lagoon", new WaterShallows(14f, 22f, 30f, .8f, .9f, 1f)),
+                ("harbor", new WaterShallows(6f, 10f, 12f, .25f, 1f, 1f)),
+                ("open-sea", new WaterShallows(4f, 8f, 9f, .3f, 1f, 1f)),
+                ("clear-lagoon", new WaterShallows(11.5f, 13f, 30f, .8f, 1f, 1f)),
             };
             Image lagoon = null;
             foreach (var t in treatments)
@@ -133,19 +133,20 @@ public partial class EditorTour
             var single = new (string Name, WaterShallows Value)[]
             {
                 ("only-clear-water-reach-3", d0 with { FadeStart = 3f }),
-                ("only-deep-water-from-24", d0 with { FadeEnd = 24f }),
+                ("only-deep-water-from-10.5", d0 with { FadeEnd = 10.5f }),
                 ("only-seabed-darkening-40", d0 with { FloorReach = 40f }),
                 ("only-sand-bars-0", d0 with { SandBars = 0f }),
-                ("only-wake-foam-0", d0 with { WakeFoam = 0f }),
-                ("only-wake-length-3", d0 with { WakeLength = 3f }),
             };
             foreach (var t in single)
             {
                 panel.SetShallows(t.Value);
                 Image shot = await Still(t.Name, defaults);
                 float d = Differ(defaults, shot);
-                GD.Print(FormattableString.Invariant($"[water shallows] {t.Name}: {d:P2} of the view differs from the defaults"));
+                Check(d > 0.005f, FormattableString.Invariant($"{t.Name} changes the view ({d:P2})"));
             }
+            panel.SetShallows(d0 with { FadeStart = 14f, FadeEnd = 22f });
+            Check(panel.Shallows.FadeEnd == WaterPanel.StageReach && panel.Shallows.FadeStart < panel.Shallows.FadeEnd,
+                "a fade past the stage's reach is limited to it");
             // Save, go back to the defaults, reload: the lagoon again.
             string draft = Path.Combine(dir, "clear-lagoon.v2.json");
             WaterShallows.Save(panel.Style, treatments[2].Value, draft);

@@ -101,7 +101,8 @@ public partial class WaterWorkbenchProbe : Node
             Require(WaterShallows.Read(v2) == lagoon, "a v2 draft's depth and wake numbers survive save and reload");
             Require(System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(v2)).Contains("\"schema\": \"guo/water@2\""), "the draft is a guo/water@2 document");
             panel.SetShallows(WaterShallows.Read(v2));
-            Require(panel.Shallows == lagoon, "the panel takes a loaded v2 draft");
+            Require(panel.Shallows == lagoon with { FadeStart = 12f, FadeEnd = WaterPanel.StageReach },
+                "the panel takes a loaded v2 draft, its fade limited to a stage's reach");
             bool refused = false;
             try { new WaterShallows(12f, 10f, 17f, .5f, 1f, 1f).Checked(); } catch (InvalidDataException) { refused = true; }
             Require(refused, "a fade that ends before it starts is refused");
