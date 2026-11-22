@@ -60,5 +60,6 @@ it is taken even if its file has not landed yet.
 | 0050 | Legacy Comfy generation export containment | work/release-review-20261112 (release qualification; validation pending) |
 | 0051 | Retire legacy runtime voice synthesis | work/release-review-20261112 (release qualification; validation pending) |
 | 0053 | [Read both window spellings on Project Zomboid wall edges](ADR-0053-zomboid-window-edge-vocabulary.md) | Accepted for local implementation, 2026-11-15 (tool correction) |
+| 0054 | [Detect shard map data layouts from the files themselves](ADR-0054-shard-map-data-detection.md) | Proposed, 2026-11-21 (tasks 2393, 2394) |
 
 Next free: 0054 (0052 is reserved for the source-object furnishing proposal).
