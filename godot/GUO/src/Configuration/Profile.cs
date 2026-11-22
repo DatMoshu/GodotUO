@@ -498,9 +498,10 @@ namespace GUO.Configuration
         // The look is the "uo" style with all four tunes at 100, whatever the
         // ripple strength (the owner's own profile wore it with ripples at 50).
         internal bool WearsRejectedWaterLook(bool legacyRipples) =>
+            // Only the "uo" style: other styles (lighting, pack styles) at the
+            // field-default tunes of 100 are deliberate looks and stay as saved.
             WaterTuneSpeed == 100 && WaterTuneWave == 100 && WaterTuneFoam == 100 && WaterTuneGlint == 100
-            && (string.Equals(WaterStyle, "uo", StringComparison.OrdinalIgnoreCase)
-                || (legacyRipples && !string.Equals(WaterStyle, "classic", StringComparison.OrdinalIgnoreCase)));
+            && string.Equals(WaterStyle, "uo", StringComparison.OrdinalIgnoreCase);
         internal void MigrateRejectedWaterLook(bool legacyRipples)
         {
             if (WaterLookMigrated) return;
