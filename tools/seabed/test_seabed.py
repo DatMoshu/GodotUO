@@ -47,7 +47,7 @@ def test_bed_extended_to_full_band_and_deep_untouched():
     q = S.plan(land, lz, wet, occ, seed=3)
     assert q.extended_cells > 0 and (q.new_land[20:30] == S.BED_ID).all() and (q.new_lz[20:30] == -15).all()
     assert (q.new_land[16 + S.SHALLOW_MAX + 1:] == 0xA8).all()                    # beyond the band: still deep
-    waters = {x for x, y, sid, z, h in q.placed if z == -5}
+    waters = {x for x, y, sid, z, h in q.placed if z == -5 and sid not in S.STRIP_IDS}
     assert waters and min(waters) >= 20
 
 
@@ -90,6 +90,24 @@ def test_progress_and_choose_ramp_on_a_synthetic_hue_table():
     assert all(abs(C.progress(C.predict(model)[h])[1]) < 1e-6 for h, _ in ramp)
 
 
+def test_trim_gap_is_refilled_by_edge_strips():
+    """The trimmed pixels leave a hole where the neighbour that would draw them has no water (a coast).
+    Strips hold exactly those pixels, and plan() puts one on each water cell whose neighbour is missing."""
+    mask = np.zeros((44, 44), bool)
+    for y in range(44):
+        n = 2 * (y + 1) if y < 22 else 2 * (44 - y)
+        mask[y, 22 - n // 2:22 + n // 2] = True
+    kept, strips = S.trim_parts(mask)
+    assert (kept | np.logical_or.reduce(strips)).tolist() == mask.tolist()          # nothing lost, nothing added
+    assert not any((kept & s).any() for s in strips) and any(s.any() for s in strips)
+    land, lz, wet, occ = coast()
+    p = S.plan(land, lz, wet, occ, seed=3)
+    at = {(x, y, sid) for x, y, sid, z, h in p.placed if sid in S.STRIP_IDS}
+    assert (16, 30, S.STRIP_IDS[0]) in at                                           # x-1 is land: the shore cell gets the strip
+    assert (30, 30, S.STRIP_IDS[0]) not in at                                       # inside the band the neighbour draws it
+    assert all(x >= 16 for x, y, sid in at)
+
+
 def test_objects_thin_out_with_depth():
     land, lz, wet, occ = coast(256, 128)
     p = S.plan(land, lz, wet, occ, seed=2)
@@ -110,7 +128,7 @@ def test_occupied_cells_stay_clear():
     land, lz, wet, occ = coast()
     occ[20:30, :] = True
     p = S.plan(land, lz, wet, occ, seed=3)
-    assert not [1 for x, y, sid, z, h in p.placed if 20 <= x < 30 and sid not in S.FLOOR]   # floor yes, objects no
+    assert not [1 for x, y, sid, z, h in p.placed if 20 <= x < 30 and sid not in S.FLOOR and sid not in S.STRIP_IDS]   # floor yes, objects no
 
 
 def test_groups_not_uniform():

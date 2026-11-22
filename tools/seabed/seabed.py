@@ -177,6 +177,16 @@ def plan(land, land_z, wet_z, occupied, seed=1, origin=(0, 0), shallow_max=SHALL
     ix, iy = np.nonzero(shallow)
     for x, y in zip(ix.tolist(), iy.tolist()):
         placed.append((x, y, FLOOR[int(r2[x, y] * len(FLOOR))], int(floor_z[x, y]), int(hue_at[x, y])))
+    whole = need | (full_water if full_water is not None else wet_static)   # cells that now carry a whole (trimmed) water tile
+    water_z = np.where(wet_static, wet_z, -5)
+    for (cx, cy), sid in zip(STRIP_CELLS, STRIP_IDS):
+        has = np.zeros_like(whole)   # has[x, y]: the neighbour at (x + cx, y + cy) carries a whole water tile
+        xa, xb = max(0, -cx), w - max(0, cx)
+        ya, yb = max(0, -cy), h - max(0, cy)
+        has[xa:xb, ya:yb] = whole[xa + cx:xb + cx, ya + cy:yb + cy]
+        ix, iy = np.nonzero(whole & ~has)
+        for x, y in zip(ix.tolist(), iy.tolist()):
+            placed.append((x, y, sid, int(water_z[x, y]), 0))
     for k in (2, 3, 4, 5, 6):
         ix, iy = np.nonzero(kind == k)
         for x, y in zip(ix.tolist(), iy.tolist()):
@@ -321,6 +331,8 @@ def stage_translucent_water(install: Path, out: Path) -> str:
     shutil.copyfile(install / "tiledata.mul", dst)
     for i in range(WATER_STATIC[0], WATER_STATIC[1] + 1):
         U.write_tile(dst, i, {"flags": U.read_tile(dst, i)["flags"] | TRANSLUCENT})
+    for i in STRIP_IDS:   # the edge strips (stage_seamless_water_art): water that is translucent, with a name
+        U.write_tile(dst, i, {**U.read_tile(dst, 0x1797), "name": "water edge", "flags": U.read_tile(dst, 0x1797)["flags"] | TRANSLUCENT})
     return f"tiledata.mul={dst}"
 
 
@@ -330,19 +342,34 @@ FULL_WATER = (0x1796, 0x179C)   # 0x1797-0x179C are whole diamonds (1012 pixels)
 _UP_NEIGHBOURS = ((-22, -22), (22, -22), (-44, 0), (0, -44))
 
 
-def trim_overlap(mask):
-    """Drop the pixels of a 44x44 tile that a neighbour above or beside it already draws.
-    Neighbouring diamonds overlap by a pixel row along each edge; opaque that is invisible,
-    but a translucent surface blends twice there and shows a line. Returns the new mask."""
+# The cell offset of each of those neighbours (screen (dx, dy) / 22 -> (x - y, x + y) -> cell).
+STRIP_CELLS = ((-1, 0), (0, -1), (-1, 1), (-1, -1))
+STRIP_IDS = (0xFFFD, 0xFFFC, 0xFFFB, 0xFFFA)   # free static ids (no art, empty tiledata): the edge strips below
+
+
+def trim_parts(mask):
+    """(kept, strips): the tile minus the pixels a neighbour above or beside it already draws,
+    and for each of those neighbours (in _UP_NEIGHBOURS order) the pixels it was the one to
+    take. Neighbouring diamonds overlap by a pixel row along each edge; opaque that is invisible,
+    but a translucent surface blends twice there and shows a line."""
     h, w = mask.shape
     out = mask.copy()
+    strips = []
     for dx, dy in _UP_NEIGHBOURS:
+        strip = np.zeros_like(mask)
         for y in range(h):
             for x in range(w):
                 nx, ny = x - dx, y - dy   # this pixel in the neighbour's frame
                 if out[y, x] and 0 <= nx < w and 0 <= ny < h and mask[ny, nx]:
                     out[y, x] = False
-    return out
+                    strip[y, x] = True
+        strips.append(strip)
+    return out, strips
+
+
+def trim_overlap(mask):
+    """The tile without the pixels a neighbour above or beside it already draws (see trim_parts)."""
+    return trim_parts(mask)[0]
 
 
 def stage_seamless_water_art(install: Path, out: Path) -> str:
@@ -360,6 +387,7 @@ def stage_seamless_water_art(install: Path, out: Path) -> str:
     src, dst = install / "artLegacyMUL.uop", out / "artLegacyMUL.uop"
     shutil.copyfile(src, dst)
     wanted = {U.uop_hash(U.ART_PATTERN.format(0x4000 + i)): i for i in range(FULL_WATER[0], FULL_WATER[1] + 1)}
+    source = {}
     with dst.open("r+b") as f:
         data = f.read()
         magic, _v, _st, block, _bs, _count = struct.unpack_from("<IIIqIi", data, 0)
@@ -372,6 +400,8 @@ def stage_seamless_water_art(install: Path, out: Path) -> str:
                     w, hh, px = uoart.decode_static(data[offset + header:offset + header + decomp])
                     mask = np.array(px, dtype=np.uint16).reshape(hh, w) > 0
                     keep = trim_overlap(mask) if wanted[h] != 0x1796 else np.zeros_like(mask)   # the outline tile is the seam itself
+                    if wanted[h] == 0x1797:
+                        source = {"w": w, "h": hh, "px": px, "mask": mask}
                     px2 = [p if keep[i // w, i % w] else 0 for i, p in enumerate(px)]
                     new = uoart.encode_static(px2, w, hh)
                     if flag != 0 or len(new) > decomp:
@@ -382,4 +412,13 @@ def stage_seamless_water_art(install: Path, out: Path) -> str:
                     f.write(struct.pack("<ii", len(new), len(new)))
                 pos += 34
             block = nxt
+    # The trimmed edge is a gap wherever the neighbour that would draw it has no water (a coast, the
+    # edge of a bed): thin light lines on the beach. Four extra translucent tiles hold exactly the
+    # pixels each neighbour takes; plan() places one on a water cell whose neighbour is missing.
+    _, strips = trim_parts(source["mask"])
+    items = []
+    for sid, strip in zip(STRIP_IDS, strips):
+        px2 = [p if strip[i // source["w"], i % source["w"]] else 0 for i, p in enumerate(source["px"])]
+        items.append((U.ART_PATTERN.format(0x4000 + sid), uoart.encode_static(px2, source["w"], source["h"])))
+    U.uop_append(dst, items)
     return f"artlegacymul.uop={dst}"
