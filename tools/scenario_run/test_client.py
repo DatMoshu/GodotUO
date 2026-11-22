@@ -11,6 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import json  # noqa: E402
 import capture  # noqa: E402
 import events as ev  # noqa: E402
 import uiquery  # noqa: E402
@@ -368,3 +369,55 @@ def test_client_session_start_passes_the_shard_address(monkeypatch, tmp_path):
     (tmp_path / "run").mkdir()
     cs.start()
     assert seen["env"]["UO_SHARD_HOST"] == "192.0.2.5" and seen["env"]["UO_SHARD_PORT"] == "2593"
+
+
+# --- held keys, drags and "the player moved" ---------------------------------------------------------------------
+
+def _state(x, y):
+    return {"frame": 7, "scene": "GameScene", "width": 1280, "height": 720, "player": {"x": x, "y": y, "z": 0, "map": 0}}
+
+
+def test_hold_presses_waits_and_releases(tmp_path):
+    r, client, _, _, _ = make_client(tmp_path, [step("go", "launch"), step("walk", "ui.hold", key="Right", seconds=2, shift=True)])
+    start = r._clock()
+    assert r.run()["ok"]
+    keys = [a for t, a in client.calls if t == "guo_input" and a["kind"] == "key"]
+    assert keys == [{"kind": "key", "key": "Right", "pressed": True, "shift": True},
+                    {"kind": "key", "key": "Right", "pressed": False, "shift": True}]
+    assert r._clock() - start >= 2
+
+
+def test_drag_goes_from_one_control_to_the_other_and_lets_go(tmp_path):
+    steps = [step("go", "launch"), step("move", "ui.drag", **{"from": {"type": "TextBox"}, "to": "Connect", "steps": 4})]
+    r, client, _, _, _ = make_client(tmp_path, steps)
+    assert r.run()["ok"]
+    inputs = [a for t, a in client.calls if t == "guo_input"]
+    assert inputs[0] == {"kind": "motion", "x": 200, "y": 210}
+    assert inputs[1] == {"kind": "button", "x": 200, "y": 210, "button": "Left", "pressed": True}
+    assert inputs[-1] == {"kind": "button", "x": 330, "y": 410, "button": "Left", "pressed": False}
+    assert inputs[-2] == {"kind": "motion", "x": 330, "y": 410} and len(inputs) == 7
+
+
+def test_moved_compares_with_where_the_step_began(tmp_path):
+    steps = [step("go", "launch"), step("walk", "ui.hold", key="Right", seconds=1, expect={"world.moved": {"at_least": 3}, "within_s": 5})]
+    r, client, _, log, _ = make_client(tmp_path, steps)
+    plain = client.call
+
+    def call(tool, arguments=None, timeout=45.0):           # the player stands at 100 until the key comes up, then is at 104
+        if tool == "guo_state":
+            client.calls.append((tool, arguments))
+            released = any(t == "guo_input" and a.get("pressed") is False for t, a in client.calls)
+            return False, json.dumps(_state(104 if released else 100, 100))
+        return plain(tool, arguments, timeout)
+
+    client.call = call
+    assert r.run()["ok"]
+    seen = events_of(log, "expect")[-1]["detail"]["observed"]["world.moved"]
+    assert seen["tiles"] == 4 and seen["from"]["x"] == 100
+
+
+def test_moved_fails_when_the_player_stands_still(tmp_path):
+    steps = [step("go", "launch"), step("walk", "ui.hold", key="Right", seconds=1, expect={"world.moved": {"at_least": 1}, "within_s": 2})]
+    r, _, _, _, _ = make_client(tmp_path, steps, replies={"guo_state": _state(100, 100)})
+    out = r.run()
+    assert not out["ok"] and out["steps"][-1]["id"] == "walk"

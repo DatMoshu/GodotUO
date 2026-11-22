@@ -185,6 +185,8 @@ class Runner:
         shown_expect = step.get("expect", {})       # as written: the log never holds what a $name stands for
         # The step as written (with $names, never the secrets behind them) is what the event log records.
         self.events.emit("action", sid, detail={"do": step["do"]})
+        if "world.moved" in expect:                  # measured from where the player stood before the step acted
+            self._moved_from = self._tool_json(GAME_TOOLS["state"], {}).get("player")
         detail = getattr(self, "_do_" + kind.replace(".", "_"))(sid, do, deadline)
         self._last = detail if isinstance(detail, dict) else {}
         self._expect(sid, expect, deadline, shown_expect)
@@ -255,6 +257,8 @@ class Runner:
             return self._expect_ui(name, wanted)
         if name == "world.position":
             return self._expect_position(wanted)
+        if name == "world.moved":
+            return self._expect_moved(wanted)
         if name == "scene":
             scene = self._tool_json(GAME_TOOLS["state"], {}).get("scene")
             return scene == wanted, scene
@@ -293,6 +297,15 @@ class Runner:
         if "map" in wanted:
             ok = ok and int(player["map"]) == int(wanted["map"])
         return ok, player
+
+    def _expect_moved(self, wanted: dict) -> tuple[bool, object]:
+        """The player is at least `at_least` tiles (the larger of the x and y distance) from where the step began."""
+        start = getattr(self, "_moved_from", None)
+        player = self._tool_json(GAME_TOOLS["state"], {}).get("player")
+        if not start or not player:
+            return False, None
+        tiles = max(abs(int(player["x"]) - int(start["x"])), abs(int(player["y"]) - int(start["y"])))
+        return tiles >= int(wanted.get("at_least", 1)), {"tiles": tiles, "from": start, "to": player}
 
     def _expect_log(self, wanted) -> tuple[bool, object]:
         path = getattr(self.session, "log_path", None)
@@ -615,6 +628,44 @@ class Runner:
         mods = {m: True for m in ("shift", "ctrl", "alt") if do.get(m)}
         self._key(str(key), **mods)
         return {"key": key, **mods}
+
+    def _do_ui_hold(self, sid: str, do: dict, deadline: float) -> dict:
+        """Hold a key down for a while, then release it: an arrow key held is how the character walks."""
+        self._need_game("ui.hold")
+        key = do.get("key")
+        if not key:
+            raise StepFailed("ui.hold needs a key (a Godot key name, e.g. Up, Right)")
+        seconds = float(do.get("seconds", 1))
+        mods = {m: True for m in ("shift", "ctrl", "alt") if do.get(m)}
+        self._input(kind="key", key=str(key), pressed=True, **mods)
+        try:
+            end = min(self._clock() + seconds, deadline)
+            while self._clock() < end:
+                self._check_program()
+                self._sleep(min(0.25, max(0.0, end - self._clock())))
+        finally:
+            self._input(kind="key", key=str(key), pressed=False, **mods)   # never leave the key down
+        return {"key": key, "held_s": seconds, **mods}
+
+    def _do_ui_drag(self, sid: str, do: dict, deadline: float) -> dict:
+        """Press on one control, move to another in a few steps and release there: moving or equipping an item."""
+        self._need_game("ui.drag")
+        if "from" not in do or "to" not in do:
+            raise StepFailed("ui.drag needs from and to (control selectors)")
+        within = float(do.get("within_s", 5))
+        x0, y0 = uiquery.center(self._wait_control(do["from"], deadline, within))
+        x1, y1 = uiquery.center(self._wait_control(do["to"], deadline, within))
+        button = str(do.get("button", "Left"))
+        steps = max(2, int(do.get("steps", 8)))
+        self._input(kind="motion", x=x0, y=y0)
+        self._input(kind="button", x=x0, y=y0, button=button, pressed=True)
+        try:
+            for i in range(1, steps + 1):
+                self._input(kind="motion", x=x0 + (x1 - x0) * i // steps, y=y0 + (y1 - y0) * i // steps)
+                self._sleep(0.05)
+        finally:
+            self._input(kind="button", x=x1, y=y1, button=button, pressed=False)   # never leave the button down
+        return {"dragged": uiquery.describe(do["from"]), "to": uiquery.describe(do["to"]), "x0": x0, "y0": y0, "x1": x1, "y1": y1}
 
     def _do_chat(self, sid: str, do: dict, deadline: float) -> dict:
         self._need_game("chat")

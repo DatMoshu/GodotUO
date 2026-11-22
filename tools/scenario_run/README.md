@@ -90,6 +90,8 @@ On main today (step 2 and step 3 kinds):
 | `ui.click` | Click a control (client) | `control` (selector), `button`, `clicks`, `within_s` (how long to wait for the control, default 5) | ui.exists, ui.text, etc. | `guo_ui` to find it, `guo_input` to click its centre |
 | `ui.fill` | Click a field, then type into it (client) | `control`, `text`, `clear` (BackSpace presses first) | ui.* on something the typing changes | The typed text is never logged or read back (the game omits editable values) |
 | `ui.key` | Press and release a key (client) | `key` (Godot name: Enter, Escape, F1), `shift`, `ctrl`, `alt` | ui state change | `guo_input` |
+| `ui.hold` | Hold a key down for a while (client); an arrow key walks | `key`, `seconds`, `shift`, `ctrl`, `alt` | `world.moved` | `guo_input` |
+| `ui.drag` | Press on one control, release on another (client) | `from`, `to`, `button`, `steps` | ui state change | `guo_input` |
 | `chat` | Say a line in game (client) | `text` (a `[command` works) | log or world state | Enter, text, Enter |
 | `renderdump` | Dump what the client drew (client) | `name` | `render_dump/NAME/guo.json` exists | Starts the client with `GUO_RENDER_DUMP_DIR` set to the run's `render_dump/`; says `renderdump NAME`; the event carries bytes and object count |
 | `render_diff` | Compare that dump with ClassicUO's | `name` | `render_diff: {max_drawn_diff}` | Reference is `build/render_dump/NAME/cuo.json`, or `GUO_RENDER_REF_DIR/NAME/cuo.json` (take it with `launchers\dev\side_by_side.bat --cuo-only --at X Y`, which leaves ClassicUO standing there so the scenario's own `renderdump` dumps both at once; nothing is typed into ClassicUO); writes `diff.md` in the run folder; fails on map, field or drawn mismatches |
@@ -116,6 +118,7 @@ A `control` is a string (matches a control whose type, name or text equals it: `
 An `expect` block is polled until every condition holds or `within_s` runs out (the step fails then, and the event
 log keeps what was observed). Conditions: `ui.exists` (a control), `ui.absent`, `ui.text` (`{"control", "equals" | "contains"}`,
 labels and buttons only), `ui.count` (`{"control", "equals" | "at_least"}`), `world.position` (`{"x","y","z"?,"map"?,"tolerance"}`,
+`world.moved` (`{"at_least"}`: tiles from where the step began),
 from `guo_state`), `scene` (the client's scene class, e.g. `LoginScene`), `log.contains` (the program's log), plus the
 editor's `result`, `editor.state` and `file.exists`.
 

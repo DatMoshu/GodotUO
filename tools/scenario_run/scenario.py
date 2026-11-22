@@ -13,9 +13,9 @@ from pathlib import Path
 
 SURFACES = {"client", "editor", "web", "deck", "shard"}
 # Every kind the format names; the runner implements the subset in IMPLEMENTED and fails a step of any other kind.
-KINDS = {"launch", "wait", "shot", "note", "tour_segment", "editor_invoke", "editor_tool", "ui.click", "ui.fill", "ui.key",
+KINDS = {"launch", "wait", "shot", "note", "tour_segment", "editor_invoke", "editor_tool", "ui.click", "ui.fill", "ui.key", "ui.hold", "ui.drag",
          "chat", "scene_set", "renderdump", "render_diff", "lane"}
-IMPLEMENTED = {"launch", "wait", "shot", "note", "tour_segment", "editor_invoke", "editor_tool", "ui.click", "ui.fill", "ui.key", "chat",
+IMPLEMENTED = {"launch", "wait", "shot", "note", "tour_segment", "editor_invoke", "editor_tool", "ui.click", "ui.fill", "ui.key", "ui.hold", "ui.drag", "chat",
                "renderdump", "render_diff"}
 DEFAULT_TIMEOUTS = {"step_s": 30, "run_s": 600}
 

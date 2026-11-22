@@ -222,6 +222,7 @@ namespace GUO.Game.GameObjects
             RealScreenPosition.X = ((X - Y) * 22) - offsetX - 22;
             RealScreenPosition.Y = ((X + Y) * 22 - (Z << 2)) - offsetY - 22;
 #if GUO_LABS
+            // PORT DEVIATION (GUO): keep the Labs harbor heave across a position refresh.
             RealScreenPosition.Y += HarborPixels;
 #endif
             IsPositionChanged = false;

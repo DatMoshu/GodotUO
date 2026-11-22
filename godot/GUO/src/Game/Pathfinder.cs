@@ -15,6 +15,9 @@ namespace GUO.Game
     internal sealed class Pathfinder
     {
         private const int PATHFINDER_MAX_NODES = 10000;
+        // PORT DEVIATION (GUO): the open and closed lists are indexed (a cost-ordered
+        // frontier and position lookups) in place of upstream's linear scans, in
+        // OpenNode, FindCheapestNode and the reset in FindPath. Costs and results are upstream's.
         // Equal costs and recycled slots must retain ClassicUO's lowest-index tie break.
         private readonly SortedSet<(int Cost, int Slot)> _frontier = new();
         private readonly SortedSet<int> _freeSlots = new();
