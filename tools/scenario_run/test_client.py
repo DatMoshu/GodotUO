@@ -91,7 +91,7 @@ def test_launch_ui_fill_click_chat_key(tmp_path):
     inputs = [a for t, a in client.calls if t == "guo_input"]
     assert inputs[0] == {"kind": "motion", "x": 200, "y": 210}                       # the TextBox centre
     assert {"kind": "text", "text": "gm1"} in inputs and {"kind": "text", "text": "[go 1 2"} in inputs
-    assert [a["key"] for a in inputs if a["kind"] == "key"][:4] == ["BackSpace", "BackSpace", "BackSpace", "BackSpace"]
+    assert [a["key"] for a in inputs if a["kind"] == "key"][:6] == ["End", "End", "BackSpace", "BackSpace", "BackSpace", "BackSpace"]   # caret to the end, then clear
     assert {"kind": "key", "key": "Escape", "pressed": True, "shift": True} in inputs
     assert "gm1" not in log.path.read_text()          # the log holds the name, never the secret or the filled text
 
@@ -481,3 +481,62 @@ def test_client_exe_comes_from_the_option_then_the_setting_and_must_be_a_file(mo
         assert "GUO_CLIENT_EXE" in str(ex) and "missing.exe" in str(ex)
     else:
         raise AssertionError("a missing client was accepted")
+
+
+# --- a client home kept between runs -----------------------------------------------------------------------------
+
+def test_a_kept_home_is_made_once_reused_and_never_names_another_profile_folder(monkeypatch, tmp_path):
+    import session as sess
+    usual = tmp_path / "usual"
+    (usual / "cache").mkdir(parents=True)
+    (usual / "settings.json").write_text(json.dumps({"ultimaonlinedirectory": "X", "profilespath": "C:/real/Profiles"}), encoding="utf-8")
+    cfg = type("Cfg", (), {"cache_dir": usual / "cache", "root": tmp_path})()
+    home = tmp_path / "home"
+    seen = []
+    monkeypatch.setattr(sess.subprocess, "Popen", lambda cmd, **kw: seen.append((cmd, kw["env"])) or object())
+
+    def launch(settings):
+        cs = sess.ClientSession(cfg, tmp_path / "run", False)
+        cs.home, cs.extra_args, cs.extra_settings = home, ["--scratch-profile", "--x"], settings
+        (tmp_path / "run").mkdir(exist_ok=True)
+        cs.start()
+        cs.proc = None          # nothing was really started
+        cs.stop()
+
+    launch({"autologin": False})
+    first = json.loads((home / "settings.json").read_text(encoding="utf-8"))
+    assert first == {"ultimaonlinedirectory": "X", "autologin": False}            # the usual settings, minus where profiles live
+    assert seen[0][1]["UO_CACHE_DIR"] == str(home / "cache") and "--scratch-profile" not in seen[0][0] and "--x" in seen[0][0]
+    (home / "settings.json").write_text(json.dumps({**first, "saved_by_client": 1}), encoding="utf-8")
+    (usual / "settings.json").write_text("{}", encoding="utf-8")
+    launch({})
+    assert json.loads((home / "settings.json").read_text(encoding="utf-8"))["saved_by_client"] == 1   # reused, not rebuilt
+    assert home.is_dir() and (home / sess.HOME_MARK).is_file()                    # stop() left it
+
+
+def test_home_must_be_new_empty_or_made_by_an_earlier_run(tmp_path):
+    import session as sess
+    assert sess.check_home(tmp_path / "new") == (tmp_path / "new").resolve()
+    real = tmp_path / "real"
+    real.mkdir()
+    (real / "settings.json").write_text("{}", encoding="utf-8")
+    try:
+        sess.check_home(real)
+    except ValueError as ex:
+        assert "--home" in str(ex)
+    else:
+        raise AssertionError("somebody's home was accepted")
+    (real / sess.HOME_MARK).touch()
+    assert sess.check_home(real) == real.resolve()
+
+
+def test_selector_names_a_classic_button_by_gump_and_id_whatever_the_gump_order():
+    paperdoll = [{"system": "classic", "type": "Button", "gump": "PaperDollGump", "buttonId": i, "x": 285, "y": 144 + 27 * i,
+                  "width": 64, "height": 21} for i in range(8)]
+    options = [{"system": "classic", "type": "Button", "gump": "OptionsGump", "buttonId": i, "x": 1834 + 95 * i, "y": 1242,
+                "width": 63, "height": 23} for i in (1, 2, 3, 4)]
+    want = {"type": "Button", "gump": "OptionsGump", "button_id": 4}
+    for controls in (paperdoll + options, options + paperdoll):
+        hit = uiquery.find({"controls": controls}, want)
+        assert hit["gump"] == "OptionsGump" and hit["buttonId"] == 4
+    assert uiquery.find({"controls": paperdoll}, want) is None

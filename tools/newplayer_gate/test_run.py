@@ -73,3 +73,41 @@ def test_other_options_reach_the_scenario_runner_unchanged():
 
     gate.run_chain(list(gate.CHAIN), "npx", "Guox", {}, ["--no-record", "--client-exe", "C:/pkg/GUO.exe"], run=run, out=lambda _: None)
     assert all(cmd[-3:] == ["--no-record", "--client-exe", "C:/pkg/GUO.exe"] for cmd in seen)
+
+
+def test_the_chain_gets_one_home_for_all_links_and_removes_it(monkeypatch):
+    homes = []
+
+    def run_chain(links, account, charname, env, extra, **kw):
+        home = gate.Path(extra[extra.index("--home") + 1])
+        homes.append((home, home.is_dir()))
+        return 0
+
+    monkeypatch.setattr(gate, "run_chain", run_chain)
+    monkeypatch.setattr(gate, "free_memory_gb", lambda: None)
+    assert gate.main([]) == 0
+    assert homes[0][1] and not homes[0][0].exists()
+
+
+def _profile(home, **kw):
+    import json
+    d = home / "Data" / "Profiles" / "acct" / "Shard" / "Char"
+    d.mkdir(parents=True)
+    (d / "profile.json").write_text(json.dumps(kw), encoding="utf-8")
+
+
+def test_saved_options_check(tmp_path):
+    assert "no saved" in gate.check_saved_options(tmp_path)
+    _profile(tmp_path, always_run=True, fast_rotation=False)
+    assert "fast_rotation" in gate.check_saved_options(tmp_path)
+
+
+def test_saved_options_pass(tmp_path):
+    _profile(tmp_path, always_run=True, fast_rotation=True)
+    assert gate.check_saved_options(tmp_path) is None
+
+
+def test_chain_fails_when_options_not_saved(tmp_path):
+    lines = []
+    code = gate.run_chain([("options", "client.newplayer.options")], "npx", "Guox", {}, [], run=lambda *a, **k: 0, out=lines.append, home=tmp_path)
+    assert code == 1 and any("not kept" in l for l in lines)

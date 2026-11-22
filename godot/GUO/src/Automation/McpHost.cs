@@ -342,7 +342,7 @@ public partial class McpHost : Node
     {
         var controls = new List<object>();
         float scale = Client.Game?.DpiScale ?? 1;
-        foreach (var gump in UIManager.Gumps) AddClassic(gump, controls, scale, 0);
+        foreach (var gump in UIManager.Gumps) AddClassic(gump, gump.GetType().Name, controls, scale, 0);
         AddNative(GetTree().Root, controls, 0);
         var size = GetViewport().GetVisibleRect().Size;
         return new { scene = Client.Game?.Scene?.GetType().Name, headless = DisplayServer.GetName() == "headless", width = size.X, height = size.Y, classicScale = scale, controls, truncated = controls.Count >= 2000 };
@@ -364,11 +364,13 @@ public partial class McpHost : Node
         _buttons.Clear();
     }
 
-    private static void AddClassic(LegacyControl c, List<object> output, float scale, int depth)
+    // gump: the top-level gump's type, and buttonId: a classic Button's ButtonID, so a scenario can name a
+    // control that does not move when another gump comes to the front (data_formats section 34).
+    private static void AddClassic(LegacyControl c, string gump, List<object> output, float scale, int depth)
     {
         if (depth > 64 || output.Count >= 2000 || c.IsDisposed || !c.IsVisible || (c.Parent != null && c.Page != 0 && c.Page != c.Parent.ActivePage)) return;
-        output.Add(new { system = "classic", type = c.GetType().Name, x = c.ScreenCoordinateX * scale, y = c.ScreenCoordinateY * scale, width = c.Width * scale, height = c.Height * scale, enabled = c.IsEnabled, focused = c.HasKeyboardFocus, text = c is Game.UI.Controls.Label label ? label.Text : null });
-        foreach (var child in c.Children) AddClassic(child, output, scale, depth + 1);
+        output.Add(new { system = "classic", type = c.GetType().Name, gump, buttonId = c is Game.UI.Controls.Button button ? button.ButtonID : (int?)null, x = c.ScreenCoordinateX * scale, y = c.ScreenCoordinateY * scale, width = c.Width * scale, height = c.Height * scale, enabled = c.IsEnabled, focused = c.HasKeyboardFocus, text = c is Game.UI.Controls.Label label ? label.Text : null });
+        foreach (var child in c.Children) AddClassic(child, gump, output, scale, depth + 1);
     }
 
     private static void AddNative(Node node, List<object> output, int depth)
