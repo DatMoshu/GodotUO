@@ -135,6 +135,7 @@ launchers\dev\selftest.bat                the Python tool self-tests CI runs
 launchers\dev\pytest_all.bat               every Python test folder, one pooled pytest run
 launchers\dev\screenshot.bat               capture a frame
 launchers\dev\playtest.bat                 play a session and check it (needs a shard)
+launchers\dev\newplayer_gate.bat           a fresh account creates a character, plays, comes back; one exit code (needs a shard)
 launchers\dev\endurance.bat                play on for a while and watch for drift
 launchers\dev\plugin_probe.bat             load test plugins and check what they see (needs a shard)
 launchers\dev\multi_client.bat             four scripted clients at once, tiled 2x2 (needs a shard)
