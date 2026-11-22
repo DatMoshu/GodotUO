@@ -421,3 +421,63 @@ def test_moved_fails_when_the_player_stands_still(tmp_path):
     r, _, _, _, _ = make_client(tmp_path, steps, replies={"guo_state": _state(100, 100)})
     out = r.run()
     assert not out["ok"] and out["steps"][-1]["id"] == "walk"
+
+
+# --- an exported client in place of play.bat ---------------------------------------------------------------------
+
+def _exe_session(tmp_path, exe=None):
+    import session as sess
+    cfg = type("Cfg", (), {"cache_dir": tmp_path / "cache", "root": tmp_path})()
+    cs = sess.ClientSession(cfg, tmp_path / "run", False)
+    cs.client_exe = exe
+    return sess, cs
+
+
+def test_without_a_client_exe_the_launcher_is_started_from_the_checkout(tmp_path):
+    _, cs = _exe_session(tmp_path)
+    cmd, cwd = cs.command(["--no-focus", "--scratch-profile"], ["--resolution", "1280x720"])
+    assert cmd == [str(tmp_path / "launchers" / "game" / "play.bat"), "--no-focus", "--scratch-profile"] and cwd == str(tmp_path)
+
+
+def test_a_client_exe_gets_engine_arguments_then_the_same_client_arguments(tmp_path):
+    exe = tmp_path / "pkg" / "GUO.exe"
+    _, cs = _exe_session(tmp_path, exe)
+    cmd, cwd = cs.command(["--no-focus", "--silent", "--scratch-profile"], ["--write-movie C:/out/run.avi --fixed-fps 60", "--resolution", "1280x720"])
+    assert cmd == [str(exe), "--write-movie", "C:/out/run.avi", "--fixed-fps", "60", "--resolution", "1280x720", "--",
+                   "--no-focus", "--silent", "--scratch-profile"]
+    assert cwd == str(exe.parent)
+
+
+def test_a_client_exe_is_what_start_runs_with_the_mcp_port_in_its_environment(monkeypatch, tmp_path):
+    exe = tmp_path / "pkg" / "GUO.exe"
+    sess, cs = _exe_session(tmp_path, exe)
+    cs.extra_args = ["--scratch-profile"]
+    seen = {}
+
+    def fake_popen(cmd, **kw):
+        seen.update(cmd=cmd, cwd=kw["cwd"], env=kw["env"])
+        return object()
+
+    monkeypatch.setattr(sess.subprocess, "Popen", fake_popen)
+    (tmp_path / "run").mkdir()
+    cs.start()
+    assert seen["cmd"][0] == str(exe) and seen["cmd"][-1] == "--scratch-profile" and "--" in seen["cmd"]
+    assert seen["cwd"] == str(exe.parent) and seen["env"]["GUO_MCP_PORT"] == str(cs.port)
+
+
+def test_client_exe_comes_from_the_option_then_the_setting_and_must_be_a_file(monkeypatch, tmp_path):
+    import run as runmod
+    import scenario as scmod
+    exe = tmp_path / "GUO.exe"
+    exe.write_bytes(b"")
+    monkeypatch.delenv("GUO_CLIENT_EXE", raising=False)
+    assert runmod.resolve_client_exe(None, tmp_path) is None
+    assert runmod.resolve_client_exe(exe, tmp_path) == exe.resolve()
+    monkeypatch.setenv("GUO_CLIENT_EXE", str(exe))
+    assert runmod.resolve_client_exe(None, tmp_path) == exe.resolve()
+    try:
+        runmod.resolve_client_exe(tmp_path / "missing.exe", tmp_path)
+    except scmod.ScenarioError as ex:
+        assert "GUO_CLIENT_EXE" in str(ex) and "missing.exe" in str(ex)
+    else:
+        raise AssertionError("a missing client was accepted")

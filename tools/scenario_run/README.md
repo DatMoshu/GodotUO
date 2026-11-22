@@ -42,6 +42,12 @@ values are never printed or logged. The run's manifest records the target as `sh
 variable whose name contains `password` is environment only the same way: `shard.admin_add_account`'s `$new_password` comes from
 `GUO_SCENARIO_NEW_PASSWORD`, and `--var new_password=` warns.
 
+`--client-exe PATH` (or the `GUO_CLIENT_EXE` setting) runs a client scenario on an **exported client** instead of
+`launchers/game/play.bat` and the project: the executable is started from its own folder with the engine's arguments,
+`--`, then the same client arguments a play.bat run gets, and the same environment (MCP port and token, shard address,
+the run's settings home). A path that is not a file stops the run before launch (exit 2). The manifest's `build` and
+`commit` still describe the checkout, so say which package was run when you report it.
+
 `--server NAME` runs a client scenario against a server profile of the per-user workspace (`profiles/servers.json`,
 found by `Id` or `Name`): its `Host` and `Port` are the address, the login comes from `GUO_SCENARIO_ACCOUNT` /
 `GUO_SCENARIO_PASSWORD` as for `--shard`, and the manifest records `server:<profile id>` as `shard`. The server lab

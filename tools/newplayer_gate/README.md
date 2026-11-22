@@ -6,6 +6,7 @@ One command and one exit code for "a new player can play this build".
 launchers\dev\newplayer_gate.bat            run the chain (needs a shard that creates accounts on first login)
 launchers\dev\newplayer_gate.bat --list     print the chain
 launchers\dev\newplayer_gate.bat --record   also keep the video (needs ffmpeg on PATH)
+launchers\dev\newplayer_gate.bat --client-exe PATH\GUO.exe   run the chain on an exported client
 ```
 
 The gate invents an account nobody has used, then runs these scenarios in order with the scenario runner

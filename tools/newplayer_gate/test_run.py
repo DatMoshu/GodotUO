@@ -62,3 +62,14 @@ def test_chain_passes_account_and_name_but_never_a_password():
 def test_unknown_link_is_refused():
     with pytest.raises(SystemExit):
         gate.select(["nosuch"])
+
+
+def test_other_options_reach_the_scenario_runner_unchanged():
+    seen = []
+
+    def run(cmd, env, cwd):
+        seen.append(cmd)
+        return 0
+
+    gate.run_chain(list(gate.CHAIN), "npx", "Guox", {}, ["--no-record", "--client-exe", "C:/pkg/GUO.exe"], run=run, out=lambda _: None)
+    assert all(cmd[-3:] == ["--no-record", "--client-exe", "C:/pkg/GUO.exe"] for cmd in seen)
