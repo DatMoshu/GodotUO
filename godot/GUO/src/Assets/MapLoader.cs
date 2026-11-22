@@ -771,9 +771,12 @@ namespace GUO.Assets
                 return false;
             }
 
+            // 2560x2048 and 1280x4096 hold the same block count; the one that keeps the
+            // default height is taken first, else the first listed.
+            for (int pass = 0; pass < 2; pass++)
             foreach (var (kw, kh) in Known)
             {
-                if (blocks == (long)(kw >> 3) * (kh >> 3))
+                if ((pass == 1 || kh == defH) && blocks == (long)(kw >> 3) * (kh >> 3))
                 {
                     w = kw;
                     h = kh;
