@@ -98620,6 +98620,35 @@ index 000000000..e69f30692
 +}
 MUO_EOF_0
 chmod 0644 $BASE/patches/0026-dev-photo-tour.patch
+install -d "$(dirname $BASE/patches/0027-uop-map-chunk-order.patch)"
+cat > $BASE/patches/0027-uop-map-chunk-order.patch <<'MUO_EOF_0'
+diff --git a/Projects/Server/TileMatrix/TileMatrix.cs b/Projects/Server/TileMatrix/TileMatrix.cs
+index 333cea5..40f4872 100644
+--- a/Projects/Server/TileMatrix/TileMatrix.cs
++++ b/Projects/Server/TileMatrix/TileMatrix.cs
+@@ -118,10 +118,16 @@ public class TileMatrix
+ 
+                     var uopEntries = UOPFiles.ReadUOPIndexes(MapStream, ".dat", 0x14000, 5);
+ 
+-                    _uopMapEntries = GC.AllocateUninitializedArray<UOPEntry>(uopEntries.Count);
+-                    uopEntries.Values.CopyTo(_uopMapEntries, 0);
+-
+-                    ConvertToMapEntries(MapStream);
++                    // GUO: chunks in index order, decoded from their hashed names. Sorting
++                    // by each chunk's first int32 (upstream) scrambles shard-made UOPs whose
++                    // chunks all start with the same value (UO-Maps: Epic! shard, header 1).
++                    var keys = new List<int>(uopEntries.Keys);
++                    keys.Sort();
++                    _uopMapEntries = GC.AllocateUninitializedArray<UOPEntry>(keys.Count);
++                    for (var k = 0; k < keys.Count; k++)
++                    {
++                        _uopMapEntries[k] = uopEntries[keys[k]];
++                    }
+                 }
+                 else
+                 {
+MUO_EOF_0
+chmod 0644 $BASE/patches/0027-uop-map-chunk-order.patch
 
 # checkout at the pin; the patch stack comes off (last first) on every deploy and goes back on,
 # since a patch under a later one that edits the same lines does not come off alone
@@ -98629,6 +98658,7 @@ as_user git -C "$SRC" cat-file -e "$PIN^{commit}" 2>/dev/null || as_user git -C 
 as_user git -C "$SRC" update-index --no-skip-worktree global.json 2>/dev/null || true
 as_user git -C "$SRC" checkout -q -- global.json 2>/dev/null || true
 head="$(as_user git -C "$SRC" rev-parse -q --verify HEAD 2>/dev/null || true)"
+if as_user git -C "$SRC" apply -R --check "$BASE/patches/0027-uop-map-chunk-order.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0027-uop-map-chunk-order.patch"; fi
 if as_user git -C "$SRC" apply -R --check "$BASE/patches/0026-dev-photo-tour.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0026-dev-photo-tour.patch"; fi
 if as_user git -C "$SRC" apply -R --check "$BASE/patches/0025-pkcs-advisory.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0025-pkcs-advisory.patch"; fi
 if as_user git -C "$SRC" apply -R --check "$BASE/patches/0024-dfi-conpvp-arena.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0024-dfi-conpvp-arena.patch"; fi
@@ -98872,6 +98902,14 @@ elif as_user git -C "$SRC" apply -R --check "$BASE/patches/0026-dev-photo-tour.p
 else
     as_user git -C "$SRC" apply --check "$BASE/patches/0026-dev-photo-tour.patch" || true
     die "0026-dev-photo-tour.patch does not apply to the checkout at $PIN; stopping"
+fi
+if as_user git -C "$SRC" apply --check "$BASE/patches/0027-uop-map-chunk-order.patch" >/dev/null 2>&1; then
+    as_user git -C "$SRC" apply "$BASE/patches/0027-uop-map-chunk-order.patch"
+elif as_user git -C "$SRC" apply -R --check "$BASE/patches/0027-uop-map-chunk-order.patch" >/dev/null 2>&1; then
+    echo "muo_shard: 0027-uop-map-chunk-order.patch already applied, skipping"
+else
+    as_user git -C "$SRC" apply --check "$BASE/patches/0027-uop-map-chunk-order.patch" || true
+    die "0027-uop-map-chunk-order.patch does not apply to the checkout at $PIN; stopping"
 fi
 
 # the archive's SDK can trail the SDK version the pin's global.json names; build with the installed one
