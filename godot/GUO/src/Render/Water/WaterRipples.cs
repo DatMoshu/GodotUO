@@ -57,7 +57,7 @@ internal sealed class WaterRipples
     private bool _uploaded;
 
     // Per boat: last position, smoothed speed (cells a second) and heading (unit, cells).
-    internal sealed class BoatState { public float X, Y, Speed, HX, HY, Emit; }
+    internal sealed class BoatState { public float X, Y, Speed, HX, HY, Emit, SX, SY; public bool Trail; }
     // The wake proper: short-lived marks left astern and at the bow, drawn each step into a
     // layer that is added to the waves, so it stays attached to the hull's track and is gone
     // when the marks expire (not a wave that runs off by itself).
@@ -276,15 +276,15 @@ internal sealed class WaterRipples
             if (m.Age >= m.Life) continue;
             m.X += m.VX * advance; m.Y += m.VY * advance;
             // A wake arm slows as it spreads: the trail opens quickly astern and then holds its width.
-            float drag = MathF.Max(0f, 1f - 0.45f * advance);
+            float drag = MathF.Max(0f, 1f - 0.25f * advance);
             m.VX *= drag; m.VY *= drag;
             _marks[kept++] = m;
             float t = m.Age / m.Life;
             float fade = (1f - t) * Math.Min(1f, t * 8f + 0.35f);
             // The mark widens a little as it ages, so an old arm is a soft band, not a row of dots.
-            float radius = m.Radius * (1f + 0.6f * t);
+            float radius = m.Radius * (1f + 0.5f * t);
             StampInto(_wake, true, m.X, m.Y, radius, m.Amp * fade);
-            if (m.Foam > 0f) StampFoam(m.X, m.Y, radius, m.Foam * (1f - t) * (1f - t));
+            if (m.Foam > 0f) StampFoam(m.X, m.Y, radius, m.Foam * (1f - t));
         }
         _marks.RemoveRange(kept, _marks.Count - kept);
     }
@@ -748,51 +748,70 @@ internal sealed class WaterRipples
         boat.Speed += (inst - boat.Speed) * Math.Min(1f, _dt / 0.5f);
         if (boat.Speed < MinWakeSpeed)
         {
+            boat.Trail = false;
             return;
         }
 
         float gain = Math.Min(1f, boat.Speed / 3f);
-        boat.Emit += _dt;
-        if (boat.Emit > 4 * EmitEvery) boat.Emit = EmitEvery;
-        if (boat.Emit < EmitEvery) return;
-        boat.Emit -= EmitEvery;
-        // A faster hull leaves a longer trail: the arms live 2.6 s at a crawl, 6 s at full sail.
+        // A faster hull leaves a longer trail: the rails live about 3.5 s at a crawl, 8 s at full sail.
         float speed = Math.Min(boat.Speed, 4f);
-        float armLife = WakeTrail * (2.2f + 0.95f * speed);
+        float railLife = WakeTrail * (3f + 1.25f * speed);
 
         float hx = (r.Width - r.X) * 0.5f, hy = (r.Height - r.Y) * 0.5f;
         float cx = x + (r.X + r.Width) * 0.5f, cy = y + (r.Y + r.Height) * 0.5f;
         float ux = boat.HX, uy = boat.HY, px = -uy, py = ux;
         float length = MathF.Abs(ux) * hx + MathF.Abs(uy) * hy;
         float beam = Math.Min(MathF.Abs(px) * hx + MathF.Abs(py) * hy, 2.5f);
-        // The arms of a Kelvin wake open behind the stern at a shallow angle; a mark is left
-        // where the hull was and drifts sideways, so the arms spread and fade with distance.
-        // The arms open at the Kelvin angle (about 19 degrees a side, a third of the hull's speed
-        // sideways) and slow as they age (RebuildWake), so a turn bends the trail behind the hull.
-        float side = speed * 0.34f;
+
+        // The trail: two narrow rails of foam leaving the stern's quarters, laid along the track
+        // the hull actually sailed, so a turn bends them and they stay where the boat has been.
+        // They are laid by distance, not by time: a hull the shard moves a cell at a time still
+        // leaves an unbroken line. The rails drift apart slowly; a churn of white water lies between
+        // them just astern.
         float sx = cx - ux * (length + 0.3f), sy = cy - uy * (length + 0.3f);
-        if (open(sx, sy))
+        float jx = sx - boat.SX, jy = sy - boat.SY;
+        float gap = MathF.Sqrt(jx * jx + jy * jy);
+        if (!boat.Trail || gap > 4f)
         {
-            // The churn straight astern: a trough under broken white water, soon gone.
-            AddMark(sx, sy, 0f, 0f, 1.3f + 0.25f * speed, WakeTrough * gain, 0.5f, 0.85f * gain);
-            for (int k = -1; k <= 1; k += 2)
-            {
-                // Each arm: a crest with a thin line of foam on it, leaving the quarter and spreading.
-                AddMark(sx + px * beam * 0.55f * k, sy + py * beam * 0.55f * k, px * side * k, py * side * k,
-                    armLife, -WakeArm * gain, 0.42f, 0.7f * gain);
-            }
+            boat.Trail = true; boat.SX = sx; boat.SY = sy;
         }
-        // A small crest at the bow, spreading a little to either side.
+        else if (gap >= RailStep)
+        {
+            float side = 0.10f + speed * 0.06f;
+            int n = (int)(gap / RailStep);
+            for (int i = 1; i <= n; i++)
+            {
+                float t = i * RailStep / gap;
+                float mx = boat.SX + jx * t, my = boat.SY + jy * t;
+                if (!open(mx, my)) continue;
+                AddMark(mx, my, 0f, 0f, 0.9f + 0.2f * speed, WakeTrough * 0.10f * gain, 0.6f, 0.55f * gain);
+                for (int k = -1; k <= 1; k += 2)
+                {
+                    AddMark(mx + px * beam * 0.45f * k, my + py * beam * 0.45f * k, px * side * k, py * side * k,
+                        railLife, -WakeArm * 0.03f * gain, 0.45f, 1f * gain);
+                }
+            }
+            boat.SX += jx * (n * RailStep / gap); boat.SY += jy * (n * RailStep / gap);
+        }
+
+        // A small crest at the bow, spreading a little to either side; by time, it does not trail.
+        boat.Emit += _dt;
+        if (boat.Emit > 4 * EmitEvery) boat.Emit = EmitEvery;
+        if (boat.Emit < EmitEvery) return;
+        boat.Emit -= EmitEvery;
         float bx = cx + ux * (length + 0.2f), by = cy + uy * (length + 0.2f);
         if (open(bx, by))
         {
-            AddMark(bx, by, 0f, 0f, 0.35f, -WakeBow * gain, 0.4f);
+            AddMark(bx, by, 0f, 0f, 0.35f, -WakeBow * 0.6f * gain, 0.4f);
             for (int k = -1; k <= 1; k += 2)
             {
-                AddMark(bx + px * beam * 0.5f * k, by + py * beam * 0.5f * k, px * side * 0.6f * k, py * side * 0.6f * k, 0.5f, -WakeBow * 0.7f * gain, 0.35f);
+                AddMark(bx + px * beam * 0.5f * k, by + py * beam * 0.5f * k, px * speed * 0.2f * k, py * speed * 0.2f * k, 0.5f, -WakeBow * 0.4f * gain, 0.35f);
             }
         }
     }
+
+    // Cells of track between two marks of a rail.
+    private const float RailStep = 0.4f;
 
     // Wake mark heights (before the style's strength): trough astern, arms, bow crest.
     internal static float WakeTrough = 0.70f, WakeArm = 0.55f, WakeBow = 0.40f;

@@ -208,7 +208,13 @@ internal static class WaterLookShot
         phase = "under-way";
         await InputProbe.Say(host, "raise anchor");
         await InputProbe.Wait(host, 20);
-        await InputProbe.Say(host, System.Environment.GetEnvironmentVariable("GUO_WAKE_CMD") ?? "forward");
+        // GUO_WAKE_CMD: the helm orders, ';' between them ("come about;forward"); two seconds pass after each but the last.
+        string[] orders = (System.Environment.GetEnvironmentVariable("GUO_WAKE_CMD") ?? "forward").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        for (int i = 0; i < orders.Length; i++)
+        {
+            await InputProbe.Say(host, orders[i]);
+            if (i < orders.Length - 1) await InputProbe.Wait(host, 150);
+        }
         for (int i = 0; i < StillAfter; i++)
         {
             if (pin >= 0) world.Light.Overall = world.Light.RealOverall = pin;

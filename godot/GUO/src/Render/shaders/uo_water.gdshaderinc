@@ -768,7 +768,7 @@ vec3 water_wake_apply(vec3 c, vec2 cell, vec2 f, vec2 world, float t) {
 	if (wake <= 0.004) { return c; }
 	float lace = water_noise(world * water_wake_look.y + vec2(t * 0.25, -t * 0.2));
 	float fine = water_noise(world * water_wake_look.y * 2.7 - vec2(t * 0.4, t * 0.15));
-	float k = smoothstep(0.20, 0.62, wake * (0.45 + 0.75 * lace + 0.35 * fine));
+	float k = smoothstep(0.10, 0.45, wake * (0.45 + 0.75 * lace + 0.35 * fine));
 	if (water_model == WATER_PIXEL || water_model == WATER_CEL || water_model == WATER_CLASSICPLUS) {
 		k = step(water_bayer(floor(world / max(water_params3.x, 1.0))) * 0.6 + 0.25, k);
 	}
