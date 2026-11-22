@@ -849,6 +849,12 @@
                 "godot"
               ]
             },
+            "gump": {
+              "type": "string"
+            },
+            "button_id": {
+              "type": "integer"
+            },
             "index": {
               "type": "integer",
               "minimum": 0

@@ -197,17 +197,33 @@ class Runner:
     def _abort_step(self, step: dict, watch: Stopwatch, reason: str) -> None:
         """The step that was running when the run ended gets its step_end and its row, as failed."""
         self._kill()
-        self.steps.append(self._finish(step, watch, False, reason, {}))
+        self.steps.append(self._finish(step, watch, False, reason, {}, dump_ui=False))
 
-    def _finish(self, step: dict, watch: Stopwatch, ok: bool, why: str | None, detail: dict) -> dict:
+    def _finish(self, step: dict, watch: Stopwatch, ok: bool, why: str | None, detail: dict, dump_ui: bool = True) -> dict:
         sid = step["id"]
         shown = dict(detail) if isinstance(detail, dict) else {}
         self._mark_frame()
         if why:
             shown["failure"] = why
+            dumped = self._dump_ui(sid) if dump_ui else None
+            if dumped:
+                shown["ui_snapshot"] = dumped
         self.events.emit("step_end", sid, ok=ok, dur_ms=watch.ms(), detail=shown)
         return {"id": sid, "kind": step["do"]["kind"], "ok": ok, "skipped": False, "dur_ms": watch.ms(),
                 "detail": why or ""}
+
+    def _dump_ui(self, sid: str) -> str | None:
+        """A failed client step keeps the control list (ui/<step>.json) so a selector can be fixed from facts."""
+        if self.scenario.surface != "client" or self.session is None:
+            return None
+        try:
+            snapshot = self._snapshot()
+            target = self.run_dir / "ui" / f"{sid}.json"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(json.dumps(snapshot, indent=1), encoding="utf-8")
+            return f"ui/{sid}.json"
+        except Exception:  # a client that is gone must not turn a failed step into a crash
+            return None
 
     def _kill(self) -> None:
         if self.session is not None:
@@ -614,6 +630,8 @@ class Runner:
             raise StepFailed("ui.fill needs text")
         control = self._wait_control(do.get("control"), deadline, float(do.get("within_s", 5)))
         self._click(control)
+        if int(do.get("clear", 0)) > 0:
+            self._key("End")                                 # the click may leave the caret mid-text
         for _ in range(int(do.get("clear", 0))):          # BackSpace presses, for a field that already holds text
             self._key("BackSpace")
         self._input(kind="text", text=str(do["text"]))

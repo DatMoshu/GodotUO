@@ -1,8 +1,8 @@
 """Finding a control in a `guo_ui` snapshot, for the ui.* step kinds and the ui.* expectations.
 
 A selector is a string (matches a control whose type, name or text equals it) or an object with any of
-`type`, `name`, `text`, `contains` (substring of the text), `system` (classic | godot) and `index` (which of
-several matches, 0 based). Snapshots list controls parents first, so `index` is stable between calls.
+`type`, `name`, `text`, `contains` (substring of the text), `system` (classic | godot), `gump` (top-level gump type), `button_id` (a classic button's ID) and `index`
+(which of several matches, 0 based). Gump order follows the front-most gump, so prefer gump + button_id to a bare index.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ class SelectorError(ValueError):
     pass
 
 
-_KEYS = {"type", "name", "text", "contains", "system", "index"}
+_KEYS = {"type", "name", "text", "contains", "system", "gump", "button_id", "index"}
 
 
 def normalize(selector) -> dict:
@@ -39,6 +39,10 @@ def _matches(control: dict, want: dict) -> bool:
     if "contains" in want and want["contains"] not in (text or ""):
         return False
     if "system" in want and control.get("system") != want["system"]:
+        return False
+    if "gump" in want and control.get("gump") != want["gump"]:
+        return False
+    if "button_id" in want and control.get("buttonId") != want["button_id"]:
         return False
     return True
 

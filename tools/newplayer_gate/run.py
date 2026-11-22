@@ -5,6 +5,7 @@ runner (tools/scenario_run), each as its own client launch against the dev shard
 
     client.newplayer.create   first login on an empty account, character creation, in the world, log out
     client.newplayer.return   the same account again: its character is listed, back in the world, log out
+    client.newplayer.options  ticks two options in the Options gump, Apply; the gate then reads the saved profile
     client.newplayer.kept     a third start: the paperdoll left open at log-out is open again without a key press
 
 All links share one client home made for the run (the runner's --home), so what one start saves the next one finds;
@@ -39,8 +40,13 @@ RUNNER = ROOT / "tools" / "scenario_run" / "run.py"
 CHAIN = [
     ("create", "client.newplayer.create"),
     ("return", "client.newplayer.return"),
+    ("options", "client.newplayer.options"),
     ("kept", "client.newplayer.kept"),
 ]
+
+# Options the options link ticks in the Options gump (profile.json keys) and that must be saved and still set after the next start.
+EXPECTED_OPTIONS = {"always_run": True, "fast_rotation": True}
+AFTER_LINKS = ("options", "kept")   # the gate reads the saved profile after these links
 
 MIN_FREE_GB = 10.0   # a client plus its recording; below this the run is refused rather than reaped half way
 
@@ -80,6 +86,23 @@ def free_memory_gb() -> float | None:
     return status.avail / (1 << 30)
 
 
+def check_saved_options(home: Path, expected: dict = EXPECTED_OPTIONS) -> str | None:
+    """None when every saved character profile under the client home holds the expected option values, else why not."""
+    import json
+    files = sorted(Path(home).glob("Data/Profiles/*/*/*/profile.json"))
+    if not files:
+        return "no saved character profile under the client home"
+    for f in files:
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as ex:
+            return f"profile unreadable: {ex}"
+        bad = [k for k, v in expected.items() if data.get(k) != v]
+        if bad:
+            return f"saved profile lacks {', '.join(bad)}"
+    return None
+
+
 def select(only: list[str]) -> list[tuple[str, str]]:
     if not only:
         return list(CHAIN)
@@ -90,7 +113,7 @@ def select(only: list[str]) -> list[tuple[str, str]]:
     return [link for link in CHAIN if link[0] in only]
 
 
-def run_chain(links, account: str, charname: str, env: dict, extra: list[str], run=subprocess.call, out=print) -> int:
+def run_chain(links, account: str, charname: str, env: dict, extra: list[str], run=subprocess.call, out=print, home: Path | None = None) -> int:
     """Run each link; stop at the first non-zero exit and return it."""
     results = []
     code = 0
@@ -99,6 +122,11 @@ def run_chain(links, account: str, charname: str, env: dict, extra: list[str], r
         started = time.time()
         code = run([sys.executable, str(RUNNER), scenario, "--var", f"account={account}", "--var", f"charname={charname}", *extra],
                    env=env, cwd=str(ROOT))
+        if code == 0 and home is not None and name in AFTER_LINKS:
+            why = check_saved_options(home)
+            if why:
+                out(f"[newplayer] {name}: options not kept: {why}")
+                code = 1
         results.append((name, code, time.time() - started))
         if code != 0:
             break
@@ -140,7 +168,7 @@ def main(argv=None) -> int:
         return run_chain(links, account, character_name(account), env, extra)
     home = Path(tempfile.mkdtemp(prefix="guo_newplayer_home_"))   # may hold a copy of saved settings: never left behind
     try:
-        return run_chain(links, account, character_name(account), env, [*extra, "--home", str(home)])
+        return run_chain(links, account, character_name(account), env, [*extra, "--home", str(home)], home=home)
     finally:
         shutil.rmtree(home, ignore_errors=True)
 

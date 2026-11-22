@@ -46,9 +46,10 @@
         "control": {
           "type": "StbTextBox"
         },
-        "text": "$account"
+        "text": "$account",
+        "clear": 32
       },
-      "say": "Type the account name."
+      "say": "Type the account name (clearing the account the login gump remembers)."
     },
     {
       "id": "type_password",

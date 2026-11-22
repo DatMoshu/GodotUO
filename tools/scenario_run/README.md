@@ -121,7 +121,7 @@ Not yet (a scenario that uses one fails at the step today):
 ### Controls
 
 A `control` is a string (matches a control whose type, name or text equals it: `"Connect"`) or an object with any of
-`type`, `name`, `text`, `contains` (substring of the text), `system` (`classic` or `godot`) and `index` (which match,
+`type`, `name`, `text`, `contains` (substring of the text), `system` (`classic` or `godot`), `gump` (top-level gump type), `button_id` (a classic button's ID) and `index` (which match,
 0 based). It is matched against the `guo_ui` snapshot, so `ui.click` finds the control by what it is, not by pixels.
 
 ### Expectations

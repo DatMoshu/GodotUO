@@ -91,7 +91,7 @@ def test_launch_ui_fill_click_chat_key(tmp_path):
     inputs = [a for t, a in client.calls if t == "guo_input"]
     assert inputs[0] == {"kind": "motion", "x": 200, "y": 210}                       # the TextBox centre
     assert {"kind": "text", "text": "gm1"} in inputs and {"kind": "text", "text": "[go 1 2"} in inputs
-    assert [a["key"] for a in inputs if a["kind"] == "key"][:4] == ["BackSpace", "BackSpace", "BackSpace", "BackSpace"]
+    assert [a["key"] for a in inputs if a["kind"] == "key"][:6] == ["End", "End", "BackSpace", "BackSpace", "BackSpace", "BackSpace"]   # caret to the end, then clear
     assert {"kind": "key", "key": "Escape", "pressed": True, "shift": True} in inputs
     assert "gm1" not in log.path.read_text()          # the log holds the name, never the secret or the filled text
 
@@ -528,3 +528,15 @@ def test_home_must_be_new_empty_or_made_by_an_earlier_run(tmp_path):
         raise AssertionError("somebody's home was accepted")
     (real / sess.HOME_MARK).touch()
     assert sess.check_home(real) == real.resolve()
+
+
+def test_selector_names_a_classic_button_by_gump_and_id_whatever_the_gump_order():
+    paperdoll = [{"system": "classic", "type": "Button", "gump": "PaperDollGump", "buttonId": i, "x": 285, "y": 144 + 27 * i,
+                  "width": 64, "height": 21} for i in range(8)]
+    options = [{"system": "classic", "type": "Button", "gump": "OptionsGump", "buttonId": i, "x": 1834 + 95 * i, "y": 1242,
+                "width": 63, "height": 23} for i in (1, 2, 3, 4)]
+    want = {"type": "Button", "gump": "OptionsGump", "button_id": 4}
+    for controls in (paperdoll + options, options + paperdoll):
+        hit = uiquery.find({"controls": controls}, want)
+        assert hit["gump"] == "OptionsGump" and hit["buttonId"] == 4
+    assert uiquery.find({"controls": paperdoll}, want) is None
