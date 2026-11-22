@@ -475,6 +475,7 @@ namespace GUO.Configuration
         void System.Text.Json.Serialization.IJsonOnDeserialized.OnDeserialized()
         {
             ClampLoginZoom();
+            bool legacyRipples = false;
             if (!_uoPlusFlagsRead && !string.IsNullOrWhiteSpace(WaterStyle)
                 && !string.Equals(WaterStyle, "classic", StringComparison.OrdinalIgnoreCase))
             {
@@ -483,8 +484,33 @@ namespace GUO.Configuration
                 // strength. Do not silently halve it with the new 50% default.
                 UoPlusDensities ??= new Dictionary<UoPlusFeature, int>();
                 UoPlusDensities.TryAdd(UoPlusFeature.WaterRipples, 100);
+                legacyRipples = true;
             }
             _uoPlusFlagsRead = true;
+            MigrateRejectedWaterLook(legacyRipples);
+        }
+
+        // PORT DEVIATION (GUO): the all-100 "uo" look (and the legacy path above
+        // enabling ripples at 100 on an all-100 tune) was rejected by the owner.
+        // A profile still wearing it is moved once to the chosen default; the
+        // flag then keeps a later deliberate choice of any look.
+        public bool WaterLookMigrated { get; set; }
+        internal bool WearsRejectedWaterLook(bool legacyRipples) =>
+            UoPlusOptions.Enabled(this, UoPlusFeature.WaterRipples) && UoPlusOptions.Density(this, UoPlusFeature.WaterRipples) == 100
+            && WaterTuneSpeed == 100 && WaterTuneWave == 100 && WaterTuneFoam == 100 && WaterTuneGlint == 100
+            && (string.Equals(WaterStyle, "uo", StringComparison.OrdinalIgnoreCase)
+                || (legacyRipples && !string.Equals(WaterStyle, "classic", StringComparison.OrdinalIgnoreCase)));
+        internal void MigrateRejectedWaterLook(bool legacyRipples)
+        {
+            if (WaterLookMigrated) return;
+            WaterLookMigrated = true;
+            if (!WearsRejectedWaterLook(legacyRipples)) return;
+            var d = CreatePlayerDefaults();
+            WaterStyle = d.WaterStyle;
+            WaterTuneSpeed = d.WaterTuneSpeed; WaterTuneWave = d.WaterTuneWave;
+            WaterTuneFoam = d.WaterTuneFoam; WaterTuneGlint = d.WaterTuneGlint;
+            UoPlusOptions.Set(this, UoPlusFeature.WaterRipples, true, 65);
+            UoPlusOptions.Set(this, UoPlusFeature.ShallowShores, true, 20);
         }
         public Dictionary<UoPlusFeature, int> UoPlusDensities { get; set; } = new();
         public int AmbientParticleDensity { get; set; } = 50; // percent, 0..100
@@ -510,7 +536,8 @@ namespace GUO.Configuration
                 WaterTuneSpeed = 60,
                 WaterTuneWave = 60,
                 WaterTuneFoam = 25,
-                WaterTuneGlint = 15
+                WaterTuneGlint = 15,
+                WaterLookMigrated = true
             };
             UoPlusOptions.Set(p, UoPlusFeature.WaterRipples, true, 65);
             UoPlusOptions.Set(p, UoPlusFeature.ShallowShores, true, 20);

@@ -42,8 +42,6 @@ internal static class WaterLookShot
         new("classic", "classic", 100, 100, 100, 100, 0, 0),
         new("default", "", 0, 0, 0, 0, 0, 0),
         new("uo-default-no-shallow", "uo", 56, 21, 26, 15, 65, 0),
-        new("uo-authored", "uo", 100, 100, 100, 100, 100, 0),
-        new("uo-authored-shallow", "uo", 100, 100, 100, 100, 100, 100),
         new("lighting-7742", "lighting", 80, 85, 55, 30, 65, 45),
         new("lighting-authored", "lighting", 100, 100, 100, 100, 100, 100),
         new("lighting-7742-shallow25", "lighting", 80, 85, 55, 30, 65, 25),
@@ -67,6 +65,12 @@ internal static class WaterLookShot
         {
             GD.PrintErr("[water look] FAIL " + ex);
             Passed = false;
+        }
+        finally
+        {
+            // A look applied for a capture must not outlive it in a saved profile.
+            if (Client.Game?.UO?.World is { } w && ProfileManager.CurrentProfile is { } cp)
+                Apply(w, cp, FromProfile(Profile.CreatePlayerDefaults()));
         }
     }
 

@@ -61,7 +61,7 @@ internal static class BoatDemo
         var p = ProfileManager.CurrentProfile;
         if (p != null)
         {
-            if (!Renderer.Water.WaterRender.IsStyled(p)) Renderer.Water.WaterRender.SetPlayerChoice(p, "uo");
+            if (!Renderer.Water.WaterRender.IsStyled(p)) WaterLookShot.Apply(world, p, WaterLookShot.FromProfile(Profile.CreatePlayerDefaults()));
             UoPlusOptions.Set(p, UoPlusFeature.WaterRipples, true, UoPlusOptions.Density(p, UoPlusFeature.WaterRipples));
             UoPlusOptions.Set(p, UoPlusFeature.ShallowShores, true, UoPlusOptions.Density(p, UoPlusFeature.ShallowShores));
             Renderer.Water.WaterRender.Changed(world);
