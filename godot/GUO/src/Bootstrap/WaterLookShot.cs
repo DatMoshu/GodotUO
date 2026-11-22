@@ -32,12 +32,12 @@ internal static class WaterLookShot
     /// <summary>--water-look-only presets|wake: run one half.</summary>
     public static string Only { get; set; } = "";
 
-    private sealed record Preset(string Name, string Style, int Speed, int Wave, int Foam, int Glint, int Ripples, int Shallow);
+    internal sealed record Preset(string Name, string Style, int Speed, int Wave, int Foam, int Glint, int Ripples, int Shallow);
 
     // Candidates for the owner's right-hand reference. "default" is
     // Profile.CreatePlayerDefaults; the others are the styles' authored values
     // and the earlier fresh-profile default (7742dc7f).
-    private static readonly Preset[] Presets =
+    internal static readonly Preset[] Presets =
     {
         new("classic", "classic", 100, 100, 100, 100, 0, 0),
         new("default", "", 0, 0, 0, 0, 0, 0),
@@ -90,6 +90,8 @@ internal static class WaterLookShot
             WaterRipples.WakeTrough = wt; WaterRipples.WakeArm = wa; WaterRipples.WakeBow = wb;
             GD.Print($"[water look] wake amplitudes {wt} {wa} {wb}");
         }
+        if (Only is "creatures" or "scout" or "audit")
+            return await WaterCreatureShot.Run(host, world, dir, Only);
         await InputProbe.Say(host, "[go Trammel");
         await InputProbe.Wait(host, 120);
         string cleanup = System.Environment.GetEnvironmentVariable("GUO_WAKE_REMOVE");
@@ -121,12 +123,12 @@ internal static class WaterLookShot
         return ok;
     }
 
-    private static Preset FromProfile(Profile f) => new("default", f.WaterStyle, f.WaterTuneSpeed, f.WaterTuneWave,
+    internal static Preset FromProfile(Profile f) => new("default", f.WaterStyle, f.WaterTuneSpeed, f.WaterTuneWave,
         f.WaterTuneFoam, f.WaterTuneGlint,
         UoPlusOptions.Enabled(f, UoPlusFeature.WaterRipples) ? UoPlusOptions.Density(f, UoPlusFeature.WaterRipples) : 0,
         UoPlusOptions.Enabled(f, UoPlusFeature.ShallowShores) ? UoPlusOptions.Density(f, UoPlusFeature.ShallowShores) : 0);
 
-    private static void Apply(Game.World world, Profile profile, Preset p)
+    internal static void Apply(Game.World world, Profile profile, Preset p)
     {
         WaterRender.SetPlayerChoice(profile, p.Style);
         profile.WaterTuneSpeed = p.Speed;
