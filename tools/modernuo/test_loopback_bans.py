@@ -22,6 +22,7 @@ SOURCES = (
     "Projects/Server/Network/Bans/BanReasons.cs",
     "Projects/Server/Network/Bans/IBanReporter.cs",
     "Projects/Server/Network/IConnectionFilter.cs",
+    "Projects/Server/Utilities/IPAddressUtility.cs",
 )
 
 

@@ -44,7 +44,7 @@ class Ctx:
         self.unit = f"muo-{self.id}.service"
         self.port = d["listen"]["port"]
         self.address = p.get("listen", "address", default="0.0.0.0")
-        self.dotnet = p.get("server", "dotnet", default="10.0")
+        self.dotnet = p.get("server", "dotnet", default="11.0")  # ModernUO needs .NET 11 since modernuo/ModernUO#2763
         self.backup_root = p.get("backup", "root", default=f"{DEFAULT_BACKUP_ROOT}/{self.id}")
         self.keys = {**DEFAULT_KEYS, **d.get("host_keys", {})}
 
