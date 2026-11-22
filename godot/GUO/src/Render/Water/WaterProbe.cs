@@ -122,7 +122,13 @@ public partial class WaterProbe : Node
         for (int i = 0; i < 120; i++) { y -= 3f * dt; field.Wake(boat, hull, 2000, y, (_, _) => true); }
         Require(field.Stamps > 0, "a boat under way leaves a wake");
         float cy = y + 0f;
-        Require(field.HeightAt(2000, (int)MathF.Round(cy + 7f)) < -0.01f, "the trough is astern of the hull");
+        float astern = 0f;
+        for (int dy = 6; dy <= 8; dy++) astern = Math.Min(astern, field.HeightAt(2000, (int)MathF.Round(cy + dy)));
+        Require(astern < -0.01f, $"the trough is astern of the hull ({astern:F3})");
+        // An arm spreads sideways with distance astern: more disturbed 3 cells off the track 3 cells astern than ahead of the hull.
+        float arm = 0f;
+        for (int dx = -3; dx <= 3; dx++) arm = Math.Min(arm, field.HeightAt(2000 + dx, (int)MathF.Round(cy + 9f)));
+        Require(arm < -0.01f, "the wake continues astern");
         Require(Math.Abs(field.HeightAt(2000, (int)MathF.Round(cy - 12f))) < 1e-4f, "nothing is disturbed far ahead of the bow");
 
         int whileMoving = field.Stamps;
@@ -130,6 +136,10 @@ public partial class WaterProbe : Node
         int afterStop = field.Stamps;
         for (int i = 0; i < 120; i++) field.Wake(boat, hull, 2000, y, (_, _) => true);
         Require(field.Stamps == afterStop && afterStop - whileMoving < 4 * 70, "the wake stops soon after the boat does");
+        field.StepForProbe(50); // 2.5 s of the field's own time
+        float rest = 0f;
+        for (int dx = -6; dx <= 6; dx++) for (int dy = -14; dy <= 14; dy++) rest = Math.Max(rest, Math.Abs(field.HeightAt(2000 + dx, (int)y + dy)));
+        Require(rest < 0.02f, $"the wake is gone 2.5 s after stopping (still {rest:F4})");
 
         var closed = new WaterRipples();
         closed.CentreOnForProbe(2000, 2000);
