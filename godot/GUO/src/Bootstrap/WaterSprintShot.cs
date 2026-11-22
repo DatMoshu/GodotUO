@@ -94,13 +94,17 @@ internal static class WaterSprintShot
 
     private static async System.Threading.Tasks.Task<bool> GoTo(Node host, Game.World world, int x, int y, int z, int settle)
     {
+        // The player object is replaced on a facet change and gone for a few frames after it: wait
+        // for one instead of reading through a null (a run then ended with no result).
+        for (int i = 0; i < 120 && world.Player == null; i++) await InputProbe.Wait(host, 5);
+        if (world.Player == null) { GD.PrintErr("[water sprint] no player in the world (logged out?)"); return false; }
         await InputProbe.Say(host, $"[go {x} {y} {z}");
-        for (int i = 0; i < 60 && !(world.Player.X == x && world.Player.Y == y); i++) await InputProbe.Wait(host, 5);
+        for (int i = 0; i < 60 && !(world.Player is { } p && p.X == x && p.Y == y); i++) await InputProbe.Wait(host, 5);
         PinLight(world);
         await InputProbe.Wait(host, settle);
         PinLight(world);
         await InputProbe.Wait(host, 4);
-        return world.Player.X == x && world.Player.Y == y;
+        return world.Player is { } at && at.X == x && at.Y == y;
     }
 
     private static async System.Threading.Tasks.Task<Image> Grab(Node host)
