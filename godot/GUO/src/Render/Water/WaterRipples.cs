@@ -528,7 +528,7 @@ internal sealed class WaterRipples
         float length = MathF.Abs(ux) * hx + MathF.Abs(uy) * hy;
         float beam = MathF.Abs(px) * hx + MathF.Abs(py) * hy;
         float spread = Math.Min(beam, 2f) * 0.6f;
-        float amount = 8f * gain * _dt;
+        float amount = 40f * gain * _dt;
         for (int k = -1; k <= 1; k++)
         {
             float sx = cx - ux * (length + 0.5f) + px * spread * k;
