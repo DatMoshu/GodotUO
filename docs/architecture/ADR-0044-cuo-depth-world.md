@@ -199,3 +199,32 @@ complete fallback, not full CUO pixel parity or live-shard entity correctness.
 Existing login-range behavior remains: modern servers without a C8 reply own
 entity removals; no timeout guesses a range. Sustained retention on such servers
 remains an explicit cross-shard validation limitation.
+
+## Styled water admitted (2026-11-24)
+
+A water style no longer refuses the Depth World. Since 2026-10-27 the admission
+test in `GameScene` sent every styled-water frame to the canvas gather, which
+cost 14-18 ms against Classic's 0.87 ms on the Release Haven route and left the
+light and reflection targets unbound, so realtime light never reached water.
+
+Styled frames now draw through a water variant of the ordered pipeline
+(`OrderedWorldWater`). Its fragment is generated at load from the canvas
+include `uo_water.gdshaderinc`, so both paths run the same function bodies:
+each non-sampler uniform becomes a slot of one std140 block (set 2, binding 0)
+and the mask, ripple, light, surface and scene-colour samplers are set 2,
+bindings 1-5. `ChunkMesh` adds the water and seabed-floor bits to wet statics
+exactly as `StaticView` does on the canvas. Upload and draw are split
+(`PrepareRT`/`DrawRT`) so the speed surface and light passes read this frame's
+buffers before the world draw samples the light target.
+
+Classic frames keep the unmodified program and pipeline. The other admission
+conditions (splats, terrain layers, HD) are unchanged. Proof: the native
+weather scene probe's `styled-water-admitted` row and same-camera canvas versus
+Depth World captures at Haven pier, Haven beach and Britain docks, which differ
+only in animation phase, moving mobiles and one-pixel building edges.
+
+Release export on the water bench route (Haven pier, 25 steps, 2250 frames,
+two runs each): Classic 0.54 ms median of step medians, the default water style
+0.54-0.56 ms (it was 18.4 ms on the canvas path). Median step p95 is about
+1.5 ms higher with the style on (3.4-3.7 ms against 1.9-2.0 ms): that is the
+water programs' own cost.

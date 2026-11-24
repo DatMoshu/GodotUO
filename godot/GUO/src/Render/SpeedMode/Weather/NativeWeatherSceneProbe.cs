@@ -285,11 +285,11 @@ public partial class NativeWeatherSceneProbe : Node
                 _rows.Add(new{test="parent-off-return",changedPixels=changed});
             }
             _profile.LightingSpeedMode=true;_profile.WaterStyle="uo";WaterRender.Changed(world);await Warm(12);
-            using(var styled=await Capture("styled-water-fallback")) {
-                Record(!OrderedWorldCapture.LastFrameOnPass&&WaterRender.IsStyled(_profile),
-                    "existing styled-water rejection preserved");
-                Record(Runtime==null||!Runtime.Bound,"styled water never binds speed weather publication");
-                _rows.Add(new{test="styled-water-rejection",reason=OrderedWorldCapture.LastFallback,bound=Runtime?.Bound??false});
+            // ADR-0044 water amendment (2026-11-22): styled water is drawn by the Depth World's water programs.
+            using(var styled=await Capture("styled-water-depth-world")) {
+                Record(OrderedWorldCapture.LastFrameOnPass&&OrderedWorldCapture.LastFrameWater&&WaterRender.IsStyled(_profile),
+                    "styled water admitted to the Depth World");
+                _rows.Add(new{test="styled-water-admitted",reason=OrderedWorldCapture.LastFallback,bound=Runtime?.Bound??false});
             }
             _profile.WaterStyle="classic";WaterRender.Changed(world);Packet(WeatherType.WT_RAIN,70);await Warm(12);Bound("classic-return");
             var oldTarget=_targets.WorldRenderTarget;var oldRuntime=Runtime;

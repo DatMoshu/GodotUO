@@ -15,7 +15,7 @@ import re
 import struct
 
 from layout_import.cdda import digest
-from layout_import import semantic
+from layout_import import semantic, pz_objects
 
 
 class Reader:
@@ -250,7 +250,48 @@ def edge_kind(props, axis):
     return None
 
 
-def resolve(install, map_name, header_name, building_id, name):
+def source_window(folder, primary, bounds):
+    """Read a bounded crossing window using each cell's own dictionary."""
+    if (len(bounds) != 4 or any(type(v) is not int for v in bounds)
+            or not 0 < bounds[2] - bounds[0] <= 256
+            or not 0 < bounds[3] - bounds[1] <= 256):
+        raise ValueError('source window must span at most256 squares per axis')
+    x0, y0, x1, y1 = bounds
+    px, py = primary['cell']
+    required = [(px + dx, py + dy)
+                for dx in range(x0 // 256, (x1 - 1) // 256 + 1)
+                for dy in range(y0 // 256, (y1 - 1) // 256 + 1)]
+    if len(required) > 4 or (px, py) not in required:
+        raise ValueError('source window must include its primary cell and at most four cells')
+    decoded, sources = {}, []
+    for cx, cy in required:
+        header_path = Path(folder) / f'{cx}_{cy}.lotheader'
+        pack = Path(folder) / f'world_{cx}_{cy}.lotpack'
+        if not header_path.is_file() or not pack.is_file():
+            raise ValueError(f'missing source window header/pack for cell {cx},{cy}')
+        info = primary if [cx, cy] == primary['cell'] else header(header_path)
+        if info['cell'] != [cx, cy] or info['cell_size'] != 256 or info['chunk_size'] != 8:
+            raise ValueError('source window cell identity or dimensions disagree')
+        dx, dy = (cx - px) * 256, (cy - py) * 256
+        left, top = max(0, x0 - dx), max(0, y0 - dy)
+        right, bottom = min(256, x1 - dx), min(256, y1 - dy)
+        pack_hash = hashlib.sha256(pack.read_bytes()).hexdigest()
+        for qx in range(left // 8, (right - 1) // 8 + 1):
+            for qy in range(top // 8, (bottom - 1) // 8 + 1):
+                for (x, y, z), stack in chunk(pack, info, qx, qy).items():
+                    at = (x + dx, y + dy, z)
+                    if at in decoded:
+                        raise ValueError('duplicate translated source window observation')
+                    decoded[at] = stack
+        if hashlib.sha256(pack.read_bytes()).hexdigest() != pack_hash:
+            raise ValueError('source window pack changed during extraction')
+        sources.append(dict(cell=[cx, cy], header=header_path.name,
+                            header_sha256=info['sha256'], pack=pack.name,
+                            pack_sha256=pack_hash))
+    return decoded, sources
+
+
+def resolve(install, map_name, header_name, building_id, name, allow_neighbor_cells=False):
     folder = Path(install)/'media'/'maps'/map_name
     if Path(header_name).name != header_name:
         raise ValueError("header must be a filename")
@@ -264,14 +305,20 @@ def resolve(install, map_name, header_name, building_id, name):
     rects = [q for room in rooms for q in room['rects']]
     x0,y0 = min(q[0] for q in rects)-2,min(q[1] for q in rects)-2
     x1,y1 = max(q[0]+q[2] for q in rects)+2,max(q[1]+q[3] for q in rects)+2
-    if not (0<=x0<x1<=256 and 0<=y0<y1<=256):
+    crossing = not (0<=x0<x1<=256 and 0<=y0<y1<=256)
+    if crossing and not allow_neighbor_cells:
         raise ValueError("cross-cell building requires neighboring headers; explicit block")
     tiles, defs = properties(install)
+    group_counts = pz_objects.definition_groups(tiles)
+    grids = pz_objects.expected_grids(tiles)
     pack = folder/f"world_{info['cell'][0]}_{info['cell'][1]}.lotpack"
-    decoded = {}
-    for cx in range(x0//8,(x1-1)//8+1):
-        for cy in range(y0//8,(y1-1)//8+1):
-            decoded.update(chunk(pack,info,cx,cy))
+    decoded, source_cells = {}, []
+    if crossing:
+        decoded, source_cells = source_window(folder, info, [x0, y0, x1, y1])
+    else:
+        for cx in range(x0//8,(x1-1)//8+1):
+            for cy in range(y0//8,(y1-1)//8+1):
+                decoded.update(chunk(pack,info,cx,cy))
     w,h = (x1-x0)*2+1,(y1-y0)*2+1
     levels, pending = [], collections.Counter()
     authored = {}
@@ -283,7 +330,7 @@ def resolve(install, map_name, header_name, building_id, name):
     relevant={at:stack for at,stack in decoded.items() if x0<=at[0]<x1 and y0<=at[1]<y1 and at[2] in {r['z'] for r in rooms}}
     connections=stair_links(relevant,tiles,set(authored))
     for z in sorted({room['z'] for room in rooms}):
-        cells = {}
+        cells, observations = {}, []
         for y in range(h):
             for x in range(w):
                 sx,sy = x0+x//2,y0+y//2
@@ -300,7 +347,7 @@ def resolve(install, map_name, header_name, building_id, name):
             if sz!=z or not x0<=sx<x1 or not y0<=sy<y1:
                 continue
             x,y=(sx-x0)*2,(sy-y0)*2
-            for tile in stack['tiles']:
+            for stack_index, tile in enumerate(stack['tiles']):
                 metadata = tiles.get(tile)
                 if metadata is None:
                     raise ValueError(f"missing tile metadata: {tile}; cannot infer structural safety")
@@ -322,24 +369,15 @@ def resolve(install, map_name, header_name, building_id, name):
                         if c['role'] in ('door','window') and offset!=1:
                             continue
                         c.update(role=role,walkable=role=='door',terrain=f'pz:{role}',access='closed' if role=='door' else 'open')
-                item_name=' '.join([tile,props.get('CustomName',''),props.get('GroupName','')]).lower()
-                role=None
-                for value, keys in [('bed',['bed']),('bath',['sink','toilet','bath','shower']),
-                                    ('oven',['stove','oven']),('bookcase',['book']),('chest',['crate']),
-                                    ('counter',['counter']),('chair',['chair','sofa']),('table',['table']),
-                                    ('container',['fridge','cabinet','locker','shelf'])]:
-                    if any(k in item_name for k in keys):
-                        role=value
-                        break
-                if role and cells[(x+1,y+1)]['indoors']:
-                    group='pz:'+metadata['tileset']+':'+props.get('GroupName','')+':'+props.get('CustomName',role)
-                    for dx in (0,1):
-                        for dy in (0,1):
-                            c=cells[(x+dx,y+dy)]
-                            if c['indoors'] and c['role']=='floor':
-                                c.update(furniture=group,furnishing_role=role)
-                elif 'solidfloor' not in props and not any(k.startswith('stairs') for k in props) and edge_kind(props,'N') is None and edge_kind(props,'W') is None:
-                    pending['unmapped-detail-tile']+=1
+                obs = pz_objects.observation(tile, [sx, sy, z], stack_index, metadata, group_counts)
+                if crossing:
+                    obs.update(source_cell=[info['cell'][0] + sx // 256, info['cell'][1] + sy // 256],
+                               source_at=[sx % 256, sy % 256, z])
+                observations.append(obs)
+                pending['classification:' + obs['kind']] += 1
+                if obs['kind'] in ('detail', 'unresolved-detail'):
+                    for evidence in obs['evidence']:
+                        pending['detail-evidence:' + evidence] += 1
         for c in cells.values():
             if z>0 and c['indoors'] and c['role']=='floor' and not any('solidfloor' in t['properties'] for t in c['source_tiles']):
                 c.update(role='void',walkable=False,terrain='pz:floor-void')
@@ -363,9 +401,24 @@ def resolve(install, map_name, header_name, building_id, name):
                             p=((bx-x0)*2+dx,(by-y0)*2+dy)
                             if p in cells and cells[p]['role']=='void' and cells[p]['indoors']:
                                 cells[p]['stairwell']=True
+        source_groups = pz_objects.assemble(observations, grids)
+        furnishing_groups = pz_objects.project(source_groups, cells, [x0, y0])
+        pending['objects-outside-authored-building'] += len(source_groups) - len(furnishing_groups)
+        # Room-label hints only. The level inventory preserves stacked objects.
+        for group in furnishing_groups:
+            if group['status'] == 'resolved':
+                for pos in group['cells']:
+                    cells[tuple(pos)].update(furniture=group['source_id'], furnishing_role=group['role'])
         for cell in cells.values():
+            if crossing:
+                source = cell['source']
+                sx, sy, sz = source['at']
+                source.update(cell=[info['cell'][0] + sx // 256, info['cell'][1] + sy // 256],
+                              at=[sx % 256, sy % 256, sz], frame_at=[sx, sy, sz],
+                              room_header=header_name)
             cell['lineage']=cell['source']
         level=semantic.infer_rooms({'z':z,'cells':sorted(cells.values(),key=lambda c:(c['y'],c['x']))})
+        level['furnishing_groups'] = furnishing_groups
         level['authored_rooms']=[{'id':r['id'],'name':r['name'],'use':room_use(r['name']),
             'source_rects':r['rects'],'cells':[[c['x'],c['y']] for c in level['cells']
                 if c['source']['room_id']==r['id'] and c['role']=='floor']}
@@ -385,8 +438,8 @@ def resolve(install, map_name, header_name, building_id, name):
             c=dict(levels[-1]['cells'][y*w+x])
             c.update(role='roof' if (x,y) in mask else 'void',walkable=(x,y) in mask,indoors=False,furniture='f_null',furnishing_role=None,terrain='pz:adapted-roof' if (x,y) in mask else 'pz:void')
             roof.append(c)
-    levels.append(semantic.infer_rooms({'z':top+1,'cells':roof}))
-    result={'format':1,'kind':'semantic-layout','name':name,'width':w,'height':h,'levels':levels,
+    levels.append(semantic.infer_rooms({'z':top+1,'cells':roof,'furnishing_groups':[]}))
+    result={'format':1,'kind':'semantic-layout','furnishing_contract':pz_objects.CONTRACT,'name':name,'width':w,'height':h,'levels':levels,
             'provenance':{'source':'project-zomboid','map':map_name,'header':header_name,'header_sha256':info['sha256'],
                 'pack_sha256':hashlib.sha256(pack.read_bytes()).hexdigest(),'tile_definitions':defs,
                 'building':building_id,'cell':info['cell'],'source_bounds':[x0,y0,x1,y1],
@@ -394,6 +447,9 @@ def resolve(install, map_name, header_name, building_id, name):
             'adaptations':[{'kind':'edge-wall-to-cell-grid','scale':2},
                            {'kind':'native-flat-roof-from-authored-footprint'}],
             'source_coverage':dict(pending)}
+    if crossing:
+        result['provenance'].update(source_window_contract='pz-cell-window/1',
+                                    source_window_bounds=[x0, y0, x1, y1], source_cells=source_cells)
     result['provenance']['authored_stair_connections']=connections
     supplied={room['z'] for room in rooms}
     if any(c['to'][2] not in supplied or c['from'][2] not in supplied for c in connections):

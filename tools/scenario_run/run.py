@@ -426,7 +426,8 @@ def main(argv: list[str] | None = None) -> int:
                 raise sc.ScenarioError("--shard applies to a client scenario")
             shard = resolve_shard_target(args.shard_target, cfg.root, variables)
             scen.requires = {**scen.requires, "shard": args.shard_target}
-        sc.substitute([s["do"] for s in scen.steps] + [s.get("expect", {}) for s in scen.steps], variables)  # missing variable stops before launch
+        sc.substitute([s["do"] for s in scen.steps] + [s.get("expect", {}) for s in scen.steps],
+                      {**sc.RUNTIME_VARIABLES, **variables})  # missing variable stops before launch
     except sc.ScenarioError as ex:
         print(f"error: {ex}", file=sys.stderr)
         return 2

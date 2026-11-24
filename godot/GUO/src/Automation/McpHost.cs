@@ -181,9 +181,10 @@ public partial class McpHost : Node
     private static object[] Catalog() => new[]
     {
         Tool("guo_ui", "Inspect visible classic gumps and Godot controls; editable field values are omitted. Bounds are viewport pixels. Up to 2000 controls.", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"),
-        Tool("guo_input", "Send one event through GUO's real input queue. Use motion, wait, button down, wait, button up for clicks/drags. button: Left/Right/Middle/WheelUp/WheelDown. key: Godot key name, e.g. Enter or Escape. text inserts Unicode into the focused field. Event completes after two frames. No OS pointer movement.", "{\"type\":\"object\",\"properties\":{\"kind\":{\"enum\":[\"motion\",\"button\",\"key\",\"text\"]},\"x\":{\"type\":\"integer\"},\"y\":{\"type\":\"integer\"},\"button\":{\"type\":\"string\"},\"key\":{\"type\":\"string\"},\"pressed\":{\"type\":\"boolean\"},\"text\":{\"type\":\"string\",\"maxLength\":1024},\"shift\":{\"type\":\"boolean\"},\"ctrl\":{\"type\":\"boolean\"},\"alt\":{\"type\":\"boolean\"}},\"required\":[\"kind\"],\"additionalProperties\":false}"),
+        Tool("guo_input", "Send one event through GUO's real input queue. Use motion, wait, button down, wait, button up for drags; click (x, y, button, clicks 1..2) presses and releases in one frame, a double-click included. button: Left/Right/Middle/WheelUp/WheelDown. key: Godot key name, e.g. Enter or Escape. text inserts Unicode into the focused field. Event completes after two frames. No OS pointer movement.", "{\"type\":\"object\",\"properties\":{\"kind\":{\"enum\":[\"motion\",\"button\",\"click\",\"key\",\"text\"]},\"x\":{\"type\":\"integer\"},\"y\":{\"type\":\"integer\"},\"button\":{\"type\":\"string\"},\"key\":{\"type\":\"string\"},\"pressed\":{\"type\":\"boolean\"},\"text\":{\"type\":\"string\",\"maxLength\":1024},\"shift\":{\"type\":\"boolean\"},\"ctrl\":{\"type\":\"boolean\"},\"alt\":{\"type\":\"boolean\"},\"clicks\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":2}},\"required\":[\"kind\"],\"additionalProperties\":false}"),
         Tool("guo_wait", "Wait 1..600 process frames before observing asynchronous UI/server changes.", "{\"type\":\"object\",\"properties\":{\"frames\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":600}},\"required\":[\"frames\"],\"additionalProperties\":false}"),
-        Tool("guo_state", "Cheap state for scripted runs: process frame index, scene, viewport size and, once in the world, the player's map index and tile position.", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"),
+        Tool("guo_state", "Cheap state for scripted runs: process frame index, scene, viewport size and, once in the world, the player's map index, tile position, war mode, hits, worn and backpack item serials; the last attack, the entity and the classic control under the pointer, the nearest mobiles (with where their feet are drawn) and the last journal lines.", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"),
+        Tool("guo_net_drop", "Test a dropped connection: shut the sending side of the game connection; the shard closes its side and the client meets the end of the stream on its own read path, as when a shard drops it.", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"),
         Tool("guo_quit", "Quit the client cleanly after two frames, so a MovieWriter recording is finalised. The connection closes.", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"),
         Tool("guo_screenshot", "Return the current viewport as a PNG. Requires a headed renderer; --headless cannot capture pixels.", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"),
         Tool("guo_overlay", "Human-driver overlay: text (caption) with step (its label), control {x,y,width,height,label} (an outline in viewport pixels), clear, hide (draw nothing). Returns {skip, abort}: Space and Esc pressed since the last call. No arguments only reads them.", "{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\",\"maxLength\":300},\"step\":{\"type\":\"string\",\"maxLength\":20},\"control\":{\"type\":\"object\",\"properties\":{\"x\":{\"type\":\"number\"},\"y\":{\"type\":\"number\"},\"width\":{\"type\":\"number\"},\"height\":{\"type\":\"number\"},\"label\":{\"type\":\"string\",\"maxLength\":40}},\"required\":[\"x\",\"y\",\"width\",\"height\"],\"additionalProperties\":false},\"clear\":{\"type\":\"boolean\"},\"hide\":{\"type\":\"boolean\"}},\"additionalProperties\":false}")
@@ -214,6 +215,7 @@ public partial class McpHost : Node
                 "guo_state" => Text(JsonSerializer.Serialize(State())),
                 "guo_screenshot" => Screenshot(),
                 "guo_overlay" => Overlay(a),
+                "guo_net_drop" => NetDrop(),
                 _ => Text("Unknown tool", true)
             };
             if (frames > 0) { _active = work; _frames = frames; _result = result; }
@@ -285,6 +287,26 @@ public partial class McpHost : Node
             }
             return Text("Text dispatched.");
         }
+        if (kind == "click")
+        {
+            // A whole click, or a double-click, in one frame: the game counts a double-click by game time, and two
+            // presses sent as separate calls can fall outside its window when frames are slow.
+            var at = new Vector2(a.GetProperty("x").GetInt32(), a.GetProperty("y").GetInt32());
+            if (!GetViewport().GetVisibleRect().HasPoint(at)) throw new ArgumentOutOfRangeException();
+            if (!Enum.TryParse(a.TryGetProperty("button", out var b) ? b.GetString() : "Left", true, out MouseButton button) || button < MouseButton.Left || button > MouseButton.Middle) throw new ArgumentException();
+            int clicks = a.TryGetProperty("clicks", out var n) ? n.GetInt32() : 1;
+            if (clicks < 1 || clicks > 2) throw new ArgumentOutOfRangeException();
+            _pointer = at;
+            for (int i = 0; i < clicks; i++)
+            {
+                foreach (bool pressed in new[] { true, false })
+                {
+                    using var click = new InputEventMouseButton { Position = at, GlobalPosition = at, ButtonIndex = button, Pressed = pressed, Factor = 1 };
+                    Godot.Input.ParseInputEvent(click);
+                }
+            }
+            return Text("Click dispatched; inspect UI to verify the effect.");
+        }
         InputEvent ev;
         if (kind == "key")
         {
@@ -329,13 +351,117 @@ public partial class McpHost : Node
             scene = Client.Game?.Scene?.GetType().Name,
             width = size.X,
             height = size.Y,
-            player = player == null ? null : new { map = Client.Game.UO.World.MapIndex, x = (int)player.X, y = (int)player.Y, z = (int)player.Z },
+            player = player == null ? null : new { map = Client.Game.UO.World.MapIndex, x = (int)player.X, y = (int)player.Y, z = (int)player.Z,
+                serial = player.Serial, warMode = player.InWarMode, hits = (int)player.Hits, hitsMax = (int)player.HitsMax,
+                equipped = Worn(player), backpack = InBackpack(player) },
+            // Read-only facts the new-player gate checks (data_formats section 29): what is worn, who is fought, who is near.
+            combat = player == null ? null : new { lastAttack = Client.Game.UO.World.TargetManager.LastAttack },
+            hover = Game.SelectedObject.Object is Game.GameObjects.Entity hovered ? hovered.Serial : 0u,
+            pointer = UIManager.MouseOverControl == null ? null : new { type = UIManager.MouseOverControl.GetType().Name, serial = UIManager.MouseOverControl.LocalSerial },
+            mobiles = player == null ? null : Near(player),
+            journal = JournalTail(),
 #if TOOLS
             water = Renderer.Water.WaterRender.Inspect(Client.Game?.UO?.World),
 #endif
             audio = new { enabled = Configuration.ProfileManager.CurrentProfile?.ContentAudioEnabled == true,
                 music = IO.Audio.MusicZones.Status, sound = IO.Audio.SfxZones.Status, recordedClipsPlayed = IO.Audio.PackVoice.Played }
         };
+    }
+
+    // A dropped connection without touching the ported network code: the send side of the socket under
+    // NetClient is shut, the shard sees the stream end and closes its side, and the client's own read path
+    // then meets the end of the stream exactly as when a shard drops it. (Shutting both sides would hide that
+    // end from the client, which then waits on a connection it can no longer use.)
+    [System.Runtime.InteropServices.DllImport("ws2_32.dll", EntryPoint = "shutdown")]
+    private static extern int WinShutdown(IntPtr socket, int how);
+
+    [System.Runtime.InteropServices.DllImport("libc", EntryPoint = "shutdown")]
+    private static extern int UnixShutdown(int socket, int how);
+
+    private static object NetDrop()
+    {
+        const System.Reflection.BindingFlags Private = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+        object wrapper = typeof(Network.NetClient).GetField("_socket", Private)?.GetValue(Network.NetClient.Socket);
+        var tcp = wrapper?.GetType().GetField("_socket", Private)?.GetValue(wrapper) as TcpClient;
+        if (tcp?.Client == null || !tcp.Client.Connected) return Text("No game connection to drop.", true);
+        // The OS call, not Socket.Shutdown: the managed one also marks the socket not connected, which a shard's
+        // close never does, and the client's read path then never looks. 1 is SD_SEND / SHUT_WR on both.
+        int failed = OperatingSystem.IsWindows() ? WinShutdown(tcp.Client.Handle, 1) : UnixShutdown((int)tcp.Client.Handle, 1);
+        if (failed != 0) return Text("The connection could not be shut.", true);
+        return Text("Connection shut; the shard closes it and the client notices on its own read path.");
+    }
+
+    // Worn item serials, without hair, beard, backpack, mount and the vendor and bank layers.
+    private static List<uint> Worn(Game.GameObjects.Mobile m)
+    {
+        var worn = new List<uint>();
+        for (var i = m.Items; i != null; i = i.Next)
+        {
+            if (i is Game.GameObjects.Item it && !it.IsDestroyed && it.Layer >= Game.Data.Layer.OneHanded && it.Layer <= Game.Data.Layer.Legs
+                && it.Layer != Game.Data.Layer.Hair && it.Layer != Game.Data.Layer.Beard && it.Layer != Game.Data.Layer.Backpack)
+            {
+                worn.Add(it.Serial);
+            }
+        }
+        return worn;
+    }
+
+    // Serials of the items directly in the backpack (not in bags inside it).
+    private static List<uint> InBackpack(Game.GameObjects.Mobile m)
+    {
+        var items = new List<uint>();
+        var pack = m.FindItemByLayer(Game.Data.Layer.Backpack);
+        if (pack == null) return items;
+        for (var i = pack.Items; i != null; i = i.Next)
+        {
+            if (i is Game.GameObjects.Item it && !it.IsDestroyed) items.Add(it.Serial);
+        }
+        return items;
+    }
+
+    // The 32 nearest other mobiles within 18 tiles: who could be fought or spoken to.
+    private static List<object> Near(Game.GameObjects.Mobile player)
+    {
+        var near = new List<(int d, Game.GameObjects.Mobile m)>();
+        foreach (var m in Client.Game.UO.World.Mobiles.Values)
+        {
+            if (m == null || m.IsDestroyed || m.Serial == player.Serial) continue;
+            int d = Math.Max(Math.Abs(m.X - player.X), Math.Abs(m.Y - player.Y));
+            if (d <= 18) near.Add((d, m));
+        }
+        near.Sort((a, b) => a.d.CompareTo(b.d));
+        var output = new List<object>();
+        foreach (var (d, m) in near)
+        {
+            if (output.Count >= 32) break;
+            output.Add(new { serial = m.Serial, name = m.Name, x = (int)m.X, y = (int)m.Y, z = (int)m.Z, distance = d,
+                hits = (int)m.Hits, hitsMax = (int)m.HitsMax, notoriety = (int)m.NotorietyFlag, dead = m.IsDead, screen = Feet(m) });
+        }
+        return output;
+    }
+
+    // Where the mobile's feet are drawn, in viewport pixels (as guo_input takes them); a pointer aimed here
+    // and moved up finds its sprite. Null outside the game scene.
+    private static object Feet(Game.GameObjects.Mobile m)
+    {
+        var camera = Client.Game?.Scene?.Camera;
+        if (camera == null) return null;
+        var at = new Compat.Point(m.RealScreenPosition.X + (int)m.Offset.X + 22, m.RealScreenPosition.Y + (int)(m.Offset.Y - m.Offset.Z) + 22);
+        at = camera.WorldToScreen(at, true);
+        float scale = Client.Game.DpiScale;
+        return new { x = (int)(at.X * scale), y = (int)(at.Y * scale) };
+    }
+
+    // The last 20 journal lines' text (no speaker names): system messages a scenario waits for.
+    private static List<string> JournalTail()
+    {
+        var lines = new List<string>();
+        var entries = JournalManager.Entries;
+        for (int i = Math.Max(0, entries.Count - 20); i < entries.Count; i++)
+        {
+            if (entries[i]?.Text is string text) lines.Add(text);
+        }
+        return lines;
     }
 
     private object Snapshot()
@@ -369,7 +495,7 @@ public partial class McpHost : Node
     private static void AddClassic(LegacyControl c, string gump, List<object> output, float scale, int depth)
     {
         if (depth > 64 || output.Count >= 2000 || c.IsDisposed || !c.IsVisible || (c.Parent != null && c.Page != 0 && c.Page != c.Parent.ActivePage)) return;
-        output.Add(new { system = "classic", type = c.GetType().Name, gump, buttonId = c is Game.UI.Controls.Button button ? button.ButtonID : (int?)null, x = c.ScreenCoordinateX * scale, y = c.ScreenCoordinateY * scale, width = c.Width * scale, height = c.Height * scale, enabled = c.IsEnabled, focused = c.HasKeyboardFocus, text = c is Game.UI.Controls.Label label ? label.Text : null });
+        output.Add(new { system = "classic", type = c.GetType().Name, gump, buttonId = c is Game.UI.Controls.Button button ? button.ButtonID : (int?)null, serial = c.LocalSerial != 0 ? c.LocalSerial : (uint?)null, x = c.ScreenCoordinateX * scale, y = c.ScreenCoordinateY * scale, width = c.Width * scale, height = c.Height * scale, enabled = c.IsEnabled, focused = c.HasKeyboardFocus, text = c is Game.UI.Controls.Label label ? label.Text : null });
         foreach (var child in c.Children) AddClassic(child, gump, output, scale, depth + 1);
     }
 

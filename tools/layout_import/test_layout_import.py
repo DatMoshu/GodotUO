@@ -95,6 +95,42 @@ class CatalogueTests(unittest.TestCase):
         event['placement']={'x':2}
         with self.assertRaises(ValueError): catalogue.usage(self.con,event)
 
+    def test_source_inventory_is_durable_including_stacked_and_unresolved_objects(self):
+        from layout_import import catalogue, semantic
+        snapshot = cdda.scan(self.con, self.source)
+        profile = cdda.make_profile(self.con, snapshot, [])
+        cell = {'x': 0, 'y': 0, 'role': 'floor', 'indoors': True, 'walkable': True,
+                'furnishing_role': 'counter', 'access': 'open', 'terrain': 'neutral', 'furniture': 'counter'}
+        groups = [dict(id=role, source_id='original:' + role, role=role,
+                       status='unresolved' if role == 'unresolved' else 'resolved',
+                       cells=[[0, 0]], intended_cells=[[0, 0]],
+                       diagnostics=['unknown object'] if role == 'unresolved' else [], tiles=[])
+                  for role in ('bath', 'counter', 'unresolved')]
+        layout = dict(format=1, name='original-stacked-inventory', width=1, height=1, provenance={},
+                      furnishing_contract='pz-source-objects/1',
+                      levels=[dict(z=0, cells=[cell], furnishing_groups=groups)])
+        layout['layout_hash'] = semantic.layout_hash(layout)
+        ident = catalogue.save_layout(self.con, profile, layout)
+        retained = [json.loads(r[0]) for r in self.con.execute(
+            'SELECT record_json FROM furnishing_group WHERE instance_id=?', (ident,))]
+        self.assertEqual(sorted(retained, key=lambda g: g['id']), sorted(groups, key=lambda g: g['id']))
+        self.assertEqual(ident, catalogue.save_layout(self.con, profile, layout))
+        self.assertEqual(self.con.execute('SELECT COUNT(*) FROM furnishing_group WHERE instance_id=?',
+                                         (ident,)).fetchone()[0], 3)
+        with self.con:
+            self.con.execute("UPDATE furnishing_group SET role='hidden' WHERE instance_id=? AND role='unresolved'", (ident,))
+        before = list(self.con.iterdump())
+        with self.assertRaisesRegex(ValueError, 'new converter profile'):
+            catalogue.save_layout(self.con, profile, layout)
+        self.assertEqual(before, list(self.con.iterdump()))
+        with self.con:
+            self.con.execute("UPDATE furnishing_group SET role='unresolved' WHERE instance_id=? AND role='hidden'", (ident,))
+            self.con.execute("DELETE FROM furnishing_group WHERE instance_id=? AND role='unresolved'", (ident,))
+        before = list(self.con.iterdump())
+        with self.assertRaisesRegex(ValueError, 'new converter profile'):
+            catalogue.save_layout(self.con, profile, layout)
+        self.assertEqual(before, list(self.con.iterdump()))
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)

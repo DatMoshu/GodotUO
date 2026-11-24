@@ -111,3 +111,60 @@ def test_chain_fails_when_options_not_saved(tmp_path):
     lines = []
     code = gate.run_chain([("options", "client.newplayer.options")], "npx", "Guox", {}, [], run=lambda *a, **k: 0, out=lines.append, home=tmp_path)
     assert code == 1 and any("not kept" in l for l in lines)
+
+
+def test_fixture_runs_once_just_before_the_combat_link():
+    order = []
+
+    def run(cmd, env, cwd):
+        order.append(cmd[2])
+        return 0
+
+    def fixture(extra):
+        order.append("fixture")
+        return 0
+
+    assert gate.run_chain(list(gate.CHAIN), "npx", "Guox", {}, [], run=run, out=lambda _: None, fixture=fixture) == 0
+    assert order.count("fixture") == 1 and order[order.index("fixture") + 1] == "client.newplayer.combat"
+
+
+def test_a_fixture_that_fails_stops_the_chain_with_its_code():
+    ran, lines = [], []
+    code = gate.run_chain(list(gate.CHAIN), "npx", "Guox", {}, [], run=lambda cmd, env, cwd: ran.append(cmd[2]) or 0,
+                          out=lines.append, fixture=lambda extra: 2)
+    assert code == 2 and "client.newplayer.combat" not in ran and lines[-1].startswith("[newplayer] FAIL")
+
+
+def test_fixture_runs_on_its_own_home_with_the_game_master_password(monkeypatch):
+    cfg = type("Cfg", (), {"shard_gm_accounts": ["guoeffects", "guohighlight"], "shard_gm_password": "gmpw"})()
+    import guo
+    monkeypatch.setattr(guo, "load_config", lambda: cfg)
+    seen = {}
+
+    def run(cmd, env, cwd):
+        seen["cmd"], seen["env"] = cmd, env
+        seen["home_existed"] = gate.Path(cmd[cmd.index("--home") + 1]).is_dir()
+        return 0
+
+    assert gate.place_fixture(["--no-record", "--home", "C:/player_home"], out=lambda _: None, run=run) == 0
+    cmd = seen["cmd"]
+    assert cmd[2] == gate.FIXTURE and "account=guoeffects" in cmd and "C:/player_home" not in cmd and "--no-record" in cmd
+    assert seen["env"]["GUO_SCENARIO_PASSWORD"] == "gmpw" and seen["home_existed"]
+    assert not gate.Path(cmd[cmd.index("--home") + 1]).exists()
+    assert not any("gmpw" in part for part in cmd)
+
+
+def test_fixture_without_a_game_master_is_a_missing_prerequisite(monkeypatch):
+    import guo
+    monkeypatch.setattr(guo, "load_config", lambda: type("Cfg", (), {"shard_gm_accounts": [], "shard_gm_password": ""})())
+    assert gate.place_fixture([], out=lambda _: None, run=lambda *a, **k: 0) == 2
+
+
+def test_generated_scenarios_match_their_generator():
+    import json
+    _s = importlib.util.spec_from_file_location("newplayer_make", Path(__file__).with_name("make_scenarios.py"))
+    make = importlib.util.module_from_spec(_s)
+    _s.loader.exec_module(make)
+    for name in ("equip", "combat", "reconnect", "fixture"):
+        on_disk = json.loads((make.CLIENT / f"newplayer_{name}.scenario.json").read_text(encoding="utf-8"))
+        assert on_disk == getattr(make, name)(), f"run python tools/newplayer_gate/make_scenarios.py ({name} is stale)"

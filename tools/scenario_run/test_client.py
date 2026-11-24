@@ -540,3 +540,109 @@ def test_selector_names_a_classic_button_by_gump_and_id_whatever_the_gump_order(
         hit = uiquery.find({"controls": controls}, want)
         assert hit["gump"] == "OptionsGump" and hit["buttonId"] == 4
     assert uiquery.find({"controls": paperdoll}, want) is None
+
+
+# --- the new-player gate's equip, combat and reconnect kinds ------------------------------------------------------
+
+def _world(**player):
+    base = {"x": 10, "y": 10, "z": 0, "map": 1, "serial": 1, "warMode": False, "equipped": [5, 6], "backpack": [7]}
+    return {"frame": 7, "scene": "GameScene", "width": 1280, "height": 720, "player": {**base, **player},
+            "combat": {"lastAttack": 0}, "hover": 0, "journal": [], "mobiles": []}
+
+
+def test_selector_names_a_control_by_serial_in_any_form():
+    snap = {"controls": [{"type": "ItemGump", "gump": "ContainerGump", "serial": 0x4001F}, {"type": "ItemGump", "gump": "ContainerGump", "serial": 9}]}
+    for form in (0x4001F, "262175", "0x4001F", "0x4001f"):
+        assert uiquery.find(snap, {"serial": form})["serial"] == 0x4001F
+    assert uiquery.find(snap, {"serial": "8"}) is None
+
+
+def test_drag_names_what_it_picked_up_and_the_same_step_can_expect_it(tmp_path):
+    ui = {"scene": "GameScene", "width": 1280, "height": 720, "controls": [
+        {"system": "classic", "type": "GumpPicEquipment", "gump": "PaperDollGump", "serial": 5, "x": 0, "y": 0, "width": 20, "height": 20},
+        {"system": "classic", "type": "ContainerGump", "gump": "ContainerGump", "x": 100, "y": 0, "width": 50, "height": 50}]}
+    steps = [step("go", "launch"),
+             step("off", "ui.drag", **{"from": {"type": "GumpPicEquipment"}, "to": {"type": "ContainerGump"}},
+                  expect={"world.equipped": {"delta": -1, "lacks": "$dragged"}, "world.backpack": {"has": "$dragged"}, "within_s": 2})]
+    r, client, _, log, _ = make_client(tmp_path, steps, replies={"guo_ui": ui})
+    plain = client.call
+
+    def call(tool, arguments=None, timeout=45.0):           # the worn item 5 moves to the backpack when the button comes up
+        if tool == "guo_state":
+            client.calls.append((tool, arguments))
+            dropped = any(t == "guo_input" and a.get("pressed") is False for t, a in client.calls)
+            return False, json.dumps(_world(equipped=[6], backpack=[7, 5]) if dropped else _world())
+        return plain(tool, arguments, timeout)
+
+    client.call = call
+    assert r.run()["ok"]
+    assert r.variables["dragged"] == "5"
+    written = events_of(log, "expect")[-1]["detail"]["expect"]
+    assert written["world.equipped"]["lacks"] == "$dragged"          # the log keeps the step as written
+
+
+def test_equipped_delta_fails_when_nothing_came_off(tmp_path):
+    steps = [step("go", "launch"), step("n", "note", text="x", expect={"world.equipped": {"delta": -1}, "within_s": 1})]
+    r, _, _, _, _ = make_client(tmp_path, steps, replies={"guo_state": _world()})
+    assert not r.run()["ok"]
+
+
+def test_world_click_moves_up_the_body_until_the_game_says_it_is_there(tmp_path):
+    dummy = {"serial": 77, "name": "GUO Attack Dummy", "distance": 2, "hits": 200, "hitsMax": 200, "screen": {"x": 600, "y": 400}}
+    steps = [step("go", "launch"), step("hit", "world.click", mobile={"contains": "Attack Dummy"}, clicks=2,
+                                         expect={"combat.attacking": {"contains": "Attack Dummy"}, "journal.contains": "hit attack-dummy", "within_s": 2})]
+    r, client, _, log, _ = make_client(tmp_path, steps)
+    plain = client.call
+
+    def call(tool, arguments=None, timeout=45.0):
+        if tool == "guo_state":
+            client.calls.append((tool, arguments))
+            motions = [a for t, a in client.calls if t == "guo_input" and a["kind"] == "motion"]
+            hover = 77 if motions and motions[-1]["y"] <= 370 else 0       # the sprite starts 30 px above the feet
+            clicked = sum(a.get("clicks", 1) for t, a in client.calls if t == "guo_input" and a["kind"] == "click")
+            state = _world()
+            state.update(hover=hover, mobiles=[dummy], combat={"lastAttack": 77 if clicked >= 2 else 0},
+                         journal=["GUO_PAD: hit attack-dummy"] if clicked >= 2 else [])
+            return False, json.dumps(state)
+        return plain(tool, arguments, timeout)
+
+    client.call = call
+    assert r.run()["ok"]
+    clicks = [a for t, a in client.calls if t == "guo_input" and a["kind"] == "click"]
+    assert len(clicks) == 1 and clicks[0]["clicks"] == 2 and clicks[0]["y"] <= 370 and clicks[0]["x"] == 600
+    observed = events_of(log, "expect")[-1]["detail"]["observed"]
+    assert observed["journal.contains"] is True                     # whether, never the journal's lines
+
+
+def test_world_click_fails_when_no_such_mobile_is_near(tmp_path):
+    steps = [step("go", "launch"), step("hit", "world.click", mobile={"name": "nobody"}, within_s=1)]
+    r, _, _, _, _ = make_client(tmp_path, steps, replies={"guo_state": _world()})
+    out = r.run()
+    assert not out["ok"] and "near the player" in out["steps"][-1]["detail"]
+
+
+def test_mobile_hurt_and_player_subset(tmp_path):
+    state = _world(warMode=True)
+    state["mobiles"] = [{"serial": 77, "name": "GUO Attack Dummy", "distance": 2, "hits": 180, "hitsMax": 200}]
+    steps = [step("go", "launch"), step("n", "note", text="x", expect={"world.mobile": {"contains": "Dummy", "hurt": True, "within": 3},
+                                                                   "player": {"warMode": True}})]
+    r, _, _, _, _ = make_client(tmp_path, steps, replies={"guo_state": state})
+    assert r.run()["ok"]
+    state["mobiles"][0]["hits"] = 200
+    r, _, _, _, _ = make_client(tmp_path, steps, replies={"guo_state": state})
+    assert not r.run()["ok"]
+
+
+def test_net_drop_calls_the_drop_tool_and_reports_a_refusal(tmp_path):
+    steps = [step("go", "launch"), step("drop", "net.drop")]
+    r, client, _, _, _ = make_client(tmp_path, steps, replies={"guo_net_drop": (False, "Connection shut")})
+    assert r.run()["ok"] and any(t == "guo_net_drop" for t, _ in client.calls)
+    r, _, _, _, _ = make_client(tmp_path, steps, replies={"guo_net_drop": (True, "No game connection to drop.")})
+    out = r.run()
+    assert not out["ok"] and "No game connection" in out["steps"][-1]["detail"]
+
+
+def test_a_variable_set_while_running_passes_the_check_before_launch():
+    import scenario as sc
+    steps = [{"do": {"kind": "ui.drag", "from": {"serial": "$dragged"}, "to": "x"}, "expect": {"world.equipped": {"has": "$dragged"}}}]
+    sc.substitute([s["do"] for s in steps] + [s["expect"] for s in steps], {**sc.RUNTIME_VARIABLES})

@@ -67,6 +67,44 @@ internal sealed partial class OrderedWorldCapture : IDisposable
     private bool _queued, _disposed;
     private int _pending, _sceneRetiring;
     private readonly string _vertexSource, _fragmentSource, _residentVertexSource;
+    // PORT DEVIATION (GUO): ADR-0044 water. This frame's styled-water inputs, or
+    // null for Classic (the original programs, untouched). Reused: Begin refuses
+    // a frame while the previous ticket is pending.
+    private readonly OrderedWorldWaterFrame _waterFrame = new();
+    private OrderedWorldWaterFrame _water;
+    private string _waterFragmentSource;
+    /// <summary>Styled water is being captured this frame: water mode bits are drawable.</summary>
+    internal static bool WaterFrame;
+    internal static bool LastFrameWater;
+
+    /// <summary>Game thread, after Begin: snapshot the batcher's water uniforms for the RD water programs.</summary>
+    internal bool BeginWater(System.Collections.Generic.Dictionary<string, Variant> uniforms)
+    {
+        _water = null;
+        WaterFrame = false;
+        if (!Recording) return false;
+        try
+        {
+            _waterFragmentSource ??= OrderedWorldWater.Fragment(_fragmentSource);
+            Texture2D mask = uniforms.TryGetValue("water_mask", out var m) ? m.AsGodotObject() as Texture2D : null;
+            Texture2D ripples = uniforms.TryGetValue("water_ripples", out var r) ? r.AsGodotObject() as Texture2D : null;
+            OrderedWorldWater.Pack(uniforms, _waterFrame.Block, mask);
+            _waterFrame.Mask = mask; _waterFrame.Ripples = ripples;
+            _waterFrame.MaskRs = mask?.GetRid() ?? default;
+            _waterFrame.RipplesRs = ripples?.GetRid() ?? default;
+            _waterFrame.HueRs = _hueRid;
+            _water = _waterFrame;
+            WaterFrame = true;
+            return true;
+        }
+        catch (Exception error)
+        {
+            // Nothing is captured yet: refuse the whole frame before any command.
+            Recording = false;
+            Fallback("styled water: " + error.Message);
+            return false;
+        }
+    }
     // ADR-0044 Depth World: upstream's depth for the next captured quad, and
     // the chunk land/statics drawn from resident buffers this frame.
     internal float Depth;
@@ -234,6 +272,7 @@ internal sealed partial class OrderedWorldCapture : IDisposable
         _canvas = default;
         Depth = 0f; Group = 0; _landEnd = -1; RecoverCanvas = null;
         Resident?.BeginFrame();
+        _water = null; WaterFrame = false;
         _hue = hue; _light = light ?? hue;
         _hueRid = _hue?.GetRid() ?? default;
         _lightRid = _light?.GetRid() ?? default;
@@ -435,7 +474,15 @@ internal sealed partial class OrderedWorldCapture : IDisposable
 
     internal static bool SupportedMode(Vector3 hue)
     {
-        int mode = ((int)hue.Y) & 0x3f;
+        int raw = (int)hue.Y;
+        int mode = raw & 0x3f;
+        // PORT DEVIATION (GUO): ADR-0037 water bit 6 (and floor bit 5 with it),
+        // drawable only by this frame's water programs.
+        if ((raw & 0x40) != 0)
+        {
+            if (!WaterFrame) return false;
+            if ((mode & 0x20) != 0) mode -= 0x20;
+        }
         return mode <= 10 || mode is >= 20 and <= 30;
     }
 
@@ -525,28 +572,35 @@ internal sealed partial class OrderedWorldCapture : IDisposable
                 _device.InitializeRT(size, _vertexSource, _fragmentSource, _residentVertexSource);
             }
             if (InjectFailure == 1) throw new InvalidOperationException("injected before upload");
-            _device.RenderRT(CollectionsMarshal.AsSpan(_occurrences), CollectionsMarshal.AsSpan(_dynamic),
-                CollectionsMarshal.AsSpan(_states), CollectionsMarshal.AsSpan(_segments), _textureRuns, _push, true,
-                RecoverCanvas != null ? Resident : null, _cameraX, _cameraY, _maxGroundZ, Math.Max(0, _landEnd));
+            var water = _water;
+            if (water != null)
+                _device.EnsureWaterRT(_vertexSource, _waterFragmentSource, _residentVertexSource);
+            if (water != null && System.Environment.GetEnvironmentVariable("GUO_DW_WATER_DIAG") == "1")
+            {
+                int wetResident = 0, wetDynamic = 0;
+                var rq = Resident?.Quads;
+                if (rq != null) for (int i = 0; i < Resident.QuadCount; i++) if (((int)MathF.Round(rq[i].A.PackedHue.Z * 255) & 0x40) != 0) wetResident++;
+                foreach (var d in _dynamic) if (((int)MathF.Round(d.A.PackedHue.Z * 255) & 0x40) != 0) wetDynamic++;
+                OrderedWorldWater.TryGet("water_model", out var wm); OrderedWorldWater.TryGet("water_debug", out var wd); var hist = new System.Collections.Generic.SortedDictionary<int,int>(); foreach (var o in _occurrences) { int k=(int)MathF.Round(o.Get(CollectionsMarshal.AsSpan(_dynamic)).A.PackedHue.Z * 255); hist[k]=hist.GetValueOrDefault(k)+1; } GD.Print("[dw-water] modes " + string.Join(",", System.Linq.Enumerable.Select(hist, kv => kv.Key.ToString("x")+":"+kv.Value)) + " occ=" + _occurrences.Count); GD.Print($"[dw-water] model={water.Block[wm.Slot * 4]} debug={water.Block[wd.Slot * 4]} mask={water.MaskRs.IsValid} wetResident={wetResident}/{Resident?.QuadCount} wetDynamic={wetDynamic}/{_dynamic.Count} records={_occurrences.Count}");
+            }
+            var resident = RecoverCanvas != null ? Resident : null;
+            _device.PrepareRT(CollectionsMarshal.AsSpan(_occurrences), CollectionsMarshal.AsSpan(_dynamic),
+                CollectionsMarshal.AsSpan(_states), CollectionsMarshal.AsSpan(_segments), _textureRuns, _push, resident);
+            // PORT DEVIATION (GUO): ADR-0044 water. Styled water reads this frame's
+            // speed light target, so the surface and light passes (which read only
+            // the uploaded buffers) run before the world draw. Classic keeps its order.
+            if (water == null)
+                _device.DrawRT(CollectionsMarshal.AsSpan(_occurrences), CollectionsMarshal.AsSpan(_segments), _push, true,
+                    resident, _cameraX, _cameraY, _maxGroundZ, Math.Max(0, _landEnd));
             if (_speedMode && RecoverCanvas != null)
                 _device.RenderSurfaceRT(CollectionsMarshal.AsSpan(_surfaceRows), CollectionsMarshal.AsSpan(_segments),
                     _push, Resident, _cameraX, _cameraY, _maxGroundZ, Math.Max(0, _landEnd), SurfaceOrigin);
             else _device.DisableSurfaceRT();
-            if(SpeedLights!=null && _device.SurfaceReady)
-            {
-                try {
-                    if(InjectSpeedLightFailure) throw new InvalidOperationException("injected speed light failure");
-                    _device.RenderLightsRT(SpeedLights); _device.RenderSoftenRT(SpeedLights);
-                    SpeedLights.BindLightTarget?.Invoke(SpeedLights.Batcher,_device.SpeedLightTexture,
-                        new Vector4(0,0,_device.Size.X,_device.Size.Y),SpeedLights.Ambient);
-                }
-                catch(Exception error) {
-                    if(error is NotSupportedException) SpeedMode.SpeedModeDebug.RuntimeUnavailableReason=error.Message;
-                    _device.DisableLightRT();
-                    ClearSpeedLightConsumer();
-                    GD.PrintErr("[lighting-speed] classic lighting this frame: "+error.Message);
-                }
-            }
+            bool lightRendered = RenderSpeedLightsRT();
+            if (water != null)
+                _device.DrawRT(CollectionsMarshal.AsSpan(_occurrences), CollectionsMarshal.AsSpan(_segments), _push, true,
+                    resident, _cameraX, _cameraY, _maxGroundZ, Math.Max(0, _landEnd), water,
+                    lightRendered ? SpeedLights.Ambient : Vector3.One, lightRendered);
             if (InjectFailure == 2) throw new InvalidOperationException("injected after recording");
             FramesDrawn++;
             if (RecoverCanvas != null) ResidentFrames++;
@@ -569,6 +623,7 @@ internal sealed partial class OrderedWorldCapture : IDisposable
             if(SpeedClassicCompose.IsValid) RenderingServer.CanvasItemSetVisible(SpeedClassicCompose,!lit);
             if(SpeedCompose.IsValid) RenderingServer.CanvasItemSetVisible(SpeedCompose,lit);
             LastFrameOnPass = success;
+            LastFrameWater = success && _water != null;
             SetEnhancedLit(lit);
             ElectGlowLight(lit);
 #if GUO_LABS
@@ -576,6 +631,26 @@ internal sealed partial class OrderedWorldCapture : IDisposable
 #endif
             RecordTicks += System.Diagnostics.Stopwatch.GetTimestamp() - started;
             Volatile.Write(ref _pending, 0);
+        }
+    }
+
+    // Returns whether this frame's light target was rendered (water reads it).
+    private bool RenderSpeedLightsRT()
+    {
+        if (SpeedLights == null || !_device.SurfaceReady) return false;
+        try {
+            if(InjectSpeedLightFailure) throw new InvalidOperationException("injected speed light failure");
+            _device.RenderLightsRT(SpeedLights); _device.RenderSoftenRT(SpeedLights);
+            SpeedLights.BindLightTarget?.Invoke(SpeedLights.Batcher,_device.SpeedLightTexture,
+                new Vector4(0,0,_device.Size.X,_device.Size.Y),SpeedLights.Ambient);
+            return _device.SpeedLightReady;
+        }
+        catch(Exception error) {
+            if(error is NotSupportedException) SpeedMode.SpeedModeDebug.RuntimeUnavailableReason=error.Message;
+            _device.DisableLightRT();
+            ClearSpeedLightConsumer();
+            GD.PrintErr("[lighting-speed] classic lighting this frame: "+error.Message);
+            return false;
         }
     }
 

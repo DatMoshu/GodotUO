@@ -113,11 +113,9 @@ public sealed partial class UltimaBatcher2D
             return;
         }
         _orderedProbeSize = size;
-        if (_material.GetShaderParameter(ParamWaterModel).AsInt32() != 0)
-        {
-            OrderedWorldCapture.Fallback("styled water");
-            return;
-        }
+        // PORT DEVIATION (GUO): ADR-0044 water. A water style no longer refuses
+        // the frame: the capture draws it with its water programs (BeginWater).
+        bool styledWater = _material.GetShaderParameter(ParamWaterModel).AsInt32() != 0;
         try { _orderedWorld ??= new OrderedWorldCapture(_material, _meshMaterial); }
         catch (InvalidOperationException error) { OrderedWorldCapture.Fallback(error.Message); return; }
         _orderedWorld.Rejected = OpenOrderedRawGroup;
@@ -127,6 +125,7 @@ public sealed partial class UltimaBatcher2D
             _material.GetShaderParameter(ParamBrightlight).AsSingle(),
             _material.GetShaderParameter(ParamCircleOfTransparencyCenter).AsVector2(),
             _material.GetShaderParameter(ParamCircleOfTransparencyRadius).AsSingle())) return;
+        if (styledWater && !_orderedWorld.BeginWater(_waterUniforms)) return;
         _orderedWorld.SurfaceOrigin=OrderedSurfaceOrigin;
         FlushRun();
         _orderedCanvas = NewItem(CurrentParent, Transform2D.Identity);

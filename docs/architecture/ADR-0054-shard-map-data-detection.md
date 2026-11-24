@@ -10,7 +10,7 @@ version implies. Official data loads exactly as before.
 Community shards ship their own client data on top of a modern install: a
 German roleplay shard's map (Terra Nova, Vespertales), a Brazilian shard's
 continent (Epic!), a Siege-era Britannia (Angel Island). UO-Maps tested them
-in GUO on an isolated shard (`D:/_agentShared/runs/uo-maps/20261121-guo-map-tests/RESULTS.md`).
+in GUO on an isolated shard (the UO-Maps test results of 2026-11-21).
 Two upstream ClassicUO assumptions break them:
 
 1. **tiledata.mul layout.** `TileDataLoader` reads 64-bit flags for any client

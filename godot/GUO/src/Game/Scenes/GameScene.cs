@@ -1196,8 +1196,9 @@ namespace GUO.Game.Scenes
             // PORT DEVIATION (GUO): admit before static gather suppression.
             DepthWorldProbe.FrameAdmitted = batcher.CanAdmitDepthWorld(
                 _splatObjects.Count == 0 && (_terrainLayers == null || _terrainLayers.Count == 0)
-                && !ProfileManager.CurrentProfile.EnhancedHD
-                && !GUO.Renderer.Water.WaterRender.IsStyled(ProfileManager.CurrentProfile));
+                && !ProfileManager.CurrentProfile.EnhancedHD);
+            // PORT DEVIATION (GUO): ADR-0044 water: styled water is admitted and
+            // drawn by the Depth World's water programs (OrderedWorldWater).
             FillGameObjectList();
 
             // PORT DEVIATION (GUO): while the pad's interact radar is up, the
