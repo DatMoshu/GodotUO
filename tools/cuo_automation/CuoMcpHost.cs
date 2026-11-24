@@ -20,6 +20,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -213,11 +214,12 @@ internal static class CuoMcpHost
     private static object[] Catalog() => new[]
     {
         Tool("guo_ui", "Inspect visible gumps of stock ClassicUO. Bounds are back buffer pixels. Up to 2000 controls; editable field values are omitted.", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"),
-        Tool("guo_input", "Send one event to ClassicUO's own handlers, from the game loop, without window focus. Use motion, wait, button down, wait, button up for clicks/drags. button: Left/Right/Middle/WheelUp/WheelDown. key: Godot-style name, e.g. Enter or Escape. text types Unicode into the focused field. Completes after two frames. No OS pointer movement.", "{\"type\":\"object\",\"properties\":{\"kind\":{\"enum\":[\"motion\",\"button\",\"key\",\"text\"]},\"x\":{\"type\":\"integer\"},\"y\":{\"type\":\"integer\"},\"button\":{\"type\":\"string\"},\"key\":{\"type\":\"string\"},\"pressed\":{\"type\":\"boolean\"},\"text\":{\"type\":\"string\",\"maxLength\":1024},\"shift\":{\"type\":\"boolean\"},\"ctrl\":{\"type\":\"boolean\"},\"alt\":{\"type\":\"boolean\"}},\"required\":[\"kind\"],\"additionalProperties\":false}"),
+        Tool("guo_input", "Send one event to ClassicUO's own handlers, from the game loop, without window focus. Use motion, wait, button down, wait, button up for drags; click (x, y, button, clicks 1..2) presses and releases in one frame, a double-click included. button: Left/Right/Middle/WheelUp/WheelDown. key: Godot-style name, e.g. Enter or Escape. text types Unicode into the focused field. Completes after two frames. No OS pointer movement.", "{\"type\":\"object\",\"properties\":{\"kind\":{\"enum\":[\"motion\",\"button\",\"click\",\"key\",\"text\"]},\"x\":{\"type\":\"integer\"},\"y\":{\"type\":\"integer\"},\"button\":{\"type\":\"string\"},\"key\":{\"type\":\"string\"},\"pressed\":{\"type\":\"boolean\"},\"text\":{\"type\":\"string\",\"maxLength\":1024},\"shift\":{\"type\":\"boolean\"},\"ctrl\":{\"type\":\"boolean\"},\"alt\":{\"type\":\"boolean\"},\"clicks\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":2}},\"required\":[\"kind\"],\"additionalProperties\":false}"),
         Tool("guo_wait", "Wait 1..600 game loop frames before observing asynchronous UI/server changes.", "{\"type\":\"object\",\"properties\":{\"frames\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":600}},\"required\":[\"frames\"],\"additionalProperties\":false}"),
         Tool("guo_state", "Cheap state for scripted runs: game loop frame index, scene, back buffer size and, once in the world, the player's map index and tile position.", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"),
         Tool("guo_quit", "Quit the client cleanly after two frames, so the profile saves. The connection closes.", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"),
-        Tool("guo_screenshot", "Return the rendered frame (the back buffer) as a PNG. Needs no window focus.", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}")
+        Tool("guo_screenshot", "Return the rendered frame (the back buffer) as a PNG. Needs no window focus.", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}"),
+        Tool("guo_net_drop", "Test a dropped connection: shut the sending side of the game connection; the shard closes its side and the client meets the end of the stream on its own read path, as when a shard drops it.", "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}")
     };
 
     // ---- the game thread ----
@@ -309,6 +311,7 @@ internal static class CuoMcpHost
                 "guo_quit" => Quit(out frames),
                 "guo_state" => Text(JsonSerializer.Serialize(State())),
                 "guo_screenshot" => Screenshot(),
+                "guo_net_drop" => NetDrop(),
                 _ => Text("Unknown tool", true)
             };
             if (frames > 0)
@@ -327,6 +330,26 @@ internal static class CuoMcpHost
             // Do not echo arguments: typed text may be a password.
             work.Reply.TrySetResult(Text($"Command failed ({e.GetType().Name}). Check required arguments and current UI state.", true));
         }
+    }
+
+    [DllImport("ws2_32.dll", EntryPoint = "shutdown")]
+    private static extern int WinShutdown(IntPtr socket, int how);
+
+    [DllImport("libc", EntryPoint = "shutdown")]
+    private static extern int UnixShutdown(int socket, int how);
+
+    // Same as GUO's guo_net_drop: shut the sending side with the OS call, so the shard closes the connection and
+    // the client meets the end of the stream on its own read path. Socket.Shutdown would also mark the socket not
+    // connected, which a shard's close never does. 1 is SD_SEND / SHUT_WR on both.
+    private static object NetDrop()
+    {
+        const BindingFlags Private = BindingFlags.NonPublic | BindingFlags.Instance;
+        object wrapper = typeof(ClassicUO.Network.NetClient).GetField("_socket", Private)?.GetValue(ClassicUO.Network.NetClient.Socket);
+        var tcp = wrapper?.GetType().GetField("_socket", Private)?.GetValue(wrapper) as TcpClient;
+        if (tcp?.Client == null || !tcp.Client.Connected) return Text("No game connection to drop.", true);
+        int failed = OperatingSystem.IsWindows() ? WinShutdown(tcp.Client.Handle, 1) : UnixShutdown((int)tcp.Client.Handle, 1);
+        if (failed != 0) return Text("The connection could not be shut.", true);
+        return Text("Connection shut; the shard closes it and the client notices on its own read path.");
     }
 
     private static object Quit(out int frames)
@@ -504,6 +527,27 @@ internal static class CuoMcpHost
                 if (a.GetProperty("pressed").GetBoolean()) { _buttons.Add(type); ButtonDown(type); }
                 else { _buttons.Remove(type); ButtonUp(type); }
             }
+        }
+        else if (kind == "click")
+        {
+            // A whole click, or a double-click, in one frame, as GUO's host does: the double-click window is game
+            // time, and two presses sent as separate calls can fall outside it when frames are slow.
+            MouseButtonType type = (a.TryGetProperty("button", out var b) ? b.GetString() : "Left").ToLowerInvariant() switch
+            {
+                "left" => MouseButtonType.Left,
+                "middle" => MouseButtonType.Middle,
+                "right" => MouseButtonType.Right,
+                _ => throw new ArgumentException(),
+            };
+            int clicks = a.TryGetProperty("clicks", out var n) ? n.GetInt32() : 1;
+            if (clicks < 1 || clicks > 2) throw new ArgumentOutOfRangeException();
+            SetPointer(_pointer);
+            for (int i = 0; i < clicks; i++)
+            {
+                ButtonDown(type);
+                ButtonUp(type);
+            }
+            return Text("Click dispatched; inspect UI to verify the effect.");
         }
         else throw new ArgumentException();
 

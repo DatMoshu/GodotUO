@@ -29,7 +29,7 @@ def catalogue(path: Path) -> dict[str, dict]:
 def test_shared_tools_have_guos_argument_shapes():
     guo = catalogue(ROOT / "godot" / "GUO" / "src" / "Automation" / "McpHost.cs")
     cuo = catalogue(HERE / "CuoMcpHost.cs")
-    assert set(cuo) == {"guo_ui", "guo_input", "guo_wait", "guo_state", "guo_quit", "guo_screenshot"}
+    assert set(cuo) == {"guo_ui", "guo_input", "guo_wait", "guo_state", "guo_quit", "guo_screenshot", "guo_net_drop"}
     for name, schema in cuo.items():
         assert schema == guo[name], name
 
