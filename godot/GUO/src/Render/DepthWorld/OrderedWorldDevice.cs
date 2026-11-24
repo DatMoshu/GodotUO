@@ -492,6 +492,17 @@ internal sealed partial class OrderedWorldDevice
         ReadOnlySpan<State> states, ReadOnlySpan<Segment> segments, int textureRuns, in Push frame, bool opaqueBackdrop,
         DepthWorldResident resident = null, int cameraX = 0, int cameraY = 0, int maxGroundZ = 127, int landEnd = 0)
     {
+        PrepareRT(occurrences, dynamic, states, segments, textureRuns, frame, resident);
+        DrawRT(occurrences, segments, frame, opaqueBackdrop, resident, cameraX, cameraY, maxGroundZ, landEnd);
+    }
+
+    // PORT DEVIATION (GUO): ADR-0044 water. Validation, texture sets and every
+    // upload, split from the draw so a pass that reads the same buffers (the
+    // speed surface and light passes) can run before the world draw reads its light.
+    public void PrepareRT(ReadOnlySpan<OrderedWorldResidency.Occurrence> occurrences, ReadOnlySpan<OrderedWorldResidency.Quad> dynamic,
+        ReadOnlySpan<State> states, ReadOnlySpan<Segment> segments, int textureRuns, in Push frame,
+        DepthWorldResident resident = null)
+    {
         if (frame.Screen.X != Size.X || frame.Screen.Y != Size.Y)
             throw new InvalidOperationException("Stale target dimensions.");
         if (states.Length > MaxOccurrences || states.Length != occurrences.Length)
@@ -542,6 +553,19 @@ internal sealed partial class OrderedWorldDevice
         Occurrences += states.Length;
         TextureRuns += textureRuns;
         TextureBatches += segments.Length;
+    }
+
+    /// <summary>The world draw for the frame <see cref="PrepareRT"/> uploaded.
+    /// <paramref name="water"/> selects the water programs (null: Classic, unchanged).</summary>
+    public void DrawRT(ReadOnlySpan<OrderedWorldResidency.Occurrence> occurrences, ReadOnlySpan<Segment> segments,
+        in Push frame, bool opaqueBackdrop, DepthWorldResident resident = null, int cameraX = 0, int cameraY = 0,
+        int maxGroundZ = 127, int landEnd = 0, OrderedWorldWaterFrame water = null, Vector3 waterAmbient = default, bool waterLit = false)
+    {
+        Rid[] residentSets = _residentFrameTextureSets;
+        Rid waterSet = default, waterResidentSet = default;
+        if (water != null) PrepareWaterRT(water, waterAmbient, waterLit, out waterSet, out waterResidentSet);
+        Rid orderedPipeline = water != null ? _waterPipeline : _pipeline;
+        Rid residentPipeline = water != null ? _waterResidentPipeline : _residentPipeline;
 
         // No uploads, allocations or texture discovery inside the open draw list.
         _clear[0] = opaqueBackdrop ? Colors.Black : Colors.Transparent;
@@ -557,8 +581,9 @@ internal sealed partial class OrderedWorldDevice
             {
             if ((phase == 0 || phase == 2) && resident != null && resident.Draws.Count != 0)
             {
-                _rd.DrawListBindRenderPipeline(list, _residentPipeline);
+                _rd.DrawListBindRenderPipeline(list, residentPipeline);
                 _rd.DrawListBindUniformSet(list, _residentSet, 0);
+                if (water != null) _rd.DrawListBindUniformSet(list, waterResidentSet, 2);
                 for (int i = 0; i < resident.Draws.Count; i++)
                 {
                     var draw = resident.Draws[i];
@@ -576,8 +601,9 @@ internal sealed partial class OrderedWorldDevice
             }
             if ((phase == 1 || phase == 3) && !occurrences.IsEmpty)
             {
-                _rd.DrawListBindRenderPipeline(list, _pipeline);
+                _rd.DrawListBindRenderPipeline(list, orderedPipeline);
                 _rd.DrawListBindUniformSet(list, _storageSet, 0);
+                if (water != null) _rd.DrawListBindUniformSet(list, waterSet, 2);
                 for (int i = 0; i < segments.Length; i++)
                 {
                     bool isLand = resident != null && segments[i].FirstVertex < landEnd * 6;
@@ -633,6 +659,7 @@ internal sealed partial class OrderedWorldDevice
         if (_rd == null) return;
         // Replacement must retain the RS wrapper RID already queued by this frame.
         if (detachPresenter) Presenter.TextureRdRid = default;
+        DisposeWaterRT();
         foreach (Rid set in _textureSets.Values)
             if (_rd.UniformSetIsValid(set)) _rd.FreeRid(set);
         _textureSets.Clear();

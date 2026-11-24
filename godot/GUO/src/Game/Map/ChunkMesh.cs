@@ -782,6 +782,15 @@ namespace GUO.Game.Map
             }
             else
             {
+                // PORT DEVIATION (GUO): ADR-0044 water. Depth World meshes wet
+                // statics (CUO's mesh rules); they carry the bits StaticView adds
+                // on the canvas (WaterRender.Flag: water, and seabed floor).
+                if (_waterStyled && itemData.IsWet)
+                {
+                    hueVec.Y += GUO.Renderer.Water.WaterRender.IsSeabedFloor(graphic)
+                        ? GUO.Renderer.Water.WaterRender.ModeBit + GUO.Renderer.Water.WaterRender.FloorBit
+                        : GUO.Renderer.Water.WaterRender.ModeBit;
+                }
                 Statics.WriteQuadAt(idx, artInfo.Texture, artInfo.UV, posX, posY, hueVec, depth);
                 Statics.ObjectZ[idx] = obj.Z; // PORT DEVIATION (GUO): ADR-0044
                 // PORT DEVIATION (GUO): ADR-0048 parallel surface metadata.
