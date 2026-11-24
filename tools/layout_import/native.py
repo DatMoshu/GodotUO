@@ -30,6 +30,7 @@ from decorate import decorate as D
 from decorate import classify
 from layout_import.cdda import digest
 from layout_import.semantic import ResolutionError
+from layout_import.pz_objects import CONTRACT
 
 
 DEFAULT_THEME = {"format": 1, "name": "uo-classic", "version": 1,
@@ -70,6 +71,43 @@ def wall_piece(cat, theme, signature, window=False):
 
 
 def groups(level):
+    if 'furnishing_groups' in level:
+        cells = {(c['x'], c['y']): c for c in level['cells']}
+        out, seen = [], set()
+        if not isinstance(level['furnishing_groups'], list):
+            raise ResolutionError('source furnishing inventory must be a list')
+        for group in level['furnishing_groups']:
+            if not isinstance(group, dict):
+                raise ResolutionError('source furnishing group must be an object')
+            ident = group.get('id')
+            if not isinstance(ident, str) or not ident or ident in seen:
+                raise ResolutionError('source furnishing IDs must be nonempty and unique')
+            seen.add(ident)
+            if group.get('status') not in ('resolved', 'unresolved') or not isinstance(group.get('role'), str):
+                raise ResolutionError('invalid source furnishing status or role')
+            if not isinstance(group.get('source_id'), str) or not group['source_id']:
+                raise ResolutionError('missing source furnishing identity')
+            reasons = group.get('diagnostics')
+            if not isinstance(reasons, list) or any(not isinstance(r, str) for r in reasons):
+                raise ResolutionError('invalid source furnishing diagnostics')
+            if group['status'] == 'resolved' and reasons:
+                raise ResolutionError('resolved source furnishing has unresolved diagnostics')
+            masks = {}
+            for field in ('cells', 'intended_cells'):
+                value = group.get(field)
+                if not isinstance(value, list) or any(not isinstance(p, (list, tuple)) or len(p) != 2
+                        or any(type(n) is not int for n in p) for p in value):
+                    raise ResolutionError('invalid source furnishing cell mask')
+                positions = [tuple(p) for p in value]
+                if len(set(positions)) != len(positions) or not set(positions) <= cells.keys():
+                    raise ResolutionError('duplicate or absent source furnishing cells')
+                masks[field] = positions
+            if not set(masks['cells']) <= set(masks['intended_cells']):
+                raise ResolutionError('source furnishing support exceeds intended mask')
+            if any(not cells[p]['indoors'] for p in masks['cells']):
+                raise ResolutionError('source furnishing support is outside authored interior')
+            out.append({**copy.deepcopy(group), **masks})
+        return out
     by_role = collections.defaultdict(set)
     cells = {(c["x"], c["y"]): c for c in level["cells"]}
     for p, cell in cells.items():
@@ -161,6 +199,11 @@ def furnish(level, storey, lib, theme, reserved):
     # Structural-function anchors first, then the smaller decor groups.
     source_groups.sort(key=lambda g: (g["role"] not in ("bed", "bath", "oven", "forge"), -len(g["cells"]), g["cells"]))
     for group in source_groups:
+        if group.get('status') == 'unresolved' or group['role'] == 'unresolved' or not group['cells']:
+            reasons = group.get('diagnostics') or ['no resolved source object or surviving floor support']
+            diagnostics.append(f"level {level['z']} {group['source_id']}: " + '; '.join(reasons))
+            mappings.append({**group, 'status': 'blocked', 'source_status': group.get('status'), 'problems': reasons})
+            continue
         src = set(group["cells"])
         home = collections.Counter(owners[p] for p in src if p in owners)
         if not home and any(source_cells[p]["indoors"] for p in src) and owners:
@@ -330,6 +373,18 @@ def reserve_stairs(levels, theme, built, cat):
 
 
 def compile_layout(layout, cat, lib, theme=None, as_scene=False):
+    contract = layout.get('furnishing_contract')
+    if contract is not None and contract != CONTRACT:
+        raise ResolutionError('unsupported source furnishing contract')
+    if any(('furnishing_groups' in level) != (contract == CONTRACT) for level in layout['levels']):
+        raise ResolutionError('source furnishing inventory and contract disagree')
+    # Validate source support before stairs adapt a copy of its floor cells.
+    for level in layout['levels']:
+        inventory = groups(level)
+        if contract == CONTRACT:
+            cells = {(c['x'], c['y']): c for c in level['cells']}
+            if any(cells[p]['role'] != 'floor' for g in inventory for p in g['cells']):
+                raise ResolutionError('source furnishing support is not authored floor')
     theme = copy.deepcopy(theme or DEFAULT_THEME)
     if theme["cell_scale"] != 1 or theme["storey_height"] != 20:
         raise ResolutionError("this adapter currently supports scale 1 and 20-z storeys only")

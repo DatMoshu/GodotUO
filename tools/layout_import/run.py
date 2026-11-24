@@ -52,6 +52,7 @@ def main(argv=None):
     pz.add_argument("--name",required=True)
     pz.add_argument("--out",type=Path,required=True)
     pz.add_argument("--db",type=Path,required=True)
+    pz.add_argument("--neighbor-cells",action="store_true",help="read a bounded source window across neighboring cells")
     scan = commands.add_parser("scan", help="read source JSON into an immutable snapshot")
     scan.add_argument("--source", type=Path, help="overrides UO_LAYOUT_CDDA_DIR")
     scan.add_argument("--db", type=Path, required=True)
@@ -160,11 +161,13 @@ def main(argv=None):
                 result=zomboid.scan(args.source,args.out,args.map)
                 print(json.dumps({"buildings":len(result["buildings"]),"problems":result["problems"]}))
                 return 0 if not result["problems"] else 1
-            layout=zomboid.resolve(args.source,args.map,args.header,args.building,args.name)
+            layout=zomboid.resolve(args.source,args.map,args.header,args.building,args.name,
+                                   allow_neighbor_cells=args.neighbor_cells)
             con=db.open_db(args.db)
             try:
                 provenance=layout["provenance"]
-                implementation=cdda.digest(Path(zomboid.__file__).read_text(encoding="utf-8"))
+                implementation=cdda.digest({p.name:p.read_text(encoding="utf-8")
+                    for p in sorted(Path(__file__).parent.glob('*.py')) if not p.name.startswith('test_')})
                 snapshot=cdda.digest([provenance,implementation])
                 profile=cdda.digest(["zomboid-core",snapshot])
                 with con:
@@ -253,7 +256,8 @@ def main(argv=None):
                 except semantic.ResolutionError as exc:
                     record={"format":1,"name":layout["name"],"layout_hash":layout["layout_hash"],"theme":theme,
                             "status":"blocked","problems":[str(exc)],"proof_status":"not-run"}
-                    converter=cdda.digest(Path(native.__file__).read_text(encoding="utf-8"))
+                    converter=cdda.digest({p.name:p.read_text(encoding="utf-8")
+                        for p in sorted(Path(__file__).parent.glob('*.py')) if not p.name.startswith('test_')})
                     build_id=catalogue.save_build(con,instance,theme,converter,record)
                     catalogue.save_validation(con,build_id,"native-offline",{"passed":False,"problems":record["problems"]})
                     args.out.mkdir(parents=True,exist_ok=True)
