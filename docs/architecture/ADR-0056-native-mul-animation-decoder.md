@@ -2,9 +2,8 @@
 
 ## Status
 
-Proposed 2026-11-24 by the GUO lead, for the owner's decision. Recommendation: **do not adopt**; keep the
-ported managed decoder. The candidate code stays archived on `perf/approved-client-hotpaths` in the
-2026-11-23 cleanup bundle.
+Rejected by the owner, 2026-11-24 (proposed the same day): not adopted. The ported managed decoder stays.
+The candidate code stays archived on `perf/approved-client-hotpaths` in the 2026-11-23 cleanup bundle.
 
 ## Problem and scope
 
@@ -35,7 +34,7 @@ about 0.1 ms the first time it is shown; a screen filling with a few hundred new
 millisecond, once. The cost after that is the texture upload and drawing, which this does not touch. Compared
 with the frame budget (16.7 ms at 60 Hz) the gain is real but rarely visible.
 
-## Decision (recommended)
+## Decision
 
 Do not adopt. The cost is permanent and the gain is small:
 

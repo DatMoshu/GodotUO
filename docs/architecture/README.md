@@ -63,6 +63,6 @@ it is taken even if its file has not landed yet.
 | 0053 | [Read both window spellings on Project Zomboid wall edges](ADR-0053-zomboid-window-edge-vocabulary.md) | Accepted for local implementation, 2026-11-15 (tool correction) |
 | 0054 | [Detect shard map data layouts from the files themselves](ADR-0054-shard-map-data-detection.md) | Proposed, 2026-11-21 (tasks 2393, 2394) |
 | 0055 | [Bounded neighboring-cell reads for authored PZ buildings](ADR-0055-bounded-source-cell-windows.md) | Accepted by the owner, 2026-11-23 (tools layer) |
-| 0056 | [Native MUL animation frame decoder](ADR-0056-native-mul-animation-decoder.md) | Proposed 2026-11-24 (recommends not adopting) |
+| 0056 | [Native MUL animation frame decoder](ADR-0056-native-mul-animation-decoder.md) | Rejected by the owner, 2026-11-24 (not adopted) |
 
 Next free: 0056.
