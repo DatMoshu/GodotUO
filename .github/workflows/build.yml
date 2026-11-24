@@ -79,6 +79,7 @@ jobs:
           dotnet-version: |
             8.0.x
             9.0.x
+            10.0.x
       # NuGet packages per job, keyed on every project file (sources/ is upstream's).
       - name: Cache NuGet
         uses: actions/cache@v6
@@ -129,6 +130,7 @@ jobs:
           dotnet-version: |
             8.0.x
             9.0.x
+            10.0.x
       # NuGet packages per job, keyed on every project file (sources/ is upstream's).
       - name: Cache NuGet
         uses: actions/cache@v6

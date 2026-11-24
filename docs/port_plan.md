@@ -44,11 +44,12 @@ codebase from "rewrite" into "change one `using` line".
 
 | Tier | Files | Lines | Share | Treatment |
 |---|---:|---:|---:|---|
-| `verbatim` | 247 | 74,760 | 49% | Renamespace `ClassicUO.*` → `GUO.*` |
-| `shim` | 116 | 56,510 | 37% | Renamespace + `using GUO.Compat;`, and `using SDL3;` → `using GUO.Platform.Sdl;` |
-| `rewrite` | 37 | 21,959 | 14% | Reimplement on Godot |
+| `verbatim` | 246 | 74,422 | 49% | Renamespace `ClassicUO.*` → `GUO.*` |
+| `shim` | 114 | 55,792 | 36% | Renamespace + `using GUO.Compat;`, and `using SDL3;` → `using GUO.Platform.Sdl;` |
+| `rewrite` | 40 | 23,015 | 15% | Reimplement on Godot |
 
-Figures from `docs/port_status.md`, 2026-09-23. The rewrite count fell from
+Figures copied from `docs/port_status.md` as generated 2026-10-28; that file is
+the current word when the two differ. The rewrite count fell from
 the first measurement as files found to carry no real FNA binding moved down
 (see `SHIM_DESPITE_HEAVY_IMPORT` in `tools/port_audit/run.py`); the port
 itself is read too, and a file whose port calls Godot's API directly is

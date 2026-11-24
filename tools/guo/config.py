@@ -6,7 +6,9 @@ these values. On Linux and macOS the .sh launchers' twins, config.sh and
 config.local.sh, hold the same keys and are read instead (config.local.bat
 is still read there when no config.local.sh exists).
 
-Resolution order matches the launchers exactly:
+Resolution order matches the launchers, with one exception: the optional central
+config named by UO_COMMON_CONFIG is read only by the launchers (common.bat and
+common.sh), never here. A tool run outside a launcher does not see it:
 
     1. environment variable  (set by common.bat, or exported by CI/the user)
     2. launchers/_shared/config.local.bat  (the user's own paths; gitignored,
@@ -587,7 +589,7 @@ def load_config(root: Path | None = None) -> Config:
         client_data_env=client_data_env,
         client_data_setting=client_data_setting,
         custom_data_setting=custom_data_setting,
-        client_version=get("UO_CLIENT_VERSION", "7.0.15.1"),
+        client_version=get("UO_CLIENT_VERSION", "7.0.107.76"),
         cache_dir=Path(cache),
         mapgen_data=Path(mapgen_data),
         workspace_dir=Path(workspace),
