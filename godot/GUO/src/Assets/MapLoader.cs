@@ -230,6 +230,18 @@ namespace GUO.Assets
                 MapsDefaultSize[0, 0] = MapsDefaultSize[1, 0] = 6144;
             }
 
+            // PORT DEVIATION (GUO): ADR-0054. Shard maps are often a size the client
+            // version does not expect (a 6144x4096 continent in a 7.x install, or in
+            // the Ilshenar slot). Without a maps_layouts override, a facet whose block
+            // count contradicts its default takes the size the count fits.
+            if (string.IsNullOrEmpty(MapsLayouts))
+            {
+                for (int i = 0; i < MAPS_COUNT; i++)
+                {
+                    MapSizeInference.Apply(i, _filesMap[i], MapsDefaultSize, mapblocksize);
+                }
+            }
+
             // This is an hack to patch correctly all maps when you have to fake map1
             if (_filesMap[1] == null || _filesMap[1].Length == 0)
             {
@@ -713,5 +725,93 @@ namespace GUO.Assets
         public static IndexMap Invalid = new IndexMap() { MapAddress = ulong.MaxValue };
 
         public readonly bool IsValid() => MapAddress != ulong.MaxValue;
+    }
+    /// <summary>PORT DEVIATION (GUO): ADR-0054. A facet's size from its terrain block count.</summary>
+    internal static class MapSizeInference
+    {
+        private static readonly (int W, int H)[] Known =
+        {
+            (7168, 4096), (6144, 4096), (2304, 1600), (2560, 2048), (1448, 1448), (1280, 4096)
+        };
+
+        /// <returns>Terrain blocks in the file, or -1 when the file does not say.</returns>
+        internal static long BlockCount(FileReader file, int mapblocksize)
+        {
+            if (file == null)
+            {
+                return -1;
+            }
+
+            if (file is UOFileUop uop)
+            {
+                long bytes = 0;
+
+                foreach (var e in uop.Entries)
+                {
+                    if (e.Offset != 0)
+                    {
+                        bytes += e.DecompressedLength;
+                    }
+                }
+
+                return bytes > 0 && bytes % mapblocksize == 0 ? bytes / mapblocksize : -1;
+            }
+
+            return file.Length > 0 && file.Length % mapblocksize == 0 ? file.Length / mapblocksize : -1;
+        }
+
+        /// <summary>Picks (width, height) for a block count, keeping the default when it fits.</summary>
+        internal static bool TryInfer(long blocks, int defW, int defH, out int w, out int h)
+        {
+            w = defW;
+            h = defH;
+
+            if (blocks <= 0 || blocks == (long)(defW >> 3) * (defH >> 3))
+            {
+                return false;
+            }
+
+            // 2560x2048 and 1280x4096 hold the same block count; the one that keeps the
+            // default height is taken first, else the first listed.
+            for (int pass = 0; pass < 2; pass++)
+            foreach (var (kw, kh) in Known)
+            {
+                if ((pass == 1 || kh == defH) && blocks == (long)(kw >> 3) * (kh >> 3))
+                {
+                    w = kw;
+                    h = kh;
+
+                    return true;
+                }
+            }
+
+            long hb = defH >> 3;
+
+            if (hb > 0 && blocks % hb == 0 && blocks / hb <= 7168 >> 3)
+            {
+                w = (int)(blocks / hb) << 3;
+
+                return true;
+            }
+
+            return false;
+        }
+
+        internal static void Apply(int i, FileReader file, int[,] sizes, int mapblocksize)
+        {
+            if (i >= sizes.GetLength(0))
+            {
+                return;
+            }
+
+            long blocks = BlockCount(file, mapblocksize);
+
+            if (TryInfer(blocks, sizes[i, 0], sizes[i, 1], out int w, out int h))
+            {
+                Log.Warn($"map{i}: {blocks:N0} blocks do not fit {sizes[i, 0]}x{sizes[i, 1]}; using {w}x{h} (ADR-0054)");
+                sizes[i, 0] = w;
+                sizes[i, 1] = h;
+            }
+        }
     }
 }

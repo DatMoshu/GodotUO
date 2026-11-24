@@ -11,6 +11,7 @@ import json
 import os
 import secrets
 import shutil
+import shlex
 import socket
 import subprocess
 import sys
@@ -140,6 +141,19 @@ class EditorSession:
             pass
 
 
+HOME_MARK = ".guo_run_home"     # a folder the runner made as a kept client home; --home accepts no other non-empty folder
+
+
+def check_home(path: Path) -> Path:
+    """--home must be a new or empty folder, or one an earlier run made: never somebody's real client home."""
+    path = Path(path).expanduser().resolve()
+    if path.exists() and not path.is_dir():
+        raise ValueError(f"--home is not a folder: {path}")
+    if path.is_dir() and any(path.iterdir()) and not (path / HOME_MARK).is_file():
+        raise ValueError(f"--home must be a new or empty folder, or one an earlier run made: {path}")
+    return path
+
+
 class ClientSession:
     """One GUO client started for one run, through launchers/game/play.bat (so it resolves the UO data exactly as a player's
     launch does), with the game MCP on a fresh loopback port and a one-run token, and, when recording, the engine's
@@ -158,6 +172,8 @@ class ClientSession:
         self.extra_settings: dict = {}
         self.shard: tuple[str, int] | None = None     # --shard: the address the client connects to (UO_SHARD_HOST / UO_SHARD_PORT)
         self.extra_env: dict[str, str] = {}
+        self.home: Path | None = None           # --home: a client home kept between runs (settings and profile carry over)
+        self.client_exe: Path | None = None     # --client-exe: an exported client is run in place of play.bat and the project
         self._home: Path | None = None
         self.log_path = run_dir / "client.log"
         self.avi = run_dir / "raw" / "run.avi"
@@ -181,7 +197,9 @@ class ClientSession:
         if self.shard is not None:
             env.update({"UO_SHARD_HOST": self.shard[0], "UO_SHARD_PORT": str(self.shard[1])})
         env.update(self.extra_env)
-        if self.extra_settings:
+        if self.home is not None:
+            env["UO_CACHE_DIR"] = str(self._use_home())
+        elif self.extra_settings:
             env["UO_CACHE_DIR"] = str(self._make_home())
         engine = ["--resolution", self.size] if self.size else []      # a movie is the project's 1280x720 whatever this says
         if self.record:
@@ -189,13 +207,42 @@ class ClientSession:
             engine.insert(0, capture.engine_args(self.avi))
         env["GUO_ENGINE_ARGS"] = " ".join(engine)
         quiet = [] if self.record or self.interactive else ["--silent"]     # a recording keeps its audio; so does a person's run
-        args = (["--focus", "--sound"] if self.interactive else ["--no-focus"]) + (["--window-size", self.size] if self.size else []) + quiet + list(self.extra_args)
-        cmd = [str(self.cfg.root / "launchers" / "game" / "play.bat"), *args]
+        own = [a for a in self.extra_args if not (self.home is not None and a == "--scratch-profile")]   # a kept home is the run's profile
+        args = (["--focus", "--sound"] if self.interactive else ["--no-focus"]) + (["--window-size", self.size] if self.size else []) + quiet + own
+        cmd, cwd = self.command(args, engine)
         log = self.log_path.open("w", encoding="utf-8", errors="replace")
         try:
-            self.proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, cwd=str(self.cfg.root), **no_activate())
+            self.proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, cwd=cwd, **no_activate())
         finally:
             log.close()
+
+    def command(self, args: list[str], engine: list[str]) -> tuple[list[str], str]:
+        """What is started, and where. play.bat reads the engine's arguments from GUO_ENGINE_ARGS; an exported client
+        takes them itself, before the `--` that separates them from the client's own, and runs from its own folder."""
+        if self.client_exe is None:
+            return [str(self.cfg.root / "launchers" / "game" / "play.bat"), *args], str(self.cfg.root)
+        tokens = [t for part in engine for t in shlex.split(part, posix=False)]
+        return [str(self.client_exe), *tokens, "--", *args], str(Path(self.client_exe).parent)
+
+    def _use_home(self) -> Path:
+        """The kept home of --home: made on first use from the usual settings.json (without the path that says where
+        profiles live, so they land in this home and never in the player's own), reused as it was left afterwards. The
+        step's settings are applied each time. stop() leaves it alone."""
+        home = Path(self.home)
+        (home / "cache").mkdir(parents=True, exist_ok=True)
+        (home / HOME_MARK).touch()
+        saved = home / "settings.json"
+        source = saved if saved.is_file() else Path(self.cfg.cache_dir).parent / "settings.json"
+        base: dict = {}
+        if source.is_file():
+            try:
+                base = json.loads(source.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                base = {}
+        base.pop("profilespath", None)
+        base.update(self.extra_settings)
+        saved.write_text(json.dumps(base), encoding="utf-8")
+        return home / "cache"
 
     def _make_home(self) -> Path:
         """A client home for this run, made when a launch step names settings: the client keeps settings.json in the parent

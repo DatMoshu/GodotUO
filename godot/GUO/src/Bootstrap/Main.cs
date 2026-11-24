@@ -547,6 +547,8 @@ public partial class Main : Node
 
         System.IO.Directory.CreateDirectory(dataDir);
         System.Environment.CurrentDirectory = dataDir;
+        // Reading the client version also initializes CUOEnviroment.ExecutablePath.
+        GetWindow().Title = GameController.DefaultWindowTitle;
         // The player's own looks and shaders (ADR-0023).
         GUO.Renderer.PostFx.PostFxLibrary.UserFolder = System.IO.Path.Combine(dataDir, "postfx");
         GUO.Renderer.PostFx.PostFxStack.RunOverride = string.IsNullOrWhiteSpace(_options.PostFx) ? null : _options.PostFx;
@@ -583,7 +585,10 @@ public partial class Main : Node
             args.AddRange(new[]
             {
                 "-username", _options.Account,
-                "-password", string.IsNullOrEmpty(_options.Password) ? _options.Account : _options.Password,
+                // The configured secret for this account (UO_SHARD_OWNER_PASSWORD or
+                // UO_SHARD_GM_PASSWORD), as the scripted login uses; the account name
+                // only when none is configured, as on the dev shard.
+                "-password", string.IsNullOrEmpty(_options.Password) ? InputProbe.DevShardPassword(_options.Account) : _options.Password,
                 "-autologin", "true",
                 "-skiploginscreen",
             });
@@ -1023,10 +1028,28 @@ public partial class Main : Node
     /// <summary>Go photograph a terrain layer; see LayerShot.</summary>
     private async void LayerShotThenQuit()
     {
+        if (_options.WaterLookShot)
+        {
+            await Preamble();
+            WaterLookShot.Only = _options.WaterLookOnly;
+            await WaterLookShot.Run(this, _options.ScreenshotDir);
+            Quit(WaterLookShot.Passed ? 0 : 1);
+            return;
+        }
+        if (_options.BoatDemo)
+        {
+            // PORT DEVIATION (GUO): --boat-demo hands the client to the player afterwards; no quit.
+            await Preamble();
+            await BoatDemo.Run(this, _options.ScreenshotDir);
+            return;
+        }
         LayerShot.At = string.IsNullOrWhiteSpace(_options.LayerAt) ? LayerShot.At : _options.LayerAt;
         LayerShot.SwapManifest = _options.LayerSwap;
         LayerShot.Zoom = _options.LayerZoom;
+        LayerShot.Water = _options.LayerWater;
         LayerShot.CaptureRect = _options.LayerCapture;
+        LayerShot.Light = _options.LayerLight;
+        LayerShot.Openings = _options.LayerOpenings;
         await Preamble();
         await LayerShot.Run(this, _options.ScreenshotDir);
         Quit(LayerShot.Passed ? 0 : 1);
@@ -1451,7 +1474,7 @@ public partial class Main : Node
             InstallConfigured = _options.ClientData,
             InstallConfiguredOrigin = _options.ClientDataFromFlag ? "flag" : _options.ClientDataFromShard ? "shard" : "environment",
             SettingsFile = System.IO.Path.Combine(GuoDataDirectory(), Configuration.Settings.SETTINGS_FILENAME),
-            Defaults = DataSources.PlatformDefaults(),
+            Defaults = _options.NoInstallDefaults ? Array.Empty<string>() : DataSources.PlatformDefaults(),
         };
 
         DataSources.Result r = DataSources.Resolve(inputs);
@@ -1566,6 +1589,14 @@ public partial class Main : Node
         /// the check, and presses Continue.
         /// </summary>
         public string FirstRunProbe { get; private set; } = "";
+
+        /// <summary>
+        /// --no-install-defaults: skip the platform defaults (the EA registry key
+        /// and Program Files) when resolving the UO install, so a machine that has
+        /// UO installed can show what a player without one sees (the first-run
+        /// screen). A test seam; a player never needs it.
+        /// </summary>
+        public bool NoInstallDefaults { get; private set; }
 
         /// <summary>True when ClientData is a shard session's whole client (ShardSession).</summary>
         public bool ClientDataFromShard { get; private set; }
@@ -1829,6 +1860,15 @@ public partial class Main : Node
 
         /// <summary>--layer-capture "x0 y0 x1 y1": resample that rect out of the viewport, like the dock.</summary>
         public string LayerCapture { get; private set; } = "";
+        /// <summary>--layer-light: with --layer-shot, photograph the lighting speed mode off and on at night; see LayerShot.</summary>
+        public bool LayerLight { get; private set; }
+        public bool LayerOpenings { get; private set; }
+        /// <summary>--boat-demo: dev shard only; log in, put a boat on the water at the Haven docks and stay; see BoatDemo.</summary>
+        public bool BoatDemo { get; private set; }
+        /// <summary>--water-look-shot: dev shard only; candidate water presets at the Haven dock, then a filmed boat wake; see WaterLookShot.</summary>
+        public bool WaterLookShot { get; private set; }
+        /// <summary>--water-look-only presets|wake: one half of --water-look-shot.</summary>
+        public string WaterLookOnly { get; private set; } = "";
 
         /// <summary>--extract-test: prove ExtractDecal on two PNGs; see ExtractTest.</summary>
         public bool ExtractTest { get; private set; }
@@ -1850,6 +1890,9 @@ public partial class Main : Node
 
         /// <summary>--layer-zoom Z: pin the camera zoom for the shots.</summary>
         public float LayerZoom { get; private set; }
+
+        /// <summary>--layer-water: photograph realtime water with shallow shores off, then on.</summary>
+        public bool LayerWater { get; private set; }
 
         /// <summary>File the world objects near the player are written to after the shard commands; see ObjectsDump.</summary>
         public string ObjectsDump { get; private set; } = "";
@@ -2268,6 +2311,10 @@ public partial class Main : Node
                         // ADR-0037: this session's water style, not saved to the profile.
                         GUO.Renderer.Water.WaterRender.Override = Next();
                         break;
+                    case "--water-shallow":
+                        // Shallow shores strength 0..100 for this session only, not saved.
+                        if (int.TryParse(Next(), out int shallow)) GUO.Renderer.Water.WaterRender.ShallowOverride = Math.Clamp(shallow, 0, 100);
+                        break;
                     case "--merged-cover=off":
                         GUO.Renderer.UltimaBatcher2D.MergedCover = false;
                         break;
@@ -2553,6 +2600,9 @@ public partial class Main : Node
                     case "--first-run-probe":
                         o.FirstRunProbe = Next();
                         break;
+                    case "--no-install-defaults":
+                        o.NoInstallDefaults = true;
+                        break;
                     case "--cache-dir":
                         o.CacheDir = NextPath();
                         break;
@@ -2578,8 +2628,28 @@ public partial class Main : Node
                     case "--layer-swap":
                         o.LayerSwap = NextPath();
                         break;
+                    case "--layer-light":
+                        o.LayerLight = true;
+                        break;
+                    case "--layer-openings":
+                        o.LayerOpenings = true;
+                        break;
+                    case "--boat-demo":
+                        o.BoatDemo = true;
+                        o.LayerShot = true;
+                        break;
+                    case "--water-look-shot":
+                        o.WaterLookShot = true;
+                        o.LayerShot = true;
+                        break;
+                    case "--water-look-only":
+                        o.WaterLookOnly = Next();
+                        break;
                     case "--layer-capture":
                         o.LayerCapture = Next();
+                        break;
+                    case "--layer-water":
+                        o.LayerWater = true;
                         break;
                     case "--layer-zoom":
                         if (float.TryParse(Next(), System.Globalization.NumberStyles.Float,

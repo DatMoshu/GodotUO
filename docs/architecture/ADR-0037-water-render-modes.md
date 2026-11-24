@@ -2,6 +2,15 @@
 
 ## Status
 
+Owner amendment, 2026-11-21. A new character without a saved default profile
+starts with Realtime (UO colours), the owner's Water panel reference.
+Ripples and wakes start enabled at 65%. Shallow shores start enabled at 64%
+to bring out the bank. Speed 56% slows the chop, Wave 21% keeps relief low,
+Foam 26% softens the shore edge, and Glint 15% limits bright crests. Tuning
+percentages multiply the style's authored values. Existing characters and saved
+default profiles keep their choices. Classic remains selectable.
+
+
 WATER-05 implementation: the existing `guo/shard-content@1` descriptor now
 carries the optional `water` block. Admin Settings edits
 `Data/GUO/public/shard-content.json`; pack redeployment preserves it. This
@@ -281,3 +290,46 @@ not per frame.
 - `guo-water-pixel`, `guo-water-cel` and `guo-water-realistic` are built from
   `design/packs/water` and published like any pack; the catalogue's index
   signature covers their hashes.
+
+## Translucent water under a style (owner water sprint, 2026-11-22)
+
+A map whose water statics are translucent (a staged seabed, a shard's own)
+showed two faults under every style, both along tile edges: neighbouring
+diamonds overlap by a pixel row and blended twice (a dark line on every edge
+and round every shore tile), and the shallows ended against the opaque deep
+sea in a sawtooth. Both were being worked around in data (trimmed art, edge
+strips, a per-cell hue ramp, cells handed back to the sea by probability),
+which left per-cell tones and a line at the first row off the shore.
+
+- One blend a pixel: the doubled pixels are exactly those whose centre lies
+  on a cell boundary, so the shader gives them the alpha that adds up to the
+  tile's own over the wet cells sharing the pixel. No tile identity is needed
+  and every shader path gets it (`water_seams`).
+- Depth fade: translucent water thickens with the long shore distance, per
+  pixel, to opaque at 13 cells, where it is the same art as the deep sea's
+  land tiles (`water_depth_fade`). The distance is a new mask channel.
+- The mask is 256 cells, was 128: a 3840-wide view reaches 67 cells from the
+  player, and cells outside the window read as open sea, so coasts near the
+  edge of a large screen lost surf and shallows until the window re-centred.
+
+Only tiles with the water bit and alpha below 1 are touched: Classic, and
+opaque water under any style, draw as before.
+- Seabed floor: with one floor hue the shallows lost their grading, so a
+  floor tile (Wet, named "seabed...", mode bit 5) is shaded by distance from
+  land, from shore sand to the deep colour. Measured against the previous
+  per-cell hue ramp at the Haven pier: within 7 colour units to 6 cells from
+  land, up to 9 darker at 8 to 10 cells, identical in open water.
+
+## Wakes and swimmers (owner water sprint, 2026-11-22)
+
+- A boat's wake is two narrow rails of foam from the stern's quarters, laid
+  by distance along the track the hull sailed (a hull the shard moves a cell
+  at a time still leaves an unbroken line), with a short churn between them.
+  They live 2 to 5 seconds by speed. The foam is a second channel of the
+  ripple texture, drawn by the shader; the rails carry almost no height.
+- A swimmer no longer drops a ring into the wave field (a wide circle round
+  every creature, seconds long). It leaves two small uneven dabs behind it
+  that drift apart and are gone in about a second.
+- A boat's own parts (tiller, planks, hold) no longer splash as "items
+  arriving on water": that drew rings and wedges of waves round every hull
+  under way.

@@ -215,6 +215,13 @@ namespace GUO.Game.Data
             Span<ushort> gfx = stackalloc ushort[N];
             GraphicsFromEntity(entity, gfx);
 
+            return BuildInWorld(gfx, altTorsoTable, direction, dest);
+        }
+
+        // PORT DEVIATION (GUO): the body of upstream's in-world order builder, split out so
+        // MobileDrawLayers can cache the order from the layer graphics alone.
+        internal static int BuildInWorld(ReadOnlySpan<ushort> gfx, bool altTorsoTable, byte direction, Span<Layer> dest)
+        {
             Span<Layer> order = stackalloc Layer[N];
             Build(gfx, altTorsoTable, order);
 

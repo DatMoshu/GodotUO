@@ -13,7 +13,7 @@ ENV_FILE=/etc/muo/guo-vps.env
 UNIT=muo-guo-vps.service
 PORT=2593
 
-PIN=d4531cd94b739613155225c234900de9f47d2c88
+PIN=4d9e2b6af2aaa9ff75472d1a12dbb47f38904457
 CLONE_URL=https://github.com/modernuo/ModernUO.git
 
 as_user() { runuser -u "$SVC_USER" -- env HOME="$BASE" DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 "$@"; }
@@ -921,22 +921,6 @@ index 29331c5c6..920cfa242 100644
  
 MUO_EOF_0
 chmod 0644 $BASE/patches/0005-system-message-hook.patch
-install -d "$(dirname $BASE/patches/0025-pkcs-advisory.patch)"
-cat > $BASE/patches/0025-pkcs-advisory.patch <<'MUO_EOF_0'
-diff --git a/Projects/UOContent/UOContent.csproj b/Projects/UOContent/UOContent.csproj
-index 5789eabc6..1951c8ec6 100644
---- a/Projects/UOContent/UOContent.csproj
-+++ b/Projects/UOContent/UOContent.csproj
-@@ -43,6 +43,7 @@
-         <PackageReference Include="LibDeflate.Bindings" Version="1.0.4" />
-         <PackageReference Include="System.IO.Hashing" Version="10.0.12" />
-         <PackageReference Include="MailKit" Version="4.18.0" />
-+        <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
-         <PackageReference Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.12" />
-         <PackageReference Include="CommunityToolkit.HighPerformance" Version="8.4.2" />
-         <PackageReference Include="Argon2.Bindings" Version="1.20.0" />
-MUO_EOF_0
-chmod 0644 $BASE/patches/0025-pkcs-advisory.patch
 
 # checkout at the pin; the patch stack comes off (last first) on every deploy and goes back on,
 # since a patch under a later one that edits the same lines does not come off alone
@@ -946,7 +930,6 @@ as_user git -C "$SRC" cat-file -e "$PIN^{commit}" 2>/dev/null || as_user git -C 
 as_user git -C "$SRC" update-index --no-skip-worktree global.json 2>/dev/null || true
 as_user git -C "$SRC" checkout -q -- global.json 2>/dev/null || true
 head="$(as_user git -C "$SRC" rev-parse -q --verify HEAD 2>/dev/null || true)"
-if as_user git -C "$SRC" apply -R --check "$BASE/patches/0025-pkcs-advisory.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0025-pkcs-advisory.patch"; fi
 if as_user git -C "$SRC" apply -R --check "$BASE/patches/0005-system-message-hook.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0005-system-message-hook.patch"; fi
 if as_user git -C "$SRC" apply -R --check "$BASE/patches/0005-guo-pad-attack-record.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0005-guo-pad-attack-record.patch"; fi
 if as_user git -C "$SRC" apply -R --check "$BASE/patches/0004-guo-pad-dummies.patch" >/dev/null 2>&1; then as_user git -C "$SRC" apply -R "$BASE/patches/0004-guo-pad-dummies.patch"; fi
@@ -1001,14 +984,6 @@ elif as_user git -C "$SRC" apply -R --check "$BASE/patches/0005-system-message-h
 else
     as_user git -C "$SRC" apply --check "$BASE/patches/0005-system-message-hook.patch" || true
     die "0005-system-message-hook.patch does not apply to the checkout at $PIN; stopping"
-fi
-if as_user git -C "$SRC" apply --check "$BASE/patches/0025-pkcs-advisory.patch" >/dev/null 2>&1; then
-    as_user git -C "$SRC" apply "$BASE/patches/0025-pkcs-advisory.patch"
-elif as_user git -C "$SRC" apply -R --check "$BASE/patches/0025-pkcs-advisory.patch" >/dev/null 2>&1; then
-    echo "muo_shard: 0025-pkcs-advisory.patch already applied, skipping"
-else
-    as_user git -C "$SRC" apply --check "$BASE/patches/0025-pkcs-advisory.patch" || true
-    die "0025-pkcs-advisory.patch does not apply to the checkout at $PIN; stopping"
 fi
 
 # the archive's SDK can trail the SDK version the pin's global.json names; build with the installed one

@@ -18,7 +18,50 @@
    coordinate. The tab exports on facet 0 at origin (0, 0). Continue manual terrain and static
    edits in World. Deploying to a shard is a separate workflow.
 
+## Start from painted terrain and heights
+
+In **MapGen → Setup**, select **Use painted draft…** and choose
+`NAME.terrain.png`. Put `NAME.altitude.png` beside it. Use two single-frame
+PNGs of the same dimensions, with one pixel per map cell. Both sides must be
+multiples of eight, at least 64 cells, and at most 7168 wide by 4096 high.
+The upper-left pixel is (0, 0). Example terrain swatches include deep water
+(`#000080`), grass (`#60C040`), forest (`#208020`) and mountain (`#808080`).
+Paint the altitude image in grayscale. Black starts at Z −10 and white at Z 80.
+
+Keep the seed fixed while adjusting **Coast Terrace** and **Forest Scatter**.
+Later passes can change the painted elevations. Compare **Biomes**, **Height**
+and **Radar** after generating. An unmatched terrain colour produces a warning
+with its first coordinate. After export, **Inspect draft warning** opens that
+cell in World. To revise the layout, repaint the original pair and generate
+again. Each completed run keeps its own input copies for export.
+
 ## Tune with a fixed seed
+
+In World, **Brush library → Terrain palette…** opens a locally supplied UO Landscaper
+`Data/System/Terrain.xml`. Choose a named terrain to paint its displayed hexadecimal land ID.
+The brush preserves ground elevation, size, density, spacing and footprint. A swatch supplies
+one base tile and replaces the previous variant mix and edge rules. The pinned norad32 table
+has 93 entries with decimal TileIDs from 2 through 16337. The picker reads the name and
+base TileID, and checks the selected tile against the loaded client's art. RGB, terrain class,
+randomization and altitude fields are outside this import. Use **Single** or **Scatter** in the same library to
+place statics. Terrain palette import reads the base tiles only. Coast transitions, altitude
+colour maps and static placement catalogues have separate formats.
+
+To finish an existing shoreline, open **Terrain palette…** and choose the JSON value of a
+CentrED# profile’s `land_brushes` setting. Select the directed pair in the swatch menu, unlock
+terrain, and drag **Coast edges** over the source bank. The destination entry’s `Tiles` identify
+the neighboring shore. The brush recognizes source base tiles and its own previously painted
+edges. It preserves elevation and limits edits to the stroke. Density, footprint, allowed land,
+water protection and slope filters still apply. Undo reverses one stroke. Saving a brush preset
+includes the selected pair.
+
+Direction bits run clockwise from north (1) through northwest (128). The smallest rule mask
+containing all destination neighbors wins. Equal-size matches use the brush seed and map
+coordinates. Cells without a matching rule keep their tile. A usable pair has disjoint source
+and destination IDs and art available in the loaded client. For a CentrED+ `TilesBrush.xml`,
+convert it in CentrED# first. Its pinned reader recognizes DR, DL, UL, UR, LL and UU and drops
+base tile Chance. Inspect that conversion before painting. World rejects zero-direction rules
+and unsupported JSON fields, including Chance.
 
 Start with **Shape terrain** in Setup. In **Passes**, search for a pass, setting or category.
 Click its numbered row to expand settings and use the checkbox to enable it. The row tooltip

@@ -5,7 +5,7 @@ a verdict: **upstream** (worth offering to modernuo/ModernUO) or **ours**
 (GUO's dev shard needs it; ModernUO would not want it). Nothing here has been
 submitted. The owner reviews the patches first and then sends one bundle.
 
-Pinned at `d4531cd94` (`UO_SHARD_REF` in `launchers\_shared\config.bat`).
+Pinned at `4d9e2b6af` (`UO_SHARD_REF` in `launchers\_shared\config.bat`).
 `python tools/modernuo/test_upstream.py` checks that this list names every
 patch file and that every patch applies cleanly to the pin.
 
@@ -56,8 +56,9 @@ is retired (as `0004-multi-tile-enumerator` was).
 | 0022 | DFI Network's event signup (event masters, undress and redress) and the crate race with DFI's track, `[DfiCrateRace` | **ours**, shard content, depends on 0016 | none |
 | 0023 | Bomberman, from the Solaris BoardGames scripts DFI ran, `[DfiBomberman` | **ours**, shard content | none |
 | 0024 | ModernUO's ConPVP duels set up in Luna's Grand Arena in place of DFI's duel and CTF systems, `[DfiArenas` | **ours**, shard content | none |
-| 0025 | Pins `System.Security.Cryptography.Pkcs` to 10.0.14, past two .NET denial of service advisories in the 10.0.0 that MailKit brings in, which fail the restore under the pin's warnings-as-errors | **ours**, build fix until the pin moves | none |
+| 0025 | Pkcs advisory pin | **retired** with the move to `9782fd6aa` (.NET 11) | none |
 | 0026 | `GuoPhotoTour`: off unless `GUO_PHOTO_TOUR` names a manifest, moves listed characters through stops and writes stamps, for photographing clients nothing can be compiled into (`tools/ab_compare/tour.py`) | **ours**, dev tooling | none |
+| 0027 | Read UOP map chunks in index order instead of sorting by each chunk's first int32, which custom UOPs repeat | **upstreamed**, retired | merged as modernuo/ModernUO#2794 (`4d9e2b6af`), with the maintainer's block-read hardening on top |
 | issue | `MultiData.LoadUOP` and uncompressed entries | **upstream** (issue, no patch) | `upstream/issue-multidata-loaduop-uncompressed.md` |
 
 ### 0006: loopback ban exemption (NET-00c, MUO patch)
@@ -89,14 +90,34 @@ still requires the shard console's detection/filter messages.
 **Verdict: ours.** Local readiness checks and development clients share one
 address. Keep this narrow policy separate from public-shard ban policy.
 
-### 0025: the Pkcs advisory pin (MUO patch)
+### 0025: the Pkcs advisory pin (retired)
 
-GUO patch: `patches/0025-pkcs-advisory.patch`. **Verdict: ours**, until the pin moves.
+Retired when the pin moved to `9782fd6aa`: on .NET 11 the stack restores and builds with
+0 warnings without it.
 
 ### 0026: the dev photo tour (MUO patch)
 
 GUO patch: `patches/0026-dev-photo-tour.patch`. **Verdict: ours**: dev tooling with no
 upstream use, inert unless `GUO_PHOTO_TOUR` is set.
+
+### 0027: UOP map chunk order (upstreamed, retired)
+
+`TileMatrix` copied the `map*LegacyMUL.uop` entries out of `ReadUOPIndexes` and
+re-sorted them by the first int32 of each chunk with an unstable sort. EA's files
+carry distinct values there; shard-made UOPs may not (one custom shard's chunks all
+start with 1), and the server's terrain then disagreed with the client's: every step
+was refused. Found by the UO-Maps work; GUO carried the fix as patch 0027 and offered
+it as modernuo/ModernUO#2794.
+
+Merged upstream on 2026-11-22 as `4d9e2b6af`. The maintainer extended it before the
+merge: map chunks are addressed by the index in their hashed name, as the client does
+(O(1) per land block instead of a scan), a missing or compressed chunk reads as invalid
+land instead of shifting later blocks, a static block whose length is not a multiple of
+seven no longer overruns its buffer, short reads fail instead of reusing stale bytes,
+and `ReadUOPIndexes` hashes candidate names only until every entry is placed. The pin
+moved to that commit and the GUO patch was retired. The same move takes in
+modernuo/ModernUO#2793 (ISA-L in place of libdeflate, built-in zstd for archives and
+the step cache).
 
 ### 0007 to 0024: DFI Network shard content (MUO patch)
 

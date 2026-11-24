@@ -19,8 +19,8 @@ play commands with its own saves and loopback port.
 |---|---|
 | **Upstream** | <https://github.com/modernuo/ModernUO.git> |
 | **Licence** | GPL-3.0. Not vendored, not redistributed. The patches in `patches/` modify it and are GPL-3.0 too (see `patches/LICENSE`). |
-| **Pinned at** | `d4531cd94` (2026-09-30): `UO_SHARD_REF` in `launchers\_shared\config.bat`. `fetch.bat` checks it out and moves an older checkout to it. |
-| **Runtime** | .NET 10 SDK (ModernUO's own requirement, not the client's) |
+| **Pinned at** | `4d9e2b6af` (2026-11-22): `UO_SHARD_REF` in `launchers\_shared\config.bat`. `fetch.bat` checks it out and moves an older checkout to it. |
+| **Runtime** | .NET 11 SDK (ModernUO's own requirement since modernuo/ModernUO#2763, not the client's) |
 | **Checkout** | `tools/modernuo/src/` — **gitignored**, ~1 GB with the build |
 
 ## Use it
@@ -749,13 +749,6 @@ tournament controller with a CTF controller, which staff set up when they
 hold one. `DfiArenasTests.cs` checks the arena is active, on Malas, with its
 ladder, points and zones in place.
 
-### `patches/0025-pkcs-advisory.patch`
-
-Pins `System.Security.Cryptography.Pkcs` to 10.0.14. MailKit brings in 10.0.0, and
-its two later .NET denial of service advisories fail the restore under the pin's
-warnings-as-errors. Remove it when the ModernUO pin moves past that. Carried by both
-profiles.
-
 ### `patches/0026-dev-photo-tour.patch`
 
 Adds `GuoPhotoTour`, a dev tool that does nothing unless `GUO_PHOTO_TOUR` names a
@@ -764,6 +757,15 @@ sets the light, writes a stamp at each one, then puts the light back and deletes
 the manifest. `tools/ab_compare/tour.py` writes the manifest and takes the pictures.
 
 ### Retired
+
+`0027-uop-map-chunk-order` read `map*LegacyMUL.uop` chunks in index order instead of
+by each chunk's first int32, which shard-made UOPs repeat. Merged upstream as
+modernuo/ModernUO#2794 with further block-read hardening; retired when the pin moved to
+`4d9e2b6af`. ADR-0054 covers the client side.
+
+`0025-pkcs-advisory` pinned `System.Security.Cryptography.Pkcs` to 10.0.14 past two
+.NET denial of service advisories in the 10.0.0 that MailKit brought in. Retired
+when the pin moved to `9782fd6aa` (.NET 11): the stack builds with 0 warnings without it.
 
 `0004-multi-tile-enumerator` fixed tile lookups that stopped at a multi with no
 tile at the point and skipped the multis after it. Reported as

@@ -70,6 +70,8 @@ echo [smoke] UO+ ambient particles contract (synthetic; ADR-0042)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Render/Particles/AmbientParticlesProbe.tscn || set "FAIL=1"
 echo [smoke] shared UO+ flags, densities and Touch UI persistence (synthetic; ADR-uoplus-settings, UX-03)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Configuration/UoPlusProbe.tscn -- --depth-world || set "FAIL=1"
+echo [smoke] shard map data detection negative cases (synthetic lengths and counts; ADR-0054)
+"%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Assets/MapInferenceProbe.tscn || set "FAIL=1"
 echo [smoke] GUO effect ownership: spell lights and classic shadow replacement (synthetic; task 1136)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Configuration/GuoEffectPolicyProbe.tscn -- --depth-world || set "FAIL=1"
 echo [smoke] GUO options category: no stale overwrites, section-scoped Apply/Defaults/Cancel, Classic+Modern entry (client data; task 1136)
@@ -125,6 +127,7 @@ echo [smoke] controller regressions and Set controls (synthetic pad; no shard)
 "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" -- --pad-regression-probe --pregame-classic --silent || set "FAIL=1"
 
 if "%GuoLabs%"=="true" (
+    if "%GUO_RUST_RIPPLES%"=="1" call "%~dp0harbor_water_doctor.bat" || set "FAIL=1"
     echo [smoke] mobile debug history and inspector lifecycle
     "%GODOT_CONSOLE%" --headless --path "%UO_GODOT_PROJECT%" res://src/Labs/MobileDebug/MobileDebugProbe.tscn || set "FAIL=1"
     echo [smoke] ordered GPU world Labs pixels - real GPU - ADR-0043

@@ -58,6 +58,7 @@ public partial class MapGenView : VBoxContainer
     {
         public string Name, Category;
         public bool PresetEnabled;
+        public bool ReplacedByDraft;
         public CheckBox Enabled;
         public VBoxContainer Body;
         public Control Root;
@@ -75,6 +76,8 @@ public partial class MapGenView : VBoxContainer
     private readonly List<string> _presetValues = new();
     private readonly List<string> _tableValues = new();
     private string _tableFile;
+    private string _draftFile;
+    private Button _pickDraft, _clearDraft;
     private string _selectedTable = "guo";
     private LineEdit _seed;
     private CheckBox _fast, _stepPreviews;
@@ -93,9 +96,11 @@ public partial class MapGenView : VBoxContainer
     private bool _busy;
     private string _lastRun, _lastWorld, _resultText, _resultHash;
     private CompletedRun _previous;
+    private Button _inspectDraftWarning;
+    private Vector2I? _draftWarningCell;
     private sealed record CompletedRun(string Run, string World, string Label, string Hash, int Width, int Height,
         int Facet, int X, int Y, JsonElement Stats, bool RadarColours, int Warnings, string Log,
-        (int Index, string Name, string File)[] Steps);
+        (int Index, string Name, string File)[] Steps, Vector2I? DraftWarningCell);
     private JsonElement _resultStats;
     private int _mapW, _mapH, _facet, _originX, _originY;
     private JsonElement? _schema;
@@ -181,6 +186,16 @@ public partial class MapGenView : VBoxContainer
         col.AddChild(Heading("Size (tiles)"));
         _size = new OptionButton { TooltipText = "Start with 256 × 256 to tune quickly. Larger facets need more time and storage." };
         col.AddChild(_size);
+        var draftRow = new HBoxContainer();
+        col.AddChild(draftRow);
+        _pickDraft = new Button { Text = "Use painted draft…", SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
+            TooltipText = "Choose NAME.terrain.png. Its matching NAME.altitude.png supplies elevation. Both images set the map dimensions." };
+        _pickDraft.Pressed += PickDraft;
+        draftRow.AddChild(_pickDraft);
+        _clearDraft = new Button { Text = "Clear", Visible = false, TooltipText = "Return to generated terrain and the selected map size" };
+        _clearDraft.Pressed += () => SelectDraft(null);
+        draftRow.AddChild(_clearDraft);
 
         col.AddChild(Heading("Transition table"));
         _table = new OptionButton { FitToLongestItem = false, TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
@@ -343,6 +358,13 @@ public partial class MapGenView : VBoxContainer
         var detailRow = new HBoxContainer();
         detailRow.AddChild(details);
         detailRow.AddChild(_warningSummary);
+        _inspectDraftWarning = new Button { Text = "Inspect draft warning" };
+        _inspectDraftWarning.Pressed += () =>
+        {
+            if (!_busy && _lastWorld != null && _draftWarningCell is { } cell)
+                OpenInWorld?.Invoke(_lastWorld, _facet, _originX + cell.X, _originY + cell.Y);
+        };
+        detailRow.AddChild(_inspectDraftWarning);
         col.AddChild(detailRow);
         var diagnostics = new TabContainer { Visible = false, CustomMinimumSize = new Vector2(0, 112) };
         details.Toggled += visible => diagnostics.Visible = visible;
@@ -541,6 +563,26 @@ public partial class MapGenView : VBoxContainer
         dialog.PopupCenteredRatio(0.8f);
     }
 
+    private void PickDraft()
+    {
+        var dialog = new FileDialog { FileMode = FileDialog.FileModeEnum.OpenFile,
+            Access = FileDialog.AccessEnum.Filesystem, Title = "Choose the painted terrain PNG" };
+        dialog.AddFilter("*.terrain.png", "Terrain PNG with matching altitude PNG");
+        dialog.FileSelected += path => { SelectDraft(path); dialog.QueueFree(); };
+        dialog.Canceled += dialog.QueueFree;
+        AddChild(dialog);
+        dialog.PopupCenteredRatio(0.8f);
+    }
+
+    private void SelectDraft(string path)
+    {
+        _draftFile = path;
+        _pickDraft.Text = path == null ? "Use painted draft…" : Path.GetFileName(path);
+        _clearDraft.Visible = path != null;
+        _size.Visible = path == null;
+        ApplyFilter(_filter.Text);
+    }
+
     private void FillSizes(JsonElement schema)
     {
         string old = _size.ItemCount > 0 ? _size.GetItemText(_size.Selected) : "1024 x 1024";
@@ -566,6 +608,7 @@ public partial class MapGenView : VBoxContainer
             Name = p.GetProperty("name").GetString(),
             Category = p.GetProperty("category").GetString(),
             PresetEnabled = p.GetProperty("enabled").GetBoolean(),
+            ReplacedByDraft = p.TryGetProperty("replaced_by_draft", out var replaced) && replaced.GetBoolean(),
         };
 
         var box = new VBoxContainer();
@@ -807,7 +850,7 @@ public partial class MapGenView : VBoxContainer
     {
         var args = new List<string> { "run", "--out", outDir, "--preset", CurrentPreset(), "--seed", _seed.Text.Trim() };
         string[] size = (_size.ItemCount > 0 ? _size.GetItemText(_size.Selected) : "1024 x 1024").Split(" x ");
-        args.AddRange(new[] { "--width", size[0], "--height", size[1] });
+        args.AddRange(_draftFile == null ? new[] { "--width", size[0], "--height", size[1] } : new[] { "--painted-draft", _draftFile });
         if (CurrentTable != "guo" && CurrentTable != FileChoice)
         {
             args.AddRange(new[] { "--brushes", CurrentTable });
@@ -874,10 +917,11 @@ public partial class MapGenView : VBoxContainer
         string outDir = MapGenCli.NewRunDir(preset, seed);
         List<string> args = BuildRunArgs(outDir);
         bool fast = args.Contains("--fast");
-        string setup = $"{_preset.GetItemText(_preset.Selected)} · seed {seed} · {_size.GetItemText(_size.Selected)}";
+        string setup = $"{_preset.GetItemText(_preset.Selected)} · seed {seed} · {(_draftFile == null ? _size.GetItemText(_size.Selected) : Path.GetFileName(_draftFile))}";
         if (_lastRun != null)
             _previous = new CompletedRun(_lastRun, _lastWorld, _resultText, _resultHash, _mapW, _mapH, _facet,
-                _originX, _originY, _resultStats, _radarColours, _warningCount, _log.GetParsedText(), _steps.ToArray());
+                _originX, _originY, _resultStats, _radarColours, _warningCount, _log.GetParsedText(), _steps.ToArray(), _draftWarningCell);
+        _draftWarningCell = null;
         _steps.Clear();
         _resultLabel.Text = $"Generating {(fast ? "fast draft" : "map")}\n{setup}";
         _resultLabel.TooltipText = "";
@@ -929,6 +973,11 @@ public partial class MapGenView : VBoxContainer
                 _lastRun = outDir;
                 _previous = null;
                 _resultStats = d.GetProperty("stats");
+                if (d.TryGetProperty("draft_warnings", out var warnings) && warnings.GetArrayLength() > 0)
+                {
+                    var first = warnings[0].GetProperty("first");
+                    _draftWarningCell = new Vector2I(first[0].GetInt32(), first[1].GetInt32());
+                }
                 _resultHash = hash;
                 _radarColours = d.TryGetProperty("radar_colours", out var radar) && radar.GetBoolean();
                 _resultText = $"{(fast ? "Fast draft complete" : "Completed run")} · {hash[..12]}\n{setup}";
@@ -956,6 +1005,7 @@ public partial class MapGenView : VBoxContainer
     {
         if (_busy || _lastRun != null || _previous is not { } previous) return;
         _previous = null;
+        _draftWarningCell = previous.DraftWarningCell;
         (_lastRun, _lastWorld, _resultText, _resultHash, _mapW, _mapH, _facet, _originX, _originY, _resultStats, _radarColours) =
             (previous.Run, previous.World, previous.Label, previous.Hash, previous.Width, previous.Height,
                 previous.Facet, previous.X, previous.Y, previous.Stats, previous.RadarColours);
@@ -1245,7 +1295,7 @@ public partial class MapGenView : VBoxContainer
                 any |= hit;
             }
 
-            g.Root.Visible = any;
+            g.Root.Visible = any && (_draftFile == null || !g.ReplacedByDraft);
             if (q.Length > 0 && any)
             {
                 g.Fold.ButtonPressed = true;
@@ -1336,9 +1386,11 @@ public partial class MapGenView : VBoxContainer
         _progress.Visible = busy;
         _progress.Indeterminate = busy;
         _preset.Disabled = busy;
+        _pickDraft.Disabled = _clearDraft.Disabled = busy;
         _export.Disabled = busy || _lastRun == null || _lastWorld != null;
         _savePreset.Disabled = busy || _lastRun == null;
         _openWorld.Disabled = busy || _lastWorld == null || OpenInWorld == null;
+        _inspectDraftWarning.Visible = !_openWorld.Disabled && _draftWarningCell.HasValue;
         _restoreRun.Disabled = busy || _lastRun != null || _previous == null;
         _restoreRun.Visible = !_restoreRun.Disabled;
         _reloadSchema.Visible = !busy && !_schema.HasValue;

@@ -123,6 +123,8 @@ namespace GUO.Game.Scenes
             _world.CommandManager.Initialize();
             // PORT DEVIATION (GUO): the -translate command.
             _world.CommandManager.Register("translate", args => Localization.JournalTranslationCommand.Run(_world, args));
+            // PORT DEVIATION (GUO): the -water command opens the live Water panel (owner request 2026-11-21).
+            _world.CommandManager.Register("water", _ => GUO.Game.UI.Gumps.WaterQuickGump.Toggle(_world));
 
             WorldViewportGump viewport = new WorldViewportGump(_world, this);
             UIManager.Add(viewport, false);

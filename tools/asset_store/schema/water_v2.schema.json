@@ -18,11 +18,15 @@
       }
     },
     "depth": {
-      "type": "object", "additionalProperties": false, "required": ["tint", "strength", "falloff"],
+      "type": "object", "additionalProperties": false, "required": ["tint", "strength", "falloff", "fade_start", "fade_end", "floor_reach", "sand_bars"],
       "properties": {
         "tint": {"$ref": "#/$defs/rgb", "default": [0.12, 0.24, 0.42], "description": "sRGB depth blend target."},
         "strength": {"type": "number", "minimum": 0, "maximum": 1, "default": 0, "description": "Maximum depth tint blend; zero disables."},
-        "falloff": {"type": "number", "minimum": 0.25, "maximum": 64, "default": 8, "description": "E-folding distance in water cells from low shore; not bathymetry."}
+        "falloff": {"type": "number", "minimum": 0.25, "maximum": 64, "default": 8, "description": "E-folding distance in water cells from low shore; not bathymetry."},
+        "fade_start": {"type": "number", "minimum": 0, "maximum": 28, "default": 9.5, "description": "Cells from land over which translucent water stays clear."},
+        "fade_end": {"type": "number", "minimum": 1, "maximum": 29, "default": 13, "description": "Cells from land at which translucent water is opaque; a reader refuses a value not above fade_start."},
+        "floor_reach": {"type": "number", "minimum": 2, "maximum": 40, "default": 17, "description": "Cells from land over which a seabed floor darkens to the deep colour."},
+        "sand_bars": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.5, "description": "How much lighter the seabed's pale patches are; zero is an even bed."}
       }
     },
     "shoreline": {
@@ -48,12 +52,14 @@
       }
     },
     "wake": {
-      "type": "object", "additionalProperties": false, "required": ["boat", "player", "object", "damping"],
+      "type": "object", "additionalProperties": false, "required": ["boat", "player", "object", "damping", "foam", "length"],
       "properties": {
         "boat": {"type": "number", "minimum": 0, "maximum": 2, "default": 1, "description": "Boat disturbance rate multiplier; zero disables."},
         "player": {"type": "number", "minimum": 0, "maximum": 2, "default": 1, "description": "Mobile disturbance rate multiplier; zero disables."},
         "object": {"type": "number", "minimum": 0, "maximum": 2, "default": 1, "description": "Falling/thrown item and effect disturbance multiplier; zero disables."},
-        "damping": {"type": "number", "minimum": 0.9, "maximum": 0.999, "default": 0.985, "description": "Amplitude retention per 20 Hz simulation step."}
+        "damping": {"type": "number", "minimum": 0.9, "maximum": 0.999, "default": 0.985, "description": "Amplitude retention per 20 Hz simulation step."},
+        "foam": {"type": "number", "minimum": 0, "maximum": 2, "default": 1, "description": "White water in a boat's trail; zero leaves the ripples alone."},
+        "length": {"type": "number", "minimum": 0.25, "maximum": 3, "default": 1, "description": "Lifetime of a boat's trail as a share of the built-in one."}
       }
     },
     "lighting": {

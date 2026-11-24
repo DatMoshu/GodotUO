@@ -136,6 +136,11 @@ vec4 uo_shade(vec4 color, vec2 screen_uv, vec2 screen_pixel_size) {
 	// PORT DEVIATION (GUO): bit 6 marks a Wet tile under a water style.
 	bool water = (raw_mode & WATER_BIT) != 0;
 	int mode = raw_mode & 0x3F;
+	// With the water bit, bit 5 marks a seabed floor (WaterRender.FloorBit); no mode reaches 32.
+	bool water_floor = water && (raw_mode & WATER_FLOOR_BIT) != 0;
+	if (water_floor) {
+		mode -= WATER_FLOOR_BIT;
+	}
 
 	if (alpha == 0.0) {
 		discard;
@@ -175,8 +180,14 @@ vec4 uo_shade(vec4 color, vec2 screen_uv, vec2 screen_pixel_size) {
 		color.rgb = get_rgb(color.g, hue);
 	}
 
-	if (water && water_model > 0) {
+	if (water_floor) {
+		if (water_model > 0) {
+			color.rgb = water_floor_shade(color.rgb, screen_uv * (1.0 / screen_pixel_size));
+		}
+	} else if (water && water_model > 0) {
 		color.rgb = water_shade(color.rgb, screen_uv * (1.0 / screen_pixel_size));
+		alpha = water_alpha(water_seam_alpha(alpha, screen_uv * (1.0 / screen_pixel_size)),
+				screen_uv * (1.0 / screen_pixel_size));
 	}
 
 	if (use_trans && circle_of_transparency_radius > 0.0) {

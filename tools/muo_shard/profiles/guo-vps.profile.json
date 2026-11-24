@@ -6,7 +6,7 @@
     "source": {
       "kind": "git",
       "url": "https://github.com/modernuo/ModernUO.git",
-      "ref": "d4531cd94b739613155225c234900de9f47d2c88"
+      "ref": "4d9e2b6af2aaa9ff75472d1a12dbb47f38904457"
     },
     "patches": [
       "tools/modernuo/patches/0001-headless-owner-account.patch",
@@ -14,8 +14,7 @@
       "tools/modernuo/patches/0003-felucca-spring.patch",
       "tools/modernuo/patches/0004-guo-pad-dummies.patch",
       "tools/modernuo/patches/0005-guo-pad-attack-record.patch",
-      "tools/modernuo/patches/0005-system-message-hook.patch",
-      "tools/modernuo/patches/0025-pkcs-advisory.patch"
+      "tools/modernuo/patches/0005-system-message-hook.patch"
     ]
   },
   "config_overlay": "tools/modernuo/config-vps",

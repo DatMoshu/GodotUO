@@ -262,7 +262,9 @@ public partial class EditorSmoke
         }
         catch (Exception ex)
         {
-            AssetFail($"{ex.GetType().Name}: {ex.Message}");
+            // The message alone names no file; the log keeps the whole trace.
+            GD.PrintErr($"[GUO editor] smoke Assets threw: {ex}");
+            AssetFail($"{ex.GetType().Name} in {ex.TargetSite?.DeclaringType?.Name}.{ex.TargetSite?.Name}: {ex.Message}");
         }
 
         _assetReport.TryAdd("ok", true);

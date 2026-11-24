@@ -102,7 +102,7 @@ namespace GUO
 
             Window = new GameWindow();
             Window.AllowUserResizing = true;
-            Window.Title = $"ClassicUO - {CUOEnviroment.Version}";
+            SetWindowTitle(string.Empty);
             IsMouseVisible = Settings.GlobalSettings.RunMouseInASeparateThread;
 
             PluginHost = pluginHost;
@@ -565,24 +565,22 @@ namespace GUO
             GetTree().Quit();
         }
 
+        // PORT DEVIATION (GUO): share the project name and version with the Godot pregame window.
+        internal static string DefaultWindowTitle
+        {
+            get
+            {
+                string product = ProjectSettings.GetSetting("application/config/name").AsString();
+#if DEV_BUILD
+                product += " [dev]";
+#endif
+                return $"{product} - {CUOEnviroment.Version}";
+            }
+        }
+
         public void SetWindowTitle(string title)
         {
-            if (string.IsNullOrEmpty(title))
-            {
-#if DEV_BUILD
-                Window.Title = $"ClassicUO [dev] - {CUOEnviroment.Version}";
-#else
-                Window.Title = $"ClassicUO - {CUOEnviroment.Version}";
-#endif
-            }
-            else
-            {
-#if DEV_BUILD
-                Window.Title = $"{title} - ClassicUO [dev] - {CUOEnviroment.Version}";
-#else
-                Window.Title = $"{title} - ClassicUO - {CUOEnviroment.Version}";
-#endif
-            }
+            Window.Title = string.IsNullOrEmpty(title) ? DefaultWindowTitle : $"{title} - {DefaultWindowTitle}";
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1453,7 +1451,7 @@ namespace GUO
 
             public string Title
             {
-                set => DisplayServer.WindowSetTitle(value);
+                set => ((SceneTree)Engine.GetMainLoop()).Root.Title = value;
             }
         }
     }

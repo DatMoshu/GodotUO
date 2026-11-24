@@ -76,7 +76,7 @@ static class Program
         public void Register() { }
         public void Start(System.Threading.CancellationToken token) { }
         public void Stop() { }
-        public void Report(IPAddress address, TimeSpan ttl, string reason) => Reports++;
-        public void Retract(IPAddress address) { }
+        public void Report(IPNetwork network, TimeSpan ttl, string reason) => Reports++;
+        public void Retract(IPNetwork network) { }
     }
 }

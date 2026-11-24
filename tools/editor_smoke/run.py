@@ -53,6 +53,31 @@ from guo.process import build_child_env, no_activate  # noqa: E402
 TIMEOUT_S = 600
 
 
+def check_painted_retry(out: Path, env: dict) -> list[str]:
+    """A corrected setting must work at the same --out without manual cleanup."""
+    target = out / "setting-retry"
+    runner = Path(__file__).resolve().parents[1] / "mapgen" / "run.py"
+    command = [sys.executable, str(runner), "run", "--painted-draft", str(out / "inlet.terrain.png"),
+               "--out", str(target), "--seed", "528", "--set"]
+    def run(setting: str, log_name: str):
+        result = subprocess.run([*command, setting], capture_output=True, env=env, timeout=90)
+        (out / f"setting-{log_name}.log").write_bytes(result.stdout + result.stderr)
+        return result
+
+    invalid = run("NoSuchPass.NoSuchField=1", "invalid")
+    if invalid.returncode == 0 or b"no pass named" not in invalid.stdout:
+        return ["invalid painted setting did not produce the expected diagnostic"]
+    if target.exists() and any(target.iterdir()):
+        return ["invalid painted setting left files in the retry folder"]
+    setting = "Coast Terrace.TerraceBandWidth=12"
+    if run(setting, "corrected").returncode != 0:
+        return ["corrected painted setting failed in the same folder"]
+    manifest = json.loads((target / "run.json").read_bytes())
+    if manifest["sets"] != [setting] or not (target / "draft/input.altitude.png").is_file():
+        return ["corrected painted run did not retain its setting and inputs"]
+    return []
+
+
 def build(project: Path) -> bool:
     print("[editor_smoke] building C#")
     result = subprocess.run(
@@ -150,43 +175,10 @@ def asset_export_checks(cfg, project_dir: Path, out: Path) -> list[str]:
     return failures
 
 
-def ultimalive_stale_checks(out: Path) -> list[str]:
-    """tools/world notices a client's stale UltimaLive map copy after a re-export (and
-    clears it when asked). Uses a scratch root, never the real %ProgramData%."""
-    import json as _json
-    failures = []
-    project = out / "world_project"
-    block = project / "blocks" / "0" / "187_203.json"
-    if not block.is_file():
-        return ["the overlay stage left no world project block to export"]
-    root = out / "ultimalive_root"
-    shard = root / "GUO-Smoke"
-    exp1, exp2 = out / "ul_export1", out / "ul_export2"
-    common = ["--ultimalive-root", str(root), "--ultimalive-shard", "GUO-Smoke"]
-    code, text = world_tool("export", "--project", str(project), "--out", str(exp1), *common)
-    if code != 0:
-        return [f"export for the UltimaLive check failed: {text}"]
-    # A client that played on the shard after that export: its copy is the exported map.
-    shard.mkdir(parents=True)
-    for name in ("map0.mul", "staidx0.mul", "statics0.mul"):
-        shutil.copyfile(exp1 / name, shard / name)
-    code, text = world_tool("ultimalive", "--project", str(project), "--out", str(exp1), *common)
-    fresh = code == 0 and "already has this export" in text and "WARNING" not in text
-    # The project is edited and exported again: the client's copy is now stale.
-    j = _json.loads(block.read_text(encoding="utf-8"))
-    j["statics"].append({"id": "0x0CE3", "x": 7, "y": 7, "z": 0, "hue": "0x0000"})
-    block.write_text(_json.dumps(j, indent=2), encoding="utf-8")
-    code, text = world_tool("export", "--project", str(project), "--out", str(exp2), *common)
-    warned = code == 0 and "WARNING" in text and "lacks 1 of this export's 1 block(s)" in text and "--clear-ultimalive" in text
-    code, text = world_tool("ultimalive", "--project", str(project), "--out", str(exp2), *common, "--clear-ultimalive")
-    cleared = code == 0 and "removed" in text and not (shard / "map0.mul").exists()
-    for ok, what in ((fresh, "a current copy was reported stale"), (warned, "a stale copy after a re-export was not reported"),
-                     (cleared, "--clear-ultimalive did not remove the stale copy")):
-        if not ok:
-            failures.append(f"UltimaLive: {what}")
-    print(f"[editor_smoke]   {'ok  ' if not failures else 'FAIL'} UltLive stale client map copy: current one accepted {fresh}, "
-          f"stale one after a re-export reported {warned}, --clear-ultimalive removed it {cleared}")
-    return failures
+def ultimalive_stale_checks(out: Path, staging_root: Path | None = None) -> list[str]:
+    from ultimalive_staging import run_checks
+
+    return run_checks(out, world_tool, staging_root)
 
 
 def check_world_project(report: dict, project: Path, facet: int, x: int, y: int) -> list[str]:
@@ -226,17 +218,21 @@ def main() -> int:
     ap.add_argument("--multi-dump", default="",
                     help="comma list of multi ids whose panel composite is also saved as multi_XXXX.png")
     ap.add_argument("--out", type=Path, help="output folder (default build/editor_smoke/<mode>)")
+    ap.add_argument("--staging-root", type=Path, help="temporary map payload parent under _disposable/guo (default system temp/_disposable/guo/editor-smoke)")
     ap.add_argument("--no-build", action="store_true", help="skip the first C# build")
     ap.add_argument("--require-native", action="store_true",
                     help="fail when a check that needs a real external program was skipped")
     ap.add_argument("--header-only", action="store_true", help="check the toolbar at three window widths without running unrelated editor checks")
     ap.add_argument("--assets-workbench", action="store_true", help="capture the Assets workbench at three widths and its export review (requires --windowed)")
+    ap.add_argument("--painted-draft", action="store_true", help="generate a painted terrain/altitude pair and verify its World export")
     ap.add_argument("--world-project", type=Path,
                     help="open this world project (UO_WORLD_PROJECT) in the World tab and check it there; needs --look")
     ap.add_argument("--look", help="FACET,X,Y: the cell the World tab shows for --world-project; its block must be one the project edits")
     args = ap.parse_args()
     if args.assets_workbench and (not args.windowed or args.reload or args.world_project or args.header_only):
         ap.error("--assets-workbench requires --windowed and cannot combine with reload, world-project or header-only")
+    if args.painted_draft and (args.reload or args.world_project or args.header_only or args.assets_workbench):
+        ap.error("--painted-draft runs its own MapGen and World checks")
     look = None
     if args.world_project or args.look:
         if not (args.world_project and args.look):
@@ -246,8 +242,18 @@ def main() -> int:
             assert len(look) == 3
         except (ValueError, AssertionError):
             ap.error("--look takes FACET,X,Y")
-        if not (args.world_project / "project.json").exists():
-            ap.error(f"{args.world_project} is not a world project (no project.json)")
+        if not (args.world_project / "project.json").is_file():
+            # On first open World fingerprints the install and creates project.json itself.
+            marker = args.world_project / "generated.json"
+            try:
+                generated = json.loads(marker.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                generated = None
+            if not isinstance(generated, dict) or generated.get("schema") != "guo.mapgen.generated/1":
+                ap.error(f"{args.world_project} needs project.json or a MapGen generated.json")
+            facet, x, y = look
+            if not (args.world_project / "blocks" / str(facet) / f"{x // 8}_{y // 8}.json").is_file():
+                ap.error("--look must name a block in the generated map")
         if args.reload or args.header_only:
             ap.error("--world-project cannot be combined with --reload or --header-only")
     if args.header_only and (not args.windowed or args.reload):
@@ -260,6 +266,8 @@ def main() -> int:
     args.headless = not args.windowed
     mode = ("headless" if args.headless else "windowed") + ("_reload" if args.reload else "") + ("_world_project" if look else "")
     evidence_out = os.environ.get("GUO_EDITOR_SMOKE_OUT")
+    if args.painted_draft:
+        mode += "_painted_draft"
     out = (args.out or (Path(evidence_out) / mode if evidence_out else cfg.build / "editor_smoke" / mode)).resolve()
 
     # Old markers from an earlier run would make the addon think it is past a
@@ -288,6 +296,9 @@ def main() -> int:
     if args.reload:
         cmd.append("--guo-editor-smoke-reload")
     env = build_child_env()
+    if args.painted_draft:
+        cmd.append("--guo-editor-painted-draft")
+        env.update(UO_WORLD_PROJECT=str(out / "world" / "default"), UO_BUILD_DIR=str(out / "build"))
     if look:
         # The World tab opens UO_WORLD_PROJECT when it boots, as it does for a user.
         env = {**env, "UO_WORLD_PROJECT": str(args.world_project.resolve())}
@@ -329,6 +340,10 @@ def main() -> int:
 
     report = json.loads(report_path.read_text(encoding="utf-8"))
     failures = list(report.get("failures", []))
+    if args.painted_draft and not report.get("painted_draft"):
+        failures.append("missing painted draft World receipt")
+    elif args.painted_draft:
+        failures += check_painted_retry(out, env)
     if look:
         failures += check_world_project(report, args.world_project.resolve(), *look)
 
@@ -474,7 +489,7 @@ def main() -> int:
             failures += asset_export_checks(cfg, project_dir, out)
 
     if (world.get("overlay") or {}).get("ok"):
-        failures += ultimalive_stale_checks(out)
+        failures += ultimalive_stale_checks(out, args.staging_root)
 
     shots = sorted(out.glob("editor_*.png"))
     if shots:

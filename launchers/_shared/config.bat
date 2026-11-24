@@ -131,7 +131,7 @@ REM  of this is needed then.
 if not defined UO_SHARD_NAME        set "UO_SHARD_NAME=GUO Dev"
 if not defined UO_SHARD_REPO        set "UO_SHARD_REPO=https://github.com/modernuo/ModernUO.git"
 REM  The ModernUO commit the dev shard is pinned to (fetch.bat checks it out).
-if not defined UO_SHARD_REF         set "UO_SHARD_REF=d4531cd94b739613155225c234900de9f47d2c88"
+if not defined UO_SHARD_REF         set "UO_SHARD_REF=4d9e2b6af2aaa9ff75472d1a12dbb47f38904457"
 if not defined UO_SHARD_SRC         set "UO_SHARD_SRC=%UO_ROOT%\tools\modernuo\src"
 if not defined UO_SHARD_DIST        set "UO_SHARD_DIST=%UO_SHARD_SRC%\Distribution"
 REM  DFI shard content (patches *-dfi-*): 1 = on (the dev shard's default), 0 = fetch.bat

@@ -388,6 +388,13 @@ namespace GUO.Renderer.Lights
         private float Visible(int sx, int sy, float lx, float ly, int z, float px, float py)
         {
             int limit = z + BlockClearance;
+            // The ray falls from the light's Z to the receiver's ground: a
+            // blocker shadows a point only when the ray passes below its top
+            // there, so a low fence or post casts a short shadow, not one to the
+            // light's radius (owner 2026-11-21: no long hard wedges).
+            int gx = (int)MathF.Floor(px), gy = (int)MathF.Floor(py);
+            float targetZ = Contains(gx, gy) ? _groundZ[Index(gx, gy)] : z;
+            float fall = Math.Min(0f, targetZ - z);
             int cx = (int)MathF.Floor(lx), cy = (int)MathF.Floor(ly);
             int ex = (int)MathF.Floor(px), ey = (int)MathF.Floor(py);
             float dx = px - lx, dy = py - ly;
@@ -404,7 +411,13 @@ namespace GUO.Renderer.Lights
                 {
                     int i = Index(cx, cy);
                     bool end = (cx == sx && cy == sy) || (cx == ex && cy == ey);
-                    if (!end && _blockTop[i] != NoBlock && _blockTop[i] > limit) return 0f;
+                    // A whole-tile blocker (a post, a pillar, a tree; walls are lines)
+                    // stands as a column in the tile's middle: a ray through the
+                    // tile's edge passes it. Square tile shadows of thin posts made
+                    // the long hard wedges across streets (owner 2026-11-21).
+                    if (!end && _blockTop[i] != NoBlock && _blockTop[i] > limit
+                        && SegmentDistance(cx + 0.5f, cy + 0.5f, lx, ly, px, py, out float ts) < BlockerColumnRadius
+                        && _blockTop[i] > limit + fall * ts) return 0f;
 
                     if (_hTop[i] != NoBlock && _hTop[i] > limit)
                     {
@@ -412,7 +425,7 @@ namespace GUO.Renderer.Lights
                         if ((ly - wy) * (py - wy) < 0f)
                         {
                             float cross = lx + (wy - ly) / dy * dx;
-                            if (cross >= cx && cross <= cx + 1) return 0f;
+                            if (cross >= cx && cross <= cx + 1 && _hTop[i] > limit + fall * ((wy - ly) / dy)) return 0f;
                         }
                     }
 
@@ -422,7 +435,7 @@ namespace GUO.Renderer.Lights
                         if ((lx - wx) * (px - wx) < 0f)
                         {
                             float cross = ly + (wx - lx) / dx * dy;
-                            if (cross >= cy && cross <= cy + 1) return 0f;
+                            if (cross >= cy && cross <= cy + 1 && _vTop[i] > limit + fall * ((wx - lx) / dx)) return 0f;
                         }
                     }
                 }
@@ -441,6 +454,18 @@ namespace GUO.Renderer.Lights
             }
 
             return 1f;
+        }
+
+        /// <summary>Radius in tiles of the column a whole-tile blocker stands as.</summary>
+        public const float BlockerColumnRadius = 0.35f;
+
+        private static float SegmentDistance(float cx, float cy, float ax, float ay, float bx, float by, out float t)
+        {
+            float dx = bx - ax, dy = by - ay;
+            float len = dx * dx + dy * dy;
+            t = len > 1e-6f ? Math.Clamp(((cx - ax) * dx + (cy - ay) * dy) / len, 0f, 1f) : 0f;
+            float ex = ax + t * dx - cx, ey = ay + t * dy - cy;
+            return MathF.Sqrt(ex * ex + ey * ey);
         }
 
         private ulong HashBlockers()

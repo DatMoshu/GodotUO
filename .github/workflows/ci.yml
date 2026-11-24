@@ -203,7 +203,7 @@ jobs:
       # keep their own fixtures and order; measured 400 s serial, 160 s on four.
       - name: Python tests, pooled
         run: |
-          python -m pip install --quiet pytest pytest-xdist jsonschema pillow pefile numpy cryptography
+          python -m pip install --quiet pytest pytest-xdist jsonschema pillow pefile numpy scipy cryptography
           python -m pytest -q -n auto --dist loadfile
 
       # Every committed scenario against the JSON Schemas (section 34).

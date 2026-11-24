@@ -361,24 +361,20 @@ namespace GUO.Game.GameObjects
                 charSitting
             );
 
-            if (!IsEmpty)
+            // Equipment sprites and item lights are submitted only in the body or combined pass.
+            if (IsEmpty)
             {
-                // draw order built from the layer algorithm (PaperdollOrder), keyed on
-                // the equipped item graphics; cloak is then repositioned by facing
-                // direction to match the in-world tables. Stack-allocated, no GC churn.
-                Span<Layer> layers = stackalloc Layer[PaperdollOrder.N];
-                int layerCount = PaperdollOrder.BuildInWorld(this, IsFemale || isGargoyle, layerDir, layers);
-
-                for (int i = 0; i < layerCount; i++)
+                _drawLayers = null;
+            }
+            else if (Pass != DrawPass.Shadow)
+            {
+                // PORT DEVIATION (GUO): the equipment draw order comes from a cached
+                // MobileDrawLayers in place of upstream's per-frame FindItemByLayer loop;
+                // same layers, same order, same first-duplicate-wins rule.
+                _drawLayers ??= new MobileDrawLayers();
+                foreach (Layer layer in _drawLayers.Read(this, IsFemale || isGargoyle, layerDir))
                 {
-                    Layer layer = layers[i];
-
-                    Item item = FindItemByLayer(layer);
-
-                    if (item == null)
-                    {
-                        continue;
-                    }
+                    Item item = _drawLayers[layer];
 
                     if (IsDead && (layer == Layer.Hair || layer == Layer.Beard))
                     {

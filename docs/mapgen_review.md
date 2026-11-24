@@ -42,6 +42,31 @@ when judging whether the tile transitions and scatter groups read well.
 
 ## Follow-up plan
 
+### Dragon compatibility sprints
+
+The [native compiler comparison](map-editor-comparison.html#dragon) and
+[independent fixture](../tools/mapgen/fixtures/dragon/README.md) establish the Mod 11
+#8a reference. Preserve GUO’s existing generation behavior while testing a distinct Dragon
+import mode. A count of parsed rules is insufficient for release.
+
+| Order | Work and dependency | Map and acceptance | Review |
+|---|---|---|---|
+| D1. Palette, heights and dispatch | Identify the selected version. Parse 1.03.62 group indirection or 1.05 combined rows and the indexed BMP. Resolve enabled Betweentrans group pairs to actual rule paths. Report dangling pairs, malformed numeric fields and unsupported tables before writing. | On the 32 × 24 fixture, accept trial.txt, preserve the +19 landmark and −5 region, then obtain identical cells after RGB recoloring. Repeat with the full-facet 1.03.62 reference and compare all 25,165,824 cells. | Review table provenance, version detection and base-cell output against the binary. |
+| D2. Ordered transitions | Depends on D1. Match exact neighbourhoods with the selected version’s order, duplicate handling and Z additions. Extend experiments to touching three groups, same-group rules, range endpoints and boundary cells. | Reverse duplicate rows and match all 22 small-map edges for #8a (last wins), and all 4,094 full-facet edges for 1.03.62 (first wins). A superset-only rule must miss. Fixed +3 must produce Z +10 only on the interior shore. Compare block payloads independently of headers. | Approve the native/GUO per-cell diff before connecting the mode to a coast painter. |
+| D3. Statics and randomness | Depends on D1–D2. Resolve Items and static-transition dispatch, grouped item offsets, chance, hue and region limits. Establish observed random draw behavior for each supported version. | Decode the nine placement records and compare complete tuples. Repeat random-pool runs; distinguish membership, frequency and exact replay. Repeat with two-item groups and alternate facet dimensions. | Review native SCP, frozen MUL and GUO output independently. Require explicit sizing when DragonSP emits a full-facet index. |
+| D4. Painter handoff | Depends on reviewed D1–D3. Use the existing World brush and MapGen result controls for indexed draft → preview → warnings → verified export → World. | Use a 128 × 64 inlet crossing block boundaries. Check two named swatches at size 11, undo after a cross-block coast stroke, then reopen with IDs, statics, signed Z and orientation intact. | Lead reviews a fresh install and the same map in both tools before advertising Dragon-compatible compilation. |
+
+### World and MapGen workflow sprints
+
+The [mapper comparison](map-editor-comparison.html) adds an ordered delivery sequence to the priorities below.
+
+| Sprint | Dependency and deliverable | Map and acceptance | Review point |
+|---|---|---|---|
+| 1. Named ground | Use the existing World brush and the decimal TileID from a user-selected Landscaper Terrain.xml. Keep the existing static picker and scatter recipe. | On a disposable facet overlay, paint off the block diagonal. Reopen, check ID and signed Z, undo and compare the original block. Reject an altitude table without losing the palette. | Review source provenance, the headless editor receipt and picker usability before integration. |
+| 2. Coast brushes | After sprint 1, bind source/destination terrain and eight directional bits to World stroke planning. Resolve CED+ edge types and unsupported chances before applying any conversion. | An asymmetric 24 × 16 inlet crosses three block columns. Verify each straight, inner and outer corner and the unchanged opposite shore. Two strokes and one undo must restore the exact preceding map. | Review a side-by-side at identical coordinates and an importer round trip with independently authored fixtures. |
+| 3. Painted draft | After coast semantics are reviewed, connect the paired-image pipeline to MapGen Setup. Save source fingerprints, settings and located warnings with the generated result. | A 128 × 64 island has a marked NW inlet and SE high point. Tune coast and scatter with the same seed. Reject a mismatched height image. Verify all three MUL digests and the two witness cells after Open in World. | Compare input PNGs, result manifest, reopened cells and interrupted export recovery. |
+| 4. Regional and shared edits | Use the reviewed stroke model and destination bounds for region edits. Define conflict and undo behavior with two private clients. | Two editors paint adjoining blocks and then the same cell. Reconnect both, compare IDs and Z, retry an interrupted save. Measure a full facet separately from the 256 × 256 trial. | Review conflict behavior, memory and wall time before exposing shared operation controls. |
+
 1. **Make validation actionable.** Preserve structured severity and cell or region locations in `run.json`. Add slope, water connectivity and road reachability overlays. Show missing optional data and the actual fallback before starting. Give the full report a stable location under MapGen data.
 2. **Make a setup portable.** Save a recipe with dimensions, data fingerprints and the selected transition table. Add rectangular sizes, explicit destination facet and origin, and a World bounds check. Use canonical paths when checking output against the client install, including reparse points. Test a nonzero origin on an alternate facet.
 3. **Give builders local control.** Expose paired height and terrain import through the existing paint library. Add separate intent masks for coast treatment, biomes and protected ground. Validate fixed corridor points and town gates before adding river and road waypoints. Keep procedural output reproducible from the recipe.

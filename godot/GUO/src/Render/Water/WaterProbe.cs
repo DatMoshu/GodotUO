@@ -83,9 +83,13 @@ public partial class WaterProbe : Node
             Require(left < 0.01f, $"the water must calm (still {left:F4})");
             Require(ripples.Texture != null && ripples.Texture.GetWidth() == WaterRipples.Size, "the ripple texture");
 
+            WakeChecks();
+            CreatureChecks();
+            RecentreChecks();
+
             int packs = PackStyles();
 
-            GD.Print($"[water] PASS: Classic default and persistence, unknown styles Classic, --water-style override, upstream effect replaced, choices, mode byte, ripples spread, follow and calm, {packs} Store pack styles installed, mounted and bound");
+            GD.Print($"[water] PASS: Classic default and persistence, unknown styles Classic, --water-style override, upstream effect replaced, choices, mode byte, ripples spread, follow and calm, boat wakes follow speed, {packs} Store pack styles installed, mounted and bound");
             return true;
         }
         catch (Exception ex)
@@ -98,6 +102,185 @@ public partial class WaterProbe : Node
             WaterRender.Override = savedOverride;
             WaterRender.ProbePackStyles = null;
         }
+    }
+
+    /// <summary>
+    /// Boat wakes: none at rest, a trough astern (and none ahead) under way, none
+    /// shortly after stopping, none where water may not be disturbed.
+    /// </summary>
+    private static void WakeChecks()
+    {
+        var hull = new GUO.Compat.Rectangle(-2, -6, 2, 6);
+        const float dt = 1f / 60f;
+        var field = new WaterRipples();
+        field.CentreOnForProbe(2000, 2000);
+        field.SetFrameForProbe(dt);
+        var boat = new WaterRipples.BoatState { X = 2000, Y = 2000, HY = -1f };
+        for (int i = 0; i < 120; i++) field.Wake(boat, hull, 2000, 2000, (_, _) => true);
+        Require(field.Stamps == 0, "a boat at rest leaves no wake");
+
+        // North at 3 cells a second.
+        float y = 2000;
+        for (int i = 0; i < 120; i++) { y -= 3f * dt; field.Wake(boat, hull, 2000, y, (_, _) => true); }
+        Require(field.Stamps > 0, "a boat under way leaves a wake");
+        float cy = y + 0f;
+        float astern = 0f;
+        for (int dy = 6; dy <= 8; dy++) astern = Math.Min(astern, field.HeightAt(2000, (int)MathF.Round(cy + dy)));
+        Require(astern < -0.01f, $"the trough is astern of the hull ({astern:F3})");
+        // An arm spreads sideways with distance astern: more disturbed 3 cells off the track 3 cells astern than ahead of the hull.
+        float arm = 0f;
+        for (int dx = -3; dx <= 3; dx++) arm = Math.Max(arm, Math.Abs(field.HeightAt(2000 + dx, (int)MathF.Round(cy + 9f))));
+        Require(arm > 0.01f, "the wake continues astern");
+        // The arms are crests with foam on them, and they open: 5 cells astern the foam is off the track, to both sides.
+        field.StepForProbe(1);
+        float port = 0f, starboard = 0f;
+        for (int dx = 1; dx <= 4; dx++)
+        {
+            port = Math.Max(port, field.FoamAt(2000 - dx, (int)MathF.Round(cy + 11f)));
+            starboard = Math.Max(starboard, field.FoamAt(2000 + dx, (int)MathF.Round(cy + 11f)));
+        }
+        Require(port > 0.05f && starboard > 0.05f, $"both arms carry foam astern ({port:F3}, {starboard:F3})");
+        Require(field.FoamAt(2000, (int)MathF.Round(cy - 12f)) == 0f, "no foam ahead of the bow");
+        // A faster hull leaves a longer trail: more marks alive at 3 cells a second than at 1.
+        var slow = new WaterRipples();
+        slow.CentreOnForProbe(2000, 2000);
+        slow.SetFrameForProbe(dt);
+        var slowBoat = new WaterRipples.BoatState { X = 2000, Y = 2000, HY = -1f };
+        float ys = 2000;
+        for (int i = 0; i < 600; i++) { ys -= 1f * dt; slow.Wake(slowBoat, hull, 2000, ys, (_, _) => true); if (i % 3 == 2) slow.StepForProbe(1); }
+        var fast = new WaterRipples();
+        fast.CentreOnForProbe(2000, 2000);
+        fast.SetFrameForProbe(dt);
+        var fastBoat = new WaterRipples.BoatState { X = 2000, Y = 2000, HY = -1f };
+        float yf = 2000;
+        for (int i = 0; i < 600; i++) { yf -= 3f * dt; fast.Wake(fastBoat, hull, 2000, yf, (_, _) => true); if (i % 3 == 2) fast.StepForProbe(1); }
+        Require(fast.MarkCount > slow.MarkCount * 1.3f, $"a faster hull leaves a longer trail ({slow.MarkCount} marks at 1 cell/s, {fast.MarkCount} at 3)");
+        Require(Math.Abs(field.HeightAt(2000, (int)MathF.Round(cy - 12f))) < 1e-4f, "nothing is disturbed far ahead of the bow");
+
+        DumpField(field, 2000, (int)MathF.Round(y), "under-way");
+        for (int i = 0; i < 30; i++) field.StepForProbe(1);
+        int whileMoving = field.Stamps;
+        for (int i = 0; i < 90; i++) field.Wake(boat, hull, 2000, y, (_, _) => true);
+        int afterStop = field.Stamps;
+        for (int i = 0; i < 120; i++) field.Wake(boat, hull, 2000, y, (_, _) => true);
+        Require(field.Stamps == afterStop && afterStop - whileMoving < 4 * 70, "the wake stops soon after the boat does");
+        field.StepForProbe(110); // 5.5 s of the field's own time: the longest rail lives 5
+        float rest = 0f;
+        for (int dx = -6; dx <= 6; dx++) for (int dy = -14; dy <= 14; dy++) rest = Math.Max(rest, Math.Abs(field.HeightAt(2000 + dx, (int)y + dy)));
+        Require(rest < 0.02f, $"the wake is gone 5.5 s after stopping (still {rest:F4})");
+        Require(field.MarkCount == 0 && field.PeakFoam == 0f, "no mark or foam is left 5.5 s after stopping");
+
+        var closed = new WaterRipples();
+        closed.CentreOnForProbe(2000, 2000);
+        closed.SetFrameForProbe(dt);
+        var other = new WaterRipples.BoatState { X = 2000, Y = 2000, HY = -1f };
+        float y2 = 2000;
+        for (int i = 0; i < 120; i++) { y2 -= 3f * dt; closed.Wake(other, hull, 2000, y2, (_, _) => false); }
+        Require(closed.Stamps == 0, "no wake is made on land or under a pier");
+    }
+
+    /// <summary>
+    /// Swimmers: a moving one makes small short-lived rings, one that stands still makes none, a
+    /// crowd does not build the surface up, and nothing is made where water may not be disturbed.
+    /// </summary>
+    // The wet map follows the window: after a re-centre nothing is clipped by a map of the old window.
+    private static void RecentreChecks()
+    {
+        Func<int, int, bool> open = (x, y) => x < 1010 || x >= 1020 && x < 1040 || x >= 1050; // land: 1010..1019, 1040..1049
+        var f = new WaterRipples();
+        f.CentreOnForProbe(1000, 1000);
+        f.SetWetForProbe(open);
+        f.Stamp(1005, 1000, 2f, 0.8f);
+        f.Stamp(1030, 1000, 2f, 0.8f);
+        f.StepForProbe(4);
+        f.CentreOnForProbe(1030, 1000); // window slides 30 cells; the wet map must slide with it
+        float water = Math.Abs(f.HeightAt(1030, 1000)) + Math.Abs(f.HeightAt(1028, 1000));
+        Require(water > 1e-3f, $"ripples kept on water right after the re-centre ({water:F4})");
+        f.StepForProbe(6); // before any sliced rebuild has run
+        float land = 0f, kept = 0f;
+        for (int x = 1010; x < 1020; x++) land = Math.Max(land, Math.Abs(f.HeightAt(x, 1000)));
+        for (int x = 1040; x < 1050; x++) land = Math.Max(land, Math.Abs(f.HeightAt(x, 1000)));
+        for (int x = 1026; x <= 1034; x++) kept = Math.Max(kept, Math.Abs(f.HeightAt(x, 1000)));
+        Require(land < 1e-6f, $"no ripple height on land after a re-centre ({land:F5})");
+        Require(kept > 1e-3f, $"ripples still on water after a re-centre and steps ({kept:F5})");
+        Require(f.DryTexels == 0, $"no dry texel carries height ({f.DryTexels})");
+        GD.Print($"[water probe] recentre: land {land:F5}, kept {kept:F4}, dry texels {f.DryTexels}");
+    }
+
+    private static void CreatureChecks()
+    {
+        var f = new WaterRipples();
+        f.CentreOnForProbe(2000, 2000);
+        long t = 1000;
+        // Still: never asked, nothing made, and the field stays flat.
+        f.StepForProbe(40);
+        Require(f.SwimStamps == 0 && f.PeakHeight < 1e-4f, "a swimmer that stands still makes nothing");
+        // Moving for 2 s at 60 fps: a ring about every 350 ms, no more.
+        for (int i = 0; i < 120; i++) { t += 16; f.Swimmer(7, 2000 + i * 0.02f, 2000, t, true); if (i % 3 == 0) f.StepForProbe(1); }
+        Require(f.SwimStamps is >= 4 and <= 7, $"a moving swimmer disturbs the water every ~350 ms ({f.SwimStamps} in 2 s)");
+        float moving = f.PeakHeight;
+        Require(moving is > 0.02f and < 0.3f, $"a swimmer's trail is visible but small (peak {moving:F3})");
+        // Then still: five stacked rings die away (the sea is flat to the eye within 8 s) ...
+        f.StepForProbe(40);
+        Require(f.PeakHeight < 0.01f && f.MarkCount == 0, $"a swimmer's trail is gone 2 s after it stops (peak {f.PeakHeight:F4}, {f.MarkCount} marks)");
+        // ... and the one ring of a single swim step within 3 s.
+        var one = new WaterRipples();
+        one.CentreOnForProbe(2000, 2000);
+        one.Swimmer(3, 2000, 2000, 100, true);
+        one.StepForProbe(2);
+        float ring = one.PeakHeight;
+        one.StepForProbe(30);
+        Require(ring > 0.005f && one.PeakHeight < 0.002f, $"one swim step's dab lasts about a second (peak {ring:F3} -> {one.PeakHeight:F4})");
+        // Nothing reaches out: three cells from a swimmer the water was never touched.
+        var near = new WaterRipples();
+        near.CentreOnForProbe(2000, 2000);
+        float reach = 0f;
+        long tn = 100;
+        for (int i = 0; i < 180; i++)
+        {
+            tn += 16; near.Swimmer(5, 2000 + MathF.Sin(i * 0.05f) * 0.6f, 2000 + MathF.Cos(i * 0.05f) * 0.6f, tn, true);
+            if (i % 3 == 0) { near.StepForProbe(1); for (int d = -1; d <= 1; d++) reach = Math.Max(reach, Math.Max(Math.Abs(near.HeightAt(2003, 2000 + d)), Math.Abs(near.HeightAt(2000 + d, 2003)))); }
+        }
+        Require(reach < 1e-4f, $"a swimmer's trail stays within three cells ({reach:F5})");
+        // A crowd: twelve swimmers on a few cells for 6 s never build the surface past one big ring.
+        var crowd = new WaterRipples();
+        crowd.CentreOnForProbe(2000, 2000);
+        float worst = 0f;
+        t = 5000;
+        for (int i = 0; i < 360; i++)
+        {
+            t += 16;
+            for (uint s = 0; s < 12; s++) crowd.Swimmer(100 + s, 2000 + s % 4 * 0.5f, 2000 + s / 4 * 0.5f, t, true);
+            if (i % 3 == 0) { crowd.StepForProbe(1); worst = Math.Max(worst, crowd.PeakHeight); }
+        }
+        Require(worst < 0.3f, $"a crowd of swimmers does not build up (peak {worst:F3})");
+        float far = 0f;
+        for (int dx = 5; dx <= 25; dx++) far = Math.Max(far, Math.Abs(crowd.HeightAt(2000 + dx, 2000)));
+        Require(far < 1e-4f, $"a crowd's trails stay near it (5 cells off {far:F5})");
+        // Where water may not be disturbed (beach, pier): nothing.
+        var shore = new WaterRipples();
+        shore.CentreOnForProbe(2000, 2000);
+        for (int i = 0; i < 120; i++) shore.Swimmer(9, 2000, 2000, 9000 + i * 16, false);
+        Require(shore.SwimStamps == 0 && shore.Stamps == 0, "no swimmer ring on a beach or under a pier");
+        GD.Print($"[water probe] creatures: moving peak {moving:F3}, crowd peak {worst:F3} far {far:F4}, stamps {f.SwimStamps}");
+    }
+
+    // GUO_WAKE_DUMP=<dir>: write the height field around the hull as a PNG (grey = flat), for a look at the wake's shape without the shader.
+    private static void DumpField(WaterRipples field, int cx, int cy, string name)
+    {
+        string dir = System.Environment.GetEnvironmentVariable("GUO_WAKE_DUMP");
+        if (string.IsNullOrEmpty(dir)) return;
+        System.IO.Directory.CreateDirectory(dir);
+        const int W = 24, H = 36, S = 12;
+        var img = Image.CreateEmpty(W * S, H * S, false, Image.Format.Rgb8);
+        for (int py = 0; py < H * S; py++)
+            for (int px = 0; px < W * S; px++)
+            {
+                float h = field.HeightAt(cx - W / 2 + px / S, cy - H / 2 + py / S);
+                float v = Math.Clamp(0.5f + h * 1.6f, 0f, 1f);
+                img.SetPixel(px, py, new Color(v, v, v));
+            }
+        img.SavePng(System.IO.Path.Combine(dir, name + ".png"));
     }
 
     /// <summary>

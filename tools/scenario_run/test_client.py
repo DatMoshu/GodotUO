@@ -11,6 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import json  # noqa: E402
 import capture  # noqa: E402
 import events as ev  # noqa: E402
 import uiquery  # noqa: E402
@@ -90,7 +91,7 @@ def test_launch_ui_fill_click_chat_key(tmp_path):
     inputs = [a for t, a in client.calls if t == "guo_input"]
     assert inputs[0] == {"kind": "motion", "x": 200, "y": 210}                       # the TextBox centre
     assert {"kind": "text", "text": "gm1"} in inputs and {"kind": "text", "text": "[go 1 2"} in inputs
-    assert [a["key"] for a in inputs if a["kind"] == "key"][:4] == ["BackSpace", "BackSpace", "BackSpace", "BackSpace"]
+    assert [a["key"] for a in inputs if a["kind"] == "key"][:6] == ["End", "End", "BackSpace", "BackSpace", "BackSpace", "BackSpace"]   # caret to the end, then clear
     assert {"kind": "key", "key": "Escape", "pressed": True, "shift": True} in inputs
     assert "gm1" not in log.path.read_text()          # the log holds the name, never the secret or the filled text
 
@@ -368,3 +369,174 @@ def test_client_session_start_passes_the_shard_address(monkeypatch, tmp_path):
     (tmp_path / "run").mkdir()
     cs.start()
     assert seen["env"]["UO_SHARD_HOST"] == "192.0.2.5" and seen["env"]["UO_SHARD_PORT"] == "2593"
+
+
+# --- held keys, drags and "the player moved" ---------------------------------------------------------------------
+
+def _state(x, y):
+    return {"frame": 7, "scene": "GameScene", "width": 1280, "height": 720, "player": {"x": x, "y": y, "z": 0, "map": 0}}
+
+
+def test_hold_presses_waits_and_releases(tmp_path):
+    r, client, _, _, _ = make_client(tmp_path, [step("go", "launch"), step("walk", "ui.hold", key="Right", seconds=2, shift=True)])
+    start = r._clock()
+    assert r.run()["ok"]
+    keys = [a for t, a in client.calls if t == "guo_input" and a["kind"] == "key"]
+    assert keys == [{"kind": "key", "key": "Right", "pressed": True, "shift": True},
+                    {"kind": "key", "key": "Right", "pressed": False, "shift": True}]
+    assert r._clock() - start >= 2
+
+
+def test_drag_goes_from_one_control_to_the_other_and_lets_go(tmp_path):
+    steps = [step("go", "launch"), step("move", "ui.drag", **{"from": {"type": "TextBox"}, "to": "Connect", "steps": 4})]
+    r, client, _, _, _ = make_client(tmp_path, steps)
+    assert r.run()["ok"]
+    inputs = [a for t, a in client.calls if t == "guo_input"]
+    assert inputs[0] == {"kind": "motion", "x": 200, "y": 210}
+    assert inputs[1] == {"kind": "button", "x": 200, "y": 210, "button": "Left", "pressed": True}
+    assert inputs[-1] == {"kind": "button", "x": 330, "y": 410, "button": "Left", "pressed": False}
+    assert inputs[-2] == {"kind": "motion", "x": 330, "y": 410} and len(inputs) == 7
+
+
+def test_moved_compares_with_where_the_step_began(tmp_path):
+    steps = [step("go", "launch"), step("walk", "ui.hold", key="Right", seconds=1, expect={"world.moved": {"at_least": 3}, "within_s": 5})]
+    r, client, _, log, _ = make_client(tmp_path, steps)
+    plain = client.call
+
+    def call(tool, arguments=None, timeout=45.0):           # the player stands at 100 until the key comes up, then is at 104
+        if tool == "guo_state":
+            client.calls.append((tool, arguments))
+            released = any(t == "guo_input" and a.get("pressed") is False for t, a in client.calls)
+            return False, json.dumps(_state(104 if released else 100, 100))
+        return plain(tool, arguments, timeout)
+
+    client.call = call
+    assert r.run()["ok"]
+    seen = events_of(log, "expect")[-1]["detail"]["observed"]["world.moved"]
+    assert seen["tiles"] == 4 and seen["from"]["x"] == 100
+
+
+def test_moved_fails_when_the_player_stands_still(tmp_path):
+    steps = [step("go", "launch"), step("walk", "ui.hold", key="Right", seconds=1, expect={"world.moved": {"at_least": 1}, "within_s": 2})]
+    r, _, _, _, _ = make_client(tmp_path, steps, replies={"guo_state": _state(100, 100)})
+    out = r.run()
+    assert not out["ok"] and out["steps"][-1]["id"] == "walk"
+
+
+# --- an exported client in place of play.bat ---------------------------------------------------------------------
+
+def _exe_session(tmp_path, exe=None):
+    import session as sess
+    cfg = type("Cfg", (), {"cache_dir": tmp_path / "cache", "root": tmp_path})()
+    cs = sess.ClientSession(cfg, tmp_path / "run", False)
+    cs.client_exe = exe
+    return sess, cs
+
+
+def test_without_a_client_exe_the_launcher_is_started_from_the_checkout(tmp_path):
+    _, cs = _exe_session(tmp_path)
+    cmd, cwd = cs.command(["--no-focus", "--scratch-profile"], ["--resolution", "1280x720"])
+    assert cmd == [str(tmp_path / "launchers" / "game" / "play.bat"), "--no-focus", "--scratch-profile"] and cwd == str(tmp_path)
+
+
+def test_a_client_exe_gets_engine_arguments_then_the_same_client_arguments(tmp_path):
+    exe = tmp_path / "pkg" / "GUO.exe"
+    _, cs = _exe_session(tmp_path, exe)
+    cmd, cwd = cs.command(["--no-focus", "--silent", "--scratch-profile"], ["--write-movie C:/out/run.avi --fixed-fps 60", "--resolution", "1280x720"])
+    assert cmd == [str(exe), "--write-movie", "C:/out/run.avi", "--fixed-fps", "60", "--resolution", "1280x720", "--",
+                   "--no-focus", "--silent", "--scratch-profile"]
+    assert cwd == str(exe.parent)
+
+
+def test_a_client_exe_is_what_start_runs_with_the_mcp_port_in_its_environment(monkeypatch, tmp_path):
+    exe = tmp_path / "pkg" / "GUO.exe"
+    sess, cs = _exe_session(tmp_path, exe)
+    cs.extra_args = ["--scratch-profile"]
+    seen = {}
+
+    def fake_popen(cmd, **kw):
+        seen.update(cmd=cmd, cwd=kw["cwd"], env=kw["env"])
+        return object()
+
+    monkeypatch.setattr(sess.subprocess, "Popen", fake_popen)
+    (tmp_path / "run").mkdir()
+    cs.start()
+    assert seen["cmd"][0] == str(exe) and seen["cmd"][-1] == "--scratch-profile" and "--" in seen["cmd"]
+    assert seen["cwd"] == str(exe.parent) and seen["env"]["GUO_MCP_PORT"] == str(cs.port)
+
+
+def test_client_exe_comes_from_the_option_then_the_setting_and_must_be_a_file(monkeypatch, tmp_path):
+    import run as runmod
+    import scenario as scmod
+    exe = tmp_path / "GUO.exe"
+    exe.write_bytes(b"")
+    monkeypatch.delenv("GUO_CLIENT_EXE", raising=False)
+    assert runmod.resolve_client_exe(None, tmp_path) is None
+    assert runmod.resolve_client_exe(exe, tmp_path) == exe.resolve()
+    monkeypatch.setenv("GUO_CLIENT_EXE", str(exe))
+    assert runmod.resolve_client_exe(None, tmp_path) == exe.resolve()
+    try:
+        runmod.resolve_client_exe(tmp_path / "missing.exe", tmp_path)
+    except scmod.ScenarioError as ex:
+        assert "GUO_CLIENT_EXE" in str(ex) and "missing.exe" in str(ex)
+    else:
+        raise AssertionError("a missing client was accepted")
+
+
+# --- a client home kept between runs -----------------------------------------------------------------------------
+
+def test_a_kept_home_is_made_once_reused_and_never_names_another_profile_folder(monkeypatch, tmp_path):
+    import session as sess
+    usual = tmp_path / "usual"
+    (usual / "cache").mkdir(parents=True)
+    (usual / "settings.json").write_text(json.dumps({"ultimaonlinedirectory": "X", "profilespath": "C:/real/Profiles"}), encoding="utf-8")
+    cfg = type("Cfg", (), {"cache_dir": usual / "cache", "root": tmp_path})()
+    home = tmp_path / "home"
+    seen = []
+    monkeypatch.setattr(sess.subprocess, "Popen", lambda cmd, **kw: seen.append((cmd, kw["env"])) or object())
+
+    def launch(settings):
+        cs = sess.ClientSession(cfg, tmp_path / "run", False)
+        cs.home, cs.extra_args, cs.extra_settings = home, ["--scratch-profile", "--x"], settings
+        (tmp_path / "run").mkdir(exist_ok=True)
+        cs.start()
+        cs.proc = None          # nothing was really started
+        cs.stop()
+
+    launch({"autologin": False})
+    first = json.loads((home / "settings.json").read_text(encoding="utf-8"))
+    assert first == {"ultimaonlinedirectory": "X", "autologin": False}            # the usual settings, minus where profiles live
+    assert seen[0][1]["UO_CACHE_DIR"] == str(home / "cache") and "--scratch-profile" not in seen[0][0] and "--x" in seen[0][0]
+    (home / "settings.json").write_text(json.dumps({**first, "saved_by_client": 1}), encoding="utf-8")
+    (usual / "settings.json").write_text("{}", encoding="utf-8")
+    launch({})
+    assert json.loads((home / "settings.json").read_text(encoding="utf-8"))["saved_by_client"] == 1   # reused, not rebuilt
+    assert home.is_dir() and (home / sess.HOME_MARK).is_file()                    # stop() left it
+
+
+def test_home_must_be_new_empty_or_made_by_an_earlier_run(tmp_path):
+    import session as sess
+    assert sess.check_home(tmp_path / "new") == (tmp_path / "new").resolve()
+    real = tmp_path / "real"
+    real.mkdir()
+    (real / "settings.json").write_text("{}", encoding="utf-8")
+    try:
+        sess.check_home(real)
+    except ValueError as ex:
+        assert "--home" in str(ex)
+    else:
+        raise AssertionError("somebody's home was accepted")
+    (real / sess.HOME_MARK).touch()
+    assert sess.check_home(real) == real.resolve()
+
+
+def test_selector_names_a_classic_button_by_gump_and_id_whatever_the_gump_order():
+    paperdoll = [{"system": "classic", "type": "Button", "gump": "PaperDollGump", "buttonId": i, "x": 285, "y": 144 + 27 * i,
+                  "width": 64, "height": 21} for i in range(8)]
+    options = [{"system": "classic", "type": "Button", "gump": "OptionsGump", "buttonId": i, "x": 1834 + 95 * i, "y": 1242,
+                "width": 63, "height": 23} for i in (1, 2, 3, 4)]
+    want = {"type": "Button", "gump": "OptionsGump", "button_id": 4}
+    for controls in (paperdoll + options, options + paperdoll):
+        hit = uiquery.find({"controls": controls}, want)
+        assert hit["gump"] == "OptionsGump" and hit["buttonId"] == 4
+    assert uiquery.find({"controls": paperdoll}, want) is None

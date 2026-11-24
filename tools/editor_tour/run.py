@@ -176,6 +176,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--no-live", action="store_true", help="do not start the private shard; show the Shard dock offline")
     ap.add_argument("--no-build", action="store_true")
+    ap.add_argument("--data-stage", help="a staged data set folder for the editor to read (the watershallows segment needs a seabed stage)")
     ap.add_argument("--size", default="3840x2160", help="window size, default 3840x2160")
     ap.add_argument("--scale", type=float, default=1.25, help="editor display scale for the run, default 1.25")
     ap.add_argument("--segments", help="comma separated segment ids to run (default all)")
@@ -206,6 +207,8 @@ def main() -> int:
            "--guo-editor-tour-size", args.size]
     if args.segments:
         cmd += ["--guo-editor-tour-segments", args.segments]
+    if args.data_stage:
+        cmd += ["--guo-editor-data-stage", args.data_stage]
     env = scratch_settings(cfg.build / "editor_tour" / "appdata", args.scale)
     if started_shard:
         cmd += ["--guo-editor-tour-live-port", str(BRIDGE)]

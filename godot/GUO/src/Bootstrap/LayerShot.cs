@@ -29,6 +29,17 @@ internal static class LayerShot
     /// it. Proves the capture mapping where screenshots exist.</summary>
     public static string CaptureRect { get; set; } = "";
 
+    /// <summary>--layer-light: photograph lighting speed mode off then on at a client-side night level (plus its G-buffer view), then while walking.</summary>
+    public static bool Light { get; set; }
+    /// <summary>
+    /// --layer-openings: stage three identical wall bays at the arrival point, centred
+    /// on an arrow slit, a true window and a solid piece, then photograph a carried
+    /// torch behind and in front of each, slit fix off/on (LightOpenings).
+    /// </summary>
+    public static bool Openings { get; set; }
+    /// <summary>--layer-water: photograph realtime water with shallow shores off, then on.</summary>
+    public static bool Water { get; set; }
+
     public static async System.Threading.Tasks.Task Run(Node host, string dir)
     {
         // Started as soon as Main is ready, before the client has booted.
@@ -143,7 +154,172 @@ internal static class LayerShot
             await InputProbe.Wait(host, 30);
         }
 
+        if (Light)
+        {
+            await LightSequence(host, dir, world);
+        }
+        if (Openings)
+        {
+            await OpeningsSequence(host, dir, world);
+        }
+        if (Water)
+        {
+            string was = GUO.Renderer.Water.WaterRender.Override;
+            int? shallowWas = GUO.Renderer.Water.WaterRender.ShallowOverride;
+            try
+            {
+                GUO.Renderer.Water.WaterRender.Override = "uo";
+                foreach ((string name, int strength) in new[] { ("water_before", 0), ("water_after", 100) })
+                {
+                    GUO.Renderer.Water.WaterRender.ShallowOverride = strength;
+                    await InputProbe.Wait(host, 90);
+                    await host.ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
+                    string path = dir.PathJoin(name + ".png");
+                    host.GetViewport().GetTexture().GetImage().SavePng(path);
+                    GD.Print($"[GUO] layer water -> {ProjectSettings.GlobalizePath(path)}");
+                }
+            }
+            finally
+            {
+                GUO.Renderer.Water.WaterRender.Override = was;
+                GUO.Renderer.Water.WaterRender.ShallowOverride = shallowWas;
+            }
+        }
+
         Passed = true;
+    }
+
+    private static async System.Threading.Tasks.Task LightSequence(Node host, string dir, Game.World world)
+    {
+        var profile = GUO.Configuration.ProfileManager.CurrentProfile;
+        int lo = world.Light.Overall, lr = world.Light.RealOverall; bool mode = profile.LightingSpeedMode;
+        async System.Threading.Tasks.Task Shot(string name)
+        {
+            await host.ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
+            string path = dir.PathJoin(name + ".png");
+            host.GetViewport().GetTexture().GetImage().SavePng(path);
+            GD.Print($"[GUO] layer light -> {ProjectSettings.GlobalizePath(path)}");
+        }
+        try
+        {
+            world.Light.Overall = world.Light.RealOverall = 26;
+            profile.LightingSpeedMode = false; await InputProbe.Wait(host, 30); await Shot("light_off");
+            profile.LightingSpeedMode = true; await InputProbe.Wait(host, 30); await Shot("light_on");
+            { bool sunWas = profile.SpeedModeSunShadows; profile.SpeedModeSunShadows = false; await InputProbe.Wait(host, 30); await Shot("light_on_nosun"); profile.SpeedModeSunShadows = sunWas; int lampWas = profile.SpeedModeLampShadows; profile.SpeedModeLampShadows = 0; await InputProbe.Wait(host, 30); await Shot("light_on_nolampshadow"); profile.SpeedModeLampShadows = lampWas; Renderer.SpeedMode.SpeedModeDebug.GBuffer = true; await InputProbe.Wait(host, 10); await Shot("light_gbuffer"); Renderer.SpeedMode.SpeedModeDebug.GBuffer = false; await InputProbe.Wait(host, 10); }
+            var scene = Client.Game.GetScene<Game.Scenes.GameScene>();
+            GD.Print($"[GUO] layer light: offers={scene?.SpeedLightOfferCount ?? -1}");
+            int n = 0;
+            for (int d = 0; d < 4; d++)
+            {
+                await InputProbe.Pull(host, new Vector2(1, 0), 20);
+                await Shot($"light_walk_{n++:00}");
+                await InputProbe.Wait(host, 10);
+                await Shot($"light_walk_{n++:00}");
+            }
+            GD.Print($"[GUO] layer light: offers after walking={scene?.SpeedLightOfferCount ?? -1}");
+        }
+        finally
+        {
+            world.Light.Overall = lo; world.Light.RealOverall = lr; profile.LightingSpeedMode = mode;
+        }
+    }
+
+    // Fixture pieces, cut-stone set: south-facing wall, arrow slit, window.
+    private const ushort OpeningWall = 0x0058, OpeningSlit = 0x005C, OpeningWindow = 0x005E;
+    private const ushort OpeningFloor = 0x051A;
+
+    private static async System.Threading.Tasks.Task OpeningsSequence(Node host, string dir, Game.World world)
+    {
+        var profile = GUO.Configuration.ProfileManager.CurrentProfile;
+        int x0 = world.Player.X, y0 = world.Player.Y, floorZ = world.Player.Z;
+        int lo = world.Light.Overall, lr = world.Light.RealOverall;
+        bool mode = profile.LightingSpeedMode; int lampWas = profile.SpeedModeLampShadows;
+        (string Name, ushort Centre, int X, int Y)[] bays =
+        {
+            ("slit", OpeningSlit, x0 - 9, y0), ("window", OpeningWindow, x0 + 5, y0 - 1), ("solid", OpeningWall, x0 - 9, y0 + 28),
+        };
+        async System.Threading.Tasks.Task Shot(string name)
+        {
+            await host.ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
+            string path = dir.PathJoin(name + ".png");
+            host.GetViewport().GetTexture().GetImage().SavePng(path);
+            GD.Print($"[GUO] layer openings -> {ProjectSettings.GlobalizePath(path)} at {world.Player.X},{world.Player.Y},{world.Player.Z}");
+        }
+        async System.Threading.Tasks.Task Go(int x, int y)
+        {
+            await InputProbe.Say(host, $"[go {x} {y} {floorZ}");
+            for (int i = 0; i < 20 && (world.Player.X != x || world.Player.Y != y); i++) await InputProbe.Wait(host, 15);
+            await InputProbe.Wait(host, 60);
+        }
+        try
+        {
+            // Each bay is staged afresh after arriving at it: the earlier run found
+            // items staged from afar gone by the time the camera arrived.
+            async System.Threading.Tasks.Task Stage(string name, ushort centre, int bx, int by)
+            {
+                await InputProbe.Say(host, $"[TileXYZ {bx - 5} {by - 4} 11 11 {floorZ} Static {OpeningFloor}");
+                await InputProbe.Wait(host, 40);
+                for (int dx = -2; dx <= 2; dx++)
+                {
+                    await InputProbe.Say(host, $"[TileXYZ {bx + dx} {by} 1 1 {floorZ} Static {(dx == 0 ? centre : OpeningWall)}");
+                    await InputProbe.Wait(host, 20);
+                }
+                GD.Print($"[GUO] layer openings: bay {name} centre 0x{centre:X4} at {bx},{by},{floorZ}");
+            }
+
+            // Carry a lit torch: igniting one in the pack equips it (ModernUO BaseEquipableLight).
+            await InputProbe.Say(host, "[addtopack Torch");
+            for (int i = 0; i < 12 && !world.TargetManager.IsTargeting; i++) await InputProbe.Wait(host, 15);
+            if (world.TargetManager.IsTargeting) world.TargetManager.Target(world.Player.Serial);
+            await InputProbe.Wait(host, 60);
+            Game.GameObjects.Item torch = null;
+            var bag = world.Player.FindItemByLayer(Game.Data.Layer.Backpack);
+            for (var i = bag?.Items; i != null && torch == null; i = i.Next)
+                if (i is Game.GameObjects.Item it && it.Graphic == 0x0F6B) torch = it;
+            if (torch != null) { Game.GameActions.DoubleClick(world, torch.Serial); await InputProbe.Wait(host, 60); }
+            var held = world.Player.FindItemByLayer(Game.Data.Layer.TwoHanded) ?? world.Player.FindItemByLayer(Game.Data.Layer.OneHanded);
+            GD.Print($"[GUO] layer openings: torch {(torch == null ? "missing" : $"0x{torch.Serial:X}")} held 0x{held?.Graphic ?? 0:X4}");
+
+            world.Light.Overall = world.Light.RealOverall = 26;
+            foreach ((string side, int dy) in new[] { ("behind", -1), ("front", 2) })
+            {
+                foreach (var bay in bays)
+                {
+                    await Go(bay.X, bay.Y + dy);
+                    await Stage(bay.Name, bay.Centre, bay.X, bay.Y);
+                    world.Light.Overall = world.Light.RealOverall = 26;
+                    string n = $"{bay.Name}_{side}";
+                    profile.LightingSpeedMode = false; await InputProbe.Wait(host, 30); await Shot(n + "_classic");
+                    // Classic-off parity: the slit rule must not reach the classic lights.
+                    GUO.Renderer.Lights.LightOpenings.ProbeSlitsTransmit = true;
+                    await InputProbe.Wait(host, 30); await Shot(n + "_classic_slitsold");
+                    GUO.Renderer.Lights.LightOpenings.ProbeSlitsTransmit = false;
+                    profile.LightingSpeedMode = true;
+                    GUO.Renderer.Lights.LightOpenings.ProbeSlitsTransmit = true;
+                    await InputProbe.Wait(host, 30); await Shot(n + "_before");
+                    GUO.Renderer.Lights.LightOpenings.ProbeSlitsTransmit = false;
+                    await InputProbe.Wait(host, 30); await Shot(n + "_after");
+                    profile.SpeedModeLampShadows = 0; await InputProbe.Wait(host, 30); await Shot(n + "_after_nolampshadow");
+                    profile.SpeedModeLampShadows = lampWas;
+                    Renderer.SpeedMode.SpeedModeDebug.GBuffer = true; await InputProbe.Wait(host, 10); await Shot(n + "_gbuffer");
+                    Renderer.SpeedMode.SpeedModeDebug.GBuffer = false; await InputProbe.Wait(host, 10);
+                }
+            }
+            // Walk the torch past the slit bay, outside to inside, to see it move through reach.
+            await Go(bays[0].X - 3, y0 - 1);
+            for (int step = 0; step < 6; step++)
+            {
+                await InputProbe.Pull(host, new Vector2(1, 0), 20);
+                await Shot($"slit_walk_{step:00}");
+            }
+        }
+        finally
+        {
+            GUO.Renderer.Lights.LightOpenings.ProbeSlitsTransmit = false;
+            Renderer.SpeedMode.SpeedModeDebug.GBuffer = false;
+            world.Light.Overall = lo; world.Light.RealOverall = lr;
+            profile.LightingSpeedMode = mode; profile.SpeedModeLampShadows = lampWas;
+        }
     }
 
     private static void CaptureArea(Node host, string dir)

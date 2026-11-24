@@ -42,6 +42,17 @@ values are never printed or logged. The run's manifest records the target as `sh
 variable whose name contains `password` is environment only the same way: `shard.admin_add_account`'s `$new_password` comes from
 `GUO_SCENARIO_NEW_PASSWORD`, and `--var new_password=` warns.
 
+`--client-exe PATH` (or the `GUO_CLIENT_EXE` setting) runs a client scenario on an **exported client** instead of
+`launchers/game/play.bat` and the project: the executable is started from its own folder with the engine's arguments,
+`--`, then the same client arguments a play.bat run gets, and the same environment (MCP port and token, shard address,
+the run's settings home). A path that is not a file stops the run before launch (exit 2). The manifest's `build` and
+`commit` still describe the checkout, so say which package was run when you report it.
+
+`--home DIR` keeps the client's settings and profile in `DIR` between runs, for checks of what survives a restart. The
+folder must be new, empty or one an earlier run made (it is marked); its `settings.json` starts as a copy of the usual
+one without `profilespath`, so profiles land in `DIR` and never in the player's own. A launch step's `--scratch-profile`
+is dropped for such a run, and the runner does not delete the folder: whoever passed it removes it.
+
 `--server NAME` runs a client scenario against a server profile of the per-user workspace (`profiles/servers.json`,
 found by `Id` or `Name`): its `Host` and `Port` are the address, the login comes from `GUO_SCENARIO_ACCOUNT` /
 `GUO_SCENARIO_PASSWORD` as for `--shard`, and the manifest records `server:<profile id>` as `shard`. The server lab
@@ -90,6 +101,8 @@ On main today (step 2 and step 3 kinds):
 | `ui.click` | Click a control (client) | `control` (selector), `button`, `clicks`, `within_s` (how long to wait for the control, default 5) | ui.exists, ui.text, etc. | `guo_ui` to find it, `guo_input` to click its centre |
 | `ui.fill` | Click a field, then type into it (client) | `control`, `text`, `clear` (BackSpace presses first) | ui.* on something the typing changes | The typed text is never logged or read back (the game omits editable values) |
 | `ui.key` | Press and release a key (client) | `key` (Godot name: Enter, Escape, F1), `shift`, `ctrl`, `alt` | ui state change | `guo_input` |
+| `ui.hold` | Hold a key down for a while (client); an arrow key walks | `key`, `seconds`, `shift`, `ctrl`, `alt` | `world.moved` | `guo_input` |
+| `ui.drag` | Press on one control, release on another (client) | `from`, `to`, `button`, `steps` | ui state change | `guo_input` |
 | `chat` | Say a line in game (client) | `text` (a `[command` works) | log or world state | Enter, text, Enter |
 | `renderdump` | Dump what the client drew (client) | `name` | `render_dump/NAME/guo.json` exists | Starts the client with `GUO_RENDER_DUMP_DIR` set to the run's `render_dump/`; says `renderdump NAME`; the event carries bytes and object count |
 | `render_diff` | Compare that dump with ClassicUO's | `name` | `render_diff: {max_drawn_diff}` | Reference is `build/render_dump/NAME/cuo.json`, or `GUO_RENDER_REF_DIR/NAME/cuo.json` (take it with `launchers\dev\side_by_side.bat --cuo-only --at X Y`, which leaves ClassicUO standing there so the scenario's own `renderdump` dumps both at once; nothing is typed into ClassicUO); writes `diff.md` in the run folder; fails on map, field or drawn mismatches |
@@ -108,7 +121,7 @@ Not yet (a scenario that uses one fails at the step today):
 ### Controls
 
 A `control` is a string (matches a control whose type, name or text equals it: `"Connect"`) or an object with any of
-`type`, `name`, `text`, `contains` (substring of the text), `system` (`classic` or `godot`) and `index` (which match,
+`type`, `name`, `text`, `contains` (substring of the text), `system` (`classic` or `godot`), `gump` (top-level gump type), `button_id` (a classic button's ID) and `index` (which match,
 0 based). It is matched against the `guo_ui` snapshot, so `ui.click` finds the control by what it is, not by pixels.
 
 ### Expectations
@@ -116,6 +129,7 @@ A `control` is a string (matches a control whose type, name or text equals it: `
 An `expect` block is polled until every condition holds or `within_s` runs out (the step fails then, and the event
 log keeps what was observed). Conditions: `ui.exists` (a control), `ui.absent`, `ui.text` (`{"control", "equals" | "contains"}`,
 labels and buttons only), `ui.count` (`{"control", "equals" | "at_least"}`), `world.position` (`{"x","y","z"?,"map"?,"tolerance"}`,
+`world.moved` (`{"at_least"}`: tiles from where the step began),
 from `guo_state`), `scene` (the client's scene class, e.g. `LoginScene`), `log.contains` (the program's log), plus the
 editor's `result`, `editor.state` and `file.exists`.
 

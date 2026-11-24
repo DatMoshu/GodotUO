@@ -1,0 +1,330 @@
+{
+  "id": "client.newplayer.create",
+  "title": "A new account logs in, creates its first character, enters the world, opens the backpack, walks, speaks and logs out",
+  "surface": "client",
+  "requires": {
+    "shard": "dev",
+    "account": "$account",
+    "build": "debug"
+  },
+  "timeouts": {
+    "step_s": 60,
+    "run_s": 480
+  },
+  "steps": [
+    {
+      "id": "launch",
+      "do": {
+        "kind": "launch",
+        "args": [
+          "--scratch-profile"
+        ],
+        "settings": {
+          "autologin": false
+        }
+      },
+      "say": "Start GUO.",
+      "timeout_s": 240,
+      "expect": {
+        "scene": "LoginScene",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "login_screen",
+      "do": {
+        "kind": "wait",
+        "seconds": 2
+      },
+      "say": "The login screen is up.",
+      "shot": true
+    },
+    {
+      "id": "type_account",
+      "do": {
+        "kind": "ui.fill",
+        "control": {
+          "type": "StbTextBox"
+        },
+        "text": "$account",
+        "clear": 32
+      },
+      "say": "Type the account name (clearing the account the login gump remembers)."
+    },
+    {
+      "id": "type_password",
+      "do": {
+        "kind": "ui.fill",
+        "control": {
+          "type": "PasswordStbTextBox"
+        },
+        "text": "$password"
+      },
+      "say": "Type the password."
+    },
+    {
+      "id": "log_in",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 2
+        }
+      },
+      "say": "Press Login.",
+      "expect": {
+        "ui.exists": "ServerSelectionGump",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "pick_server",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "ServerEntryGump",
+          "index": 0
+        }
+      },
+      "say": "Pick the first server."
+    },
+    {
+      "id": "server_next",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 1
+        }
+      },
+      "say": "Press Next. An account with no character goes straight to character creation.",
+      "expect": {
+        "ui.exists": "CharCreationGump",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "creation_name",
+      "do": {
+        "kind": "wait",
+        "seconds": 3
+      },
+      "say": "Character creation is up.",
+      "shot": true
+    },
+    {
+      "id": "type_name",
+      "do": {
+        "kind": "ui.fill",
+        "control": {
+          "type": "StbTextBox"
+        },
+        "text": "$charname"
+      },
+      "say": "Type the character's name."
+    },
+    {
+      "id": "name_next",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 11
+        }
+      },
+      "say": "Press Next.",
+      "expect": {
+        "ui.exists": "ProfessionInfoGump",
+        "within_s": 20
+      }
+    },
+    {
+      "id": "creation_profession",
+      "do": {
+        "kind": "wait",
+        "seconds": 2
+      },
+      "say": "The professions are listed.",
+      "shot": true
+    },
+    {
+      "id": "pick_profession",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "ProfessionInfoGump",
+          "index": 2
+        }
+      },
+      "say": "Pick a ready-made profession.",
+      "expect": {
+        "ui.exists": "CreateCharSelectionCityGump",
+        "within_s": 20
+      }
+    },
+    {
+      "id": "creation_city",
+      "do": {
+        "kind": "wait",
+        "seconds": 2
+      },
+      "say": "The starting cities are shown.",
+      "shot": true
+    },
+    {
+      "id": "pick_city",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 1
+        }
+      },
+      "say": "Confirm the starting city.",
+      "expect": {
+        "scene": "GameScene",
+        "within_s": 60
+      }
+    },
+    {
+      "id": "in_world",
+      "do": {
+        "kind": "wait",
+        "seconds": 4
+      },
+      "say": "The world is drawn around the character.",
+      "expect": {
+        "ui.exists": "WorldViewportGump"
+      },
+      "shot": true
+    },
+    {
+      "id": "speak",
+      "do": {
+        "kind": "chat",
+        "text": "hello"
+      },
+      "say": "Say hello."
+    },
+    {
+      "id": "walk",
+      "do": {
+        "kind": "ui.hold",
+        "key": "Left",
+        "seconds": 3
+      },
+      "say": "Hold an arrow key: the character walks (toward the open road; a lamp post blocks the other way at this start).",
+      "expect": {
+        "world.moved": {
+          "at_least": 2
+        },
+        "within_s": 10
+      },
+      "shot": true
+    },
+    {
+      "id": "open_backpack",
+      "do": {
+        "kind": "ui.key",
+        "key": "I",
+        "alt": true
+      },
+      "say": "Open the backpack.",
+      "expect": {
+        "ui.exists": "ContainerGump",
+        "within_s": 10
+      }
+    },
+    {
+      "id": "backpack_has_items",
+      "do": {
+        "kind": "wait",
+        "seconds": 2
+      },
+      "say": "The backpack holds the starting items.",
+      "expect": {
+        "ui.count": {
+          "control": {
+            "type": "ItemGump"
+          },
+          "at_least": 1
+        }
+      },
+      "shot": true
+    },
+    {
+      "id": "close_backpack",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "ContainerGump"
+        },
+        "button": "Right"
+      },
+      "say": "Close the backpack.",
+      "expect": {
+        "ui.absent": "ContainerGump",
+        "within_s": 10
+      }
+    },
+    {
+      "id": "open_paperdoll",
+      "do": {
+        "kind": "ui.key",
+        "key": "P",
+        "alt": true
+      },
+      "say": "Open the paperdoll.",
+      "expect": {
+        "ui.exists": "PaperDollGump",
+        "within_s": 10
+      },
+      "shot": true
+    },
+    {
+      "id": "log_out",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 3
+        }
+      },
+      "say": "Press Log Out on the paperdoll.",
+      "expect": {
+        "ui.exists": "QuestionGump",
+        "within_s": 10
+      }
+    },
+    {
+      "id": "confirm_log_out",
+      "do": {
+        "kind": "ui.click",
+        "control": {
+          "type": "Button",
+          "system": "classic",
+          "index": 2
+        }
+      },
+      "say": "Confirm.",
+      "expect": {
+        "scene": "LoginScene",
+        "within_s": 30
+      }
+    },
+    {
+      "id": "back_at_login",
+      "do": {
+        "kind": "wait",
+        "seconds": 2
+      },
+      "say": "Back at the login screen.",
+      "shot": true
+    }
+  ]
+}

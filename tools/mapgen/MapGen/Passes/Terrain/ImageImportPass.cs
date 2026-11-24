@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text.Json;
 using CentrED.MapGen.Data;
 using CentrED.MapGen.IR;
@@ -86,10 +87,13 @@ public sealed class ImageImportPass : IGenerationPass
         using var terrain = Image.Load<Rgba32>(terrainPath);
         using var altitude = Image.Load<L8>(altitudePath);
 
-        int sampled = 0, paletteMisses = 0;
+        int sampled = 0;
         int scale = Math.Max(1, p.PixelScale);
         int zRange = p.MaxZ - p.MinZ;
-        var diag = new BiomeDiagnostics();
+        var diag = new BiomeDiagnostics
+        {
+            PaletteSha256 = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(palette.Entries))).ToLowerInvariant()
+        };
 
         for (ushort y = scope.Y1; y <= scope.Y2; y++)
         for (ushort x = scope.X1; x <= scope.X2; x++)
@@ -102,7 +106,8 @@ public sealed class ImageImportPass : IGenerationPass
             var entry = palette.Match(rgba.R, rgba.G, rgba.B);
             if (entry is null)
             {
-                paletteMisses++;
+                diag.PaletteMisses ??= new PaletteMissRegion(x, y, $"#{rgba.R:X2}{rgba.G:X2}{rgba.B:X2}");
+                diag.PaletteMisses.Include(x, y);
                 continue;
             }
 
@@ -138,9 +143,9 @@ public sealed class ImageImportPass : IGenerationPass
 
         ctx.Report.TilesTouched = sampled;
         ctx.Report.Diagnostics = diag;
-        ctx.Report.Notes.Add($"sampled={sampled} paletteMisses={paletteMisses}");
-        if (paletteMisses > 0)
-            ctx.Report.Warnings.Add($"ImageImport: {paletteMisses} pixels did not match any palette entry — paint with the swatch colours only.");
+        ctx.Report.Notes.Add($"sampled={sampled} paletteMisses={diag.PaletteMisses?.Count ?? 0}");
+        if (diag.PaletteMisses is { } misses)
+            ctx.Report.Warnings.Add($"ImageImport: unmatched terrain pixels: {misses.Count}. First at ({misses.FirstX}, {misses.FirstY}), RGB {misses.FirstRgb}. Repaint using the swatch colours.");
     }
 
     private static Palette LoadPalette(string jsonPath)

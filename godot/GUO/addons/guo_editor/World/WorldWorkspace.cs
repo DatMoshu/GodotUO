@@ -25,6 +25,8 @@ public partial class WorldView
     private WaterPanel _water;
     internal WaterPanel WaterWorkspace => _water;
     internal SpinBox BrushSizeInput => _numbers["Size (tiles)"];
+    internal SpinBox BrushDensityInput => _numbers["Density (%)"];
+    internal SpinBox BrushSpacingInput => _numbers["Spacing (tiles)"];
     internal void ShowInspectorTab(bool inspector) => _detailTabs.CurrentTab = inspector ? 0 : 1;
     // Methods deliberately: Godot serializes settable properties during assembly reload.
     internal Vector2I GetWorkspaceSplit() => new(((HSplitContainer)_leftWorkspace.GetParent()).SplitOffsets[0], _leftWorkspace.SplitOffsets[0]);
@@ -138,6 +140,10 @@ public partial class WorldView
         ActionButton(recipes, "Scatter", () => QuickRecipe(false, "Paint", 7, 35, 2), "Many items over a 7-tile area at 35% density");
         ActionButton(recipes, "Terrain", () => QuickRecipe(true, "Paint", 5, 100, 1));
         ActionButton(recipes, "Sculpt", () => QuickRecipe(true, "Raise", 5, 100, 1));
+        ActionButton(recipes, "Terrain palette…", PickTerrainPalette, "Open a Landscaper Terrain.xml palette or CentrED# land_brushes JSON dictionary");
+        _terrainPalette = new OptionButton { Name = "TerrainSwatches", Visible = false, FitToLongestItem = false, AllowReselect = true };
+        library.AddChild(_terrainPalette);
+        _terrainPalette.ItemSelected += SelectPaletteTerrain;
         _brushArt = new ArtPanel { MinimumGridHeight = 80, ShowNames = true, Autocomplete = true, SizeFlagsVertical = SizeFlags.ExpandFill };
         _brushArt.SetCellSize(80);
         _brushArt.Attach(_data); library.AddChild(_brushArt);
@@ -200,7 +206,7 @@ public partial class WorldView
         var brushSettings = options;
         var operationRow = new HBoxContainer(); brushSettings.AddChild(operationRow);
         _operation = new OptionButton();
-        foreach (string op in new[] { "Paint", "Erase statics", "Hue statics", "Raise", "Lower", "Flatten", "Smooth" }) _operation.AddItem(op);
+        foreach (string op in new[] { "Paint", "Erase statics", "Hue statics", "Raise", "Lower", "Flatten", "Smooth", WorldCoastPair.Operation }) _operation.AddItem(op);
         _operation.ItemSelected += i => _recipe.Operation = _operation.GetItemText((int)i); operationRow.AddChild(_operation); _operation.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         _targetPick = new OptionButton(); _targetPick.AddItem("Statics"); _targetPick.AddItem("Terrain");
         _targetPick.ItemSelected += i => { SetBrushTarget(i == 1); _brushArt.SelectKind(i == 1); _brushArt.Search(""); };
@@ -575,6 +581,7 @@ public partial class WorldView
 
         WorldBrush recipe = _strokeRecipe ?? _recipe;
         uint art = _strokeRecipe != null ? _strokeArt : _data?.CurrentArt ?? 0;
+        if (recipe.Operation == WorldCoastPair.Operation && recipe.Coast != null) _previewLabel.Text += $" · {recipe.Coast.Label}";
         string refusal = BrushRefusal(recipe, art);
         if (refusal != null)
         {
@@ -718,6 +725,7 @@ public partial class WorldView
     {
         if (_host.Project == null) return "Open a world project to paint";
         if (recipe.ChangesTerrain && TerrainLocked) return "Terrain is locked";
+        if (recipe.Operation == WorldCoastPair.Operation && !recipe.Land) return "Choose Terrain to paint coast edges";
         if (recipe.Operation == "Paint" && ((_data?.IsLoaded != true || !_data.HasArt(art)) ||
                 (art < EditorData.LandCount) != recipe.Land))
             return "Choose art matching the target: terrain or statics";
@@ -905,6 +913,7 @@ public partial class WorldView
             foreach (var c in _checks) file.SetValue(section, c.Key, c.Value.ButtonPressed);
             file.SetValue(section, "operation", _operation.Selected); file.SetValue(section, "target", _targetPick.Selected);
             file.SetValue(section, "variants", _weights.Text); file.SetValue(section, "allowed", _allowed.Text); file.SetValue(section, "edges", _edges.Text);
+            file.SetValue(section, "coast_pair", _recipe.Operation == WorldCoastPair.Operation ? _recipe.Coast?.PresetJson ?? "" : "");
             file.SetValue(section, "art", (long)(_data?.CurrentArt ?? 0)); file.SetValue(section, "hue", (int)BrushHue);
             WritePresetFile(file); LoadBrushPresets(); _status.Text = $"Saved brush: {name}";
         }
@@ -922,9 +931,22 @@ public partial class WorldView
     private void ReadPreset(string name)
     {
         using var file = ReadPresetFile(); string section = "brush:" + name;
+        WorldCoastPair coast = null;
+        int operationIndex = Math.Clamp(file.GetValue(section, "operation", 0).AsInt32(), 0, _operation.ItemCount - 1);
+        if (_operation.GetItemText(operationIndex) == WorldCoastPair.Operation)
+        {
+            try
+            {
+                coast = WorldCoastPair.Read(file.GetValue(section, "coast_pair", "").AsString()).Single();
+                if (coast.Check(_data) is string error) { _status.Text = error; return; }
+            }
+            catch (Exception ex) when (ex is InvalidDataException or System.Text.Json.JsonException or InvalidOperationException)
+            { _status.Text = $"Cannot load saved coast pair: {ex.Message}"; return; }
+        }
+        _recipe.Coast = coast;
         foreach (var n in _numbers) n.Value.Value = file.GetValue(section, n.Key, n.Value.Value).AsDouble();
         foreach (var c in _checks) c.Value.ButtonPressed = file.GetValue(section, c.Key, c.Value.ButtonPressed).AsBool();
-        _operation.Select(Math.Clamp(file.GetValue(section, "operation", 0).AsInt32(), 0, _operation.ItemCount - 1));
+        _operation.Select(operationIndex);
         _recipe.Operation = _operation.GetItemText(_operation.Selected);
         _targetPick.Select(Math.Clamp(file.GetValue(section, "target", 0).AsInt32(), 0, 1)); _recipe.Land = _targetPick.Selected == 1;
         _weights.Text = file.GetValue(section, "variants", "").AsString(); _recipe.Variants = _weights.Text;

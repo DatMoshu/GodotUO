@@ -47,7 +47,10 @@ internal static class PhysicalReceiverRecipe
         ref var tiles = ref Client.Game.UO.FileManager.TileData.StaticData;
         if (obj.Graphic >= tiles.Length) return false;
         ref var tile = ref tiles[obj.Graphic];
-        if ((!tile.IsWall && !tile.IsDoor) || tile.IsRoof || tile.IsWindow || tile.IsWet || tile.IsFoliage
+        // A window piece is a wall face with an opening: it must read the same
+        // sun and lamp receipt as the plain pieces beside it, or a facade
+        // turns into light/dark per-tile steps (owner 2026-11-21).
+        if ((!tile.IsWall && !tile.IsDoor) || tile.IsRoof || tile.IsWet || tile.IsFoliage
             || tile.IsTransparent || tile.IsTranslucent || tile.IsAnimated || tile.Height == 0) return false;
         try
         {
@@ -58,7 +61,7 @@ internal static class PhysicalReceiverRecipe
             // Native alpha and those raster bounds provide its partial-width
             // clipping; corner/two-face art needs richer metadata.
             if (face.From != 0 || face.To != art.Width || !TryEncodeWallOffset(face.Offset, out offsetCode)
-                || !WallSpan(art, face, out float lo, out float hi) || !art.FullWall(face, lo, hi, tile.Height)) return false;
+                || !WallSpan(art, face, out float lo, out float hi) || !art.FullWall(face, lo, hi, tile.Height, tile.IsWindow)) return false;
             alongX = face.AlongX;
             return true;
         }

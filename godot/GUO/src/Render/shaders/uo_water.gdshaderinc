@@ -18,18 +18,27 @@
 //
 // THE MASK
 //
-// water_mask is a ring of 128 x 128 world cells around the player (cell x, y
-// at texel x & 127, y & 127), rebuilt on the CPU by WaterMask:
+// water_mask is a ring of N x N world cells around the player (cell x, y at
+// texel x mod N, y mod N; N is the texture's own size, 256 from WaterMask),
+// rebuilt on the CPU by WaterMask:
 //   R  1 when the cell has water (Wet land or a Wet static), else 0
 //   G  the height of that water, z + 128, over 255
-// Cells outside water_mask_origin .. + 128 are unknown and read as water, so
-// a stale texel never draws foam.
+//   B  shore distance of a wet cell: cells to the nearest dry cell along the
+//      eight directions, capped at 5, as distance / 5 (0 for dry cells)
+//   A  255 - (long shore distance * 8 + post * 4): the Chebyshev distance to
+//      the nearest dry cell, capped at 30, and whether a submerged dock post
+//      stands in the cell (water_mask_far, water_mask_post)
+// Cells outside water_mask_origin .. + N are unknown and read as deep water,
+// so a stale texel never draws foam.
 
 const int WATER_BIT = 0x40;
+const int WATER_FLOOR_BIT = 0x20;
 const int WATER_UO = 1;
 const int WATER_PIXEL = 2;
 const int WATER_CEL = 3;
 const int WATER_REALISTIC = 4;
+uniform bool water_harbor = false;
+uniform bool water_harbor_swell = false;
 const int WATER_CLASSICPLUS = 5;
 
 // 0 is Classic: the branch is never taken. 1 to 5 are the built-in models a
@@ -48,7 +57,8 @@ uniform sampler2D water_mask : filter_nearest, repeat_enable;
 uniform vec2 water_mask_origin = vec2(0.0, 0.0);
 
 // The ripple field (WaterRipples): 256 x 256 texels over the 128 x 128 cells
-// from water_ripples_origin, 2 x 2 a cell; R is the surface height, 0.5 flat.
+// from water_ripples_origin, 2 x 2 a cell; R is the surface height, 0.5 flat,
+// G the foam of a boat's wake (0 none; an R8 field has none).
 // Not art, so it may filter; outside the window it reads flat.
 uniform sampler2D water_ripples : filter_linear, repeat_disable;
 uniform vec2 water_ripples_origin = vec2(-100000.0, -100000.0);
@@ -94,10 +104,30 @@ vec3 water_local_light(vec2 target_px) {
 
 vec4 water_mask_at(vec2 cell) {
 	vec2 rel = cell - water_mask_origin;
-	if (rel.x < 0.0 || rel.y < 0.0 || rel.x >= 128.0 || rel.y >= 128.0) {
-		return vec4(1.0, 123.0 / 255.0, 0.0, 1.0);
+	float n = float(textureSize(water_mask, 0).x);
+	if (rel.x < 0.0 || rel.y < 0.0 || rel.x >= n || rel.y >= n) {
+		return vec4(1.0, 123.0 / 255.0, 1.0, 15.0 / 255.0);
 	}
-	return texelFetch(water_mask, ivec2(mod(cell, 128.0)), 0);
+	return texelFetch(water_mask, ivec2(mod(cell, n)), 0);
+}
+
+// Mask A unpacked: the long shore distance in cells (0 dry .. 30), and the post flag.
+float water_mask_far(vec4 m) {
+	return floor((255.0 - floor(m.a * 255.0 + 0.5)) / 8.0);
+}
+
+bool water_mask_post(vec4 m) {
+	return mod(255.0 - floor(m.a * 255.0 + 0.5), 8.0) >= 4.0;
+}
+
+// The long shore distance between cell centres, in cells: the same four-cell
+// blend as water_wet_linear, so it has no step at a tile boundary.
+float water_far_linear(vec2 xy) {
+	vec2 lo = floor(xy);
+	vec2 blend = fract(xy);
+	return mix(mix(water_mask_far(water_mask_at(lo)), water_mask_far(water_mask_at(lo + vec2(1.0, 0.0))), blend.x),
+			mix(water_mask_far(water_mask_at(lo + vec2(0.0, 1.0))),
+			water_mask_far(water_mask_at(lo + vec2(1.0, 1.0))), blend.x), blend.y);
 }
 
 // A continuous wet-cell field for Lighting's shallow/deep colour. Sampling
@@ -183,6 +213,15 @@ float water_ripple(vec2 xy) {
 		return 0.0;
 	}
 	return texture(water_ripples, rel / 128.0).r * 2.0 - 1.0;
+}
+
+// The wake foam at a point in cells, 0 .. 1.
+float water_wake(vec2 xy) {
+	vec2 rel = xy - water_ripples_origin + 0.5;
+	if (rel.x < 0.5 || rel.y < 0.5 || rel.x > 127.5 || rel.y > 127.5) {
+		return 0.0;
+	}
+	return texture(water_ripples, rel / 128.0).g;
 }
 
 // One neighbour's share of the shore for water_shore: dry, and its ground no
@@ -316,12 +355,19 @@ vec3 water_realistic(vec3 base, vec2 cell, vec2 f, vec2 world, float t, float li
 	vec3 c = mix(base, deep, 0.35 + 0.35 * open_w * (1.0 - edge));
 	c *= 1.0 + (light - 0.75) * water_params.z * 2.4;
 	c += ripple * rs * vec3(0.50, 0.58, 0.64);
-	float spec = pow(clamp(light, 0.0, 1.0), 48.0) * water_params2.x * 2.0;
+	if (water_harbor) {
+		// A crest only catches the sun where the small crossing ripples agree.
+		float fleck = water_noise(world * vec2(0.16, 0.37) + vec2(t * 0.34, -t * 0.21));
+		float spec = pow(clamp(light, 0.0, 1.0), 64.0) * smoothstep(0.59, 0.89, fleck);
+		c += vec3(0.76, 0.87, 0.94) * spec * min(water_params2.x, 2.0) * 0.27;
+	} else {
+		float spec = pow(clamp(light, 0.0, 1.0), 48.0) * water_params2.x * 2.0;
 #if CURRENT_RENDERER != RENDERER_COMPATIBILITY
-	float sparkle = step(0.94, water_noise(world * 0.5 + vec2(t * 2.3, -t * 1.7))) * step(0.9, light);
-	spec += sparkle * water_params2.x;
+		float sparkle = step(0.94, water_noise(world * 0.5 + vec2(t * 2.3, -t * 1.7))) * step(0.9, light);
+		spec += sparkle * water_params2.x;
 #endif
-	c += vec3(spec) * (0.4 + 1.6 * luma);
+		c += vec3(spec) * (0.4 + 1.6 * luma);
+	}
 	float lace = water_noise(world * 0.12 + vec2(t * 0.5, t * 0.3));
 	float foam = water_surf(cell, f, t) * smoothstep(0.3, 0.7, lace + edge * 0.4) * water_params.w;
 	c = mix(c, vec3(0.88, 0.93, 0.96), foam);
@@ -347,10 +393,19 @@ vec3 water_realistic_lighting(vec3 base, vec2 cell, vec2 f, vec2 world, float t,
 	// Broad swell normals should not paint dark bands over native water.
 	// Keep their modulation subtle; crests, ripples and local glints remain.
 	c *= clamp(1.0 + (light - 0.75) * water_params.z * 0.6, 0.94, 1.035);
-	c += ripple * rs * vec3(0.50, 0.58, 0.64);
+	// A local disturbance (a swimmer's ring, a wake) reads at the default ripple strength: small
+	// heights pass through unchanged, so still water is untouched; larger ones are lifted, capped.
+	float disturb = ripple * rs;
+	disturb = clamp(disturb * (1.0 + 1.5 * smoothstep(0.015, 0.1, abs(disturb))), -0.16, 0.16);
+	c += disturb * vec3(0.50, 0.58, 0.64);
 	// Calm water has sparse, soft crests; stronger shared wind admits more.
 	float crest = pow(clamp(light, 0.0, 1.0), 96.0);
-	float spec = crest * water_params2.x * 0.7
+	float crest_gain = water_params2.x * 0.7;
+	if (water_harbor) {
+		float fleck = water_noise(world * vec2(0.16, 0.37) + vec2(t * 0.34, -t * 0.21));
+		crest_gain = smoothstep(0.59, 0.89, fleck) * min(water_params2.x, 2.0) * 0.27;
+	}
+	float spec = crest * crest_gain
 			* (0.45 + 0.55 * min(abs(water_wind), 1.0));
 	if (water_environment) {
 		// Sky colour follows shard daylight, not wall-clock time. Final world
@@ -384,7 +439,89 @@ vec3 water_realistic_lighting(vec3 base, vec2 cell, vec2 f, vec2 world, float t,
 
 uniform int water_debug = 0;
 
-vec3 water_shade(vec3 base, vec2 target_px) {
+// Shallow shores (L1 option, off by default). x: strength 0..1, 0 skips all
+// of it so every model draws as before; y: shard daylight for the caustics.
+
+uniform vec2 water_shallow = vec2(0.0, 1.0);
+
+// Shore distance averaged at the cell corners (the same four-cell blend as
+// water_wet_linear), so the band fades across tile boundaries. 0 at land, 1 deep.
+float water_shore_depth(vec2 xy) {
+	vec2 lo = floor(xy);
+	vec2 blend = fract(xy);
+	return mix(mix(water_mask_at(lo).b, water_mask_at(lo + vec2(1.0, 0.0)).b, blend.x),
+			mix(water_mask_at(lo + vec2(0.0, 1.0)).b,
+			water_mask_at(lo + vec2(1.0, 1.0)).b, blend.x), blend.y);
+}
+
+// One scrolling caustic layer: bright thin ridges of a noise field.
+float water_caustic_layer(vec2 p, vec2 dir, float t) {
+	float n = water_noise(p + dir * t);
+	return pow(1.0 - abs(2.0 * n - 1.0), 5.0);
+}
+
+// Small patches of stones, with fish cruising together above the bed.
+// All distances here are projected art pixels, independent of tile UV and zoom.
+vec3 water_harbor_bed(vec3 bed, vec2 world, float t, float visibility) {
+	vec2 patch_size = vec2(118.0, 72.0);
+	vec2 patch = floor(world / patch_size);
+	float seed = water_hash(mod(patch, 127.0));
+	vec2 local = (fract(world / patch_size) - 0.5) * patch_size;
+	local -= vec2(seed - 0.5, water_hash(mod(patch.yx, 113.0)) - 0.5) * vec2(24.0, 12.0);
+	if (seed > 0.59) {
+		for (int i = 0; i < 3; i++) {
+			float k = float(i);
+			vec2 center = vec2((k - 1.0) * 8.0, sin(seed * 19.0 + k * 2.4) * 4.0);
+			vec2 q = (local - center) / (vec2(6.8, 4.2) * (0.7 + 0.24 * k));
+			float d = length(q) + 0.10 * sin(q.x * 4.0 + seed);
+			float stone = 1.0 - smoothstep(0.79, 1.0, d);
+			vec3 slate = mix(vec3(0.08, 0.15, 0.15), vec3(0.34, 0.40, 0.33),
+					clamp(0.54 - 0.25 * q.x - 0.44 * q.y, 0.0, 1.0));
+			bed = mix(bed, slate, visibility * stone);
+		}
+	}
+	if (seed < 0.18) {
+		// Sample once per school position so its silhouettes react together.
+		vec2 sample_f;
+		vec2 sample_cell = water_cell((patch + 0.5) * patch_size, sample_f);
+		float disturbance = clamp(abs(water_ripple(sample_cell + sample_f)) * water_params2.w * 2.5, 0.0, 1.0);
+		float phase = t * 0.48 + seed * 35.0;
+		vec2 center = vec2(24.0 * sin(phase), 8.0 * cos(phase));
+		vec2 dir = normalize(vec2(24.0 * cos(phase), -8.0 * sin(phase)));
+		vec2 rel = local - center;
+		vec2 fish = vec2(dot(rel, dir), dot(rel, vec2(-dir.y, dir.x)));
+		for (int i = 0; i < 3; i++) {
+			float k = float(i);
+			vec2 q = fish - vec2(-5.0 * k - disturbance * (k + 1.0) * 2.0, (k - 1.0) * (4.0 + disturbance * 5.0) + sin(t * 2.4 + k));
+			float body = 1.0 - smoothstep(0.72, 1.0, length(q / vec2(3.6, 1.3)));
+			float tail = 1.0 - smoothstep(0.65, 1.0, length((q + vec2(3.9, sin(t * 5.0 + k) * 0.6)) / vec2(1.2, 1.3)));
+			bed = mix(bed, vec3(0.045, 0.13, 0.14), max(body, tail) * visibility);
+		}
+	}
+	return bed;
+}
+
+// Sandy-teal sea floor showing through near land, with two caustic layers
+// drifting in different directions. Generated here; no art.
+vec3 water_shallow_apply(vec3 c, vec2 cell, vec2 f, vec2 world, float t) {
+	float depth = water_shore_depth(cell + f);
+	float band = 1.0 - smoothstep(0.1, 1.0, depth);
+	float s = band * water_shallow.x;
+	if (s <= 0.0) { return c; }
+	float luma = dot(c, vec3(0.299, 0.587, 0.114));
+	vec3 floor_c = mix(vec3(0.30, 0.58, 0.52), vec3(0.62, 0.66, 0.46), band * band) * (0.65 + 0.9 * luma);
+	if (water_harbor && water_model == WATER_REALISTIC) {
+		floor_c = water_harbor_bed(floor_c, world, t, smoothstep(0.05, 0.55, band));
+	}
+	c = mix(c, floor_c, clamp(s * 0.6, 0.0, 0.6));
+	vec2 p = world * 0.06;
+	float k = water_caustic_layer(p, vec2(0.11, 0.07), t * 1.4)
+			* water_caustic_layer(p * 1.3 + 7.0, vec2(-0.09, 0.12), t * 1.2);
+	c += vec3(0.55, 0.85, 0.80) * k * (water_harbor && water_model == WATER_REALISTIC ? 0.80 : 1.6) * s * water_shallow.y;
+	return clamp(c, 0.0, 1.0);
+}
+
+vec3 water_shade_core(vec3 base, vec2 target_px) {
 	// GUO_WATER_DEBUG: 1 paints the water magenta, 2 shows the ripple field.
 	if (water_debug == 1) {
 		return vec3(1.0, 0.0, 1.0);
@@ -413,6 +550,11 @@ vec3 water_shade(vec3 base, vec2 target_px) {
 	}
 
 	vec2 p = world * water_params.y;
+	// These are projected art pixels. Compress only the visible realistic swell;
+	// shoreline and disturbance positions below stay in the original cell space.
+	if (water_harbor && water_model == WATER_REALISTIC) {
+		p.y *= 1.45;
+	}
 	if (water_environment) {
 		p += vec2(water_wind * t * 0.22, -abs(water_wind) * t * 0.08);
 	}
@@ -453,6 +595,13 @@ vec3 water_shade(vec3 base, vec2 target_px) {
 	}
 	if (water_debug == 2) {
 		return vec3(clamp(0.5 + ripple * 6.0, 0.0, 1.0));
+	}
+	if (water_harbor_swell) {
+		vec2 xy = cell + f;
+		vec2 slope = 1.7 * vec2(0.26, -0.17) * cos(dot(xy, vec2(0.26, -0.17)) + water_time * 1.26)
+				+ 0.9 * vec2(0.13, 0.32) * cos(dot(xy, vec2(0.13, 0.32)) - water_time * 0.87);
+		hx += (slope.x - slope.y) / 44.0;
+		hy += (slope.x + slope.y) / 44.0;
 	}
 	vec3 n = normalize(vec3(-hx, -hy, 0.6));
 	float light = dot(n, normalize(vec3(-0.4, -0.6, 0.7)));
@@ -506,4 +655,147 @@ vec3 water_shade(vec3 base, vec2 target_px) {
 	c = mix(c, vec3(0.86, 0.92, 0.95), foam);
 
 	return clamp(c, 0.0, 1.0);
+}
+
+// ONE BLEND A PIXEL
+//
+// A tile diamond is 44 x 44 art pixels and its neighbours' centres are 22
+// away, so neighbouring diamonds share the pixels on the line between them:
+// each of a diamond's edge pixels is drawn by two tiles (four at a corner).
+// Opaque that is invisible. A translucent surface blends twice there and
+// draws a dark line along every tile edge and round every shore-shaped tile.
+//
+// Those pixels are exactly the ones whose centre lies on a cell boundary,
+// which a fragment can tell from its own world position; it cannot tell which
+// tile is drawing it, and does not need to: every water tile that covers such
+// a pixel takes the alpha that, blended once per wet cell sharing the pixel,
+// adds up to the tile's own. Same colour, same result as one blend. Cells
+// without water do not count, so the edge against a beach keeps full alpha.
+// water_seams 0 leaves the alpha alone: for a data set whose water art was
+// trimmed to tile exactly once instead (tools/seabed --seams art).
+uniform float water_seams = 1.0;
+
+float water_seam_alpha(float alpha, vec2 target_px) {
+	if (alpha >= 0.999 || water_seams < 0.5) { return alpha; }
+	float grain = max(water_params3.x, 1.0);
+	vec2 world = (floor((target_px * water_target_to_world.xy + water_target_to_world.zw) / grain) + 0.5) * grain;
+	vec2 f;
+	vec2 cell = water_cell(world, f);
+	float z = floor(water_mask_at(cell).g * 255.0 + 0.5) - 128.0;
+	// Pixel centres are half-integers, so these sums are whole numbers: a
+	// boundary along X where the first is a multiple of 44, along Y the second.
+	float a = mod(floor(world.x + world.y + 4.0 * z + 0.5) + 22.0, 44.0);
+	float b = mod(floor(world.y + 4.0 * z - world.x + 0.5) + 22.0, 44.0);
+	bool on_x = a < 0.5;
+	bool on_y = b < 0.5;
+	if (!on_x && !on_y) { return alpha; }
+	// The cell on the far side of each boundary the pixel lies on; found from
+	// a point pushed a quarter cell inside it, so a tie cannot round both ways.
+	float u = world.x / 22.0;
+	float v = (world.y + 4.0 * z) / 22.0;
+	vec2 hi = floor(vec2((u + v) * 0.5, (v - u) * 0.5) + 0.5 + vec2(on_x ? 0.25 : 0.0, on_y ? 0.25 : 0.0));
+	float n = water_mask_at(hi).r;
+	if (on_x) { n += water_mask_at(hi - vec2(1.0, 0.0)).r; }
+	if (on_y) { n += water_mask_at(hi - vec2(0.0, 1.0)).r; }
+	if (on_x && on_y) { n += water_mask_at(hi - vec2(1.0, 1.0)).r; }
+	n = max(floor(n + 0.5), 1.0);
+	return 1.0 - pow(1.0 - alpha, 1.0 / n);
+}
+
+// DEPTH FADE
+//
+// A translucent water tile shows what lies under it: a staged seabed
+// (tools/seabed), a shard's own. Where such water ends against the opaque
+// deep sea the two met along tile edges, a sawtooth of diamonds. Here the
+// surface thickens with the distance from land instead, per pixel: the tile's
+// own alpha at the shore, opaque from water_depth_fade.y cells out, where it
+// is the same art as the deep sea's land tiles. x is where the thickening
+// starts; y <= x switches it off (the tile's alpha everywhere, as before).
+uniform vec2 water_depth_fade = vec2(9.5, 13.0);
+
+// THE SEABED FLOOR
+//
+// A floor tile under translucent water (mode bit 5, WaterRender.FloorBit: a
+// Wet static named "seabed...") is not a surface: no waves are drawn on it.
+// It is the shore's sand at the beach and leans to the open sea's own colour
+// with the distance from land, continuously, so the shallows grade into the
+// deep with no step from one tile to the next. Slow patches stay lighter, as
+// sand bars do. What stands on the floor keeps its own colours.
+// x: the distance in cells at which the floor would reach the deep colour
+// (the surface is opaque before that, water_depth_fade);
+// y: how much lighter the sand patches are (0 none).
+uniform vec2 water_floor_look = vec2(17.0, 0.5);
+uniform vec3 water_floor_deep = vec3(0.0, 0.212, 0.314);
+
+vec3 water_floor_shade(vec3 base, vec2 target_px) {
+	vec2 world = target_px * water_target_to_world.xy + water_target_to_world.zw;
+	vec2 f;
+	// The floor lies below the surface; the distance is the surface cell's.
+	vec2 cell = water_cell(world, f);
+	float wobble = (water_noise(world * 0.021) - 0.5) * 2.4 + (water_noise(world * 0.067 + 9.0) - 0.5) * 0.9;
+	float d = max(water_far_linear(cell + f) + wobble - 1.5, 0.0);
+	float p = clamp(d / max(water_floor_look.x, 1.0), 0.0, 1.0);
+	float bars = max(water_noise(world * 0.0065 + 3.0) - 0.55, 0.0) * water_floor_look.y * 1.15;
+	p = clamp(p - bars * (1.0 - p * p), 0.0, 1.0);
+	// Linear, as the measured hue ramp was: about a twentieth of the way to the deep a cell.
+	return mix(base, water_floor_deep, p);
+}
+
+float water_alpha(float alpha, vec2 target_px) {
+	if (alpha >= 0.999 || water_depth_fade.y <= water_depth_fade.x) { return alpha; }
+	vec2 world = target_px * water_target_to_world.xy + water_target_to_world.zw;
+	vec2 f;
+	vec2 cell = water_cell(world, f);
+	// The distance is Chebyshev, so its contours are straight along the tile
+	// axes; a slow wobble of a cell or so keeps the fade from tracing them.
+	float wobble = (water_noise(world * 0.021) - 0.5) * 2.4 + (water_noise(world * 0.067 + 9.0) - 0.5) * 0.9;
+	float far = water_far_linear(cell + f);
+	float d = far + wobble;
+	// The wobble may not carry the fade past its end: by then the surface is opaque whatever the noise says.
+	float k = max(smoothstep(water_depth_fade.x, water_depth_fade.y, d),
+			smoothstep(water_depth_fade.y - 1.0, water_depth_fade.y + 0.5, far));
+	return mix(alpha, 1.0, k);
+}
+
+// A boat's wake: white water astern and a line of it along each arm, broken
+// by a drifting noise so it reads as foam and not as a painted stripe. Its
+// brightness follows the shard's daylight (water_shallow.y), not the tile.
+// x is the strength (0 none), y the grain of the breaking noise.
+uniform vec2 water_wake_look = vec2(1.0, 0.33);
+
+vec3 water_wake_apply(vec3 c, vec2 cell, vec2 f, vec2 world, float t) {
+	float wake = water_wake(cell + f) * min(water_params2.w, 1.0) * water_wake_look.x;
+	if (wake <= 0.004) { return c; }
+	float lace = water_noise(world * water_wake_look.y + vec2(t * 0.25, -t * 0.2));
+	float fine = water_noise(world * water_wake_look.y * 2.7 - vec2(t * 0.4, t * 0.15));
+	float k = smoothstep(0.10, 0.45, wake * (0.45 + 0.75 * lace + 0.35 * fine));
+	if (water_model == WATER_PIXEL || water_model == WATER_CEL || water_model == WATER_CLASSICPLUS) {
+		k = step(water_bayer(floor(world / max(water_params3.x, 1.0))) * 0.6 + 0.25, k);
+	}
+	vec3 foam = vec3(0.80, 0.88, 0.92) * (0.28 + 0.72 * water_shallow.y);
+	// A soft swell of lighter water under the foam keeps a faint old trail visible.
+	c += foam * wake * 0.10;
+	return mix(c, foam, k * 0.62);
+}
+
+vec3 water_shade(vec3 base, vec2 target_px) {
+	vec3 c = water_shade_core(base, target_px);
+	if (water_debug != 0) { return c; }
+	float grain = max(water_params3.x, 1.0);
+	vec2 world = (floor((target_px * water_target_to_world.xy + water_target_to_world.zw) / grain) + 0.5) * grain;
+	vec2 f;
+	vec2 cell = water_cell(world, f);
+	float t = water_time * water_params.x;
+	if (water_params2.w > 0.0) { c = water_wake_apply(c, cell, f, world, t); }
+	if (water_shallow.x <= 0.0) { return c; }
+	c = water_shallow_apply(c, cell, f, world, t);
+	if (water_harbor && water_model == WATER_REALISTIC && water_mask_post(water_mask_at(cell))) {
+		float d = length(f);
+		float shadow = 1.0 - smoothstep(0.17, 0.43, d);
+		float pulse = sin(t * 1.8 + dot(cell, vec2(0.39, 0.17)));
+		float ring = 1.0 - smoothstep(0.012, 0.042, abs(d - (0.36 + 0.035 * pulse)));
+		c *= 1.0 - 0.27 * shadow;
+		c += vec3(0.11, 0.15, 0.15) * ring * smoothstep(0.40, 0.77, water_noise(world * 0.15 + t * 0.12));
+	}
+	return c;
 }

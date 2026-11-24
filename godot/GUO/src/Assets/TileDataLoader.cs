@@ -2,6 +2,7 @@
 
 using GUO.IO;
 using GUO.Utility;
+using GUO.Utility.Logging;
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
@@ -32,7 +33,10 @@ namespace GUO.Assets
 
             var landTiles = new List<LandTiles>();
             var staticTiles = new List<StaticTiles>();
-            var isOld = FileManager.Version < ClientVersion.CV_7090;
+            // PORT DEVIATION (GUO): ADR-0054. Upstream picks the layout from the client
+            // version alone; shard data built for older clients (32-bit flags) is then
+            // misread. The file length decides only when it fits exactly one layout.
+            var isOld = TileDataLayout.IsOld(tileData.Length, FileManager.Version < ClientVersion.CV_7090);
 
             Span<byte> buf = stackalloc byte[20];
 
@@ -549,5 +553,42 @@ namespace GUO.Assets
         PlayAnimOnce = 0x4000000000,
         /// Movable multi? Cool ships and vehicles etc?
         MultiMovable = 0x10000000000
+    }
+    /// <summary>
+    /// PORT DEVIATION (GUO): ADR-0054. Which tiledata.mul layout a file uses, from its length.
+    /// Old (before 7.0.9.0): 32-bit flags, land entry 26 B, static entry 37 B.
+    /// New: 64-bit flags, land entry 30 B, static entry 41 B. Both have 512 land groups of
+    /// 32 entries and then static groups of 32, each group led by a 4-byte header.
+    /// </summary>
+    internal static class TileDataLayout
+    {
+        private const long LandOld = 512 * (4 + 32 * 26);
+        private const long LandNew = 512 * (4 + 32 * 30);
+        private const long GroupOld = 4 + 32 * 37;
+        private const long GroupNew = 4 + 32 * 41;
+
+        internal static bool Fits(long length, bool old)
+        {
+            long land = old ? LandOld : LandNew;
+            long group = old ? GroupOld : GroupNew;
+
+            return length >= land && (length - land) % group == 0;
+        }
+
+        /// <returns>The version's answer unless the length fits only the other layout.</returns>
+        internal static bool IsOld(long length, bool versionSaysOld)
+        {
+            bool fitsOld = Fits(length, true), fitsNew = Fits(length, false);
+
+            if (fitsOld != fitsNew && fitsOld != versionSaysOld)
+            {
+                Log.Warn($"tiledata.mul ({length:N0} B) fits only the {(fitsOld ? "pre-7.0.9 32-bit" : "64-bit")} layout; "
+                         + "reading it that way instead of by client version (ADR-0054)");
+
+                return fitsOld;
+            }
+
+            return versionSaysOld;
+        }
     }
 }

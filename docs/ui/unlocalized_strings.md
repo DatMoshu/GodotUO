@@ -101,3 +101,9 @@ Its timestamps use the fixed format `HH:mm`, not the locale's.
 - **The popup:** "Edit...".
 - **The window menu:** "X", "Fit to screen".
 - **The companion tabs:** "Classic", "Tabs".
+
+## Options search — `src/Game/UI/Gumps/OptionsSearch.cs`
+
+`Search settings...`, the results header (`N settings match "q". Click one to
+go to it.` / `No setting matches "q".`) and the GUO panel location names are
+English pending localization. The synonym table is English-only.

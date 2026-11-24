@@ -269,7 +269,7 @@ def test_bootstrap_is_idempotent_by_construction():
 
 
 def test_bootstrap_packages():
-    assert "dotnet-sdk-10.0" in text("bootstrap") and "libdeflate-dev" in text("bootstrap")
+    assert "dotnet-sdk-11.0" in text("bootstrap") and "libisal2" in text("bootstrap")
     s = text("bootstrap", FULL)
     assert "rsync" in s and "libicu-dev" in s
 

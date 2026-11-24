@@ -32,13 +32,38 @@ public partial class UoPlusProbe : Node
             foreach (var feature in UoPlusOptions.Features)
                 Check(!UoPlusOptions.Enabled(p, feature.Id), feature.Name + " defaults off");
             Check(!AmbientParticles.Enabled(p) && !WaterRender.RipplesEnabled(p), "off paths skip work");
+            var fresh = Profile.CreatePlayerDefaults();
+            var freshCopy = JsonSerializer.Deserialize(JsonSerializer.Serialize(fresh, ProfileJsonContext.DefaultToUse.Profile),
+                ProfileJsonContext.DefaultToUse.Profile);
+            Check(freshCopy.WaterStyle == "lighting" && WaterRender.RipplesEnabled(freshCopy)
+                && UoPlusOptions.Density(freshCopy, UoPlusFeature.WaterRipples) == 65
+                && System.Math.Abs(WaterRender.ShallowStrength(freshCopy) - 0.20f) < 0.001f,
+                "fresh character harbor style and disturbances survive reload");
+            Check(freshCopy.WaterTuneSpeed == 60 && freshCopy.WaterTuneWave == 60
+                && freshCopy.WaterTuneFoam == 25 && freshCopy.WaterTuneGlint == 15,
+                "fresh character harbor tuning survives reload");
             var legacyWater = JsonSerializer.Deserialize("{\"water_style\":\"uo\"}", ProfileJsonContext.DefaultToUse.Profile);
-            Check(WaterRender.RipplesEnabled(legacyWater), "legacy styled water preserves ripples");
-            Check(UoPlusOptions.Density(legacyWater, UoPlusFeature.WaterRipples) == 100,
-                "legacy styled water preserves its full disturbance strength");
+            Check(WaterRender.RipplesEnabled(legacyWater), "legacy styled water keeps ripples on");
+            Check(legacyWater.WaterStyle == "lighting" && UoPlusOptions.Density(legacyWater, UoPlusFeature.WaterRipples) == 65
+                && legacyWater.WaterTuneSpeed == 60 && legacyWater.WaterLookMigrated,
+                "profile wearing the rejected all-100 uo look migrates once to the chosen default");
+            var deliberateUo = JsonSerializer.Deserialize("{\"water_style\":\"uo\",\"water_tune_speed\":56,\"water_tune_wave\":21,\"water_tune_foam\":26,\"water_tune_glint\":15,\"uo_plus_flags\":256}", ProfileJsonContext.DefaultToUse.Profile);
+            Check(deliberateUo.WaterStyle == "uo" && deliberateUo.WaterTuneSpeed == 56, "other deliberate looks are left untouched");
+            var chosenAgain = JsonSerializer.Deserialize(JsonSerializer.Serialize(new Profile { WaterStyle = "uo", WaterLookMigrated = true }, ProfileJsonContext.DefaultToUse.Profile), ProfileJsonContext.DefaultToUse.Profile);
+            Check(chosenAgain.WaterStyle == "uo", "a look chosen after migration sticks");
             var legacyDensity = JsonSerializer.Deserialize("{\"water_style\":\"uo\",\"uo_plus_densities\":{\"WaterRipples\":25}}", ProfileJsonContext.DefaultToUse.Profile);
             Check(UoPlusOptions.Density(legacyDensity, UoPlusFeature.WaterRipples) == 25,
                 "an explicitly supplied ripple density survives migration");
+            var legacyLighting = JsonSerializer.Deserialize("{\"water_style\":\"lighting\"}", ProfileJsonContext.DefaultToUse.Profile);
+            Check(legacyLighting.WaterStyle == "lighting" && legacyLighting.WaterTuneSpeed == 100 && legacyLighting.WaterTuneGlint == 100,
+                "a legacy lighting-style profile is not rewritten by the rejected-look migration");
+            var legacyPack = JsonSerializer.Deserialize("{\"water_style\":\"pack:harbor\"}", ProfileJsonContext.DefaultToUse.Profile);
+            Check(legacyPack.WaterStyle == "pack:harbor" && legacyPack.WaterTuneWave == 100,
+                "a legacy pack-style profile is not rewritten by the rejected-look migration");
+            var ownerLike = JsonSerializer.Deserialize("{\"water_style\":\"uo\",\"water_tune_speed\":100,\"water_tune_wave\":100,\"water_tune_foam\":100,\"water_tune_glint\":100,\"uo_plus_flags\":768,\"uo_plus_densities\":{\"WaterRipples\":50}}", ProfileJsonContext.DefaultToUse.Profile);
+            Check(ownerLike.WaterStyle == "lighting" && ownerLike.WaterTuneWave == 60 && ownerLike.WaterTuneGlint == 15
+                && UoPlusOptions.Density(ownerLike, UoPlusFeature.WaterRipples) == 50 && ownerLike.WaterLookMigrated,
+                "all-100 uo look with a chosen ripple strength migrates its look and keeps the strength");
             var explicitOff = JsonSerializer.Deserialize("{\"water_style\":\"uo\",\"uo_plus_flags\":0}", ProfileJsonContext.DefaultToUse.Profile);
             Check(!WaterRender.RipplesEnabled(explicitOff), "explicit saved off survives migration");
             var newWater = new Profile { WaterStyle = "uo" };

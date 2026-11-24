@@ -21,7 +21,7 @@ from shardprofile import Profile, ProfileError
 TOOLS = Path(__file__).resolve().parents[1]
 MODERNUO_TEMPLATE = TOOLS / "modernuo" / "config" / "modernuo.template.json"
 
-BASE_PACKAGES = ["git", "zstd", "libdeflate-dev", "libargon2-1", "libargon2-dev", "ca-certificates", "python3", "iproute2"]
+BASE_PACKAGES = ["git", "zstd", "libisal2", "libargon2-1", "libargon2-dev", "ca-certificates", "python3", "iproute2"]
 DEFAULT_BACKUP_ROOT = "/var/backups/muo"
 DEFAULT_KEYS = {"client_data": "MUO_CLIENT_DATA", "admin_user": "MUO_ADMIN_USER", "admin_password": "MUO_ADMIN_PASSWORD"}
 
@@ -44,7 +44,7 @@ class Ctx:
         self.unit = f"muo-{self.id}.service"
         self.port = d["listen"]["port"]
         self.address = p.get("listen", "address", default="0.0.0.0")
-        self.dotnet = p.get("server", "dotnet", default="10.0")
+        self.dotnet = p.get("server", "dotnet", default="11.0")  # ModernUO needs .NET 11 since modernuo/ModernUO#2763
         self.backup_root = p.get("backup", "root", default=f"{DEFAULT_BACKUP_ROOT}/{self.id}")
         self.keys = {**DEFAULT_KEYS, **d.get("host_keys", {})}
 

@@ -1,5 +1,9 @@
 # tools/editor_smoke
 
+`python tools/editor_smoke/run.py --painted-draft` opens a synthetic terrain/altitude
+pair through MapGen Setup, tunes coast and scatter, rejects a mismatched height,
+restores the completed run, exports it and inspects its warning and two World cells.
+
 For central evidence, pass `--out FOLDER`, or set `GUO_EDITOR_SMOKE_OUT` to a
 parent folder (the mode is appended). The latter also redirects the editor stage
 when running `launchers/dev/smoke.bat`. MCP checks include every access-group
@@ -240,3 +244,35 @@ places live in `Search/places.json` (the client data has no town names). The smo
 "3701", "statics", "grid", a coordinate, "project settings", "bp" and a typo, asserts the top result's kind, runs two
 harmless entries, and (windowed) saves `search_backpack.png`. The recent-use history is in the editor's project
 metadata, not in a tracked file.
+
+
+## Temporary UltimaLive maps
+
+The UltimaLive smoke uses a unique directory under the system temporary
+directory's `_disposable/guo/editor-smoke`, separate from `--out` evidence.
+Override it with `--staging-root PATH` under an `_disposable/guo` directory.
+No private fleet CLI or service is needed. Capacity must cover four complete
+map exports plus 64 MiB headroom while leaving 20 GiB free; unavailable or
+insufficient capacity fails before exporting. This is a check, not a reservation.
+
+Each `--out/ultimalive/cycle-*` retains the before/after map-overlay snapshots,
+export manifests, producer hashes, command log and receipt. Existing world inputs
+are not modified. The check regenerates the second export from the saved overlay,
+compares its file hashes and independently verifies the recovered map. Every
+owned world command exits before known staging files are released. Reparse points,
+hardlinks and unexpected files prevent release. Interrupted or failed checks
+retain their stage and receipt for diagnosis; unfinished work stays pinned in
+`.org-cache.json`. A release failure retains its remaining files; recheck the
+receipt and consumers before any manual cleanup. Completed payloads are removed
+immediately; only the small lifecycle manifest and empty directories remain.
+
+Recovery: use `python tools/world/run.py export --project INPUTS --out NEW_DIR`,
+where INPUTS is the retained `inputs-first` or `inputs-second`, with the same
+client install. Compare the `facets[].files` hashes with the corresponding saved
+`first-export.json` or `second-export.json`; then run `tools/world/run.py verify`
+with the same project/output. Deleted staging paths in old manifests are historical
+locations. Retain any separately qualified release ZIP and its hash independently;
+this check never opens or retires release archives. `.org-cache.json` follows the
+optional `org.storage.cache.v1` producer contract.
+
+Focused lifecycle regressions: `python -m pytest tools/editor_smoke/test_ultimalive_staging.py -q`.

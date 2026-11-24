@@ -16,6 +16,15 @@ namespace GUO.Game.GameObjects
         protected BaseGameObject(World world) => World = world;
 
         public Point RealScreenPosition;
+#if GUO_LABS
+        // PORT DEVIATION (GUO): cosmetic heave follows the shared draw/pick origin.
+        internal int HarborPixels { get; private set; }
+        internal void SetHarborPixels(int pixels)
+        {
+            RealScreenPosition.Y += pixels - HarborPixels;
+            HarborPixels = pixels;
+        }
+#endif
 
         public World World { get; }
     }
@@ -212,6 +221,10 @@ namespace GUO.Game.GameObjects
         {
             RealScreenPosition.X = ((X - Y) * 22) - offsetX - 22;
             RealScreenPosition.Y = ((X + Y) * 22 - (Z << 2)) - offsetY - 22;
+#if GUO_LABS
+            // PORT DEVIATION (GUO): keep the Labs harbor heave across a position refresh.
+            RealScreenPosition.Y += HarborPixels;
+#endif
             IsPositionChanged = false;
 
             UpdateTextCoordsV();

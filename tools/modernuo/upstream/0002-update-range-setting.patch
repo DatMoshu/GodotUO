@@ -16,10 +16,10 @@ index 0ebcac7c5..e89e574cd 100644
      public virtual bool Contains(Point2D p) => Contains(p.m_X, p.m_Y);
  
 diff --git a/Projects/Server/Items/Item.cs b/Projects/Server/Items/Item.cs
-index 03ff9d000..f83993b9c 100644
+index db6cc5de3..faa89af3b 100644
 --- a/Projects/Server/Items/Item.cs
 +++ b/Projects/Server/Items/Item.cs
-@@ -3301,9 +3301,9 @@ private void FixHolding_Sandbox()
+@@ -3393,9 +3393,9 @@ private void FixHolding_Sandbox()
          }
      }
  
@@ -32,10 +32,10 @@ index 03ff9d000..f83993b9c 100644
      public virtual void SendInfoTo(NetState ns, ReadOnlySpan<byte> world = default)
      {
 diff --git a/Projects/Server/Main.cs b/Projects/Server/Main.cs
-index 608256651..347087e45 100644
+index 9bd067bba..6cc6f26b4 100644
 --- a/Projects/Server/Main.cs
 +++ b/Projects/Server/Main.cs
-@@ -313,8 +313,10 @@ public static string BaseDirectory
+@@ -338,8 +338,10 @@ public static string BaseDirectory
  
      public static bool Headless { get; private set; }
  
@@ -46,9 +46,9 @@ index 608256651..347087e45 100644
      public static int GlobalMaxUpdateRange { get; set; } = 24;
  
      public static int ScriptItems => _itemCount;
-@@ -630,6 +632,22 @@ You should have received a copy of the GNU General Public License
+@@ -897,6 +899,22 @@ You should have received a copy of the GNU General Public License
  
-         _lateWakePercent = Math.Clamp(lateWakePercent, 0, 100);
+         _restartExitCode = restartExitCode;
  
 +        // 18 suits the classic 640x480 client. A larger client window can raise it so items and
 +        // mobiles do not stop short of the map it draws, at the cost of more traffic per client.
@@ -102,7 +102,7 @@ index 11a387934..f8fc03771 100644
  
              return v;
 diff --git a/Projects/UOContent/Network/Packets/IncomingPlayerPackets.cs b/Projects/UOContent/Network/Packets/IncomingPlayerPackets.cs
-index 384e468b9..5cd752aec 100644
+index 6a5beda8f..f8c3e7c5d 100644
 --- a/Projects/UOContent/Network/Packets/IncomingPlayerPackets.cs
 +++ b/Projects/UOContent/Network/Packets/IncomingPlayerPackets.cs
 @@ -383,7 +383,8 @@ public static void PingReq(NetState state, SpanReader reader)

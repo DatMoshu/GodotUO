@@ -475,6 +475,7 @@ namespace GUO.Configuration
         void System.Text.Json.Serialization.IJsonOnDeserialized.OnDeserialized()
         {
             ClampLoginZoom();
+            bool legacyRipples = false;
             if (!_uoPlusFlagsRead && !string.IsNullOrWhiteSpace(WaterStyle)
                 && !string.Equals(WaterStyle, "classic", StringComparison.OrdinalIgnoreCase))
             {
@@ -483,8 +484,38 @@ namespace GUO.Configuration
                 // strength. Do not silently halve it with the new 50% default.
                 UoPlusDensities ??= new Dictionary<UoPlusFeature, int>();
                 UoPlusDensities.TryAdd(UoPlusFeature.WaterRipples, 100);
+                legacyRipples = true;
             }
             _uoPlusFlagsRead = true;
+            MigrateRejectedWaterLook(legacyRipples);
+        }
+
+        // PORT DEVIATION (GUO): the all-100 "uo" look (and the legacy path above
+        // enabling ripples at 100 on an all-100 tune) was rejected by the owner.
+        // A profile still wearing it is moved once to the chosen default; the
+        // flag then keeps a later deliberate choice of any look.
+        public bool WaterLookMigrated { get; set; }
+        // The look is the "uo" style with all four tunes at 100, whatever the
+        // ripple strength (the owner's own profile wore it with ripples at 50).
+        internal bool WearsRejectedWaterLook(bool legacyRipples) =>
+            // Only the "uo" style: other styles (lighting, pack styles) at the
+            // field-default tunes of 100 are deliberate looks and stay as saved.
+            WaterTuneSpeed == 100 && WaterTuneWave == 100 && WaterTuneFoam == 100 && WaterTuneGlint == 100
+            && string.Equals(WaterStyle, "uo", StringComparison.OrdinalIgnoreCase);
+        internal void MigrateRejectedWaterLook(bool legacyRipples)
+        {
+            if (WaterLookMigrated) return;
+            WaterLookMigrated = true;
+            if (!WearsRejectedWaterLook(legacyRipples)) return;
+            var d = CreatePlayerDefaults();
+            WaterStyle = d.WaterStyle;
+            WaterTuneSpeed = d.WaterTuneSpeed; WaterTuneWave = d.WaterTuneWave;
+            WaterTuneFoam = d.WaterTuneFoam; WaterTuneGlint = d.WaterTuneGlint;
+            // Ripples: only the legacy path forced them on at 100; an explicit saved
+            // strength or an explicit off is the player's choice and stays.
+            if (legacyRipples && UoPlusOptions.Density(this, UoPlusFeature.WaterRipples) == 100)
+                UoPlusOptions.Set(this, UoPlusFeature.WaterRipples, true, 65);
+            UoPlusOptions.Set(this, UoPlusFeature.ShallowShores, true, 20);
         }
         public Dictionary<UoPlusFeature, int> UoPlusDensities { get; set; } = new();
         public int AmbientParticleDensity { get; set; } = 50; // percent, 0..100
@@ -493,6 +524,31 @@ namespace GUO.Configuration
         // draws the tiles as upstream does; any other value names a water
         // style (Renderer.Water.WaterRender). Default classic.
         public string WaterStyle { get; set; } = "classic";
+        // PORT DEVIATION (GUO): the Water panel's live tuning of the active
+        // styled water, percent of the style's own value (100 = as authored).
+        public int WaterTuneSpeed { get; set; } = 100;
+        public int WaterTuneWave { get; set; } = 100;
+        public int WaterTuneFoam { get; set; } = 100;
+        public int WaterTuneGlint { get; set; } = 100;
+
+        // PORT DEVIATION (GUO): the first character without a saved default
+        // gets the harbor look. Raw initializers above also decode sparse legacy profiles.
+        internal static Profile CreatePlayerDefaults()
+        {
+            var p = new Profile
+            {
+                WaterStyle = "lighting",
+                WaterTuneSpeed = 60,
+                WaterTuneWave = 60,
+                WaterTuneFoam = 25,
+                WaterTuneGlint = 15,
+                WaterLookMigrated = true
+            };
+            UoPlusOptions.Set(p, UoPlusFeature.WaterRipples, true, 65);
+            UoPlusOptions.Set(p, UoPlusFeature.ShallowShores, true, 20);
+            return p;
+        }
+
         // PORT DEVIATION (GUO): opt-in lighting water wind, ADR-0037/0048.
         private float _windStrength;
         public float WindStrength
