@@ -850,7 +850,8 @@ internal static partial class InputProbe
 
         await ClickGumpButton<Game.UI.Gumps.PaperDollGump>(host, 7, "war mode");
 
-        Check("war mode goes on", Client.Game.UO.World.Player.InWarMode);
+        Check("war mode goes on", Client.Game.UO.World.Player?.InWarMode == true,
+            Client.Game.UO.World.Player == null ? "no player: the client left the world" : null);
 
         GD.Print("[GUO] input probe: attacking");
 
