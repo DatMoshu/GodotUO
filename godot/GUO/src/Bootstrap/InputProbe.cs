@@ -305,6 +305,12 @@ internal static partial class InputProbe
             if (!await ClickLoginTarget(host, PasswordField, LoginTarget.Password, pregameTargets)) return;
             if (!await TypeLoginField(host, password, LoginTarget.Password, pregameTargets)) return;
 
+            // With autologin on in the shared settings, ClassicUO skips the
+            // character list and enters the account's last character, which on
+            // the probe account may be one made by hand. Point it at the probe's
+            // own, in memory only (no profile file is written).
+            Game.Managers.LastCharacterManager.OverrideLastCharacter(character);
+
             GD.Print("[GUO] input probe: clicking Login");
 
             if (!await ClickLoginTarget(host, LoginButton, LoginTarget.Login, pregameTargets)) return;
@@ -407,7 +413,16 @@ internal static partial class InputProbe
                 return; // Caller verifies actual world arrival; never substitute a scene method.
             }
 
-            if (!byName)
+            // Without --character the probe still prefers its own character:
+            // Next logs in whichever was played last, and a character someone
+            // made by hand on the probe account (with its own gumps and
+            // windows) then fails checks that have nothing to do with the build.
+            if (!byName && slot >= 0)
+            {
+                GD.Print($"[GUO] input probe: the account has {character}; logging it in");
+                loginScene.SelectCharacter((uint) slot);
+            }
+            else if (!byName)
             {
                 GD.Print("[GUO] input probe: the account has a character; logging it in");
 
@@ -812,6 +827,13 @@ internal static partial class InputProbe
         GD.Print("[GUO] input probe: using a skill");
 
         await UseFirstSkill(host);
+
+        // Closed again, like the options: UseFirstSkill parks it at 900,400,
+        // which in a full-size game window is over the player, and every
+        // check after this one that clicks the character hit the gump instead.
+        Game.Managers.UIManager.GetGump<Game.UI.Gumps.StandardSkillsGump>()?.Dispose();
+
+        await Frames(host, 10);
 
         await ClickGumpButton<Game.UI.Gumps.PaperDollGump>(host, 8, "Status");
 
@@ -1302,7 +1324,9 @@ internal static partial class InputProbe
         // whichever gump is in front -- the skills list was underneath, so
         // every press on it landed on the paperdoll's backdrop instead. A
         // player drags the window clear; the probe puts it clear.
-        skills.X = 900;
+        // Right edge, clear of the player at the window's centre: 900,400 was
+        // picked for a small window and lands on the player in a full-size one.
+        skills.X = System.Math.Max(900, Client.Game.Window.ClientBounds.Width - skills.Width - 40);
         skills.Y = 400;
 
         await Frames(host, 10);
