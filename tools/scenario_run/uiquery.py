@@ -1,7 +1,8 @@
 """Finding a control in a `guo_ui` snapshot, for the ui.* step kinds and the ui.* expectations.
 
 A selector is a string (matches a control whose type, name or text equals it) or an object with any of
-`type`, `name`, `text`, `contains` (substring of the text), `system` (classic | godot), `gump` (top-level gump type), `button_id` (a classic button's ID) and `index`
+`type`, `name`, `text`, `contains` (substring of the text), `system` (classic | godot), `gump` (top-level gump type), `button_id` (a classic button's ID), `serial` (the game object
+a classic control shows, such as an item: a number, decimal text or 0x hex) and `index`
 (which of several matches, 0 based). Gump order follows the front-most gump, so prefer gump + button_id to a bare index.
 """
 
@@ -12,7 +13,7 @@ class SelectorError(ValueError):
     pass
 
 
-_KEYS = {"type", "name", "text", "contains", "system", "gump", "button_id", "index"}
+_KEYS = {"type", "name", "text", "contains", "system", "gump", "button_id", "serial", "index"}
 
 
 def normalize(selector) -> dict:
@@ -44,7 +45,17 @@ def _matches(control: dict, want: dict) -> bool:
         return False
     if "button_id" in want and control.get("buttonId") != want["button_id"]:
         return False
+    if "serial" in want and (control.get("serial") is None or control.get("serial") != parse_serial(want["serial"])):
+        return False
     return True
+
+
+def parse_serial(value) -> int:
+    """A serial written as a number, decimal text (a $variable) or 0x hex."""
+    if isinstance(value, int):
+        return value
+    text = str(value).strip()
+    return int(text, 16) if text.lower().startswith("0x") else int(text)
 
 
 def find_all(snapshot: dict, selector) -> list[dict]:

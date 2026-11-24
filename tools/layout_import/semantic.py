@@ -256,6 +256,9 @@ def rotate(layout, turns):
     for _ in range(turns % 4):
         w, h = out["width"], out["height"]
         for level in out["levels"]:
+            for group in level.get('furnishing_groups', []):
+                for field in ('cells', 'intended_cells'):
+                    group[field] = sorted([[h - 1 - y, x] for x, y in group[field]])
             for room in level.get("authored_rooms",[]):
                 room["cells"]=[[h-1-y,x] for x,y in room["cells"]]
             for cell in level["cells"]:
@@ -269,9 +272,14 @@ def rotate(layout, turns):
 
 
 def layout_hash(layout):
-    return digest({"format": layout["format"], "width": layout["width"], "height": layout["height"],
-                   "levels": [{"z": level["z"], "cells": [[c["x"], c["y"], c["role"], c["indoors"],
-                         c["furnishing_role"], c["access"]] for c in level["cells"]]} for level in layout["levels"]]})
+    payload = {"format": layout["format"], "width": layout["width"], "height": layout["height"],
+               "levels": [{"z": level["z"], "cells": [[c["x"], c["y"], c["role"], c["indoors"],
+                     c["furnishing_role"], c["access"]] for c in level["cells"]]} for level in layout["levels"]]}
+    if 'furnishing_contract' in layout:
+        payload['furnishing_contract'] = layout['furnishing_contract']
+        for target, level in zip(payload['levels'], layout['levels']):
+            target['furnishing_groups'] = level.get('furnishing_groups')
+    return digest(payload)
 
 
 def plans(layout, out):

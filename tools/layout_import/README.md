@@ -100,8 +100,12 @@ multipart furniture shares semantic groups. A flat UO roof over the authored
 footprint is a recorded adaptation. Detail tiles without functional mappings
 remain counted in `source_coverage`. Authored B/M/T stair triplets connect floors;
 actual upper floor holes survive, and UO flights reserve the landing and preserve
-adjacent walls. Any landing fill is recorded. Cross-cell buildings, incomplete
-triplets and connections beyond supplied authored floors block approval.
+adjacent walls. Any landing fill is recorded. Cross-cell buildings are refused by
+default; `zomboid-resolve --neighbor-cells` opts into a bounded source window of
+at most four cells and256squares per axis. Each cell retains its own dictionary
+and header/pack hashes; the primary header owns the building rooms. Missing or
+invalid neighbors fail. Incomplete stair triplets and connections beyond supplied
+authored floors still block approval. See proposed ADR0055 and data_formats32.
 No source artwork is read, copied or included in generated UO archives.
 
 ## Native buildings, districts and hybrid selection
@@ -206,6 +210,12 @@ instances, levels/cells/rooms/openings/groups, themes, builds, mappings, hashed
 artifacts and validation evidence. `usage --db <DB> --event <JSON>` accepts
 `id`, `build`, `project`, `region`, `placement`, `state` (`placed`, `removed`,
 `superseded`) and `timestamp`; events are immutable and idempotent.
+
+PZ layouts with `pz-source-objects/1` retain the complete source-object inventory,
+including stacked and unresolved groups. Catalogue persistence uses these groups
+as authoritative; immutable replay refuses altered or incomplete retained records.
+Unknown functional objects remain unresolved and block native completion when
+required. A partial preview is not a valid native build. See proposed ADR0052.
 
 Source gameplay extras (loot, traps, spawns, vehicles and fields) are retained
 without conversion to shard mechanics. Successful native pilots prove selected

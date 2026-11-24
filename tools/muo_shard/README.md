@@ -30,7 +30,7 @@ ssh HOST 'sudo bash -s' < bootstrap.sh
 ## What the scripts do
 
 - **bootstrap** (root): installs only the packages that are missing (`dotnet-sdk-<channel>`, git, zstd,
-  libdeflate-dev, libargon2-1, python3, iproute2, and the profile's `host_packages`), creates the service user (no login shell),
+  libisal2, libargon2-1, python3, iproute2, and the profile's `host_packages`), creates the service user (no login shell),
   `/srv/muo/<id>/{src,dist,uodata}`, the backup root, and an empty `/etc/muo/<id>.env` (0600, never overwritten).
   A second run changes nothing.
 - **deploy** (root): reads `/etc/muo/<id>.env`, stops the unit, checks out the pinned commit (patches off before the

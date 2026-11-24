@@ -19,7 +19,7 @@ play commands with its own saves and loopback port.
 |---|---|
 | **Upstream** | <https://github.com/modernuo/ModernUO.git> |
 | **Licence** | GPL-3.0. Not vendored, not redistributed. The patches in `patches/` modify it and are GPL-3.0 too (see `patches/LICENSE`). |
-| **Pinned at** | `9782fd6aa` (2026-11-21): `UO_SHARD_REF` in `launchers\_shared\config.bat`. `fetch.bat` checks it out and moves an older checkout to it. |
+| **Pinned at** | `4d9e2b6af` (2026-11-22): `UO_SHARD_REF` in `launchers\_shared\config.bat`. `fetch.bat` checks it out and moves an older checkout to it. |
 | **Runtime** | .NET 11 SDK (ModernUO's own requirement since modernuo/ModernUO#2763, not the client's) |
 | **Checkout** | `tools/modernuo/src/` — **gitignored**, ~1 GB with the build |
 
@@ -756,16 +756,12 @@ manifest. When every listed character is online it moves them through the stops,
 sets the light, writes a stamp at each one, then puts the light back and deletes
 the manifest. `tools/ab_compare/tour.py` writes the manifest and takes the pictures.
 
-### `patches/0027-uop-map-chunk-order.patch`
-
-Reads `map*LegacyMUL.uop` chunks in index order, the order their hashed names give.
-Upstream re-sorts them by each chunk's first int32 with an unstable sort; that works
-for EA's files (distinct values) but scrambles shard-made UOPs whose chunks all start
-alike (the Epic! shard: every chunk starts with 1), so the shard's terrain disagrees
-with the client's and every step is refused. Found by UO-Maps; ADR-0054 covers the
-client side. Upstream candidate.
-
 ### Retired
+
+`0027-uop-map-chunk-order` read `map*LegacyMUL.uop` chunks in index order instead of
+by each chunk's first int32, which shard-made UOPs repeat. Merged upstream as
+modernuo/ModernUO#2794 with further block-read hardening; retired when the pin moved to
+`4d9e2b6af`. ADR-0054 covers the client side.
 
 `0025-pkcs-advisory` pinned `System.Security.Cryptography.Pkcs` to 10.0.14 past two
 .NET denial of service advisories in the 10.0.0 that MailKit brought in. Retired

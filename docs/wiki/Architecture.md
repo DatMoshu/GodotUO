@@ -11,9 +11,9 @@ Every proposal also starts by choosing a feature layer, L0 to L4 (see
 ## The port in one paragraph
 
 ClassicUO is transplanted, not rewritten. Every upstream file is classified
-by how it binds to FNA: `verbatim` (247 files, renamespace only), `shim`
-(116 files, renamespace plus `using GUO.Compat;` for XNA's value types) and
-`rewrite` (37 files, reimplemented on Godot). Four fifths of the port is
+by how it binds to FNA: `verbatim` (246 files, renamespace only), `shim`
+(114 files, renamespace plus `using GUO.Compat;` for XNA's value types) and
+`rewrite` (40 files, reimplemented on Godot). Four fifths of the port is
 mechanical, and that ratio is what makes it feasible. The one way to lose it
 is letting `GUO.Compat` grow engine behaviour: it holds value types only, and
 a shim file that wants a texture or a device is misclassified, not a reason

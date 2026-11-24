@@ -5,7 +5,7 @@ a verdict: **upstream** (worth offering to modernuo/ModernUO) or **ours**
 (GUO's dev shard needs it; ModernUO would not want it). Nothing here has been
 submitted. The owner reviews the patches first and then sends one bundle.
 
-Pinned at `9782fd6aa` (`UO_SHARD_REF` in `launchers\_shared\config.bat`).
+Pinned at `4d9e2b6af` (`UO_SHARD_REF` in `launchers\_shared\config.bat`).
 `python tools/modernuo/test_upstream.py` checks that this list names every
 patch file and that every patch applies cleanly to the pin.
 
@@ -58,7 +58,7 @@ is retired (as `0004-multi-tile-enumerator` was).
 | 0024 | ModernUO's ConPVP duels set up in Luna's Grand Arena in place of DFI's duel and CTF systems, `[DfiArenas` | **ours**, shard content | none |
 | 0025 | Pkcs advisory pin | **retired** with the move to `9782fd6aa` (.NET 11) | none |
 | 0026 | `GuoPhotoTour`: off unless `GUO_PHOTO_TOUR` names a manifest, moves listed characters through stops and writes stamps, for photographing clients nothing can be compiled into (`tools/ab_compare/tour.py`) | **ours**, dev tooling | none |
-| 0027 | Read UOP map chunks in index order instead of sorting by each chunk's first int32, which custom UOPs repeat | **upstream**, PR #2794 open | `upstream/0027-uop-map-chunk-order.patch` |
+| 0027 | Read UOP map chunks in index order instead of sorting by each chunk's first int32, which custom UOPs repeat | **upstreamed**, retired | merged as modernuo/ModernUO#2794 (`4d9e2b6af`), with the maintainer's block-read hardening on top |
 | issue | `MultiData.LoadUOP` and uncompressed entries | **upstream** (issue, no patch) | `upstream/issue-multidata-loaduop-uncompressed.md` |
 
 ### 0006: loopback ban exemption (NET-00c, MUO patch)
@@ -100,21 +100,24 @@ Retired when the pin moved to `9782fd6aa`: on .NET 11 the stack restores and bui
 GUO patch: `patches/0026-dev-photo-tour.patch`. **Verdict: ours**: dev tooling with no
 upstream use, inert unless `GUO_PHOTO_TOUR` is set.
 
-### 0027: UOP map chunk order (MUO patch)
+### 0027: UOP map chunk order (upstreamed, retired)
 
-GUO patch: `patches/0027-uop-map-chunk-order.patch`. `TileMatrix` copies the
-`map*LegacyMUL.uop` entries out of `ReadUOPIndexes` (already keyed by chunk index)
-and re-sorts them by the first int32 of each chunk with `Array.Sort`, which is
-unstable. EA's files carry distinct values there; shard-made UOPs may not (the
-Epic! shard's chunks all start with 1), and the server's terrain then disagrees
-with the client's: every step is refused. The patch takes the entries in key
-order. Found by UO-Maps (`D:/_agentShared/runs/uo-maps/20261121-guo-map-tests/`);
-verified by building the patched Server and walking Epic!'s map on its raw UOP.
+`TileMatrix` copied the `map*LegacyMUL.uop` entries out of `ReadUOPIndexes` and
+re-sorted them by the first int32 of each chunk with an unstable sort. EA's files
+carry distinct values there; shard-made UOPs may not (one custom shard's chunks all
+start with 1), and the server's terrain then disagreed with the client's: every step
+was refused. Found by the UO-Maps work; GUO carried the fix as patch 0027 and offered
+it as modernuo/ModernUO#2794.
 
-**Verdict: upstream.** A plain correctness fix; stock data reads the same.
-
-Offered as modernuo/ModernUO#2794 (2026-11-22, from `DatMoshu:fix/uop-map-chunk-order`). Retire this
-patch at the first pin past its merge.
+Merged upstream on 2026-11-22 as `4d9e2b6af`. The maintainer extended it before the
+merge: map chunks are addressed by the index in their hashed name, as the client does
+(O(1) per land block instead of a scan), a missing or compressed chunk reads as invalid
+land instead of shifting later blocks, a static block whose length is not a multiple of
+seven no longer overruns its buffer, short reads fail instead of reusing stale bytes,
+and `ReadUOPIndexes` hashes candidate names only until every entry is placed. The pin
+moved to that commit and the GUO patch was retired. The same move takes in
+modernuo/ModernUO#2793 (ISA-L in place of libdeflate, built-in zstd for archives and
+the step cache).
 
 ### 0007 to 0024: DFI Network shard content (MUO patch)
 

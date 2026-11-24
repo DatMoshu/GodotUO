@@ -1964,10 +1964,11 @@ no reply). `tools/guo_mcp/run.py` is the stdio bridge: it sends the token, then 
 | Tool | Arguments | Result |
 |---|---|---|
 | `guo_ui` | none | text content holding JSON: `scene`, `headless`, `width`, `height`, `classicScale`, `truncated`, `controls[]` of `{system: "classic"\|"godot", type, name?, x, y, width, height, enabled?, focused, text}` (viewport pixels, at most 2000, editable field values omitted) |
-| `guo_input` | `kind` `motion\|button\|key\|text`; `x`,`y`; `button` `Left\|Right\|Middle\|WheelUp\|WheelDown`; `key` (Godot key name); `pressed`; `text` (at most 1024 characters); `shift`,`ctrl`,`alt` | text content; `isError` on bad arguments |
+| `guo_input` | `kind` `motion\|button\|click\|key\|text` (`click`: press and release at `x`,`y`, `clicks` 1..2 times, all in one frame, so a double-click is one whatever the frame rate); `x`,`y`; `button` `Left\|Right\|Middle\|WheelUp\|WheelDown`; `key` (Godot key name); `pressed`; `text` (at most 1024 characters); `shift`,`ctrl`,`alt` | text content; `isError` on bad arguments |
 | `guo_wait` | `frames` 1..600 | text content after that many process frames |
 | `guo_screenshot` | none | `image/png` content (base64); `isError` when headless |
-| `guo_state` | none | JSON text: `frame` (process frame index; with `--write-movie` it is the movie frame), `scene`, `width`, `height`, `player` (`map`,`x`,`y`,`z`, or null before the world). Editor builds also include read-only `water` diagnostics, below. |
+| `guo_state` | none | JSON text: `frame` (process frame index; with `--write-movie` it is the movie frame), `scene`, `width`, `height`, `player` (`map`,`x`,`y`,`z`, `serial`, `warMode`, `hits`, `hitsMax`, `equipped` (worn item serials, without hair, beard and backpack), `backpack` (serials directly in the backpack); null before the world), `combat` (`lastAttack`, the serial last attacked), `hover` (the serial of the entity under the pointer, 0 for none), `pointer` (the classic control under the pointer: `type`, `serial`; null for none), `mobiles` (the 32 nearest other mobiles within 18 tiles: `serial`, `name`, `x`,`y`,`z`, `distance`, `hits`, `hitsMax`, `notoriety`, `dead`, `screen` `{x,y}`: where its feet are drawn, viewport pixels), `journal` (the text of the last 20 journal lines, no speaker names). Editor builds also include read-only `water` diagnostics, below. |
+| `guo_net_drop` | none | text; shuts the sending side of the game connection's TCP socket, so the shard closes the connection and the client meets the end of the stream on its own read path, as when a shard drops it; `isError` when there is no connection. For the new-player gate's dropped-connection link |
 | `guo_quit` | none | text, then the client quits after two frames (finalises a MovieWriter file); the connection closes |
 | `guo_overlay` | `text` (caption, at most 300 characters), `step` (its label, e.g. `3/18`), `control` `{x,y,width,height,label?}` (an outline, viewport pixels), `clear`, `hide` (draw nothing; Space and Esc still count); none of them only reads | JSON text `{skip, abort}`: Space and Esc pressed since the last call (reading clears them). Draws the human driver's caption card and outline on a canvas layer above the game; the card's step label is a Godot `Label` named `HumanOverlayStep`, visible in `guo_ui`. Space does not count while a text field has focus |
 
@@ -1987,7 +1988,7 @@ Exported clients omit this authoring-only block.
 No shell, script, file or packet tools exist. Synthetic keys and buttons still held when the last controller
 disconnects are released.
 
-**Stock ClassicUO (`tools/cuo_automation`, `CuoMcpHost.cs`).** The out-of-tree ClassicUO build carries a test-only server with the same transport, handshake, environment variables and token rules, compiled in by `tools/render_dump/inject.targets` and never into GUO or an export. It serves `guo_state`, `guo_wait`, `guo_input`, `guo_screenshot`, `guo_ui` and `guo_quit` with the argument schemas above; `guo_overlay` is not served. Differences: `frame` counts game loop frames; `width`/`height` and every `guo_ui` bound are back buffer pixels; `guo_ui` lists `system: "classic"` controls only, without `name`; `guo_state` has no `audio` block; `guo_screenshot` is the back buffer. Input is delivered to ClassicUO's own handlers from the game loop, so the window needs no focus. See `tools/cuo_automation/README.md`.
+**Stock ClassicUO (`tools/cuo_automation`, `CuoMcpHost.cs`).** The out-of-tree ClassicUO build carries a test-only server with the same transport, handshake, environment variables and token rules, compiled in by `tools/render_dump/inject.targets` and never into GUO or an export. It serves `guo_state`, `guo_wait`, `guo_input`, `guo_screenshot`, `guo_ui` and `guo_quit` with the argument schemas above; `guo_overlay` and `guo_net_drop` are not served, nor `guo_input` kind `click`. Differences: `frame` counts game loop frames; `width`/`height` and every `guo_ui` bound are back buffer pixels; `guo_ui` lists `system: "classic"` controls only, without `name`; `guo_state` has no `audio` block; `guo_screenshot` is the back buffer. Input is delivered to ClassicUO's own handlers from the game loop, so the window needs no focus. See `tools/cuo_automation/README.md`.
 
 ## 30. Workspace, server profiles and client profiles (ADR-0032)
 
@@ -2154,8 +2155,8 @@ Zomboid B42 headers/packs use supported `LOTH`/`LOTP` versions 0/1 with little
 endian integers, line strings, 8×8 chunks, 32×32 chunk cells, authored room
 rectangles and building room references. Tile-definition files use `tdef` version
 1. Edge properties become a recorded 2:1 cell-grid adaptation; source art is
-never decoded or copied. Unsupported older chunk sizes, cross-cell buildings,
-missing property metadata and incomplete stair triplets block conversion. PZ
+never decoded or copied. Unsupported older chunk sizes, cross-cell buildings
+without the explicit neighboring-cell opt-in below, missing property metadata and incomplete stair triplets block conversion. PZ
 B/M/T stairs link north/west upper exits; original upper holes are retained, and
 the native flight records any necessary landing fill. Unmapped
 detail tiles remain explicitly counted. A flat UO roof derived from the authored
@@ -2171,6 +2172,66 @@ Every candidate still passes native stair and parcel checks.
 Gameplay reports require arrivals without jump tags and placement acknowledgments;
 negative wall targets must fail to arrive. Source gameplay extras remain retained
 without claiming conversion into server mechanics.
+
+### Proposed source-object furnishing extension (ADR-0052)
+
+The proposed `furnishing_contract: "pz-source-objects/1"` is additive to
+semantic-layout/1. It is not emitted by the released converter yet. Per-level
+`furnishing_groups` is the authoritative object inventory when present; per-cell
+furniture fields only support legacy room-label inference. Every group has:
+
+- `id`: unique deterministic source object identity within its level.
+- `source_id`: readable source group identity; no source artwork.
+- `role`: an existing furnishing role or `unresolved`.
+- `status`: `resolved` or `unresolved`, with `diagnostics` explaining the latter.
+- `tiles`: source observations, each with tile ID, cell-local `at:[x,y,z]`,
+  tileset, group name, optional `sprite_grid:[x,y]`, and classification evidence.
+- `intended_cells`: exact target projection before structural trimming.
+- `cells`: surviving native semantic floor cells; an empty result is a blocker,
+  not an omitted object. Multiple groups may overlap and must remain distinct.
+
+The native consumer validates unique IDs and source/target references, consumes
+whole objects, and preserves strict fit/circulation/door-clearance diagnostics.
+Unresolved objects cannot certify a native build. Detail-only observations remain
+explicit source coverage, never guessed fixtures. Hashing includes the extension
+when present, while old layouts keep their previous hash. Old consumers do not
+support this extension; producer and native consumer must be upgraded together.
+Converter identity must bind every helper used to classify/assemble source objects.
+
+The PZ binary definition order is: `newtiledefinitions.tiles`,
+`tiledefinitions_erosion.tiles`, `tiledefinitions_overlays.tiles`,
+`tiledefinitions_b42chunkcaching.tiles`, `tiledefinitions_noiseworks.patch.tiles`,
+`jumbo_trees.tiles`, `jumbo_trees_big.tiles`. Prefer `media/tile_definitions` if
+present, otherwise `media`; do not mix directory layouts. Non-patch definitions
+replace records wholesale. Patch definitions merge properties into existing keys;
+new patch keys retain the existing loader behavior. Record exact source hashes.
+
+### Proposed bounded PZ source windows (ADR-0055)
+
+The isolated converter offers `zomboid-resolve --neighbor-cells`; default calls
+still refuse source boundaries. A crossing window is at most256 source squares
+per axis and four source cells. All required headers and packs must exist and
+pass their own decoders. Each cell uses its own tile dictionary. Primary-header
+room rectangles remain authoritative; neighboring rooms are never merged.
+Single-cell output stays unchanged, including when the flag is supplied.
+
+Cross-cell provenance declares `source_window_contract: "pz-cell-window/1"`,
+`source_window_bounds:[x0,y0,x1,y1]` (half-open primary-cell-relative bounds), and
+`source_cells`, sorted by cell coordinates. Each entry contains `cell:[cx,cy]`,
+`header`, `header_sha256`, `pack`, and `pack_sha256`. Include every intersected
+cell, including the primary; legacy primary identity/hash fields must agree.
+All entries participate in the existing provenance/snapshot/profile identities.
+Consumers verify the complete set and every filename/hash against the extraction
+manifest; duplicate, omitted, extra, mismatched or unsupported entries fail.
+
+Authored rectangles and object observation `at` stay continuous in the primary
+cell's frame. Cross-cell observations additionally carry `source_cell:[cx,cy]`
+and local `source_at:[x,y,z]`. Cell `source`/`lineage` instead uses actual source
+`cell` and cell-local `at`, adding primary-relative `frame_at:[x,y,z]` and
+`room_header` to identify the primary authored-room namespace. These additive
+fields distinguish tile provenance from room ownership. Native coordinates,
+wall-edge orientation, stacks and the source-object inventory contract remain
+unchanged. No source artwork or binaries are distributed.
 
 ## 33. GUO editor MCP (`tools/editor_mcp`, editor addon `Automation/`)
 
@@ -2279,8 +2340,10 @@ adds it.
 | `ui.fill` | `control`, `text`, `clear` (integer >= 0: BackSpace presses first, default 0), `within_s` (as `ui.click`) | game MCP | 3 |
 | `ui.key` | `key` (a Godot key name), `shift`, `ctrl`, `alt` (booleans, default false) | game MCP `guo_input` | 3 |
 | `ui.hold` | `key`, `seconds` (default 1), `shift`, `ctrl`, `alt`: the key goes down, stays down for that long and comes up, also when the step fails | game MCP `guo_input` | 3 |
-| `ui.drag` | `from`, `to` (control selectors), `button` (default Left), `steps` (pointer moves between them, default 8), `within_s`: press on the first, move, release on the second | game MCP `guo_input` | 3 |
+| `ui.drag` | `from`, `to` (control selectors), `button` (default Left), `steps` (pointer moves between them, default 8), `within_s`, `from_offset` / `to_offset` (`{x, y}` classic pixels from the control's centre, scaled by `classicScale`): press on the first, move, release on the second | game MCP `guo_input` | 3 |
 | `chat` | `text` (e.g. `[go 1434 1697`) | game MCP `guo_input` text | 3 |
+| `world.click` | `mobile` (`{name \| contains}`: the nearest mobile in `guo_state.mobiles` so named), `clicks` (1 or 2; at war a double-click is an attack), `within_s` (default 10) | game MCP `guo_state` then `guo_input`: the pointer starts at the mobile's `screen` point and moves up its body until `guo_state.hover` is that mobile, then clicks there; fails if it never is | 5 |
+| `net.drop` | none | game MCP `guo_net_drop`: the game connection is shut as a network loss would end it; the client must notice by itself | 5 |
 | `renderdump` | `name` (letters, digits, `_`, `-`) | a `client` run with this step in its scenario starts the client with `GUO_RENDER_DUMP_DIR=<run>/render_dump`; the step says `renderdump NAME` in game and waits for `render_dump/NAME/guo.json` within the step timeout; its `log` event carries the dump's `bytes`, `tiles` and `objects` | 4 |
 | `render_diff` | `name` | `tools/render_diff` on the run's `guo.json` and the reference `cuo.json` in `build/render_dump/NAME/` (or in `GUO_RENDER_REF_DIR/NAME/`, environment, then config.local.bat, then config.bat); writes `diff.md` into the run folder; fails on any map, field or drawn mismatch (the event carries the counts and the first mismatch lines), and on a missing dump or reference, naming the path looked for | 4 |
 | `scene_set` | `path`, `property`, `value` | editor MCP `scene_set_property` | later |
@@ -2299,11 +2362,16 @@ Expectations. A condition the runner does not know fails the step ("unknown expe
 | `ui.count` | `{control, equals \| at_least}` | the number of matching controls equals `equals`, or is at least `at_least` | 3 |
 | `world.position` | `{x, y, z?, map?, tolerance?}` | the player is within `tolerance` tiles (default 0) of each given axis, and on `map` when given | 3 |
 | `world.moved` | `{at_least?}` | the player is at least `at_least` tiles (default 1; the larger of the x and y distance) from where it stood when the step began | 3 |
+| `world.equipped`, `world.backpack` | `{delta?, has?, lacks?}` | against `guo_state.player.equipped` (worn item serials) or `.backpack` (serials directly in the backpack): the count changed by `delta` since the step began, and the serial `has` is (or `lacks` is not) in it; a serial is a number, decimal text or `0x` hex | 5 |
+| `world.mobile` | `{name \| contains, within?, hurt?}` | a mobile so named is within `within` tiles (default 18) and, with `hurt`, has fewer hits than its maximum | 5 |
+| `player` | object | it is a subset of `guo_state.player` (e.g. `{"warMode": true}`) | 5 |
+| `combat.attacking` | `{name \| contains}` | `guo_state.combat.lastAttack` is a nearby mobile so named | 5 |
+| `journal.contains` | string | one of the last 20 journal lines (`guo_state.journal`) contains the text; the event records only whether it did | 5 |
 | `scene` | string | the client's current scene (game MCP state `scene`) equals it | 3 |
 | `log.contains` | string | the program's log (`client.log`) contains the text | 3 |
 | `render_diff` | `{max_drawn_diff}` | the last `render_diff` found at most that many differing draws | 4 |
 
-**Control selector.** Where a table says *control selector*, the value is a non-empty string (matches a control whose type, name or text equals it) or an object with only these keys, all of which must match: `type`, `name`, `text`, `contains` (a substring of the text), `system` (`classic` or `godot`), `gump` (a classic control's top-level gump type, e.g. `OptionsGump`), `button_id` (a classic `Button`'s `ButtonID`) and `index` (integer >= 0: which of several matches, in `guo_ui` order, default 0). The `guo_ui` order changes when a gump comes to the front, so a classic button is best named by `gump` and `button_id` rather than a bare `index`; a failed client step writes the snapshot it saw to `ui/<step>.json` in the run folder. `ui.click` and `ui.fill` accept the same selector in `control`; `ui.text` reads the text of the match at `index`.
+**Control selector.** Where a table says *control selector*, the value is a non-empty string (matches a control whose type, name or text equals it) or an object with only these keys, all of which must match: `type`, `name`, `text`, `contains` (a substring of the text), `system` (`classic` or `godot`), `gump` (a classic control's top-level gump type, e.g. `OptionsGump`), `button_id` (a classic `Button`'s `ButtonID`), `serial` (the game object a classic control shows, such as an item in a container or on a paperdoll; a number, decimal text or `0x` hex) and `index` (integer >= 0: which of several matches, in `guo_ui` order, default 0). The `guo_ui` order changes when a gump comes to the front, so a classic button is best named by `gump` and `button_id` rather than a bare `index`; a failed client step writes the snapshot it saw to `ui/<step>.json` in the run folder. `ui.click` and `ui.fill` accept the same selector in `control`; `ui.text` reads the text of the match at `index`. `ui.drag` sets the variable `$dragged` to the serial of the control it picked up, so a later step can name the same item; expectations are substituted after the step's action, so the same step may name it too.
 
 **Variables.** `$name` or `${name}` in any string of `do` or `expect` is replaced before the step runs: from
 `--var name=value`, else from the environment variable `GUO_SCENARIO_<NAME>` (credentials live there or in
@@ -2496,7 +2564,7 @@ Relative paths resolve against the root of the git work tree holding the profile
 | `service` | object | `user` (default `muo-<id>`; a system user with no login shell), `memory_max` (systemd `MemoryMax`, e.g. `6G`; omitted = no limit), `restart` (`on-failure`, the default, or `always`), `exec_start_pre` (a command as an argument array, run as the service user before every start; a non-zero exit stops the start. `{data_dir}` is replaced by the client data path, `{dist}` by the server folder `/srv/muo/<id>/dist`, `{src}` by the checkout `/srv/muo/<id>/src`) |
 | `client_version` | string | the UO client version the shard expects (dotted, e.g. `7.0.107.76`), written to ModernUO's `clientData.clientVersion`; omitted = ModernUO detects it |
 | `data_manifest` | object | `file` (a JSON manifest of the client data files the shard needs, committed beside the profile), `verify` (`size` or `sha256`); the file is `{"files": {"<path under the client data>": {"size": n, "sha256": "<hex>"}}}`; `deploy` and every start refuse a client data folder that does not match |
-| `host_packages` | array of strings | extra apt packages `bootstrap` installs, beyond the tool's own (.NET SDK, git, zstd, libdeflate). Each a Debian package name, `^[a-z0-9][a-z0-9+.-]*$`, so no entry can reach apt as an option |
+| `host_packages` | array of strings | extra apt packages `bootstrap` installs, beyond the tool's own (.NET SDK, git, zstd, libisal2). Each a Debian package name, `^[a-z0-9][a-z0-9+.-]*$`, so no entry can reach apt as an option |
 | `backup` | object | `root` (absolute POSIX folder on the host, default `/var/backups/muo/<id>`), `include` (folders under the server folder to snapshot, default `["Saves"]`), `keep` (snapshots kept, default 14), `on_calendar` (systemd `OnCalendar` for a backup timer; omitted = no timer) |
 | `seed` | string | the snapshot `reset` restores (snapshots are named `<yyyymmdd_hhmmss>` or `--name`); omitted = `reset` refuses |
 | `host_keys` | object | other names for the host-local keys, when a profile needs them: `client_data` (default `MUO_CLIENT_DATA`), `admin_user` (`MUO_ADMIN_USER`), `admin_password` (`MUO_ADMIN_PASSWORD`) |
@@ -3364,6 +3432,9 @@ profile fields, Options entries, automatic downloads or shard authority.
 | `depth.tint` | RGB array, each 0..1; `[0.12,0.24,0.42]` | sRGB target colour for the depth blend |
 | `depth.strength` | 0..1; 0 | Maximum tint blend; 0 disables depth tint |
 | `depth.falloff` | 0.25..64 cells; 8 | Tint blend is `strength * (1 - exp(-d / falloff))`. `d` is distance into water from the low-shore contour, not bathymetry: the current world mask contains no underwater floor depth |
+| `depth.fade_start`, `depth.fade_end` | 0..28 and 1..29 cells; 9.5 and 13 | Translucent water (a map whose water tiles are see-through) stays clear to `fade_start` cells from land and is opaque from `fade_end`; `fade_end` must exceed `fade_start`. The client draws with the defaults (`water_depth_fade`, section 44) |
+| `depth.floor_reach` | 2..40 cells; 17 | Distance over which a seabed floor tile darkens to the deep colour (`water_floor_look.x`) |
+| `depth.sand_bars` | 0..1; 0.5 | How much lighter the seabed's pale patches are (`water_floor_look.y`); 0 is an even bed |
 | `shoreline.width` | 0..2 cells; 0.22 | Distance from the low-shore contour covered by foam; 0 disables foam |
 | `shoreline.strength` | 0..1; 0.85 | Foam intensity (native brightness modulation for `classicplus`); 0 disables it; cliffs stay excluded |
 | `normal.amplitude` | 0..2; 0.22 | Dimensionless strength of the procedural surface normal/ripple perturbation; 0 disables ambient perturbation |
@@ -3372,6 +3443,8 @@ profile fields, Options entries, automatic downloads or shard authority.
 | `flow.direction` | two numbers -1..1; `[1,0]` | World cell X/Y direction, normalised when consumed; `[0,0]` disables flow without division by zero |
 | `flow.strength` | 0..8 cells/second; 0 | Pattern advection rate along direction; never moves objects or changes shard physics |
 | `wake.boat`, `wake.player`, `wake.object` | each 0..2; each 1 | Independent multipliers on boat, mobile and falling/thrown item/effect disturbance rates; 0 disables that source. `player` includes other mobiles, as in WATER-03 |
+| `wake.foam` | 0..2; 1 | White water in a boat's trail (`water_wake_look.x`); 0 leaves only the ripples |
+| `wake.length` | 0.25..3; 1 | Lifetime of a boat's trail as a share of the built-in 2 to 5 seconds |
 | `wake.damping` | 0.9..0.999; 0.985 | Amplitude retention per 20 Hz simulation step, independent of render FPS |
 | `lighting.reflection` | 0..1; 0 | Surface reflection blend; 0 disables it. Reflection source and reduced-tier fallback are W-02/W-07 work; no capture pass is authorised by this contract |
 | `lighting.sun_glint` | 0..1; 0.35 | Highlight strength; 0 disables highlights in every model |
@@ -3380,6 +3453,14 @@ profile fields, Options entries, automatic downloads or shard authority.
 | `clock.offset`, `clock.fixed_time` | each 0..3600 seconds; each 0 | Elapsed mode: `(elapsed_seconds * rate + offset) % 3600`; fixed mode: `fixed_time % 3600` (rate/offset ignored). No claim of seamless looping. This clock never changes native art animation or simulation time |
 | `pixel.levels` | integer 0..16; 6 | Brightness levels; 0 allows smooth style shading |
 | `pixel.grain` | integer 1..8 world pixels; 1 | Style pixel size; native art stays nearest-neighbour |
+
+The editor's Water panel (`#if TOOLS`, `addons/guo_editor/Water/WaterShallows.cs`) authors six of
+these today: `depth.fade_start`, `depth.fade_end`, `depth.floor_reach` and `depth.sand_bars`
+(`wake.foam` and `wake.length` are written at their defaults; the World view has no boat to
+show them on). The panel ends the fade at 13 cells, the reach of a seabed stage, though the
+schema allows more. It shows them in the previewed world, and saves and reloads them
+as a complete v2 document whose other fields come from the v1 draft by the correspondence
+below. The client itself still draws with the defaults; no pack carries the document.
 
 Numbers must be finite JSON numbers, not booleans or strings. The document
 uses the v1 transport envelope: at most 16 KiB of UTF-8, no BOM, duplicate keys

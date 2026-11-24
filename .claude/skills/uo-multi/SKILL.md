@@ -147,3 +147,37 @@ logged-in proof are distinct states; multi tests or sampled pilots alone do not
 approve all source definitions or variants.
 
 For a quick start or an editor panel, `run.py house|autowall|roof|stairs|rotate|mirror|import|export` (JSON in and out, deterministic by seed) build from the style catalogue (`run.py styles`; data_formats section 27). Mine the client's own styles with `run.py styles --mine` (local, never committed). Check the result with the validator problems it returns, then continue with build, write and prove.
+
+
+## Imported-layout fidelity and proof lessons
+
+For `pz-source-objects/1`, the full source-object group list is authoritative,
+including stacked and unresolved groups. Per-cell furnishing hints cannot recover
+that inventory. Catalogue replay must compare full retained group records and
+refuse mismatches; preserve old evidence and use a new converter profile.
+
+The bounded `pz-cell-window/1` extension is opt-in (`zomboid-resolve
+--neighbor-cells`). Read each neighboring pack with its own header dictionary,
+retain every source pair/hash, and use the primary header for authored room
+membership. Preserve both continuous frame coordinates and actual cell/local
+coordinates. Missing sources and unknown formats remain failures. See proposed
+ADRs0052/0055 and data_formats section32; isolated implementation does not imply
+maintainer acceptance. Single-cell controls should preserve prior output bytes.
+
+Do not classify unknown devices as decorative details just to make a build pass.
+Property-backed whole-word aliases can choose existing roles; ambiguous multipart
+shapes and unsupported functionality remain unresolved. A partial native preview
+is not a successful native build.
+
+During real traversal, inspect live door state before diagnosing a height gap.
+Auto-closing doors can shut between separate tool calls; open and enter within
+one bounded driver. After right-clicking a gump closed, allow the double-click
+interval to pass before holding right mouse for movement. Check actual movement
+acknowledgements, ordinary-player access, negative wall collision and cold-save
+persistence separately. Static furniture art does not prove container mechanics.
+
+Use fresh output paths and unique snapshot labels. A malformed read-only request
+should not terminate an otherwise healthy owned session. Preserve failed runs;
+if an aggregate report is overwritten, mark any reconstruction explicitly and
+never claim recovered original bytes or timings. Recheck process liveness when
+handing over a launcher rather than repeating an earlier running-state claim.

@@ -26,7 +26,8 @@ MCP_DEADLINE_S = 45          # no reply this long from the program: a hang
 
 
 # The game MCP's tool names (tools/guo_mcp, docs/data_formats.md section 29); the scenarios never name them.
-GAME_TOOLS = {"ui": "guo_ui", "input": "guo_input", "state": "guo_state", "shot": "guo_screenshot", "quit": "guo_quit"}
+GAME_TOOLS = {"ui": "guo_ui", "input": "guo_input", "state": "guo_state", "shot": "guo_screenshot", "quit": "guo_quit",
+              "net_drop": "guo_net_drop"}
 
 
 class RunAborted(Exception):
@@ -181,15 +182,16 @@ class Runner:
     def _step_body(self, step: dict, sid: str, kind: str, watch: Stopwatch, deadline: float) -> dict:
         """Performs the step's `do`, polls its `expect`, takes its still; returns the step's row. The human driver overrides this."""
         do = substitute(step["do"], self.variables)
-        expect = substitute(step.get("expect", {}), self.variables)
+        expect = step.get("expect", {})              # substituted after the action: it may name what the action found ($dragged)
         shown_expect = step.get("expect", {})       # as written: the log never holds what a $name stands for
         # The step as written (with $names, never the secrets behind them) is what the event log records.
         self.events.emit("action", sid, detail={"do": step["do"]})
-        if "world.moved" in expect:                  # measured from where the player stood before the step acted
+        if "world.moved" in expect or "world.equipped" in expect or "world.backpack" in expect:
+            # measured from where the player stood, and what it wore and carried, before the step acted
             self._moved_from = self._tool_json(GAME_TOOLS["state"], {}).get("player")
         detail = getattr(self, "_do_" + kind.replace(".", "_"))(sid, do, deadline)
         self._last = detail if isinstance(detail, dict) else {}
-        self._expect(sid, expect, deadline, shown_expect)
+        self._expect(sid, substitute(expect, self.variables), deadline, shown_expect)
         if step.get("shot"):
             self._screenshot(sid)
         return self._finish(step, watch, True, None, detail)
@@ -275,6 +277,19 @@ class Runner:
             return self._expect_position(wanted)
         if name == "world.moved":
             return self._expect_moved(wanted)
+        if name in ("world.equipped", "world.backpack"):
+            return self._expect_items(name.split(".")[1], wanted)
+        if name == "world.mobile":
+            return self._expect_mobile(wanted)
+        if name == "player":
+            player = self._tool_json(GAME_TOOLS["state"], {}).get("player") or {}
+            return subset(wanted, player), {k: player.get(k) for k in wanted}
+        if name == "combat.attacking":
+            return self._expect_attacking(wanted)
+        if name == "journal.contains":
+            lines = self._tool_json(GAME_TOOLS["state"], {}).get("journal") or []
+            found = any(str(wanted) in line for line in lines)
+            return found, found                       # the journal is not logged: it may hold other players' words
         if name == "scene":
             scene = self._tool_json(GAME_TOOLS["state"], {}).get("scene")
             return scene == wanted, scene
@@ -322,6 +337,59 @@ class Runner:
             return False, None
         tiles = max(abs(int(player["x"]) - int(start["x"])), abs(int(player["y"]) - int(start["y"])))
         return tiles >= int(wanted.get("at_least", 1)), {"tiles": tiles, "from": start, "to": player}
+
+    def _expect_items(self, which: str, wanted: dict) -> tuple[bool, object]:
+        """world.equipped / world.backpack: {"delta": n} against the step's start, and/or {"has" | "lacks": serial}."""
+        start = (getattr(self, "_moved_from", None) or {}).get(which)
+        now = (self._tool_json(GAME_TOOLS["state"], {}).get("player") or {}).get(which)
+        if now is None:
+            return False, None
+        ok = True
+        seen: dict = {"count": len(now)}
+        if "delta" in wanted:
+            if start is None:
+                return False, {"count": len(now), "start": None}
+            seen["delta"] = len(now) - len(start)
+            ok = ok and seen["delta"] == int(wanted["delta"])
+        if "has" in wanted:
+            seen["has"] = _serial(wanted["has"]) in now
+            ok = ok and seen["has"]
+        if "lacks" in wanted:
+            seen["lacks"] = _serial(wanted["lacks"]) not in now
+            ok = ok and seen["lacks"]
+        return ok, seen
+
+    def _find_mobile(self, wanted: dict) -> dict | None:
+        """The nearest mobile in guo_state whose name equals `name` or holds `contains`."""
+        for m in self._tool_json(GAME_TOOLS["state"], {}).get("mobiles") or []:
+            name = m.get("name") or ""
+            if ("name" in wanted and name != wanted["name"]) or ("contains" in wanted and str(wanted["contains"]) not in name):
+                continue
+            return m
+        return None
+
+    def _expect_mobile(self, wanted: dict) -> tuple[bool, object]:
+        """world.mobile: {"name" | "contains": ..., "within": tiles, "hurt": true (hits below its maximum)}."""
+        m = self._find_mobile(wanted)
+        if m is None:
+            return False, None
+        ok = int(m.get("distance", 99)) <= int(wanted.get("within", 18))
+        if wanted.get("hurt"):
+            ok = ok and 0 < int(m.get("hitsMax") or 0) and int(m.get("hits") or 0) < int(m["hitsMax"])
+        return ok, {k: m.get(k) for k in ("name", "distance", "hits", "hitsMax")}
+
+    def _expect_attacking(self, wanted: dict) -> tuple[bool, object]:
+        """combat.attacking: the client's last attack is on a mobile named so ({"name" | "contains": ...})."""
+        state = self._tool_json(GAME_TOOLS["state"], {})
+        target = int((state.get("combat") or {}).get("lastAttack") or 0)
+        if not target:
+            return False, None
+        for m in state.get("mobiles") or []:
+            if int(m.get("serial", 0)) == target:
+                name = m.get("name") or ""
+                ok = name == wanted["name"] if "name" in wanted else str(wanted.get("contains", "")) in name
+                return ok, name
+        return False, "not near"
 
     def _expect_log(self, wanted) -> tuple[bool, object]:
         path = getattr(self.session, "log_path", None)
@@ -665,14 +733,40 @@ class Runner:
             self._input(kind="key", key=str(key), pressed=False, **mods)   # never leave the key down
         return {"key": key, "held_s": seconds, **mods}
 
+    def _aim(self, control: dict) -> tuple[int, int]:
+        """A point the game hit-tests as this control. A classic item is only hit on its drawn pixels, so for a
+        control with a serial the pointer tries its centre, then a grid across it, until guo_state.pointer names
+        that serial; any other control (or none found) gets its centre."""
+        cx, cy = uiquery.center(control)
+        serial = control.get("serial")
+        if not serial:
+            return cx, cy
+        x, y, w, h = control["x"], control["y"], control["width"], control["height"]
+        points = [(cx, cy)] + [(int(x + w * i / 6), int(y + h * j / 6)) for j in range(1, 6) for i in range(1, 6)]
+        for px, py in points:
+            self._input(kind="motion", x=px, y=py)
+            pointer = self._tool_json(GAME_TOOLS["state"], {}).get("pointer") or {}
+            if pointer.get("serial") == serial:
+                return px, py
+        return cx, cy
+
     def _do_ui_drag(self, sid: str, do: dict, deadline: float) -> dict:
         """Press on one control, move to another in a few steps and release there: moving or equipping an item."""
         self._need_game("ui.drag")
         if "from" not in do or "to" not in do:
             raise StepFailed("ui.drag needs from and to (control selectors)")
         within = float(do.get("within_s", 5))
-        x0, y0 = uiquery.center(self._wait_control(do["from"], deadline, within))
+        picked = self._wait_control(do["from"], deadline, within)
+        if picked.get("serial"):
+            self.variables["dragged"] = str(picked["serial"])   # what a later step names as $dragged
+        x0, y0 = self._aim(picked) if "from_offset" not in do else uiquery.center(picked)
         x1, y1 = uiquery.center(self._wait_control(do["to"], deadline, within))
+        if "from_offset" in do or "to_offset" in do:     # classic pixels from the control's centre, scaled as the gumps are
+            scale = float(self._snapshot().get("classicScale") or 1)
+            off = do.get("from_offset") or {}
+            x0, y0 = x0 + int(float(off.get("x", 0)) * scale), y0 + int(float(off.get("y", 0)) * scale)
+            off = do.get("to_offset") or {}
+            x1, y1 = x1 + int(float(off.get("x", 0)) * scale), y1 + int(float(off.get("y", 0)) * scale)
         button = str(do.get("button", "Left"))
         steps = max(2, int(do.get("steps", 8)))
         self._input(kind="motion", x=x0, y=y0)
@@ -685,6 +779,44 @@ class Runner:
             self._input(kind="button", x=x1, y=y1, button=button, pressed=False)   # never leave the button down
         return {"dragged": uiquery.describe(do["from"]), "to": uiquery.describe(do["to"]), "x0": x0, "y0": y0, "x1": x1, "y1": y1}
 
+    def _do_world_click(self, sid: str, do: dict, deadline: float) -> dict:
+        """Click a mobile in the world the way a player does: the pointer goes to its feet and up its body until
+        the game says the mobile is under it (guo_state.hover), then clicks there (clicks: 2 is a double-click)."""
+        self._need_game("world.click")
+        wanted = do.get("mobile")
+        if not isinstance(wanted, dict) or not ({"name", "contains"} & set(wanted)):
+            raise StepFailed('world.click needs mobile: {"name" | "contains": ...}')
+        end = min(self._clock() + float(do.get("within_s", 10)), deadline)
+        while True:
+            mobile = self._find_mobile(wanted)
+            if mobile is not None and mobile.get("screen"):
+                break
+            if self._clock() >= end:
+                raise StepFailed(f"no mobile matching {wanted} is near the player")
+            self._check_program()
+            self._sleep(0.5)
+        feet = mobile["screen"]
+        for dy in range(0, -100, -8):
+            for dx in (0, -8, 8):
+                x, y = int(feet["x"]) + dx, int(feet["y"]) + dy
+                self._input(kind="motion", x=x, y=y)
+                self._sleep(0.1)                        # what is under the pointer is worked out while the world draws
+                if int(self._tool_json(GAME_TOOLS["state"], {}).get("hover") or 0) == int(mobile["serial"]):
+                    clicks = min(2, max(1, int(do.get("clicks", 1))))
+                    self._input(kind="click", x=x, y=y, button="Left", clicks=clicks)   # one frame: a double-click stays one
+                    return {"clicked": mobile.get("name"), "x": x, "y": y, "clicks": clicks}
+            if self._clock() >= end:
+                break
+        raise StepFailed(f"the pointer never found {mobile.get('name')} on screen (feet at {feet['x']},{feet['y']})")
+
+    def _do_net_drop(self, sid: str, do: dict, deadline: float) -> dict:
+        """Drop the game connection as a network loss would (guo_net_drop); the client must notice by itself."""
+        self._need_game("net.drop")
+        is_error, text = self._tool(GAME_TOOLS["net_drop"], {})
+        if is_error:
+            raise StepFailed(f"net.drop: {text[:200]}")
+        return {"dropped": True}
+
     def _do_chat(self, sid: str, do: dict, deadline: float) -> dict:
         self._need_game("chat")
         if "text" not in do:
@@ -693,6 +825,11 @@ class Runner:
         self._input(kind="text", text=str(do["text"]))
         self._key("Enter")
         return {"chat_chars": len(str(do["text"]))}
+
+
+def _serial(value) -> int:
+    """A serial written as a number, a decimal string ($dragged) or 0x hex."""
+    return uiquery.parse_serial(value)
 
 
 def _render_diff_tool():

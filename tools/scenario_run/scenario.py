@@ -14,10 +14,13 @@ from pathlib import Path
 SURFACES = {"client", "editor", "web", "deck", "shard"}
 # Every kind the format names; the runner implements the subset in IMPLEMENTED and fails a step of any other kind.
 KINDS = {"launch", "wait", "shot", "note", "tour_segment", "editor_invoke", "editor_tool", "ui.click", "ui.fill", "ui.key", "ui.hold", "ui.drag",
-         "chat", "scene_set", "renderdump", "render_diff", "lane"}
+         "chat", "scene_set", "renderdump", "render_diff", "lane", "world.click", "net.drop"}
 IMPLEMENTED = {"launch", "wait", "shot", "note", "tour_segment", "editor_invoke", "editor_tool", "ui.click", "ui.fill", "ui.key", "ui.hold", "ui.drag", "chat",
-               "renderdump", "render_diff"}
+               "renderdump", "render_diff", "world.click", "net.drop"}
 DEFAULT_TIMEOUTS = {"step_s": 30, "run_s": 600}
+# Variables a step sets while the scenario runs (ui.drag: the serial it picked up), with a stand-in value for the
+# check that every $name is defined before anything is launched.
+RUNTIME_VARIABLES = {"dragged": "0"}
 
 
 class ScenarioError(ValueError):
