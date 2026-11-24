@@ -1286,7 +1286,18 @@ public partial class Main : Node
     {
         InputProbe.EndureSeconds = _options.EndureSeconds;
 
-        await InputProbe.Run(this, 200);
+        // An exception in an async void method is only logged by Godot and the
+        // process then exits 0, so a crashed probe read as a pass: fail it here.
+        try
+        {
+            await InputProbe.Run(this, 200);
+        }
+        catch (Exception e)
+        {
+            GD.PrintErr($"[GUO] probe FAILED: the probe threw {e}");
+            Quit(1);
+            return;
+        }
 
         await CaptureFrame();
 
@@ -1310,7 +1321,16 @@ public partial class Main : Node
         InputProbe.WalkToTheme = _options.WalkToTheme;
         InputProbe.WalkToThemeZone = _options.WalkToThemeZone;
 
-        await InputProbe.RunWalkTo(this);
+        try
+        {
+            await InputProbe.RunWalkTo(this);
+        }
+        catch (Exception e)
+        {
+            GD.PrintErr($"[GUO] probe FAILED: the walk-to probe threw {e}");
+            Quit(1);
+            return;
+        }
 
         await CaptureFrame();
 
