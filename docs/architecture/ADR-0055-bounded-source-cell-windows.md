@@ -2,9 +2,9 @@
 
 ## Status
 
-Proposed, 2026-11-15. Tools-layer design for isolated implementation and review.
-No maintainer acceptance, merge, distribution or released-workflow readiness is
-claimed. Independent of ADR-0052 role classification, while interoperating with
+Accepted by the owner, 2026-11-23 (proposed 2026-11-15). Tools-layer design; the
+implementation merged to integration on 2026-11-23. No distribution or
+released-workflow readiness is claimed. Independent of ADR-0052 role classification, while interoperating with
 its explicit source-object inventory.
 
 ## Problem and scope

@@ -2,9 +2,8 @@
 
 ## Status
 
-Proposed. GUO lead reviewed the concrete contract and authorized isolated
-implementation on 2026-11-15. Acceptance by the owner remains pending; this
-review does not authorize merge or production adoption.
+Accepted by the owner, 2026-11-23. GUO lead reviewed the concrete contract on
+2026-11-15; the implementation merged to integration on 2026-11-23.
 
 ## Date
 
@@ -13,7 +12,7 @@ review does not authorize merge or production adoption.
 ## Decision Makers
 
 GUO lead (technical review); Codex (contract and implementation proposal);
-owner acceptance pending.
+owner (acceptance, 2026-11-23).
 
 ## Context
 
