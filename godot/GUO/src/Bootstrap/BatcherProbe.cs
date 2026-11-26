@@ -134,6 +134,9 @@ public partial class BatcherProbe : Node
         await VerifyBlends(batcher, viewport);
         Stage("blend states");
 
+        await VerifyAuraBlend(palette);
+        Stage("aura on transparent UI");
+
         await VerifyLandLight(batcher, viewport);
         Stage("land light");
 
@@ -590,6 +593,49 @@ public partial class BatcherProbe : Node
     /// what DestinationColor means, the numbers say so.
     /// </para>
     /// </remarks>
+    private async System.Threading.Tasks.Task VerifyAuraBlend(Texture2D palette)
+    {
+        const int radius = 30;
+        const int size = 64;
+        const int center = size / 2;
+        const int auraY = center - 5;
+        // This palette row has a constant green channel of 128.
+        const ushort hue = 9;
+        var coverage = new[] { 0, 128, 255 };
+        using var target = new RenderTarget2D(this, size, size);
+        using var batcher = new UltimaBatcher2D(target.CanvasItem) { HueTexture = palette };
+        using var aura = new Game.Managers.Aura(radius);
+        using var background = ImageTexture.CreateFromImage(
+            Image.CreateFromData(3, 1, false, Image.Format.Rgba8,
+                                 new byte[] { 0, 0, 0, 0, 0, 40, 0, 128, 0, 80, 0, 255 }));
+
+        for (int i = 0; i < coverage.Length; i++)
+        {
+            batcher.BeginFrame();
+            batcher.Begin();
+            batcher.Draw(background, new Compat.Rectangle(0, 0, size, size),
+                         new Compat.Rectangle(i, 0, 1, 1), ShaderHueTranslator.GetHueVector(0), 0f);
+            aura.Draw(batcher, center, center, hue, 0f);
+            batcher.End();
+
+            await ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
+            await ToSignal(RenderingServer.Singleton, RenderingServerInstance.SignalName.FramePostDraw);
+            using Image rendered = target.Texture.GetImage();
+            foreach (int y in new[] { 0, auraY, center - 1, center, auraY + radius / 2, auraY + radius, size - 1 })
+            {
+                int distance = Math.Abs(y - auraY);
+                float opacity = Math.Max(0, 1f - (float)distance / radius);
+                float a = (Compat.Color.White * opacity).A / 255f;
+                int green = (int)Math.Round(128 * a + i * 40 * (1 - a));
+                int alpha = (int)Math.Round(255 * a * a + coverage[i] * (1 - a));
+                Color got = rendered.GetPixel(center, y);
+                CheckThat($"aura over alpha {coverage[i]} at y={y}",
+                    Math.Abs(got.G8 - green) <= 1 && Math.Abs(got.A8 - alpha) <= 1 && got.R8 == 0,
+                    $"expected green/alpha {green}/{alpha}, got {got.G8}/{got.A8}");
+            }
+        }
+    }
+
     /// <summary>
     /// Prints how many comparisons a stage made. A stage that silently drew
     /// nothing, or looped zero times, otherwise reports the same PASS as one

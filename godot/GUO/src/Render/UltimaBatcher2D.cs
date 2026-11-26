@@ -52,6 +52,7 @@ namespace GUO.Renderer
         private const string SHADER_PATH = "res://src/Render/shaders/uo_hue.gdshader";
         private const string BLEND_SHADER_PATH = "res://src/Render/shaders/uo_hue_blend.gdshader";
         private const string ADD_SHADER_PATH = "res://src/Render/shaders/uo_hue_add.gdshader";
+        private const string ATTENUATE_SHADER_PATH = "res://src/Render/shaders/uo_hue_attenuate.gdshader";
         private const string MESH_SHADER_PATH = "res://src/Render/shaders/uo_hue_mesh.gdshader";
         private const string LAND_ARRAY_SHADER_PATH = "res://src/Render/shaders/uo_hue_land_array.gdshader";
         private const string COVER_SHADER_PATH = "res://src/Render/shaders/uo_hue_cover.gdshader";
@@ -1299,9 +1300,9 @@ void fragment() {
         /// </summary>
         /// <remarks>
         /// Godot's canvas has five fixed blend modes and ClassicUO's effects
-        /// need equations outside them, so anything but the default switches
-        /// to a shader that reads the destination back and evaluates XNA's
-        /// blend equation itself. See ADR-0003. That read needs whatever is
+        /// need equations outside them. States without a hardware mapping
+        /// switch to a shader that reads the destination back and evaluates
+        /// XNA's blend equation itself. See ADR-0003. That read needs whatever is
         /// underneath copied to the back buffer first, which is why this cuts
         /// two items rather than one: a copier, then the drawing item.
         /// </remarks>
@@ -1324,10 +1325,8 @@ void fragment() {
 
             _currentMaterial = _nextMaterial = GetBlendMaterial(blend);
 
-            // Additive is one of Godot's own blend modes, so the hardware does
-            // it and nothing is read back. See uo_hue_add.gdshader for why the
-            // read-back is not just slower here but wrong.
-            if (blend.IsAdditive)
+            // Both hardware paths preserve destination alpha without a screen copy.
+            if (blend.IsAdditive || blend.IsDestinationAttenuation)
             {
                 Cut(CutReason.Material);
 
@@ -1365,6 +1364,10 @@ void fragment() {
             {
                 _addShader ??= GD.Load<Shader>(ADD_SHADER_PATH);
                 material = new ShaderMaterial { Shader = _addShader };
+            }
+            else if (blend.IsDestinationAttenuation)
+            {
+                material = new ShaderMaterial { Shader = GD.Load<Shader>(ATTENUATE_SHADER_PATH) };
             }
             else
             {
