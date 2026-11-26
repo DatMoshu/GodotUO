@@ -235,8 +235,15 @@ internal static class Pregame3DProbe
         }
         else
         {
-            // 1b. The server list, by pad: the entry beside Quit, the card, a pick and the way back.
-            await ServersChecks();
+            if (GUO.Host.Main.ManageServersEnabled)
+            {
+                // 1b. The server list, by pad: entry, card, pick and the way back.
+                await ServersChecks();
+            }
+            else
+            {
+                await DefaultServersHiddenChecks();
+            }
 
             // 2. The account on the keyboard: focus it (X), type, Done.
             await Press(PadCmd.X);
@@ -333,6 +340,17 @@ internal static class Pregame3DProbe
         await Frames(90);
         Check("the pregame left with the login scene", !PregameScreen.Active);
         await Shot("12_world");
+    }
+
+    private static async Task DefaultServersHiddenChecks()
+    {
+        Check("default controller pregame has no Servers focus row", !LoginStage.ProbeOnServers);
+        string hints = (PregameScreen.Instance.Stage as LoginStage)?.Hints ?? "";
+        Check("default controller hints omit Manage Servers", !hints.Contains("Manage Servers"), hints);
+        await Press(PadCmd.LeftShoulder);
+        await Frames(3);
+        Check("default controller LB cannot open the server manager", !LoginStage.ProbeCardOpen
+            && !GUO.Input.Touch.Pregame.PregameCard.ServersButtonShown);
     }
 
     /// <summary>Walks the card's pad cursor (Down, Right, Up, Left in turn) until <paramref name="match"/> holds.</summary>

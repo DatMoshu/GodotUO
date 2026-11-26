@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Runs the GUO client in a window against the configured shard (or the first-run wizard when no UO data is set) and stays open until the game exits.
-# args: --offline | --frames <n> | <client flags>
+# args: --offline | --frames <n> | --manage-servers | <client flags>
+# Example: launchers/game/play.sh --manage-servers
 set -euo pipefail
 . "$(dirname "$0")/../_shared/common.sh" || exit 1
 

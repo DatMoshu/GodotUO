@@ -47,8 +47,8 @@ internal sealed class LoginStage : Stage
     public override string Hints => _creditsCard != null
         ? "B  Close"
         : D.Focus.Current == _accountField || D.Focus.Current == _passwordField
-            ? "A  Type     Start  Login     LB  Servers     Y  Credits"
-            : "A  Press     Start  Login     LB  Servers     Y  Credits";
+            ? (GUO.Host.Main.ManageServersEnabled ? "A  Type     Start  Login     LB  Manage Servers     Y  Credits" : "A  Type     Start  Login     Y  Credits")
+            : (GUO.Host.Main.ManageServersEnabled ? "A  Press     Start  Login     LB  Manage Servers     Y  Credits" : "A  Press     Start  Login     Y  Credits");
 
     public override void Enter()
     {
@@ -221,8 +221,11 @@ internal sealed class LoginStage : Stage
         a.Down = p; a.Left = quit; a.Right = credits;
         p.Up = a; p.Down = login; p.Left = quit; p.Right = credits;
         login.Up = p; login.Down = _boxes[1]; login.Left = quit; login.Right = credits;
-        quit.Up = _servers; quit.Right = a; quit.Left = null; quit.Down = _boxes[0];
-        _servers.Up = null; _servers.Down = quit; _servers.Left = null; _servers.Right = a;
+        quit.Up = _servers != null ? _servers : a; quit.Right = a; quit.Left = null; quit.Down = _boxes[0];
+        if (_servers != null)
+        {
+            _servers.Up = null; _servers.Down = quit; _servers.Left = null; _servers.Right = a;
+        }
         credits.Up = _savedItems.Count > 0 ? _savedItems[0] : null; credits.Left = a; credits.Right = null; credits.Down = p;
 
         for (int i = 0; i < _boxes.Length; i++)
@@ -266,7 +269,7 @@ internal sealed class LoginStage : Stage
                 ShowCredits();
                 return true;
 
-            case PadCmd.LeftShoulder:
+            case PadCmd.LeftShoulder when GUO.Host.Main.ManageServersEnabled:
                 OpenServers();
                 return true;
 
@@ -401,8 +404,13 @@ internal sealed class LoginStage : Stage
     /// </summary>
     private void BuildServersEntry()
     {
-        Label l = Overlay.Text("Servers", UoTheme.Ink);
-        _servers = Overlay.FrameRow(l, l, "servers");
+        if (!GUO.Host.Main.ManageServersEnabled)
+        {
+            return;
+        }
+
+        Label l = Overlay.Text("Manage Servers", UoTheme.Ink);
+        _servers = Overlay.FrameRow(l, l, "manage-servers");
         _servers.Pressed = OpenServers;
         _items.Add(_servers);
         D.OverlayRoot.AddChild(_servers.Control);

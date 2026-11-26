@@ -45,6 +45,12 @@ internal static class OneScreenProbe
         _tag = string.IsNullOrWhiteSpace(tag) ? "onescreen" : tag;
         DirAccess.MakeDirRecursiveAbsolute(_dir);
 
+        if (!Main.ManageServersEnabled)
+        {
+            await DefaultLoginChecks(host);
+            return;
+        }
+
         for (int i = 0; i < 1200 && Client.Game?.UO?.World == null; i++)
         {
             await InputProbe.Wait(host, 1);
@@ -207,6 +213,25 @@ internal static class OneScreenProbe
 
         DualScreenSettings.Set(kept);
         Finish();
+    }
+
+    private static async System.Threading.Tasks.Task DefaultLoginChecks(Node host)
+    {
+        for (int i = 0; i < 600 && UIManager.GetGump<Game.UI.Gumps.Login.LoginGump>() == null; i++)
+        {
+            await InputProbe.Wait(host, 1);
+        }
+
+        await InputProbe.Wait(host, 30);
+        bool hidden = !GUO.Input.Touch.Pregame.PregameCard.ServersButtonShown
+            && !GUO.Input.Touch.Pregame.PregameCard.OnMain;
+        Check("default login hides the pre-login server manager", hidden,
+            $"button {GUO.Input.Touch.Pregame.PregameCard.ServersButtonShown}, main {GUO.Input.Touch.Pregame.PregameCard.OnMain}");
+        GUO.Input.Touch.Pregame.PregameCard.OpenOnMain();
+        Check("default OpenOnMain cannot expose server management", !GUO.Input.Touch.Pregame.PregameCard.OnMain);
+        Passed = _failed == 0 && _checks > 0;
+        GD.Print($"[GUO] one-screen probe: {_checks - _failed}/{_checks} checks passed");
+        await Shot(host, "login_default");
     }
 
     private static void Finish()

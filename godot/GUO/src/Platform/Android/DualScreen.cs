@@ -634,6 +634,8 @@ namespace GUO.Platform.Android
             }
             else
             {
+                // The companion Settings surface stays available in stock mode;
+                // PregameCard routes its default Servers tab to Settings.
                 ShowCard();
             }
 
