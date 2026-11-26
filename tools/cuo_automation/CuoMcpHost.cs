@@ -58,6 +58,23 @@ internal static class CuoMcpHost
     private static int _releaseInput;
     private static Point _pointer;
     private static bool _pointerOverride;
+    private static WorldSelection _worldSelection;
+
+    private sealed class WorldSelection : DrawableGameComponent
+    {
+        internal GameScene Scene;
+        internal Point Pointer;
+        internal ClassicUO.Game.GameObjects.BaseGameObject Object;
+
+        public WorldSelection() : base(Client.Game) { }
+
+        public override void Draw(GameTime gameTime)
+        {
+            Scene = _pointerOverride && UIManager.IsMouseOverWorld ? Client.Game.Scene as GameScene : null;
+            Pointer = Mouse.Position;
+            Object = Scene == null ? null : SelectedObject.Object;
+        }
+    }
 
     [ModuleInitializer]
     internal static void Start()
@@ -237,6 +254,11 @@ internal static class CuoMcpHost
         {
             // SDL polls the real pointer before Pump in Update. Replay
             // the scripted position before the software cursor is drawn.
+            if (_worldSelection == null)
+            {
+                _worldSelection = new WorldSelection();
+                Client.Game.Components.Add(_worldSelection);
+            }
             if (_pointerOverride) SetPointer(_pointer);
             others = OthersDue();
             if (!others)
@@ -568,6 +590,14 @@ internal static class CuoMcpHost
     private static void SetPointer(Point p)
     {
         Mouse.Position = p;
+        // Scene.Update runs before the automation pump and translated SDL's
+        // pointer already. Keep draw-time world picking on the scripted point.
+        if (Client.Game.Scene is GameScene scene)
+        {
+            var bounds = scene.Camera.Bounds;
+            SelectedObject.TranslatedMousePositionByViewport =
+                scene.Camera.ScreenToWorld(new Point(p.X - bounds.X, p.Y - bounds.Y));
+        }
         Mouse.IsDragging = Mouse.LButtonPressed || Mouse.RButtonPressed || Mouse.MButtonPressed;
         UIManager.Update();
     }
@@ -638,6 +668,13 @@ internal static class CuoMcpHost
         uint last = type switch { MouseButtonType.Left => Mouse.LastLeftButtonClickTime, MouseButtonType.Middle => Mouse.LastMidButtonClickTime, _ => Mouse.LastRightButtonClickTime };
         if (last != 0xFFFF_FFFF)
         {
+            // The stock world picker runs while drawing. The next Update may
+            // clear its result while the physical pointer is off our window.
+            if (type == MouseButtonType.Left && _pointerOverride && UIManager.IsMouseOverWorld
+                && _worldSelection?.Scene == scene && _worldSelection.Pointer == Mouse.Position)
+            {
+                SelectedObject.Object = _worldSelection.Object;
+            }
             if (!scene.OnMouseUp(type) || UIManager.LastControlMouseDown(type) != null)
             {
                 UIManager.OnMouseButtonUp(type);

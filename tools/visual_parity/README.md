@@ -1,4 +1,4 @@
-﻿# CUO and GUO visual comparisons
+# CUO and GUO visual comparisons
 
 The Python runner starts both clients on a test shard, replays a shared
 plan, and captures full frames and live gumps. It can also attach to
@@ -24,8 +24,9 @@ client settings, 1024 by 768 windows, and the ModernUO staff commands
 pinned injected build containing `cuo.exe`.
 
 The default plan covers the eight world cursor directions, neutral targeting
-and Escape, paperdoll close/reopen and drag, war and peace, the skills gump,
-and both wheel directions. `actions.json` distinguishes asserted states,
+with Escape cancellation and a ground click that must teleport both clients
+to the same tile. It also covers paperdoll close/reopen and drag, war and
+peace, the skills gump, and both wheel directions. `actions.json` distinguishes asserted states,
 dispatched input, skipped steps, and failures. Compare the before/after UI
 bounds to inspect a drag. Scroll dispatch has no automatic displacement
 check.

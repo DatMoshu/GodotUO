@@ -53,6 +53,24 @@
       ]
     },
     {
+      "id": "teleport-target-click",
+      "steps": [
+        {"kind": "chat", "text": "[go 1602 1591"},
+        {"kind": "wait", "frames": 45, "expect": {"player.map": 0, "player.x": 1602, "player.y": 1591, "player.z": 20}},
+        {"kind": "chat", "text": "[teleport"},
+        {"kind": "wait", "frames": 45, "expect": {"targeting": true}},
+        {"kind": "input", "event": "motion", "x": 650, "y": 430},
+        {"kind": "capture", "name": "before-click"},
+        {"kind": "input", "event": "button", "button": "Left", "x": 650, "y": 430, "pressed": true},
+        {"kind": "wait", "frames": 8},
+        {"kind": "input", "event": "button", "button": "Left", "x": 650, "y": 430, "pressed": false},
+        {"kind": "wait", "frames": 50, "expect": {"targeting": false, "player.map": 0, "player.x": 1605, "player.y": 1589, "player.z": 18}},
+        {"kind": "capture", "name": "after-click"},
+        {"kind": "chat", "text": "[go 1602 1591"},
+        {"kind": "wait", "frames": 45, "expect": {"player.x": 1602, "player.y": 1591}}
+      ]
+    },
+    {
       "id": "paperdoll",
       "steps": [
         {"kind": "input", "event": "key", "key": "P", "pressed": true, "alt": true},
