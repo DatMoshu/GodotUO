@@ -292,10 +292,11 @@ def last_played(cfg: Config) -> str | None:
 
 
 def write_cuo_config(
-    cfg: Config, character: str, size: tuple[int, int], fps: int = 60
+    cfg: Config, character: str, size: tuple[int, int], fps: int = 60,
+    *, config_dir: Path | None = None,
 ) -> Path:
     """settings.json plus a copy of GUO's profile for the same character."""
-    conf = cfg.build / "cuo-config"
+    conf = config_dir or cfg.build / "cuo-config"
     profiles = conf / "Profiles"
     profiles.mkdir(parents=True, exist_ok=True)
 
@@ -325,6 +326,9 @@ def write_cuo_config(
         "autologin": True,
         "reconnect": False,
         "login_music": False,
+        # The visual parity capture reads the back buffer. Use ClassicUO's
+        # software cursor so the pointer is part of the screenshot.
+        "run_mouse_in_separate_thread": False,
         "encryption": 0,
         # The default is Razor, which is not here and would be one more
         # window in the photograph.
@@ -334,6 +338,9 @@ def write_cuo_config(
     (conf / "settings.json").write_text(
         json.dumps(settings, indent=2), encoding="utf-8"
     )
+
+    if config_dir is not None:
+        return conf
 
     # The profile GUO saved for this character, so both clients draw with the
     # same options and the same gumps open. CUO ignores the keys it does not

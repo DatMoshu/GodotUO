@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "scenarios": [
+    {
+      "id": "matching-world",
+      "steps": [
+        {"kind": "wait", "frames": 60, "expect": {"scene": "GameScene", "player.exists": true, "width": 1024, "height": 768}},
+        {"kind": "chat", "text": "[globallight 0"},
+        {"kind": "chat", "text": "[go 1602 1591"},
+        {"kind": "wait", "frames": 90, "expect": {"player.x": 1602, "player.y": 1591}},
+        {"kind": "capture", "name": "world"}
+      ]
+    },
+    {
+      "id": "directions",
+      "steps": [
+        {"kind": "input", "event": "motion", "x": 275, "y": 400},
+        {"kind": "input", "event": "button", "button": "Right", "pressed": true, "x": 275, "y": 400},
+        {"kind": "wait", "frames": 6},
+        {"kind": "input", "event": "button", "button": "Right", "pressed": false, "x": 275, "y": 400},
+        {"kind": "wait", "frames": 8},
+        {"kind": "assert_gump", "gump": "PaperDollGump", "visible": false},
+        {"kind": "capture", "name": "after-paperdoll-close"},
+        {"kind": "input", "event": "motion", "position_ratio": [0.5, 0.32]},
+        {"kind": "capture", "name": "north"},
+        {"kind": "input", "event": "motion", "position_ratio": [0.66, 0.34]},
+        {"kind": "capture", "name": "northeast"},
+        {"kind": "input", "event": "motion", "position_ratio": [0.68, 0.5]},
+        {"kind": "capture", "name": "east"},
+        {"kind": "input", "event": "motion", "position_ratio": [0.66, 0.66]},
+        {"kind": "capture", "name": "southeast"},
+        {"kind": "input", "event": "motion", "position_ratio": [0.5, 0.68]},
+        {"kind": "capture", "name": "south"},
+        {"kind": "input", "event": "motion", "position_ratio": [0.34, 0.66]},
+        {"kind": "capture", "name": "southwest"},
+        {"kind": "input", "event": "motion", "position_ratio": [0.32, 0.5]},
+        {"kind": "capture", "name": "west"},
+        {"kind": "input", "event": "motion", "position_ratio": [0.34, 0.34]},
+        {"kind": "capture", "name": "northwest"}
+      ]
+    },
+    {
+      "id": "target-cursor",
+      "steps": [
+        {"kind": "input", "event": "motion", "position_ratio": [0.4, 0.36]},
+        {"kind": "chat", "text": "[teleport"},
+        {"kind": "wait", "frames": 45, "expect": {"targeting": true}},
+        {"kind": "capture", "name": "targeting"},
+        {"kind": "input", "event": "key", "key": "Escape", "pressed": true},
+        {"kind": "input", "event": "key", "key": "Escape", "pressed": false},
+        {"kind": "wait", "frames": 25, "expect": {"targeting": false}},
+        {"kind": "capture", "name": "cancelled"}
+      ]
+    },
+    {
+      "id": "paperdoll",
+      "steps": [
+        {"kind": "input", "event": "key", "key": "P", "pressed": true, "alt": true},
+        {"kind": "input", "event": "key", "key": "P", "pressed": false, "alt": true},
+        {"kind": "wait", "frames": 45},
+        {"kind": "assert_gump", "gump": "PaperDollGump", "visible": true},
+        {"kind": "capture", "name": "paperdoll"},
+        {"kind": "if_gump", "gump": "PaperDollGump", "event": "hover"},
+        {"kind": "input", "event": "motion", "x": 275, "y": 400},
+        {"kind": "input", "event": "button", "button": "Left", "pressed": true, "x": 275, "y": 400},
+        {"kind": "wait", "frames": 8},
+        {"kind": "input", "event": "motion", "x": 285, "y": 402},
+        {"kind": "wait", "frames": 6},
+        {"kind": "input", "event": "motion", "x": 330, "y": 440},
+        {"kind": "wait", "frames": 8},
+        {"kind": "input", "event": "motion", "x": 350, "y": 455},
+        {"kind": "wait", "frames": 8},
+        {"kind": "input", "event": "button", "button": "Left", "pressed": false, "x": 350, "y": 455},
+        {"kind": "capture", "name": "after-drag"}
+      ]
+    },
+    {
+      "id": "war-and-skills",
+      "steps": [
+        {"kind": "input", "event": "motion", "x": 390, "y": 372},
+        {"kind": "wait", "frames": 30},
+        {"kind": "capture", "name": "war-button-hover"},
+        {"kind": "input", "event": "motion", "x": 390, "y": 372},
+        {"kind": "input", "event": "button", "button": "Left", "pressed": true, "x": 390, "y": 372},
+        {"kind": "wait", "frames": 6},
+        {"kind": "input", "event": "button", "button": "Left", "pressed": false, "x": 390, "y": 372},
+        {"kind": "wait", "frames": 30, "expect": {"player.warMode": true}},
+        {"kind": "input", "event": "motion", "x": 650, "y": 250},
+        {"kind": "capture", "name": "war-world-cursor"},
+        {"kind": "input", "event": "motion", "x": 390, "y": 372},
+        {"kind": "input", "event": "button", "button": "Left", "pressed": true, "x": 390, "y": 372},
+        {"kind": "wait", "frames": 6},
+        {"kind": "input", "event": "button", "button": "Left", "pressed": false, "x": 390, "y": 372},
+        {"kind": "wait", "frames": 30, "expect": {"player.warMode": false}},
+        {"kind": "input", "event": "motion", "x": 650, "y": 250},
+        {"kind": "capture", "name": "peace-world-cursor"},
+        {"kind": "input", "event": "motion", "x": 390, "y": 317},
+        {"kind": "input", "event": "button", "button": "Left", "pressed": true, "x": 390, "y": 317},
+        {"kind": "wait", "frames": 6},
+        {"kind": "input", "event": "button", "button": "Left", "pressed": false, "x": 390, "y": 317},
+        {"kind": "wait", "frames": 30},
+        {"kind": "assert_gump", "gump": "StandardSkillsGump", "visible": true},
+        {"kind": "capture", "name": "skills-open"},
+        {"kind": "if_gump", "gump": "StandardSkillsGump", "event": "wheel"},
+        {"kind": "capture", "name": "skills-wheel"}
+      ]
+    },
+    {
+      "id": "additional-fixtures",
+      "steps": [
+        {"id": "target-hues", "kind": "skip", "reason": "Staff teleport uses a neutral target. Spell targeting needs a harmful and beneficial spell fixture."},
+        {"id": "os-cursor-and-resize", "kind": "skip", "reason": "The screenshot reads the client back buffer. Hardware cursor/hotspot, physical focus and resize need desktop fixtures."}
+      ]
+    }
+  ]
+}

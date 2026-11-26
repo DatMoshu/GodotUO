@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "capture_tool": "python tools/visual_parity/run.py capture --out <external-run-folder>",
+  "scenarios": [
+    {"id": "directional", "setup": "logged-in in-world, same shard/character/tile", "actions": ["capture neutral cursor", "move pointer over an empty world tile", "capture directional cursor"], "evidence": ["CUO/GUO screenshots", "guo_ui snapshots"]},
+    {"id": "war-mode", "setup": "logged-in in-world", "actions": ["toggle war mode with the configured client hotkey", "capture cursor and status gump", "toggle back and capture"], "evidence": ["paired screenshots", "war-mode state from each client"]},
+    {"id": "target-hues", "setup": "logged-in, targetable mobile nearby", "actions": ["request a neutral target cursor", "capture", "request harmful and beneficial target cursors in separate passes", "capture each hue"], "evidence": ["paired screenshots", "target hue and cursor state"], "owner_scope": "lead owns aura-rendering fix"},
+    {"id": "gump-drag", "setup": "paperdoll and backpack visible", "actions": ["drag a movable gump by its title area", "capture after drop", "compare resulting x/y in guo_ui"], "evidence": ["paired gump crops", "UI bounds before and after"]},
+    {"id": "gump-clicks", "setup": "paperdoll visible", "actions": ["hover a button and capture", "click the button", "capture the resulting gump state"], "evidence": ["paired gump crops", "buttonId/control inventory"]},
+    {"id": "resize", "setup": "both clients at matching window dimensions", "actions": ["capture baseline", "resize both to the same second dimension", "wait 8 frames", "capture again"], "evidence": ["paired full frames", "viewport dimensions", "root gump bounds"], "driver": "OS window resize is manual; MCP has no resize operation"},
+    {"id": "hover", "setup": "same visible gumps", "actions": ["move pointer onto matching control coordinates", "capture before click", "move off and capture"], "evidence": ["paired crops", "hover tooltip/visual state"]},
+    {"id": "wheel", "setup": "pointer over a scrollable gump", "actions": ["send one wheel-up event", "capture", "send one wheel-down event", "capture"], "evidence": ["paired crops", "scroll position / visible controls"]}
+  ]
+}

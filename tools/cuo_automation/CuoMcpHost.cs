@@ -57,6 +57,7 @@ internal static class CuoMcpHost
     private static int _controllers;
     private static int _releaseInput;
     private static Point _pointer;
+    private static bool _pointerOverride;
 
     [ModuleInitializer]
     internal static void Start()
@@ -234,6 +235,9 @@ internal static class CuoMcpHost
         bool others = false;
         try
         {
+            // SDL polls the real pointer before Pump in Update. Replay
+            // the scripted position before the software cursor is drawn.
+            if (_pointerOverride) SetPointer(_pointer);
             others = OthersDue();
             if (!others)
             {
@@ -376,7 +380,9 @@ internal static class CuoMcpHost
             scene = Client.Game.Scene?.GetType().Name,
             width = Client.Game.GraphicManager.PreferredBackBufferWidth,
             height = Client.Game.GraphicManager.PreferredBackBufferHeight,
-            player = player == null ? null : new { map = world.MapIndex, x = (int)player.X, y = (int)player.Y, z = (int)player.Z },
+            player = player == null ? null : new { map = world.MapIndex, x = (int)player.X, y = (int)player.Y, z = (int)player.Z, serial = player.Serial, warMode = player.InWarMode },
+            targeting = player != null && world.TargetManager.IsTargeting,
+            combat = player == null ? null : new { lastAttack = world.TargetManager.LastAttack },
         };
     }
 
@@ -386,7 +392,7 @@ internal static class CuoMcpHost
         float scale = Client.Game.DpiScale;
         foreach (var gump in UIManager.Gumps)
         {
-            AddControl(gump, controls, scale, 0);
+            AddControl(gump, gump.GetType().Name, controls, scale, 0);
         }
 
         return new
@@ -401,7 +407,7 @@ internal static class CuoMcpHost
         };
     }
 
-    private static void AddControl(Control c, List<object> output, float scale, int depth)
+    private static void AddControl(Control c, string gump, List<object> output, float scale, int depth)
     {
         if (depth > 64 || output.Count >= 2000 || c.IsDisposed || !c.IsVisible || (c.Parent != null && c.Page != 0 && c.Page != c.Parent.ActivePage))
         {
@@ -412,6 +418,8 @@ internal static class CuoMcpHost
         {
             system = "classic",
             type = c.GetType().Name,
+            gump,
+            buttonId = c is Button button ? button.ButtonID : (int?)null,
             x = c.ScreenCoordinateX * scale,
             y = c.ScreenCoordinateY * scale,
             width = c.Width * scale,
@@ -422,7 +430,7 @@ internal static class CuoMcpHost
         });
         foreach (var child in c.Children)
         {
-            AddControl(child, output, scale, depth + 1);
+            AddControl(child, gump, output, scale, depth + 1);
         }
     }
 
@@ -491,6 +499,7 @@ internal static class CuoMcpHost
         if (at.X < 0 || at.Y < 0 || at.X >= gm.PreferredBackBufferWidth || at.Y >= gm.PreferredBackBufferHeight) throw new ArgumentOutOfRangeException();
         // Back buffer pixels to ClassicUO's logical UI pixels (Mouse.Position's units).
         _pointer = new Point((int)(at.X / Client.Game.DpiScale), (int)(at.Y / Client.Game.DpiScale));
+        _pointerOverride = true;
         if (kind == "motion")
         {
             SetPointer(_pointer);
@@ -554,9 +563,8 @@ internal static class CuoMcpHost
         return Text("Event dispatched; inspect UI to verify the effect.");
     }
 
-    // The real pointer is read back at the top of every frame (Mouse.Update), so
-    // the injected position holds for this call only. UIManager.Update works out
-    // the control under the pointer, which the click handlers use.
+    // Refresh control hit testing after replacing the polled pointer.
+    // The override belongs to the automation connection and is released on disconnect.
     private static void SetPointer(Point p)
     {
         Mouse.Position = p;
@@ -647,6 +655,7 @@ internal static class CuoMcpHost
         foreach (var type in new List<MouseButtonType>(_buttons)) ButtonUp(type);
         _keys.Clear();
         _buttons.Clear();
+        _pointerOverride = false;
     }
 
     private static SDL.SDL_Keymod ModOf(SDL.SDL_Keycode code) => code switch
