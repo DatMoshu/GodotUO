@@ -192,6 +192,9 @@ namespace GUO.Game
             );
         }
 
+        private bool UseHardwareCursor =>
+            !Client.Game.UsesWindowSoftwareCursor && Settings.GlobalSettings.RunMouseInASeparateThread;
+
         public void Update()
         {
             Graphic = AssignGraphicByState();
@@ -200,7 +203,7 @@ namespace GUO.Game
             {
                 _needGraphicUpdate = false;
 
-                if (AllowDrawSDLCursor && Settings.GlobalSettings.RunMouseInASeparateThread)
+                if (AllowDrawSDLCursor && UseHardwareCursor)
                 {
                     ushort id = Graphic;
 
@@ -273,7 +276,7 @@ namespace GUO.Game
             }
         }
 
-        public void Draw(UltimaBatcher2D sb)
+        public void Draw(UltimaBatcher2D sb, Point position)
         {
             if (_world.InGame && _world.TargetManager.IsTargeting && ProfileManager.CurrentProfile != null)
             {
@@ -392,7 +395,7 @@ namespace GUO.Game
                             break;
                     }
 
-                    _aura.Draw(sb, Mouse.Position.X, Mouse.Position.Y, hue, 0f);
+                    _aura.Draw(sb, position.X, position.Y, hue, 0f);
                 }
 
                 if (ProfileManager.CurrentProfile.ShowTargetRangeIndicator)
@@ -407,8 +410,8 @@ namespace GUO.Game
                             sb.DrawString(
                                 Fonts.Bold,
                                 dist,
-                                Mouse.Position.X - 26,
-                                Mouse.Position.Y - 21,
+                                position.X - 26,
+                                position.Y - 21,
                                 hue,
                                 0f
                             );
@@ -417,8 +420,8 @@ namespace GUO.Game
                             sb.DrawString(
                                 Fonts.Bold,
                                 dist,
-                                Mouse.Position.X - 25,
-                                Mouse.Position.Y - 20,
+                                position.X - 25,
+                                position.Y - 20,
                                 hue,
                                 0f
                             );
@@ -453,9 +456,9 @@ namespace GUO.Game
                     Point offset = GetDraggingItemOffset();
 
                     int x =
-                        (ItemHold.IsFixedPosition ? ItemHold.FixedX : Mouse.Position.X) - offset.X;
+                        (ItemHold.IsFixedPosition ? ItemHold.FixedX : position.X) - offset.X;
                     int y =
-                        (ItemHold.IsFixedPosition ? ItemHold.FixedY : Mouse.Position.Y) - offset.Y;
+                        (ItemHold.IsFixedPosition ? ItemHold.FixedY : position.Y) - offset.Y;
 
                     Vector3 hue = ShaderHueTranslator.GetHueVector(
                         ItemHold.Hue,
@@ -486,9 +489,9 @@ namespace GUO.Game
                 }
             }
 
-            DrawToolTip(sb, Mouse.Position);
+            DrawToolTip(sb, position);
 
-            if (!Settings.GlobalSettings.RunMouseInASeparateThread)
+            if (!UseHardwareCursor)
             {
                 Graphic = AssignGraphicByState();
 
@@ -529,7 +532,7 @@ namespace GUO.Game
 
                 sb.Draw(
                     artInfo.Texture,
-                    new Vector2(Mouse.Position.X - offX, Mouse.Position.Y - offY),
+                    new Vector2(position.X - offX, position.Y - offY),
                     rect,
                     hueVec,
                     0f

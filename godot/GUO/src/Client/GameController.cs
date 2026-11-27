@@ -329,13 +329,42 @@ namespace GUO
         /// cursor so the client can draw its own. Godot's equivalent is the
         /// input mouse mode.
         /// </summary>
+        // PORT DEVIATION (GUO): Windows draws one cursor and its overlays
+        // with one window ownership check. See ADR-0006.
+        internal bool UsesWindowSoftwareCursor => !_embedded && OperatingSystem.IsWindows();
+
+        private bool _cursorInActiveWindow;
+        private bool _cursorVisibilityChanged;
+
         public bool IsMouseVisible
         {
             get => Godot.Input.MouseMode == Godot.Input.MouseModeEnum.Visible;
-            set =>
-                Godot.Input.MouseMode = value
-                    ? Godot.Input.MouseModeEnum.Visible
-                    : Godot.Input.MouseModeEnum.Hidden;
+            set
+            {
+                if (UsesWindowSoftwareCursor)
+                    UpdateWindowCursor();
+                else
+                    Godot.Input.MouseMode = value
+                        ? Godot.Input.MouseModeEnum.Visible
+                        : Godot.Input.MouseModeEnum.Hidden;
+            }
+        }
+
+        private void UpdateWindowCursor()
+        {
+            if (!UsesWindowSoftwareCursor || GUO.Host.Main.NoFocus)
+                return;
+
+            bool ownsPointer = DisplayServer.WindowIsFocused() && Mouse.MouseInWindow;
+            if (ownsPointer != _cursorInActiveWindow)
+            {
+                _cursorInActiveWindow = ownsPointer;
+                _cursorVisibilityChanged = true;
+            }
+
+            var mode = ownsPointer ? Godot.Input.MouseModeEnum.Hidden : Godot.Input.MouseModeEnum.Visible;
+            if (Godot.Input.MouseMode != mode)
+                Godot.Input.MouseMode = mode;
         }
 
         public Rectangle ClientBounds
@@ -930,10 +959,13 @@ namespace GUO
             GUO.Input.Gamepad.GamepadInput.Update(delta);
             RuntimeTimings.Add(RuntimeTimings.Stage.Input, processAt);
 
+            UpdateWindowCursor();
             Update(elapsedMilliseconds);
 
-            if (!_suppressedDraw)
+            // Remove stale cursor pixels even when inactive frame pacing skips a draw.
+            if (!_suppressedDraw || _cursorVisibilityChanged)
             {
+                _cursorVisibilityChanged = false;
                 long drawAt = RuntimeTimings.Now();
                 DrawFrame();
                 RuntimeTimings.Add(RuntimeTimings.Stage.Draw, drawAt);
@@ -1159,9 +1191,16 @@ namespace GUO
                 // PORT DEVIATION (GUO): no cursor while a pad is in use and its
                 // pointer idle (ADR-0025, Input.InputMode.PointerHidden), or
                 // while the UI is hidden for a clean shot (Renderer.CleanShots).
-                if (!GUO.Input.InputMode.PointerHidden && !GUO.Renderer.CleanShots.Hidden)
+                bool manageWindowCursor = UsesWindowSoftwareCursor && !GUO.Host.Main.NoFocus;
+                bool useWindowPointer = manageWindowCursor
+                    && GUO.Input.InputMode.Current == GUO.Input.InputKind.KeyboardMouse;
+                if (!GUO.Input.InputMode.PointerHidden && !GUO.Renderer.CleanShots.Hidden
+                    && (!manageWindowCursor || (useWindowPointer ? _cursorInActiveWindow : IsActive)))
                 {
-                    UO.GameCursor?.Draw(_uoSpriteBatch);
+                    Point position = useWindowPointer
+                        ? Mouse.ToLogicalPosition(GetViewport().GetMousePosition())
+                        : Mouse.Position;
+                    UO.GameCursor?.Draw(_uoSpriteBatch, position);
                 }
                 // PORT DEVIATION (GUO): with the pointer on a dual-screen device's
                 // second screen, a badge of the held item on this one. ADR-0009.
@@ -1300,12 +1339,18 @@ namespace GUO
                 // so they are here and not in the input layer.
                 case NotificationWMMouseEnter:
                     Mouse.MouseInWindow = true;
+                    UpdateWindowCursor();
 
                     break;
 
                 case NotificationWMMouseExit:
                     Mouse.MouseInWindow = false;
+                    UpdateWindowCursor();
+                    break;
 
+                case NotificationWMWindowFocusIn:
+                case NotificationWMWindowFocusOut:
+                    UpdateWindowCursor();
                     break;
             }
         }
