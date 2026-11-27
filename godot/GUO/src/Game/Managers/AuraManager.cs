@@ -15,17 +15,6 @@ namespace GUO.Game.Managers
 {
     sealed class Aura : IDisposable
     {
-        private static readonly Lazy<BlendState> _blend = new Lazy<BlendState>
-        (
-            () => new BlendState
-            {
-                ColorSourceBlend = Blend.SourceAlpha,
-                AlphaSourceBlend = Blend.SourceAlpha,
-                ColorDestinationBlend = Blend.InverseSourceAlpha,
-                AlphaDestinationBlend = Blend.InverseSourceAlpha
-            }
-        );
-
         private Texture2D _texture;
         private readonly int _radius;
 
@@ -69,9 +58,20 @@ namespace GUO.Game.Managers
 
             Vector3 hueVec = ShaderHueTranslator.GetHueVector(hue, false, 1);
 
-            batcher.SetBlendState(_blend.Value);
-            batcher.Draw(_texture, new Rectangle(x, y + yBump, _radius * 2, _radius - yBump), new Rectangle(0, 0, _radius * 2, _radius - yBump), hueVec, depth + 1f);
-            batcher.Draw(_texture, new Rectangle(x, y + _radius, _radius * 2, _radius + yBump), new Rectangle(0, _radius - yBump, _radius * 2, _radius + yBump), hueVec, depth + 1.49f);
+            Rectangle top = new Rectangle(x, y + yBump, _radius * 2, _radius - yBump);
+            Rectangle bottom = new Rectangle(x, y + _radius, _radius * 2, _radius + yBump);
+            Rectangle topSource = new Rectangle(0, 0, top.Width, top.Height);
+            Rectangle bottomSource = new Rectangle(0, top.Height, bottom.Width, bottom.Height);
+
+            // PORT DEVIATION (GUO): compose the two terms of ClassicUO's
+            // source-alpha blend in hardware. Forward+ and Mobile screen copies
+            // can supply opaque alpha even for a transparent UI render target.
+            batcher.SetBlendState(BlendState.DestinationAttenuation);
+            batcher.Draw(_texture, top, topSource, hueVec, depth + 1f);
+            batcher.Draw(_texture, bottom, bottomSource, hueVec, depth + 1.49f);
+            batcher.SetBlendState(BlendState.Additive);
+            batcher.Draw(_texture, top, topSource, hueVec, depth + 1f);
+            batcher.Draw(_texture, bottom, bottomSource, hueVec, depth + 1.49f);
             batcher.SetBlendState(BlendState.AlphaBlend);
         }
 

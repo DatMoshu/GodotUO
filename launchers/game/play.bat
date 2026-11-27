@@ -1,12 +1,13 @@
 @echo off
 rem Runs the GUO client in a window against the configured shard (or the first-run wizard when no UO data is set) and stays open until the game exits.
-rem args: --offline | --frames <n> | <client flags>
+rem args: --offline | --frames <n> | --manage-servers | <client flags>
 REM ============================================================================
 REM  THE LAUNCHER. Runs the GUO client.
 REM
 REM      launchers\game\play.bat                 connect to the configured shard
 REM      launchers\game\play.bat --offline       no shard; data/render smoke only
 REM      launchers\game\play.bat --frames 400    run 400 frames and quit
+REM      launchers\game\play.bat --manage-servers  show GUO's multi-server manager before login
 REM
 REM  Anything else is passed to the client. Engine flags are not: --frames is
 REM  here because Godot's --quit-after has to come BEFORE the -- separator,

@@ -354,6 +354,7 @@ public partial class McpHost : Node
             player = player == null ? null : new { map = Client.Game.UO.World.MapIndex, x = (int)player.X, y = (int)player.Y, z = (int)player.Z,
                 serial = player.Serial, warMode = player.InWarMode, hits = (int)player.Hits, hitsMax = (int)player.HitsMax,
                 equipped = Worn(player), backpack = InBackpack(player) },
+            targeting = player != null && Client.Game.UO.World.TargetManager.IsTargeting,
             // Read-only facts the new-player gate checks (data_formats section 29): what is worn, who is fought, who is near.
             combat = player == null ? null : new { lastAttack = Client.Game.UO.World.TargetManager.LastAttack },
             hover = Game.SelectedObject.Object is Game.GameObjects.Entity hovered ? hovered.Serial : 0u,

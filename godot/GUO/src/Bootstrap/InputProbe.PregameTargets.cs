@@ -144,6 +144,24 @@ internal static partial class InputProbe
         if (!pregame)
         {
             if (PregameScreen.Active) return LoginTargetFailure(target, "mode changed before typing");
+            // The login gump keeps the last account in its field; typing onto it
+            // sent "<last account><probe account>" to the shard. Empty it first,
+            // with the keys a player would use.
+            if (Game.Managers.UIManager.KeyboardFocusControl is Game.UI.Controls.StbTextBox box && box.Text.Length > 0)
+            {
+                Send(new InputEventKey { Keycode = Key.End, Pressed = true });
+                await Frames(host, 2);
+                Send(new InputEventKey { Keycode = Key.End, Pressed = false });
+                await Frames(host, 2);
+                for (int i = box.Text.Length; i > 0 && box.Text.Length > 0; i--)
+                {
+                    Send(new InputEventKey { Keycode = Key.Backspace, Pressed = true });
+                    await Frames(host, 2);
+                    Send(new InputEventKey { Keycode = Key.Backspace, Pressed = false });
+                    await Frames(host, 2);
+                }
+                if (box.Text.Length > 0) return LoginTargetFailure(target, "field could not be emptied before typing");
+            }
             await Type(host, text);
             return true;
         }

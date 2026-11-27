@@ -2479,6 +2479,7 @@ namespace GUO.Game.UI.Gumps
                     startY
                 )
             );
+            _runMouseInSeparateThread.IsEnabled = !Client.Game.UsesWindowSoftwareCursor;
 
             section4.Add
             (

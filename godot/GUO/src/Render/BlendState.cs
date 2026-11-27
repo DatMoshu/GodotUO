@@ -105,6 +105,22 @@ namespace GUO.Renderer
             AlphaDestinationBlend = Blend.One,
         };
 
+        internal static readonly BlendState DestinationAttenuation = new BlendState
+        {
+            ColorSourceBlend = Blend.Zero,
+            ColorDestinationBlend = Blend.InverseSourceAlpha,
+            AlphaSourceBlend = Blend.Zero,
+            AlphaDestinationBlend = Blend.InverseSourceAlpha,
+        };
+
+        internal bool IsDestinationAttenuation =>
+            ColorSourceBlend == Blend.Zero
+            && ColorDestinationBlend == Blend.InverseSourceAlpha
+            && ColorBlendFunction == BlendFunction.Add
+            && AlphaSourceBlend == Blend.Zero
+            && AlphaDestinationBlend == Blend.InverseSourceAlpha
+            && AlphaBlendFunction == BlendFunction.Add;
+
         public static readonly BlendState Opaque = new BlendState();
 
         /// <summary>

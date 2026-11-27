@@ -165,3 +165,20 @@ limit above still applies to it: a state other than the default or Additive
 that draws overlapping sprites will not see them. Today nothing does --
 `GameEffectView` sets and clears its state around every single sprite, so
 each effect gets a copy of its own.
+
+
+## Target and underfoot auras
+
+The aura uses `SourceAlpha` and `InverseSourceAlpha` on both colour and
+alpha. Forward+ and Mobile can read alpha as 1 from a screen copy of a
+transparent canvas, causing a dark target aura when the UI is composited
+over the world. Aura drawing uses two consecutive hardware passes on the
+same sprite regions. `blend_mul` multiplies destination RGBA by
+`1 - src.a`, then `blend_add` adds `src * src.a`. This implements the
+ClassicUO equation with up to one extra 8-bit rounding step and preserves
+the actual alpha of transparent and translucent UI pixels.
+
+The batcher probe draws the aura over clear, translucent and opaque
+pixels and checks the result against the ClassicUO equation. Run it with
+`--rendering-method forward_plus`, `mobile` and `gl_compatibility` as
+Godot arguments, followed by `-- --batcher-probe`.

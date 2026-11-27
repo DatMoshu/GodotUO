@@ -5,6 +5,13 @@ screen. On a device with one screen, the same panel opens as a card from the log
 [uo_godot_style.md](uo_godot_style.md) in full: only the client's own art, whole pixels, font 1, and quiet stone and
 parchment.
 
+The multi-server manager is opt-in. Normal launches keep the login flow focused on the stock login gump. To open
+the manager, start the client with `launchers\\game\\play.bat --manage-servers` or `launchers/game/play.sh --manage-servers`.
+This exposes the **Manage Servers** tab on the companion screen, the entry beside the login gump, and **LB: Manage Servers**
+in controller-first pregame. Saved server and account data is retained, and after login the server's own server-selection
+list continues to work as supplied by the shard. Companion Settings remains available on a second screen in the default
+launch.
+
 Where a one-screen window has room beside the login gump, the card is docked on its left instead of opening as a
 card: see [one_screen_panel.md](one_screen_panel.md).
 

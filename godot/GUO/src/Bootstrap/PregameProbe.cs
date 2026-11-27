@@ -31,6 +31,9 @@ internal static class PregameProbe
 {
     public static bool Passed { get; private set; }
 
+    private static bool ManageServers => Main.ManageServersEnabled;
+    private static Button ManageServersTab(PregameCard card) => card.TabButtonFor(PregameCard.Tab.Servers);
+
     private static int _failed, _checks;
     private static string _dir, _tag;
 
@@ -52,9 +55,18 @@ internal static class PregameProbe
         _tag = string.IsNullOrWhiteSpace(tag) ? "pregame" : tag;
         DirAccess.MakeDirRecursiveAbsolute(_dir);
 
+        bool initialShelf = DualScreenSettings.Current.Enabled;
+        string initialProfile = Configuration.ProfileManager.ProfilePath;
+
+        if (DualScreen.HasSecondaryDisplay || DualScreen.IsPanel)
+        {
+            DualScreenSettings.Edit(v => v.Enabled = false);
+        }
+
         PregameCard card = null;
 
-        for (int i = 0; i < 1800 && (card = PregameCard.Instance) == null; i++)
+        for (int i = 0; i < 1800 && (card = PregameCard.Instance) == null
+            && (ManageServers || DualScreen.HasSecondaryDisplay || DualScreen.IsPanel); i++)
         {
             await InputProbe.Wait(host, 1);
         }
@@ -72,9 +84,18 @@ internal static class PregameProbe
         _panel = !_second && DualScreen.IsPanel && PregameCard.ShownOnSecond;
         _second |= _panel;
 
+        if (!ManageServers)
+        {
+            await DefaultHiddenChecks(host, card);
+            RestoreShelf(initialProfile, initialShelf);
+            Finish();
+            return;
+        }
+
         if (card == null)
         {
             Check("the pre-game card is built at the login screen", false, "not built");
+            RestoreShelf(initialProfile, initialShelf);
             Finish();
             return;
         }
@@ -82,15 +103,20 @@ internal static class PregameProbe
         if (RestartPhase != null)
         {
             await AccountsRestartCheck(host, card, RestartPhase);
+            RestoreShelf(initialProfile, initialShelf);
             Finish();
             return;
         }
 
         await InputProbe.Wait(host, 10);
 
+        Check("opt-in exposes Manage Servers on a second screen or a login button", _second
+            ? card.TabButtonFor(PregameCard.Tab.Servers)?.IsVisibleInTree() == true && !PregameCard.ServersButtonShown
+            : card.TabButtonFor(PregameCard.Tab.Servers)?.IsVisibleInTree() == true && PregameCard.ServersButtonShown);
+
         if (_second)
         {
-            Check("the pre-game card is up on the second screen at the login screen, and no Servers button stands by the login gump",
+            Check("the Manage Servers card is up on the second screen, with no separate login button",
                 PregameCard.ShownOnSecond && UIManager.GetGump<LoginGump>() != null && !PregameCard.ServersButtonShown, card.Geometry);
 
             if (_panel)
@@ -119,7 +145,7 @@ internal static class PregameProbe
 
             bool opened = PregameCard.OnMain;
             await InputProbe.Wait(host, 5);
-            Check("one screen: a Servers button stands beside the login gump and opens the card over it",
+            Check("one screen: the Manage Servers button opens the card over login",
                 button && opened && !PregameCard.ServersButtonShown, $"button {button}, open {opened}, card {card.Geometry}");
         }
 
@@ -149,7 +175,7 @@ internal static class PregameProbe
         }
 
         // The tabs.
-        card.Tap(card.TabButtonFor(PregameCard.Tab.Servers));
+        card.Tap(ManageServersTab(card));
         await InputProbe.Wait(host, 5);
         bool servers = card.Current == PregameCard.Tab.Servers;
         card.Tap(card.TabButtonFor(PregameCard.Tab.Settings));
@@ -247,12 +273,12 @@ internal static class PregameProbe
         // Leave it on Servers, as a player first sees it.
         card.Tap(settings.GroupButton(PregameSettings.Groups[0]));
         await InputProbe.Wait(host, 5);
-        card.Tap(card.TabButtonFor(PregameCard.Tab.Servers));
+        card.Tap(ManageServersTab(card));
         await InputProbe.Wait(host, 5);
 
         if (!_second)
         {
-            Button close = card.TabButtonFor(PregameCard.Tab.Servers).GetParent().GetChildren().OfType<Button>().FirstOrDefault(b => b.Text == "Close");
+            Button close = ManageServersTab(card)?.GetParent().GetChildren().OfType<Button>().FirstOrDefault(b => b.Text == "Close");
 
             if (close != null)
             {
@@ -268,7 +294,50 @@ internal static class PregameProbe
             await WorldChecks(host, card);
         }
 
+        RestoreShelf(initialProfile, initialShelf);
         Finish();
+    }
+
+    private static async System.Threading.Tasks.Task DefaultHiddenChecks(Node host, PregameCard card)
+    {
+        bool secondScreen = DualScreen.HasSecondaryDisplay;
+        for (int i = 0; i < 90 && !secondScreen && DualScreen.IsPanel && !PregameCard.ShownOnSecond; i++)
+        {
+            await InputProbe.Wait(host, 1);
+        }
+
+        bool expectedCard = secondScreen || (DualScreen.IsPanel && PregameCard.ShownOnSecond);
+        if (expectedCard && card == null)
+        {
+            for (int i = 0; i < 120 && (card = PregameCard.Instance) == null; i++)
+            {
+                await InputProbe.Wait(host, 1);
+            }
+        }
+        Check("default launch hides the pre-login server manager", !PregameCard.ServersButtonShown && !PregameCard.OnMain,
+            $"button {PregameCard.ServersButtonShown}, main {PregameCard.OnMain}");
+        if (expectedCard)
+        {
+            Check("default companion Settings card is built and visible", card != null && PregameCard.ShownOnSecond
+                && card.Current == PregameCard.Tab.Settings
+                && card.TabButtonFor(PregameCard.Tab.Settings)?.IsVisibleInTree() == true && card.Settings.Visible,
+                $"second screen {secondScreen}, card built {card != null}, shown {PregameCard.ShownOnSecond}");
+            Check("default companion does not expose the manager tab", card != null && card.TabButtonFor(PregameCard.Tab.Servers) == null);
+        }
+
+        if (card != null)
+        {
+            card.Show(PregameCard.Tab.Servers);
+            await InputProbe.Wait(host, 2);
+            Check("default Tab.Servers redirects to Settings", card.Current == PregameCard.Tab.Settings
+                && card.TabButtonFor(PregameCard.Tab.Settings)?.IsVisibleInTree() == true
+                && card.Settings.Visible
+                && card.TabButtonFor(PregameCard.Tab.Servers) == null);
+        }
+
+        PregameCard.OpenOnMain();
+        Check("default OpenOnMain cannot open the manager", !PregameCard.OnMain);
+        await SaveMain(host, "login_default_hidden");
     }
 
     /// <summary>
@@ -305,7 +374,7 @@ internal static class PregameProbe
             }
 
             await InputProbe.Wait(host, 20);
-            card.Tap(card.TabButtonFor(PregameCard.Tab.Servers));
+            card.Tap(ManageServersTab(card));
             await InputProbe.Wait(host, 5);
 
             Configuration.Settings gs = Configuration.Settings.GlobalSettings;
@@ -661,7 +730,7 @@ internal static class PregameProbe
             await AtLogin();
 
             // The page's Add account offers the dev tick on the dev shard only.
-            card.Tap(card.TabButtonFor(PregameCard.Tab.Servers));
+            card.Tap(ManageServersTab(card));
             servers.Rebuild();
             await InputProbe.Wait(host, 3);
             await Reveal(host, card, servers.RowFor(servers.Listed.First(x => x.Dev)));
@@ -740,7 +809,7 @@ internal static class PregameProbe
 
                 // Gumps the login restored (a paperdoll) would cover the card in the photo.
                 UIManager.GetGump<Game.UI.Gumps.PaperDollGump>()?.Dispose();
-                card.Tap(card.TabButtonFor(PregameCard.Tab.Servers));
+                card.Tap(ManageServersTab(card));
                 servers.Rebuild();
                 await InputProbe.Wait(host, 20);
                 await SaveShot(host, "servers_dev_switch");
@@ -833,7 +902,7 @@ internal static class PregameProbe
             ServerBook.Load();
         }
 
-        card.Tap(card.TabButtonFor(PregameCard.Tab.Servers));
+        card.Tap(ManageServersTab(card));
         await InputProbe.Wait(host, 6);
         PregameServers servers = card.Servers;
         Configuration.Settings gs = Configuration.Settings.GlobalSettings;
@@ -1353,7 +1422,7 @@ internal static class PregameProbe
             gs.Username = "";
             gs.Password = mark;
             Input.Touch.Pregame.Accounts.AccountBook.Add(here, InputProbe.ProbeAccount, InputProbe.ProbePassword, true, out _);
-            card.Tap(card.TabButtonFor(PregameCard.Tab.Servers));
+            card.Tap(ManageServersTab(card));
             servers.Rebuild();
             await InputProbe.Wait(host, 3);
             await Reveal(host, card, servers.RowFor(servers.Listed.First(x => x.Same(gs.IP, gs.Port))));
@@ -1476,9 +1545,10 @@ internal static class PregameProbe
             }
 
             ServerEntry kept = ServerBook.Find("custom.invalid", 2597);
+            string expectedFolder = System.IO.Path.GetFullPath(good);
             string saved = System.IO.File.ReadAllText(ServerBook.FilePath);
             Check("Play opens the first-run screen for its files: a folder without a whole manifest is refused, the fake one saved with a click, kept in servers.json",
-                open && refused && taken && !FirstRunScreen.IsOpen && kept?.DataFolder == good && saved.Contains("\"client_id\"") && !saved.Contains("\"data_folder\"") && GUO.Workspace.ClientRegistry.Current.Find(kept.ClientId)?.Overlay == good,
+                open && refused && taken && !FirstRunScreen.IsOpen && kept?.DataFolder == expectedFolder && saved.Contains("\"client_id\"") && !saved.Contains("\"data_folder\"") && GUO.Workspace.ClientRegistry.Current.Find(kept.ClientId)?.Overlay == expectedFolder,
                 $"picker {open}, bad refused {refused}, good taken {taken}, still open {FirstRunScreen.IsOpen}, kept \"{kept?.DataFolder}\" (picked \"{good}\"), client in the file {saved.Contains("\"client_id\"")}{_clickDetail}");
 
             // Then the question, and a restart (held back) with the session written down.

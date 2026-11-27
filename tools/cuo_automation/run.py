@@ -58,11 +58,13 @@ def free_port() -> int:
 class Cuo:
     """A running injected ClassicUO and the MCP connection to it."""
 
-    def __init__(self, proc: subprocess.Popen, client: McpClient, log: Path, secrets_: list[str]):
+    def __init__(self, proc: subprocess.Popen, client: McpClient, log: Path, secrets_: list[str], port: int, token: str):
         self.proc = proc
         self.client = client
         self.log = log
         self.secrets = secrets_
+        self.port = port
+        self.token = token
 
     def state(self) -> dict:
         return self.client.call_json("guo_state")
@@ -119,15 +121,18 @@ class Cuo:
 
 
 def start_client(cfg: Config, log_dir: Path, size: tuple[int, int] = (1280, 720), tuck: bool = True,
-                 extra_env: dict | None = None) -> Cuo:
+                 extra_env: dict | None = None, *, executable: Path | None = None,
+                 config_dir: Path | None = None) -> Cuo:
     """Launch the injected ClassicUO unfocused, logged in as the shard owner, and connect to its MCP server."""
     ab = ab_compare()
-    exe = cfg.upstream_exe
+    exe = executable or cfg.upstream_exe
     if not exe.exists():
         raise McpError(f"{exe} is missing; run: python tools/cuo_automation/run.py proof --build")
     port, token = free_port(), secrets.token_hex(32)
-    character = os.environ.get("CUO_AUTOMATION_CHARACTER") or ab.last_played(cfg) or ""
-    conf = ab.write_cuo_config(cfg, character, size)
+    character = ((extra_env or {}).get("CUO_AUTOMATION_CHARACTER")
+                 or os.environ.get("CUO_AUTOMATION_CHARACTER") or ab.last_played(cfg) or "")
+    conf = (ab.write_cuo_config(cfg, character, size, config_dir=config_dir)
+            if config_dir is not None else ab.write_cuo_config(cfg, character, size))
     log_dir.mkdir(parents=True, exist_ok=True)
     log = log_dir / "cuo.log"
     env = {**os.environ, "FNA_GRAPHICS_ENABLE_HIGHDPI": "1", "__COMPAT_LAYER": "HighDpiAware",
@@ -138,7 +143,7 @@ def start_client(cfg: Config, log_dir: Path, size: tuple[int, int] = (1280, 720)
          "-username", cfg.shard_owner, "-password", cfg.shard_owner_password,
          "-ip", cfg.shard_host, "-port", str(cfg.shard_port), "-autologin", "true", "-skiploginscreen",
          "-lastcharactername", character, "-music", "false"],
-        cwd=str(cfg.upstream_build), stdout=log.open("w", encoding="utf-8", errors="replace"),
+        cwd=str(exe.parent), stdout=log.open("w", encoding="utf-8", errors="replace"),
         stderr=subprocess.STDOUT, env=env)
     if tuck:
         visual_ab = sys.modules.get("visual_ab_run") or _load("visual_ab_run", TOOLS / "visual_ab" / "run.py")
@@ -146,9 +151,10 @@ def start_client(cfg: Config, log_dir: Path, size: tuple[int, int] = (1280, 720)
     deadline = time.monotonic() + 60
     while True:
         if proc.poll() is not None:
+            scrub(log, [cfg.shard_owner_password, token])
             raise McpError(f"ClassicUO exited with {proc.returncode} before its MCP server answered; see {log}")
         try:
-            return Cuo(proc, McpClient(port, token), log, [cfg.shard_owner_password, token])
+            return Cuo(proc, McpClient(port, token), log, [cfg.shard_owner_password, token], port, token)
         except (OSError, McpError) as ex:
             last = type(ex).__name__ + ": " + str(ex)[:100]
             if time.monotonic() > deadline:

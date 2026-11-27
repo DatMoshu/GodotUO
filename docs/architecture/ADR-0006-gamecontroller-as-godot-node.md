@@ -152,9 +152,12 @@ Three things move, because Godot puts them elsewhere:
   took the key.
 * **Mouse enter, leave and focus** are window notifications, so they are in
   `_Notification` (section 4) and not in the input layer.
-* **Mouse position** comes from `Mouse.Update()`, which asks the window where
-  the pointer is, as upstream's does. The event's own position is not used, so
-  synthesised input has to warp the pointer — see Validation.
+* **Mouse position** for gameplay comes from the input event. On Windows the
+  standalone game window hides the native pointer while focused and hovered
+  and draws the cursor, aura, tooltip and held item from one viewport
+  position. Focus or pointer exit clears that layer even when the inactive
+  frame limiter would skip the draw. Gamepad, touch and scripted no-focus
+  capture use their supplied positions.
 
 `SDL_KeyboardEvent` survives as the *shape* the ported code expects, filled in
 by this layer. Godot names a letter key by its capital and SDL by its

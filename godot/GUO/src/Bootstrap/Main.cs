@@ -42,6 +42,9 @@ public partial class Main : Node
 
     private Options _options;
 
+    /// <summary>Whether this launch explicitly opted into GUO's server manager.</summary>
+    public static bool ManageServersEnabled { get; private set; }
+
     /// <summary>
     /// Whether this run's window may never take keyboard focus. True for
     /// every scripted run unless <c>--focus</c> says otherwise; read by the
@@ -67,6 +70,7 @@ public partial class Main : Node
     public override void _EnterTree()
     {
         _options = Options.Parse(OS.GetCmdlineUserArgs());
+        ManageServersEnabled = _options.ManageServers;
 
         string probeOnly = PerfProbeFlags.ProbeOnlyError(_options.PerfProbe, _options.PerfStaticWorld);
         if (probeOnly != null)
@@ -1286,7 +1290,18 @@ public partial class Main : Node
     {
         InputProbe.EndureSeconds = _options.EndureSeconds;
 
-        await InputProbe.Run(this, 200);
+        // An exception in an async void method is only logged by Godot and the
+        // process then exits 0, so a crashed probe read as a pass: fail it here.
+        try
+        {
+            await InputProbe.Run(this, 200);
+        }
+        catch (Exception e)
+        {
+            GD.PrintErr($"[GUO] probe FAILED: the probe threw {e}");
+            Quit(1);
+            return;
+        }
 
         await CaptureFrame();
 
@@ -1310,7 +1325,16 @@ public partial class Main : Node
         InputProbe.WalkToTheme = _options.WalkToTheme;
         InputProbe.WalkToThemeZone = _options.WalkToThemeZone;
 
-        await InputProbe.RunWalkTo(this);
+        try
+        {
+            await InputProbe.RunWalkTo(this);
+        }
+        catch (Exception e)
+        {
+            GD.PrintErr($"[GUO] probe FAILED: the walk-to probe threw {e}");
+            Quit(1);
+            return;
+        }
 
         await CaptureFrame();
 
@@ -1574,6 +1598,9 @@ public partial class Main : Node
     public sealed class Options
     {
         public RunMode Mode { get; private set; } = RunMode.Play;
+
+        /// <summary>Show GUO's multi-server pre-login manager (opt-in with --manage-servers).</summary>
+        public bool ManageServers { get; private set; }
 
         public string ClientData { get; private set; } = "";
 
@@ -2145,6 +2172,9 @@ public partial class Main : Node
 
                 switch (arg)
                 {
+                    case "--manage-servers":
+                        o.ManageServers = true;
+                        break;
                     case "--offline":
                         o.Mode = RunMode.Offline;
                         break;

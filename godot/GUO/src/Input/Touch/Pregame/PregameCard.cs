@@ -37,7 +37,10 @@ internal sealed partial class PregameCard : Node
     /// <summary>Set by DualScreen: the second screen is the card's (the shelf is not in use).</summary>
     public static bool OnSecond { get; set; }
 
-    /// <summary>Open over the main screen (one-screen devices), from the Servers button.</summary>
+    /// <summary>Multi-server management is explicitly enabled with --manage-servers.</summary>
+    public static bool ManageServersEnabled => GUO.Host.Main.ManageServersEnabled;
+
+    /// <summary>Open over the main screen (one-screen devices), from Manage Servers.</summary>
     public static bool OnMain => _instance != null && _instance._onMain;
 
     public static bool ShownOnSecond => _instance != null && OnSecond && DualScreen.Active && !DualScreen.Suspended && !_instance._onMain;
@@ -148,7 +151,7 @@ internal sealed partial class PregameCard : Node
         _viewport.AddChild(_root);
 
         // The main-screen host: a dark band, the card's texture over it, and
-        // the Servers button beside the login gump. Above the client, below
+        // the Manage Servers button beside the login gump. Above the client, below
         // the Store and the effects menu.
         _layer = new CanvasLayer { Layer = 90 };
         AddChild(_layer);
@@ -173,14 +176,22 @@ internal sealed partial class PregameCard : Node
         col.AddThemeConstantOverride("separation", 5);
         _card.AddChild(col);
 
+        if (!ManageServersEnabled)
+        {
+            _tab = Tab.Settings;
+        }
+
         // The tabs. No version beside them: GUO has no release number yet
         // (the assembly's is the 1.0.0.0 default).
         var head = new HBoxContainer();
         head.AddThemeConstantOverride("separation", 4);
         col.AddChild(head);
-        _tabServers = TabButton("Servers", Tab.Servers);
+        _tabServers = ManageServersEnabled ? TabButton("Manage Servers", Tab.Servers) : null;
         _tabSettings = TabButton("Settings", Tab.Settings);
-        head.AddChild(_tabServers);
+        if (ManageServersEnabled)
+        {
+            head.AddChild(_tabServers);
+        }
         head.AddChild(_tabSettings);
         head.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore });
 
@@ -190,14 +201,16 @@ internal sealed partial class PregameCard : Node
         head.AddChild(_close);
 
         _servers = new PregameServers { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
+        _servers.Visible = ManageServersEnabled;
         col.AddChild(_servers);
 
         _settings = new PregameSettings { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
+        _settings.Visible = true;
         col.AddChild(_settings);
 
         // The Servers button beside the login gump (one screen).
         _serversButtonHost.Theme = UoTheme.Theme;
-        _serversButton = UoTheme.Button("Servers", 56);
+        _serversButton = UoTheme.Button("Manage Servers", 96);
         _serversButton.MouseFilter = Control.MouseFilterEnum.Ignore;
         _serversButtonHost.AddChild(_serversButton);
 
@@ -223,24 +236,28 @@ internal sealed partial class PregameCard : Node
     /// <summary>Opens a tab, as a tap on it does.</summary>
     public void Show(Tab tab)
     {
-        _tab = tab;
+        _tab = !ManageServersEnabled && tab == Tab.Servers ? Tab.Settings : tab;
 
         if (_card == null)
         {
             return;
         }
 
-        if (tab == Tab.Servers)
+        if (ManageServersEnabled && _tab == Tab.Servers)
         {
-            _servers.Rebuild();
+            _servers?.Rebuild();
         }
 
-        _servers.Visible = tab == Tab.Servers;
-        _settings.Visible = tab == Tab.Settings;
+        _servers.Visible = ManageServersEnabled && _tab == Tab.Servers;
+        _settings.Visible = _tab == Tab.Settings;
 
         // The open tab is the selected plate with a heading caption.
-        foreach ((Button b, bool on) in new[] { (_tabServers, tab == Tab.Servers), (_tabSettings, tab == Tab.Settings) })
+        foreach ((Button b, bool on) in new[] { (_tabServers, ManageServersEnabled && _tab == Tab.Servers), (_tabSettings, _tab == Tab.Settings) })
         {
+            if (b == null)
+            {
+                continue;
+            }
             b.AddThemeStyleboxOverride("normal", UoTheme.Plate(on ? UoTheme.SelectedShade : 1f));
             b.AddThemeColorOverride("font_color", on ? UoTheme.Heading : UoTheme.Ink);
             b.AddThemeColorOverride("font_hover_color", on ? UoTheme.Heading : UoTheme.Ink);
@@ -249,15 +266,15 @@ internal sealed partial class PregameCard : Node
         GD.Print($"[GUO] pregame card: {tab.ToString().ToLowerInvariant()}");
     }
 
-    // --- one screen: the Servers button and the card over the login screen ----------
+    // --- one screen: the Manage Servers button and the card over the login screen ----------
 
-    /// <summary>Whether the Servers button stands beside the login gump now.</summary>
+    /// <summary>Whether the Manage Servers button stands beside the login gump now.</summary>
     public static bool ServersButtonShown => _instance != null && _instance._serversButtonHost.Visible;
 
-    /// <summary>Opens the card over the main screen (the Servers button; the probe).</summary>
+    /// <summary>Opens the card over the main screen (Manage Servers; the probe).</summary>
     public static void OpenOnMain(Tab tab = Tab.Servers)
     {
-        if (_instance == null || !_instance._built)
+        if (!ManageServersEnabled || _instance == null || !_instance._built)
         {
             return;
         }
@@ -286,7 +303,7 @@ internal sealed partial class PregameCard : Node
 
     /// <summary>The Servers button: at the login screen, when no second screen holds the card.</summary>
     private static bool WantsServersButton =>
-        Client.Game?.Scene is LoginScene && !ShownOnSecond && !OnMain && UIManager.GetGump<LoginGump>() is LoginGump g && !g.IsDisposed;
+        ManageServersEnabled && Client.Game?.Scene is LoginScene && !ShownOnSecond && !OnMain && UIManager.GetGump<LoginGump>() is LoginGump g && !g.IsDisposed;
 
     private void PlaceServersButton()
     {
@@ -338,13 +355,13 @@ internal sealed partial class PregameCard : Node
 
     /// <summary>
     /// The row: at the login screen of a dev build with dev accounts saved,
-    /// under the Servers button's place, on every layout (the Servers button
+    /// under the Manage Servers button's place, on every layout (the Manage Servers button
     /// itself stands aside when a second screen holds the card).
     /// </summary>
     private void PlaceDevRow()
     {
         var accounts = Accounts.DevLogin.Accounts;
-        bool show = accounts.Count > 0 && !OnMain && Client.Game?.Scene is LoginScene && UIManager.GetGump<LoginGump>() is LoginGump g && !g.IsDisposed;
+        bool show = ManageServersEnabled && accounts.Count > 0 && !OnMain && Client.Game?.Scene is LoginScene && UIManager.GetGump<LoginGump>() is LoginGump g && !g.IsDisposed;
         _devHost.Visible = show;
 
         if (!show)
@@ -421,7 +438,7 @@ internal sealed partial class PregameCard : Node
 
         if (!_built)
         {
-            if (!UoTheme.Ready || (!ShownOnSecond && Client.Game?.Scene is not LoginScene))
+            if (!UoTheme.Ready || (!ManageServersEnabled && !ShownOnSecond) || (!ShownOnSecond && Client.Game?.Scene is not LoginScene))
             {
                 return;
             }
@@ -468,7 +485,7 @@ internal sealed partial class PregameCard : Node
             _card.Size = new Vector2(size.X / art, size.Y / art);
             bool narrow = size.X / art < PregameSettings.NarrowBelow;
             _settings.SetNarrow(narrow);
-            _servers.SetNarrow(narrow);
+            _servers?.SetNarrow(narrow);
             _close.Visible = _onMain;
             GD.Print($"[GUO] pregame card: {(_onMain ? "main" : "second")} screen {size.X}x{size.Y}, art x{art}{(narrow ? ", narrow" : "")}");
         }
@@ -552,7 +569,7 @@ internal sealed partial class PregameCard : Node
     /// The main window's events, from GameController before the client sees
     /// them: keys while one of the card's fields is being typed in (either
     /// screen); every pointer event while the card is open over the main
-    /// screen (it is modal); a tap on the Servers button. True when consumed.
+    /// screen (it is modal); a tap on Manage Servers. True when consumed.
     /// </summary>
     public static bool HandleMainInput(InputEvent e)
     {
@@ -739,7 +756,7 @@ internal sealed partial class PregameCard : Node
 
     private void FocusFirst()
     {
-        Control target = _servers.Selected != null ? _servers.RowFor(_servers.Selected) : null;
+        Control target = _servers?.Selected != null ? _servers.RowFor(_servers.Selected) : null;
 
         if (target == null || !target.IsVisibleInTree())
         {
@@ -817,7 +834,7 @@ internal sealed partial class PregameCard : Node
         }
         else
         {
-            _servers.ScrollBy(artPixels, at);
+            _servers?.ScrollBy(artPixels, at);
         }
     }
 
@@ -867,9 +884,9 @@ internal sealed partial class PregameCard : Node
     }
 
     /// <summary>For the probe: the tab buttons.</summary>
-    public Button TabButtonFor(Tab tab) => tab == Tab.Servers ? _tabServers : _tabSettings;
+    public Button TabButtonFor(Tab tab) => tab == Tab.Servers && !ManageServersEnabled ? null : tab == Tab.Servers ? _tabServers : _tabSettings;
 
-    /// <summary>For the probe: the Servers button's centre in window pixels, when it stands.</summary>
+    /// <summary>For the probe: the Manage Servers button's centre in window pixels, when it stands.</summary>
     public static Vector2? ServersButtonCentre => ServersButtonShown
         ? _instance._serversButtonHost.Position + _instance._serversButton.Size * _instance._serversButtonHost.Scale / 2
         : null;

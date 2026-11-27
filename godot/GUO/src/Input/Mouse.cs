@@ -130,11 +130,14 @@ namespace GUO.Input
             // backbuffer" -- a render surface that can differ in size from the
             // window. Godot's window and its default surface are the same
             // size, so that ratio is 1 and the term is gone.
-            Position.X = (int) ((double) position.X / Client.Game.DpiScale);
-
-            Position.Y = (int) ((double) position.Y / Client.Game.DpiScale);
-
+            Position = ToLogicalPosition(position);
             Refresh();
+        }
+
+        internal static Point ToLogicalPosition(Vector2 position)
+        {
+            float dpi = Client.Game.DpiScale;
+            return new Point((int)((double)position.X / dpi), (int)((double)position.Y / dpi));
         }
 
         /// <summary>

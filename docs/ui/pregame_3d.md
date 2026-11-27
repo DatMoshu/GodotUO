@@ -66,7 +66,7 @@ threshold 15, the wd1/wd2 edge weights) from Hyllian's xBR, which is MIT license
 
 | Step | A | B | X | Y | Start | Other |
 |---|---|---|---|---|---|---|
-| Login | press / type in a field | | edit account | credits | Login | LB: Servers |
+| Login | press / type in a field | | edit account | credits | Login | LB: Manage Servers (with `--manage-servers`) |
 | Status | OK (message) | cancel / OK | | | | |
 | Servers (the shard's list) | choose | back | | | choose | |
 | Characters | play / new on an empty plinth | back | new | delete (confirm) | play | |
@@ -78,8 +78,8 @@ right click = B.
 
 ### Servers (the shard list, review fix)
 
-The login step has a **Servers** entry in its top-left corner, in the pad's focus
-graph (Quit, then up to Servers, then right to the account field) and on **LB**. It
+The login step has a **Manage Servers** entry in its top-left corner, in the pad's focus
+graph (when enabled, Quit then up to Manage Servers then right to the account field) and on **LB**. It
 opens the same card the classic login screen's Servers button opens
 (`PregameCard.OpenOnMain`), over the pregame: the player's servers, favourites and
 community list, `ServerPlay.Check` (a shard that only allows its own client; one that

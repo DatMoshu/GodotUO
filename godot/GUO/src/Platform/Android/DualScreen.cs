@@ -339,7 +339,7 @@ namespace GUO.Platform.Android
                 // The desktop's cursor over the one-screen panel: GameCursor
                 // drew it, and what it holds, into the main window, beyond
                 // its edge. Again here, where the pointer is.
-                Client.Game.UO?.GameCursor?.Draw(batcher);
+                Client.Game.UO?.GameCursor?.Draw(batcher, Mouse.Position);
             }
             else if (PointerOnShelf)
             {
@@ -634,6 +634,8 @@ namespace GUO.Platform.Android
             }
             else
             {
+                // The companion Settings surface stays available in stock mode;
+                // PregameCard routes its default Servers tab to Settings.
                 ShowCard();
             }
 
